@@ -66,6 +66,8 @@ __all__ = [
     "fsJournalPathFor",
     "flistJournaledContainerNames",
     "fdictReadJournalOutcome",
+    "fbAnyHostExecHolderLive",
+    "flistDescribeHostExecHolders",
     "fsPrepareOperation",
     "fnPromoteOperationToInFlight",
     "fnAmendInFlightHolderIdentity",
@@ -88,6 +90,7 @@ import secrets
 import shlex
 import threading
 
+from vaibify.config.connectionAvailability import fbDockerReachable
 from vaibify.config.pidFileRegistry import (
     fbIsSafeRegistryName,
     fnEnsureDirectory,
@@ -764,6 +767,97 @@ def _fdictProbeHelperOperation(dictRecord, connectionDocker):
     )
 
 
+def fbAnyHostExecHolderLive(sContainerName):
+    """Return True while any journaled host-exec process may survive.
+
+    The journal half of the host busy oracle (host-mode plan §4): a
+    host pipeline counts as running while a ``host-exec`` record's
+    holder PID is alive or its recorded process group still has
+    members — the same recycle-proof prover the record's own probe
+    uses. Fail-safe by construction: an unreadable journal, or a
+    record whose identity cannot be probed, reads as LIVE, because
+    every caller is a veto (claim take-over, ownership reaper, idle
+    self-shutdown) and evicting an owner over an unprovable run is
+    exactly the harm this predicate exists to prevent. Read-only:
+    nothing is settled or persisted here.
+    """
+    dictOutcomeRead = fdictReadJournalOutcome(sContainerName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        return True
+    for dictRecord in dictOutcomeRead["dictOperations"].values():
+        if dictRecord.get("sKind") != "host-exec":
+            continue
+        dictProbe = _fdictProbeHelperOperation(dictRecord, None)
+        if dictProbe["bHolderAlive"] or not dictProbe["bSettled"]:
+            return True
+    return False
+
+
+def flistDescribeHostExecHolders(sContainerName):
+    """Return one description per unsettled ``host-exec`` record.
+
+    The naming half of the host busy oracle: :func:`fbAnyHostExecHolderLive`
+    answers *whether* something may survive, this answers *what* — the
+    operation label, the recorded identity, and whether that identity is
+    still PROVABLE — for the two surfaces that must act on a specific
+    process group rather than on a yes/no: Cancel, and the quarantine
+    view that offers to terminate what it names. Read-only; nothing is
+    settled, persisted, or signalled here.
+
+    ``bHolderProven`` uses the record's own recycle-proof prover, so a
+    caller signalling on it agrees with the busy oracle by construction
+    rather than by a second, drifting judgement. It is the caller's job
+    to refuse to signal when the flag is False — a PID that vanished
+    may have been handed to an unrelated process, and its process group
+    with it.
+
+    Unlike the fail-safe predicate, an unreadable journal RAISES here.
+    A veto can honestly answer "assume busy" without knowing anything;
+    an action that is about to send a signal cannot, and inventing an
+    empty list would report "nothing to cancel" about a project whose
+    records could not be read at all.
+    """
+    dictOutcomeRead = fdictReadJournalOutcome(sContainerName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        raise OperationJournalUnreadableError(
+            f"Cannot name the host-exec holders of '{sContainerName}': "
+            f"its journal read as {dictOutcomeRead['sReadState']} "
+            f"({dictOutcomeRead['sDetail']})"
+        )
+    listHolders = []
+    for sOperationId, dictRecord in sorted(
+        dictOutcomeRead["dictOperations"].items(),
+    ):
+        if dictRecord.get("sKind") != "host-exec":
+            continue
+        listHolders.append(
+            _fdictDescribeHostExecHolder(sOperationId, dictRecord),
+        )
+    return listHolders
+
+
+def _fdictDescribeHostExecHolder(sOperationId, dictRecord):
+    """Return one host-exec record's identity plus its proven flag."""
+    iHolderPid = dictRecord.get("iHolderPid")
+    iHolderProcessGroup = dictRecord.get("iHolderProcessGroup")
+    bHolderProven = (
+        fbIsUsablePid(iHolderPid)
+        and fbIsUsablePid(iHolderProcessGroup)
+        and fbIsProcessAliveSince(
+            iHolderPid, dictRecord.get("sInFlightIso"),
+        )
+    )
+    return {
+        "sOperationId": sOperationId,
+        "sOperationLabel": dictRecord.get("sTarget", ""),
+        "sState": dictRecord.get("sState", ""),
+        "sInFlightIso": dictRecord.get("sInFlightIso", ""),
+        "iHolderPid": iHolderPid,
+        "iHolderProcessGroup": iHolderProcessGroup,
+        "bHolderProven": bHolderProven,
+    }
+
+
 def _fdictProbeExecOperation(dictRecord, connectionDocker):
     """Probe a Docker exec record by its recorded exec id."""
     sDockerExecId = dictRecord.get("sDockerExecId")
@@ -771,7 +865,7 @@ def _fdictProbeExecOperation(dictRecord, connectionDocker):
         return _fdictProbeOutcome(
             False, False, False, "exec record is missing its exec id",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the exec settled",
@@ -820,7 +914,7 @@ def _fdictProbeTerminalOperation(dictRecord, connectionDocker):
             False, False, False,
             "terminal record is missing its exec id or container id",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the terminal "
@@ -893,7 +987,7 @@ def _fdictProbeStartOperation(dictRecord, connectionDocker):
             "start record has neither a container id nor a reservation "
             "label",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the start settled",
@@ -989,7 +1083,7 @@ def _fsComputeHostFileSha256(sTargetPath):
 
 def _fdictProbeContainerFileHash(dictRecord, connectionDocker):
     """Settle a container-side file write via an in-container hash."""
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the container "
@@ -1061,6 +1155,16 @@ DICT_OPERATION_PROBE_CATALOG = {
         "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
     },
     "helper": {
+        "fdictProbe": _fdictProbeHelperOperation,
+        "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
+    },
+    # A host-mode project's subprocess launch. The identity and the
+    # prover are the helper record's — recycle-proof PID plus
+    # process-group emptiness, fully host-native — but the kind is
+    # distinct because host projects emit exactly two kinds
+    # (``host-exec`` and ``file-write``) and a reader of a journal
+    # should see which lane wrote a record without inferring it.
+    "host-exec": {
         "fdictProbe": _fdictProbeHelperOperation,
         "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
     },

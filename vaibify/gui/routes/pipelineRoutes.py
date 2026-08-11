@@ -9,8 +9,10 @@ import logging
 import posixpath
 import re
 
-from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+
+from ...config.registryManager import fbIsHostProject
+from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
 
 from .. import containerOwnership
 from ..actionCatalog import ffnAgentAction
@@ -286,6 +288,59 @@ async def _fiCountThenKillUnderTheDrain(
     )
 
 
+async def _fiSweepContainerProcesses(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Return how many of the workflow's container processes were killed.
+
+    A workflow whose steps name no killable command yields no pattern,
+    and no sweep runs — an empty grep alternation matches every line.
+    """
+    listPatterns = _flistExtractKillPatterns(dictWorkflow)
+    sGrepPattern = "|".join(re.escape(sPattern) for sPattern in listPatterns)
+    if not sGrepPattern:
+        return 0
+    return await _fiCountThenKillUnderTheDrain(
+        dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+    )
+
+
+async def _fdictCancelHostRunUnderTheDrain(sResourceName, requestHttp):
+    """Terminate the project's journaled process groups under one drain.
+
+    The host counterpart of the count-then-kill sweep above, and it is
+    a REPLACEMENT rather than a variant: that sweep pattern-matches a
+    process table, which is safe inside a container whose whole process
+    table belongs to vaibify and catastrophic on the researcher's own
+    machine, where the same script name may be open in their editor.
+    What may be signalled on the host is only what vaibify journaled
+    when it started it — see ``vaibify/host/hostCancellation.py`` for
+    why an unprovable identity is refused rather than guessed.
+
+    Mode (b) and the drain is held for the same reason the container
+    sweep holds it: an ownership hand-over must not commit against a
+    project this request is still sending signals into.
+
+    An unreadable journal raises out of the worker and poisons, which
+    is correct — a Cancel that cannot read the record of what is
+    running has produced genuinely unknown state, and that is what
+    reconciliation exists for.
+    """
+    from vaibify.host import hostCancellation
+
+    def fdictTerminateJournaledGroups(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: hostCancellation.fdictCancelJournaledHostRun(
+                sResourceName,
+            ),
+        )
+    return await fgenericRunWorkerUnderTheDrain(
+        sResourceName, fdictTerminateJournaledGroups, "kill-pipeline",
+        requestHttp,
+    )
+
+
 def _fiCountAndKillMatchingProcesses(
     connectionDocker, sContainerId, listPatterns, sGrepPattern,
 ):
@@ -309,13 +364,29 @@ def _fnRegisterPipelineState(app, dictCtx):
     reconciliation against the raw pipeline_state.json file.
     """
 
+    # mode-b, and the carrier is opened on a branch this route usually
+    # does not take. The READ is a typed read needing no admission; the
+    # RECONCILE is a real container write, and it happens only when a
+    # runner's heartbeat has gone stale. So the poll — every ten
+    # seconds, for as long as a workflow is open — holds no drain at
+    # all on its ordinary path, and takes one only in the moment it has
+    # to record that a runner died. Passing the carried persister is
+    # what makes that write legal on the enforced branch; without it
+    # the reconcile leaks onto the background lane, where the gate is a
+    # documented no-op and nothing records the write.
     @ffnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
-    async def fdictGetPipelineState(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictGetPipelineState(
+        sContainerId: str, requestHttp: Request,
+    ):
         from ..pipelineState import fdictReadReconciledState
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
+            fnPersistReconciled=_ffnBuildCarriedStatePersister(
+                dictCtx, sContainerId, requestHttp,
+            ),
         )
         iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
         if dictState is None:
@@ -446,20 +517,21 @@ def _fnRegisterPipelineKill(app, dictCtx):
     @app.post("/api/pipeline/{sContainerId}/kill")
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         bTaskCancelled = _fbCancelPipelineTask(
             dictCtx["pipelineTasks"], sContainerId)
-        listPatterns = _flistExtractKillPatterns(dictWorkflow)
-        listSafe = [re.escape(s) for s in listPatterns]
-        sGrepPattern = (
-            "|".join(listSafe) if listSafe else "")
-        iCountBefore = 0
-        if sGrepPattern:
-            iCountBefore = await _fiCountThenKillUnderTheDrain(
-                dictCtx, sContainerId, listPatterns, sGrepPattern,
-                requestHttp,
+        listRefused = []
+        if fbIsHostProject(sContainerId):
+            dictCancelled = await _fdictCancelHostRunUnderTheDrain(
+                sContainerId, requestHttp,
+            )
+            iCountBefore = dictCancelled["iGroupsTerminated"]
+            listRefused = dictCancelled["listRefused"]
+        else:
+            iCountBefore = await _fiSweepContainerProcesses(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
             )
         await _fnMarkPipelineStopped(
             dictCtx, sContainerId, requestHttp,
@@ -468,6 +540,12 @@ def _fnRegisterPipelineKill(app, dictCtx):
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
             "bTaskCancelled": bTaskCancelled,
+            # A refusal to signal is reported, never folded into the
+            # count: "0 processes" for a run vaibify declined to touch
+            # would tell the researcher their machine is quiet when it
+            # may not be. Always present, empty on the container leg,
+            # so the dashboard reads one shape.
+            "listCancellationRefusals": listRefused,
         }
 
 
@@ -480,7 +558,7 @@ def _fnRegisterPipelineClean(app, dictCtx):
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
     async def fdictHandleCleanOutputs(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listCleanCommands = _flistBuildCleanCommands(
@@ -565,7 +643,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
         if fbContainerIsPoisoned(dictContainerOwners, sName):
             await fnCloseWithCode(websocket, I_REJECT_POISONED)
             return
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         iAcceptedGeneration = containerOwnership.fiOwnerGenerationForName(
             dictContainerOwners, sName,
         )
@@ -645,7 +723,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         from .. import syncDispatcher as _syncDispatcher  # noqa: F401
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnClearStepModificationState(
@@ -790,7 +868,7 @@ def _fnRegisterFileStatus(app, dictCtx):
         sContainerId: str, request: Request, response: Response,
         iWorkflowEpoch: int = -1,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
@@ -852,7 +930,7 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
 
     @app.get("/api/pipeline/{sContainerId}/workflow-discovery")
     async def fdictGetWorkflowDiscovery(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictResult = await asyncio.to_thread(
             fdictDetectNewlyAvailableWorkflows,
             dictCtx, sContainerId,
@@ -957,6 +1035,7 @@ async def _fdictFetchOutputStatus(
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
+        fbIsHostProject(sContainerId),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1750,6 +1829,7 @@ def _fsFetchManifestTextFromContainer(
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
+    bHostProject=False,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1769,6 +1849,7 @@ def _fdictBuildPollResponseRest(
     )
     dictGates = _fdictComputePollLevelGates(
         dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+        bHostProject,
     )
     return _fdictAssemblePollResponse(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
@@ -1797,6 +1878,7 @@ def _ftComputePollScriptContext(
 
 def _fdictComputePollLevelGates(
     dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+    bHostProject,
 ):
     """Evaluate the AICS level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
@@ -1815,7 +1897,7 @@ def _fdictComputePollLevelGates(
             dictWorkflow, filesPoll,
         ),
         "listLevel3Blockers": flistLevel3Blockers(
-            dictWorkflow, filesPoll,
+            dictWorkflow, filesPoll, bHostProject,
         ),
     }
 
@@ -2455,7 +2537,9 @@ def _fdictFetchTestMarkers(
         iExit, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
-    except (APIError, NotFound):
+    except Exception as error:
+        if not fbErrorMeansContainerUnreachable(error):
+            raise
         return {
             "markers": {},
             "testFiles": {},
@@ -2857,7 +2941,7 @@ def _fnRegisterManifestVerify(app, dictCtx):
     async def fdictVerifyManifest(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return await _fdictVerifyManifestUnderTheDrain(
@@ -2999,7 +3083,7 @@ def _fnRegisterManifestText(app, dictCtx):
     async def fdictGetManifestText(
         sContainerId: str, iMaxBytes: int = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )

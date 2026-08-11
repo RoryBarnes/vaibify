@@ -19,6 +19,17 @@ const VaibifyApp = (function () {
         sLeaseId: "",
         sLeaseContainerName: null,
         bSessionExpiryWarned: false,
+        /* The server's answer, stored so panels that must speak
+           differently about a host project ask one place rather than
+           each inferring the mode for themselves. Defaults to the
+           container so an older server that sends no mode renders
+           exactly what it always did. */
+        sProjectMode: "container",
+        /* Where this project's files live. A container's is
+           /workspace; a host project's is the directory the
+           researcher registered, and the frontend has no way to know
+           it. Same default for the same reason. */
+        sWorkspaceRoot: "/workspace",
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
@@ -418,9 +429,38 @@ const VaibifyApp = (function () {
 
     /* --- Initialization --- */
 
+    function _fnReportNoCredentialAndStop() {
+        /* The tab holds no credential, so every API call will answer
+           401. Say so, in the place the researcher is already looking.
+
+           Without this the page half-initialised: fnLoadUserName threw
+           on the first 401, the rest of fnInitialize never ran, and
+           what stayed on screen was the STATIC "Loading environments..."
+           from index.html — so an unauthenticated dashboard was
+           indistinguishable from a slow one, and the Add button was
+           dead because its binding never happened. A spinner that
+           means "refused" is the dashboard misreporting its own
+           state. */
+        var elList = document.getElementById("listContainers");
+        if (elList) {
+            elList.innerHTML =
+                '<p style="color: var(--color-red-text);">' +
+                "This tab is not signed in.</p>" +
+                '<p class="muted-text">' +
+                "The dashboard signs in with a one-time link, so a " +
+                "bookmarked or retyped address cannot. Re-run " +
+                "<code>vaibify</code> and use the tab it opens." +
+                "</p>";
+        }
+    }
+
     async function fnInitialize() {
         _fnRestoreLeaseFromStorage();
         await fnFetchSessionToken();
+        if (!_dictSessionState.sSessionToken) {
+            _fnReportNoCredentialAndStop();
+            return;
+        }
         fnRegisterWebSocketHandlers();
         fnRegisterPollingHandlers();
         /* Container-independent: a session sitting on the picker is
@@ -507,6 +547,42 @@ const VaibifyApp = (function () {
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
+    function fnApplyWorkspaceRoot(sWorkspaceRoot) {
+        /* Stored, never derived. Every file panel, directory browser
+           and path-display in the dashboard used to write /workspace
+           as a constant, which is true of a container and false of a
+           host project. An empty or missing value keeps the container
+           default so an older server behaves exactly as it did. */
+        _dictSessionState.sWorkspaceRoot = sWorkspaceRoot || "/workspace";
+    }
+
+    function fnApplyProjectMode(sProjectMode) {
+        /* The mode is always the SERVER's answer -- the registry
+           listing that rendered the tile on the project-list screen,
+           the connect handshake once a project is open -- never
+           something the dashboard infers for itself. A permanent
+           claim about whether commands are contained is not one to be
+           wrong about. Anything other than "host" hides the badge, so
+           an older server that sends no mode renders exactly the
+           container toolbar it always did.
+
+           Every ``.host-mode-badge`` is driven, not one by id: the
+           badge appears on both the project-list screen and the
+           workflow toolbar, and two elements with one rule cannot
+           disagree the way two rules would. */
+        var bHost = sProjectMode === "host";
+        _dictSessionState.sProjectMode = bHost ? "host" : "container";
+        document.querySelectorAll(".host-mode-badge").forEach(
+            function (elBadge) {
+                elBadge.style.display = bHost ? "" : "none";
+            }
+        );
+        var elLabel = document.getElementById("activeResourceLabel");
+        if (elLabel) {
+            elLabel.textContent = bHost ? "Directory:" : "Container:";
+        }
+    }
+
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
@@ -536,6 +612,8 @@ const VaibifyApp = (function () {
         }
         document.getElementById("activeContainerName").textContent =
             VaibifyContainerManager.fsGetSelectedContainerName() || "";
+        fnApplyProjectMode(data.sProjectMode);
+        fnApplyWorkspaceRoot(data.sWorkspaceRoot);
         document.getElementById("activeWorkflowName").textContent =
             sWorkflowName || "";
         document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
@@ -709,6 +787,8 @@ const VaibifyApp = (function () {
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             document.getElementById("activeContainerName").textContent =
                 VaibifyContainerManager.fsGetSelectedContainerName() || "";
+            fnApplyProjectMode(dictConnect.sProjectMode);
+            fnApplyWorkspaceRoot(dictConnect.sWorkspaceRoot);
             _fnRenderToolkitBanner(0);
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
@@ -859,13 +939,28 @@ const VaibifyApp = (function () {
         document.getElementById("mainLayout").classList.remove("active");
         _dictSessionState.dictDashboardMode = null;
         document.getElementById("activeContainerName").textContent = "";
+        fnApplyProjectMode("");
         document.getElementById("activeWorkflowName").textContent = "";
         document.title = "Vaibify";
         _fnStopWorkflowHubPolling();
         _fnStartContainerHubPolling();
     }
 
+    function _fnApplyBlankProjectLocation() {
+        /* "Work directly in the container" is the one line on this
+           screen that names a place, and a host project does not have
+           that place. Rewritten from the mode the server declared
+           rather than from anything the picker infers. */
+        var elLocation = document.getElementById("blankProjectLocation");
+        if (!elLocation) return;
+        elLocation.textContent =
+            _dictSessionState.sProjectMode === "host"
+                ? "Work directly in the project directory"
+                : "Work directly in the container";
+    }
+
     function fnShowWorkflowPicker(sContainerName) {
+        _fnApplyBlankProjectLocation();
         document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
@@ -965,6 +1060,7 @@ const VaibifyApp = (function () {
             _dictWorkflowState.abortControllerFileCheck.abort();
             _dictWorkflowState.abortControllerFileCheck = null;
         }
+        VaibifyPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {
@@ -1061,9 +1157,13 @@ const VaibifyApp = (function () {
     }
 
     function fsGetWorkflowDirectory() {
-        if (!_dictWorkflowState.sWorkflowPath) return "/workspace";
+        if (!_dictWorkflowState.sWorkflowPath) {
+            return _dictSessionState.sWorkspaceRoot;
+        }
         var iLastSlash = _dictWorkflowState.sWorkflowPath.lastIndexOf("/");
-        return iLastSlash > 0 ? _dictWorkflowState.sWorkflowPath.substring(0, iLastSlash) : "/workspace";
+        return iLastSlash > 0
+            ? _dictWorkflowState.sWorkflowPath.substring(0, iLastSlash)
+            : _dictSessionState.sWorkspaceRoot;
     }
 
     /* --- Global Settings --- */
@@ -4795,6 +4895,13 @@ const VaibifyApp = (function () {
         fsGetContainerId: function () {
             return _dictSessionState.sContainerId;
         },
+        fsGetProjectMode: function () {
+            return _dictSessionState.sProjectMode;
+        },
+        fsGetWorkspaceRoot: function () {
+            return _dictSessionState.sWorkspaceRoot;
+        },
+        fnApplyWorkspaceRoot: fnApplyWorkspaceRoot,
         fsGetSessionToken: function () {
             return _dictSessionState.sSessionToken;
         },
@@ -4830,6 +4937,7 @@ const VaibifyApp = (function () {
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
+        fnApplyProjectMode: fnApplyProjectMode,
         fnSetPlotStandardExists: function (sKey, bValue) {
             _dictWorkflowState.dictPlotStandardExists[sKey] =
                 bValue;

@@ -6,6 +6,7 @@ var VaibifyPipelineRunner = (function () {
     var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
 
     var iPreviousOutputCount = 0;
+    var _iActiveSentinelMonitor = null;
     var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
@@ -289,19 +290,24 @@ var VaibifyPipelineRunner = (function () {
             _fnRefuseInteractiveWithoutTerminal();
             return;
         }
+        _fnMonitorTerminalForSentinel(sSentinel);
     }
 
-    /* An interactive step is defined as one a human drives in a shell,
-       so with terminals disabled there is nowhere to run it. Both
-       launch paths say so; the runner-driven one additionally
-       reports the step FAILED rather than leaving the runner polling for
-       a sentinel no shell will ever print — a silent hang would leave
-       the step showing "running" forever, which is precisely the kind of
-       dashboard lie the container state must never tell. */
+    /* An interactive step is one a human drives in a shell, so where
+       there is no terminal there is nowhere to run it. Both launch
+       paths say so; the runner-driven one additionally reports the
+       step FAILED rather than leaving the runner polling for a
+       sentinel no shell will ever print — a silent hang would leave
+       the step showing "running" forever, which is precisely the kind
+       of dashboard lie the container state must never tell.
+
+       Since 2026-08-11 the only place this fires is a HOST project:
+       containers have their terminal back, and a host project's shell
+       is the researcher's own. */
     var S_INTERACTIVE_NEEDS_TERMINAL =
-        "Interactive steps need a terminal, and terminals are disabled. "
-        + "Make the step automated, or run its commands in a shell you "
-        + "open yourself with docker exec.";
+        "Interactive steps need a terminal in the dashboard, and this "
+        + "project runs on your machine. Make the step automated, or "
+        + "run its commands in your own shell.";
 
     function _fnRefuseInteractiveWithoutTerminal() {
         VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
@@ -333,6 +339,69 @@ var VaibifyPipelineRunner = (function () {
         return "xxxx-xxxx".replace(/x/g, function () {
             return Math.floor(Math.random() * 16).toString(16);
         });
+    }
+
+    /* The sentinel monitors read the terminal's own DOM, because the
+       shell's exit code arrives as text in the pane and there is no
+       other channel carrying it: the step is driven by the researcher,
+       not by the runner. Restored with the terminal on 2026-08-11 —
+       without them an interactive step would launch and then show
+       "running" forever, which is the dashboard lie the refusal above
+       exists to avoid. */
+    function _fnMonitorTerminalForSentinel(sSentinel) {
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+        }
+        var I_MAX_SENTINEL_CHECKS = 86400;
+        var iCheckCount = 0;
+        _iActiveSentinelMonitor = setInterval(function () {
+            iCheckCount++;
+            if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
+                clearInterval(_iActiveSentinelMonitor);
+                _iActiveSentinelMonitor = null;
+                VaibifyApp.fnShowToast(
+                    "Interactive step timed out after 24 hours",
+                    "error");
+                _fnSendInteractiveComplete(1);
+                return;
+            }
+            var iExitCode = _fiReadSentinelExitCode(sSentinel);
+            if (iExitCode === null) return;
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
+            _fnSendInteractiveComplete(iExitCode);
+        }, 1000);
+    }
+
+    function _fiReadSentinelExitCode(sSentinel) {
+        /* Returns null while the sentinel has not appeared. The two
+           monitors differ only in what they do with the code, so the
+           reading itself lives here once. */
+        var sText = _fsReadAllTerminalText();
+        var oPattern = new RegExp(
+            sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
+        );
+        var oMatch = sText.match(oPattern);
+        if (!oMatch) return null;
+        return parseInt(oMatch[1], 10);
+    }
+
+    function _fsReadAllTerminalText() {
+        var sText = "";
+        var listPanes = document.querySelectorAll(
+            ".terminal-pane-container .xterm"
+        );
+        listPanes.forEach(function (elTerminal) {
+            try {
+                var elRows = elTerminal.querySelectorAll(
+                    ".xterm-rows > div"
+                );
+                elRows.forEach(function (el) {
+                    sText += el.textContent + "\n";
+                });
+            } catch (e) { /* skip unreadable pane */ }
+        });
+        return sText;
     }
 
     function _fnSendInteractiveComplete(iExitCode) {
@@ -670,6 +739,26 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
             return;
         }
+        _fnMonitorStepCompletion(sSentinel, iIndex);
+        var elStrip = document.getElementById("terminalStrip");
+        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function _fnMonitorStepCompletion(sSentinel, iStepIndex) {
+        /* The standalone twin of _fnMonitorTerminalForSentinel: same
+           reading, different destination. This one owns the step's
+           status because nothing else is watching -- the runner never
+           dispatched it. */
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+        }
+        _iActiveSentinelMonitor = setInterval(function () {
+            var iExitCode = _fiReadSentinelExitCode(sSentinel);
+            if (iExitCode === null) return;
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
+            fnHandleStandaloneStepComplete(iStepIndex, iExitCode);
+        }, 1000);
     }
 
     function _fnDispatchSingleStep(iIndex, sRunMode) {
@@ -893,13 +982,50 @@ var VaibifyPipelineRunner = (function () {
         );
     }
 
+    function _fsKillConfirmationBody() {
+        /* A host project has no container, and telling a researcher
+           their processes will be stopped "in the container" while
+           vaibify is about to send signals on their own machine is
+           the mode being invisible at the moment it matters most.
+           The host wording is the weaker claim host mode is allowed
+           to make: vaibify can stop what it started, and cannot
+           speak for anything that detached from it. */
+        if (VaibifyApp.fsGetProjectMode() === "host") {
+            return "This will stop the pipeline processes vaibify " +
+                "started on this machine.\n\n" +
+                "Any in-progress computations will be lost. A command " +
+                "that detached into its own session is not something " +
+                "vaibify can see or stop.";
+        }
+        return "This will kill all running pipeline processes " +
+            "in the container.\n\n" +
+            "Any in-progress computations will be lost.";
+    }
+
+    function _fnReportKillOutcome(dictResult) {
+        /* A refusal is reported, never rounded down into the count.
+           The server declines to signal a run whose journaled identity
+           it can no longer prove, because that process id may since
+           have been handed to something else — and a researcher shown
+           only "0 process(es)" would reasonably conclude their machine
+           is quiet. */
+        var listRefusals = dictResult.listCancellationRefusals || [];
+        VaibifyApp.fnShowToast(
+            "Killed " + dictResult.iProcessesKilled +
+            " process(es)", "success");
+        if (listRefusals.length > 0) {
+            VaibifyApp.fnShowToast(
+                listRefusals.length + " recorded run(s) could not be " +
+                "identified and were left alone — run " +
+                "'vaibify reconcile' to settle them", "error");
+        }
+    }
+
     function fnKillPipeline() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         VaibifyApp.fnShowConfirmModal(
             "Stop All Tasks",
-            "This will kill all running pipeline processes " +
-            "in the container.\n\n" +
-            "Any in-progress computations will be lost.",
+            _fsKillConfirmationBody(),
             async function () {
                 try {
                     var dictResult = await VaibifyApi.fdictPostRaw(
@@ -908,9 +1034,7 @@ var VaibifyPipelineRunner = (function () {
                     if (dictResult.bSuccess) {
                         VaibifyApp.fnClearAllStepStatuses();
                         VaibifyApp.fnRenderStepList();
-                        VaibifyApp.fnShowToast(
-                            "Killed " + dictResult.iProcessesKilled +
-                            " process(es)", "success");
+                        _fnReportKillOutcome(dictResult);
                     } else {
                         VaibifyApp.fnShowToast(
                             "Kill failed", "error");
@@ -1054,6 +1178,17 @@ var VaibifyPipelineRunner = (function () {
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
         _sStreamingViewer = null;
+        fnCancelSentinelMonitor();
+    }
+
+    function fnCancelSentinelMonitor() {
+        /* Called on workflow switch as well as reset: a monitor left
+           running would report the OLD workflow's step complete
+           against whatever step index now sits at that position. */
+        if (_iActiveSentinelMonitor) {
+            clearInterval(_iActiveSentinelMonitor);
+            _iActiveSentinelMonitor = null;
+        }
     }
 
     function fiGetAcknowledgedAt(iStep) {
@@ -1097,6 +1232,7 @@ var VaibifyPipelineRunner = (function () {
         fnVerifyDependencies: fnVerifyDependencies,
         fnDisplayLogInViewer: fnDisplayLogInViewer,
         fnResetState: fnResetState,
+        fnCancelSentinelMonitor: fnCancelSentinelMonitor,
         fiGetAcknowledgedAt: fiGetAcknowledgedAt,
     };
 })();

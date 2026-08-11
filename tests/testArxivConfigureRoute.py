@@ -76,7 +76,7 @@ def fixtureClient(fixtureWorkflow, fixtureSaveLog, fixtureCarrierStoodDown):
         "sourceCodeDeps": {},
         "setAllowedContainers": {S_CONTAINER_ID},
         "sSessionToken": "tok",
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": _fnSave,
         "variables": lambda sId: {},
         "workflowDir": lambda sId: fixtureWorkflow["sProjectRepoPath"],

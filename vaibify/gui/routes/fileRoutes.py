@@ -16,6 +16,7 @@ from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
+    fdictStampDockerIdForJournal,
     fsHashContainerFileOrEmpty,
 )
 from ..routeScope import (
@@ -24,6 +25,7 @@ from ..routeScope import (
     S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
+from .. import projectRoots
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -119,21 +121,25 @@ def _fnRefuseDirectorySource(
     )
 
 
-def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
+def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sProjectRoot):
     """Return the validated absolute container path for one input entry.
 
     Inputs may already be absolute container paths (used by callers
     that pre-resolved via ``workflowDir``) or repo-relative paths from
     project.json. Both are normalized and validated against the most
-    permissive of (project repo, workspace root) so traversal is
+    permissive of (project repo, project root) so traversal is
     impossible. Raises ``HTTPException`` 403 on escape.
+
+    ``sProjectRoot`` is the outer boundary for THIS resource — the
+    container volume for a container project, the registered directory
+    for a host one — never the app-wide constant it used to be.
     """
     if sRawPath.startswith("/"):
         sAbs = sRawPath
     else:
-        sBase = sProjectRepoPath or sWorkspaceRoot
+        sBase = sProjectRepoPath or sProjectRoot
         sAbs = posixpath.join(sBase, sRawPath)
-    return fsValidatePathWithinRoot(sAbs, sWorkspaceRoot)
+    return fsValidatePathWithinRoot(sAbs, sProjectRoot)
 
 
 def _fdictTestExistenceBatch(
@@ -179,7 +185,7 @@ def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FileExistenceRequest,
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         listInput = request.saRelativePaths or []
         if len(listInput) > I_MAX_EXISTENCE_BATCH:
             raise HTTPException(
@@ -188,9 +194,12 @@ def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
             )
         dictWorkflow = dictCtx["workflows"].get(sContainerId) or {}
         sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, sWorkspaceRoot,
+        )
         listResolved = [
             _fsResolveExistencePath(
-                sRaw, sProjectRepoPath, sWorkspaceRoot,
+                sRaw, sProjectRepoPath, sProjectRoot,
             )
             for sRaw in listInput
         ]
@@ -213,13 +222,18 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, sDirectoryPath: str
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sAbsPath = (
             f"/{sDirectoryPath}"
             if not sDirectoryPath.startswith("/")
             else sDirectoryPath
         )
-        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        fsValidatePathWithinRoot(
+            sAbsPath,
+            projectRoots.fsResolveProjectRoot(
+                sContainerId, sWorkspaceRoot,
+            ),
+        )
         return await asyncio.to_thread(
             flistQueryDirectory,
             dictCtx["docker"], sContainerId, sAbsPath,
@@ -237,7 +251,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FileUploadRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
         sSafeFilename = posixpath.basename(request.sFilename)
@@ -303,7 +317,7 @@ def _fnCommitUploadedFile(
         sContainerId, dictLaneTuple, "file-write", sNormalized,
         fnWriteTheUpload,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },
@@ -372,11 +386,16 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     async def fresponseDownloadFile(
         sContainerId: str, sFilePath: str
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
-        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        fsValidatePathWithinRoot(
+            sAbsPath,
+            projectRoots.fsResolveProjectRoot(
+                sContainerId, sWorkspaceRoot,
+            ),
+        )
         baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
@@ -443,9 +462,13 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FilePullRequest,
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         fsValidatePathWithinRoot(
-            request.sContainerPath, sWorkspaceRoot)
+            request.sContainerPath,
+            projectRoots.fsResolveProjectRoot(
+                sContainerId, sWorkspaceRoot,
+            ),
+        )
         sHostDest = os.path.realpath(
             os.path.expanduser(request.sHostDestination))
         _pipelineServer._fnValidateHostDestination(sHostDest)
@@ -542,7 +565,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         request: FileWriteRequest, requestHttp: Request,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
         sAbsPath = fsResolveFigurePath(
@@ -610,7 +633,7 @@ def _fnCommitFileWrite(
         sContainerId, dictLaneTuple, "file-write", sNormalized,
         fnWriteTheFile,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },

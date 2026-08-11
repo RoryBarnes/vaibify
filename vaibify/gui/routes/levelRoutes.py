@@ -146,7 +146,7 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         "/api/workflow/{sContainerId}/level2/readiness"
     )
     async def fdictLevel2Readiness(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -174,7 +174,7 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
         request: AiDeclarationTemplateRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -287,7 +287,7 @@ def _fnRegisterAddStep(app, dictCtx):
         request: AiDeclarationAddStepRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )

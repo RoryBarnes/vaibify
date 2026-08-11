@@ -14,7 +14,6 @@ import pytest
 from vaibify.gui.fileStatusManager import (
     _fbAnyMtimeNewerThan,
     _fdictDetectChangedFiles,
-    _fdictParseStatLines,
     _fiMtimeStalenessSignal,
     _flistNewerPaths,
     _fnInvalidateDownstreamStep,
@@ -344,16 +343,14 @@ def test_fbReconcileUserVerificationTimestamps_retains_stale():
 
 
 # ---------------------------------------------------------------
-# _fdictParseStatLines must split on the LAST space so paths with
-# embedded spaces keep their mtime intact.
+# A path with embedded spaces keeping its mtime used to be a PARSING
+# guarantee here: the poll's `stat -c '%n %Y'` output was line
+# oriented, so the parser had to split on the LAST space or a plot
+# directory named "Plot Output" lost its mtime. The poll now answers
+# with a JSON object keyed by the path itself, so there is no split to
+# get wrong and no parser to test. The guarantee did not go away -- it
+# became structural, and it is asserted where it now lives, against
+# the program the container actually runs:
+# tests/testDockerConnection.py::
+# test_the_mtime_program_answers_json_and_skips_absent_paths.
 # ---------------------------------------------------------------
-
-
-def test_fdictParseStatLines_handles_path_with_space():
-    """A stat line for a path with spaces keeps the path and mtime intact.
-
-    Kills: Line 1457: _fdictParseStatLines 'sLine.rsplit(" ",1)' ->
-    'sLine.split(" ",1)'
-    """
-    dictResult = _fdictParseStatLines("/ws/Plot Output/fig.pdf 123\n")
-    assert dictResult == {"/ws/Plot Output/fig.pdf": "123"}

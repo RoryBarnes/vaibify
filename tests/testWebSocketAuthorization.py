@@ -342,15 +342,17 @@ async def test_pipeline_ws_route_delegates_to_guard():
 
 
 @pytest.mark.asyncio
-async def test_terminal_ws_route_never_reaches_the_guard():
-    """The terminal route no longer consults the gate — it refuses first.
+async def test_terminal_ws_route_delegates_to_the_shared_guard():
+    """The terminal route authorizes through the SAME guard as pipeline.
 
-    It used to delegate here like the pipeline route. The interactive
-    terminal is withdrawn for the alpha, and the gate REFRESHES the
-    owner's liveness stamp as a side effect of authorizing, so reaching
-    it would let an unauthenticated dial-in perturb a live session for a
-    feature that cannot be served anyway. The refusal is the handler's
-    first and only statement.
+    While the terminal was withdrawn this asserted the opposite — the
+    route refused before consulting anything, because the gate refreshes
+    the owner's liveness stamp and a feature that could not be served
+    had no business perturbing a live session. The terminal serves
+    again (2026-08-11), so the original rule applies once more, and it
+    is the important one: an inlined membership check here is exactly
+    the drift AGENTS.md forbids, because the two lanes would then
+    disagree about who owns a container.
     """
     from vaibify.gui.routes import terminalRoutes
 
@@ -364,13 +366,12 @@ async def test_terminal_ws_route_never_reaches_the_guard():
     )
     mockWs = AsyncMock()
     with patch.object(
-        webSocketAuthorization, "fiContainerSessionRejectionCode",
+        terminalRoutes, "fiContainerSessionRejectionCode",
+        return_value=4403,
     ) as mockGuard:
         await fnHandler(mockWs, S_CONTAINER)
-    mockGuard.assert_not_called()
-    mockWs.close.assert_awaited_once_with(
-        code=webSocketAuthorization.I_REJECT_TERMINAL_DISABLED,
-    )
+    mockGuard.assert_called_once_with(mockWs, dictCtx, S_CONTAINER)
+    mockWs.close.assert_awaited_once_with(code=4403)
 
 
 # -- empty-credential fail-closed (4401) ----------------------------------

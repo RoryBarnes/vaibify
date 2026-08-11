@@ -135,6 +135,87 @@ def testAddProjectRejectsMissingConfig(tmp_path):
         registryManager.fnAddProject(sEmptyDir)
 
 
+def testAddProjectRejectsSameDirectoryUnderNewName(tmp_path):
+    """One physical directory must never carry two registry entries."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "first-name")
+    registryManager.fnAddProject(sProjectDir)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("projectName: second-name\n")
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnAddProject(sProjectDir)
+    assert len(registryManager.flistGetAllProjects()) == 1
+
+
+def testAddProjectRejectsSameDirectoryViaSymlink(tmp_path):
+    """A symlink alias of a registered directory is the same directory."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "linked-project")
+    registryManager.fnAddProject(sProjectDir)
+    sLinkPath = str(tmp_path / "alias-link")
+    os.symlink(sProjectDir, sLinkPath)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("projectName: alias-name\n")
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnAddProject(sLinkPath)
+    assert len(registryManager.flistGetAllProjects()) == 1
+
+
+def testSamePhysicalDirectoryFallsBackToRealpathWhenAbsent(tmp_path):
+    """Paths that cannot be stat'ed compare by normalized realpath."""
+    sGhostPath = str(tmp_path / "ghost")
+    assert registryManager._fbSamePhysicalDirectory(
+        sGhostPath, sGhostPath,
+    )
+    assert not registryManager._fbSamePhysicalDirectory(
+        sGhostPath, sGhostPath + "-other",
+    )
+
+
+def testIsHostProjectReadsTheModeDiscriminator():
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "host-proj", "sDirectory": "/x", "sMode": "host"},
+        {"sName": "container-proj", "sDirectory": "/y"},
+    ]})
+    assert registryManager.fbIsHostProject("host-proj")
+    assert not registryManager.fbIsHostProject("container-proj")
+    assert not registryManager.fbIsHostProject("unknown-docker-id")
+
+
+def testMutateRegistryLockedReadsUnderTheLock(monkeypatch):
+    """An entry written just before the lock is taken must be seen.
+
+    The pre-fix ordering read the registry before acquiring the lock,
+    so two concurrent registrations could both pass their duplicate
+    checks against the same stale snapshot. Planting an entry at
+    lock-acquisition time and asserting the mutation callback sees it
+    fails against that ordering.
+    """
+    fnRealOpenLock = registryManager._ffileOpenRegistryLock
+
+    def ffilePlantEntryThenLock():
+        fileHandle = fnRealOpenLock()
+        registryManager._fnWriteRegistryAtomic(
+            {"listProjects": [{"sName": "planted"}]},
+        )
+        return fileHandle
+
+    monkeypatch.setattr(
+        registryManager, "_ffileOpenRegistryLock",
+        ffilePlantEntryThenLock,
+    )
+    listNamesSeen = []
+
+    def fnRecordNamesSeen(dictRegistry):
+        listNamesSeen.append([
+            dictProject["sName"]
+            for dictProject in dictRegistry["listProjects"]
+        ])
+
+    registryManager._fnMutateRegistryLocked(fnRecordNamesSeen)
+    assert listNamesSeen == [["planted"]]
+
+
 # --- fnRemoveProject ---
 
 def testRemoveProjectDeletesEntry(tmp_path):
@@ -305,3 +386,111 @@ def testGetContainerUserReturnsActualUser(tmp_path, monkeypatch):
     )
     sResult = registryManager.fsGetContainerUser("real-project")
     assert sResult == "scientist"
+
+
+# -----------------------------------------------------------------------
+# Host entries: sMode discriminator + status enrichment (host-mode §9)
+# -----------------------------------------------------------------------
+
+
+def _fnPatchDockerProbesToExplode(monkeypatch):
+    """Make both Docker status probes fail loudly if consulted."""
+
+    def fnExplodeOnDockerTouch(*tArguments, **dictKeywords):
+        raise AssertionError("a host entry consulted Docker")
+
+    monkeypatch.setattr(
+        "vaibify.docker.imageBuilder.fbImageExists",
+        fnExplodeOnDockerTouch,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        fnExplodeOnDockerTouch,
+    )
+
+
+def testAddProjectStoresTheHostMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-proj")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    dictProject = registryManager.fdictGetProject("host-proj")
+    assert dictProject["sMode"] == "host"
+    assert registryManager.fbIsHostProject("host-proj")
+
+
+def testAddProjectDefaultsToContainerMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "container-proj")
+    registryManager.fnAddProject(sProjectDir)
+    dictProject = registryManager.fdictGetProject("container-proj")
+    assert dictProject["sMode"] == "container"
+    assert not registryManager.fbIsHostProject("container-proj")
+
+
+def testAddProjectRefusesAnUnknownMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "odd-proj")
+    with pytest.raises(ValueError, match="Unknown project mode"):
+        registryManager.fnAddProject(sProjectDir, sMode="sandbox")
+    assert registryManager.flistGetAllProjects() == []
+
+
+def testHostEntryStatusIsReadyWithoutConsultingDocker(
+    tmp_path, monkeypatch,
+):
+    """A host entry's status never touches Docker (host-mode plan §9).
+
+    Both Docker probes are patched to raise, so a mode branch stuck at
+    the container side cannot pass quietly. Kills: the enrichment
+    dispatch reading every entry as a container entry.
+    """
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-ready")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "ready"
+    assert listResult[0]["bImageExists"] is False
+    assert listResult[0]["bRunning"] is False
+
+
+def testHostEntryStatusIsMissingWhenTheDirectoryIsGone(
+    tmp_path, monkeypatch,
+):
+    import shutil
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-gone")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    shutil.rmtree(sProjectDir)
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "missing"
+
+
+def testHostEntryStatusIsMissingWhenTheConfigIsGone(
+    tmp_path, monkeypatch,
+):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-noconf")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    os.unlink(os.path.join(sProjectDir, "vaibify.yml"))
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "missing"
+
+
+def testContainerEntryStatusStillConsultsDocker(tmp_path, monkeypatch):
+    """The symmetric direction: a container entry keeps its Docker truth.
+
+    Kills: the enrichment dispatch reading every entry as a host entry,
+    which would report a running container as a red host tile.
+    """
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "container-live")
+    registryManager.fnAddProject(sProjectDir)
+    monkeypatch.setattr(
+        "vaibify.docker.imageBuilder.fbImageExists", lambda sTag: True,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        lambda sName: {
+            "bExists": True, "bRunning": True, "sStatus": "running",
+        },
+    )
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "running"
+    assert listResult[0]["bRunning"] is True
+    assert listResult[0]["bImageExists"] is True

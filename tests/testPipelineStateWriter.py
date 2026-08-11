@@ -6,6 +6,7 @@ HIGH #13 lock-dict eviction helper.
 """
 
 import json
+import shlex
 import threading
 import time
 
@@ -39,7 +40,11 @@ class MockDockerConnection:
         with self.lockRecord:
             self.listCommands.append(sCommand)
         if sCommand.startswith("mv "):
-            listParts = sCommand.split()
+            # shlex, not split(): the state writer quotes both
+            # operands because a host project's directory may
+            # contain a space, and a mock that models a shell
+            # must unquote the way a shell does.
+            listParts = shlex.split(sCommand)
             sSrc, sDst = listParts[1], listParts[2]
             sKey = (sContainerId, sSrc)
             with self.lockRecord:
@@ -238,6 +243,25 @@ def test_read_state_absorbs_docker_api_error():
             raise docker.errors.APIError("docker daemon contention")
 
     assert fdictReadState(MockBadDocker(), "ctr1") is None
+
+
+def test_read_state_propagates_non_benign_errors():
+    """The degrade-to-None net has a boundary, and this pins it.
+
+    The benign net is the stdlib tuple (JSON, OSError, TypeError,
+    ValueError) plus the container substrate's own errors. Anything
+    else — here a RuntimeError standing in for a coding error or a
+    control-plane refusal — must surface loudly, exactly as the
+    ``fdictReadState`` docstring promises for carrier refusals.
+    """
+    from vaibify.gui.pipelineState import fdictReadState
+
+    class MockBrokenDocker:
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+            raise RuntimeError("a real bug, not a benign read failure")
+
+    with pytest.raises(RuntimeError):
+        fdictReadState(MockBrokenDocker(), "ctr1")
 
 
 # ---------------------------------------------------------------------------

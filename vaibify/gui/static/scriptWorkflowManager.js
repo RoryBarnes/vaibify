@@ -126,6 +126,7 @@ var VaibifyWorkflowManager = (function () {
             fnCheckOriginDrift(sId, false);
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
+            if (_fbRecoverFromLostClaim(error)) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -134,6 +135,26 @@ var VaibifyWorkflowManager = (function () {
                 _fnHideLargeWorkflowLoadingBanner();
             }
         }
+    }
+
+    var _S_REFUSAL_CLAIM_REQUIRED = "claim-required";
+
+    function _fbRecoverFromLostClaim(error) {
+        /* A refusal that names an action must leave the researcher
+           somewhere they can perform it. This one said "claim this
+           container" from the workflow picker, which has no claim
+           control -- the project TILE is the claim control, one screen
+           back -- so the dashboard read as wedged. Returning to the
+           list is the whole recovery: selecting the project again
+           claims it. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sRefusal !== _S_REFUSAL_CLAIM_REQUIRED) {
+            return false;
+        }
+        VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
+        VaibifyApp.fnShowContainerLanding();
+        VaibifyContainerManager.fnLoadContainers();
+        return true;
     }
 
     var _bRefreshing = false;
@@ -454,7 +475,27 @@ var VaibifyWorkflowManager = (function () {
         "Packages",
         "Summary",
     ];
-    var _I_WIZARD_LAST_STEP = 7;
+    /* The wizard's pages are a CATALOGUE; which of them a project
+       needs depends on its mode. A host project has no image to
+       build, so a Python version, cloned repositories, image
+       features and package lists are all questions about a container
+       it will never have -- asking them would collect answers
+       nothing reads. Directory, template and name are the whole
+       decision. */
+    var _DICT_WIZARD_PAGE = {
+        DIRECTORY: 0, TEMPLATE: 1, NAME: 2, PYTHON: 3,
+        REPOSITORIES: 4, FEATURES: 5, PACKAGES: 6, SUMMARY: 7,
+    };
+    var _T_CONTAINER_WIZARD_PAGES = [
+        _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
+        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.PYTHON,
+        _DICT_WIZARD_PAGE.REPOSITORIES, _DICT_WIZARD_PAGE.FEATURES,
+        _DICT_WIZARD_PAGE.PACKAGES, _DICT_WIZARD_PAGE.SUMMARY,
+    ];
+    var _T_HOST_WIZARD_PAGES = [
+        _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
+        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.SUMMARY,
+    ];
     var _LIST_WIZARD_HELP = [
         '<p>The folder on your host machine where vaibify writes ' +
         '<code>vaibify.yml</code> and stores any project files. This ' +
@@ -633,12 +674,23 @@ var VaibifyWorkflowManager = (function () {
     ];
     var _LIST_DEFAULT_FEATURES = ["latex"];
 
-    function fnOpenCreateWizard() {
+    function fnOpenCreateWizard(sProjectMode) {
         _iWizardStep = 0;
         _dictWizardData = _fdictBuildDefaultWizardData();
+        _dictWizardData.sMode =
+            sProjectMode === "host" ? "host" : "container";
         document.getElementById("modalCreateWizard")
             .style.display = "flex";
         _fnRenderWizardStep(_iWizardStep);
+    }
+
+    function _flistWizardPages() {
+        return _dictWizardData.sMode === "host"
+            ? _T_HOST_WIZARD_PAGES : _T_CONTAINER_WIZARD_PAGES;
+    }
+
+    function _fiWizardPageAt(iPosition) {
+        return _flistWizardPages()[iPosition];
     }
 
     function _fdictBuildDefaultWizardData() {
@@ -698,8 +750,9 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnHandleWizardHelpClick() {
-        var sTitle = _LIST_WIZARD_TITLES[_iWizardStep] + " — Help";
-        var sBody = _LIST_WIZARD_HELP[_iWizardStep] || "";
+        var iPage = _fiWizardPageAt(_iWizardStep);
+        var sTitle = _LIST_WIZARD_TITLES[iPage] + " — Help";
+        var sBody = _LIST_WIZARD_HELP[iPage] || "";
         VaibifyModals.fnShowInfoModal(sTitle, sBody);
         _fnRaiseInfoModalAboveWizard();
     }
@@ -723,8 +776,10 @@ var VaibifyWorkflowManager = (function () {
 
     function _fnWizardStepNext() {
         _fnSaveCurrentStepData();
-        if (!_fbValidateWizardStep(_iWizardStep)) return;
-        if (_iWizardStep >= _I_WIZARD_LAST_STEP) {
+        if (!_fbValidateWizardStep(_fiWizardPageAt(_iWizardStep))) {
+            return;
+        }
+        if (_iWizardStep >= _flistWizardPages().length - 1) {
             _fnSubmitCreateProject();
             return;
         }
@@ -732,11 +787,12 @@ var VaibifyWorkflowManager = (function () {
         _fnRenderWizardStep(_iWizardStep);
     }
 
-    function _fnRenderWizardStep(iStep) {
-        _fnUpdateWizardProgress(iStep);
-        _fnUpdateWizardButtons(iStep);
+    function _fnRenderWizardStep(iPosition) {
+        var iPage = _fiWizardPageAt(iPosition);
+        _fnUpdateWizardProgress(iPosition);
+        _fnUpdateWizardButtons(iPosition);
         document.getElementById("wizardStepTitle").textContent =
-            _LIST_WIZARD_TITLES[iStep];
+            _LIST_WIZARD_TITLES[iPage];
         var elContent = document.getElementById(
             "wizardStepContent");
         var listRenderers = [
@@ -749,23 +805,29 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderStepPackages,
             _fnRenderStepSummary,
         ];
-        listRenderers[iStep](elContent);
+        listRenderers[iPage](elContent);
     }
 
-    function _fnUpdateWizardProgress(iStep) {
+    function _fnUpdateWizardProgress(iPosition) {
+        /* The markup carries one dot per page of the LONGEST wizard,
+           so a shorter one hides its surplus rather than showing a
+           researcher three steps that will never arrive. */
+        var iPageCount = _flistWizardPages().length;
         var listDots = document.querySelectorAll(
             ".wizard-progress-step"
         );
         listDots.forEach(function (el, i) {
-            el.classList.toggle("active", i <= iStep);
+            el.style.display = i < iPageCount ? "" : "none";
+            el.classList.toggle("active", i <= iPosition);
         });
     }
 
-    function _fnUpdateWizardButtons(iStep) {
+    function _fnUpdateWizardButtons(iPosition) {
         document.getElementById("btnWizardBack").disabled =
-            iStep === 0;
+            iPosition === 0;
         document.getElementById("btnWizardNext").textContent =
-            iStep === _I_WIZARD_LAST_STEP ? "Create" : "Next";
+            iPosition === _flistWizardPages().length - 1
+                ? "Create" : "Next";
     }
 
     function _fnRenderStepDirectory(elContent) {
@@ -1122,9 +1184,26 @@ var VaibifyWorkflowManager = (function () {
     // top-level subdirectory and is not part of flistDiscoverGitDirs
     // (which walks /workspace/<name>/.git at depth 2).
     function _fnRenderStepSummary(elContent) {
+        /* A host summary lists only what was asked. Echoing back an
+           image's Python version, repositories and package lists for
+           a project that will never build one states settings that
+           govern nothing. */
+        if (_dictWizardData.sMode === "host") {
+            elContent.innerHTML =
+                '<div class="wizard-summary-block">' +
+                _fsSummaryBasics() +
+                _fsSummaryRow(
+                    "Mode",
+                    "Host — commands run directly on this machine, " +
+                    "not in a container") +
+                '</div>';
+            return;
+        }
         elContent.innerHTML =
             '<div class="wizard-summary-block">' +
-            _fsSummaryBasics() + _fsSummaryReposLine() +
+            _fsSummaryBasics() +
+            _fsSummaryRow("Python", _dictWizardData.sPythonVersion) +
+            _fsSummaryReposLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
             _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
             '</div>';
@@ -1134,8 +1213,7 @@ var VaibifyWorkflowManager = (function () {
         return _fsSummaryRow("Directory", _dictWizardData.sDirectory) +
             _fsSummaryRow("Template", _dictWizardData.sTemplateName) +
             _fsSummaryRow("Project Name",
-                _dictWizardData.sProjectName) +
-            _fsSummaryRow("Python", _dictWizardData.sPythonVersion);
+                _dictWizardData.sProjectName);
     }
 
     function _fsSummaryRow(sLabel, sValue) {
@@ -1296,23 +1374,26 @@ var VaibifyWorkflowManager = (function () {
             .filter(function (s) { return s.length > 0; });
     }
 
-    function _fbValidateWizardStep(iStep) {
-        if (iStep === 0 && !_dictWizardData.sDirectory) {
+    function _fbValidateWizardStep(iPage) {
+        if (iPage === _DICT_WIZARD_PAGE.DIRECTORY &&
+                !_dictWizardData.sDirectory) {
             VaibifyApp.fnShowToast(
                 "Directory path is required.", "warning");
             return false;
         }
-        if (iStep === 1 && !_dictWizardData.sTemplateName) {
+        if (iPage === _DICT_WIZARD_PAGE.TEMPLATE &&
+                !_dictWizardData.sTemplateName) {
             VaibifyApp.fnShowToast(
                 "Please select a template.", "warning");
             return false;
         }
-        if (iStep === 2 && !_dictWizardData.sProjectName) {
+        if (iPage === _DICT_WIZARD_PAGE.NAME &&
+                !_dictWizardData.sProjectName) {
             VaibifyApp.fnShowToast(
                 "Project name is required.", "warning");
             return false;
         }
-        if (iStep === 4 && _fbIsToolkit() &&
+        if (iPage === _DICT_WIZARD_PAGE.REPOSITORIES && _fbIsToolkit() &&
             _dictWizardData.listRepositories.length === 0) {
             VaibifyApp.fnShowToast(
                 "Toolkit containers require at least one " +

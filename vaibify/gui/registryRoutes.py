@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui.routeContext import fnRefuseContainerOnlyForHostProject
 from vaibify.gui.routeScope import (
     S_CARRIER_LIFECYCLE_TRANSACTION,
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -31,6 +32,12 @@ from vaibify.gui.routeScope import (
 logger = logging.getLogger("vaibify")
 
 _RE_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\- ]*$")
+
+# What marks a container as one of vaibify's. Deliberately a directory
+# the container CARRIES, not a Docker label: a label is applied by one
+# creation path, so keying on it silently unrecognizes every container
+# made before that path existed or by any other route.
+S_VAIBIFY_MARKER_DIRECTORY = "/workspace/.vaibify"
 
 _I_MAXIMUM_CPU_LIMIT = 1024
 _F_MINIMUM_MEMORY_LIMIT_GIGABYTES = 0.25
@@ -48,10 +55,25 @@ _T_AGENT_SETTINGS = (
 
 
 class AddProjectRequest(BaseModel):
+    """Body for ``POST /api/registry``.
+
+    ``sMode`` decides which leg the connection router sends this
+    project's work to for the rest of its life, so it is recorded at
+    registration and never inferred later. Absent means container,
+    which is what every entry written before host mode existed meant.
+    """
     sDirectory: str
+    sMode: str = "container"
 
 
 class CreateProjectRequest(BaseModel):
+    # A host project skips every container field below it -- there is
+    # no image to build, no packages to install into one, and no
+    # resource limits to set on one. They stay on the model with their
+    # defaults rather than being split into a second request shape:
+    # the create WIZARD is what hides them, and a second model would be
+    # a second place for the two flows to drift apart.
+    sMode: str = "container"
     sDirectory: str
     sProjectName: str
     sTemplateName: str
@@ -269,7 +291,7 @@ def _fnRegisterClaimContainer(app, dictCtx):
                 app.state, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
-                    dictCtx, sOwned,
+                    dictCtx, app.state, sOwned,
                 ),
                 sBrowserSessionId=sBrowserSessionId,
                 connectionDocker=dictCtx.get("docker"),
@@ -285,10 +307,18 @@ def _fsResolveContainerId(dictCtx, sName):
 
     Stored on the owner record at claim time so the per-container agent
     token can be scoped to this exact container without a Docker call on
-    every request.
+    every request. A host project's resource id IS its registry name
+    (host-mode plan §9), so the Docker query is skipped entirely — a
+    claim on a host project must succeed with no daemon at all.
     """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sName):
+        return sName
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return ""
     try:
         for dictRow in connectionDocker.flistGetRunningContainers():
@@ -299,15 +329,24 @@ def _fsResolveContainerId(dictCtx, sName):
     return ""
 
 
-def _fbNameHasRunningPipeline(dictCtx, sName):
-    """Return True when an owned container's pipeline is mid-run.
+def _fbNameHasRunningPipeline(dictCtx, appState, sName):
+    """Return True when an owned resource's pipeline is mid-run.
 
     Used by the claim arbiter's take-over veto so a foreign claim never
-    evicts an owner whose container is still running. A Docker outage
-    fails safe to busy (``True``), keeping the existing owner in place.
+    evicts an owner whose run is still live. A host project is asked
+    through the host busy oracle (durable task + journaled process
+    group) — its truth is never in Docker. A Docker outage fails safe
+    to busy (``True``), keeping the existing owner in place.
     """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sName):
+        from .hostBusyOracle import fbHostProjectHasLiveRun
+        return fbHostProjectHasLiveRun(appState, sName)
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return False
     try:
         from .fileStatusManager import _fbPipelineIsRunning
@@ -390,10 +429,13 @@ def _fnRegisterAddProject(app, dictCtx):
             fnAddProject, fdictGetProject,
         )
         try:
-            fnAddProject(request.sDirectory)
+            fnAddProject(request.sDirectory, sMode=request.sMode)
         except FileNotFoundError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:
+            # Also the unknown-mode refusal: fnAddProject validates the
+            # vocabulary, so a typo in sMode is a 409 naming it rather
+            # than a project silently registered as a container.
             raise HTTPException(409, str(error))
         sName = _fsProjectNameForDirectory(request.sDirectory)
         return fdictGetProject(sName)
@@ -455,6 +497,10 @@ def _fnRegisterStartContainer(app, dictCtx):
     ):
         from fastapi.responses import JSONResponse
         from vaibify.gui import startReservation
+        # Ahead of the daemon check: a host-only hub has no daemon, and
+        # "Docker is unavailable" is the wrong answer to give about a
+        # project that has no container by design.
+        fnRefuseContainerOnlyForHostProject(sName, "Starting a container")
         dictCtx["require"]()
         _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
@@ -490,6 +536,9 @@ def _fnRegisterStartContainer(app, dictCtx):
     ):
         from fastapi.responses import JSONResponse
         from vaibify.gui import startReservation
+        fnRefuseContainerOnlyForHostProject(
+            sName, "Cancelling a container start",
+        )
         _fnRejectInvalidProjectName(sName)
         iStatusCode, dictBody = await startReservation.ftCancelStart(
             app.state, sName, _fsBrowserSessionFor(app, request),
@@ -566,6 +615,7 @@ def _fnRegisterStopContainer(app, dictCtx):
     @app.post("/api/containers/{sName}/stop")
     @ffnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
     async def fdictStopContainer(sName: str):
+        fnRefuseContainerOnlyForHostProject(sName, "Stopping a container")
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         sContainerName = dictProject["sContainerName"]
@@ -811,7 +861,10 @@ def _ftDiscoverAllContainers(dictCtx):
         have ``.vaibify/`` inside and unrecognized do not.
     """
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return [], []
     try:
         listContainers = connectionDocker.flistGetRunningContainers()
@@ -855,13 +908,34 @@ def _ftSplitContainers(connectionDocker, listContainers):
 
 
 def _fbIsVaibifyContainer(connectionDocker, dictContainer):
-    """Return True if the container has a .vaibify directory."""
+    """Return True if the container has a .vaibify directory.
+
+    Through the TYPED READ, never an arbitrary exec. Arbitrary command
+    execution is always treated as mutating -- the primitive cannot
+    know whether the text it was handed reads a file or deletes a
+    workspace -- so a `test -d` sent through
+    ``ftResultExecuteCommand`` is refused on any enforced request lane,
+    which this read-only listing is. The refusal then met the broad
+    ``except`` below, and every container was quietly reclassified as
+    unrecognized: a registered project got no ``sContainerId``, and its
+    tile did nothing when clicked.
+
+    A control-plane refusal is re-raised rather than swallowed. It
+    means the read is not permitted HERE, which is an architectural
+    fact about this call site, and answering "not a vaibify container"
+    to it is the silent misclassification that hid this defect. An
+    ordinary failure -- container gone mid-listing, daemon hiccup --
+    still answers False, because that genuinely is not an answer of
+    "yes".
+    """
+    from vaibify.config.mutationAdmission import ControlPlaneRefusalError
     try:
-        iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-            dictContainer["sContainerId"],
-            "test -d /workspace/.vaibify",
+        listExists = connectionDocker.flistContainerPathsExist(
+            dictContainer["sContainerId"], [S_VAIBIFY_MARKER_DIRECTORY],
         )
-        return iExitCode == 0
+        return bool(listExists) and bool(listExists[0])
+    except ControlPlaneRefusalError:
+        raise
     except Exception:
         return False
 
@@ -1103,7 +1177,7 @@ def _fnRegisterCreateProject(app, dictCtx):
         _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
         _fnWriteProjectConfig(request)
-        _fnRegisterNewProject(request.sDirectory)
+        _fnRegisterNewProject(request.sDirectory, request.sMode)
         return {"bSuccess": True, "sDirectory": request.sDirectory}
 
 
@@ -1279,10 +1353,10 @@ def _fsRepositoryNameFromUrl(sUrl):
     return sName
 
 
-def _fnRegisterNewProject(sDirectory):
-    """Register the newly created project."""
+def _fnRegisterNewProject(sDirectory, sMode="container"):
+    """Register the newly created project in the requested mode."""
     from vaibify.config.registryManager import fnAddProject
     try:
-        fnAddProject(sDirectory)
+        fnAddProject(sDirectory, sMode=sMode)
     except ValueError as error:
         raise HTTPException(409, str(error))

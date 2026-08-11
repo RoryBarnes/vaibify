@@ -9,6 +9,7 @@ container.
 
 import asyncio
 import json
+import shlex
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -45,7 +46,11 @@ class MockDockerConnection:
         return (1, "")
 
     def _ftHandleRename(self, sContainerId, sCommand):
-        listParts = sCommand.split()
+        # shlex, not split(): the state writer quotes both
+        # operands because a host project's directory may contain
+        # a space, and a mock that models a shell must unquote
+        # the way a shell does.
+        listParts = shlex.split(sCommand)
         sSrc, sDst = listParts[1], listParts[2]
         sKey = (sContainerId, sSrc)
         if sKey not in self.dictFiles:

@@ -248,6 +248,38 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         return False
 
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        """Stat a batch the way the real typed-read adapter does.
+
+        Enters the audited read and asserts the command gate exactly
+        as the real one does, then records into the typed-probe ledger
+        rather than the admission ledger -- because a typed read is
+        expected to reach the primitive with NO admission open, and
+        recording it as an admitted primitive would make every
+        assertion about this route's admissions answer for it.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.extend(listPaths)
+        return {}
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Hash a file the way the real typed-read adapter does."""
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return ""
+
     def fbContainerPathIsDirectory(self, sContainerId, sPath):
         """Probe a directory the way the real typed-read adapter does.
 
@@ -1972,11 +2004,6 @@ T_PUSH_ROUTES = (
 )
 
 
-def _fbCommandReadsTheTrackedSidecar(sCommand):
-    """Return True for the tracked-repos sidecar read, and nothing else."""
-    return sCommand.startswith("cat ") and "tracked_repos.json" in sCommand
-
-
 class DockerDoubleServingATokenedTrackedRepo(
     DockerDoubleThatCallsTheRealGates,
 ):
@@ -1988,27 +2015,25 @@ class DockerDoubleServingATokenedTrackedRepo(
     exercised the refusal rather than the push.
     """
 
-    def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
-    ):
-        if not _fbCommandReadsTheTrackedSidecar(sCommand):
-            return super().ftResultExecuteCommand(
-                sContainerId, sCommand, sWorkdir,
-            )
-        mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, S_PRIMITIVE_EXEC,
-        )
-        self._fnRecordLiveAdmission(
-            sContainerId, S_PRIMITIVE_EXEC, sCommand,
-        )
-        return (0, json.dumps({
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Answer the sidecar read, which is a TYPED read now.
+
+        It was a ``cat`` through the general exec primitive when this
+        double was written, so it was gated and recorded like any
+        exec. Reading the tracked list no longer reaches that
+        primitive at all -- which is why the assertions below dropped
+        their sidecar clause.
+        """
+        if not sPath.endswith("tracked_repos.json"):
+            return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+        return json.dumps({
             "iSchemaVersion": 1,
             "listTracked": [{
                 "sName": S_PUSH_REPO_NAME,
                 "sUrl": S_TOKENED_PUSH_REMOTE,
             }],
             "listIgnored": [],
-        }))
+        }).encode("utf-8")
 
 
 @pytest.fixture
@@ -2069,10 +2094,13 @@ def testTheRepositoryPushRunsUnderTheDrain(
         f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/{sRoute}",
         json=dictBody,
     )
-    _fnAssertExecsNamingRanUnder(
-        connectionDocker, "tracked_repos.json",
-        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-    )
+    # The tracked-list read used to be asserted here too, because it
+    # was a `cat` through the exec primitive and shared the push's
+    # drain. It is a typed read now and reaches no gated primitive, so
+    # there is nothing left for the admission ledger to say about it.
+    # It still runs inside the same worker -- the code path did not
+    # move -- but that is now a structural fact rather than an
+    # observable one, and stating it that way is the honest version.
     _fnAssertExecsNamingRanUnder(
         connectionDocker, S_PUSH_COMMAND_MARKER,
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
@@ -3467,6 +3495,333 @@ def testAnUnreachableRemoteLeavesTheContainerUsable(tclientGated):
 
 
 # ---------------------------------------------------------------------
+# Group 7b -- the badge refresh, the first AUTOMATIC read to migrate.
+#
+# Everything migrated before this group was something a researcher
+# CLICKED. The badge refresh is issued by the dashboard itself when a
+# workflow opens and whenever the sync epoch bumps, which changes what
+# a correct migration looks like in one way: it must never queue. Mode
+# (b) waits for the drain, and waiting spends an unpredictable amount
+# of a request nobody made -- a fetch or a step run can hold it for
+# minutes, and the researcher sees a panel that has stopped answering.
+#
+# So the route asks for the drain and takes "" for an answer: a paused
+# refresh is a 200 with a typed paused payload and NO badge map. Both
+# directions are proven here, because they fail identically in the
+# report and oppositely in the product -- a route that never pauses
+# hangs, and a route that always pauses never shows a badge again.
+#
+# A container is busy in three states, and each has its own test
+# because each is a separate branch that can be lost on its own: a live
+# SUPERVISOR (below), a drain held by a NON-carrier such as reconcile
+# (``testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued``), and a
+# live DURABLE run holding no drain at all
+# (``testABadgeRefreshOverALiveDurableRunIsPaused``). The last two live
+# beside the in-loop ASGI harness they need.
+# ---------------------------------------------------------------------
+
+S_MARKER_BADGE_STATUS = "status --porcelain=v2 --branch"
+
+
+@pytest.mark.falsification
+def testTheBadgeRefreshReadsUnderOneHeldDrain(tclientGated):
+    """GET /api/git/{id}/badges reads under mode (b), not the ambient mint.
+
+    The route's probes ran concurrently through ``asyncio.gather``
+    before the migration; they are serialized into one worker now, so
+    the coherent refresh is ONE carrier rather than three that would
+    queue behind each other on the same container's drain.
+
+    Kills: deleting the ``fdictRunAutomaticReadUnderTheDrain`` call and
+    reading the badge inputs directly, which reaches the exec primitive
+    with no admission at all.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_MARKER_BADGE_STATUS,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "git remote get-url origin",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+def testTheBadgeRefreshStillAnswersItsWholePayload(tclientGated):
+    """The container-mode regression the migration owes.
+
+    This route changed for BOTH modes: host mode is why it migrated,
+    and the container leg now runs the same probes serially inside a
+    carrier's worker. A regression here would be silent -- the badge
+    row renders from whatever the payload holds, so a missing key
+    paints "no remote state" rather than failing.
+    """
+    client, _ = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert set(dictBody) == {"dictGit", "dictBadges", "listTracked"}, (
+        f"the badge payload changed shape: {sorted(dictBody)}"
+    )
+    assert "sRemoteUrl" in dictBody["dictGit"]
+    assert dictBody.get("bRefreshPaused") is None
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshOverALiveDeleteIsPausedRatherThanQueued():
+    """A refresh arriving while the drain is HELD answers paused at once.
+
+    Driven against the blocked-clean hub because that is the only
+    machinery here that puts a REAL mode-(b) supervisor in the registry
+    and holds the drain open while a second request arrives; a test
+    that registered a supervisor of its own would be asserting against
+    its own fixture.
+
+    Four assertions, each a separate guarantee:
+
+    1. the refresh ANSWERS while the delete is still blocked -- had it
+       queued, the response would not exist until the clean released;
+    2. it answers IMMEDIATELY, measured, because "did not deadlock" is
+       also true of a read that waited nine seconds;
+    3. it names the live operation, so the paused state is actionable
+       rather than a bare "busy";
+    4. it reached NO container primitive, which is what makes the pause
+       a pause rather than a label on a read that happened anyway.
+
+    Kills: passing ``bPauseWhenBusy=False`` from
+    ``fdictRunAutomaticReadUnderTheDrain``, which returns the route to
+    queueing behind the live delete.
+    """
+    app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+
+        taskClean = asyncio.ensure_future(
+            clientAsync.post(f"/api/pipeline/{S_CONTAINER_ID}/clean"),
+        )
+        await asyncio.to_thread(
+            connectionDocker.eventCleanStarted.wait, 10,
+        )
+        connectionDocker.listAdmittedPrimitives.clear()
+
+        fBefore = time.monotonic()
+        response = await clientAsync.get(
+            f"/api/git/{S_CONTAINER_ID}/badges",
+        )
+        fElapsed = time.monotonic() - fBefore
+
+        assert connectionDocker.listCleanCommandsRun == [], (
+            "the delete finished before the refresh was answered, so "
+            "the container was not busy when it mattered and this test "
+            "would prove nothing"
+        )
+        assert response.status_code == 200, response.text
+        dictBody = response.json()
+        assert dictBody.get("bRefreshPaused") is True, dictBody
+        assert fElapsed < 2.0, (
+            f"the refresh waited {fElapsed:.1f}s on the busy container "
+            "instead of pausing at once"
+        )
+        assert "clean-outputs" in dictBody["sPausedBy"], (
+            "the paused payload must NAME what holds the container, "
+            f"from what the lock holder registered: {dictBody}"
+        )
+        assert "dictBadges" not in dictBody, (
+            f"a paused refresh answered with a badge map: {dictBody}. "
+            "An empty one renders as a claim about the repository."
+        )
+        assert connectionDocker.listAdmittedPrimitives == [], (
+            "a paused refresh still reached a container primitive: "
+            f"{connectionDocker.listAdmittedPrimitives}. Pausing is "
+            "only worth anything if the read did not happen."
+        )
+
+        connectionDocker.eventCleanMayFinish.set()
+        await taskClean
+
+
+@pytest.mark.falsification
+def testAQuietContainerIsNeverReportedAsBusy(tclientGated):
+    """The other direction: an idle container must not pause the refresh.
+
+    The pause's failure modes are symmetric and only one of them is
+    loud. A read that never pauses hangs a request behind live work; a
+    read that ALWAYS pauses answers instantly forever, and the badges
+    simply stop changing -- a dashboard that has quietly stopped
+    reporting, which is the failure this repository's rules single out
+    as the worst kind.
+
+    Kills: making the busy probe unconditional -- e.g. reporting the
+    asking supervisor itself as the live work, which
+    ``_fsDescribeWorkBesidesThisSupervisor`` excludes for exactly this
+    reason.
+    """
+    client, _ = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert "bRefreshPaused" not in dictBody, (
+        f"an idle container reported itself busy: {dictBody}. Every "
+        "badge refresh from now on would answer paused and the panel "
+        "would never update again."
+    )
+    assert "dictBadges" in dictBody
+
+
+# ---------------------------------------------------------------------
+# Group 7c -- the rest of the host activation surface that could move.
+#
+# Opening a workflow fires four automatic reads. Badges is above; these
+# are the settings load and the pipeline-state recovery, and they
+# migrate for opposite reasons.
+#
+# Settings reaches NO container primitive at all -- it answers from the
+# workflow the hub already holds -- so it declares typed-read, and the
+# proof is an empty ledger.
+#
+# Pipeline state is a typed read that occasionally WRITES: when a
+# runner's heartbeat has gone stale the reader reconciles the file so
+# the dashboard stops claiming a dead run is live. That write used to
+# leave on the background lane, where the gate is a documented no-op.
+# It is carried now, and the carrier opens ONLY on that branch -- which
+# is what lets a route polled every ten seconds declare mode (b)
+# without holding a drain on a timer. Both directions are asserted,
+# because "the poll holds no drain" and "the reconcile is carried" are
+# separately losable.
+#
+# The two reads that did NOT move are the repos-panel status and the
+# file-status poll. Both run on a five-second timer and both reach a
+# container WRITE, so a carrier on either would hold the drain on a
+# timer -- and live carrier work is what the run-dispatch gate refuses
+# a Run Step against. That is the Run-Step-always-refused shape this
+# repository has already shipped once, so they need the read redesigned
+# rather than wrapped, and they stay awaiting until that is decided.
+# ---------------------------------------------------------------------
+
+S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
+
+
+def testTheSettingsReadOpensNoContainerConnectionAtAll(tclientGated):
+    """GET /api/settings/{id} is typed-read in its strongest form.
+
+    Not "reaches only typed reads" but "reaches nothing": the handler
+    answers from the in-memory workflow. The declaration would be a
+    lie the moment this route grew a container call, and an empty
+    ledger is the only assertion that notices.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/settings/{S_CONTAINER_ID}")
+    assert response.status_code == 200, response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "the settings read reached a container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}. It declares "
+        "typed-read, which claims it reaches no mutation-capable "
+        "primitive at all."
+    )
+
+
+@pytest.mark.falsification
+def testTheOrdinaryStatePollHoldsNoDrain(tclientGated):
+    """The ten-second poll opens no carrier on its ordinary path.
+
+    The draft double serves no state file, so the read returns "not
+    running" and the reconcile branch is never taken — which is the
+    ordinary case, ninety-nine polls in a hundred. If this route
+    carried unconditionally it would hold the container's mutation
+    drain every ten seconds, and a Run Step arriving in that window is
+    refused by the dispatch gate against live carrier work.
+
+    Kills: hoisting the carrier out of the persister and around the
+    whole handler.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/pipeline/{S_CONTAINER_ID}/state")
+    assert response.status_code == 200, response.text
+    listCarried = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sMode"] == (
+            mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+        )
+    ]
+    assert listCarried == [], (
+        "an ordinary state poll held the drain: "
+        f"{listCarried}. Every tenth second, for as long as a workflow "
+        "is open, a Run Step would race it."
+    )
+
+
+class DockerDoubleServingAStaleRunnerState(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a state file whose runner died.
+
+    ``bRunning`` is still true and the heartbeat is an hour old, which
+    is exactly what a killed runner leaves behind: nothing writes
+    ``bRunning: False`` on the way out of a SIGKILL. The reader is what
+    notices, and its correction is a container write.
+    """
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_STATE_PATH:
+            return json.dumps({
+                "bRunning": True,
+                "iCurrentStep": 1,
+                "sLastHeartbeat": (
+                    datetime.now(timezone.utc) - timedelta(hours=1)
+                ).isoformat(),
+            }).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientStaleRunner():
+    """The gated client over a container whose runner stopped beating."""
+    return _tConnectGatedClient(DockerDoubleServingAStaleRunnerState())
+
+
+@pytest.mark.falsification
+def testTheStaleHeartbeatReconcileWritesUnderTheDrain(tclientStaleRunner):
+    """The rare branch: recording a dead runner is a carried mutation.
+
+    The write is what makes the dashboard stop claiming a finished run
+    is live, so it is not optional and it is not a read. Before this
+    migration it left through ``_fnPersistReconciledOnTheBackgroundLane``,
+    where the commit guard is a no-op by design — an unrecorded
+    container write on the hub's most frequent poll.
+
+    Kills: dropping ``fnPersistReconciled`` from the route's call, which
+    returns the reconciling write to the background lane.
+    """
+    client, connectionDocker = tclientStaleRunner
+    response = client.get(f"/api/pipeline/{S_CONTAINER_ID}/state")
+    assert response.status_code == 200, response.text
+    assert response.json()["bRunning"] is False, (
+        "the reader did not reconcile the stale heartbeat, so no write "
+        f"was ever due and this asserts nothing: {response.json()}"
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(S_STATE_PATH)
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "pipeline-state reconcile write",
+    )
+
+
+# ---------------------------------------------------------------------
 # Group 8 -- the three step routes that are not a plain save, mode (b).
 #
 # Every OTHER step route persists project.json and nothing else, which
@@ -4226,48 +4581,45 @@ def testTheExistenceBatchIsATypedReadAndNotAnExec(tclientGated):
 # separate the PROBE's write from the workflow SAVE's: both go through
 # the same primitive, and a write carries no command text to tell them
 # apart by.
-S_POLL_PATHFILE = "/tmp/vaibifyPoll.list"
+def testTheAcknowledgeStepProbeIsATypedReadAndNotAWrite(
+    tclientGatedWithPlots,
+):
+    """Acknowledging a step stats its outputs WITHOUT writing anything.
 
+    This test used to assert the opposite half of the same fact: the
+    probe wrote its path list into ``/tmp/vaibifyPoll.list`` and ran
+    ``xargs … stat`` over it, so the route had to carry both under
+    mode (b) or the researcher's "I have seen this output" click would
+    500. The probe is a typed read now -- the paths ride as a literal
+    inside a fixed program -- so there is nothing left to admit, and
+    the guarantee worth pinning is that no write happens at all.
 
-@pytest.mark.falsification
-def testTheAcknowledgeStepProbeRunsUnderTheDrain(tclientGatedWithPlots):
-    """Acknowledging a step stats its outputs under mode (b).
+    Both halves are asserted, because either alone is satisfiable by a
+    route that does nothing: the probe must have RUN (the typed-probe
+    ledger is non-empty) and no write may name the retired pathfile.
 
-    The probe LOOKS like a read and is not, which is the whole reason
-    this route was easy to migrate wrongly: ``_fdictGetModTimes``
-    batches its stat by WRITING the requested path list into the
-    container as a scratch file and then running ``xargs … stat``
-    through the general exec primitive. A migration that carried only
-    the workflow save would leave both of those refused, and the
-    researcher's "I have seen this output" click would 500.
-
-    Selected on the PATHFILE write rather than on "any write", because
-    the workflow save that follows is also a write through the same
-    primitive; selecting loosely would let the save's admission answer
-    for the probe's.
-
-    Nothing here asserts the response STATUS, for the reason
-    :func:`_fnAssertSelectedRanUnder` records: a refused mutation
-    surfaces as a 500, so a status assertion would drag the SAVE's
-    defect onto this test as well and neither carrier would isolate.
-    Verified — with the status assertion in place, removing the save's
-    carrier failed this test too.
-
-    Kills: passing ``_fdictRebaselineModTimesUnderTheDrain``'s worker to
-    ``asyncio.to_thread`` instead of ``fdictRunLockHeldMutation``.
+    The guarantee that the poll never writes has its own lever in
+    ``tests/testFileStatusManager.py``; this asserts the property at
+    the ROUTE, where a caller could reintroduce a write of its own.
     """
     client, connectionDocker = tclientGatedWithPlots
+    connectionDocker.listTypedPathProbes.clear()
     client.post(
         f"/api/pipeline/{S_CONTAINER_ID}/acknowledge-step/0",
     )
-    _fnAssertSelectedRanUnder(
-        connectionDocker,
-        lambda dictReached: (
-            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
-            and dictReached["sPath"] == S_POLL_PATHFILE
-        ),
-        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-        f"write of the stat path file {S_POLL_PATHFILE}",
+    assert connectionDocker.listTypedPathProbes, (
+        "the route made no typed path probe at all, so this asserts "
+        "nothing: it returned before stating the step's outputs"
+    )
+    listPathfileWrites = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPath"].startswith("/tmp/")
+    ]
+    assert listPathfileWrites == [], (
+        f"the acknowledge probe wrote into /tmp: {listPathfileWrites}. "
+        "The stat batch carries its paths as a literal now; a scratch "
+        "file would put a container mutation back on this route."
     )
 
 
@@ -4570,7 +4922,12 @@ class DockerDoubleForTheKillRoute(DockerDoubleThatCallsTheRealGates):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir,
         )
-        if sCommand.startswith("mv " + pipelineState.S_STATE_PATH_TEMP):
+        if sCommand.startswith("mv ") and (
+            pipelineState.S_STATE_PATH_TEMP in sCommand
+        ):
+            # Matched on containment rather than on a prefix: the
+            # writer quotes both operands now, because a host project
+            # directory may contain a space.
             self._dictFiles[pipelineState.S_STATE_PATH] = (
                 self._dictFiles.pop(pipelineState.S_STATE_PATH_TEMP, b"")
             )
@@ -6649,6 +7006,113 @@ async def testTheLaunchedFalsificationRunIsVisibleAsLiveWork():
                     "reading idle; a hand-over or the idle watchdog "
                     "would act on a repository whose sources cosmic-ray "
                     "is rewriting in place"
+                )
+            await asyncio.sleep(0.05)
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued():
+    """Group 7b's second busy state: the drain held by a NON-carrier.
+
+    ``hostControlChannel``'s reconcile and break-glass, and the start
+    reservation, all take the container's mutation drain without
+    registering a supervisor — so the supervisor registry alone cannot
+    see them, and a read that consulted only the registry would sit on
+    ``acquire()`` for as long as a reconcile takes. The lock is held
+    here the same way those hold it: directly, registering nothing.
+
+    The GET is bounded by ``wait_for`` because the failure being
+    excluded is a WAIT: without the lock check this request never
+    returns while this block holds the lock, and an unbounded await
+    would hang the suite instead of failing it.
+
+    The reason is not asserted, deliberately. With no supervisor and no
+    durable record for this container, the lock branch is the only one
+    that can answer paused at all, so the flag identifies the branch by
+    itself — and pinning the generic wording here would make this test
+    fail for the self-exclusion mutant that
+    ``testAQuietContainerIsNeverReportedAsBusy`` owns.
+
+    Kills: deleting the ``lockMutation.locked()`` branch from
+    ``_fsDescribeWorkBesidesThisSupervisor``, which returns this read
+    to queueing behind a holder that registers nothing.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            sName = _fsContainerNameFor(app)
+            lockMutation = (
+                sessionLifecycle.flockContainerMutationForAppState(
+                    app.state, sName,
+                )
+            )
+            async with lockMutation:
+                response = await asyncio.wait_for(
+                    clientAsync.get(
+                        f"/api/git/{S_CONTAINER_ID}/badges",
+                    ),
+                    2.0,
+                )
+            assert response.status_code == 200, response.text
+            dictBody = response.json()
+            assert dictBody.get("bRefreshPaused") is True, dictBody
+            assert "dictBadges" not in dictBody, dictBody
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshOverALiveDurableRunIsPaused():
+    """Group 7b's third busy state, driven where the machinery for it is.
+
+    A durable task holds NO drain: it takes the lock to register and
+    releases it before the work runs. So the lock alone cannot answer
+    whether a run is live, and an automatic read consulting only the
+    lock would read a repository the run is rewriting and publish that
+    torn snapshot as settled state. This is the host-mode case in
+    miniature -- on the host a step's files ARE the repository's files.
+
+    Asserted on the paused REASON, not merely on the flag: the drain
+    and supervisor branches would both answer paused here too if they
+    were reached, and the generic durable wording is what identifies
+    which branch answered.
+
+    Kills: deleting the durable-registry branch from
+    ``_fsDescribeWorkBesidesThisSupervisor``, which leaves a live run
+    invisible to the pause and lets the refresh read straight through
+    it.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        del app
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            with _fnFalsificationApplicable(), (
+                _teventHoldTheDurableWorkerOpen(
+                    falsificationRoutes, "_fnRunFalsificationWorker",
+                )
+            ):
+                response = await clientAsync.post(
+                    f"/api/steps/{S_CONTAINER_ID}/0/run-falsification",
+                )
+                assert response.status_code == 200, (
+                    "the run was refused before it could be launched, "
+                    f"so nothing is live to pause behind: {response.text}"
+                )
+                responseBadges = await clientAsync.get(
+                    f"/api/git/{S_CONTAINER_ID}/badges",
+                )
+                assert responseBadges.status_code == 200, (
+                    responseBadges.text
+                )
+                dictBody = responseBadges.json()
+                assert dictBody.get("bRefreshPaused") is True, dictBody
+                assert dictBody["sPausedBy"] == (
+                    commitCarrier.S_DESCRIBED_DURABLE_TASK
+                ), (
+                    "the pause fired, but not from the durable branch: "
+                    f"{dictBody}"
                 )
             await asyncio.sleep(0.05)
 

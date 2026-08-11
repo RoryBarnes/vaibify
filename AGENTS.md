@@ -307,6 +307,21 @@ unifying the path handling itself would silently mangle one lane or
 the other, and the failure would not surface until a cross-platform
 user hit it.
 
+**Host mode does not repeal that rule; it survives it by staying
+POSIX.** A host project's pipeline runs on the researcher's own
+machine, so `workflowManager` now composes paths that are host paths —
+and it still uses `posixpath`, deliberately. Host mode is macOS and
+Linux only, where `posixpath` and `os.path` are the same module, so one
+implementation serves both modes exactly. The boundary is Windows: the
+step commands are composed `bash -c` text and the POSIX path guards
+weaken silently there, so Windows is refused rather than accommodated,
+and this paragraph is the reason a reader will not find a host-path
+fork of the workflow manager. One was tried (the withdrawn
+`director` module) and abandoned — swap the connection object, never
+fork the path handling.
+Modules that are host-only (`vaibify/host/`) still use `os.path`,
+because they say what they mean.
+
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
 auto-detected from the project.json's parent via
@@ -405,10 +420,8 @@ but never budgeted: one session legitimately holds several sockets at
 once — budgeting all sockets shipped the Run-Step-always-refused bug
 (the terminal, opened on workflow entry, held the only slot; every Run
 Step was 4409'd and mislabeled "cannot reach server"). The terminal is
-disabled (see "The interactive terminal is disabled" below), so the
-unbudgeted lane has no production caller; the budget is still enforced
-and is driven through the real wrapper by a test-owned socket on that
-lane. Run exclusivity is additionally
+the unbudgeted lane's production caller, so that budget must never be
+extended to it. Run exclusivity is additionally
 enforced at dispatch for every lane, including the budget-exempt agent
 lane: a run arriving while another pipeline action is live in that
 container is answered with a `runRefused` event, never started
@@ -464,11 +477,26 @@ tools/generateMutationInventory.py --write`; drift-check with
   `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
   `pty.spawn`, multiprocessing and process pools, Docker client
   constructors and low-level `APIClient` methods, direct Unix-socket
-  access, and reflection (`eval`, `exec`, `sys.modules[...]`,
-  `importlib`, `__import__`, dynamic `getattr`). **This is the
-  completeness boundary and it fails closed.** Importing `os` is not
-  acquisition; `from os import system` is — 33 GUI modules import `os`,
-  so a module-level reading would be useless.
+  access, process signalling (`os.kill` / `os.killpg`), and reflection
+  (`eval`, `exec`, `sys.modules[...]`, `importlib`, `__import__`,
+  dynamic `getattr`). **This is the completeness boundary and it fails
+  closed.** Importing `os` is not acquisition; `from os import system`
+  is — 33 GUI modules import `os`, so a module-level reading would be
+  useless.
+
+  Signalling joined the vocabulary on 2026-08-10 and is worth a
+  sentence, because it is the one member that is not command
+  authority: a signal cannot make a process do anything new, only stop
+  one. It went unrecorded for as long as every signal vaibify sent went
+  to a process vaibify had created and was tracking. Host mode changed
+  that — `hostCancellation` signals a process group named by a number
+  read back out of a journal file, on the researcher's own machine.
+  The scope is the namespaced `os` surface only: a bare
+  `processChild.kill()` on a Popen handle is not matched, because
+  `.kill()` and `.terminate()` are ordinary method names shared with
+  threads and test doubles, and matching them by spelling is the defect
+  this scanner exists to avoid. The launch that produced such a handle
+  is already an acquisition.
 - **Use sites** — decoded calls and commands. **Metadata,
   best-effort.** A launch whose argv the scan cannot read becomes a row
   with an UNKNOWN command, never a site that disappears.
@@ -564,58 +592,77 @@ drain — waiting spends the capability's window on an operation of
 unknown length — and there is no DRAINING phase: a transfer refuses over
 any terminal execution nobody has proven dead.
 
-## The interactive terminal is disabled
+## The terminal serves containers, and costs the quiescence claim
 
-**`/ws/terminal` refuses every caller, and no production path creates a
-terminal execution.** A shell can `setsid` out of the process group the
-containment record tracks, so "the terminal stopped" is not provable,
-and release, hand-over, and shutdown cannot honestly report a container
-quiet while a terminal has run in it. An unprovable containment
-boundary is not shipped.
+**`/ws/terminal` serves container projects; host projects are refused.**
 
-The refusal is the **first statement** in the handler: it accepts, then
-closes with `I_REJECT_TERMINAL_DISABLED`. That ordering is the
-contract, not a detail. Before it, the handler resolved the Docker id
-(an existence oracle open to any caller that could reach the socket),
-ran the ownership gate (which *refreshes* the owner's liveness stamp),
-and entered the connection counters — so a refused dial-in had already
-learned what existed and disturbed a session it had no standing in. The
-close code is deliberately distinct from every authorization code: a
-client that cannot tell a disabled feature from a rejected credential
-tells the researcher to re-claim a container that is already theirs.
-The frontend does not open the socket at all, because a socket left to
-be refused reports a deliberate refusal as a connection failure.
-Interactive *steps* need a shell, so they refuse honestly instead of
-polling forever for a sentinel no shell will print.
+Containment of a terminal is **not proven and cannot be assumed**. A
+shell can `setsid` out of the process group the containment record
+tracks, so "the terminal stopped" is not provable. Vaibify therefore
+does not claim it: **a container in which a terminal has run reports
+quiescence UNPROVEN and routes to `vaibify reconcile`, never quiet.**
+Do not weaken that back — a release that reports quiet after a terminal
+is a false statement, and the feature is only defensible because the
+statement is true. The cost is real and intended: using a terminal
+means that container cannot afterwards be certified quiet, and a
+release may leave it quarantined until reconcile settles it.
 
-Four parking controls hold it there. A no-callers invariant over
-`terminalContainment` **cannot** pass — the module keeps production
-callers for drain, reap, and shutdown — so the controls are narrower:
-nothing in `vaibify/` constructs a `TerminalSession`
-(`testNoProductionPathConstructsATerminalSession`); only the refusal
-handler answers the path
-(`testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket`); only the
-parked seam names the record-creation calls
-(`testNoProductionPathPreparesATerminalExecutionRecord`); and every
-surviving containment caller is cleanup
-(`testRemainingContainmentCallsAreCleanupOnly`). The handler's own
-ordering is pinned by `testWithdrawnTerminalRouteTouchesNothing`.
+`terminalContainment` and the `terminal` journal kind are what make the
+weaker claim honest — the record is the difference between a detached
+process being *unproven* and being *invisible*. Deleting either removes
+the honesty, not the risk.
 
-**Legacy records are never swept.** A terminal journal record written
-by an earlier version stays on disk and keeps its container QUARANTINED
-until the container is positively stopped or its process group proven
-empty — that is, through `vaibify reconcile`. Disabling the route
-settles nothing, because it has proven nothing
-(`tests/testWithdrawnTerminalLegacyRecords.py`). Upgrading with a live
-terminal therefore leaves that container quarantined, which is a
-migration cost to state in release notes, not a bug to code around.
+**Ordering in the handler is the contract**: gate, then refuse a host
+project, then `require` the daemon, then build the session. The gate is
+the shared `fiContainerSessionRejectionCode` guard the pipeline lane
+uses — never an inlined membership check, or the two lanes drift about
+who owns a container. A `TerminalSession` built before the gate would
+put a quarantine-bearing operation on a container for a caller with no
+standing in it; `require` before the host refusal would answer "install
+Docker" about a project that never wanted one.
+`testTheTerminalRouteGatesBeforeItBuildsAnything` pins it.
 
-**Do not re-enable it behind a flag.** A runtime switch is a bypass
-path by construction, and the boundary that made the terminal unsafe
-has not moved. Re-enabling means proving containment against a `setsid`
-descendant first; `tests/testTerminalContainment.py` keeps the old
-prover as the standing demonstration of why the boundary was invalid,
-and that is the gate any future terminal work must pass.
+**A host project needs a PTY on the researcher's own machine, journaled
+through the gated host-exec primitive.** Until that exists the route
+refuses with `I_REJECT_TERMINAL_NOT_ON_HOST`, distinct from
+`I_REJECT_TERMINAL_DISABLED` and from every authorization code: "not
+built for this kind of project", "the feature is gone" and "your
+credential is bad" send a researcher to three different places. The
+frontend does not dial for a host project at all — a socket left to be
+refused reports a deliberate refusal as a connection failure — and the
+pane says the true thing, which is that their own shell has the same
+authority in the same directory.
+
+**The handler resolves the container name before the gate**, so a
+caller that can reach the socket can distinguish a real id from a
+fabricated one. That is a property of the WebSocket gates in general —
+`/ws/pipeline` has the identical ordering — so treat it as one boundary
+to fix in both lanes or neither, never as a terminal-specific hole.
+
+Four controls keep the feature contained. A no-callers invariant over
+`terminalContainment` **cannot** pass, because the module keeps
+production callers for drain, reap and shutdown, so they are narrower:
+only `vaibify/gui/routes/terminalRoutes.py` constructs a `TerminalSession`
+(`testOnlyTheGatedRouteConstructsATerminalSession`), so every shell is
+one the gate admitted; only one handler answers the path
+(`testOnlyOneHandlerServesTheTerminalWebSocket`); only the seam names
+the record-creation calls
+(`testOnlyTheSeamPreparesATerminalExecutionRecord`), so no shell runs
+without the record the quiescence claim depends on; and every other
+containment caller is cleanup
+(`testRemainingContainmentCallsAreCleanupOnly`).
+
+**A terminal journal record is never swept** — not by an upgrade, not
+by a later session. It stays on disk and keeps its container
+QUARANTINED until the container is positively stopped or its process
+group proven empty, i.e. through `vaibify reconcile`. Opening a
+terminal settles nothing about an existing record, because it has
+proven nothing (`tests/testWithdrawnTerminalLegacyRecords.py`).
+
+**`tests/testTerminalContainment.py` keeps the process-group prover as
+a standing demonstration that it cannot see a `setsid` descendant.** It
+is not a gate to be satisfied; it is the evidence for the limit stated
+above. A green run there is not containment.
 
 ## Cross-step references via tokens
 

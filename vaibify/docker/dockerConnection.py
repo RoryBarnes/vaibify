@@ -250,6 +250,9 @@ S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
 S_TYPED_READ_FILE_EXISTS = "fileExists"
 S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
+S_TYPED_READ_PATH_MTIMES = "pathMtimes"
+S_TYPED_READ_FILE_SHA256 = "fileSha256"
+S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -315,7 +318,146 @@ _DICT_TYPED_READ_PROGRAMS = {
         "[os.path.exists(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
     ),
+    # The file panel's five-second poll, which is the hottest read in
+    # the product. It replaced a WRITE plus an exec: the old shape
+    # pushed a newline-delimited path list into /tmp and ran `xargs -d
+    # -a <file> stat -c '%n %Y'` over it, because a shell argv will not
+    # hold a thousand paths. A Python list literal will, so the write
+    # is simply gone -- and with it the only container mutation on the
+    # dashboard's timer, which is what let this route stay outside the
+    # commit-guard boundary. `xargs -d`, `stat -c` and `sha256sum` are
+    # also GNU-only spellings that fail on a BSD userland.
+    #
+    # A path that vanishes between the listing and the stat is SKIPPED,
+    # not an error, exactly as `2>/dev/null` made it: the poll's answer
+    # is "these are the files that exist and when they changed", and a
+    # file deleted mid-poll is absent by the next tick anyway.
+    #
+    # Seconds are truncated to an integer string because that is what
+    # `stat -c %Y` returned. `st_mtime` carries sub-second precision and
+    # keeping it would be an improvement -- and would also make every
+    # cached mtime in every workflow compare unequal exactly once, on
+    # the tick after an upgrade, reporting every file as modified. That
+    # is a change worth making deliberately, not as a side effect of
+    # this one.
+    S_TYPED_READ_PATH_MTIMES: (
+        "import json,os,sys\n"
+        "dictMtimes={}\n"
+        "for sPath in " + _S_TYPED_READ_PATH_SLOT + ":\n"
+        "    try:\n"
+        "        dictMtimes[sPath]=str(int(os.stat(sPath).st_mtime))\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "sys.stdout.write(json.dumps(dictMtimes))\n"
+    ),
+    # The content fingerprint that rides with the poll, replacing
+    # `sha256sum <path> | cut -d' ' -f1`. Streamed rather than read
+    # whole: the workflow document this hashes is small today, and a
+    # program that reads an arbitrary path into memory is one large
+    # file away from being a problem nobody predicted.
+    #
+    # An unreadable file answers with the EMPTY STRING rather than
+    # failing, which is the contract the reload detector already had
+    # from `2>/dev/null`: no fingerprint means "cannot compare", and it
+    # falls back to its other signals.
+    S_TYPED_READ_FILE_SHA256: (
+        "import hashlib,sys\n"
+        "hashFile=hashlib.sha256()\n"
+        "try:\n"
+        "    with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
+        "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
+        "            hashFile.update(baChunk)\n"
+        "    sDigest=hashFile.hexdigest()\n"
+        "except OSError:\n"
+        "    sDigest=''\n"
+        "sys.stdout.write(sDigest)\n"
+    ),
+    # The Repositories panel's five-second poll. The FIRST typed read
+    # that runs an external program rather than reading the filesystem
+    # directly, which is worth saying out loud: what the caller may
+    # vary is still only the path literal, and the argv around it is
+    # fixed text in this file, so the property that makes a typed read
+    # safe is unchanged. Git is simply the only way to ask git.
+    #
+    # It replaces a shell script this module's own callers ASSEMBLED,
+    # interpolating repository names raw into `echo "..."` and
+    # `git -C /workspace/<name>`, and that shape had four defects at
+    # once. A name is user-chosen text reaching a shell. `echo -n` is
+    # not portable. Porcelain output was squeezed through `tr` with a
+    # pipe as the record separator, so a filename containing `|`
+    # silently corrupted the parse. And, because it was an exec, it
+    # kept the whole route outside the commit-guard boundary: a route
+    # on a five-second timer cannot hold the mutation drain without
+    # making Run Step randomly refuse.
+    #
+    # `-c core.fsmonitor=false` is load-bearing rather than tidiness:
+    # `core.fsmonitor` may name a HOOK COMMAND that `git status`
+    # executes, so a repository could otherwise choose what this poll
+    # runs. The timeout bounds a repository large enough to make
+    # status slow; a repo that times out reports as it does when git
+    # fails, which is the honest answer for "we could not read it".
+    #
+    # Every field falls back to the empty string on any failure, and
+    # bMissing is decided by the presence of `.git` alone, so a
+    # directory that is not a repository is reported as missing rather
+    # than as an error.
+    S_TYPED_READ_GIT_REPO_STATUS: (
+        "import json,os,subprocess,sys\n"
+        "T_FIELDS=(('sBranch',('rev-parse','--abbrev-ref','HEAD')),"
+        "('sUrl',('config','--get','remote.origin.url')),"
+        "('sPorcelain',('status','--porcelain')))\n"
+        "listStatuses=[]\n"
+        "for sPath in " + _S_TYPED_READ_PATH_SLOT + ":\n"
+        "    if not os.path.isdir(os.path.join(sPath,'.git')):\n"
+        "        listStatuses.append({'sPath':sPath,'bMissing':True})\n"
+        "        continue\n"
+        "    dictStatus={'sPath':sPath,'bMissing':False}\n"
+        "    for sField,tArgs in T_FIELDS:\n"
+        "        try:\n"
+        "            processGit=subprocess.run(\n"
+        "                ['git','-c','core.fsmonitor=false','-C',sPath]\n"
+        "                +list(tArgs),\n"
+        "                capture_output=True,text=True,timeout=30)\n"
+        "            dictStatus[sField]=(processGit.stdout\n"
+        "                if processGit.returncode==0 else '')\n"
+        "        except Exception:\n"
+        "            dictStatus[sField]=''\n"
+        "    listStatuses.append(dictStatus)\n"
+        "sys.stdout.write(json.dumps(listStatuses))\n"
+    ),
 }
+
+
+def fsRenderBatchedTypedReadProgram(sOperation, listPaths):
+    """Return the program text for a BATCHED typed-read operation.
+
+    The host leg needs the SAME program text the Docker leg runs, and
+    must not grow a second copy of the table: two tables that had to
+    agree would be a divergence bug waiting for the day somebody edits
+    one. So the table is here and both legs read it.
+
+    List-only by signature, and that is why this is a separate function
+    rather than the assembly inside :meth:`_ftRunTypedRead`: that one
+    accepts a single path OR a sequence, and sharing it would have
+    meant one parameter holding either a string or a list — a shape the
+    naming doctrine has no cast for and would have to grandfather.
+    Every batched program embeds a list literal, so the host leg's
+    caller has no such ambiguity to express.
+
+    The operation NAME is looked up; an unknown one raises rather than
+    running anything, and :func:`_fsTypedReadPathLiteral` still admits
+    nothing but strings into the slot.
+    """
+    sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
+    if sTemplate is None:
+        raise ValueError(
+            f"{sOperation!r} is not a declared typed-read operation; "
+            f"the declared set is {sorted(_DICT_TYPED_READ_PROGRAMS)}"
+        )
+    return sTemplate.replace(
+        _S_TYPED_READ_PATH_SLOT,
+        _fsTypedReadPathLiteral(list(listPaths)),
+    )
 
 
 def _fsTypedReadPathLiteral(objPaths):
@@ -831,6 +973,90 @@ class DockerConnection:
             )
         return [bool(bExists) for bExists in listAnswers]
 
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Return one raw status record per repository path, in order.
+
+        Each record carries ``sPath``, ``bMissing``, and — for a
+        present repository — ``sBranch``, ``sUrl`` and ``sPorcelain``
+        exactly as git printed them. Interpreting those (filtering
+        artefacts, deciding dirtiness) is the caller's business and
+        stays out here: this method's whole job is to get the bytes
+        back without a shell in the middle.
+
+        A failed READ raises ``OSError``, and so does an unparseable
+        answer. A repository git could not answer about is NOT a
+        failed read — it comes back with empty fields, which is the
+        same distinction the poll has always drawn.
+        """
+        if not listRepoPaths:
+            return []
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_GIT_REPO_STATUS,
+            list(listRepoPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read repository status in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "[]")
+        except ValueError as errorParse:
+            raise OSError(
+                "The repository status read answered unparseable "
+                f"output: {errorParse}"
+            )
+
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        """Return ``{sAbsPath: sMtime}`` for the paths that exist.
+
+        The file panel's poll, as a typed read. Absent paths are simply
+        missing from the answer — the caller asks "which of these exist
+        and when did they change", and there is no third state. A failed
+        READ raises ``OSError``; an unparseable answer is a failed read.
+
+        Unlike :meth:`flistContainerPathsExist` this does NOT check the
+        answer's length against the request, and must not: a short list
+        there would silently realign positional answers onto the wrong
+        paths, while here every answer carries its own key.
+        """
+        if not listPaths:
+            return {}
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_PATH_MTIMES, list(listPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot stat paths in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "{}")
+        except ValueError as errorParse:
+            raise OSError(
+                f"The batched stat answered unparseable output: "
+                f"{errorParse}"
+            )
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Return a file's sha256 hex digest, or ``''`` when unreadable.
+
+        The empty answer is the contract, not a swallowed failure: the
+        reload detector compares fingerprints and treats "no
+        fingerprint" as "cannot compare", falling back to its other
+        signals. A file that does not exist yet is the ordinary case on
+        a fresh workflow.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_FILE_SHA256, sPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                f"Cannot hash file in container: {sPath} "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        return tExecResult.sStdout.strip()
+
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.
 
@@ -1172,6 +1398,33 @@ def fbErrorMeansContainerGone(error):
     if iStatusCode == 404:
         return True
     return iStatusCode == 409 and "not running" in str(error).lower()
+
+
+def fbErrorMeansContainerUnreachable(error):
+    """Return True when the substrate failed to answer for a container.
+
+    Weaker than :func:`fbErrorMeansContainerGone`: it proves nothing
+    about the container's processes, only that the connection layer
+    could not complete the operation — so a poll-lane caller should
+    degrade to "no answer this tick" instead of crashing the poll.
+
+    Connection-level on purpose. GUI modules used to name the Docker
+    SDK's exception types in their own ``except`` clauses, which
+    misclassifies any other connection implementation (a host-mode
+    connection raises plain ``OSError``\\ s). They now ask this
+    predicate, so teaching the classification a new connection's error
+    shapes is one edit here, not one per poll lane.
+
+    Docker leg: exactly the SDK's ``APIError`` family (``NotFound``
+    included), the set the poll lanes historically caught. The lazy
+    import keeps this module loadable without docker-py, and no
+    ``APIError`` can exist in-process without docker-py.
+    """
+    try:
+        from docker.errors import APIError
+    except ImportError:
+        return False
+    return isinstance(error, APIError)
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):

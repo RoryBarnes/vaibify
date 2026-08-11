@@ -48,7 +48,7 @@ def _fdictBuildContext(dictWorkflow, listSaves):
     """Return a minimal dictCtx wiring only what stepRoutes consumes."""
     dictWorkflows = {S_CONTAINER_ID: dictWorkflow}
 
-    def fnRequire():
+    def fnRequire(*aArgs):
         return None
 
     def fnSave(sContainerId, dictWorkflowIn):

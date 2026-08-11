@@ -14,6 +14,7 @@ import sys
 
 import click
 
+from vaibify.config.registryManager import fbIsHostProject
 from .configLoader import fbDockerAvailable, fconfigResolveProject
 
 
@@ -144,7 +145,9 @@ def fdictBuildLevelSection(config):
             "bAvailable": False,
             "sReason": f"could not read the container: {error}",
         }
-    dictReport = fdictBuildLevelReport(dictWorkflow, filesRepo)
+    dictReport = fdictBuildLevelReport(
+        dictWorkflow, filesRepo, fbIsHostProject(config.sProjectName),
+    )
     dictReport["bAvailable"] = True
     return dictReport
 

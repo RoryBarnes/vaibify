@@ -51,7 +51,7 @@ def _fdictBuildPushContext():
         "paths": {
             _S_CONTAINER_ID: _S_REPO + "/.vaibify/workflows/d.json",
         },
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
         "docker": object(),
     }

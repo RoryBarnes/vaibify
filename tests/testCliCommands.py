@@ -106,10 +106,18 @@ def test_verify_invokes_check_isolation(mockRun, mockConfig):
 
 
 def test_gui_help_text():
+    """Updated 2026-08-10: the help no longer says "pipeline viewer".
+
+    It said that while the command's own option promised the landing
+    page, and a researcher following the help reached neither. The
+    help now names the dashboard and says where the landing page
+    actually lives, so the assertion follows.
+    """
     runner = CliRunner()
     result = runner.invoke(main, ["gui", "--help"])
     assert result.exit_code == 0
-    assert "pipeline viewer" in result.output.lower()
+    assert "dashboard" in result.output.lower()
+    assert "landing page" in result.output.lower()
 
 
 # -----------------------------------------------------------------------

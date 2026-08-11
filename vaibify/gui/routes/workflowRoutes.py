@@ -11,6 +11,7 @@ from typing import Optional
 
 from .. import browserSession
 from .. import containerOwnership
+from .. import projectRoots
 from .. import workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..routeContext import (
@@ -38,6 +39,12 @@ from ..pipelineServer import (
 _PATTERN_WORKFLOW_FILENAME = re.compile(
     r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
 )
+
+# The one connect refusal a researcher can act on themselves. The
+# dashboard reads this rather than the prose so the recovery survives
+# a reworded message; the other 409s here have no recovery to offer
+# and deliberately carry no code.
+S_REFUSAL_CLAIM_REQUIRED = "claim-required"
 
 
 def _fsValidateAndNormalizeFileName(sFileName):
@@ -131,10 +138,16 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
 
     @app.get("/api/workflows/{sContainerId}")
     async def flistHandleFindWorkflows(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
+        # A host project's projects live under the directory the
+        # researcher registered, not under the container volume the
+        # module default names.
+        sSearchRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
+        )
         try:
             return workflowManager.flistFindWorkflowsInContainer(
-                dictCtx["docker"], sContainerId
+                dictCtx["docker"], sContainerId, sSearchRoot,
             )
         except Exception as error:
             if _fbIsContainerStopped(error):
@@ -210,7 +223,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         sContainerId: str, request: CreateWorkflowRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         # Validated out here because it reaches no container at all: a
         # bad filename is a 400 without a journal record ever existing.
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
@@ -320,7 +333,7 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictCtx["dictProjectCreationRequests"][sContainerId] = {
             "sSuggestedName":
                 (request.sWorkflowName or "").strip()[:200],
@@ -375,10 +388,18 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
     if dictContainerOwners.get(sName) is None:
         if dictCtx.get("bIsHub"):
-            raise HTTPException(
-                409,
-                "Claim this container before connecting to it.",
-            )
+            # Structured, because the dashboard has somewhere to send
+            # the researcher for THIS refusal and nowhere to send them
+            # for the in-use one below. Matching on the prose would
+            # make the recovery hostage to the wording.
+            raise HTTPException(409, {
+                "sMessage": (
+                    "This project is no longer claimed by this "
+                    "session. Select it again on the project list to "
+                    "claim it."
+                ),
+                "sRefusal": S_REFUSAL_CLAIM_REQUIRED,
+            })
         return
     sLeaseId = fsLeaseFromRequest(requestHttp)
     sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
@@ -426,7 +447,7 @@ def _fnRegisterConnect(app, dictCtx):
         sContainerId: str,
         sWorkflowPath: Optional[str] = None,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireOwningLeaseForConnect(
             dictCtx, sContainerId, requestHttp)
         sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)

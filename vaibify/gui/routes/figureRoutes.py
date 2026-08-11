@@ -7,6 +7,7 @@ import posixpath
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from .. import projectRoots
 from ..figureServer import fsMimeTypeForFile
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
@@ -18,7 +19,7 @@ from ..pipelineServer import (
 
 
 def _flistBuildFigureCheckPaths(
-    sAbsPath, sWorkdir, sDir, sFilePath,
+    sAbsPath, sWorkdir, sDir, sFilePath, sProjectRoot,
 ):
     """Build the validated list of paths to probe for figure existence.
 
@@ -27,6 +28,10 @@ def _flistBuildFigureCheckPaths(
     jails its own fallback in ``_fbaFetchFallback``. Without that, the
     HEAD probe's ``test -f`` answers existence questions about
     arbitrary container paths — an oracle the GET route never granted.
+
+    The jail is ``sProjectRoot``, resolved per resource: a host
+    project's figures are under its registered directory, and jailing
+    them inside the container volume would 403 every one of them.
     """
     listPaths = [sAbsPath]
     if sWorkdir and not sFilePath.startswith("/"):
@@ -35,7 +40,7 @@ def _flistBuildFigureCheckPaths(
         else:
             sFallback = posixpath.join(sDir, sWorkdir, sFilePath)
         listPaths.append(
-            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))
+            fsValidatePathWithinRoot(sFallback, sProjectRoot))
     return listPaths
 
 
@@ -50,12 +55,15 @@ def _fnRegisterFigure(app, dictCtx):
         sWorkdir: str = "",
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT,
+        )
+        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
         listPaths = _flistBuildFigureCheckPaths(
-            sAbsPath, sWorkdir, sDir, sFilePath,
+            sAbsPath, sWorkdir, sDir, sFilePath, sProjectRoot,
         )
         sTestCmd = " || ".join(
             f"test -f {fsShellQuote(p)}"
@@ -77,14 +85,17 @@ def _fnRegisterFigure(app, dictCtx):
         sWorkdir: str = "",
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT,
+        )
+        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
         baContent = await asyncio.to_thread(
             fbaFetchFigureWithFallback,
             dictCtx["docker"], sContainerId, sAbsPath,
-            sDir, sWorkdir, sFilePath,
+            sDir, sWorkdir, sFilePath, sProjectRoot,
         )
         return Response(
             content=baContent,

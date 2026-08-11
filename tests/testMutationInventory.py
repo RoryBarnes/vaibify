@@ -97,7 +97,19 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 300 -> 299 with the project-create route's mode-(b) migration: the
 # blank project.json write moved out of the handler into the carrier's
 # worker and was classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 299
+# 299 -> 297 with the file poll's typed-read migration: two rows went
+# away with the pathfile write and its exec, five arrived with the two
+# new typed reads and their router delegations, and all five were
+# classified in the same change. A poll that no longer mutates is the
+# gain the ratchet is holding.
+# 297 -> 295: the step runner's output-existence sweep stopped
+# writing a pathfile and running xargs over it; the two rows went with
+# the mechanism.
+# 295 -> 294: the Repos panel's per-repository `git status` batch --
+# an assembled shell script -- became one typed read. Its exec row
+# went, two rows arrived (the read and its router delegation), and
+# both were classified in the same change.
+I_UNCLASSIFIED_ROW_BUDGET = 294
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -125,7 +137,31 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # outright on an enforced lane -- so migrating the Kill route meant
 # either carrying a READ or removing its command authority. This is the
 # second.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+# 212 -> 217 on 2026-08-08: the connection router landed -- twelve
+# explicit per-method delegations in gui/connectionRouter.py, of which
+# five are mutation-capable (three execs, two writes). More rows,
+# strictly less authority, the same shape as the 2026-08-02 note above:
+# each row forwards one call to the leg the registry mode names, adds
+# no command or path of its own, and the admission gate for the
+# operation asserts inside the leg's primitive. All twelve are
+# classified `excluded` with that rationale in the same change.
+# 217 -> 215: the file panel's five-second poll stopped writing into
+# the container. Its pathfile push and the exec that consumed it were
+# the two mutation-capable sites; the typed reads that replaced them
+# are reads by construction.
+# 215 -> 212: the Repos panel's poll followed it. Its sidecar `cat`
+# and its two `find` discoveries became typed reads, and the seed it
+# used to WRITE from a GET is computed in memory and persisted only by
+# a mutation. Three timer-driven mutation-capable sites gone.
+# 212 -> 209: the same sweep, counted where it matters most. It ran
+# on the core RUN path -- a tar write, an xargs, and an rm, three
+# container mutations performed to answer a question about existence,
+# which the batched existence probe answers as a read.
+# 209 -> 208: the LAST exec on the Repos panel's five-second timer.
+# Its git-status batch was a shell script assembled here with
+# repository names interpolated raw; it is a typed read now, and with
+# it gone that route could finally leave the awaiting set.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 207
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -143,7 +179,15 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 # own `docker cp` were routed through gateway primitives, so neither
 # registryRoutes nor routes/fileRoutes imports subprocess any more.
 # Neither acquisition became disposed of; both stopped existing.
-I_UNDISPOSED_ACQUISITION_BUDGET = 64
+#
+# 64 -> 60: the three GUI poll lanes stopped naming Docker SDK exception
+# types in their own except clauses (five acquisitions gone) and ask the
+# gateway's fbErrorMeansContainerUnreachable predicate instead, whose
+# one lazy `from docker.errors import APIError` arrived in the same
+# change (named in testCapabilityAuthorities under the exception-type
+# class). Net: five exception-type acquisitions became one, and it
+# lives in the module that owns the docker capability.
+I_UNDISPOSED_ACQUISITION_BUDGET = 60
 
 
 def _fmoduleGenerator():
@@ -322,8 +366,18 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # here, which is the safe direction, but eight entries claiming a review
 # was owed on code that could not reach a container is still eight
 # reviews aimed at fiction.
+# 18 -> 19 on 2026-08-08: the host gateway's single launch primitive
+# (hostConnection._ftLaunchGatedAndStream) takes its command as a
+# parameter BY DESIGN -- it is the one surface every host subprocess is
+# forced through (ruling 12), so the parameter is the funnel, not a
+# leak. The site is admission-gated, write-ahead journaled under the
+# host-exec kind, and pinned as the only launcher under vaibify/host/
+# by testHostSubprocessConfinement. The same shape as the 23 -> 27
+# increase above: the record honestly admits one more site it cannot
+# read, rather than a scanner exemption that would silently shrink the
+# declared blind spot for the Docker gateways too.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 18,
+    "opaque-subprocess-command": 19,
     "untraceable-docker-sdk-root": 12,
 }
 
@@ -532,6 +586,80 @@ def testAnImportedProcessCapabilityIsRecordedWhateverIsDoneWithIt(
         ] == [moduleGenerator.S_CAPABILITY_PROCESS_LAUNCH], (
             f"{sShape}: the module's process capability left the record"
         )
+
+
+@pytest.mark.falsification
+def testSignallingAProcessIsAnAcquisition(moduleGenerator):
+    """Stopping a process is a capability, even though it starts none.
+
+    Signalling was outside this vocabulary for as long as every signal
+    vaibify sent went to a process it had created and was tracking. Host
+    mode changed the answer: a host cancellation signals a process GROUP
+    named by a number read back out of a journal file, on the
+    researcher's own machine, where being wrong stops somebody else's
+    program with the researcher's authority. A reviewer asking what this
+    codebase can do to their machine should find that in the record.
+
+    Both spellings, and both call shapes -- a real signal and the
+    signal-0 existence probe -- because the ACQUISITION is the attribute
+    load either way and a scanner that only saw the delivering call
+    would miss the four probe sites entirely.
+
+    Kills: emptying the signalling vocabulary, which returns all seven
+    of this package's signalling sites to being invisible.
+    """
+    for sShape, sSource in {
+        "a group kill": (
+            "import os\n"
+            "def fnStop(iGroup):\n"
+            "    os.killpg(iGroup, 9)\n"
+        ),
+        "a single-process signal": (
+            "import os\n"
+            "def fnStop(iPid):\n"
+            "    os.kill(iPid, 15)\n"
+        ),
+        "a signal-0 existence probe": (
+            "import os\n"
+            "def fbAlive(iPid):\n"
+            "    os.kill(iPid, 0)\n"
+        ),
+        "the module renamed on import": (
+            "import os as operatingSystem\n"
+            "def fnStop(iGroup):\n"
+            "    operatingSystem.killpg(iGroup, 9)\n"
+        ),
+    }.items():
+        listAcquisitions = _flistScanAcquisitions(moduleGenerator, sSource)
+        assert [
+            dictAcquisition["sCapability"]
+            for dictAcquisition in listAcquisitions
+        ] == [moduleGenerator.S_CAPABILITY_PROCESS_SIGNAL], (
+            f"{sShape}: signalling left the record"
+        )
+
+
+def testAnOrdinaryKillMethodIsNotASignallingAcquisition(moduleGenerator):
+    """The stated scope limit, asserted rather than only described.
+
+    ``.kill()`` and ``.terminate()`` are ordinary method names shared
+    with threads, asyncio tasks and test doubles. Matching them by
+    spelling is the classification-by-spelling defect this scanner was
+    rewritten to remove, so the vocabulary covers the namespaced ``os``
+    surface and stops there -- and the launch that produced a real
+    Popen handle is an acquisition already, so the object being
+    signalled is in the record even when the signal is not.
+    """
+    listAcquisitions = _flistScanAcquisitions(
+        moduleGenerator,
+        "def fnStop(threadWorker, taskAsync):\n"
+        "    threadWorker.kill()\n"
+        "    taskAsync.terminate()\n",
+    )
+    assert listAcquisitions == [], (
+        "a bare .kill()/.terminate() was classified as signalling: "
+        f"{listAcquisitions}"
+    )
 
 
 @pytest.mark.falsification
@@ -1517,7 +1645,16 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "read",
     "close",
     "fsResolveDockerHost",
+    # Pure text assembly: looks a program up by NAME in the fixed
+    # table and substitutes the path literal. It makes no call, and it
+    # is module-level rather than a method precisely so the host leg
+    # can share the one table instead of growing a second copy.
+    "fsRenderBatchedTypedReadProgram",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",
+    # Its weaker sibling: classifies an already-raised error as "the
+    # substrate gave no answer" for the poll lanes. Same shape — an
+    # isinstance test over an exception object, no daemon call.
+    "fbErrorMeansContainerUnreachable",
 }

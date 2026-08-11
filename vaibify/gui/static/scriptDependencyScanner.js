@@ -647,7 +647,8 @@ var VaibifyDependencyScanner = (function () {
         var elInner = elModal.querySelector(".modal");
         elInner.innerHTML = fsRenderFileSelectPage();
         var elBrowser = elModal.querySelector("#depFileBrowser");
-        fnLoadBrowserDirectory(elBrowser, "/workspace");
+        fnLoadBrowserDirectory(
+            elBrowser, VaibifyApp.fsGetWorkspaceRoot());
     }
 
     function _fnHandleBrowserClick(

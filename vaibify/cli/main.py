@@ -192,6 +192,34 @@ def _fsLaunchUrlWithCapability(sBaseUrl, app):
     return f"{sBaseUrl}/#bootstrap={sCapability}"
 
 
+def _fnAnnounceAndOpen(sBaseUrl, app, sWhat):
+    """Print where vaibify is serving, then open the credentialled tab.
+
+    The address and the usable LINK are not the same string, and saying
+    so is the whole point of this function. The dashboard authenticates
+    only by redeeming a one-time capability carried in the URL
+    FRAGMENT, which is deliberately never echoed -- a fragment stays
+    out of access logs, and printing it would put a credential in the
+    researcher's scrollback.
+
+    What this replaced printed the bare address and nothing else, so a
+    researcher who used it -- a restored tab, a bookmark, a retyped
+    address -- reached a dashboard that answered 401 to every call and
+    showed a spinner forever. The address is still printed, because it
+    is genuinely useful for knowing the port; it is now labelled as the
+    address rather than offered as the way in.
+    """
+    click.echo(f"Starting {sWhat} at {sBaseUrl}")
+    click.echo(
+        "Opening your browser. The dashboard signs in with a one-time "
+        "link, so that tab is the way in — this address alone cannot "
+        "sign in. If no window opened, re-run this command."
+    )
+    _fnOpenBrowserUnlessSuppressed(
+        _fsLaunchUrlWithCapability(sBaseUrl, app),
+    )
+
+
 def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser.
 
@@ -213,11 +241,8 @@ def fnLaunchHub(iExplicitPort):
     fileHandleSession = _ffileAcquireHubSessionSlotOrExit("hub", iPort)
     try:
         sUrl = f"http://127.0.0.1:{iPort}"
-        click.echo(f"Starting Vaibify hub at {sUrl}")
         app = fappCreateHubApplication(iExpectedPort=iPort)
-        _fnOpenBrowserUnlessSuppressed(
-            _fsLaunchUrlWithCapability(sUrl, app),
-        )
+        _fnAnnounceAndOpen(sUrl, app, "vaibify")
         uvicorn.run(
             app, host="127.0.0.1", port=iPort,
             log_level="warning", timeout_graceful_shutdown=3,
@@ -319,43 +344,35 @@ def fnSetupCommand():
 @main.command("gui")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
-    help="Project name (omit to show the landing page).",
+    help="Project to open. Omit for the landing page, which is also "
+         "what the bare 'vaibify' command shows.",
 )
 def fnGuiCommand(sProjectName):
-    """Launch the Vaibify pipeline viewer GUI."""
+    """Launch the vaibify dashboard."""
     from vaibify.gui.pipelineServer import fappCreateApplication
     import uvicorn
     _fnConfigureErrorLogging()
-    sRoot, sTerminalUser = _ftResolveGuiConfig(sProjectName)
+    if sProjectName is None:
+        # The landing page is the HUB, and there is one implementation
+        # of it. This branch used to build the single-project viewer
+        # with a "/workspace" workspace root -- a container path, on
+        # the researcher's laptop -- while the help text promised the
+        # landing page, and the project-resolution error it printed on
+        # the way was a sys.exit somebody had caught and discarded.
+        fnLaunchHub(None)
+        return
+    configProject = fconfigResolveProject(sProjectName)
     sUrl = "http://127.0.0.1:8050"
-    click.echo(f"Starting pipeline viewer at {sUrl}")
     app = fappCreateApplication(
-        sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
+        sWorkspaceRoot=configProject.sWorkspaceRoot,
+        sTerminalUserArg=configProject.sContainerUser,
         iExpectedPort=8050,
     )
-    _fnOpenBrowserUnlessSuppressed(
-        _fsLaunchUrlWithCapability(sUrl, app),
-    )
+    _fnAnnounceAndOpen(sUrl, app, f"vaibify: {sProjectName}")
     uvicorn.run(
         app, host="127.0.0.1", port=8050,
         log_level="warning", timeout_graceful_shutdown=3,
     )
-
-
-def _ftResolveGuiConfig(sProjectName):
-    """Return (sWorkspaceRoot, sContainerUser) for the GUI.
-
-    When a project is specified or discoverable, use its
-    config. Otherwise fall back to defaults so the landing
-    page can still launch.
-    """
-    try:
-        configProject = fconfigResolveProject(sProjectName)
-        return configProject.sWorkspaceRoot, configProject.sContainerUser
-    except SystemExit:
-        if sProjectName is not None:
-            raise
-        return "/workspace", "researcher"
 
 
 @main.command("push")

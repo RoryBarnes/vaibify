@@ -20,14 +20,19 @@
          style="display: none;"></div>
     <div class="picker-content">
         <div class="picker-section-header">
+            <!-- The heading names the MACHINE, not the containment.
+                 A host project filed under "Containers" was a lie about
+                 what it is, and grouping by containment would have to
+                 be undone the moment a remote machine can host either
+                 kind. -->
             <h3 class="picker-section-label" id="labelContainers">
-                Containers</h3>
+                This machine</h3>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-icon" id="btnAddContainer"
-                        title="Add container">+</button>
+                        title="Add environment">+</button>
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshContainers"
-                        title="Refresh container list">&#x21bb;</button>
+                        title="Refresh">&#x21bb;</button>
                 <button class="btn-icon"
                         id="btnNewVaibifyWindow"
                         title="New vaibify window">&#x29C9;</button>
@@ -35,7 +40,7 @@
         </div>
         <div id="listContainers">
             <p class="muted-text" style="text-align: center;">
-                Loading containers...
+                Loading environments...
             </p>
         </div>
         <div id="unrecognizedSection" style="display: none;">
@@ -87,13 +92,37 @@
 <div class="modal-overlay" id="modalAddChoice" style="display: none;">
     <div class="modal modal-small">
         <div class="wizard-title-row">
-            <h2 style="color: var(--color-pale-blue);">Add Container</h2>
+            <h2 style="color: var(--color-pale-blue);"
+                id="addChoiceTitle">Add Environment</h2>
             <button type="button" id="btnAddChoiceHelp"
                     class="wizard-help-button"
                     title="What's the difference?"
-                    aria-label="Show help for add container choice">?</button>
+                    aria-label="Show help for the environment choice">?</button>
         </div>
-        <div class="add-choice-cards">
+        <!-- Stage 1 asks WHERE the work runs; stage 2 asks how the
+             project gets here. They used to be one stage with the host
+             option bolted on as a third card, which made "Add
+             Container" the title over a choice that was not one. The
+             kind stage is also where a remote machine goes when there
+             is one, without disturbing stage 2. -->
+        <div class="add-choice-cards" id="addChoiceCards">
+            <div class="add-choice-card" id="btnChoiceKindContainer">
+                <div class="add-choice-icon">&#128230;</div>
+                <div class="add-choice-title">Container</div>
+                <div class="add-choice-description">
+                    Contained and reproducible. Needs Docker
+                </div>
+            </div>
+            <div class="add-choice-card" id="btnChoiceKindHost">
+                <div class="add-choice-icon">&#128187;</div>
+                <div class="add-choice-title">This machine</div>
+                <div class="add-choice-description">
+                    No container. For experimentation
+                </div>
+            </div>
+        </div>
+        <div class="add-choice-cards" id="addChoiceHowStage"
+             style="display: none;">
             <div class="add-choice-card" id="btnChoiceAddExisting">
                 <div class="add-choice-icon">&#128193;</div>
                 <div class="add-choice-title">Add Existing</div>
@@ -109,6 +138,13 @@
                 </div>
             </div>
         </div>
+        <p class="add-choice-host-note" id="addChoiceHostNote"
+           style="display: none;">
+            Commands will run with your full user authority, not
+            inside a container. Vaibify cannot reach reproducibility
+            Level 3 or provide Supervised attribution for a project
+            in this mode.
+        </p>
         <div class="modal-actions">
             <button class="btn" id="btnAddChoiceCancel">Cancel</button>
         </div>
@@ -211,6 +247,14 @@
     <div class="picker-content">
         <div class="picker-section-header">
             <h3 class="picker-section-label">Available Projects:</h3>
+            <!-- The same badge, on the screen the researcher reaches
+                 first. One element per screen, one rule driving both:
+                 the mode must not be invisible anywhere inside a host
+                 project, and the project-list screen is inside it. -->
+            <span id="hostModeBadgePicker" class="host-mode-badge"
+                  style="display: none;"
+                  title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
+                  >HOST MODE &mdash; uncontained</span>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshWorkflows"
@@ -223,7 +267,13 @@
         <div style="margin-bottom: 10px;">
             <div class="container-card" id="btnNoWorkflow">
                 <span class="name">Blank Project</span>
-                <span class="image">Work directly in the container</span>
+                <!-- The subtitle names WHERE the work happens, so it
+                     is rewritten for a host project by
+                     fnShowWorkflowPicker; a host researcher offered
+                     "in the container" is being told about a place
+                     their project does not have. -->
+                <span class="image" id="blankProjectLocation"
+                      >Work directly in the container</span>
             </div>
         </div>
         <div id="listWorkflows"></div>
@@ -248,7 +298,23 @@
         <img src="/static/vaibify_logo_paleblue.png" alt="Vaibify"
              class="toolbar-logo">
         <div class="toolbar-title-group">
-            <span class="toolbar-label">Container:</span>
+            <!-- Permanent and non-dismissible on a host project: the
+                 mode decides whether commands are contained at all,
+                 so it is never allowed to be invisible. -->
+            <span id="hostModeBadge" class="host-mode-badge"
+                  style="display: none;"
+                  title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
+                  >HOST MODE &mdash; uncontained</span>
+            <!-- The git badges pause themselves rather than queue
+                 behind live work, which leaves the ones on screen
+                 stale. Stale-and-labelled is honest; stale-and-silent
+                 is the dashboard claiming a repository state it has
+                 not read. -->
+            <span id="refreshPausedBadge" class="refresh-paused-badge"
+                  style="display: none;"
+                  >Git status paused</span>
+            <span class="toolbar-label" id="activeResourceLabel"
+                  >Container:</span>
             <span id="activeContainerName" class="toolbar-value"></span>
             <span class="toolbar-label">Project:</span>
             <div id="workflowSwitcher" class="workflow-switcher">

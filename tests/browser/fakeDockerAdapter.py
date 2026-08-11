@@ -35,6 +35,12 @@ import json
 S_CONTAINER_ID = "browserlane0container0id0000000000000000000000000000000000000000"
 S_CONTAINER_NAME = "browser-lane-project"
 S_WORKSPACE_ROOT = "/workspace"
+# Imported from the product rather than re-spelled: a fake that drifted
+# from the real marker path would answer the recognition probe for a
+# path nothing asks about, and report its own container unrecognized.
+from vaibify.gui.registryRoutes import (  # noqa: E402
+    S_VAIBIFY_MARKER_DIRECTORY,
+)
 S_PROJECT_REPO = "/workspace/browserLaneProject"
 S_WORKFLOW_PATH = f"{S_PROJECT_REPO}/.vaibify/workflows/project.json"
 
@@ -124,14 +130,6 @@ LIST_MODELLED_COMMANDS = [
         "sLaneTwoAssertion": "testRealContainerReportsItsContainerUser",
     },
     {
-        "sMatch": "vaibifyPoll.list",
-        "sPurpose": (
-            "file-status poll: mtimes for the watched paths plus a "
-            "sha256 fingerprint of the workflow file"
-        ),
-        "sLaneTwoAssertion": "testRealContainerStatsAndFingerprints",
-    },
-    {
         "sMatch": "python3 -c",
         "sPurpose": (
             "conftest-version scan, marker directory creation, and "
@@ -159,6 +157,11 @@ class FailClosedDockerAdapter:
         self.dictFileModifiedTimes = {
             f"{S_PROJECT_REPO}/Generate/output.dat": 1000,
             f"{S_PROJECT_REPO}/Analyze/summary.json": 2000,
+        }
+        # What the Repos panel's discovery finds under the workspace
+        # root: the lane's one project repository.
+        self.setWorkspaceRepositories = {
+            S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
         }
 
     def fnTouchFile(self, sPath, iModifiedTime):
@@ -226,13 +229,6 @@ class FailClosedDockerAdapter:
             return self._ftAnswerFileMove(sCommand)
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
-        if "vaibifyPoll.list" in sCommand:
-            listLines = [
-                f"{sPath} {iStamp}" for sPath, iStamp
-                in sorted(self.dictFileModifiedTimes.items())
-            ]
-            listLines.append("fingerprint:" + "0" * 64)
-            return (0, "\n".join(listLines) + "\n")
         if "python3 -c" in sCommand:
             # The conftest-version scan parses stdout as JSON; the
             # directory-creation and marker-copy helpers ignore it.
@@ -245,6 +241,67 @@ class FailClosedDockerAdapter:
             "assertion proving a real container answers the same way. "
             "Do NOT add a default return -- a fake that answers "
             "everything proves nothing."
+        )
+
+    # The file-status poll's two TYPED READS. They are adapter methods,
+    # not commands, so they are modelled here rather than in
+    # LIST_MODELLED_COMMANDS -- the poll stopped composing `xargs -a`
+    # over a scratch file when it moved onto typed reads, and the
+    # command entry that used to stand for it was retired with it.
+    #
+    # MEASURED, and worth knowing: no journey in this lane currently
+    # reaches either method. A version of them that raised on every
+    # call left all seventy tests green, because the lane's journeys do
+    # not dwell in an open workflow long enough to poll. They are
+    # modelled correctly anyway -- a fake that answers wrongly is a
+    # trap for the journey that finally does -- but the coverage claim
+    # belongs to whoever writes that journey, not to this file.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        return {
+            sPath: str(self.dictFileModifiedTimes[sPath])
+            for sPath in listPaths
+            if sPath in self.dictFileModifiedTimes
+        }
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return "0" * 64
+
+    # The Repos panel's discovery, as TYPED READS. Two `find` execs
+    # became one directory listing plus one batched existence probe
+    # when the panel's poll stopped being able to mutate.
+    #
+    # MEASURED, on the same terms as the two above: no journey in this
+    # lane reaches either method. Versions that raised on every call
+    # left all seventy tests green. Modelled correctly regardless --
+    # the trap is a fake that answers WRONGLY for the journey that
+    # finally arrives -- but claiming no coverage this lane lacks.
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        if sDirectoryPath != S_WORKSPACE_ROOT:
+            raise UnmodelledContainerCall(
+                "The browser lane's adapter was asked to list a "
+                f"directory its contract does not model: {sDirectoryPath}"
+            )
+        return sorted(self.setWorkspaceRepositories)
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [
+            self._fbPathExists(sPath) for sPath in listPaths
+        ]
+
+    def _fbPathExists(self, sPath):
+        """Answer the typed existence read for the paths it models.
+
+        The vaibify marker directory is answered TRUE because this
+        adapter stands in for a vaibify container: registry recognition
+        asks for it through the typed read (an arbitrary exec would be
+        refused on the enforced request lane), and a fake that said no
+        would report its own container as unrecognized.
+        """
+        if sPath == S_VAIBIFY_MARKER_DIRECTORY:
+            return True
+        return (
+            sPath[len(S_WORKSPACE_ROOT) + 1:].rsplit("/.git", 1)[0]
+            in self.setWorkspaceRepositories
         )
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):

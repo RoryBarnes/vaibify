@@ -3,6 +3,8 @@
 import json
 import threading
 
+import pytest
+
 from vaibify.gui.trackedReposManager import (
     I_SCHEMA_VERSION,
     S_TRACKED_REPOS_PATH,
@@ -29,12 +31,45 @@ class MockDockerConnection:
         self.dictFiles = {}
         self.listCommands = []
         self.dictScripted = {}
+        self.listWorkspaceRepos = []
+        self.listWorkspaceNonRepos = []
 
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.dictFiles[(sContainerId, sPath)] = baContent
 
     def fnScriptContains(self, sNeedle, iExit, sOutput):
         self.dictScripted[sNeedle] = (iExit, sOutput)
+
+    def fnSetWorkspace(self, listRepos, listNonRepos=()):
+        """Populate what workspace discovery will find.
+
+        Discovery reads the workspace through typed reads now -- one
+        directory listing plus one batched existence probe -- so a
+        scripted `find` string would be answering a command nothing
+        issues.
+        """
+        self.listWorkspaceRepos = list(listRepos)
+        self.listWorkspaceNonRepos = list(listNonRepos)
+
+    # --- the typed reads discovery and the sidecar read use ---
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        baContent = self.dictFiles.get((sContainerId, sPath))
+        if baContent is None:
+            raise FileNotFoundError(sPath)
+        return baContent
+
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        return sorted(
+            self.listWorkspaceRepos + self.listWorkspaceNonRepos,
+        )
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [
+            sPath[len("/workspace/"):].rsplit("/.git", 1)[0]
+            in self.listWorkspaceRepos
+            for sPath in listPaths
+        ]
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listCommands.append(sCommand)
@@ -43,11 +78,6 @@ class MockDockerConnection:
                 return tResult
         if sCommand.startswith("mkdir -p"):
             return (0, "")
-        if "cat " in sCommand and S_TRACKED_REPOS_PATH in sCommand:
-            sKey = (sContainerId, S_TRACKED_REPOS_PATH)
-            if sKey in self.dictFiles:
-                return (0, self.dictFiles[sKey].decode("utf-8"))
-            return (1, "")
         return (1, "")
 
 
@@ -90,19 +120,22 @@ def test_fdictBuildInitialState_schema():
 
 
 def test_flistDiscoverGitDirs_parses_and_sorts():
+    """Discovery sorts, and skips the workspace's own dot-directories.
+
+    ``.vaibify`` is in the fixture deliberately: it lives beside the
+    repositories and is not one, and the retired ``find`` filtered it
+    by name. The typed-read partition filters it the same way, before
+    the existence probe rather than after it.
+    """
     mockDocker = MockDockerConnection()
-    sFindOutput = (
-        "/workspace/vspace\n/workspace/vplanet\n"
-        "/workspace/.vaibify\n\n"
-    )
-    mockDocker.fnScriptContains("find /workspace", 0, sFindOutput)
+    mockDocker.fnSetWorkspace(["vspace", "vplanet", ".vaibify"])
     listNames = flistDiscoverGitDirs(mockDocker, "ctr1")
     assert listNames == ["vplanet", "vspace"]
 
 
 def test_flistDiscoverGitDirs_empty():
     mockDocker = MockDockerConnection()
-    mockDocker.fnScriptContains("find /workspace", 0, "")
+    mockDocker.fnSetWorkspace([])
     assert flistDiscoverGitDirs(mockDocker, "ctr1") == []
 
 
@@ -244,46 +277,73 @@ def test_fnAddTracked_threadsafe():
     assert sorted(listTrackedNames) == sorted(listNames)
 
 
-def test_fdictReadOrSeedSidecar_seeds_when_missing():
-    """Auto-seed writes a fresh sidecar from discovered repos."""
+@pytest.mark.falsification
+def test_fdictReadOrSeedSidecar_seeds_in_memory_without_writing():
+    """The seed is returned and NOT persisted.
+
+    Auto-tracking every discovered repository is unchanged; writing it
+    from a READ is what stopped. The Repos panel polls this on a timer,
+    so persisting here made the dashboard the one thing mutating a
+    container on a schedule -- and a commit-guard carrier around it
+    would have had to hold the mutation drain on that same schedule,
+    refusing the researcher's own Run Step at random.
+
+    Both halves are asserted because either alone is satisfiable by a
+    broken implementation: the names must be there (a seed that
+    tracked nothing would also write nothing) and the file must not.
+
+    Kills: restoring the write in ``_fdictSeedSidecarInMemory``.
+    """
     mockDocker = MockDockerConnection()
-    mockDocker.fnScriptContains(
-        "find /workspace", 0, "/workspace/alpha\n/workspace/beta\n"
-    )
-    mockDocker.fnScriptContains("test -d", 0, "yes")
-    mockDocker.fnScriptContains("rev-parse", 0, "main\n")
-    mockDocker.fnScriptContains("status --porcelain", 0, "")
-    mockDocker.fnScriptContains("remote.origin.url", 0, "u\n")
+    mockDocker.fnSetWorkspace(["alpha", "beta"])
     dictSidecar = fdictReadOrSeedSidecar(mockDocker, "ctr-seed-1")
     listNames = sorted(flistGetTrackedNames(dictSidecar))
     assert listNames == ["alpha", "beta"]
-    assert (("ctr-seed-1", S_TRACKED_REPOS_PATH)
-            in mockDocker.dictFiles)
-
-
-def test_fdictReadOrSeedSidecar_returns_existing_without_write():
-    """Second call after seed returns existing sidecar unchanged."""
-    mockDocker = MockDockerConnection()
-    mockDocker.fnScriptContains(
-        "find /workspace", 0, "/workspace/alpha\n"
+    assert ("ctr-seed-1", S_TRACKED_REPOS_PATH) not in mockDocker.dictFiles, (
+        "the read path persisted a sidecar; a GET that creates state "
+        "puts a container mutation back on the panel's timer"
     )
-    mockDocker.fnScriptContains("test -d", 0, "yes")
-    mockDocker.fnScriptContains("rev-parse", 0, "main\n")
-    mockDocker.fnScriptContains("status --porcelain", 0, "")
-    mockDocker.fnScriptContains("remote.origin.url", 0, "u\n")
+
+
+@pytest.mark.falsification
+def test_a_first_mutation_persists_the_whole_seed():
+    """Tracking one repo must not silently untrack the others.
+
+    The regression this guards is created by the change above. While
+    the read path seeded the FILE, the first mutation loaded a full
+    document; with the write gone, a mutation that fell back to an
+    EMPTY state would persist a sidecar containing only the repository
+    the researcher just touched -- and every other repo in the
+    workspace would quietly leave the panel.
+
+    Kills: reverting ``_fdictLoadOrInit``'s fallback to
+    ``fdictBuildInitialState([])``.
+    """
+    mockDocker = MockDockerConnection()
+    mockDocker.fnSetWorkspace(["alpha", "beta", "gamma"])
+    fnAddIgnored(mockDocker, "ctr-seed-4", "gamma")
+    dictPersisted = fdictReadSidecar(mockDocker, "ctr-seed-4")
+    assert sorted(flistGetTrackedNames(dictPersisted)) == [
+        "alpha", "beta",
+    ], (
+        "ignoring one repository dropped the others from the sidecar: "
+        f"{dictPersisted}"
+    )
+
+
+def test_fdictReadOrSeedSidecar_is_stable_across_reads():
+    """Two reads of an unseeded workspace agree with each other."""
+    mockDocker = MockDockerConnection()
+    mockDocker.fnSetWorkspace(["alpha"])
     dictFirst = fdictReadOrSeedSidecar(mockDocker, "ctr-seed-2")
     dictSecond = fdictReadOrSeedSidecar(mockDocker, "ctr-seed-2")
     assert flistGetTrackedNames(dictFirst) == ["alpha"]
     assert flistGetTrackedNames(dictSecond) == ["alpha"]
 
 
-def _fnScriptSeedingResponses(mockDocker, sFindOutput):
-    """Script the mock docker connection for a successful seed pass."""
-    mockDocker.fnScriptContains("find /workspace", 0, sFindOutput)
-    mockDocker.fnScriptContains("test -d", 0, "yes")
-    mockDocker.fnScriptContains("rev-parse", 0, "main\n")
-    mockDocker.fnScriptContains("status --porcelain", 0, "")
-    mockDocker.fnScriptContains("remote.origin.url", 0, "u\n")
+def _fnScriptSeedingResponses(mockDocker, listRepoNames):
+    """Populate the workspace a seed pass will discover."""
+    mockDocker.fnSetWorkspace(listRepoNames)
 
 
 def _flistRunSeedWorkers(mockDocker, sContainerId, iWorkers):
@@ -305,16 +365,19 @@ def _flistRunSeedWorkers(mockDocker, sContainerId, iWorkers):
     return listResults
 
 
-def test_fdictReadOrSeedSidecar_concurrent_single_sidecar():
-    """Concurrent seed calls produce a single consistent sidecar."""
+def test_fdictReadOrSeedSidecar_concurrent_readers_agree():
+    """Concurrent seed calls all answer the same thing.
+
+    They no longer produce a FILE -- the read path writes nothing --
+    so what is asserted is that eight racing readers agree, which is
+    the property the lock is actually there for.
+    """
     mockDocker = MockDockerConnection()
-    _fnScriptSeedingResponses(
-        mockDocker, "/workspace/alpha\n/workspace/beta\n"
-    )
+    _fnScriptSeedingResponses(mockDocker, ["alpha", "beta"])
     listResults = _flistRunSeedWorkers(mockDocker, "ctr-seed-3", 8)
-    dictRead = fdictReadSidecar(mockDocker, "ctr-seed-3")
-    listTracked = sorted(flistGetTrackedNames(dictRead))
-    assert listTracked == ["alpha", "beta"]
+    assert fdictReadSidecar(mockDocker, "ctr-seed-3") is None, (
+        "eight concurrent READS persisted a sidecar between them"
+    )
     for dictResult in listResults:
         assert sorted(flistGetTrackedNames(dictResult)) == [
             "alpha", "beta"

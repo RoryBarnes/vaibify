@@ -304,13 +304,22 @@ def fsMintLease():
     return secrets.token_urlsafe(32)
 
 
-def fsMintAgentToken():
+def fsMintAgentToken(sResourceName=""):
     """Return a new per-container in-container-agent credential.
 
     Distinct from the hub-wide session token and from every other
     container's token, so a compromised agent in one container cannot
     authenticate against another container's session.
+
+    Mode-aware (host-mode decision 6): for a registered host project
+    the agent lane does not exist — the host agent IS the user — so no
+    credential is minted at all: an UNMINTED credential, not an
+    undelivered one. The empty token fails closed everywhere
+    (:func:`frecordOwnerAuthorizedByAgentToken` never matches ``''``).
     """
+    from vaibify.config.registryManager import fbIsHostProject
+    if sResourceName and fbIsHostProject(sResourceName):
+        return ""
     return secrets.token_urlsafe(32)
 
 
@@ -465,7 +474,7 @@ def _fsRecordNewOwner(
     dictContainerOwners[sName] = OwnerRecord(
         sLeaseId=sLeaseId,
         fileHandleLock=fileHandleLock,
-        sAgentToken=fsMintAgentToken(),
+        sAgentToken=fsMintAgentToken(sName),
         sContainerId=sContainerId,
         sBrowserSessionId=sBrowserSessionId,
     )

@@ -14,9 +14,13 @@ lives here, beneath them.
 """
 
 __all__ = [
+    "I_REJECT_CONTAINER_ONLY",
+    "S_UNAVAILABLE_IN_HOST_MODE",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
+    "fnRefuseContainerOnlyForHostProject",
     "fdictRequireLaneTupleForCommit",
+    "fdictRunAutomaticReadUnderTheDrain",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
     "fdictCommitWorkflowSave",
@@ -58,6 +62,49 @@ def fnRejectAgentTokenLane(requestHttp):
         raise HTTPException(
             403, "The in-container agent must not read host state.",
         )
+
+
+# A container-only capability aimed at a host project. NOT 403: this
+# is the terminal's close-code lesson on the HTTP boundary. A caller
+# that cannot tell "this feature does not exist for this project" from
+# "your credential was rejected" tells the researcher to re-claim a
+# project that is already theirs, and they re-claim it forever. 409
+# says the request conflicts with the resource's state, which is
+# exactly true -- the project runs on the host, so there is no
+# container for the capability to act on.
+I_REJECT_CONTAINER_ONLY = 409
+# The machine-readable half. The prose is what a researcher reads; a
+# panel deciding whether to hide a control must not have to parse it.
+S_UNAVAILABLE_IN_HOST_MODE = "host-mode"
+
+
+def fnRefuseContainerOnlyForHostProject(sName, sCapability):
+    """Raise 409 when a container-only capability names a host project.
+
+    Server-side is where this has to live. The dashboard hides
+    start/stop/build from a host tile, but hiding is courtesy: the
+    routes are reachable by ``curl``, by the CLI, and by any panel that
+    forgets, and every one of them would otherwise drive Docker
+    machinery at a project that has no container.
+
+    ``sCapability`` names the capability in the researcher's words
+    ("Starting a container"), because the refusal is read by a person
+    who is trying to do something, not by whoever wrote the route.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if not fbIsHostProject(sName):
+        return
+    raise HTTPException(
+        I_REJECT_CONTAINER_ONLY,
+        detail={
+            "sMessage": (
+                f"{sCapability} applies only to containerized "
+                f"projects. '{sName}' runs directly on this machine "
+                "and has no container."
+            ),
+            "sUnavailableIn": S_UNAVAILABLE_IN_HOST_MODE,
+        },
+    )
 
 
 def fdictRequireLaneTupleForCommit(
@@ -178,6 +225,53 @@ async def fgenericRunWorkerUnderTheDrain(
     return dictCarried["objResult"]
 
 
+async def fdictRunAutomaticReadUnderTheDrain(
+    sContainerId, fnWorker, sOperationTarget, requestHttp,
+):
+    """Run an automatic read's worker under the drain, or report paused.
+
+    An AUTOMATIC read is one the dashboard issues on its own — the
+    badge refresh a workflow fires on open, the repository panel's
+    poll — as opposed to one a researcher asked for by clicking.
+
+    Its commands reach the general exec primitive, which the gate must
+    treat as mutating (command text cannot be told apart from a
+    delete), so on the enforced branch it needs a carrier like any
+    mutation. What it must NOT do is queue: mode (b) waits for the
+    drain, and waiting spends an unpredictable amount of a request
+    nobody made — a ``git fetch`` or a step run can hold it for
+    minutes. So this asks for the drain and takes ``""`` for an
+    answer, returning ``{"bPaused", "sPausedBy", "objResult"}``.
+
+    Paused is a RESULT, not an error. The caller answers 200 with a
+    typed paused payload and the panel renders a paused state until the
+    next refresh finds the container quiet: a failed request would
+    teach the researcher to distrust a panel that is working
+    correctly, and a silent empty answer would report "no remotes" as
+    a fact about their repository.
+    """
+    from . import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnWorker, bPauseWhenBusy=True,
+    )
+    if dictOutcome.get("bPausedByLiveWork"):
+        return {
+            "bPaused": True,
+            "sPausedBy": dictOutcome.get("sLiveWork", ""),
+            "objResult": None,
+        }
+    return {
+        "bPaused": False,
+        "sPausedBy": "",
+        "objResult": dictOutcome["result"],
+    }
+
+
 def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
     """Return a container file's sha256 hex, or ``''`` when it is absent.
 
@@ -202,6 +296,22 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
         )
         return ""
     return hashlib.sha256(baCurrent).hexdigest()
+
+
+def fdictStampDockerIdForJournal(sContainerId):
+    """Return a file-write payload's Docker-id stamp, or {} for host.
+
+    The journal's file-write probe selects its in-container hash branch
+    exactly when ``sDockerContainerId`` is present on the record
+    (``operationJournal._fdictProbeFileWriteOperation``). A host
+    project's write must leave the key absent so the host sha256 branch
+    verifies it — a stamped host record would journal a probe that
+    tries ``docker exec`` against a container that does not exist.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        return {}
+    return {"sDockerContainerId": sContainerId}
 
 
 def fdictCommitWorkflowSave(
@@ -237,7 +347,7 @@ def fdictCommitWorkflowSave(
         sWorkflowPath or "project.json",
         lambda: dictCtx["save"](sContainerId, dictWorkflow),
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": (
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),

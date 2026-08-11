@@ -947,12 +947,6 @@ LIST_FALSIFICATIONS = [
         new="""dictVerify.get("sUser") in ("passed",):""",
     ),
     Falsification(
-        nodeid='tests/testFileStatusManagerStaleness.py::test_fdictParseStatLines_handles_path_with_space',
-        source='vaibify/gui/fileStatusManager.py',
-        old="""sLine.rsplit(" ", 1)""",
-        new="""sLine.split(" ", 1)""",
-    ),
-    Falsification(
         nodeid='tests/testPathValidation.py::testRejectsRootEmbeddedAsInteriorSubstring',
         source='vaibify/gui/pipelineServer.py',
         old="""if not sNormalized.startswith(sRoot + "/") and sNormalized != sRoot:""",
@@ -1102,7 +1096,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="""    async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()""",
+        dictCtx["require"](sContainerId)""",
         new=(
             '    async def fdictHandleKillRunningTasks('
             'sContainerId: str, requestHttp: Request):'
@@ -1560,10 +1554,18 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routes/workflowRoutes.py',
         old="""    if dictContainerOwners.get(sName) is None:
         if dictCtx.get("bIsHub"):
-            raise HTTPException(
-                409,
-                "Claim this container before connecting to it.",
-            )
+            # Structured, because the dashboard has somewhere to send
+            # the researcher for THIS refusal and nowhere to send them
+            # for the in-use one below. Matching on the prose would
+            # make the recovery hostage to the wording.
+            raise HTTPException(409, {
+                "sMessage": (
+                    "This project is no longer claimed by this "
+                    "session. Select it again on the project list to "
+                    "claim it."
+                ),
+                "sRefusal": S_REFUSAL_CLAIM_REQUIRED,
+            })
         return""",
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
@@ -2263,11 +2265,11 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
     ),
@@ -2573,11 +2575,11 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
     ),
@@ -2656,7 +2658,10 @@ def _fdictEntry(sRel):
         # an existence oracle over arbitrary container paths.
         nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
         source='vaibify/gui/routes/figureRoutes.py',
-        old='            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        # Re-pinned 2026-08-08: the jail's root became the resource's
+        # own (host-mode wave 4), so the anchor names sProjectRoot.
+        # The kill was hand-replayed against the new spelling.
+        old='            fsValidatePathWithinRoot(sFallback, sProjectRoot))',
         new='            sFallback)',
     ),
     Falsification(
@@ -3662,12 +3667,12 @@ def _fdictEntry(sRel):
         nodeid='tests/testTerminalContainmentLive.py::test_reaper_kills_the_detached_descendant_or_quarantines',
         source='vaibify/gui/serverLifespan.py',
         old='''    _fnDrainTerminalsOfReapableOwners(
-        app, dictContainerOwners, fbGuardedWorkLive,
+        app, dictContainerOwners, fbReapIsVetoed,
     )
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
         lambda sName: (
-            fbGuardedWorkLive(sName)
+            fbReapIsVetoed(sName)
             or terminalContainment.fbContainerHasLiveTerminalRecords(
                 app.state, sName,
             )
@@ -3677,7 +3682,7 @@ def _fdictEntry(sRel):
     )''',
         new='''    containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
-        lambda sName: fbGuardedWorkLive(sName),
+        lambda sName: fbReapIsVetoed(sName),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )''',
     ),
@@ -5399,14 +5404,14 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
             '        return {\n'
             '            "bHasCredential": '
             '_fbServiceHasStoredCredential(sService),\n'
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
             '        return {\n'
             '            "bHasCredential": '
@@ -5505,7 +5510,7 @@ def _fdictEntry(sRel):
             'sNormalized,\n'
             '        fnWriteTheUpload,\n'
             '        {\n'
-            '            "sDockerContainerId": sContainerId,\n'
+            '            **fdictStampDockerIdForJournal(sContainerId),\n'
             '            "sExpectedSha256": '
             'hashlib.sha256(baContent).hexdigest(),\n'
             '            "sPriorSha256": sPriorSha256,\n'
@@ -5937,6 +5942,417 @@ def _fdictEntry(sRel):
         old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
         new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
     ),
+    # --- The badge refresh: the first AUTOMATIC read to migrate ---
+    #
+    # (host mode wave 3, 2026-08-08). An automatic read must do two
+    # things a clicked mutation need not: run under a carrier like any
+    # exec, and never QUEUE behind live work. The five levers below are
+    # one per branch that can be lost on its own -- the carrier itself,
+    # then each of the three states that make a container busy, then
+    # the self-exclusion that keeps an idle container from reporting
+    # itself busy forever.
+    #
+    # Measured isolation, not assumed. The first mutant fails all six
+    # badge tests: with the carrier gone the exec is refused at the
+    # primitive and the handler 500s before any of them can assert.
+    # The three BRANCH levers each fail only their own test. The
+    # self-exclusion lever fails four -- its own, the payload shape,
+    # the drain-read, and the durable one, whose reason then names the
+    # asking read instead of the run -- which is the same statement as
+    # "an always-busy container stops answering", seen four ways.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBadgeRefreshReadsUnderOneHeldDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictRead = await fdictRunAutomaticReadUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda supervisor=None: _ftCollectGitBadgeInputs(\n'
+            '                docker, sContainerId, dictWorkflow, sRepo, '
+            'filesRepo,\n'
+            '            ),\n'
+            '            "git-badges", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictRead = {\n'
+            '            "bPaused": False,\n'
+            '            "objResult": _ftCollectGitBadgeInputs(\n'
+            '                docker, sContainerId, dictWorkflow, sRepo, '
+            'filesRepo,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshOverALiveDeleteIsPausedRatherThanQueued'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    for supervisor in _fdictSupervisorRegistry('
+            'appState).values():\n'
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+        ),
+        new=(
+            '    for supervisor in []:\n'
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    if lockMutation.locked():\n'
+            '        return S_DESCRIBED_GUARDED_OPERATION\n'
+            '    return ""\n'
+        ),
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshOverALiveDurableRunIsPaused'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    recordTask = _fdictDurableTaskRegistry(appState).get(\n'
+            '        supervisorSelf.sName,\n'
+            '    )\n'
+            '    if recordTask is not None and (\n'
+            '        recordTask.taskAsync is None or not '
+            'recordTask.taskAsync.done()\n'
+            '    ):\n'
+            '        return S_DESCRIBED_DURABLE_TASK\n'
+        ),
+        new='    recordTask = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAQuietContainerIsNeverReportedAsBusy'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+            '        if supervisor.sName != supervisorSelf.sName:\n'
+        ),
+        new=(
+            '        if supervisor.sName != supervisorSelf.sName:\n'
+        ),
+    ),
+    # The stat batch's OUTPUT SHAPE, which nothing else in the suite
+    # executes. Reverting it to line-oriented text is the plausible
+    # regression -- it is what the program replaced -- and it brings
+    # back the parse that a path containing a space used to defeat.
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_the_mtime_program_answers_json_and_skips_absent_paths'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "sys.stdout.write(json.dumps(dictMtimes))\\n"\n',
+        new=(
+            '        "sys.stdout.write(chr(10).join('
+            'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
+        ),
+    ),
+    # A host project a researcher can actually create: until the mode
+    # rode the registration route, one could be made only from Python.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testRegisteringAHostProjectRecordsItsMode'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '            fnAddProject(request.sDirectory, '
+            'sMode=request.sMode)\n'
+        ),
+        new='            fnAddProject(request.sDirectory)\n',
+    ),
+    # --- The two claims host mode gives up (host mode wave 3) ---
+    #
+    # Level 3 is DEFINED by a pinned container image, and Supervised
+    # mode's claim holds only while vaibify mediates every path to the
+    # files. Neither survives on the host, and both fail SILENTLY if
+    # the gate is lost: the researcher is handed a to-do list that
+    # cannot be completed, or an attribution log that goes on claiming
+    # a supervised period while their editor rewrites the files beside
+    # it. Each lever is one gate; each has a container-direction test
+    # beside it that the lever must NOT kill.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testAHostProjectGetsOneL3BlockerNamingTheReason'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if bHostProject:\n'
+            '        return [_fdictBuildL3WorkflowBlocker('
+            'S_L3_HOST_MODE_CRITERION)]\n'
+        ),
+        new='    if False:\n        return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testEnteringSupervisedModeIsRefusedForAHostProject'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    if not bEnabled or not fbIsHostProject(sContainerId):\n'
+            '        return\n'
+        ),
+        new='    if True:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testASupervisedHostWorkflowRefusesAnOrdinaryMutation'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '            if _fbRefuseSupervisedHostMutation(\n'
+            '                self.methods, self.path, request,\n'
+            '            ):\n'
+            '                return _fresponseSupervisedHostRefusal()\n'
+        ),
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testTheRecordedExitIsTheOneMutationPermitted'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if sPath == S_END_SUPERVISION_ON_HOST_PATH:\n'
+            '        return False\n'
+        ),
+        new='    if False:\n        return False\n',
+    ),
+    # --- The Repos panel's write, deleted (host mode wave 3) ---
+    #
+    # Both directions of one change. Auto-tracking every discovered
+    # repository is the product behaviour and is unchanged; PERSISTING
+    # it from a GET is what stopped, because the panel polls that GET
+    # on a timer. The second lever guards the regression the first one
+    # creates: with the read no longer writing, a mutation that fell
+    # back to an empty state would persist a sidecar holding only the
+    # repository the researcher just touched.
+    Falsification(
+        nodeid=(
+            'tests/testTrackedReposManager.py::'
+            'test_fdictReadOrSeedSidecar_seeds_in_memory_without_writing'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    return fdictBuildInitialState(\n'
+            '        flistBuildSeedEntries(\n'
+            '            flistDiscoverGitDirs(connectionDocker, '
+            'sContainerId),\n'
+            '        ),\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictSeeded = fdictBuildInitialState(\n'
+            '        flistBuildSeedEntries(\n'
+            '            flistDiscoverGitDirs(connectionDocker, '
+            'sContainerId),\n'
+            '        ),\n'
+            '    )\n'
+            '    fnWriteSidecar(connectionDocker, sContainerId, '
+            'dictSeeded)\n'
+            '    return dictSeeded\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTrackedReposManager.py::'
+            'test_a_first_mutation_persists_the_whole_seed'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    if dictSidecar is None:\n'
+            '        return _fdictSeedSidecarInMemory('
+            'connectionDocker, sContainerId)\n'
+        ),
+        new=(
+            '    if dictSidecar is None:\n'
+            '        return fdictBuildInitialState([])\n'
+        ),
+    ),
+    # --- The poll's write, deleted (host mode wave 3) ---
+    #
+    # The mutant restores the pathfile push while leaving the typed
+    # read in place, so the poll still answers correctly and the only
+    # thing that changes is that it writes into the container again on
+    # a five-second timer. That is the whole point: the defect this
+    # guards against is invisible in every functional assertion, which
+    # is why it survived as long as it did.
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManager.py::'
+            'testTheStatBatchWritesNothingIntoTheContainer'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '    try:\n'
+            '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
+        ),
+        new=(
+            '    try:\n'
+            '        connectionDocker.fnWriteFileViaTar(\n'
+            '            sContainerId, "/tmp/vaibifyPoll.list",\n'
+            '            ("\\n".join(listPaths) + "\\n").encode("utf-8"),\n'
+            '        )\n'
+            '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
+        ),
+    ),
+    # --- The rest of the activation surface (host mode wave 3) ---
+    #
+    # The settings read declares typed-read in its strongest form -- it
+    # reaches NO container primitive -- so the only way to break it is
+    # to add a reach, exactly as the compare-plot entry does.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSettingsReadOpensNoContainerConnectionAtAll'
+        ),
+        source='vaibify/gui/routes/settingsRoutes.py',
+        old=(
+            '    async def fdictGetSettings(sContainerId: str):\n'
+            '        return fdictExtractSettings(\n'
+        ),
+        new=(
+            '    async def fdictGetSettings(sContainerId: str):\n'
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "echo settings",\n'
+            '        )\n'
+            '        return fdictExtractSettings(\n'
+        ),
+    ),
+    # The state poll's two directions. Its carrier opens on a branch it
+    # usually does not take, so "carried" and "not carried on the
+    # ordinary path" are separate guarantees: hoisting the carrier out
+    # of the branch makes every tenth second hold the drain, and
+    # dropping the persister returns a real container write to the
+    # background lane where the gate is a documented no-op.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOrdinaryStatePollHoldsNoDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        fnPersistReconciledAlways = (\n'
+            '            _ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            )\n'
+            '        )\n'
+            '        await fnPersistReconciledAlways({"bRunning": False})\n'
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=fnPersistReconciledAlways,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStaleHeartbeatReconcileWritesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '        )\n'
+        ),
+    ),
+    # --- Container-only capabilities, refused for host projects ---
+    #
+    # (host mode wave 3, 2026-08-08). Both directions of one branch,
+    # plus its position. The two levers share the same `old` text and
+    # differ only in what they replace it with, because "never refuses"
+    # and "always refuses" ARE the two ways one predicate can be wrong,
+    # and they are indistinguishable in a report while being opposite
+    # in the product: one drives Docker at a project with no container,
+    # the other makes every containerized project unstartable.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testEveryContainerOnlyLifecycleRouteRefusesAHostProject'
+        ),
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '    if not fbIsHostProject(sName):\n'
+            '        return\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testTheSameRoutesNeverRefuseAContainerProject'
+        ),
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '    if not fbIsHostProject(sName):\n'
+            '        return\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return\n'
+        ),
+    ),
+    # Position, not presence: the refusal above the daemon check is
+    # what keeps a host-only hub from being told to install Docker.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testAHostProjectIsRefusedEvenWhenDockerIsUnreachable'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        fnRefuseContainerOnlyForHostProject(sName, '
+            '"Stopping a container")\n'
+            '        dictCtx["require"]()\n'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        fnRefuseContainerOnlyForHostProject(sName, '
+            '"Stopping a container")\n'
+        ),
+    ),
     # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
     #
     # Each entry mutates the route's OWN call site. The rename has three
@@ -6166,7 +6582,7 @@ def _fdictEntry(sRel):
             '            dictCtx, sContainerId, sAbsPath, sContent,\n'
             '        ),\n'
             '        {\n'
-            '            "sDockerContainerId": sContainerId,\n'
+            '            **fdictStampDockerIdForJournal(sContainerId),\n'
             '            "sExpectedSha256": hashlib.sha256(\n'
             '                sContent.encode("utf-8"),\n'
             '            ).hexdigest(),\n'
@@ -6321,37 +6737,6 @@ def _fdictEntry(sRel):
 
     # --- Group 6 (2026-08-06): the step panel's probe-and-record
     # routes, and the three POSTs that turn out to be reads. ---
-    Falsification(
-        nodeid=(
-            'tests/testCarrierMigratedRoutes.py::'
-            'testTheAcknowledgeStepProbeRunsUnderTheDrain'
-        ),
-        source='vaibify/gui/routes/pipelineRoutes.py',
-        # Back to the bare to_thread the route used before: the stat
-        # probe's scratch-file write then reaches the primitive with no
-        # admission, which is the exploit shape -- a hand-over arriving
-        # mid-probe sees an unlocked container.
-        #
-        # RECORDED COLLATERAL, intrinsic rather than drift: this also
-        # fails testTheAcknowledgeStepSaveCommitsThroughTheSynchronous-
-        # Carrier, because the probe runs FIRST and its refusal 500s the
-        # handler before the save happens. No mutation can separate a
-        # downstream carrier from an upstream refusal in a straight-line
-        # handler; the reverse direction DOES isolate.
-        old=(
-            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
-            '\n'
-            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
-            '\n'
-            '        sContainerId, dictLaneTuple, "helper", '
-            '"acknowledge-step",\n'
-            '        fdictStatTheOutputs,\n'
-            '    )\n'
-            '    return dictOutcome["result"]\n'
-        ),
-        new='    return await asyncio.to_thread(fdictStatTheOutputs)\n',
-    ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7370,11 +7755,2228 @@ def _fdictEntry(sRel):
             'testDeferredEntriesAreNamedAndLeftOutOfTheDenominator'
         ),
         source='tools/reconfirmFalsification.py',
+        # Re-pinned 2026-08-09: the deferral now names WHICH facility
+        # was missing, so the printed line is composed. Re-pinned again
+        # 2026-08-10, when the article moved out of the phrase and into
+        # the sentence ("no a live Docker daemon"). Both kills were
+        # hand-replayed against the new spelling.
         old=(
-            '    for entry in listDeferred:\n'
-            '        print(f"{\'NOT EVALUATED: needs a live Docker '
-            'daemon\':48}  "\n'
+            '    for entry, sPhrase in listDeferred:\n'
+            "        print(f\"{'NOT EVALUATED: needs a ' + sPhrase:48}  \"\n"
             '              f"{entry.nodeid}")\n'
+        ),
+        new='',
+    ),
+
+    # --- Host-mode Phase A (2026-08-08). The mode-aware guarantees are
+    # registered in symmetric pairs where a pair exists: one mutant
+    # proves the host branch works, its twin proves the container
+    # branch still does. A green suite over only one direction would
+    # hide a mode detector stuck at a constant.
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testMutateRegistryLockedReadsUnderTheLock'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The pre-fix ordering: reading before the flock lets two
+        # concurrent registrations pass their duplicate checks against
+        # the same stale snapshot.
+        old=(
+            '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
+            '    with _ffileOpenRegistryLock():\n'
+            '        dictRegistry = fdictLoadRegistry()\n'
+            '        fnMutateRegistry(dictRegistry)\n'
+        ),
+        new=(
+            '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
+            '    dictRegistry = fdictLoadRegistry()\n'
+            '    with _ffileOpenRegistryLock():\n'
+            '        fnMutateRegistry(dictRegistry)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testAddProjectRejectsSameDirectoryUnderNewName'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Deleting the physical-directory check restores the pre-fix
+        # behavior: one directory, two names, two "exclusive" sessions.
+        old=(
+            '        if _fbSamePhysicalDirectory(\n'
+            '            dictExisting["sDirectory"], sDirectory,\n'
+            '        ):\n'
+            '            raise ValueError(\n'
+            '                f"Directory \'{sDirectory}\' is already '
+            'registered "\n'
+            '                f"as \'{dictExisting[\'sName\']}\'"\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRouteContextCoverage.py::'
+            'TestStampDockerIdForJournal::'
+            'test_host_resource_omits_the_key_entirely'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Mode detector stuck at "container": a host save would stamp
+        # the Docker id and journal a probe against a container that
+        # does not exist.
+        old='    return dictProject.get("sMode") == "host"\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRouteContextCoverage.py::'
+            'TestStampDockerIdForJournal::'
+            'test_registered_container_project_still_stamps'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The symmetric twin: stuck at "host", a registered container
+        # project loses its stamp and its writes stop being verified
+        # in the container.
+        old='    return dictProject.get("sMode") == "host"\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOperationJournal.py::'
+            'testFileWriteProbeWithoutDockerIdUsesTheHostHashBranch'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Probe stuck on the container branch: the poison connection in
+        # the test raises on any use, so this cannot pass quietly.
+        old=(
+            '    if dictRecord.get("sDockerContainerId"):\n'
+            '        return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+            '    return _fdictCompareHostFileHash(dictRecord)\n'
+        ),
+        new=(
+            '    return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOperationJournal.py::'
+            'testFileWriteProbeWithDockerIdRequiresTheConnection'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The symmetric twin: stuck on the host branch, a container
+        # write would be "verified" against the host filesystem, where
+        # the file legitimately may not exist.
+        old=(
+            '    if dictRecord.get("sDockerContainerId"):\n'
+            '        return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+            '    return _fdictCompareHostFileHash(dictRecord)\n'
+        ),
+        new='    return _fdictCompareHostFileHash(dictRecord)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCapabilityInventory.py::'
+            'testInventoryMatchesTheSource'
+        ),
+        source='tools/generateHostCapabilityInventory.py',
+        # Dropping the passed-callable decode blinds the scanner to the
+        # asyncio.to_thread shape -- the eight rows (including the main
+        # step launch) degrade to UNKNOWN and the committed inventory
+        # no longer matches.
+        old=(
+            '        else:\n'
+            '            self._fnRecordPassedCallableArguments'
+            '(nodeCall)\n'
+        ),
+        new=(
+            '        else:\n'
+            '            pass\n'
+        ),
+    ),
+
+    # --- Host-mode Phase B: the HostConnection's contract (2026-08-08).
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_prefix_collision_is_refused'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Dropping the os.sep suffix admits any sibling directory whose
+        # name extends the root's (projectX vs projectXY).
+        old=(
+            '            if sRealPath == sAllowedRoot or '
+            'sRealPath.startswith(\n'
+            '                sAllowedRoot + os.sep,\n'
+            '            ):\n'
+        ),
+        new=(
+            '            if sRealPath == sAllowedRoot or '
+            'sRealPath.startswith(\n'
+            '                sAllowedRoot,\n'
+            '            ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_symlink_escape_is_refused'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # abspath does not resolve symlinks, so a link inside the
+        # project pointing outside it would pass containment.
+        old='        sRealPath = os.path.realpath(sPath)\n',
+        new='        sRealPath = os.path.abspath(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_identity_is_journaled_before_the_gate_opens'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Releasing the gate before the promotion reopens the launch
+        # race the gate exists to close: the command's first
+        # instruction can run before any record names the process.
+        old=(
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"spawned")\n'
+            '        mutationAdmission.fnPromoteJournaledHostExec(\n'
+            '            dictHostExecHandle, processChild.pid, '
+            'processChild.pid,\n'
+            '        )\n'
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"promoted")\n'
+            '        processChild.stdin.write(b"GO\\n")\n'
+            '        processChild.stdin.flush()\n'
+            '        processChild.stdin.close()\n'
+        ),
+        new=(
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"spawned")\n'
+            '        processChild.stdin.write(b"GO\\n")\n'
+            '        processChild.stdin.flush()\n'
+            '        processChild.stdin.close()\n'
+            '        mutationAdmission.fnPromoteJournaledHostExec(\n'
+            '            dictHostExecHandle, processChild.pid, '
+            'processChild.pid,\n'
+            '        )\n'
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"promoted")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_timeout_terminates_the_whole_recorded_group'
+        ),
+        # Re-pinned when the termination primitives moved to
+        # hostCancellation.py, which Cancel and the host connection's
+        # own timeout now share. The guarantee and the mutation are
+        # unchanged; only the file the line lives in moved.
+        source='vaibify/host/hostCancellation.py',
+        # Narrowing the group kill to a single PID leaves a backgrounded
+        # sibling alive -- the unrelated-process-safety cuts both ways.
+        old=(
+            '            os.killpg(iProcessGroup, iSignalNumber)\n'
+        ),
+        new=(
+            '            os.kill(iProcessGroup, iSignalNumber)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestAtomicWrites::'
+            'test_replaced_executable_keeps_its_bit'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Without the pre-rename fchmod the temp file's 0600 lands as
+        # the target's mode and a replaced script loses its
+        # executable bit.
+        old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSubprocessConfinement.py::'
+            'testHostConfinementScannerDetectsEachAcquisitionShape'
+        ),
+        source='tests/testHostSubprocessConfinement.py',
+        # Every module reads as the exempt gateway, so the walk skips
+        # the whole host tree and the confinement invariant passes over
+        # any acquisition anybody writes — indistinguishable from the
+        # vacuous pass the invariant legitimately has while
+        # vaibify/host/ does not exist.
+        old=(
+            '        if pathModule.name == S_HOST_GATEWAY_MODULE:\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManager.py::'
+            'testTheStatBatchPropagatesNonSubstrateErrors'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The migrated poll net decays into a blanket pass: every
+        # exception — a coding bug included — reads as "container
+        # vanished mid-poll" and the poll reports a healthy-looking
+        # empty answer over a real defect.
+        old=(
+            '    except Exception as error:\n'
+            '        if not fbErrorMeansContainerUnreachable(error):\n'
+            '            raise\n'
+        ),
+        new=(
+            '    except Exception as error:\n'
+            '        if False:\n'
+            '            raise\n'
+        ),
+    ),
+
+    # --- Host-mode wave 2: the connection router, in symmetric pairs
+    # (2026-08-08). A dispatcher stuck at either leg is invisible to a
+    # suite that only proves one direction.
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRouterDispatch::'
+            'test_host_project_routes_to_the_host_leg'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # Stuck at Docker: the host branch vanishes and a host
+        # project's calls land on the Docker leg (the poison leg in
+        # the test raises on any touch).
+        old=(
+            '        if fbIsHostProject(sResourceId):\n'
+            '            return self.connectionHostLeg\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRouterDispatch::'
+            'test_container_id_routes_to_the_docker_leg'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # The symmetric twin, stuck at host: every resource reads as a
+        # host project and container calls land on the host leg.
+        old='        if fbIsHostProject(sResourceId):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestDockerReachablePredicate::'
+            'test_router_answers_for_its_docker_leg'
+        ),
+        source='vaibify/config/connectionAvailability.py',
+        # A predicate that stops asking the marker reports a leg-less
+        # router as reachable, and every daemon-down branch it guards
+        # silently dies -- the exact hazard the predicate exists for.
+        old='    return fnProbeLeg()\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRequireDockerHostBypass::'
+            'test_host_resource_needs_no_daemon'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        # Dropping the host bypass 503s every host-project route the
+        # moment the daemon is down, though host projects need none.
+        old=(
+            '    if sResourceId is not None and '
+            'fbIsHostProject(sResourceId):\n'
+            '        return\n'
+        ),
+        new='',
+    ),
+
+    # --- Host-mode wave 2 chunk B: registry status, claim path, busy
+    # oracle (2026-08-08). Symmetric pairs throughout: for every
+    # mode-aware branch, one mutant proves the host direction works and
+    # its twin proves the container direction still does.
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testHostEntryStatusIsReadyWithoutConsultingDocker'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Enrichment stuck at container: a host entry's status walks
+        # the Docker probes (patched to raise in the test), for a
+        # project no daemon knows.
+        old=(
+            '    if dictProject.get("sMode") == "host":\n'
+            '        return _fdictEnrichHostProjectStatus(dictProject)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testContainerEntryStatusStillConsultsDocker'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The symmetric twin, stuck at host: a running container reads
+        # as a red host tile and its Docker truth is never asked.
+        old=(
+            '    if dictProject.get("sMode") == "host":\n'
+        ),
+        new=(
+            '    if True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestResolveContainerId::'
+            'test_host_name_is_its_own_resource_id_without_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Dropping the host branch stores '' as the resource id, so
+        # every downstream lookup keyed by the id goes blind for host
+        # projects (the poison leg in the test raises on any touch).
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sName):\n'
+            '        return sName\n'
+            '    connectionDocker = dictCtx.get("docker")\n'
+        ),
+        new=(
+            '    connectionDocker = dictCtx.get("docker")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestResolveContainerId::'
+            'test_container_name_still_resolves_to_its_docker_id'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The symmetric twin, stuck at host: a container claim stores
+        # the NAME where its Docker id belongs, and the per-container
+        # agent token is scoped to a container that never presents it.
+        old=(
+            '    if fbIsHostProject(sName):\n'
+            '        return sName\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return sName\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAgentTokenMint::'
+            'test_host_claim_mints_no_agent_token'
+        ),
+        source='vaibify/gui/containerOwnership.py',
+        # Dropping the mode branch mints a live agent credential for a
+        # project whose agent lane must not exist (decision 6): the
+        # credential is supposed to be UNMINTED, not undelivered.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if sResourceName and fbIsHostProject(sResourceName):\n'
+            '        return ""\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAgentTokenMint::'
+            'test_container_claim_still_mints_a_real_token'
+        ),
+        source='vaibify/gui/containerOwnership.py',
+        # The symmetric twin, stuck at unminted: every container claim
+        # would carry an empty agent token and the in-container agent
+        # lane dies hub-wide.
+        old=(
+            '    if sResourceName and fbIsHostProject(sResourceName):\n'
+        ),
+        new=(
+            '    if sResourceName:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAuthorizeContainerHostBranch::'
+            'test_host_connect_probes_nothing_and_pushes_nothing'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Dropping the host branch execs a user probe against the host
+        # leg and pushes a session file no container exists to receive;
+        # both container touches swallow their own errors, so the test
+        # asserts the recorded push and the resolved user instead.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sContainerId):\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+            '        return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAuthorizeContainerHostBranch::'
+            'test_container_connect_still_probes_and_pushes'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The symmetric twin, stuck at host: no container ever receives
+        # its agent session again, and every container's user reads as
+        # the HOST user.
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestReadinessRoute::'
+            'test_host_project_is_ready_at_once_with_no_daemon'
+        ),
+        source='vaibify/gui/routes/systemRoutes.py',
+        # Dropping the route's host branch probes an entrypoint marker
+        # in a container that does not exist, so the post-claim
+        # readiness poll answers an error shape instead of ready.
+        old=(
+            '        from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if fbIsHostProject(sContainerId):\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestReadinessRoute::'
+            'test_container_readiness_still_waits_for_the_entrypoint'
+        ),
+        source='vaibify/gui/routes/systemRoutes.py',
+        # The symmetric twin, stuck at host: every container's boot
+        # poll gets an instant false yes and the dashboard connects to
+        # a container whose entrypoint has not finished.
+        old=(
+            '        if fbIsHostProject(sContainerId):\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestClaimTakeOverVeto::'
+            'test_host_run_vetoes_a_take_over_without_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Dropping the host branch sends a host name down the Docker
+        # walk (the poison leg raises on the reachability probe), so a
+        # live host run reads as idle and a foreign claim evicts the
+        # owner mid-run.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sName):\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestClaimTakeOverVeto::'
+            'test_container_run_still_vetoes_through_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The symmetric twin, stuck at host: a container name is asked
+        # for a journal it never writes, reads idle, and the take-over
+        # veto stops protecting every container run.
+        old=(
+            '    if fbIsHostProject(sName):\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_idle_host_project_permits_the_reap'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Dropping the reaper's host branch routes host names to the
+        # Docker walk, whose fail-safe reads every error as busy — an
+        # idle host owner then can never be reaped. The IDLE-direction
+        # test is the killer here precisely because the fail-safe
+        # swallows the live-direction difference.
+        old=(
+            '        from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '        if fbIsHostProject(sName):\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_container_run_still_vetoes_through_docker'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # The symmetric twin, stuck at host: a container mid-run reads
+        # idle to the reaper, which then frees a flock over live work.
+        old=(
+            '        if fbIsHostProject(sName):\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestIdleWatchdogVeto::'
+            'test_host_run_vetoes_self_exit_without_docker'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Dropping the watchdog's host check makes a hub whose only
+        # live work is a host run read as idle — it would self-SIGTERM
+        # mid-run, which is the exact hazard the busy veto exists for.
+        old=(
+            '        if _fbAnyHeldHostProjectBusy(app):\n'
+            '            return True\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestIdleWatchdogVeto::'
+            'test_idle_host_only_hub_may_exit_with_no_daemon_at_all'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # The symmetric twin: leaving host names in the Docker
+        # id-resolution walk turns every daemon error into the
+        # fail-safe busy verdict, so a daemon-less host-only hub can
+        # never retire itself.
+        old=(
+            '    setHeldNames = {\n'
+            '        sName for sName in dictContainerOwners\n'
+            '        if not fbIsHostProject(sName)\n'
+            '    }\n'
+        ),
+        new=(
+            '    setHeldNames = set(dictContainerOwners.keys())\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestComposedOracle::'
+            'test_a_live_durable_task_reads_as_running'
+        ),
+        source='vaibify/gui/hostBusyOracle.py',
+        # Dropping the in-process half blinds the oracle to a run whose
+        # journal record has not landed yet or whose work is a guarded
+        # mutation rather than a subprocess.
+        old=(
+            '    if commitCarrier.fbContainerHasLiveMutationWork('
+            'appState, sName):\n'
+            '        return True\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_host_run_vetoes_the_reap_without_docker'
+        ),
+        source='vaibify/gui/hostBusyOracle.py',
+        # Dropping the journal half blinds the oracle to a run that
+        # outlived its hub (the crash-recovery case the write-ahead
+        # journal exists for); the reaper's live-direction test is the
+        # observation point because it feeds the oracle a real
+        # journaled identity and no in-process durable task.
+        old=(
+            '    return operationJournal.fbAnyHostExecHolderLive'
+            '(sName)\n'
+        ),
+        new=(
+            '    return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestJournalHalf::'
+            'test_a_live_recorded_group_reads_as_running'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # A kind filter that skips every record makes the journal half
+        # vacuously idle — indistinguishable, to every veto, from a
+        # project that has never run anything.
+        #
+        # The probe line is carried along only to disambiguate: the
+        # holder LISTING grew an identical filter, and an `old` that
+        # matches both would mutate a guarantee this test does not
+        # observe.
+        old=(
+            '        if dictRecord.get("sKind") != "host-exec":\n'
+            '            continue\n'
+            '        dictProbe = _fdictProbeHelperOperation('
+            'dictRecord, None)\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            continue\n'
+            '        dictProbe = _fdictProbeHelperOperation('
+            'dictRecord, None)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestJournalHalf::'
+            'test_a_dead_holder_with_an_empty_group_reads_as_idle'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The inverted twin, stuck at busy: a run that provably ended
+        # (dead holder, empty group) keeps its project vetoed forever —
+        # no reap, no take-over, no idle shutdown.
+        old=(
+            '        dictProbe = _fdictProbeHelperOperation(dictRecord, '
+            'None)\n'
+            '        if dictProbe["bHolderAlive"] or not '
+            'dictProbe["bSettled"]:\n'
+            '            return True\n'
+            '    return False\n'
+        ),
+        new=(
+            '        dictProbe = _fdictProbeHelperOperation(dictRecord, '
+            'None)\n'
+            '        if dictProbe["bHolderAlive"] or not '
+            'dictProbe["bSettled"]:\n'
+            '            return True\n'
+            '    return True\n'
+        ),
+    ),
+    # --- The root a project's files live under (host mode wave 4) ---
+    #
+    # One resolver, two directions. Stuck on the container volume, a
+    # host project finds no Projects (an empty list, not an error) and
+    # every connect is refused 403 "path traversal". Stuck on the
+    # registry directory, every containerized project searches the
+    # researcher's config folder from INSIDE the container, where it
+    # does not exist. The two read identically in a report.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectResolvesToItsRegisteredDirectory'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerRoot\n'
+        ),
+        new='    if True:\n        return sContainerRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerProjectResolvesToTheContainerRoot'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerRoot\n'
+        ),
+        new='    if False:\n        return sContainerRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testWorkflowDiscoverySearchesTheHostProjectDirectory'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        # The route stops asking and takes the module default back.
+        old=(
+            '                dictCtx["docker"], sContainerId, '
+            'sSearchRoot,\n'
+        ),
+        new='                dictCtx["docker"], sContainerId,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testWorkflowDiscoveryStillSearchesTheVolumeForAContainer'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        # The route reads the directory out of the registry itself
+        # instead of going through the resolver -- the plausible
+        # shortcut, and wrong because it never consults the MODE. Every
+        # container project would search its own config folder.
+        old=(
+            '        sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, '
+            'workflowManager.DEFAULT_SEARCH_ROOT,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sSearchRoot = (registryManager.fdictGetProject('
+            'sContainerId) or {}).get(\n'
+            '            "sDirectory", '
+            'workflowManager.DEFAULT_SEARCH_ROOT)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostWorkflowPathIsMeasuredAgainstItsProjectDirectory'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The connect guard takes the container volume back as its
+        # boundary, refusing every legitimate host workflow path with
+        # the code that means "you tried to escape".
+        old=(
+            '    fsValidatePathWithinRoot(sNormalized, sProjectRoot)\n'
+        ),
+        new=(
+            '    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheExistenceProbeAcceptsPathsInsideTheHostProject'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, sWorkspaceRoot,\n'
+            '        )\n'
+        ),
+        new='        sProjectRoot = sWorkspaceRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheExistenceProbeStillJailsAContainerToTheVolume'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # The registry read that skips the mode -- the shortcut that
+        # looks like it does the same thing and jails every
+        # containerized project inside the researcher's config folder.
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, sWorkspaceRoot,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sProjectRoot = (registryManager.fdictGetProject(\n'
+            '            sContainerId) or {}).get('
+            '"sDirectory", sWorkspaceRoot)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsFigureIsServedFromItsOwnDirectory'
+        ),
+        source='vaibify/gui/routes/figureRoutes.py',
+        # Both the HEAD probe and the GET serve resolve the root; the
+        # honest mutation is "the figure lane stopped asking", which
+        # is both of them.
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, WORKSPACE_ROOT,\n'
+            '        )\n'
+        ),
+        new='        sProjectRoot = WORKSPACE_ROOT\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerFigureIsStillJailedToTheVolume'
+        ),
+        source='vaibify/gui/routes/figureRoutes.py',
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, WORKSPACE_ROOT,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sProjectRoot = (registryManager.fdictGetProject(\n'
+            '            sContainerId) or {}).get('
+            '"sDirectory", WORKSPACE_ROOT)\n'
+        ),
+        iExpectedOccurrences=2,
+    ),
+    # --- The daemon gate names its resource (host mode wave 4) ---
+    #
+    # Host mode exists for the researcher who has no Docker, so a hub
+    # serving a host project must never answer "install Docker". The
+    # inverse is just as bad: a gate that stops asking lets a
+    # container request reach code holding None for a connection.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeDaemonGate.py::'
+            'testAHostProjectIsServedWhenNoDaemonIsReachable'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # The bare call every one of these sites had before the sweep.
+        old=(
+            '        import asyncio\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        listInput = request.saRelativePaths or []\n'
+        ),
+        new=(
+            '        import asyncio\n'
+            '        dictCtx["require"]()\n'
+            '        listInput = request.saRelativePaths or []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeDaemonGate.py::'
+            'testAContainerProjectStillGetsTheDaemonDiagnosis'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        old=(
+            '    if sResourceId is not None and '
+            'fbIsHostProject(sResourceId):\n'
+            '        return\n'
+        ),
+        new='    if True:\n        return\n',
+    ),
+    # --- The picker's host tile (host mode wave 4) ---
+    #
+    # Frontend mutations, observable only to a test that loads the
+    # page; the harness defers them by the `browser` marker on a host
+    # with no Playwright rather than scoring them blind.
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAHostTileCarriesItsNameAsTheResourceId'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # A host registry entry has no sContainerId, so this renders an
+        # empty resource id: the click path resolves nothing and
+        # returns in silence -- no error, no toast, no diagnosis.
+        old=(
+            '        var sId = bHost\n'
+            '            ? (dictContainer.sName || "")\n'
+            '            : (dictContainer.sContainerId || "");\n'
+        ),
+        new='        var sId = dictContainer.sContainerId || "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAHostTileOffersNoContainerLifecycleAction'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '           researcher from being offered them. */\n'
+            '        if (bHost) return "";\n'
+        ),
+        new=(
+            '           researcher from being offered them. */\n'
+            '        if (false) return "";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheContainerTileKeepsEveryLifecycleAction'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '           researcher from being offered them. */\n'
+            '        if (bHost) return "";\n'
+        ),
+        new=(
+            '           researcher from being offered them. */\n'
+            '        if (true) return "";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testClickingAMissingHostProjectRefusesAndClaimsNothing'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Without the branch a host tile falls through to the container
+        # click path, which tries to START a container it has none of.
+        old='        if (elTile && elTile.dataset.mode === "host") {\n',
+        new='        if (false) {\n',
+    ),
+    # --- The uncontained-execution disclosure (host mode wave 4) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testEnteringAHostProjectWarnsBeforeTheProjectOpens'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Uncontained execution shipped with no disclosure at all.
+        old=(
+            '        if (elTile.dataset.warningAcknowledged !== "true") '
+            '{\n'
+            '            _fnWarnBeforeEnteringHostProject(sName, '
+            'elTile);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testGoingBackReleasesTheProjectItJustClaimed'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Declining closes the dialog and the claim stands: the project
+        # reads as in use by a session that never opened it.
+        old=(
+            '                fnOnCancel: async function () {\n'
+            '                    await fnReleaseClaim(sName);\n'
+            '                    await fnLoadContainers();\n'
+            '                },\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testContinuingShowsThePermanentUncontainedBadge'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        var bHost = sProjectMode === "host";\n',
+        new='        var bHost = false;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAContainerProjectShowsNoUncontainedBadge'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The other direction: a false alarm on every project trains
+        # the researcher to ignore the real one.
+        old='        var bHost = sProjectMode === "host";\n',
+        new='        var bHost = true;\n',
+    ),
+    # --- Adding a host project from the dialog (host mode wave 4) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testChoosingTheHostKindReOffersBothPathsWithTheDisclosure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Wired to one path instead of the stage: the other silently
+        # disappears, and an existing host directory can then only be
+        # registered as a container.
+        old=(
+            '            "click", function () { '
+            '_fnShowAddChoiceStage(sKind); }\n'
+        ),
+        new=(
+            '            "click", function () { '
+            'VaibifyWorkflowManager.fnOpenCreateWizard(sKind); }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheContainerKindTakesTheSameSecondStageWithoutTheDisclosure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Show the uncontained disclosure for every kind, which teaches
+        # a researcher to dismiss the one notice that matters.
+        old=(
+            '        document.getElementById("addChoiceHostNote")'
+            '.style.display =\n'
+            '            sKind === "host" ? "" : "none";\n'
+        ),
+        new=(
+            '        document.getElementById("addChoiceHostNote")'
+            '.style.display =\n'
+            '            sKind ? "" : "none";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheHostCreateWizardSkipsEveryContainerPage'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # The host wizard walks the container page list, asking for a
+        # Python version, repositories, features and packages that
+        # govern an image the project will never have.
+        old=(
+            '        return _dictWizardData.sMode === "host"\n'
+            '            ? _T_HOST_WIZARD_PAGES : '
+            '_T_CONTAINER_WIZARD_PAGES;\n'
+        ),
+        new='        return _T_CONTAINER_WIZARD_PAGES;\n',
+    ),
+    # --- Cancelling a host run (host mode wave 5) ---
+    #
+    # The dangerous mutant on this path is not "Cancel does nothing".
+    # It is "Cancel signals a group it cannot prove is still ours",
+    # which on a researcher's own machine means killing a stranger's
+    # process with the researcher's authority. Both halves of the one
+    # predicate are therefore mutated, and the refusing direction is
+    # scored by a test in which a LIVE process must survive.
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAProvenGroupIsTerminated'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        old='    if dictHolder["bHolderProven"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARecycledIdentityIsRefusedAndItsProcessSurvives'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # "Make cancel more reliable by signalling whatever the record
+        # names" -- the plausible mutation, and the one the whole
+        # module exists to forbid.
+        old='    if dictHolder["bHolderProven"]:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARunThatAlreadyFinishedIsReportedAsExitedNotRefused'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        old=(
+            '    if fbProcessGroupProvedEmpty(iProcessGroup):\n'
+            '        dictOutcome["listAlreadyExited"].append({\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictOutcome["listAlreadyExited"].append({\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAnUnusableProcessGroupIsNeverSignalled'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # os.killpg(0, SIGKILL) signals the CALLER's process group:
+        # without this guard a journal record carrying a zero group id
+        # makes Cancel kill the hub.
+        old=(
+            '    if not fbIsUsablePid(iProcessGroup):\n'
+            '        return\n'
+        ),
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testTheListingNamesOnlyHostExecRecords'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Both kinds carry a holder pid, so an unfiltered listing hands
+        # the terminator the hub's own carrier worker.
+        old=(
+            '        if dictRecord.get("sKind") != "host-exec":\n'
+            '            continue\n'
+            '        listHolders.append(\n'
+        ),
+        new='        listHolders.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testTheListingMarksARecycledIdentityUnproven'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The bare existence check -- the shortcut taken when reading a
+        # start clock looks like overhead. It also fails the
+        # recycled-identity test above, because one implementation has
+        # two observers; that one proves the consequence, this one
+        # proves the property.
+        old=(
+            '        and fbIsProcessAliveSince(\n'
+            '            iHolderPid, dictRecord.get("sInFlightIso"),\n'
+            '        )\n'
+        ),
+        new=(
+            '        and fbIsProcessAliveSince(\n'
+            '            iHolderPid, None,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAnUnreadableJournalRaisesInsteadOfReportingNothing'
+            'ToCancel'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Falling back the way the busy-oracle predicate does. Safe for
+        # a veto, dishonest for an action: it answers "0 processes"
+        # about a machine whose work could not be enumerated at all.
+        old=(
+            '    if dictOutcomeRead["sReadState"] not in '
+            '("absent", "valid"):\n'
+            '        raise OperationJournalUnreadableError(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise OperationJournalUnreadableError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testKillingAHostProjectSignalsTheJournalAndNeverThe'
+            'ProcessTable'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if fbIsHostProject(sContainerId):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testKillingAContainerProjectStillSweepsItsProcessTable'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if fbIsHostProject(sContainerId):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARefusedCancellationReachesTheResponse'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The key stays, so the container-direction test above is
+        # untouched and this kill isolates: what is lost is only the
+        # CONTENT, which is the whole report.
+        old='            "listCancellationRefusals": listRefused,\n',
+        new='            "listCancellationRefusals": [],\n',
+    ),
+    # The two frontend halves. A refusal the dashboard never renders
+    # is a dashboard that says the machine is quiet.
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testTheHostConfirmationNeverSaysTheProcessesAreInAContainer'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (VaibifyApp.fsGetProjectMode() === "host") {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testTheContainerConfirmationIsUnchanged'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (VaibifyApp.fsGetProjectMode() === "host") {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testARefusedCancellationIsShownAndNotRoundedDownToZero'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (listRefusals.length > 0) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testACleanCancellationRaisesNoAlarm'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        new='        if (true) {\n',
+        old='        if (listRefusals.length > 0) {\n',
+    ),
+    # --- The host-diagnostics sweeper (host mode wave 5) ---
+    #
+    # A sweeper does permanent harm by working correctly on the wrong
+    # tree, and this repository has already lost a container to one.
+    # Both directions of the TTL, plus the two ways a traversal can be
+    # talked into following a link out of the subtree.
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testStaleOperationDirectoriesGoAndRecentOnesStay'
+        ),
+        source='vaibify/host/hostScratch.py',
+        old='    if dictOperation["fModifiedEpoch"] >= fCutoff:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testAPlantedSymlinkIsUnlinkedAndItsTargetSurvives'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Describing entries through the link: the age read becomes the
+        # TARGET's age and the size becomes the target's size, so the
+        # sweeper is deciding about somebody else's file.
+        old='        tStat = os.lstat(sPath)\n',
+        new='        tStat = os.stat(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testAPlantedSymlinkToADirectoryIsUnlinkedNotWalked'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # The module's entire symlink discipline is this one line.
+        # Without the islink half, a link TO a directory is a directory
+        # to every traversal and removal here: rmtree then refuses the
+        # symlinked root and the ignored error leaves the entry forever.
+        # Not observable to the link-to-a-FILE test beside it, which is
+        # why that case is scored separately.
+        old=(
+            '    return os.path.isdir(sPath) and not '
+            'os.path.islink(sPath)\n'
+        ),
+        new='    return os.path.isdir(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testTheCredentialStoreBesideTheSubtreeIsNeverTouched'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Rooting the traversal one level up, at the shared parent. The
+        # sweep then walks the ephemeral credential store, where age is
+        # emphatically not evidence of garbage and where a deletion has
+        # already cost this project a container.
+        old=(
+            '    for sProjectPath in _flistScanPathsQuietly('
+            '_S_HOST_DIAGNOSTICS_ROOT):\n'
+            '        if not _fbIsRealDirectory(sProjectPath):\n'
+            '            listOperations.append('
+            '_fdictDescribeEntry(sProjectPath))\n'
+        ),
+        new=(
+            '    for sProjectPath in _flistScanPathsQuietly('
+            'os.path.dirname(_S_HOST_DIAGNOSTICS_ROOT)):\n'
+            '        if not _fbIsRealDirectory(sProjectPath):\n'
+            '            listOperations.append('
+            '_fdictDescribeEntry(sProjectPath))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testTheByteCapRetiresTheOldestSurvivorsFirst'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Newest-first: the cap still holds and the capture the
+        # researcher is most likely to want is the one thrown away.
+        old=(
+            '        listOperations, key=lambda dictEntry: '
+            'dictEntry["fModifiedEpoch"],\n'
+        ),
+        new=(
+            '        listOperations, key=lambda dictEntry: '
+            '-dictEntry["fModifiedEpoch"],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testEveryLevelOfTheSubtreeIsPrivateToTheUser'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # The obvious one-liner. Its leaf is 0700 and every level above
+        # it is the default, which is what the first draft shipped.
+        old='    _fnEnsurePrivateDirectory(sDirectory)\n',
+        new=(
+            '    os.makedirs(sDirectory, '
+            'mode=I_SCRATCH_DIRECTORY_MODE, exist_ok=True)\n'
+        ),
+    ),
+    # --- Abandoning a host journal (host mode wave 5) ---
+    #
+    # Two exits from a quarantine that look alike and are not: one
+    # proves, one asserts and is recorded. The mutations below are the
+    # ways that distinction can be lost.
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAbandoningRecordsTheAssertionAndThenClearsTheMarker'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # An anonymous deletion. Everything a researcher sees is
+        # identical; the only difference is that nobody can ever say
+        # who gave up on this project's proof.
+        old=(
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testTheAuditIsOnDiskBeforeTheMarkerIsUnlinked'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # The ordering inverted: unlink first, record after. Correct in
+        # every run that finishes, and unrecoverable in the one that
+        # does not.
+        old=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+            '        try:\n'
+        ),
+        new=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        try:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testRerunningAfterACrashRecordsOneEventNotTwo'
+        ),
+        source='vaibify/config/reconciliation.py',
+        old=(
+            '    if abandonmentAudit.fbHasRecordedAbandonment(\n'
+            '        sContainerName, sExpectedSha256,\n'
+            '    ):\n'
+            '        return\n'
+        ),
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAContainerProjectCannotBeAbandoned'
+        ),
+        source='vaibify/config/reconciliation.py',
+        old=(
+            '    _fnRequireHostProject(sContainerName, '
+            '"Abandoning a journal")\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAHostProjectCannotBeBreakGlassed'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # The other direction: the PROVING exit run against a project
+        # it can prove nothing about. It stops nothing, learns nothing
+        # by stopping nothing, and clears the marker regardless.
+        old=(
+            'def _fnRefuseHostProject(sContainerName, sSubject, '
+            'sAlternative):\n'
+            '    """Refuse an operation whose containment a host project '
+            'cannot have."""\n'
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sContainerName):\n'
+        ),
+        new=(
+            'def _fnRefuseHostProject(sContainerName, sSubject, '
+            'sAlternative):\n'
+            '    """Refuse an operation whose containment a host project '
+            'cannot have."""\n'
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAStaleHashWritesNoAuditAndClearsNothing'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # Recording the assertion before checking the hash: a
+        # misdirected request then leaves behind an audit entry saying
+        # a researcher abandoned a marker they never touched.
+        old=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+        new=(
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+    ),
+    # --- What a quarantined HOST project says and offers (wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testAHostQuarantineNamesTheMachineAndWhatCannotBeSeen'
+        ),
+        source='vaibify/config/containerLock.py',
+        old='    if not fbIsHostProject(sProjectName):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testAContainerQuarantineKeepsItsOwnSentence'
+        ),
+        source='vaibify/config/containerLock.py',
+        # The other direction: every containerized researcher told to
+        # terminate recorded host processes for work that runs
+        # somewhere else entirely.
+        old='    if not fbIsHostProject(sProjectName):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedSignalsTheJournaledGroupThenReproves'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # Terminate, report, stop. The machine changes and the
+        # dashboard does not: the project stays quarantined by the very
+        # record the researcher just settled.
+        old=(
+            '        iOutcome = fiTerminateRecordedHostProcesses('
+            'sContainerName)\n'
+            '        if iOutcome != 0:\n'
+            '            return iOutcome\n'
+            '        return fiRunCrashTimeReconcile('
+            'sContainerName, bAssumeYes)\n'
+        ),
+        new=(
+            '        return fiTerminateRecordedHostProcesses('
+            'sContainerName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedRefusesAContainerProject'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # Without the mode check a containerized project's journal --
+        # whose holder pids are the HUB's own workers -- is handed to a
+        # process-group terminator.
+        old='    if not fbIsHostProject(sContainerName):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedRefusesWhileALiveHubHoldsTheProject'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # The flag falls through to the terminator while a hub is live,
+        # killing processes it is still streaming from and leaving it
+        # reading pipes whose writers vanished.
+        old='        if bTerminateRecorded:\n',
+        new='        if False:\n',
+    ),
+    # --- Backend-supplied workspace root + the paused label (wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testAHostProjectIsToldItsOwnDirectory'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        return fsResolveProjectRoot('
+            'sResourceId, WORKSPACE_ROOT)\n'
+        ),
+        new='        return WORKSPACE_ROOT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testAContainerProjectIsStillToldTheContainerRoot'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other direction: every containerized dashboard pointed at
+        # a HOST path the container cannot see.
+        old=(
+            '        return fsResolveProjectRoot('
+            'sResourceId, WORKSPACE_ROOT)\n'
+        ),
+        new=(
+            '        from vaibify.config.registryManager import '
+            'fdictGetProject\n'
+            '        return (fdictGetProject(sResourceId) or {}).get('
+            '"sDirectory", WORKSPACE_ROOT)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWorkspaceRootReachesThePanels.py::'
+            'testTheFilePanelBrowsesTheRootTheServerSent'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Storing the answer and not using it: green everywhere, and
+        # the host file browser still opens a path nobody has.
+        old=(
+            '        sCurrentPath = sPath || '
+            'VaibifyApp.fsGetWorkspaceRoot();\n'
+        ),
+        new='        sCurrentPath = sPath || "/workspace";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWorkspaceRootReachesThePanels.py::'
+            'testTheContainerRootStillReachesThePanel'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Dropping the fallback: an older server that sends no root at
+        # all leaves every panel browsing "undefined".
+        old=(
+            '        _dictSessionState.sWorkspaceRoot = '
+            'sWorkspaceRoot || "/workspace";\n'
+        ),
+        new='        _dictSessionState.sWorkspaceRoot = sWorkspaceRoot;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPausedBadgeIndicator.py::'
+            'testAPausedRefreshSaysSoAndNamesWhatIsBusy'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # Keeping the last known map without saying so: badges from an
+        # earlier minute, read as current.
+        old='            _fnShowRefreshPaused(true, dictResult.sPausedBy);\n',
+        new='            void dictResult.sPausedBy;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPausedBadgeIndicator.py::'
+            'testACompletedRefreshClearsTheLabel'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # The other direction: a staleness warning that is always on is
+        # one nobody reads.
+        old='        _fnShowRefreshPaused(false, "");\n        var dictDiff = _fbBadgeMapChanged(\n',
+        new='        var dictDiff = _fbBadgeMapChanged(\n',
+    ),
+    # --- The adversarial host path corpus (host mode wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testEveryPathTakingMethodRefusesEveryHostilePath'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The guard dropped from the ONE method that swallows OSError,
+        # where an escape looks exactly like an ordinary absent file.
+        old=(
+            '                tStat = os.stat(\n'
+            '                    self._fsValidateHostPath('
+            'sContainerId, sPath),\n'
+            '                )\n'
+        ),
+        new='                tStat = os.stat(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testTheLegitimateProjectPathsAreStillAdmitted'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The other direction: a guard that refuses everything is not
+        # secure, it is broken, and a refusal-only corpus cannot tell.
+        old='        for sAllowedRoot in (sProjectRoot, sScratchRoot):\n',
+        new='        for sAllowedRoot in ():\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testEveryPathTakingMethodIsInTheCorpusTable'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The class-level failure, expressed as what it actually is: a
+        # new path-taking method arriving with no guard and no corpus
+        # entry. The refusal corpus above passes happily beside it.
+        old=(
+            '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
+        ),
+        new=(
+            '    def fbContainerPathIsReadable(self, sContainerId, sPath):\n'
+            '        """A new entry point nobody added to the corpus."""\n'
+            '        del sContainerId\n'
+            '        return os.access(sPath, os.R_OK)\n'
+            '\n'
+            '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
+        ),
+    ),
+    # --- Process signalling joins the dangerous vocabulary (2026-08-10) ---
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testSignallingAProcessIsAnAcquisition'
+        ),
+        source='tools/generateMutationInventory.py',
+        # Emptying the vocabulary returns all seven of this package's
+        # signalling sites to being invisible, including the one that
+        # aims a group kill at a number read off disk.
+        old='SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})\n',
+        new='SET_OS_SIGNAL_MEMBERS = frozenset()\n',
+    ),
+    # --- The Repos poll becomes a typed read (2026-08-10) ---
+    #
+    # One migration, five separately-observable guarantees, because the
+    # shell script it replaced was wrong in five separate ways and a
+    # single happy-path test would have covered none of them.
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testTheBatchIssuesNoCommandAtAll'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # The migration undone: back to an exec, and with it the route
+        # goes back outside the commit-guard boundary.
+        old=(
+            '        listRaw = connectionDocker.flistReadGitRepoStatuses(\n'
+            '            sContainerId, listRepoPaths,\n'
+            '        )\n'
+        ),
+        new=(
+            '        listRaw = connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "echo []",\n'
+            '        ) and []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAnswersAreKeyedByPathNotByPosition'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Positional matching: the natural way to write it, and
+        # silently wrong -- every repository inherits its neighbour's
+        # branch, url and dirtiness, and the panel looks plausible.
+        old=(
+            '    return [\n'
+            '        _fdictStatusFromRawRecord(sName, dictByPath.get(sPath))\n'
+            '        for sName, sPath in zip(listRepoNames, listRepoPaths)\n'
+            '    ]\n'
+        ),
+        new=(
+            '    return [\n'
+            '        _fdictStatusFromRawRecord(\n'
+            '            sName,\n'
+            '            listRaw[iIndex] if iIndex < len(listRaw) else None,\n'
+            '        )\n'
+            '        for iIndex, sName in enumerate(listRepoNames)\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAFailedReadReportsMissingRatherThanRaising'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old='    except (OSError, ValueError):\n',
+        new='    except ():\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testARepositoryNameNeverReachesAShell'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Names re-entering command text. Distinct from the
+        # no-command mutant above: this one keeps the typed read AND
+        # adds a shell beside it, which is how a migration half-lands.
+        old=(
+            '    listRepoPaths = [\n'
+            '        posixpath.join(sRepoRoot, sName) for sName in listRepoNames\n'
+            '    ]\n'
+        ),
+        new=(
+            '    listRepoPaths = [\n'
+            '        posixpath.join(sRepoRoot, sName) for sName in listRepoNames\n'
+            '    ]\n'
+            '    for sName in listRepoNames:\n'
+            '        connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "git -C /workspace/" + sName + " status",\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testTheStatusRouteNoLongerAwaitsACarrierMode'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # Putting it back on the ambient admission, where the
+        # declaration buys nothing.
+        old=(
+            '    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),\n'
+            '    ("GET", "/api/steps/{sContainerId}"),\n'
+        ),
+        new=(
+            '    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/status"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),\n'
+            '    ("GET", "/api/steps/{sContainerId}"),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAFilenameContainingAPipeNoLongerCorruptsTheAnswer'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # The old transport put back: porcelain split at pipes, so a
+        # filename containing one becomes two lines. Observable only
+        # through the artefact filter, which is why the test's fixture
+        # is an artefact rather than an ordinary file.
+        old='        fsFilterArtifacts(dictRecord.get("sPorcelain") or ""),\n',
+        new=(
+            '        fsFilterArtifacts(\n'
+            '            (dictRecord.get("sPorcelain") or "").replace(\n'
+            '                "|", chr(10),\n'
+            '            ),\n'
+            '        ),\n'
+        ),
+    ),
+    # --- What the FIRST real host workflow found (2026-08-10) ---
+    #
+    # Four backend paths written as the container constant, each found
+    # by opening a host workflow in a browser and reading the network
+    # log, and each breaking a different part of the journey. Plus the
+    # relative-path rule, which the file poll disproved on the first
+    # tick.
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testThePipelineStatePathFollowsTheProject'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),\n'
+            '        _S_STATE_RELATIVE,\n'
+            '    )\n'
+        ),
+        new='    return S_STATE_PATH\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testTheLogsDirectoryFollowsTheProject'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # The symptom this one produced is the reason it is registered
+        # separately: the step SUCCEEDED and the pipeline reported exit
+        # 1, so a researcher would have gone looking at their script.
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),\n'
+            '        VAIBIFY_LOGS_DIR,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return posixpath.join(\n'
+            '        DEFAULT_SEARCH_ROOT, VAIBIFY_LOGS_DIR,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testTheTrackedRepositoriesSidecarFollowsTheProject'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    return posixpath.join(\n'
+            '        fsRepositoryRootFor(sResourceId), _S_SIDECAR_RELATIVE,\n'
+            '    )\n'
+        ),
+        new='    return S_TRACKED_REPOS_PATH\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_relative_path_resolves_against_the_project_root'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The rule this replaced. Written before any host workflow had
+        # been opened, and disproved by the first one: the file poll
+        # asks about repo-relative paths, which is the wire contract.
+        old=(
+            '        if not os.path.isabs(sPath):\n'
+            '            sPath = os.path.join(sProjectRoot, sPath)\n'
+        ),
+        new=(
+            '        if not os.path.isabs(sPath):\n'
+            '            raise HostPathOutsideProjectError(sPath)\n'
+        ),
+    ),
+    # --- The launch path told the researcher three untrue things ---
+    #
+    # Found by a maintainer trying to follow a test plan (2026-08-10).
+    # From outside they compose into "vaibify is hanging", which is not
+    # what was happening and is why each is scored separately.
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testGuiWithNoProjectLaunchesTheHubNotTheSingleProjectViewer'
+        ),
+        source='vaibify/cli/main.py',
+        # What shipped: the single-project viewer, with a container
+        # path as its workspace root, while the help promised the
+        # landing page.
+        old='        fnLaunchHub(None)\n        return\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testANamedProjectThatCannotResolveStopsTheCommand'
+        ),
+        source='vaibify/cli/main.py',
+        # The swallowed exit, restored: a resolver's sys.exit caught
+        # and discarded, so a fatal message printed as noise before a
+        # successful start.
+        # Anchored through the following line: this call spells the
+        # same three lines in three commands, and only the gui one is
+        # the subject here.
+        old=(
+            '    configProject = fconfigResolveProject(sProjectName)\n'
+            '    sUrl = "http://127.0.0.1:8050"\n'
+        ),
+        new=(
+            '    try:\n'
+            '        configProject = fconfigResolveProject(sProjectName)\n'
+            '    except SystemExit:\n'
+            '        configProject = None\n'
+            '    sUrl = "http://127.0.0.1:8050"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testTheAnnouncementNeverOffersTheAddressAsTheWayIn'
+        ),
+        source='vaibify/cli/main.py',
+        # The bare address alone, which is the one string that cannot
+        # sign in.
+        old=(
+            '    click.echo(\n'
+            '        "Opening your browser. The dashboard signs in with '
+            'a one-time "\n'
+            '        "link, so that tab is the way in — this address '
+            'alone cannot "\n'
+            '        "sign in. If no window opened, re-run this command."\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnsignedTabSaysSo.py::'
+            'testAnUnsignedTabNamesTheProblemAndTheFix'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Carrying on with no credential: the first 401 kills
+        # initialization, the static placeholder stays, and a refused
+        # dashboard is pixel-identical to a slow one.
+        old=(
+            '        if (!_dictSessionState.sSessionToken) {\n'
+            '            _fnReportNoCredentialAndStop();\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnsignedTabSaysSo.py::'
+            'testASignedTabStillLoadsItsContainers'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The other direction: refusing every tab would replace the
+        # dashboard with an error for everybody.
+        old='        if (!_dictSessionState.sSessionToken) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_host_claim_survives_the_time_it_takes_to_read_'
+            'the_warning'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Drop the presence veto: the claim is reaped while the
+        # disclosure is still on screen.
+        old=(
+            '            or _fbOwningBrowserStillAttends('
+            'app, dictContainerOwners, sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_container_claim_survives_a_pause_on_the_workflow_'
+            'picker'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Scope presence to host projects only -- the shape of a fix
+        # that answers the report and leaves the class.
+        old=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+            '    from vaibify.config.registryManager import fbIsHostProject\n'
+            '    if not fbIsHostProject(recordOwner.sContainerId):\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_claim_whose_browser_went_away_is_still_reaped'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Presence that never consults the session clock: every
+        # abandoned claim becomes permanent.
+        old=(
+            '    return dictLifetime["fIdleSeconds"] < '
+            'F_CLAIM_PRESENCE_WINDOW_SECONDS\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_presence_answers_only_before_the_first_socket'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Widen presence past the first socket, which quietly disables
+        # the ORPHANED_SESSION machinery for every open tab.
+        old=(
+            '    if recordOwner.bSocketEverExisted:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_record_bound_to_no_session_keeps_the_old_behaviour'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Consult the store with an unbound id, pinning a record
+        # nobody can be shown to be attending.
+        old=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
+            'testALostClaimSendsTheResearcherWhereTheyCanClaimAgain'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Report the refusal as a bare toast: the researcher stays on a
+        # screen with no claim control, which is what shipped.
+        old='            if (_fbRecoverFromLostClaim(error)) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
+            'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Recover on any error, which sends a researcher refused
+        # for a reason they cannot fix back to be refused again.
+        old=(
+            '        if (dictDetail.sRefusal !== '
+            '_S_REFUSAL_CLAIM_REQUIRED) {\n'
+        ),
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheListIsHeadedByTheMachineNotTheContainment'
+        ),
+        source='vaibify/gui/static/index.html',
+        # Head the list by containment again, filing every host project
+        # under the one word it is not.
+        old='                This machine</h3>\n',
+        new='                Containers</h3>\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testEveryTileSaysWhetherItIsContained'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # One containment for every tile: an uncontained project is
+        # then labelled contained, on the screen where it matters most.
+        old='            (bHost ? "uncontained" : "contained") + "</span>"\n',
+        new='            "contained" + "</span>"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPickerScreensScroll.py::'
+            'testTheEnvironmentListScrollsToBothEnds'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # The landing screen as it shipped: a centred column inside an
+        # overflow:hidden body. Every environment past the fold is
+        # unreachable.
+        old=(
+            '    justify-content: flex-start;\n'
+            '    height: 100%;\n'
+            '    overflow-y: auto;\n'
+            '    padding: 24px 20px;\n'
+        ),
+        new=(
+            '    justify-content: center;\n'
+            '    height: 100%;\n'
+            '    padding: 24px 20px;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPickerScreensScroll.py::'
+            'testTheProjectListScrollsToBothEnds'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # Fix only the landing screen: the Project list keeps the same
+        # defect, which is how it shipped and what the report named
+        # second.
+        old=(
+            '    justify-content: flex-start;\n'
+            '    height: 100%;\n'
+            '    overflow-y: auto;\n'
+            '    padding: 40px;\n'
+        ),
+        new=(
+            '    justify-content: center;\n'
+            '    min-height: 100vh;\n'
+            '    padding: 40px;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testTheTerminalNoticeSpeaksAboutTheRightThing'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # Treat a host project as terminal-capable: the pane dials a
+        # socket the server will refuse, and the researcher is shown a
+        # connection failure instead of being pointed at their own
+        # shell. (Before the terminal came back this same mutation
+        # produced the container notice, with its docker exec line, on
+        # a project that has no container.)
+        old='        return VaibifyApp.fsGetProjectMode() !== "host";\n',
+        new='        return true;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testRecognitionSurvivesTheMutationGate'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The shipped defect, restored exactly: recognise by running an
+        # arbitrary command, which the enforced request lane refuses.
+        old=(
+            '        listExists = connectionDocker.flistContainerPathsExist(\n'
+            '            dictContainer["sContainerId"], '
+            '[S_VAIBIFY_MARKER_DIRECTORY],\n'
+            '        )\n'
+            '        return bool(listExists) and bool(listExists[0])\n'
+        ),
+        new=(
+            '        iExitCode, _ = connectionDocker.ftResultExecuteCommand(\n'
+            '            dictContainer["sContainerId"],\n'
+            '            "test -d /workspace/.vaibify",\n'
+            '        )\n'
+            '        return iExitCode == 0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testAContainerWithoutTheMarkerIsNotRecognised'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Recognise anything reachable, sweeping every unrelated
+        # container on the machine into the researcher's project list.
+        old='        return bool(listExists) and bool(listExists[0])\n',
+        new='        return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testARefusedReadIsNotReportedAsNotAVaibifyContainer'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Swallow the refusal again: the dashboard shows a shorter list
+        # instead of an error, which is how the defect stayed invisible.
+        old=(
+            '    except ControlPlaneRefusalError:\n'
+            '        raise\n'
         ),
         new='',
     ),

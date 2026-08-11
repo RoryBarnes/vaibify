@@ -631,20 +631,20 @@ class TestFlistBuildFigureCheckPaths:
     def test_basic_absolute(self):
         listPaths = _flistBuildFigureCheckPaths(
             "/workspace/proj/Plot/fig.pdf",
-            "", "/workspace/proj", "Plot/fig.pdf")
+            "", "/workspace/proj", "Plot/fig.pdf", "/workspace")
         assert "/workspace/proj/Plot/fig.pdf" in listPaths
 
     def test_with_workdir(self):
         listPaths = _flistBuildFigureCheckPaths(
             "/workspace/proj/fig.pdf",
             "/workspace/proj/step01",
-            "/workspace/proj", "fig.pdf")
+            "/workspace/proj", "fig.pdf", "/workspace")
         assert len(listPaths) == 2
 
     def test_absolute_file_no_fallback(self):
         listPaths = _flistBuildFigureCheckPaths(
             "/abs/fig.pdf", "/workspace",
-            "/workspace", "/abs/fig.pdf")
+            "/workspace", "/abs/fig.pdf", "/workspace")
         assert len(listPaths) == 1
 
 

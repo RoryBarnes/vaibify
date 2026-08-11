@@ -54,6 +54,23 @@ def _ffileOpenRegistryLock():
     return fileHandle
 
 
+def _fnMutateRegistryLocked(fnMutateRegistry):
+    """Run a read-modify-write of the registry under the exclusive lock.
+
+    Reading before taking the lock lets two concurrent registrations
+    both pass their duplicate checks against the same stale snapshot
+    and the second write silently keep both entries — so the read, the
+    check, the mutation, and the write must all happen while the lock
+    is held. ``fnMutateRegistry`` may raise to abandon the write; the
+    lock is released either way.
+    """
+    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)
+    with _ffileOpenRegistryLock():
+        dictRegistry = fdictLoadRegistry()
+        fnMutateRegistry(dictRegistry)
+        _fnWriteRegistryAtomic(dictRegistry)
+
+
 def _fnWriteRegistryAtomic(dictRegistry):
     """Write registry content to a temp file and replace."""
     sContent = json.dumps(dictRegistry, indent=2) + "\n"
@@ -107,32 +124,45 @@ def fsDiscoverConfigInDirectory(sDirectory):
     )
 
 
-def fnAddProject(sDirectory):
+def fnAddProject(sDirectory, sMode="container"):
     """Register a project directory in the global registry.
 
     Parameters
     ----------
     sDirectory : str
         Absolute path to the project directory.
+    sMode : str
+        ``"container"`` (the default) or ``"host"``. A host project's
+        pipeline runs directly on this machine; its registry name is
+        its resource id everywhere a container project carries a
+        Docker id.
 
     Raises
     ------
     FileNotFoundError
         If no config file exists in the directory.
     ValueError
-        If the project is already registered.
+        If the project is already registered, or ``sMode`` is not a
+        recognized mode.
     """
+    if sMode not in ("container", "host"):
+        raise ValueError(
+            f"Unknown project mode {sMode!r}; expected 'container' "
+            "or 'host'"
+        )
     sAbsDirectory = os.path.abspath(sDirectory)
     sConfigPath = fsDiscoverConfigInDirectory(sAbsDirectory)
     sName = _fsProjectNameFromConfig(sConfigPath)
-    dictRegistry = fdictLoadRegistry()
-    _fnCheckNotDuplicate(dictRegistry, sName, sAbsDirectory)
     sContainerName = sName
     dictProject = _fdictBuildProjectEntry(
-        sName, sAbsDirectory, sConfigPath, sContainerName,
+        sName, sAbsDirectory, sConfigPath, sContainerName, sMode,
     )
-    dictRegistry["listProjects"].append(dictProject)
-    fnSaveRegistry(dictRegistry)
+
+    def fnAppendUnlessDuplicate(dictRegistry):
+        _fnCheckNotDuplicate(dictRegistry, sName, sAbsDirectory)
+        dictRegistry["listProjects"].append(dictProject)
+
+    _fnMutateRegistryLocked(fnAppendUnlessDuplicate)
 
 
 def _fsProjectNameFromConfig(sConfigPath):
@@ -143,23 +173,59 @@ def _fsProjectNameFromConfig(sConfigPath):
 
 
 def _fnCheckNotDuplicate(dictRegistry, sName, sDirectory):
-    """Raise ValueError if container name already registered."""
+    """Raise ValueError on a name or physical-directory duplicate.
+
+    Two registry entries must never resolve to one physical directory:
+    locks, journals, and ownership are all name-keyed, so a directory
+    registered under two names would grant two "exclusive" sessions on
+    the same files.
+    """
     for dictExisting in dictRegistry["listProjects"]:
         if dictExisting["sName"] == sName:
             raise ValueError(
                 f"Container '{sName}' is already registered"
             )
+        if _fbSamePhysicalDirectory(
+            dictExisting["sDirectory"], sDirectory,
+        ):
+            raise ValueError(
+                f"Directory '{sDirectory}' is already registered "
+                f"as '{dictExisting['sName']}'"
+            )
+
+
+def _fbSamePhysicalDirectory(sExistingPath, sCandidatePath):
+    """Return True when two paths name one physical directory.
+
+    ``os.path.samefile`` compares inodes, which is what catches symlink
+    aliases and case variants on macOS's case-insensitive filesystems —
+    realpath *string* equality would miss the latter. The realpath
+    fallback covers entries whose directory no longer exists on disk.
+    """
+    try:
+        return os.path.samefile(sExistingPath, sCandidatePath)
+    except OSError:
+        return (
+            os.path.realpath(sExistingPath)
+            == os.path.realpath(sCandidatePath)
+        )
 
 
 def _fdictBuildProjectEntry(
-    sName, sDirectory, sConfigPath, sContainerName,
+    sName, sDirectory, sConfigPath, sContainerName, sMode,
 ):
-    """Construct a registry entry dict."""
+    """Construct a registry entry dict.
+
+    ``sMode`` is stored explicitly for new entries; entries written
+    before host mode existed have no key, and an absent key reads as
+    container mode everywhere (see :func:`fbIsHostProject`).
+    """
     return {
         "sName": sName,
         "sDirectory": sDirectory,
         "sConfigPath": sConfigPath,
         "sContainerName": sContainerName,
+        "sMode": sMode,
     }
 
 
@@ -176,16 +242,19 @@ def fnRemoveProject(sName):
     KeyError
         If the project is not found.
     """
-    dictRegistry = fdictLoadRegistry()
-    listProjects = dictRegistry["listProjects"]
-    iOriginalLength = len(listProjects)
-    dictRegistry["listProjects"] = [
-        dictProject for dictProject in listProjects
-        if dictProject["sName"] != sName
-    ]
-    if len(dictRegistry["listProjects"]) == iOriginalLength:
-        raise KeyError(f"Project '{sName}' not found in registry")
-    fnSaveRegistry(dictRegistry)
+    def fnRemoveByName(dictRegistry):
+        listProjects = dictRegistry["listProjects"]
+        listRemaining = [
+            dictProject for dictProject in listProjects
+            if dictProject["sName"] != sName
+        ]
+        if len(listRemaining) == len(listProjects):
+            raise KeyError(
+                f"Project '{sName}' not found in registry"
+            )
+        dictRegistry["listProjects"] = listRemaining
+
+    _fnMutateRegistryLocked(fnRemoveByName)
 
 
 def fsGetContainerUser(sContainerName):
@@ -210,6 +279,21 @@ def fsGetContainerUser(sContainerName):
         return configProject.sContainerUser
     except Exception:
         return "researcher"
+
+
+def fbIsHostProject(sResourceId):
+    """Return True when the resource id names a registered host project.
+
+    A host project's resource id is its registry name; a container's
+    resource id is a Docker container id, which is not a registry key,
+    so a missing entry reads as container mode. An entry without
+    ``sMode`` also reads as container mode — every entry written before
+    host mode existed is a container project.
+    """
+    dictProject = fdictGetProject(sResourceId)
+    if dictProject is None:
+        return False
+    return dictProject.get("sMode") == "host"
 
 
 def fdictGetProject(sName):
@@ -262,7 +346,9 @@ def flistGetAllProjectsWithStatus():
 
 
 def _fdictEnrichWithStatus(dictProject):
-    """Add Docker status fields to a project entry copy."""
+    """Add status fields to a project entry copy, branching by mode."""
+    if dictProject.get("sMode") == "host":
+        return _fdictEnrichHostProjectStatus(dictProject)
     from vaibify.docker.imageBuilder import fbImageExists
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus,
@@ -275,6 +361,38 @@ def _fdictEnrichWithStatus(dictProject):
     dictEnriched["bRunning"] = dictStatus["bRunning"]
     dictEnriched["sStatus"] = _fsResolveDisplayStatus(
         dictEnriched["bImageExists"], dictStatus,
+    )
+    return dictEnriched
+
+
+def _fdictEnrichHostProjectStatus(dictProject):
+    """Add status fields to a host entry copy; Docker is never consulted.
+
+    Host picker vocabulary (host-mode plan §9): ``ready`` when the
+    project directory and its config are both present, ``missing``
+    when either is gone (the tile renders red with the path shown).
+    ``in use`` is not decided here — it is the existing name-keyed
+    lock annotation, which works unchanged for host names. There is
+    no image and no container, so those fields are honestly False.
+    """
+    from vaibify.config import preferencesStore
+    dictEnriched = dict(dictProject)
+    dictEnriched["bImageExists"] = False
+    dictEnriched["bRunning"] = False
+    sDirectory = dictProject.get("sDirectory", "")
+    bProjectPresent = (
+        os.path.isdir(sDirectory)
+        and os.path.isfile(dictProject.get("sConfigPath", ""))
+    )
+    dictEnriched["sStatus"] = "ready" if bProjectPresent else "missing"
+    # Whether the uncontained-execution warning was acknowledged is
+    # answered HERE rather than by the dashboard comparing paths: the
+    # acknowledgement is keyed by canonical directory, and a frontend
+    # doing its own realpath would key a symlinked alias differently
+    # and warn again for a project the researcher already accepted.
+    dictEnriched["bHostWarningAcknowledged"] = (
+        bool(sDirectory)
+        and preferencesStore.fbHostWarningAcknowledged(sDirectory)
     )
     return dictEnriched
 

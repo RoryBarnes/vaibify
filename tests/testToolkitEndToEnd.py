@@ -44,21 +44,47 @@ class FakeDockerMinimal:
     def fnAddRepo(self, sName, sUrl):
         self.dictRepos[sName] = sUrl
 
+    # The sidecar read and workspace discovery are typed reads now,
+    # not `cat` and `find`; same fixture, different question asked.
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        sContent = self.dictFiles.get(sPath, "")
+        if not sContent:
+            raise FileNotFoundError(sPath)
+        return sContent.encode("utf-8")
+
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        return sorted(self.dictRepos)
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [
+            sPath[len("/workspace/"):].rsplit("/.git", 1)[0]
+            in self.dictRepos
+            for sPath in listPaths
+        ]
+
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """The repository-status batch, as the typed read answers it."""
+        listStatuses = []
+        for sRepoPath in listRepoPaths:
+            sName = sRepoPath[len("/workspace/"):]
+            if sName not in self.dictRepos:
+                listStatuses.append(
+                    {"sPath": sRepoPath, "bMissing": True},
+                )
+                continue
+            listStatuses.append({
+                "sPath": sRepoPath,
+                "bMissing": False,
+                "sBranch": "main\n",
+                "sUrl": self.dictRepos[sName] + "\n",
+                "sPorcelain": "",
+            })
+        return listStatuses
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
-        if sCommand.startswith("cat /workspace/.vaibify/"):
-            sContent = self.dictFiles.get(
-                "/workspace/.vaibify/tracked_repos.json", ""
-            )
-            if sContent:
-                return (0, sContent)
-            return (1, "")
         if sCommand.startswith("mkdir -p"):
             return (0, "")
-        if "find /workspace -mindepth 2" in sCommand:
-            listOut = [
-                f"/workspace/{s}" for s in self.dictRepos
-            ]
-            return (0, "\n".join(listOut) + "\n")
         if sCommand.startswith("test -d /workspace/"):
             sName = sCommand.split(
                 "/workspace/")[1].split("/")[0]
@@ -107,7 +133,7 @@ def _fnSeedToolkitTemplate(tmp_path, monkeypatch):
 def _fclientBuildRegistry():
     """Build a hub-mode FastAPI TestClient."""
     app = FastAPI()
-    dictCtx = {"require": lambda: None, "docker": None}
+    dictCtx = {"require": lambda *aArgs: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return TestClient(app)
 
@@ -115,7 +141,7 @@ def _fclientBuildRegistry():
 def _fclientBuildRepos(fakeDocker):
     """Build a FastAPI TestClient with repoRoutes wired up."""
     app = FastAPI()
-    dictCtx = {"require": lambda: None, "docker": fakeDocker}
+    dictCtx = {"require": lambda *aArgs: None, "docker": fakeDocker}
     fnRegisterAll(app, dictCtx)
     return TestClient(app)
 
@@ -169,15 +195,16 @@ def testToolkitAutoSeedsReposAsTracked(tmp_path, monkeypatch):
     assert listTrackedNames == ["bar", "foo"]
     assert dictBody["listUndecided"] == []
     assert dictBody["listIgnored"] == []
-    dictStored = json.loads(
-        fakeDocker.dictFiles[
-            "/workspace/.vaibify/tracked_repos.json"
-        ]
-    )
-    listStoredUrls = sorted(
-        r["sUrl"] for r in dictStored["listTracked"]
-    )
-    assert listStoredUrls == [
+    # The URLs come from the status batch, which reads them live. They
+    # used to be asserted on the sidecar the READ wrote; that write is
+    # gone, and asserting the payload is the stronger claim anyway --
+    # it is what the researcher sees.
+    listShownUrls = sorted(d["sUrl"] for d in dictBody["listTracked"])
+    assert listShownUrls == [
         "https://github.com/example/bar.git",
         "https://github.com/example/foo.git",
     ]
+    assert (
+        "/workspace/.vaibify/tracked_repos.json"
+        not in fakeDocker.dictFiles
+    ), "the status read persisted a sidecar"

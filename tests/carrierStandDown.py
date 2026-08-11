@@ -67,6 +67,7 @@ def _fdictCommitWithoutTheJournal(
 async def _fdictRunWorkerWithoutTheDrain(
     appState, sName, sContainerId, dictLaneTuple, sOperationKind,
     sTarget, fnWorker, dictHolderIdentity=None, fnTerminateWorker=None,
+    bPauseWhenBusy=False,
 ):
     """Run a mode-(b) worker inline, holding no lock and no record.
 
@@ -74,9 +75,15 @@ async def _fdictRunWorkerWithoutTheDrain(
     shape every carrier worker already accepts: the real supervisor is
     an optional argument precisely so a worker can be exercised without
     one.
+
+    ``bPauseWhenBusy`` is accepted and IGNORED: with no lock and no
+    registry there is nothing that could be busy, so a stood-down
+    automatic read always runs. A module that wants to prove the pause
+    must drive the real carrier.
     """
     del appState, sName, sContainerId, dictLaneTuple
     del sOperationKind, sTarget, dictHolderIdentity, fnTerminateWorker
+    del bPauseWhenBusy
     return {"bCommitted": True, "result": fnWorker(None)}
 
 

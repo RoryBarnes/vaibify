@@ -1,11 +1,13 @@
 """Tests for vaibify.docker.dockerConnection with mocked docker-py."""
 
 import io
+import sys
 import tarfile
 
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
+from vaibify.docker import dockerConnection as dockerConnectionModule
 from vaibify.docker.dockerConnection import DockerConnection
 
 
@@ -748,4 +750,138 @@ def test_module_init_filters_deprecation_warning():
     )
     assert resultProcess.stdout.strip() == "True", (
         resultProcess.stdout, resultProcess.stderr,
+    )
+
+
+def test_fbErrorMeansContainerUnreachable_matches_the_api_error_family():
+    """The Docker leg of the substrate predicate is exactly APIError.
+
+    ``fbErrorMeansContainerUnreachable`` replaced GUI modules' own
+    ``except (APIError, NotFound)`` clauses, so its Docker-leg answer
+    must be exactly that historical catch set: the ``APIError`` family
+    (``NotFound`` is an ``APIError`` subclass) and nothing else. A
+    plain ``OSError`` — the shape a host-mode connection raises — is
+    NOT the Docker substrate and classifies False here; the host leg
+    teaches the predicate its own shapes when it lands.
+    """
+    import docker.errors
+    from vaibify.docker.dockerConnection import (
+        fbErrorMeansContainerUnreachable,
+    )
+
+    assert fbErrorMeansContainerUnreachable(
+        docker.errors.APIError("500 daemon contention"),
+    ) is True
+    assert fbErrorMeansContainerUnreachable(
+        docker.errors.NotFound("container gone"),
+    ) is True
+    for errorForeign in (
+        OSError("host subprocess failed"),
+        ValueError("a coding bug"),
+        RuntimeError("a coding bug"),
+    ):
+        assert fbErrorMeansContainerUnreachable(errorForeign) is False
+
+
+# ---------------------------------------------------------------------
+# The poll's two typed-read programs, EXECUTED.
+#
+# These run the same fixed source text the container runs, against a
+# real temp directory, through the same interpreter flag. Nothing else
+# in the suite executes a typed-read program at all: every other test
+# of this layer asserts which NAME an adapter chose, which cannot
+# notice that the program behind the name has a syntax error or emits
+# a shape the caller cannot parse. The stat batch is on a five-second
+# timer, so "it does not run" would surface as a dashboard that has
+# quietly stopped reporting.
+# ---------------------------------------------------------------------
+
+def _fdictRunTypedReadProgramLocally(sOperation, objPaths):
+    """Run one typed-read program on this machine; return its parsed output.
+
+    Built through the module's own slot substitution rather than a
+    hand-written copy, so a change to the program text is exercised
+    here rather than shadowed by a duplicate that drifts.
+    """
+    import json
+    import subprocess
+    from vaibify.docker import dockerConnection
+
+    sProgram = dockerConnection._DICT_TYPED_READ_PROGRAMS[
+        sOperation
+    ].replace(
+        dockerConnection._S_TYPED_READ_PATH_SLOT,
+        dockerConnection._fsTypedReadPathLiteral(objPaths),
+    )
+    processResult = subprocess.run(
+        [sys.executable, "-c", sProgram],
+        capture_output=True, text=True,
+    )
+    assert processResult.returncode == 0, processResult.stderr
+    return processResult.stdout
+
+
+@pytest.mark.falsification
+def test_the_mtime_program_answers_json_and_skips_absent_paths(tmp_path):
+    """The stat batch's shape, run rather than assumed.
+
+    A path with EMBEDDED SPACES is in the corpus deliberately. It used
+    to be a parsing guarantee -- the old `stat -c \'%n %Y\'` output was
+    line oriented, so a directory named "Plot Output" lost its mtime
+    unless the parser split on the last space. A JSON object keyed by
+    the path has no split to get wrong, and this is where that
+    guarantee now lives.
+
+    Kills: emitting line-oriented output from the mtime program, i.e.
+    reverting to the format whose parsing this replaced.
+    """
+    import json
+
+    pathSpaced = tmp_path / "Plot Output"
+    pathSpaced.mkdir()
+    pathPresent = pathSpaced / "present.dat"
+    pathPresent.write_text("x")
+    pathAbsent = tmp_path / "absent.dat"
+
+    sOutput = _fdictRunTypedReadProgramLocally(
+        dockerConnectionModule.S_TYPED_READ_PATH_MTIMES,
+        [str(pathPresent), str(pathAbsent)],
+    )
+    dictMtimes = json.loads(sOutput)
+
+    assert list(dictMtimes) == [str(pathPresent)], (
+        "an absent path must be omitted, not reported with a null or "
+        f"zero mtime: {dictMtimes}"
+    )
+    assert dictMtimes[str(pathPresent)] == str(
+        int(pathPresent.stat().st_mtime),
+    ), (
+        "the mtime must be integer seconds as a STRING, byte-identical "
+        "to what `stat -c %Y` returned: every cached mtime in every "
+        f"workflow compares against this. Got {dictMtimes}"
+    )
+
+
+def test_the_sha256_program_matches_hashlib_and_empties_on_absent(tmp_path):
+    import hashlib
+
+    pathPresent = tmp_path / "workflow.json"
+    pathPresent.write_bytes(b'{"listSteps": []}')
+
+    sDigest = _fdictRunTypedReadProgramLocally(
+        dockerConnectionModule.S_TYPED_READ_FILE_SHA256,
+        str(pathPresent),
+    )
+    assert sDigest == hashlib.sha256(
+        pathPresent.read_bytes(),
+    ).hexdigest()
+
+    sAbsentDigest = _fdictRunTypedReadProgramLocally(
+        dockerConnectionModule.S_TYPED_READ_FILE_SHA256,
+        str(tmp_path / "never-written.json"),
+    )
+    assert sAbsentDigest == "", (
+        "an unreadable file must answer the empty string, which the "
+        "reload detector reads as 'cannot compare'; anything else is a "
+        f"fingerprint it would trust: {sAbsentDigest!r}"
     )

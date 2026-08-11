@@ -69,7 +69,7 @@ def fixtureHubApp():
     app = FastAPI()
     app.state.dictContainerOwners = {}
     app.state.iHubPort = 8050
-    dictCtx = {"require": lambda: None, "docker": None}
+    dictCtx = {"require": lambda *aArgs: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return app
 

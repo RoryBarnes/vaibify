@@ -21,6 +21,42 @@ code, monitor long-running jobs, and generate figures and TeX for
 manuscripts. Experiment with confidence and push the limits of the
 combined abilities of your brain and AI.
 
+### The container is the default and the destination
+
+Vaibify also runs a project directly on your machine, with no image
+and no container. That is **host mode**, and it exists for one reason:
+building a container image takes between five minutes and an hour, and
+that wait ends most people's first encounter with vaibify before it
+starts. Host mode gets a new user working in minutes.
+
+It gives up exactly what the paragraphs above are about. On the host,
+a pipeline command and any agent you run beside it execute with your
+full user authority — your files, your network, your stored
+credentials, and vaibify's own state on this machine. Vaibify says so
+in a modal you have to read before the project opens and in a badge
+that never goes away, because a claim about whether your commands are
+contained is not one to make quietly.
+
+Three things are container-only, and vaibify names each one where you
+would otherwise expect it rather than degrading silently:
+
+- **Reproducibility Level 3** is *defined* by a pinned image, so a
+  host project reports a single `host-mode` blocker instead of a
+  cascade of criteria it can never satisfy.
+- **Supervised attribution** claims that every change has a recorded
+  cause, which is only honest when vaibify mediates every path to the
+  files. On the host your own editor, IDE and shell do not. Host mode
+  refuses to *enter* Supervised mode rather than accumulate a claim it
+  would have to retract.
+- **Provable quiescence.** A container can be stopped and proven
+  quiet. On the host, vaibify guarantees the weaker and true statement
+  that *every process it started has exited* — a command that detaches
+  into its own session is outside what it can see.
+
+So: **host mode runs your pipeline; the container is what lets vaibify
+vouch for it.** Start on the host if that is what gets you started,
+and containerize the project when the work is worth attesting to.
+
 Vaibify is based on the assumption that code is written by agents
 now. While access to an IDE is included, vaibify is optimized for
 command-line agents like Claude Code. The command line is ground

@@ -73,7 +73,7 @@ def _flistBuildStepReports(dictWorkflow, dictStepStates):
     return listReports
 
 
-def fdictBuildLevelReport(dictWorkflow, filesRepo):
+def fdictBuildLevelReport(dictWorkflow, filesRepo, bHostProject=False):
     """Return the PROOF level, the three blocker lists, and per-step cells."""
     from vaibify.reproducibility.levelGates import (
         fdictComputeStepLevelStates, fiProofLevel, flistLevel1Blockers,
@@ -81,7 +81,9 @@ def fdictBuildLevelReport(dictWorkflow, filesRepo):
     )
     listLevel1Blockers = flistLevel1Blockers(dictWorkflow, {}, filesRepo)
     listLevel2Blockers = flistLevel2Blockers(dictWorkflow, filesRepo)
-    listLevel3Blockers = flistLevel3Blockers(dictWorkflow, filesRepo)
+    listLevel3Blockers = flistLevel3Blockers(
+        dictWorkflow, filesRepo, bHostProject,
+    )
     iLevel = fiProofLevel(dictWorkflow, filesRepo)
     return {
         "sWorkflowName": dictWorkflow.get("sWorkflowName", ""),

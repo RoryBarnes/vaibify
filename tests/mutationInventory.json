@@ -1,7 +1,7 @@
 {
-  "iAcquisitionCount": 64,
-  "iRowCount": 311,
-  "iUnresolvedSiteCount": 30,
+  "iAcquisitionCount": 69,
+  "iRowCount": 328,
+  "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
       "iLine": 10,
@@ -82,6 +82,19 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 116,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "`vaibify sessions stop` on the researcher's own host lane, which is outside the carrier's scope by design (design section 8: a trust judgement about the hub itself needs no capability). The PID comes from vaibify's own session registry and is checked for recycle-proof liveness before the signal; the signal is SIGTERM to a hub this user started.",
+      "sFile": "cli/commandSessions.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "fnTerminateSessionPid",
+      "sScopeFingerprint": "9d7aaf5d92949f7a"
+    },
+    {
       "iLine": 6,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -95,7 +108,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 29,
+      "iLine": 30,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "docker-client",
@@ -160,6 +173,32 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 122,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "SIGTERM to the caffeinate helper THIS process launched and holds the pid of. Not a container mutation and reachable from no request lane: it runs on claim/release and at shutdown, so a carrier admission would have nothing to admit.",
+      "sFile": "config/keepAliveManager.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "_fnKillIfRunning",
+      "sScopeFingerprint": "bedf6a6448c7954f"
+    },
+    {
+      "iLine": 736,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0, delivering nothing -- the journal's own emptiness probe for helper and host-exec records. Callers reach it only through the probe catalog, which has already checked the recorded pid and group are usable.",
+      "sFile": "config/operationJournal.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "_fbProcessGroupIsEmpty",
+      "sScopeFingerprint": "8ca5c8812a6e96ae"
+    },
+    {
       "iLine": 32,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -171,6 +210,19 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 48,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0, delivering nothing -- the shared PID-existence probe behind every lock, lease and journal staleness check. PermissionError counts as alive (the process exists under another user), which is the conservative direction: it never reaps a live holder.",
+      "sFile": "config/processLiveness.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "fbIsProcessAlive",
+      "sScopeFingerprint": "b836618d2023730f"
     },
     {
       "iLine": 11,
@@ -303,6 +355,19 @@
       "sScopeFingerprint": "2b0dfd1fe935b926"
     },
     {
+      "iLine": 1424,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.APIError",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "c5af6a270937ab16",
+      "sScope": "fbErrorMeansContainerUnreachable",
+      "sScopeFingerprint": "b45d1041a2fca605"
+    },
+    {
       "iLine": 14,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -381,7 +446,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 85,
+      "iLine": 87,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -392,6 +457,19 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 192,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The router's Docker-only tail delegation: __getattr__ forwards an attribute READ to the Docker leg verbatim, raising the typed DockerLegUnavailableError when no leg exists. It mints no authority: the delegated methods are DockerConnection's own, each carrying its own admission gates, and the resource-routed surface is twelve explicit methods above it, not this fallback.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "45e2af14fee8a79c",
+      "sScope": "__getattr__",
+      "sScopeFingerprint": "b8aaab6dde0be2b1"
     },
     {
       "iLine": 28,
@@ -420,32 +498,6 @@
       "sScopeFingerprint": "87797fde8f837aac"
     },
     {
-      "iLine": 46,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.APIError",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
-      "iLine": 46,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.NotFound",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
       "iLine": 23,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -459,7 +511,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 773,
+      "iLine": 824,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "unix-socket",
@@ -472,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2224,
+      "iLine": 2294,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -485,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2219,
+      "iLine": 2289,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -498,20 +550,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 43,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "03d351699a9a82f0",
-      "sScope": "<module>",
-      "sScopeFingerprint": "03d351699a9a82f0"
-    },
-    {
-      "iLine": 692,
+      "iLine": 742,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -524,7 +563,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 687,
+      "iLine": 737,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +576,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 1160,
+      "iLine": 1234,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -550,7 +589,7 @@
       "sScopeFingerprint": "8af36da422b672dd"
     },
     {
-      "iLine": 1197,
+      "iLine": 1271,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +602,7 @@
       "sScopeFingerprint": "d012680a30c7b6d4"
     },
     {
-      "iLine": 628,
+      "iLine": 678,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -576,7 +615,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 625,
+      "iLine": 675,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -589,7 +628,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 658,
+      "iLine": 708,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -613,32 +652,6 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
-    },
-    {
-      "iLine": 12,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.APIError",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
-      "iLine": 12,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.NotFound",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
     },
     {
       "iLine": 23,
@@ -665,6 +678,19 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsReadHostGitUserName",
       "sScopeFingerprint": "f5f03ff3b7eb02ca"
+    },
+    {
+      "iLine": 568,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "The idle self-shutdown signals os.getpid() -- this process, and only this process. The busy veto that precedes it reads dictContainerOwners so a hub can never self-retire mid-run. There is no other target reachable from this call.",
+      "sFile": "gui/serverLifespan.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "_fnIdleShutdownWatchdogLoop",
+      "sScopeFingerprint": "8bdb9f054b58908c"
     },
     {
       "iLine": 100,
@@ -714,6 +740,45 @@
       "sDisposition": "UNCLASSIFIED",
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/workspacePath.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 159,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0 delivers nothing: this is an existence probe, not a signal. It answers whether a recorded group still has members, which is what makes host mode's weaker quiescence claim sayable. The same fbIsUsablePid guard applies, so a zero group id can never be probed as the caller's own.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "fbProcessGroupProvedEmpty",
+      "sScopeFingerprint": "d3cfba689c5c565b"
+    },
+    {
+      "iLine": 139,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The one site that signals something vaibify did not create in this process: a host project's journaled process GROUP, on the researcher's own machine. Guarded three ways, each with a registered falsification -- the group is only ever one the host-exec journal recorded; it is signalled only while the holder pid is provably the recorded one (fbIsProcessAliveSince, recycle-proof), an unprovable identity being reported and routed to reconciliation rather than guessed at; and fbIsUsablePid refuses a zero or absent group id, which killpg would otherwise read as the CALLER's own group. Reached from POST /api/pipeline/{id}/kill under a mode-(b) carrier, and from `vaibify reconcile --terminate-recorded` on the host lane.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "fnTerminateProcessGroup",
+      "sScopeFingerprint": "a8f23b567a894524"
+    },
+    {
+      "iLine": 60,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The host gateway's single subprocess import. Every launch goes through _ftLaunchGatedAndStream: suspended spawn behind a stdin gate, host-exec journal record promoted and identity-gated (fnPromoteJournaledHostExec) before release, admission asserted (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) at the two public entry points; testHostSubprocessConfinement pins this module as the only launcher under vaibify/host/.",
+      "sFile": "host/hostConnection.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
@@ -2763,6 +2828,426 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "24beb50dfcd7301d",
+      "sFunction": "fbContainerPathIsDirectory",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbContainerPathIsDirectory",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "c7d589584f4c77fd",
+      "sFunction": "fbContainerPathIsFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbContainerPathIsFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "4da81a24b7a7baab",
+      "sFunction": "fbaFetchFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "d9c0afd640e0b518",
+      "sFunction": "fdictReadFilesystemUsage",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fdictReadFilesystemUsage",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "28007e1136464e0f",
+      "sFunction": "fdictStatPathMtimes",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fdictStatPathMtimes",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "b0b29ae1212023e4",
+      "sFunction": "fiterStreamFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fiterStreamFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "5b4d327b479bb2b4",
+      "sFunction": "flistContainerPathsExist",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistContainerPathsExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "cf8eb6112b3dc39a",
+      "sFunction": "flistDirectoryEntries",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "9ca0387b62ff5369",
+      "sFunction": "flistReadGitRepoStatuses",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistReadGitRepoStatuses",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e56c110d29b74073",
+      "sFunction": "fnWriteFileViaTar",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fnWriteFileViaTar",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "4066083a1efbdbdd",
+      "sFunction": "fnWriteFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "4a566fa198c72586",
+      "sFunction": "fsHashContainerFileSha256",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fsHashContainerFileSha256",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e7242e38c9fd9b56",
+      "sFunction": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "86d7baad5e255a7d",
+      "sFunction": "ftRunInContainerStreamedWithChunks",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftRunInContainerStreamedWithChunks",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e3200e1cf6d74318",
+      "sFunction": "ftRunInContainerStreamed",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftRunInContainerStreamed",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -3335,54 +3820,56 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A TYPED READ on the file panel's five-second poll. It supplies a path list and an operation NAME, never command text, so the adapter builds the program and the exemption cannot be handed a command. This row REPLACED a container write plus a general exec: the poll used to push its path list into /tmp because a shell argv would not hold it, which made the dashboard's timer the one thing mutating a container on a schedule -- and therefore the one thing a commit-guard carrier could not cover without holding the mutation drain on that same schedule.",
       "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "9eb9553c91462670",
-      "sFunction": "_ftStatAndFingerprintViaPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFileViaTar",
+      "sFingerprint": "9ef45abee552ab8f",
+      "sFunction": "_ftStatAndFingerprint",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "read the polled paths' modification times and the workflow's content fingerprint",
+      "sOperationMetadata": "paths and one fingerprint path; no command text reaches the adapter",
+      "sPrimitive": "fdictStatPathMtimes",
       "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A TYPED READ on the file panel's five-second poll. It supplies a path list and an operation NAME, never command text, so the adapter builds the program and the exemption cannot be handed a command. This row REPLACED a container write plus a general exec: the poll used to push its path list into /tmp because a shell argv would not hold it, which made the dashboard's timer the one thing mutating a container on a schedule -- and therefore the one thing a commit-guard carrier could not cover without holding the mutation drain on that same schedule.",
       "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "e5f895f72a9a9748",
-      "sFunction": "_ftStatAndFingerprintViaPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sFingerprint": "6d7abce0249794c9",
+      "sFunction": "_ftStatAndFingerprint",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "read the polled paths' modification times and the workflow's content fingerprint",
+      "sOperationMetadata": "paths and one fingerprint path; no command text reaches the adapter",
+      "sPrimitive": "fsHashContainerFileSha256",
       "sReferenceKind": "direct-call"
     },
     {
@@ -3844,58 +4331,6 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "6b7ea621a84b969a",
-      "sFunction": "_fnRemoveVerifyPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "e3c1947767754721",
-      "sFunction": "_fnWriteVerifyPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "passed-callable"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineRunner.py",
       "sFingerprint": "483d7ccb276e69f1",
       "sFunction": "_fsMissingDependencyFile",
       "sJournalKind": "UNCLASSIFIED",
@@ -3907,7 +4342,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -3918,17 +4353,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "b615ab23e97b7855",
+      "sFingerprint": "b4cfb4f324d6ddb0",
       "sFunction": "_fsetMissingPathsBatched",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4182,7 +4617,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineState.py",
-      "sFingerprint": "b6624ebad1d8d76f",
+      "sFingerprint": "1efc203f7abd1418",
       "sFunction": "fdictReadState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -4208,7 +4643,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineState.py",
-      "sFingerprint": "83a9e7ca556ba33d",
+      "sFingerprint": "bbc825f357bf7ec2",
       "sFunction": "fnClearState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -4234,7 +4669,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineState.py",
-      "sFingerprint": "f6d5316fa03a5329",
+      "sFingerprint": "6b37e4f5528d7f8d",
       "sFunction": "fnWriteState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -4260,7 +4695,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineState.py",
-      "sFingerprint": "0914d0b7d798f2fc",
+      "sFingerprint": "870e6d67f1c2b16c",
       "sFunction": "fnWriteState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -4401,7 +4836,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -4412,17 +4847,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "ec68315eb75b94b8",
+      "sFingerprint": "9956c2c525f068e0",
       "sFunction": "_fbIsVaibifyContainer",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8171,7 +8606,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -8182,95 +8617,96 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "268d1b6ec5b66523",
+      "sFingerprint": "f19a5404f5ba9b6c",
+      "sFunction": "_ftPartitionWorkspaceDirectories",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "flistContainerPathsExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/trackedReposManager.py",
+      "sFingerprint": "8a9383a56deb857b",
+      "sFunction": "_ftPartitionWorkspaceDirectories",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/trackedReposManager.py",
+      "sFingerprint": "2beb98a713e9cac5",
       "sFunction": "fdictReadSidecar",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "fbaFetchFile",
       "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission -- which is the point: the Repositories panel polls this every five seconds, and a route on a timer that took the mutation drain would make Run Step refuse at random for as long as the panel stayed open. It replaced a shell script this module ASSEMBLED with repository names interpolated raw into echo and git -C, which was the last exec keeping GET /api/repos/{id}/status outside the commit-guard boundary.",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "48d062f03a23487b",
+      "sFingerprint": "5ad1a27e598f9dd0",
       "sFunction": "flistBatchComputeRepoStatus",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "08b542d3bedcfb05",
-      "sFunction": "flistDiscoverGitDirs",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "08b542d3bedcfb05",
-      "sFunction": "flistDiscoverNonGitDirs",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "read branch, remote url and porcelain for every tracked repository in one typed read",
+      "sOperationMetadata": "repository paths only; the git argv is fixed program text in the typed-read table, with core.fsmonitor disabled so a repository cannot choose what the poll runs",
+      "sPrimitive": "flistReadGitRepoStatuses",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8290,7 +8726,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "b69c1593e2793a60",
+      "sFingerprint": "305b75c3b9e53e2a",
       "sFunction": "fnWriteSidecar",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -8316,7 +8752,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "b8cdf4aff3a5456e",
+      "sFingerprint": "76288429a1c5e826",
       "sFunction": "fnWriteSidecar",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -8532,6 +8968,119 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "docker inspect",
       "sReferenceKind": "direct-docker-cli"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "synchronous",
+        "durable"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "route-wrapper",
+        "carrier-supervisor"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "This row IS the enforcement point, not a caller of it: admission is asserted at its two public entry points (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) before it runs, and every launch is write-ahead journaled as host-exec with the child suspended behind a gate until its identity is persisted. A carrier admits callers; this is the gate they hit.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "001a2030acc0bc3e",
+      "sFunction": "_ftLaunchGatedAndStream",
+      "sJournalKind": "host-exec",
+      "sLifetime": "outlives-request",
+      "sLogicalOperation": "the single gated launch every host-project subprocess goes through",
+      "sOperationMetadata": "command text in via parameter (the declared opaque-subprocess-command blind-spot row); bounded lane kills its recorded group on timeout; durable lane relies on the journaled group identity for Cancel and quiescence",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Duck-type alias kept only for signature parity; it delegates to fnWriteFile, where fnAssertContainerWriteAdmitted asserts before any byte lands. No tar archive is involved on the host leg.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "69ab34bf6f2655e6",
+      "sFunction": "fnWriteFileViaTar",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "duck-type write alias delegating to the gated host write",
+      "sOperationMetadata": "path validated against the two host roots; atomic temp-write-then-rename preserving the replaced file's mode",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "The host leg's fingerprint read, routed through this class's own capped reader so the path guard has one implementation rather than two. No subprocess and no admission: a host typed read is an os.* call, which is why the host leg never enters the audited-read exemption at all.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "998ba20cc44aea33",
+      "sFunction": "fsHashContainerFileSha256",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "hash a host file for the poll's content fingerprint",
+      "sOperationMetadata": "path validated against the project and scratch roots before the read",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Backward-compat merged-stream wrapper delegating to ftRunInContainerStreamed, where the command admission asserts; it adds no authority of its own.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "3588aa81fdf28d49",
+      "sFunction": "ftResultExecuteCommand",
+      "sJournalKind": "host-exec",
+      "sLifetime": "request",
+      "sLogicalOperation": "merged-stream compatibility wrapper over the gated launch",
+      "sOperationMetadata": "returns (iExitCode, stdout+stderr) for legacy call sites",
+      "sPrimitive": "ftRunInContainerStreamed",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -8935,7 +9484,7 @@
       "sScopeFingerprint": "9517d8fd2efbecaa"
     },
     {
-      "iLine": 98,
+      "iLine": 99,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
@@ -8944,7 +9493,7 @@
       "sScopeFingerprint": "e3f5d3d6b8e57447"
     },
     {
-      "iLine": 67,
+      "iLine": 68,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
@@ -8953,7 +9502,7 @@
       "sScopeFingerprint": "7e6d4c5cf760dcb3"
     },
     {
-      "iLine": 83,
+      "iLine": 84,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
@@ -8998,7 +9547,7 @@
       "sScopeFingerprint": "60f361fd2a414d1d"
     },
     {
-      "iLine": 567,
+      "iLine": 709,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9007,7 +9556,7 @@
       "sScopeFingerprint": "48b2dac70f916724"
     },
     {
-      "iLine": 431,
+      "iLine": 573,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9016,7 +9565,7 @@
       "sScopeFingerprint": "06a006562db2c70f"
     },
     {
-      "iLine": 1023,
+      "iLine": 1249,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9025,7 +9574,7 @@
       "sScopeFingerprint": "d3b234adfa828f4e"
     },
     {
-      "iLine": 401,
+      "iLine": 543,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9034,7 +9583,7 @@
       "sScopeFingerprint": "4cb7e49aec6101b0"
     },
     {
-      "iLine": 1011,
+      "iLine": 1237,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9043,7 +9592,7 @@
       "sScopeFingerprint": "60430d34c7a6d2f7"
     },
     {
-      "iLine": 998,
+      "iLine": 1224,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9052,7 +9601,7 @@
       "sScopeFingerprint": "f28373336e34b240"
     },
     {
-      "iLine": 1005,
+      "iLine": 1231,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9061,7 +9610,7 @@
       "sScopeFingerprint": "5775912ab9f828b7"
     },
     {
-      "iLine": 535,
+      "iLine": 677,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9070,7 +9619,7 @@
       "sScopeFingerprint": "de871645e02ba7a2"
     },
     {
-      "iLine": 530,
+      "iLine": 672,
       "iOrdinal": 1,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9097,7 +9646,7 @@
       "sScopeFingerprint": "6535cacbfa91dba8"
     },
     {
-      "iLine": 936,
+      "iLine": 967,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",
@@ -9140,6 +9689,15 @@
       "sFingerprint": "b1cf458ca0cf9524",
       "sFunction": "_ftRunHostLsRemote",
       "sScopeFingerprint": "1416c2b66127daa3"
+    },
+    {
+      "iLine": 510,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "001a2030acc0bc3e",
+      "sFunction": "_ftLaunchGatedAndStream",
+      "sScopeFingerprint": "22ab66ddd1269c11"
     },
     {
       "iLine": 192,

@@ -47,11 +47,24 @@ paths, which are POSIX on every host operating system. A module that
 operates on the host filesystem must use `os.path`, whose separator is
 the host's. Unifying the two would either mangle Windows host paths or
 mangle container paths on any host, and the failure stays silent until
-a cross-platform user hits it. No module in this subtree handles host
-paths today; if you add one, it takes `os.path` and shares only *pure*
-helpers with `workflowManager`.
+a cross-platform user hits it. A module in this subtree that handles
+host paths takes `os.path` and shares only *pure* helpers with
+`workflowManager`.
 
-Enforced by `testWorkflowManagerUsesPosixPath` and `testDirectorUsesOsPath`.
+**Host mode is the deliberate exception, and it is not really one.**
+A host project's pipeline runs on the researcher's machine, so
+`workflowManager` composes host paths for it — with `posixpath`, still.
+Host mode is macOS and Linux only, where the two modules are identical,
+so one implementation serves both modes without a fork. Windows is the
+boundary and is refused: there the step commands (`bash -c` text) and
+the POSIX path guards weaken silently rather than failing. A host-path
+fork of this module was tried (the withdrawn `director` module) and
+abandoned; swap the connection object instead.
+
+Enforced by `testWorkflowManagerUsesPosixPath`. (A second invariant,
+`testDirectorUsesOsPath`, guarded the withdrawn host-side director
+module and was removed with it — a contract whose named test cannot be
+grepped reads as a contract that does not exist.)
 
 ### Container-access gate
 

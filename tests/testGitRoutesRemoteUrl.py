@@ -12,10 +12,25 @@ says verbatim.
 import json
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import gitRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the badges route driven bare here.
+
+    The badge refresh reads through carrier mode (b), and this module
+    builds a bare ``FastAPI()`` with no owner record for the request to
+    bind to. What the admission is remains proven in
+    ``tests/testCarrierMigratedRoutes.py``; this module is about the
+    payload. See ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, gitRoutes)
 
 
 def _fdictBuildRoutesApp(mockDocker, dictWorkflow):
@@ -68,7 +83,9 @@ def _fdictWorkflow():
     }
 
 
-def test_badges_returns_remote_url_when_origin_is_set():
+def test_badges_returns_remote_url_when_origin_is_set(
+    fixtureCarrierStoodDown,
+):
     sRemoteUrl = "https://github.com/example/demo.git\n"
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = _fnMakeExec(
@@ -86,7 +103,9 @@ def test_badges_returns_remote_url_when_origin_is_set():
     )
 
 
-def test_badges_returns_empty_remote_url_when_no_origin():
+def test_badges_returns_empty_remote_url_when_no_origin(
+    fixtureCarrierStoodDown,
+):
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = _fnMakeExec(
         "", 128,

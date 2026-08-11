@@ -71,7 +71,7 @@ def fixtureHarness(monkeypatch):
     dictCtx = {
         "docker": stubDocker,
         "workflows": {S_CONTAINER_ID: dictWorkflow},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
     }
     fnRegisterAll(app, dictCtx)

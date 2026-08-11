@@ -42,6 +42,7 @@ __all__ = [
     "S_ATTRIBUTION_EVENTS_PATH",
     "S_ATTRIBUTION_FLAGS_PATH",
     "S_TERMINAL_CHANNEL",
+    "S_SUPERVISION_ENDED_CHANNEL",
     "S_TERMINAL_OPENED_DETAIL",
     "S_TERMINAL_CLOSED_DETAIL",
     "F_ATTRIBUTION_WINDOW_SECONDS",
@@ -70,6 +71,12 @@ S_ATTRIBUTION_EVENTS_PATH = _S_ATTRIBUTION_DIRECTORY + "/events.jsonl"
 S_ATTRIBUTION_FLAGS_PATH = _S_ATTRIBUTION_DIRECTORY + "/flags.jsonl"
 
 S_TERMINAL_CHANNEL = "terminal"
+# The channel a workflow records when it LEAVES Supervised mode
+# because it was opened on the host. Its own channel rather than a
+# detail string on another: the event is the boundary of the period
+# the log's claim covers, and a reader has to be able to find it
+# without parsing prose.
+S_SUPERVISION_ENDED_CHANNEL = "supervision-ended"
 S_TERMINAL_OPENED_DETAIL = "session-opened"
 S_TERMINAL_CLOSED_DETAIL = "session-closed"
 

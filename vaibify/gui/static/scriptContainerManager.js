@@ -163,9 +163,23 @@ var VaibifyContainerManager = (function () {
         fnConnectToContainer(sId);
     }
 
+    function _fbHostProject(dictContainer) {
+        /* Absent sMode means container: that is what every registry
+           entry written before host mode existed meant. */
+        return dictContainer.sMode === "host";
+    }
+
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
-        var sId = dictContainer.sContainerId || "";
+        var bHost = _fbHostProject(dictContainer);
+        /* A host project has no container, so the registry sends no
+           sContainerId. Its resource id IS its registry name -- the
+           same substitution the backend claim path makes -- and the
+           tile has to carry it, or the click path resolves nothing
+           and returns silently. */
+        var sId = bHost
+            ? (dictContainer.sName || "")
+            : (dictContainer.sContainerId || "");
         var bUnavailable = _fbContainerUnavailable(dictContainer);
         var sLockedClass = bUnavailable ? " container-tile--locked" : "";
         var sLockedMessage = _fsUnavailableMessage(dictContainer);
@@ -180,17 +194,76 @@ var VaibifyContainerManager = (function () {
             '" data-name="' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
-            '"' + sLockedAttr + sLockedTitle + '>' +
+            '" data-mode="' + (bHost ? "host" : "container") +
+            '"' + _fsRenderHostTileData(dictContainer, bHost) +
+            sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            _fsRenderContainmentChip(bHost) +
+            _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
             'title="Actions">&#8942;</button>' +
-            '<button class="btn-icon container-tile-gear" ' +
-            'title="Settings">&#9881;</button>' +
+            _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
+            _fsRenderContainerOnlyMenuItems(bHost) +
+            '<div class="container-menu-item danger" ' +
+            'data-action="remove">Remove from list</div>' +
+            "</div></div>"
+        );
+    }
+
+    function _fsRenderContainmentChip(bHost) {
+        /* The list is grouped by MACHINE, so the tile has to say the
+           other thing: whether the work is contained. It used to be
+           said by the status dot alone, in the brand colour, which
+           spent vaibify's own blue on "this one is the odd one out"
+           and told a researcher nothing about why. The uncontained
+           chip deliberately matches the in-workflow badge, because it
+           is the same claim about the same project. */
+        return (
+            '<span class="containment-chip containment-chip--' +
+            (bHost ? "direct" : "contained") + '">' +
+            (bHost ? "uncontained" : "contained") + "</span>"
+        );
+    }
+
+    function _fsRenderHostTileData(dictContainer, bHost) {
+        /* The directory is what the acknowledgement is keyed by, and
+           whether it HAS been acknowledged is the backend's answer --
+           it canonicalises the path, so a symlinked alias of an
+           accepted project is not warned about a second time. */
+        if (!bHost) return "";
+        return (
+            ' data-directory="' +
+            VaibifyUtilities.fnEscapeHtml(dictContainer.sDirectory || "") +
+            '" data-warning-acknowledged="' +
+            (dictContainer.bHostWarningAcknowledged ? "true" : "false") +
+            '"'
+        );
+    }
+
+    function _fsRenderTileGear(bHost) {
+        /* The settings modal is entirely container fields -- keep the
+           host awake while the CONTAINER runs, CPU and memory limits
+           on a container that does not exist. Hiding it is courtesy;
+           the routes refuse a host project on their own. */
+        if (bHost) return "";
+        return (
+            '<button class="btn-icon container-tile-gear" ' +
+            'title="Settings">&#9881;</button>'
+        );
+    }
+
+    function _fsRenderContainerOnlyMenuItems(bHost) {
+        /* Start, stop, restart and the two rebuilds all drive Docker
+           machinery a host project has none of. The server refuses
+           them with a 409 naming host mode; this only keeps the
+           researcher from being offered them. */
+        if (bHost) return "";
+        return (
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
             '<div class="container-menu-item" data-action="cancel-start">' +
@@ -203,10 +276,21 @@ var VaibifyContainerManager = (function () {
             "Rebuild</div>" +
             '<div class="container-menu-item" data-action="force-rebuild">' +
             "Force Rebuild</div>" +
-            '<div class="container-menu-separator"></div>' +
-            '<div class="container-menu-item danger" ' +
-            'data-action="remove">Remove from list</div>' +
-            "</div></div>"
+            '<div class="container-menu-separator"></div>'
+        );
+    }
+
+    function _fsRenderHostTileNote(dictContainer, bHost) {
+        /* A missing host project is a directory that moved or a
+           config that was deleted. Naming the path is the whole
+           remedy: the researcher can see at a glance whether they
+           renamed a folder or are looking at a stale entry. */
+        if (!bHost || dictContainer.sStatus !== "missing") return "";
+        return (
+            '<span class="container-tile-note">' +
+            VaibifyUtilities.fnEscapeHtml(
+                dictContainer.sDirectory || "directory unknown") +
+            "</span>"
         );
     }
 
@@ -234,6 +318,11 @@ var VaibifyContainerManager = (function () {
     function _fsStatusDotClass(sStatus) {
         if (sStatus === "running") return "status-running";
         if (sStatus === "stopped") return "status-stopped";
+        /* Host vocabulary. A host project is ready or its directory is
+           gone; it is never built, started or stopped, and reusing
+           "not built" for it would offer a build that cannot happen. */
+        if (sStatus === "ready") return "status-host-ready";
+        if (sStatus === "missing") return "status-missing";
         return "status-not-built";
     }
 
@@ -257,11 +346,15 @@ var VaibifyContainerManager = (function () {
             event.stopPropagation();
             _fnToggleActionsMenu(elMenu);
         });
-        elGear.addEventListener("click", function (event) {
-            event.stopPropagation();
-            _fnCloseAllActionsMenus();
-            fnShowContainerSettings(sName);
-        });
+        /* A host tile renders no gear -- its settings are all
+           container settings -- so binding one is conditional. */
+        if (elGear) {
+            elGear.addEventListener("click", function (event) {
+                event.stopPropagation();
+                _fnCloseAllActionsMenus();
+                fnShowContainerSettings(sName);
+            });
+        }
         elMenu.querySelectorAll(".container-menu-item").forEach(
             function (elItem) {
                 elItem.addEventListener("click", function (event) {
@@ -294,6 +387,10 @@ var VaibifyContainerManager = (function () {
                 "Container '" + sName + "': " +
                 (elTile.dataset.lockedMessage ||
                  _fsLockedMessage(0)), "warning");
+            return;
+        }
+        if (elTile && elTile.dataset.mode === "host") {
+            await _fnOpenHostProject(sName, elTile);
             return;
         }
         var elDot = elTile ? elTile.querySelector(".status-dot") : null;
@@ -330,6 +427,105 @@ var VaibifyContainerManager = (function () {
             }
         }
         fnConnectToContainer(sTargetId);
+    }
+
+    async function _fnOpenHostProject(sName, elTile) {
+        /* A host project skips every step the container path takes
+           before connecting: there is no image to build, nothing to
+           start, and no entrypoint to become ready. It is ready when
+           the directory and its config are there, and the claim is
+           the only arbitration left. Falling into the container path
+           would offer a build for a project that can never have one
+           -- the `not built -> click -> build` trap. */
+        var elDot = elTile.querySelector(".status-dot");
+        if (elDot && elDot.classList.contains("status-missing")) {
+            var elNote = elTile.querySelector(".container-tile-note");
+            VaibifyApp.fnShowToast(
+                "Project '" + sName + "' is not on disk any more" +
+                (elNote ? ": " + elNote.textContent : "") +
+                ". Restore the directory and its vaibify.yml, or " +
+                "remove the project from the list.", "error");
+            return;
+        }
+        var bClaimed = await _fbClaimContainer(sName);
+        if (!bClaimed) {
+            await fnLoadContainers();
+            return;
+        }
+        /* The warning comes AFTER the claim: arbitration has to run
+           first, or a researcher reads and accepts a disclosure about
+           a project another session is already holding. */
+        if (elTile.dataset.warningAcknowledged !== "true") {
+            _fnWarnBeforeEnteringHostProject(sName, elTile);
+            return;
+        }
+        /* The resource id of a host project is its registry name. */
+        fnConnectToContainer(elTile.dataset.containerId || sName);
+    }
+
+    var _S_HOST_WARNING_TITLE =
+        "⚠ You are working directly on your host machine.";
+
+    var _S_HOST_WARNING_BODY =
+        "Changes are not contained in a Docker environment. Pipeline " +
+        "commands and any AI agent you run here execute with your " +
+        "full user authority: your files, your network, your stored " +
+        "credentials, and vaibify's own state on this machine.\n\n" +
+        "Vaibify cannot prove that finished runs left nothing behind, " +
+        "cannot reach reproducibility Level 3, and cannot provide " +
+        "Supervised attribution for this project.\n\n" +
+        "For contained, attestable work, create a containerized " +
+        "project.";
+
+    function _fnWarnBeforeEnteringHostProject(sName, elTile) {
+        VaibifyModals.fnShowConfirmModal(
+            _S_HOST_WARNING_TITLE, _S_HOST_WARNING_BODY,
+            function (bDoNotWarnAgain) {
+                _fnEnterHostProject(sName, elTile, bDoNotWarnAgain);
+            },
+            {
+                sCheckboxLabel:
+                    "Don't warn me again for this project",
+                sCancelLabel: "Go back",
+                sConfirmLabel: "I understand, continue",
+                /* Going back must give the project up. The claim
+                   already succeeded, so without this the project
+                   stays held by a tab that never opened it and the
+                   picker renders it as somebody else's. */
+                fnOnCancel: async function () {
+                    await fnReleaseClaim(sName);
+                    await fnLoadContainers();
+                },
+            }
+        );
+    }
+
+    async function _fnEnterHostProject(sName, elTile, bDoNotWarnAgain) {
+        if (bDoNotWarnAgain) {
+            await _fnRecordHostWarningAcknowledged(elTile);
+        }
+        fnConnectToContainer(elTile.dataset.containerId || sName);
+    }
+
+    async function _fnRecordHostWarningAcknowledged(elTile) {
+        /* Keyed by the project DIRECTORY, never the display name: a
+           reused name must not suppress the warning for a different
+           directory. The backend canonicalises it. */
+        var sDirectory = elTile.dataset.directory || "";
+        if (!sDirectory) return;
+        try {
+            await VaibifyApi.fdictPut(
+                "/api/preferences/host-warning-acknowledged",
+                { sProjectDirectory: sDirectory }
+            );
+        } catch (error) {
+            /* A preference that failed to save is a nuisance, not a
+               reason to refuse entry -- the warning simply shows
+               again next time, which is the safe direction. */
+            VaibifyApp.fnShowToast(
+                "Could not save the preference; the warning will " +
+                "show again next time.", "warning");
+        }
     }
 
     async function _fbClaimContainer(sName) {
@@ -1163,12 +1359,24 @@ var VaibifyContainerManager = (function () {
         return el ? el.textContent : sId.substring(0, 12);
     }
 
+    function _fsContainerModeById(sId) {
+        /* Read back off the tile the registry listing rendered, so the
+           project-list screen shows the mode the SERVER reported.
+           Unknown ids (an unrecognized container) read as container,
+           which is what they are. */
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]'
+        );
+        return (el && el.dataset.mode) || "container";
+    }
+
     async function fnConnectToContainer(sId) {
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
                 "/api/workflows/" + sId);
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
+            VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
@@ -1244,61 +1452,128 @@ var VaibifyContainerManager = (function () {
         VaibifyNewWorkflowWizard.fnBindEventHandlers();
     }
 
+    /* The environment kind chosen on stage 1, carried into stage 2.
+       "" means stage 1 is still on screen. */
+    var _sChosenEnvironmentKind = "";
+
     function fnOpenAddChoice() {
+        _fnShowAddChoiceStage("");
         document.getElementById("modalAddChoice").style.display = "flex";
+    }
+
+    function _fnShowAddChoiceStage(sKind) {
+        /* One dialog, two stages: stage 1 asks WHERE the work runs,
+           stage 2 asks how the project gets here. The host tier used to
+           be a third card on stage 1, which put "Add Container" over a
+           choice between a container and not-a-container. Both kinds
+           now take the same second stage, and the disclosure appears
+           with the host kind -- before any directory is chosen. */
+        _sChosenEnvironmentKind = sKind;
+        document.getElementById("addChoiceCards").style.display =
+            sKind ? "none" : "";
+        document.getElementById("addChoiceHowStage").style.display =
+            sKind ? "" : "none";
+        document.getElementById("addChoiceHostNote").style.display =
+            sKind === "host" ? "" : "none";
+        _fnSetAddChoiceTitle(sKind);
+    }
+
+    function _fnSetAddChoiceTitle(sKind) {
+        /* The title carries the chosen kind, so the second stage never
+           asks a researcher to remember which branch they took. */
+        var elTitle = document.getElementById("addChoiceTitle");
+        if (!elTitle) return;
+        if (!sKind) {
+            elTitle.textContent = "Add Environment";
+            return;
+        }
+        elTitle.textContent = "Add Environment — " + (
+            sKind === "host" ? "This machine" : "Container"
+        );
+    }
+
+    function _fnCloseAddChoice() {
+        document.getElementById("modalAddChoice").style.display = "none";
+        _fnShowAddChoiceStage("");
     }
 
     function fnBindAddChoiceModal() {
         document.getElementById("btnAddChoiceCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-            }
+            "click", _fnCloseAddChoice
         );
-        document.getElementById("btnChoiceAddExisting").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                VaibifyDirectoryBrowser.fnOpenDirectoryBrowser();
-            }
-        );
-        document.getElementById("btnChoiceCreateNew").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                VaibifyWorkflowManager.fnOpenCreateWizard();
-            }
-        );
+        _fnBindAddChoiceCard("btnChoiceAddExisting", "existing");
+        _fnBindAddChoiceCard("btnChoiceCreateNew", "create");
+        _fnBindEnvironmentKindCard("btnChoiceKindContainer", "container");
+        _fnBindEnvironmentKindCard("btnChoiceKindHost", "host");
         var elHelp = document.getElementById("btnAddChoiceHelp");
         if (elHelp) {
             elHelp.addEventListener("click", _fnShowAddChoiceHelp);
         }
     }
 
+    function _fnBindEnvironmentKindCard(sElementId, sKind) {
+        document.getElementById(sElementId).addEventListener(
+            "click", function () { _fnShowAddChoiceStage(sKind); }
+        );
+    }
+
+    function _fnBindAddChoiceCard(sElementId, sPath) {
+        /* The kind is read at CLICK time, not bound at wiring time:
+           one pair of cards now serves both kinds, so the mode is
+           whatever stage 1 last chose. */
+        document.getElementById(sElementId).addEventListener(
+            "click", function () {
+                var sMode = _sChosenEnvironmentKind || "container";
+                _fnCloseAddChoice();
+                if (sPath === "existing") {
+                    VaibifyDirectoryBrowser.fnOpenDirectoryBrowser(sMode);
+                    return;
+                }
+                VaibifyWorkflowManager.fnOpenCreateWizard(sMode);
+            }
+        );
+    }
+
     function _fnShowAddChoiceHelp() {
         VaibifyModals.fnShowInfoModal(
-            "Add Container — Help", _S_ADD_CHOICE_HELP);
+            "Add Environment — Help", _S_ADD_CHOICE_HELP);
         var elInfo = document.getElementById("modalInfo");
         if (elInfo) elInfo.style.zIndex = "1200";
     }
 
     var _S_ADD_CHOICE_HELP =
+        '<p>An <strong>environment</strong> is a place your projects ' +
+        'run. Adding one takes two steps: first where it runs, then ' +
+        'whether the project already exists.</p>' +
+        '<p><strong>Container</strong> &mdash; vaibify builds a Docker ' +
+        'image from your <code>vaibify.yml</code> and runs every step ' +
+        'inside it. The environment is pinned and rebuildable, which ' +
+        'is what lets a result reach reproducibility Level 3 and what ' +
+        'lets vaibify attest that an AI agent changed only what it ' +
+        'says it changed. Requires Docker, and the first build takes ' +
+        'minutes to hours.</p>' +
+        '<p><strong>This machine</strong> &mdash; vaibify runs your ' +
+        'steps directly, with no container. There is nothing to build, ' +
+        'so you can start immediately, and it is the right choice for ' +
+        'experimentation. In exchange the commands run with your full ' +
+        'user authority &mdash; your files, your network, your stored ' +
+        'credentials &mdash; and vaibify cannot reach Level 3 or ' +
+        'provide Supervised attribution for that project. You are ' +
+        'shown this again, in full, before you open one.</p>' +
         '<p><strong>Add Existing</strong> &mdash; point vaibify at a ' +
-        'directory on your host that already contains a ' +
-        '<code>vaibify.yml</code> file. The directory might be a ' +
-        'project a collaborator shared with you, a project you cloned ' +
-        'from GitHub, or one you created previously and removed from ' +
-        'the registry. Vaibify reads the existing config and registers ' +
-        'the project &mdash; nothing is overwritten.</p>' +
-        '<p><strong>Create New</strong> &mdash; launch the wizard that ' +
-        'walks you through creating a brand new project from scratch. ' +
-        'You pick a directory (existing or new), choose a starter ' +
-        'template, configure features and packages, and vaibify writes ' +
-        'a fresh <code>vaibify.yml</code> for you. Use this when you ' +
-        'are starting a project, not when you already have one.</p>' +
-        '<p>Both paths produce the same kind of registered project ' +
-        'afterward; the only difference is whether the configuration ' +
-        'file already exists.</p>';
+        'directory that already contains a <code>vaibify.yml</code>: ' +
+        'one a collaborator shared, one you cloned from GitHub, or one ' +
+        'you registered before and removed. The existing config is ' +
+        'read, never overwritten.</p>' +
+        '<p><strong>Create New</strong> &mdash; the wizard writes a ' +
+        'fresh <code>vaibify.yml</code>. You pick a directory, a ' +
+        'starter template and a name; a container environment also ' +
+        'asks about features and packages, which a host one has no ' +
+        'use for.</p>' +
+        '<p>The choice is not permanent in the sense that matters: ' +
+        'the same directory can be registered as a container ' +
+        'environment later, and starting on this machine is a ' +
+        'reasonable way to begin.</p>';
 
     function fsGetSelectedContainerId() {
         return _sSelectedContainerId;

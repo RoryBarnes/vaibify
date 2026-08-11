@@ -78,7 +78,7 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     """Build the route context and wire shared identifiers onto it."""
     from . import pipelineServer
     dictCtx = pipelineServer.fdictBuildContext(
-        pipelineServer._fconnectionCreateDocker(),
+        pipelineServer.fconnectionBuildRouted(),
     )
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["sTerminalUser"] = dictConfig["sTerminalUser"]
@@ -89,6 +89,13 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     dictCtx["dictSessionSockets"] = app.state.dictSessionSockets
     if dictConfig["bIsHub"]:
         dictCtx["bIsHub"] = True
+    # Published on app.state so ``routeScope.ContainerAwareRoute`` can
+    # reach the workflow cache. It runs before every container-scoped
+    # handler and is the one place that already classifies a request as
+    # mutating, which is what the Supervised-on-host refusal needs; the
+    # alternative was a second classifier in middleware that would drift
+    # from this one.
+    app.state.dictRouteContext = dictCtx
     return dictCtx
 
 
@@ -212,7 +219,26 @@ def fappCreateHubApplication(iExpectedPort=0):
 def _fnRegisterHubLockLifecycle(app):
     """Reap stale claims at startup; release held locks at shutdown."""
     _fnRegisterHubStartupReapStaleClaims(app)
+    _fnRegisterHubStartupSweepHostScratch(app)
     _fnRegisterHubShutdownReleaseLocks(app)
+
+
+def _fnRegisterHubStartupSweepHostScratch(app):
+    """Retire unreachable host-mode scratch before the hub serves.
+
+    Registered HERE and not beside the ephemeral-secret sweep, which
+    is gated on enumerating what the Docker daemon still bind-mounts
+    and skips itself entirely when that enumeration fails. A host-only
+    hub has no daemon to ask, and nothing in this subtree is mounted
+    into anything, so tying the two together would mean the scratch of
+    a daemon-less machine is never swept at all.
+    """
+
+    async def fnSweepHostScratch(app):
+        del app
+        from vaibify.host.hostScratch import fnSweepStaleHostScratch
+        fnSweepStaleHostScratch()
+    app.state.listLifespanStartup.append(fnSweepHostScratch)
 
 
 def _fnRegisterHubStartupReapStaleClaims(app):

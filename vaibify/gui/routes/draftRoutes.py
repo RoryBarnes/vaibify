@@ -25,6 +25,7 @@ from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
+    fdictStampDockerIdForJournal,
     fsHashContainerFileOrEmpty,
 )
 from ..routeScope import (
@@ -126,7 +127,7 @@ def _fnRegisterDraftWrite(app, dictCtx):
         sContainerId: str, sFilePath: str,
         request: DraftWriteRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRejectOversize(request.sContent)
         sDraftDir, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
@@ -187,7 +188,7 @@ def _fnCommitDraftWrite(
         sContainerId, dictLaneTuple, "file-write", sDraftPath,
         fnWriteTheDraft,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baPayload).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },
@@ -202,7 +203,7 @@ def _fnRegisterDraftRead(app, dictCtx):
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
@@ -232,7 +233,7 @@ def _fnRegisterDraftDelete(app, dictCtx):
         sContainerId: str, sFilePath: str, requestHttp: Request,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
@@ -275,7 +276,7 @@ def _fnCommitDraftDelete(dictCtx, sContainerId, sDraftPath, requestHttp):
         sContainerId, dictLaneTuple, "file-write", sDraftPath,
         fnRemoveTheDraft,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": "",
             "sPriorSha256": sPriorSha256,
         },
@@ -287,7 +288,7 @@ def _fnRegisterDraftList(app, dictCtx):
 
     @app.get("/api/drafts/{sContainerId}")
     async def fdictHandleListDrafts(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath, sWorkflowPath = (
             _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
         )

@@ -1,6 +1,7 @@
 """FastAPI application with REST and WebSocket routes for workflow viewing."""
 
 import asyncio
+import getpass
 import json
 import logging
 import os
@@ -74,6 +75,7 @@ from . import agentSessionBridge
 from . import browserSession
 from . import conftestManager
 from . import containerOwnership
+from . import projectRoots
 from . import sessionLifecycle
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
@@ -457,6 +459,7 @@ def fsResolveFigurePath(sWorkflowDirectory, sFilePath):
 def fbaFetchFigureWithFallback(
     connectionDocker, sContainerId, sAbsPath,
     sWorkflowDirectory, sWorkdir, sFilePath,
+    sProjectRoot=WORKSPACE_ROOT,
 ):
     """Try primary path, then fallback with sWorkdir prefix.
 
@@ -474,14 +477,14 @@ def fbaFetchFigureWithFallback(
     if sWorkdir and not sFilePath.startswith("/"):
         return _fbaFetchFallback(
             connectionDocker, sContainerId,
-            sWorkflowDirectory, sWorkdir, sFilePath,
+            sWorkflowDirectory, sWorkdir, sFilePath, sProjectRoot,
         )
     raise HTTPException(404, "Figure not found")
 
 
 def _fbaFetchFallback(
     connectionDocker, sContainerId,
-    sWorkflowDirectory, sWorkdir, sFilePath,
+    sWorkflowDirectory, sWorkdir, sFilePath, sProjectRoot,
 ):
     """Attempt to fetch figure from workdir-relative path."""
     if sWorkdir.startswith("/"):
@@ -489,7 +492,7 @@ def _fbaFetchFallback(
     else:
         sFallback = posixpath.join(
             sWorkflowDirectory, sWorkdir, sFilePath)
-    fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sFallback, sProjectRoot)
     try:
         return connectionDocker.fbaFetchFile(
             sContainerId, sFallback, iMaxBytes=None,
@@ -1521,10 +1524,20 @@ def _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId=""):
     here purely to keep the idle busy-veto honest about a mid-run viewer.
     The browser session id is threaded through so the viewer's
     first-connect ownership is bound to the connecting session.
+
+    A host project takes neither container touch (host-mode decision
+    6): the executing user IS the host user — resolved in-process, no
+    subprocess — and no agent session is pushed, because no agent
+    token exists to deliver and there is no container to write
+    ``/tmp/vaibify-session.env`` into.
     """
     _fnRegisterViewerServedContainer(
         dictCtx, sContainerId, sBrowserSessionId,
     )
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        dictCtx["containerUsers"][sContainerId] = getpass.getuser()
+        return
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
@@ -1580,7 +1593,7 @@ def _fnRegisterViewerServedContainer(
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
-        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sAgentToken=containerOwnership.fsMintAgentToken(sName),
         sContainerId=sContainerId,
         sBrowserSessionId=sBrowserSessionId,
     )
@@ -1640,7 +1653,46 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "sWorkflowPath": None,
         "dictWorkflow": None,
         "sLeaseId": dictCtx.get("sViewerLease", ""),
+        "sProjectMode": fsProjectModeOfResource(sContainerId),
+        "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
     }
+
+
+def fsWorkspaceRootOfResource(sResourceId):
+    """Return the root this resource's files live under, for the client.
+
+    The frontend has always written ``/workspace`` as a constant, which
+    is true of a container and false of a host project, whose files
+    live in the directory the researcher registered. Answered by the
+    server for the same reason the mode is: a root the dashboard
+    derives for itself is one it can be wrong about, and the wrong
+    answer here browses a directory that does not exist and reports a
+    project as empty.
+
+    A host entry with no directory has no honest answer; rather than
+    fail the connect, fall back to the container root and let the
+    server-side guards refuse the paths built from it -- the connect
+    path's own resolution already raises where it matters.
+    """
+    from .projectRoots import fsResolveProjectRoot
+    try:
+        return fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT)
+    except ValueError:
+        return WORKSPACE_ROOT
+
+
+def fsProjectModeOfResource(sResourceId):
+    """Return ``"host"`` or ``"container"`` for a resource id.
+
+    Answered by the server on the connect handshake, so the dashboard
+    learns the mode on EVERY entry path -- a tile click, a reload, a
+    direct link -- rather than only on the one that happened to know
+    it. The uncontained badge is a permanent claim about where the
+    researcher's commands will run; a claim the dashboard derives for
+    itself is one it can be wrong about.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    return "host" if fbIsHostProject(sResourceId) else "container"
 
 
 async def _fnScanDependenciesBackground(
@@ -1678,10 +1730,17 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
     return dictResult
 
 
-def _fsValidateConnectWorkflowPath(sWorkflowPath):
-    """Normalize and validate a connect-supplied workflow path."""
+def _fsValidateConnectWorkflowPath(sWorkflowPath, sProjectRoot):
+    """Normalize and validate a connect-supplied workflow path.
+
+    ``sProjectRoot`` is the boundary the path must fall inside: the
+    container workspace volume for a container project, the registered
+    directory for a host one. It is passed rather than assumed so a
+    host path can never be measured against a container root, which
+    would refuse every legitimate host project.
+    """
     sNormalized = posixpath.normpath(sWorkflowPath)
-    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sNormalized, sProjectRoot)
     if not sNormalized.endswith(".json"):
         raise HTTPException(
             400, "sWorkflowPath must point at a .json file")
@@ -1756,7 +1815,10 @@ async def fdictHandleConnect(
         return _fdictConnectNoWorkflow(
             dictCtx, sContainerId, sBrowserSessionId,
         )
-    sWorkflowPath = _fsValidateConnectWorkflowPath(sWorkflowPath)
+    sWorkflowPath = _fsValidateConnectWorkflowPath(
+        sWorkflowPath,
+        projectRoots.fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
+    )
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
@@ -1813,6 +1875,8 @@ async def fdictHandleConnect(
             "sWorkflowFingerprint": (
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),
+            "sProjectMode": fsProjectModeOfResource(sContainerId),
+            "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
         }
     except HTTPException:
         raise
@@ -1906,7 +1970,13 @@ def fsContainerNameForId(connectionDocker, sContainerId):
     is not in the running set, so a caller that already holds a name (the
     viewer, or a test fixture where name == id) is unaffected.
     """
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        return sContainerId
+    if not fbDockerReachable(connectionDocker):
         return sContainerId
     try:
         for dictRow in connectionDocker.flistGetRunningContainers():
@@ -2260,8 +2330,8 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     routes without restarting vaibify.
     """
 
-    def fnRequire():
-        _fnRequireDocker(dictRaw["docker"])
+    def fnRequire(sResourceId=None):
+        _fnRequireDocker(dictRaw["docker"], sResourceId=sResourceId)
 
     def fnSave(sContainerId, dictWorkflow):
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
@@ -2283,7 +2353,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     def fsBuildWorkflowDirectory(sContainerId):
         sPath = dictPaths.get(sContainerId)
         if not sPath:
-            return WORKSPACE_ROOT
+            return projectRoots.fsResolveProjectRoot(
+                sContainerId, WORKSPACE_ROOT,
+            )
         sWorkflowDirectory = posixpath.dirname(sPath)
         if "/.vaibify" in sWorkflowDirectory:
             return sWorkflowDirectory[
@@ -2385,6 +2457,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
+    routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 
@@ -2422,6 +2495,19 @@ def _fnRegisterLastResortExceptionHandler(app):
 # Internal callers should import from the canonical module; these
 # bindings keep external importers and the test patch surface
 # (e.g. ``pipelineServer._fconnectionCreateDocker``) working.
+
+
+def fconnectionBuildRouted():
+    """Build the two-leg connection router the hub context holds.
+
+    The Docker leg comes from ``_fconnectionCreateDocker`` resolved
+    through this module's globals AT CALL TIME, so the browser
+    lane's conftest patch of that symbol is honored and its fake
+    becomes the router's Docker leg.
+    """
+    from vaibify.host.hostConnection import HostConnection
+    from .connectionRouter import ConnectionRouter
+    return ConnectionRouter(_fconnectionCreateDocker(), HostConnection())
 # ---------------------------------------------------------------
 
 from .dockerStatus import (  # noqa: E402,F401

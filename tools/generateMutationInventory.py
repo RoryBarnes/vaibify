@@ -186,6 +186,20 @@ DICT_PRIMITIVE_ACCESS = {
     # own ended the heredoc and made the rest shell, and the whole
     # thing went through the general exec primitive besides.
     "flistContainerPathsExist": S_ACCESS_TYPED_READ,
+    # The file panel's five-second poll, on the same terms again. Both
+    # replaced a container WRITE plus an exec: the poll pushed its path
+    # list into /tmp because a shell argv would not hold it, and that
+    # write was the dashboard's only mutation on a timer.
+    "fdictStatPathMtimes": S_ACCESS_TYPED_READ,
+    "fsHashContainerFileSha256": S_ACCESS_TYPED_READ,
+    # The Repositories panel's five-second poll, and the first typed
+    # read whose program runs an EXTERNAL binary: git is the only way
+    # to ask git. What varies is still only the path literal, and the
+    # argv around it is fixed text in the program table. It replaced a
+    # shell script the caller ASSEMBLED with repository names
+    # interpolated raw -- the last exec keeping that route outside the
+    # commit-guard boundary.
+    "flistReadGitRepoStatuses": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
@@ -241,6 +255,7 @@ SET_MUTATION_CAPABLE_ACCESS = frozenset({
 # tell a reviewer nothing.
 
 S_CAPABILITY_PROCESS_LAUNCH = "process-launch"
+S_CAPABILITY_PROCESS_SIGNAL = "process-signal"
 S_CAPABILITY_DOCKER_CLIENT = "docker-client"
 S_CAPABILITY_REFLECTION = "reflection"
 S_CAPABILITY_UNIX_SOCKET = "unix-socket"
@@ -279,6 +294,30 @@ SET_OS_PROCESS_MEMBERS = frozenset({
     "system", "popen", "fork", "forkpty", "posix_spawn", "posix_spawnp",
 })
 TUPLE_OS_PROCESS_MEMBER_PREFIXES = ("exec", "spawn")
+
+# ``os``'s process-SIGNALLING surface, admitted 2026-08-10. Signalling
+# is not command authority -- a signal cannot make a process do
+# anything new, only stop one -- which is why this vocabulary went
+# without it for as long as every signal vaibify sent went to a process
+# vaibify had itself created and was tracking: its own keep-alive
+# helper, its own hub, itself.
+#
+# Host mode changed the answer. ``hostCancellation`` signals a process
+# GROUP named by a number read back out of a journal file, on the
+# researcher's own machine, where being wrong stops a stranger's
+# program with the researcher's own authority. A reviewer asking "what
+# can this codebase do to my machine?" should not have to already know
+# that to find out.
+#
+# STATED SCOPE, because it is narrower than the capability: this covers
+# the namespaced ``os`` surface only. A bare ``processChild.kill()`` or
+# ``.terminate()`` on a Popen handle is NOT matched, and deliberately
+# so -- those are ordinary method names shared with threads, tasks and
+# test doubles, and matching them would be exactly the
+# classification-by-spelling defect this module fixed elsewhere. The
+# launch that produced such a handle is already an acquisition, so the
+# object being signalled is in the record even when the signal is not.
+SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})
 
 # Reflection obtained without importing anything. Listing only
 # ``importlib`` / ``__import__`` / ``getattr`` would leave
@@ -326,10 +365,16 @@ TUPLE_ACQUISITION_REVIEWER_FIELDS = (
 )
 
 # The modules that DEFINE the primitives. Their own definitions and
-# internal helpers are the boundary itself, not callers of it.
+# internal helpers are the boundary itself, not callers of it. The
+# host gateway joined 2026-08-08: it is the single permitted subprocess
+# launcher under vaibify/host/ (testHostSubprocessConfinement pins
+# that), every launch it makes is gated, journaled, and
+# admission-checked, and its acquisition carries a reviewed
+# disposition in the inventory.
 SET_GATEWAY_MODULES = frozenset({
     "docker/dockerConnection.py",
     "docker/containerManager.py",
+    "host/hostConnection.py",
 })
 
 # The reviewer's fields: everything that needs judgement rather than
@@ -374,7 +419,8 @@ DICT_REVIEWER_ENUMS = {
 
 DICT_REVIEWER_SCALAR_ENUMS = {
     "sJournalKind": frozenset({
-        "start", "exec", "terminal", "helper", "file-write", "none",
+        "start", "exec", "terminal", "helper", "file-write",
+        "host-exec", "none",
     }),
     "sLifetime": frozenset({"request", "outlives-request"}),
     # EXCLUDED demands a rationale. A boundary whose exceptions are
@@ -1050,6 +1096,8 @@ def _fsCapabilityForMember(sModule, sMember):
         TUPLE_OS_PROCESS_MEMBER_PREFIXES,
     ):
         return S_CAPABILITY_PROCESS_LAUNCH
+    if sMember in SET_OS_SIGNAL_MEMBERS:
+        return S_CAPABILITY_PROCESS_SIGNAL
     return None
 
 

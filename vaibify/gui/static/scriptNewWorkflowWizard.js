@@ -105,11 +105,25 @@ var VaibifyNewWorkflowWizard = (function () {
             "Project creation is researcher-only — review " +
             "each step and confirm.";
         if (_dictAgentRequest.sSuggestedDirectory) {
-            sText += " Suggested location: /workspace/" +
+            sText += " Suggested location: " +
+                _fsWorkspaceRootWithSlash() +
                 _dictAgentRequest.sSuggestedDirectory + ".";
         }
         elBanner.textContent = sText;
         elContent.parentNode.insertBefore(elBanner, elContent);
+    }
+
+    function _fsWorkspaceRootWithSlash() {
+        /* Every location this wizard displays is under the project's
+           own root. A host project's is the registered directory, so
+           writing "/workspace/" here would show a researcher a path
+           that exists on nobody's machine. */
+        var sRoot = "/workspace";
+        if (typeof VaibifyApp !== "undefined" &&
+            VaibifyApp.fsGetWorkspaceRoot) {
+            sRoot = VaibifyApp.fsGetWorkspaceRoot() || sRoot;
+        }
+        return sRoot.replace(/\/+$/, "") + "/";
     }
 
     function _fnHandleCancel() {
@@ -324,7 +338,7 @@ var VaibifyNewWorkflowWizard = (function () {
 
     function _fsBuildLocationCard(dictItem, sKind, bAllowMissing) {
         var sName = dictItem.sName;
-        var sCaption = "/workspace/" + sName;
+        var sCaption = _fsWorkspaceRootWithSlash() + sName;
         var bDisabled = bAllowMissing && dictItem.bMissing;
         if (bDisabled) sCaption += " (missing on disk)";
         var bSelected = (
@@ -358,7 +372,9 @@ var VaibifyNewWorkflowWizard = (function () {
             '<div class="container-card wizard-location-card' +
             sSelectedClass + '" data-kind="new">' +
             '<span class="name">' +
-            'New directory under /workspace/</span>' +
+            'New directory under ' +
+            VaibifyUtilities.fnEscapeHtml(_fsWorkspaceRootWithSlash()) +
+            '</span>' +
             '<span class="image">Will be created and initialized ' +
             'as a git repo</span></div>' +
             '<div class="form-group" id="wizardNewDirInputGroup" ' +
@@ -422,7 +438,8 @@ var VaibifyNewWorkflowWizard = (function () {
                 "with a dot.";
             return;
         }
-        elHelp.textContent = "Will create /workspace/" + sName +
+        elHelp.textContent = "Will create " +
+            _fsWorkspaceRootWithSlash() + sName +
             " and initialize it as a git repo.";
     }
 
@@ -437,7 +454,7 @@ var VaibifyNewWorkflowWizard = (function () {
         sLines += _fsBuildSummaryRow("Project", sName);
         sLines += _fsBuildSummaryRow("File", sSlug + ".json");
         sLines += _fsBuildSummaryRow(
-            "Location", "/workspace/" + sLocation);
+            "Location", _fsWorkspaceRootWithSlash() + sLocation);
         var sActions = _fsBuildConfirmActions(bWillInit, sSlug);
         elContent.innerHTML =
             '<div class="wizard-summary">' + sLines + '</div>' +

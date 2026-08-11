@@ -118,6 +118,24 @@ class MockDockerBoost:
             "sImage": "ubuntu:24.04",
         }]
 
+    # The poll's typed reads. They answer the same fixture this
+    # double's retired `stat -c` branch answered; what changed is
+    # that the poll asks the ADAPTER for mtimes instead of composing
+    # a command, so a double still modelling the command text would
+    # be answering a question nothing asks.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        dictAll = {
+            "step1/data.csv": "1700000000",
+            "step1/Plot/fig1.pdf": "1700000001",
+        }
+        return {
+            sPath: dictAll[sPath]
+            for sPath in listPaths if sPath in dictAll
+        }
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return ""
+
     def ftResultExecuteCommand(self, sContainerId, sCommand,
                                 sWorkdir=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
@@ -128,9 +146,6 @@ class MockDockerBoost:
             return (0, "")
         if "find" in sCommand:
             return (0, "")
-        if "stat -c" in sCommand:
-            return (0, "step1/data.csv 1700000000\n"
-                    "step1/Plot/fig1.pdf 1700000001\n")
         if "cat" in sCommand and "pipeline_state" in sCommand:
             return (1, "")
         if "ps aux" in sCommand and "grep" not in sCommand:

@@ -203,11 +203,16 @@ async def fnPruneOldLogs(
 
 
 async def _fsEnsureLogsDirectory(connectionDocker, sContainerId):
-    """Create .vaibify/logs/ directory if it does not exist."""
-    sLogsDir = posixpath.join(
-        workflowManager.DEFAULT_SEARCH_ROOT,
-        workflowManager.VAIBIFY_LOGS_DIR,
-    )
+    """Create .vaibify/logs/ directory if it does not exist.
+
+    Rooted at the RESOURCE's directory rather than at the container
+    constant. A host project's logs belong beside its project, and
+    writing them to ``/workspace`` there is not merely untidy: the host
+    path guard refuses the write, the run's final log flush fails, and
+    the pipeline reports exit 1 for a step whose command had already
+    succeeded.
+    """
+    sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
     await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
         sContainerId, f"mkdir -p {fsShellQuote(sLogsDir)}",

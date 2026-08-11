@@ -78,7 +78,7 @@ def tClientAndWorkflow(monkeypatch):
     dictWorkflow = _fdictBuildWorkflow()
     dictContext = {
         "workflows": {_S_CONTAINER_ID: dictWorkflow},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sContainerId, dictWorkflowIn: None,
         "variables": lambda sContainerId: {},
         "docker": None,

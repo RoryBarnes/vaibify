@@ -37,6 +37,12 @@ from tests.browser.fakeDockerAdapter import (
 
 S_REQUIRE_BROWSER_ENV = "VAIBIFY_REQUIRE_BROWSER"
 
+# The two host projects the lane's registry carries beside the one
+# container. Named here so a journey can address them without
+# re-deriving the seed.
+S_HOST_PROJECT_READY = "hostLaneReady"
+S_HOST_PROJECT_MISSING = "hostLaneMissing"
+
 pytestmark = pytest.mark.browser
 
 
@@ -89,6 +95,89 @@ def _fnWaitUntilServing(iPort, fTimeoutSeconds=20.0):
     )
 
 
+# The workflow the host journey opens and runs. It is a REAL git repo
+# with a REAL script, because the point of the host lane is that no
+# adapter stands between the dashboard and the machine: the step this
+# runs is run by the actual HostConnection, through the actual gated
+# and journaled launch, against the actual filesystem.
+S_HOST_WORKFLOW_NAME = "hostLaneProject"
+S_HOST_STEP_NAME = "MakeNumbers"
+S_HOST_STEP_OUTPUT = "numbers.json"
+
+_S_HOST_STEP_SCRIPT = """import argparse
+import json
+
+parserArguments = argparse.ArgumentParser()
+parserArguments.add_argument("--output", required=True)
+namespaceArguments = parserArguments.parse_args()
+with open(namespaceArguments.output, "w") as fileOutput:
+    json.dump({"listValues": [1, 2, 3]}, fileOutput)
+print("wrote " + namespaceArguments.output)
+"""
+
+
+def fdictHostWorkflowDocument():
+    """Return the project document the host journey opens."""
+    return {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+        "iNumberOfCores": 1,
+        "listSteps": [{
+            "sName": S_HOST_STEP_NAME,
+            "sStepId": "make-numbers",
+            "sDirectory": S_HOST_STEP_NAME,
+            "bRunEnabled": True,
+            "bPlotOnly": False,
+            "saDataCommands": [
+                "python3 makeNumbers.py --output " + S_HOST_STEP_OUTPUT,
+            ],
+            "saOutputDataFiles": [S_HOST_STEP_OUTPUT],
+            "saPlotCommands": [],
+            "saPlotFiles": [],
+        }],
+    }
+
+
+def fnSeedRunnableHostWorkflow(sProjectDirectory):
+    """Make the ready host project a git repo holding a runnable step.
+
+    Every vaibify workflow must live inside a git repository, and the
+    project document lives at ``.vaibify/projects/<name>.json`` where
+    discovery looks for it. Committing is deliberate: an empty repo has
+    no HEAD, and the git badges the workflow view fetches on open would
+    then be answering about a repository with no commits rather than
+    about an ordinary one.
+    """
+    import subprocess
+    sStepDirectory = os.path.join(sProjectDirectory, S_HOST_STEP_NAME)
+    os.makedirs(sStepDirectory, exist_ok=True)
+    with open(
+        os.path.join(sStepDirectory, "makeNumbers.py"), "w",
+    ) as fileScript:
+        fileScript.write(_S_HOST_STEP_SCRIPT)
+    sProjectsDirectory = os.path.join(
+        sProjectDirectory, ".vaibify", "projects",
+    )
+    os.makedirs(sProjectsDirectory, exist_ok=True)
+    with open(
+        os.path.join(sProjectsDirectory, S_HOST_WORKFLOW_NAME + ".json"),
+        "w",
+    ) as fileWorkflow:
+        json.dump(fdictHostWorkflowDocument(), fileWorkflow)
+    for listCommand in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "lane@example.invalid"],
+        ["git", "config", "user.name", "Browser Lane"],
+        ["git", "add", "-A"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q",
+         "-m", "seed"],
+    ):
+        subprocess.run(
+            listCommand, cwd=sProjectDirectory, check=True,
+            capture_output=True,
+        )
+
+
 @contextlib.contextmanager
 def _fnIsolateProjectRegistry():
     """Point the global registry at a throwaway directory.
@@ -98,7 +187,13 @@ def _fnIsolateProjectRegistry():
     researcher's real project list, so a CI-shaped test would behave
     differently on a developer machine and could damage live state.
     Seeded with the one container the fake Docker adapter reports, so
-    what the browser renders is fully determined by this file.
+    what the browser renders is fully determined by this file, plus
+    two host projects. The host entries are here rather than in a
+    fixture of their own because the picker renders one list: a host
+    tile that behaved correctly in isolation but broke the container
+    tile beside it would pass a separate fixture and fail a user.
+    One is READY (its directory and config exist) and one is MISSING
+    (nothing on disk), which are the two host states the picker has.
     """
     from vaibify.config import registryManager
     # Project creation correctly permits directories beneath the user's
@@ -106,6 +201,13 @@ def _fnIsolateProjectRegistry():
     # is beneath that home, so the wizard exercises the real path guard.
     with tempfile.TemporaryDirectory(dir=os.getcwd()) as sHome:
         sRegistry = os.path.join(sHome, "registry.json")
+        sReadyDirectory = os.path.join(sHome, S_HOST_PROJECT_READY)
+        os.makedirs(sReadyDirectory, exist_ok=True)
+        with open(
+            os.path.join(sReadyDirectory, "vaibify.yml"), "w",
+        ) as fileConfig:
+            fileConfig.write(f"projectName: {S_HOST_PROJECT_READY}\n")
+        fnSeedRunnableHostWorkflow(sReadyDirectory)
         with open(sRegistry, "w") as fileHandle:
             json.dump({"listProjects": [{
                 "sName": S_CONTAINER_NAME,
@@ -114,7 +216,31 @@ def _fnIsolateProjectRegistry():
                 "sConfigPath": os.path.join(
                     sHome, "browserLaneProject", "vaibify.yml",
                 ),
+            }, {
+                "sName": S_HOST_PROJECT_READY,
+                "sContainerName": S_HOST_PROJECT_READY,
+                "sMode": "host",
+                "sDirectory": sReadyDirectory,
+                "sConfigPath": os.path.join(
+                    sReadyDirectory, "vaibify.yml",
+                ),
+            }, {
+                "sName": S_HOST_PROJECT_MISSING,
+                "sContainerName": S_HOST_PROJECT_MISSING,
+                "sMode": "host",
+                "sDirectory": os.path.join(
+                    sHome, S_HOST_PROJECT_MISSING,
+                ),
+                "sConfigPath": os.path.join(
+                    sHome, S_HOST_PROJECT_MISSING, "vaibify.yml",
+                ),
             }]}, fileHandle)
+        # Preferences are host-global at ~/.vaibify/preferences.json,
+        # and the host-warning acknowledgement is a real write to it.
+        # Without this the lane records acknowledgements against the
+        # researcher's own preferences file, for temp directories that
+        # stop existing the moment the run ends.
+        from vaibify.config import preferencesStore
         with patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
@@ -122,6 +248,14 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             registryManager, "_S_LOCK_PATH",
             os.path.join(sHome, "registry.lock"),
+        ), patch.object(
+            preferencesStore, "_S_PREFERENCES_DIRECTORY", sHome,
+        ), patch.object(
+            preferencesStore, "_S_PREFERENCES_PATH",
+            os.path.join(sHome, "preferences.json"),
+        ), patch.object(
+            preferencesStore, "_S_LOCK_PATH",
+            os.path.join(sHome, "preferences.lock"),
         ):
             yield sHome
 

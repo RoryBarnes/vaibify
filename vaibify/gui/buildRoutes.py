@@ -70,6 +70,14 @@ def _fnRegisterBuildContainer(app, dictCtx):
         sName: str, bNoCache: bool = False,
     ):
         from vaibify.gui.registryRoutes import _fdictRequireProject
+        from vaibify.gui.routeContext import (
+            fnRefuseContainerOnlyForHostProject,
+        )
+        # Before the daemon check, deliberately. On a machine with no
+        # Docker at all -- the researcher host mode exists for -- a
+        # daemon-first order answers "Docker is unavailable" for a
+        # project that never wanted Docker.
+        fnRefuseContainerOnlyForHostProject(sName, "Building an image")
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         dictExisting = _DICT_BUILD_PROGRESS.get(sName)

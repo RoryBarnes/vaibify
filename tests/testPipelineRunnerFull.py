@@ -52,6 +52,19 @@ def _fMockDocker(iExitCode=0, sOutput=""):
     _fnConfigureStreamingMock(mockDocker, [(iExitCode, sOutput)])
     mockDocker.fnWriteFile = MagicMock()
     mockDocker.fbaFetchFile.return_value = b"{}"
+    # The output-existence check is a batched TYPED READ now, not an
+    # xargs whose stdout lists the paths that exist. ``sOutput`` keeps
+    # meaning exactly what it meant -- the set of present paths -- so
+    # every fixture below still says what it said.
+    setPresentPaths = {
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.strip()
+    }
+    mockDocker.flistContainerPathsExist.side_effect = (
+        lambda sContainerId, listPaths: [
+            sPath in setPresentPaths for sPath in listPaths
+        ]
+    )
     return mockDocker
 
 
@@ -442,14 +455,16 @@ def test_fbVerifyStepOutputs_no_files():
     assert bResult is True
 
 
-def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
-    """A step with N output files produces a bounded constant exec count.
+def test_fbVerifyStepOutputs_uses_one_typed_read_for_many_files():
+    """A step with N output files costs ONE read and NO exec.
 
     Pre-batch the helper ran one ``test -f`` per file; for 1000 steps
-    × 3 files that's 3000 round-trips. The batched path writes the
-    list into the container once, runs a single xargs, and cleans up
-    the per-call pathfile with one rm — three execs total, independent
-    of N (vs ~N+1 pre-batch and N+2 with cleanup-per-file).
+    × 3 files that's 3000 round-trips. Batching it through a pathfile
+    cut that to three calls — a tar write, an xargs, and an ``rm`` —
+    but two of those were container MUTATIONS performed on the core run
+    path to answer a question about existence. The batched existence
+    probe answers it as a read, so the count is one and none of it
+    writes.
     """
     listFiles = [f"out_{i:03d}.dat" for i in range(20)]
     sOutput = "\n".join(f"/work/{s}" for s in listFiles) + "\n"
@@ -461,9 +476,11 @@ def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
     ))
     assert bResult is True
-    # xargs batch + per-call rm cleanup. The fnWriteFile is a write,
-    # not an exec, so it does not appear in ftResultExecuteCommand calls.
-    assert mockDocker.ftResultExecuteCommand.call_count == 2
+    assert mockDocker.flistContainerPathsExist.call_count == 1
+    assert mockDocker.ftResultExecuteCommand.call_count == 0, (
+        "the verify swept outputs with an exec; it is a typed read now"
+    )
+    mockDocker.fnWriteFileViaTar.assert_not_called()
 
 
 def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
@@ -1089,11 +1106,15 @@ def test_verify_step_exec_timeout_does_not_hang():
 
     mockDocker = _fMockDocker(0, "")
 
-    def fnSlowExec(*args, **kwargs):
+    def fnSlowProbe(*args, **kwargs):
         _time.sleep(1.0)   # far longer than the patched timeout
-        return (0, "")
+        return []
 
-    mockDocker.ftResultExecuteCommand.side_effect = fnSlowExec
+    # The stall is placed on the EXISTENCE PROBE, which is what verify
+    # now waits on. Stalling the exec would leave the probe answering
+    # instantly and the timeout never firing — the test would pass
+    # having exercised nothing.
+    mockDocker.flistContainerPathsExist.side_effect = fnSlowProbe
     dictWorkflow = {
         "sPlotDirectory": "Plot",
         "listSteps": [

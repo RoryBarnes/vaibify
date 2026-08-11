@@ -38,11 +38,14 @@ only, following the pipelineUtils.py pattern.
 
 __all__ = [
     "S_TRACKED_REPOS_PATH",
+    "fsRepositoryRootFor",
+    "fsSidecarPathFor",
     "S_TRACKED_REPOS_DIR",
     "I_SCHEMA_VERSION",
     "fdictReadSidecar",
     "fnWriteSidecar",
     "fdictBuildInitialState",
+    "flistBuildSeedEntries",
     "fdictReadOrSeedSidecar",
     "flistDiscoverGitDirs",
     "flistDiscoverNonGitDirs",
@@ -64,8 +67,31 @@ import json
 import posixpath
 import threading
 
+from .pipelineUtils import fsShellQuote
+
+# The container answers, kept as constants because they are the
+# container's real paths and several callers and doubles name them.
+# Every SITE below asks the resolver instead: a host project's
+# repositories live under the directory the researcher registered, and
+# /workspace exists on nobody's laptop.
+S_WORKSPACE_ROOT = "/workspace"
 S_TRACKED_REPOS_DIR = "/workspace/.vaibify"
 S_TRACKED_REPOS_PATH = "/workspace/.vaibify/tracked_repos.json"
+_S_SIDECAR_RELATIVE = ".vaibify/tracked_repos.json"
+
+
+def fsRepositoryRootFor(sResourceId):
+    """Return the directory this resource's repositories live under."""
+    from .pipelineServer import WORKSPACE_ROOT
+    from .projectRoots import fsResolveProjectRoot
+    return fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT)
+
+
+def fsSidecarPathFor(sResourceId):
+    """Return this resource's tracked-repositories sidecar path."""
+    return posixpath.join(
+        fsRepositoryRootFor(sResourceId), _S_SIDECAR_RELATIVE,
+    )
 I_SCHEMA_VERSION = 1
 
 _dictLocks = {}
@@ -175,27 +201,42 @@ def _flockGetLock(sContainerId):
 
 
 def fdictReadSidecar(connectionDocker, sContainerId):
-    """Read the tracked_repos sidecar, returning None on any failure."""
+    """Read the tracked_repos sidecar, returning None on any failure.
+
+    A TYPED READ. It used to assemble ``cat <path>`` and hand it to the
+    general exec primitive, which the mutation gate must treat as
+    mutating because command text cannot be told apart from a delete --
+    so on an enforced lane the Repos panel's own read would be refused.
+    ``fbaFetchFile`` names a declared read operation and the adapter
+    builds the command, so the path can never become program text.
+
+    ``FileNotFoundError`` is an ``OSError`` and lands in the same net
+    as a malformed document: both mean "no usable sidecar", which the
+    caller answers by seeding one in memory.
+    """
     try:
-        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            f"cat {S_TRACKED_REPOS_PATH} 2>/dev/null",
+        baContent = connectionDocker.fbaFetchFile(
+            sContainerId, fsSidecarPathFor(sContainerId),
         )
-        if iExitCode != 0 or not sOutput.strip():
+        if not baContent.strip():
             return None
-        return json.loads(sOutput)
-    except (json.JSONDecodeError, OSError, ValueError):
+        return json.loads(baContent.decode("utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError):
         return None
 
 
 def fnWriteSidecar(connectionDocker, sContainerId, dictSidecar):
     """Write the sidecar dict to the container as indented JSON."""
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mkdir -p {S_TRACKED_REPOS_DIR}"
+        sContainerId,
+        "mkdir -p " + fsShellQuote(
+            posixpath.dirname(fsSidecarPathFor(sContainerId)),
+        ),
     )
     sContent = json.dumps(dictSidecar, indent=2)
     connectionDocker.fnWriteFile(
-        sContainerId, S_TRACKED_REPOS_PATH, sContent.encode("utf-8")
+        sContainerId, fsSidecarPathFor(sContainerId),
+        sContent.encode("utf-8"),
     )
 
 
@@ -208,35 +249,67 @@ def fdictBuildInitialState(listRepoEntries):
     }
 
 
+def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
+    """Return ``(listGitDirs, listNonGitDirs)`` under the workspace root.
+
+    TWO TYPED READS for what used to be two ``find`` execs -- and the
+    old pair ran THREE, because the non-git discovery called the git
+    discovery again to subtract it. One directory listing plus one
+    batched existence probe answers both questions at once, from one
+    consistent view of the workspace, and neither reaches the general
+    exec primitive.
+
+    Anything that is not a directory falls out naturally: a plain file
+    has no ``.git`` child, and the workspace's own dot-directories are
+    filtered by name as they always were.
+    """
+    sRepositoryRoot = fsRepositoryRootFor(sContainerId)
+    try:
+        listEntries = connectionDocker.flistDirectoryEntries(
+            sContainerId, sRepositoryRoot,
+        )
+    except OSError:
+        return ([], [])
+    listNames = sorted(
+        sName for sName in listEntries
+        if not sName.startswith(".")
+    )
+    if not listNames:
+        return ([], [])
+    listGitMarkers = [
+        posixpath.join(sRepositoryRoot, sName, ".git")
+        for sName in listNames
+    ]
+    try:
+        listHasGit = connectionDocker.flistContainerPathsExist(
+            sContainerId, listGitMarkers,
+        )
+    except OSError:
+        return ([], [])
+    listGitDirs = [
+        sName for sName, bHasGit in zip(listNames, listHasGit) if bHasGit
+    ]
+    listNonGitDirs = [
+        sName for sName, bHasGit in zip(listNames, listHasGit)
+        if not bHasGit
+    ]
+    return (listGitDirs, listNonGitDirs)
+
+
 def flistDiscoverGitDirs(connectionDocker, sContainerId):
     """Return sorted basenames of /workspace/<name>/.git directories."""
-    sCommand = (
-        "find /workspace -mindepth 2 -maxdepth 2 -type d "
-        "-name .git -printf '%h\\n' 2>/dev/null"
+    listGitDirs, _listNonGitDirs = _ftPartitionWorkspaceDirectories(
+        connectionDocker, sContainerId,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    if iExitCode != 0 or not sOutput:
-        return []
-    listNames = _flistParseFindOutput(sOutput)
-    return sorted(listNames)
+    return listGitDirs
 
 
 def flistDiscoverNonGitDirs(connectionDocker, sContainerId):
     """Return sorted basenames of /workspace/<name> dirs lacking .git/."""
-    sCommand = (
-        "find /workspace -mindepth 1 -maxdepth 1 -type d "
-        "-printf '%f\\n' 2>/dev/null"
+    _listGitDirs, listNonGitDirs = _ftPartitionWorkspaceDirectories(
+        connectionDocker, sContainerId,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    if iExitCode != 0 or not sOutput:
-        return []
-    listAll = _flistFilterDirNames(sOutput)
-    setGit = set(flistDiscoverGitDirs(connectionDocker, sContainerId))
-    return sorted([s for s in listAll if s not in setGit])
+    return listNonGitDirs
 
 
 def _flistFilterDirNames(sOutput):
@@ -329,151 +402,141 @@ def _fdictMissingStatus(sRepoName):
 
 def flistBatchComputeRepoStatus(
     connectionDocker, sContainerId, listRepoNames,
+    sRepoRoot=None,
 ):
-    """Compute status for multiple repos in a single docker exec."""
+    """Return one status dict per repository name, in the order given.
+
+    One typed read for the whole panel. What this replaced was a SHELL
+    SCRIPT this module assembled, interpolating each repository name
+    raw into ``echo "..."`` and ``git -C /workspace/<name>``, and that
+    shape carried four defects at once: a repository name is
+    user-chosen text reaching a shell; ``echo -n`` is not portable;
+    porcelain output was squeezed through ``tr`` with a pipe as the
+    record separator, so a filename containing ``|`` corrupted the
+    parse; and, being an exec, it kept this whole route outside the
+    commit-guard boundary, because a route on a five-second timer
+    cannot hold the mutation drain without making Run Step refuse at
+    random.
+
+    A failed READ answers "missing" for every repository rather than
+    raising. That is the same answer the shell script's non-zero exit
+    produced, and it is the right one for a poll: the panel's job is to
+    say what it can see, and a read it could not perform is indeed
+    nothing it can see.
+    """
     if not listRepoNames:
         return []
-    sScript = _fsBuildBatchStatusScript(listRepoNames)
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sScript,
-    )
-    if iExitCode != 0 or not sOutput:
-        return _flistFallbackSequential(
-            connectionDocker, sContainerId, listRepoNames)
-    return _flistParseBatchOutput(sOutput, listRepoNames)
-
-
-def _fsBuildBatchStatusScript(listRepoNames):
-    """Build a shell script that dumps status for every repo."""
-    listParts = ['echo "["']
-    for iIdx, sName in enumerate(listRepoNames):
-        sComma = ',' if iIdx > 0 else ''
-        listParts.append(
-            _fsBuildSingleRepoBlock(sName, sComma))
-    listParts.append('echo "]"')
-    return " && ".join(listParts)
-
-
-def _fsBuildSingleRepoBlock(sRepoName, sComma):
-    """Build shell commands that emit one JSON object for sRepoName."""
-    sPath = "/workspace/" + sRepoName
-    return (
-        'echo "' + sComma + '{"'
-        ' && echo "\\"sName\\": \\"' + sRepoName + '\\","'
-        ' && ' + _fsBuildGitFieldCommand(sPath, "sBranch",
-            "rev-parse --abbrev-ref HEAD")
-        + ' && ' + _fsBuildGitFieldCommand(sPath, "sUrl",
-            "config --get remote.origin.url")
-        + ' && ' + _fsBuildPorcelainCommand(sPath)
-        + ' && ' + _fsBuildMissingCheck(sPath)
-        + ' && echo "}"'
-    )
-
-
-def _fsBuildGitFieldCommand(sPath, sFieldName, sGitArgs):
-    """Build shell for one git field: echo key, run git, close quote."""
-    return (
-        'echo -n "\\"' + sFieldName + '\\": \\""'
-        ' && (git -C ' + sPath + ' ' + sGitArgs
-        + ' 2>/dev/null || echo -n "")'
-        ' && echo "\\","'
-    )
-
-
-def _fsBuildPorcelainCommand(sPath):
-    """Build shell for the sPorcelain field using pipe-delimited output."""
-    return (
-        'echo -n "\\"sPorcelain\\": \\""'
-        " && (git -C " + sPath + " status --porcelain"
-        " 2>/dev/null | tr '\\n' '|' || echo -n \"\")"
-        ' && echo "\\","'
-    )
-
-
-def _fsBuildMissingCheck(sPath):
-    """Build shell for the bMissing field via test -d."""
-    return (
-        "if test -d " + sPath + "/.git;"
-        ' then echo "\\"bMissing\\": false";'
-        ' else echo "\\"bMissing\\": true"; fi'
-    )
-
-
-def _flistParseBatchOutput(sOutput, listRepoNames):
-    """Parse the batch script's JSON output into status dicts."""
+    if sRepoRoot is None:
+        sRepoRoot = fsRepositoryRootFor(sContainerId)
+    listRepoPaths = [
+        posixpath.join(sRepoRoot, sName) for sName in listRepoNames
+    ]
     try:
-        listRaw = json.loads(sOutput)
-    except (json.JSONDecodeError, ValueError):
-        return [_fdictMissingStatus(s) for s in listRepoNames]
-    return [_fdictFromRawBatchEntry(d) for d in listRaw]
-
-
-def _fdictFromRawBatchEntry(dictRaw):
-    """Convert one raw batch entry into a clean status dict."""
-    sName = dictRaw.get("sName", "")
-    if dictRaw.get("bMissing", True):
-        return _fdictMissingStatus(sName)
-    sPorcelain = (dictRaw.get("sPorcelain", "") or "")
-    sPorcelain = sPorcelain.replace("|", "\n")
-    sFiltered = fsFilterArtifacts(sPorcelain)
-    return _fdictBuildPresentStatus(
-        sName, (dictRaw.get("sBranch") or "").strip(),
-        sFiltered, (dictRaw.get("sUrl") or "").strip() or None,
+        listRaw = connectionDocker.flistReadGitRepoStatuses(
+            sContainerId, listRepoPaths,
+        )
+    except (OSError, ValueError):
+        return [_fdictMissingStatus(sName) for sName in listRepoNames]
+    return _flistStatusesFromRawRecords(
+        listRaw, listRepoNames, listRepoPaths,
     )
 
 
-def _flistFallbackSequential(
-    connectionDocker, sContainerId, listRepoNames,
-):
-    """Fall back to per-repo status if the batch script fails."""
+def _flistStatusesFromRawRecords(listRaw, listRepoNames, listRepoPaths):
+    """Turn the read's raw records into status dicts, keyed by path.
+
+    Keyed rather than positional, on the same reasoning the batched
+    stat uses: a short or reordered answer would otherwise realign
+    every repository's status onto the wrong repository, which is a
+    silently wrong panel rather than a visibly broken one.
+    """
+    dictByPath = {
+        dictRecord.get("sPath"): dictRecord
+        for dictRecord in listRaw
+        if isinstance(dictRecord, dict)
+    }
     return [
-        fdictComputeRepoStatus(connectionDocker, sContainerId, s)
-        for s in listRepoNames
+        _fdictStatusFromRawRecord(sName, dictByPath.get(sPath))
+        for sName, sPath in zip(listRepoNames, listRepoPaths)
     ]
 
 
+def _fdictStatusFromRawRecord(sRepoName, dictRecord):
+    """Build one repository's status dict from its raw record."""
+    if dictRecord is None or dictRecord.get("bMissing", True):
+        return _fdictMissingStatus(sRepoName)
+    return _fdictBuildPresentStatus(
+        sRepoName,
+        (dictRecord.get("sBranch") or "").strip(),
+        fsFilterArtifacts(dictRecord.get("sPorcelain") or ""),
+        (dictRecord.get("sUrl") or "").strip() or None,
+    )
+
+
 def _fdictLoadOrInit(connectionDocker, sContainerId):
-    """Read sidecar or build an empty one if absent/invalid."""
+    """Read the sidecar, or build the seed a fresh workspace implies.
+
+    The SEED, not an empty state, and that is load-bearing now that the
+    read path no longer writes. Before, the first GET persisted a
+    sidecar tracking every discovered repository, so the first mutation
+    loaded a full document. With the write gone, an empty fallback
+    would make the first Track action persist a sidecar containing that
+    one repository and silently untrack every other one.
+    """
     dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
     if dictSidecar is None:
-        return fdictBuildInitialState([])
+        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
     dictSidecar.setdefault("iSchemaVersion", I_SCHEMA_VERSION)
     dictSidecar.setdefault("listTracked", [])
     dictSidecar.setdefault("listIgnored", [])
     return dictSidecar
 
 
-def _flistBuildSeedEntries(connectionDocker, sContainerId, listNames):
-    """Build tracked entries for auto-seeding from discovered repo names."""
-    listEntries = []
-    for sName in listNames:
-        dictStatus = fdictComputeRepoStatus(
-            connectionDocker, sContainerId, sName
-        )
-        listEntries.append(
-            {"sName": sName, "sUrl": dictStatus.get("sUrl")}
-        )
-    return listEntries
+def flistBuildSeedEntries(listNames):
+    """Build the tracked entries a fresh workspace seeds itself with.
+
+    PURE, and it used to run one ``git config --get remote.origin.url``
+    per repository to fill ``sUrl``. That was duplicated work as well as
+    a per-repo exec: the status payload's batch already reads every
+    tracked repo's URL, and ``_fdictBuildTrackedEntry`` prefers the
+    stored URL only when there IS one, falling back to the live value.
+    So a seed entry carries the name and leaves the URL to the batch.
+    """
+    return [{"sName": sName, "sUrl": None} for sName in listNames]
 
 
-def _fdictSeedSidecarFromDisk(connectionDocker, sContainerId):
-    """Discover repos and write a fresh sidecar tracking all of them."""
-    listDiscovered = flistDiscoverGitDirs(connectionDocker, sContainerId)
-    listEntries = _flistBuildSeedEntries(
-        connectionDocker, sContainerId, listDiscovered
+def _fdictSeedSidecarInMemory(connectionDocker, sContainerId):
+    """Return the sidecar a fresh workspace implies, WITHOUT writing it.
+
+    Auto-tracking every discovered repository is the product behaviour
+    and it is unchanged; what changed is that discovering it no longer
+    WRITES. A GET that creates state is wrong on its own terms, and
+    this one was wrong in a way that mattered: the Repos panel polls it
+    on a timer, so the dashboard held the only container mutation that
+    fired on a schedule, and a commit-guard carrier around it would
+    have had to hold the mutation drain on that same schedule --
+    refusing the researcher's own Run Step at random.
+
+    The seed is a pure function of what discovery found, so recomputing
+    it per read costs nothing beyond the discovery every poll does
+    anyway. It reaches disk the first time a MUTATION persists it,
+    which is the first moment the file has anything to say that
+    discovery does not.
+    """
+    return fdictBuildInitialState(
+        flistBuildSeedEntries(
+            flistDiscoverGitDirs(connectionDocker, sContainerId),
+        ),
     )
-    dictSidecar = fdictBuildInitialState(listEntries)
-    fnWriteSidecar(connectionDocker, sContainerId, dictSidecar)
-    return dictSidecar
 
 
 def fdictReadOrSeedSidecar(connectionDocker, sContainerId):
-    """Return the sidecar, atomically seeding it from disk when absent."""
+    """Return the sidecar, seeding it IN MEMORY when absent."""
     with _flockGetLock(sContainerId):
         dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
         if dictSidecar is not None:
             return dictSidecar
-        return _fdictSeedSidecarFromDisk(connectionDocker, sContainerId)
+        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
 
 
 def _fnRemoveByName(listEntries, sRepoName):

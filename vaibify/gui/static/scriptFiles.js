@@ -3,10 +3,13 @@
 var VaibifyFiles = (function () {
     "use strict";
 
+    /* The initial value only; the real root arrives with the connect
+       handshake, because a host project's files live in the directory
+       the researcher registered rather than in a container. */
     var sCurrentPath = "/workspace";
 
     async function fnLoadDirectory(sPath) {
-        sCurrentPath = sPath || "/workspace";
+        sCurrentPath = sPath || VaibifyApp.fsGetWorkspaceRoot();
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
 

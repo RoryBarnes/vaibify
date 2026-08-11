@@ -1019,7 +1019,8 @@ class TestPipelineServerHelpers:
     def test_flistBuildFigureCheckPaths_absolute(self):
         from vaibify.gui.pipelineServer import _flistBuildFigureCheckPaths
         listPaths = _flistBuildFigureCheckPaths(
-            "/workspace/plot.pdf", "", "/workspace", "plot.pdf"
+            "/workspace/plot.pdf", "", "/workspace", "plot.pdf",
+            "/workspace",
         )
         assert listPaths == ["/workspace/plot.pdf"]
 
@@ -1030,6 +1031,7 @@ class TestPipelineServerHelpers:
             "/workspace/step01",
             "/workspace",
             "plot.pdf",
+            "/workspace",
         )
         assert len(listPaths) == 2
         assert "step01/plot.pdf" in listPaths
@@ -1041,6 +1043,7 @@ class TestPipelineServerHelpers:
             "output",
             "/workspace/step01",
             "plot.pdf",
+            "/workspace",
         )
         assert len(listPaths) == 2
 
@@ -1465,7 +1468,8 @@ class TestPipelineServerFigureFetch:
         mockDocker.fbaFetchFile.return_value = b"png content"
         baResult = _fbaFetchFallback(
             mockDocker, "ctn1",
-            "/workspace/step01", "/workspace/step01", "plot.png"
+            "/workspace/step01", "/workspace/step01", "plot.png",
+            "/workspace",
         )
         assert baResult == b"png content"
 
@@ -1475,7 +1479,8 @@ class TestPipelineServerFigureFetch:
         mockDocker.fbaFetchFile.return_value = b"png content"
         baResult = _fbaFetchFallback(
             mockDocker, "ctn1",
-            "/workspace/step01", "output", "plot.png"
+            "/workspace/step01", "output", "plot.png",
+            "/workspace",
         )
         assert baResult == b"png content"
 
@@ -1487,7 +1492,8 @@ class TestPipelineServerFigureFetch:
         with pytest.raises(HTTPException) as excInfo:
             _fbaFetchFallback(
                 mockDocker, "ctn1",
-                "/workspace", "/workspace", "missing.png"
+                "/workspace", "/workspace", "missing.png",
+                "/workspace",
             )
         assert excInfo.value.status_code == 404
 

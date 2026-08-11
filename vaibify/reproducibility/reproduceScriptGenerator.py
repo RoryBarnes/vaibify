@@ -95,7 +95,10 @@ def fsGenerateReproduceScript(
     either as falsy raises ``ValueError`` so callers can never silently
     fall back to the host path.
     """
-    if connectionDocker is None or not sContainerId:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker) or not sContainerId:
         raise ValueError(
             "fsGenerateReproduceScript requires a docker connection "
             "and container id; reproduce.sh must be written inside "

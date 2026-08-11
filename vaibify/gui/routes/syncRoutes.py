@@ -500,7 +500,7 @@ async def _fdictHandleOverleafPushRequest(
     syncDispatcher, dictCtx, sContainerId, request, requestHttp=None,
 ):
     """End-to-end Overleaf push: flow + post-push bookkeeping."""
-    dictCtx["require"]()
+    dictCtx["require"](sContainerId)
     _fnRequireNetworkAccess(sContainerId)
     _fnValidateOverleafFilePaths(request.listFilePaths)
     _fnValidateOverleafTargetDirectory(
@@ -572,7 +572,7 @@ async def _fdictHandlePullManuscript(
     pull can never dirty the project repo, even in containers whose
     ``.vaibify/.gitignore`` predates the ``manuscript/`` entry.
     """
-    dictCtx["require"]()
+    dictCtx["require"](sContainerId)
     _fnRequireNetworkAccess(sContainerId)
     dictWorkflow = fdictRequireWorkflow(
         dictCtx["workflows"], sContainerId,
@@ -757,7 +757,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -863,7 +863,7 @@ def _fnRegisterZenodoDeposit(app, dictCtx):
 
     @app.get("/api/zenodo/{sContainerId}/deposit")
     async def fdictGetZenodoDeposit(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -888,7 +888,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
 
     @app.get("/api/zenodo/{sContainerId}/metadata")
     async def fdictHandleGetZenodoMetadata(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -907,7 +907,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
         sContainerId: str, request: ZenodoMetadataRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -1328,7 +1328,7 @@ def _fnRegisterGithubPush(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -1398,7 +1398,7 @@ def _fnRegisterGithubIdentity(app, dictCtx):
         sContainerId: str, request: GitIdentityRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
@@ -1509,7 +1509,7 @@ def _fnRegisterGithubAddFile(app, dictCtx):
         sContainerId: str, request: GitAddFileRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
@@ -1942,7 +1942,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         sContainerId: str, request: SyncSetupRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         syncDispatcher.fnValidateServiceName(request.sService)
         dictResult = await _fdictRunSetupUnderTheDrain(
             dictCtx, sContainerId, request, requestHttp,
@@ -2023,7 +2023,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     async def fdictCheckConnection(
         sContainerId: str, sService: str,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         syncDispatcher.fnValidateServiceName(sService)
         dictResult = syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, sService)
@@ -2052,7 +2052,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         sContainerId: str, sService: str, requestHttp: Request,
     ):
         fnRejectAgentTokenLane(requestHttp)
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         syncDispatcher.fnValidateServiceName(sService)
         return {
             "bHasCredential": _fbServiceHasStoredCredential(sService),
@@ -2064,7 +2064,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         sContainerId: str, request: SyncTrackingRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         if request.sService not in ("Overleaf", "Zenodo", "Github"):
             raise HTTPException(
                 400,
@@ -2237,7 +2237,7 @@ def _fnRegisterDag(app, dictCtx):
 
     @app.get("/api/workflow/{sContainerId}/dag")
     async def fresponseHandleGetDag(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
@@ -2262,7 +2262,7 @@ def _fnRegisterDagExport(app, dictCtx):
     async def fresponseHandleExportDag(
         sContainerId: str, sFormat: str = "svg",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
@@ -2314,7 +2314,7 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     async def fdictDownloadDataset(
         sContainerId: str, request: DatasetDownloadRequest,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -2366,7 +2366,7 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictHandleRefreshMirror(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
@@ -2420,7 +2420,7 @@ def _fnRegisterOverleafMirrorTree(app, dictCtx):
 
     @app.get("/api/overleaf/{sContainerId}/mirror/tree")
     async def fdictGetMirrorTree(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
         listEntries = await asyncio.to_thread(
@@ -2450,7 +2450,7 @@ def _fnRegisterOverleafDiff(app, dictCtx):
         sContainerId: str, request: OverleafDiffRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
         _fnValidateOverleafFilePaths(request.listFilePaths)
         _fnValidateOverleafTargetDirectory(request.sTargetDirectory)
@@ -2568,7 +2568,7 @@ def _fnRegisterOverleafMirrorDelete(app, dictCtx):
     @app.delete("/api/overleaf/{sContainerId}/mirror")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictDeleteMirror(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
         from vaibify.reproducibility import overleafMirror
@@ -2730,7 +2730,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
     async def fdictHandleVerifyRemote(
         sContainerId: str, sService: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnValidateVerifyService(sService)
         _fnRequireNetworkAccess(sContainerId)
         dictWorkflow = fdictRequireWorkflow(
@@ -2946,7 +2946,7 @@ def _fnRegisterArxivConfigure(app, dictCtx):
         sContainerId: str, request: ArxivConfigureRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         if request.bRemove:

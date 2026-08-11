@@ -285,9 +285,15 @@ def test_push_files_response_carries_verify_warning():
     """
     sWarning = "Pushed, but the github status check failed"
     app = FastAPI()
+    mockDocker = MagicMock()
+    # The sidecar read is a typed read now, and a bare MagicMock
+    # answers it with a MagicMock that json.loads cannot take. This
+    # test patches the tracked check away, so the honest fixture is
+    # "there is no sidecar" — the shape a real connection raises.
+    mockDocker.fbaFetchFile.side_effect = FileNotFoundError("no sidecar")
     dictCtx = {
         "require": MagicMock(),
-        "docker": MagicMock(),
+        "docker": mockDocker,
         "workflows": {"cid": {"sProjectRepoPath": "/workspace/alpha"}},
     }
     repoRoutes.fnRegisterAll(app, dictCtx)

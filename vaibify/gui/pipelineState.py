@@ -11,6 +11,7 @@ __all__ = [
     "I_HEARTBEAT_STALE_SECONDS",
     "I_EXIT_CODE_RUNNER_DISAPPEARED",
     "S_STATE_PATH",
+    "fsStatePathFor",
     "S_STATE_PATH_TEMP",
     "fdictBuildInitialState",
     "fdictBuildStepStarted",
@@ -35,15 +36,15 @@ __all__ = [
 import asyncio
 import json
 import logging
+import posixpath
 import queue
 import threading
 from datetime import datetime, timezone
 
-try:
-    import docker.errors as _dockerErrors
-    _T_DOCKER_API_ERROR = (_dockerErrors.APIError,)
-except ImportError:  # docker SDK absent in some test environments
-    _T_DOCKER_API_ERROR = ()
+from ..docker.dockerConnection import fbErrorMeansContainerUnreachable
+# The leaf module, not the runner's re-export: importing the
+# runner here closes a load-time cycle.
+from .pipelineUtils import fsShellQuote
 
 _loggerState = logging.getLogger("vaibify")
 
@@ -66,8 +67,31 @@ _F_STATE_IO_TIMEOUT_SECONDS = 15.0
 # outside the OS exit-code range (0-255) so callers can distinguish
 # a runner crash from any real subprocess exit.
 I_EXIT_CODE_RUNNER_DISAPPEARED = -9999
+# The container answer, and the DEFAULT rather than the only one:
+# a host project's state lives under the directory the researcher
+# registered, because /workspace exists on nobody's laptop. The two
+# constants stay because they are the container's real paths and
+# several tests and doubles name them; the functions below ask
+# :func:`fsStatePathFor` instead of embedding either.
 S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
 S_STATE_PATH_TEMP = "/workspace/.vaibify/pipeline_state.json.tmp"
+_S_STATE_RELATIVE = ".vaibify/pipeline_state.json"
+
+
+def fsStatePathFor(sResourceId):
+    """Return this resource's pipeline-state path.
+
+    ``posixpath`` for both modes deliberately: host mode is macOS and
+    Linux only, where it and ``os.path`` are the same module, and the
+    workflow manager composes container and host paths the same way
+    for the same reason (see the root AGENTS.md path-module section).
+    """
+    from .pipelineServer import WORKSPACE_ROOT
+    from .projectRoots import fsResolveProjectRoot
+    return posixpath.join(
+        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),
+        _S_STATE_RELATIVE,
+    )
 
 
 def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
@@ -163,11 +187,14 @@ def fnWriteState(connectionDocker, sContainerId, dictState):
     contents or the new contents — never a truncated mix.
     """
     sContent = json.dumps(dictState, indent=2)
+    sStatePath = fsStatePathFor(sContainerId)
+    sTempPath = sStatePath + ".tmp"
     connectionDocker.fnWriteFile(
-        sContainerId, S_STATE_PATH_TEMP, sContent.encode("utf-8")
+        sContainerId, sTempPath, sContent.encode("utf-8")
     )
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mv {S_STATE_PATH_TEMP} {S_STATE_PATH}",
+        sContainerId,
+        f"mv {fsShellQuote(sTempPath)} {fsShellQuote(sStatePath)}",
     )
 
 
@@ -287,27 +314,34 @@ def fdictReadState(connectionDocker, sContainerId):
     ``fbaFetchFile`` spells "absent" as ``FileNotFoundError``, which is
     an ``OSError`` and so already lands in that net; a carrier refusal
     is NOT, because ``ControlPlaneRefusalError`` is deliberately not an
-    ``OSError``, so a refusal still surfaces loudly.
+    ``OSError``, so a refusal still surfaces loudly. The substrate's own
+    errors are recognised by the connection-level predicate rather than
+    by naming Docker SDK types here, so a host-mode connection's plain
+    ``OSError``\\ s classify identically.
     """
-    tBenignErrors = (
-        (json.JSONDecodeError, OSError, TypeError, ValueError)
-        + _T_DOCKER_API_ERROR
-    )
+    tBenignErrors = (json.JSONDecodeError, OSError, TypeError, ValueError)
     try:
         baContent = connectionDocker.fbaFetchFile(
-            sContainerId, S_STATE_PATH,
+            sContainerId, fsStatePathFor(sContainerId),
         )
         if not baContent.strip():
             return None
         return json.loads(baContent)
     except tBenignErrors:
         return None
+    except Exception as error:
+        if fbErrorMeansContainerUnreachable(error):
+            return None
+        raise
 
 
 def fnClearState(connectionDocker, sContainerId):
     """Remove the pipeline state file."""
+    sStatePath = fsStatePathFor(sContainerId)
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"rm -f {S_STATE_PATH} {S_STATE_PATH_TEMP}"
+        sContainerId,
+        f"rm -f {fsShellQuote(sStatePath)} "
+        f"{fsShellQuote(sStatePath + '.tmp')}",
     )
 
 

@@ -197,22 +197,112 @@ def testADriftedOccurrenceCountErrorsRatherThanUnderMutating():
     )
 
 
-def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
-    """No daemon and no demand: partition, do not pretend to judge."""
+def testNarrowingTheRunNeverPromotesADeferredEntryIntoTheJudgedSet(
+    monkeypatch,
+):
+    """``--only`` filters AFTER the partition, not instead of it.
+
+    The tempting implementation narrows the raw registry and then
+    partitions -- or, worse, narrows and skips the partition entirely,
+    which is what a hand-rolled subset driver did. A ``docker_live``
+    entry then runs on a daemon-less host, its child sets the
+    requirement variable, its skip becomes a failure, and the report
+    says "does not pass on clean code". That is a deferral wearing a
+    defect's clothes: it names a guard the reader will go looking for
+    and will not find, which is precisely the false alarm the
+    NOT-EVALUATED tier was built to stop.
+
+    So the property is compositional and worth pinning on its own: no
+    selection may move an entry from the deferred list into the judged
+    list.
+    """
     moduleTool = _fmoduleReconfirmationHarness()
     monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: True,
+    )
+    monkeypatch.delenv(moduleTool.S_REQUIRE_DAEMON_ENV, raising=False)
+
+    listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
+    assert listDeferred, "no deferred entry, so this proves nothing"
+    setDeferredIds = {entry.nodeid for entry, _sPhrase in listDeferred}
+
+    # Select by the source file of a DEFERRED entry, which is the
+    # realistic way to catch one: a regression sweep names the files a
+    # session touched, not the tests.
+    entryDeferred = listDeferred[0][0]
+    listSelectedEvaluable, listSelectedDeferred = (
+        moduleTool._tSelectRequestedEntries(
+            listEvaluable, listDeferred, [entryDeferred.source],
+        )
+    )
+    assert not any(
+        entry.nodeid in setDeferredIds for entry in listSelectedEvaluable
+    ), (
+        "narrowing promoted a facility-gated entry into the judged "
+        "set, where it will be run without its facility and reported "
+        "as a broken guard"
+    )
+    assert any(
+        entry.nodeid == entryDeferred.nodeid
+        for entry, _sPhrase in listSelectedDeferred
+    ), "the selected deferred entry vanished instead of being reported"
+
+
+def testANarrowedRunDoesNotClaimToHaveCheckedRegistryCompleteness():
+    """A subset cannot judge coverage, and must not imply it did.
+
+    Almost every falsification-marked test is outside any narrow
+    selection, so running the completeness check would print a wall of
+    phantom gaps -- and NOT running it silently would report a clean
+    bill the run never earned. The third answer is to skip it and say
+    so, which is the same rule this file's daemon tier follows.
+    """
+    from pathlib import Path as PathAlias
+    sSource = (
+        PathAlias(__file__).resolve().parent.parent
+        / "tools" / "reconfirmFalsification.py"
+    ).read_text()
+    assert (
+        "listUncovered = [] if listOnly else "
+        "_flistMarkedTestsWithoutEntry()"
+    ) in sSource, (
+        "a narrowed run must not run the completeness check over the "
+        "whole registry"
+    )
+    assert "NARROWED run" in sSource, (
+        "a narrowed run must announce that it is not the standing "
+        "negative control"
+    )
+
+
+def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
+    """No daemon and no demand: partition, do not pretend to judge.
+
+    The browser facility is forced AVAILABLE here so this asserts
+    about the daemon tier alone; the deferral machinery is shared, and
+    a test that let both tiers fire at once could not tell which one
+    had put an entry in the deferred list.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: True,
+    )
     monkeypatch.delenv(moduleTool.S_REQUIRE_DAEMON_ENV, raising=False)
 
     listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
 
-    setMarked = moduleTool.fsetSelectNodeIdsNeedingALiveDaemon()
+    setMarked = moduleTool.fsetSelectNodeIdsCarryingMarker(
+        moduleTool.S_LIVE_DAEMON_MARKER,
+    )
     assert listDeferred, (
         "the registry has real-container entries, so a host with no "
         "daemon must defer some of them"
     )
-    assert all(entry.nodeid in setMarked for entry in listDeferred), (
-        "an entry was deferred without carrying the live-daemon marker"
-    )
+    assert all(
+        entry.nodeid in setMarked for entry, _sPhrase in listDeferred
+    ), "an entry was deferred without carrying the live-daemon marker"
     assert not any(entry.nodeid in setMarked for entry in listEvaluable), (
         "a marked entry stayed in the evaluable set, so it will be "
         "judged by a run that cannot execute it"
@@ -220,6 +310,56 @@ def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
     assert len(listEvaluable) + len(listDeferred) == len(
         moduleTool.LIST_FALSIFICATIONS
     ), "the partition dropped or duplicated an entry"
+
+
+def testFrontendEntriesAreDeferredWhenNoBrowserIsInstalled(monkeypatch):
+    """A JavaScript mutant is only observable to a test that loads a page.
+
+    Without this tier the frontend entries would be run anyway,
+    Playwright would be missing, the browser lane would SKIP -- and a
+    skip exits 0, which this harness reads as a surviving mutant. The
+    one surface this repository has already shipped un-executed would
+    then also be the one reporting phantom survivors.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: True)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: False,
+    )
+    monkeypatch.delenv(moduleTool.S_REQUIRE_BROWSER_ENV, raising=False)
+
+    listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
+
+    setMarked = moduleTool.fsetSelectNodeIdsCarryingMarker(
+        moduleTool.S_BROWSER_MARKER,
+    )
+    assert listDeferred, (
+        "the registry has frontend entries, so a host with no browser "
+        "must defer some of them"
+    )
+    assert all(
+        entry.nodeid in setMarked for entry, _sPhrase in listDeferred
+    ), "an entry was deferred without carrying the browser marker"
+    assert all(
+        sPhrase == "browser" for _entry, sPhrase in listDeferred
+    ), "the deferral did not name the facility it was waiting on"
+    assert len(listEvaluable) + len(listDeferred) == len(
+        moduleTool.LIST_FALSIFICATIONS
+    ), "the partition dropped or duplicated an entry"
+
+
+def testDemandingABrowserRefusesRatherThanQuietlyDeferring(monkeypatch):
+    """The browser tier refuses the deferral exactly as the daemon does."""
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: True)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: False,
+    )
+    monkeypatch.setenv(moduleTool.S_REQUIRE_BROWSER_ENV, "1")
+
+    with pytest.raises(SystemExit) as excinfo:
+        moduleTool._tPartitionRegistryForThisHost()
+    assert excinfo.value.code != 0
 
 
 @pytest.mark.falsification
@@ -261,7 +401,7 @@ def testDeferredEntriesAreNamedAndLeftOutOfTheDenominator(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         moduleTool, "_tPartitionRegistryForThisHost",
-        lambda: ([entryJudged], [entryDeferred]),
+        lambda: ([entryJudged], [(entryDeferred, "live Docker daemon")]),
     )
     monkeypatch.setattr(
         moduleTool, "_fdictCaptureOriginals", lambda: {"sourceUnderTest": "alpha"},

@@ -363,42 +363,53 @@ def test_second_unbudgeted_ws_served_alongside_live_connections():
 # -- the terminal route is withdrawn for every caller --------------------
 
 
-def test_owner_terminal_ws_is_refused_with_the_withdrawal_code():
-    """Even the rightful owner is refused, and told WHY.
+def test_owner_terminal_ws_is_admitted_and_never_budgeted():
+    """The owner gets past the gate, and does not spend the pipeline slot.
 
-    The withdrawal is not an authorization outcome. A container's own
-    owner, presenting a valid credential and its own lease, must still
-    be closed with :data:`I_REJECT_TERMINAL_DISABLED` -- not 4403 --
-    because a client that cannot tell the two apart would advise the
-    researcher to re-claim a container that is already theirs. The
-    ownership record must be untouched by the attempt: no live count,
-    no session socket, no liveness refresh.
+    Two properties in one, because they only mean something together.
+    The rightful owner presenting a valid credential and its own lease
+    is ADMITTED -- while the terminal was withdrawn this asserted the
+    refusal instead, which is the behaviour that changed.
+
+    The second half never changed and is the one with a bug behind it:
+    a terminal must not consume the per-container pipeline budget. It
+    did once, and because the terminal opens on workflow entry it held
+    the only slot, so every Run Step was refused 4409 and reported as
+    "cannot reach server".
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     app = FastAPI()
     _fnRegisterTerminalWs(app, dictCtx)
     client = TestClient(app)
-    with client.websocket_connect(
-        _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
-    ) as websocketClient:
-        with pytest.raises(WebSocketDisconnect) as excInfo:
-            websocketClient.receive_text()
-    assert excInfo.value.code == (
-        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
-    )
     recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
-    assert recordOwner.iLiveConnectionCount == 0
-    assert recordOwner.iLivePipelineConnectionCount == 0
+    with patch(
+        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
+        new=AsyncMock(),
+    ):
+        with client.websocket_connect(
+            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+        ):
+            pass
+    assert recordOwner.iLivePipelineConnectionCount == 0, (
+        "the terminal spent the per-container pipeline budget; every "
+        "Run Step in this container would be refused 4409"
+    )
 
 
-def test_terminal_ws_refusal_reveals_nothing_about_the_container():
-    """An unknown container is refused identically to a real one.
+def test_terminal_ws_refuses_every_unauthorized_caller():
+    """A fabricated id, a bad credential and a foreign origin all fail.
 
-    The pre-withdrawal handler resolved the docker id through the
-    daemon BEFORE any gate, so any caller that could reach the socket
-    could ask whether a named container existed. The withdrawn handler
-    must answer a fabricated id, a bad origin, and a garbage credential
-    with the same code and the same silence.
+    While the terminal was withdrawn this asserted something stronger —
+    one identical code for every caller, so the route was not an
+    existence oracle. That property went with the withdrawal, because a
+    serving route has to resolve the container before it can authorize
+    against it. It is not silently lost: ``/ws/pipeline`` has always
+    had the same ordering, so the oracle is a property of the WebSocket
+    gates in general and is recorded as such in
+    ``testTerminalRoutesCoverage``.
+
+    What must still hold, and is what this now pins, is that none of
+    the three is SERVED.
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     app = FastAPI()
@@ -417,11 +428,12 @@ def test_terminal_ws_refusal_reveals_nothing_about_the_container():
             with pytest.raises(WebSocketDisconnect) as excInfo:
                 websocketClient.receive_text()
         listCodes.append(excInfo.value.code)
-    iWithdrawn = webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
-    assert listCodes == [iWithdrawn, iWithdrawn, iWithdrawn], (
-        "the withdrawn terminal route must answer every caller with the "
-        "same code, so it is not an existence oracle for containers"
+    tRefusals = (
+        webSocketAuthorization.I_REJECT_BAD_ORIGIN,
+        webSocketAuthorization.I_REJECT_BAD_TOKEN,
+        webSocketAuthorization.I_REJECT_FOREIGN_LEASE,
     )
+    assert all(iCode in tRefusals for iCode in listCodes), listCodes
 
 
 # -- the agent lane survives id->name resolution -------------------------

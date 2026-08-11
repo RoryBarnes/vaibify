@@ -33,6 +33,7 @@ from ..workflowManager import (
     fdictResolveTestCommandGroups,
     fsResolveStepWorkdir,
 )
+from .. import projectRoots
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
@@ -387,7 +388,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: TestGenerateRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         from ..testGenerator import fdictGenerateAllTests
         if _fbNeedsClaudeFallback(
             dictCtx, sContainerId, request
@@ -422,7 +423,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
     async def fdictDeleteGeneratedTest(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
@@ -459,7 +460,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         return {"bSuccess": True}
 
 
-def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
+def _fsResolveTestFilePath(sFilePath, sProjectRepoPath, sProjectRoot):
     """Return the validated container-absolute path for a test-file edit.
 
     ``save-and-run-test`` is agent-safe and takes a caller-supplied
@@ -471,10 +472,12 @@ def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
     the host, which is why this was easy to miss.
 
     Repo-relative inputs are joined onto the project repo, matching the
-    paths ``testGenerator`` writes; the workspace root is the fallback
-    for a workflow that has no detected repo.
+    paths ``testGenerator`` writes; the project's own root is the
+    fallback for a workflow that has no detected repo — the container
+    volume for a container project, the registered directory for a
+    host one.
     """
-    sRoot = sProjectRepoPath or WORKSPACE_ROOT
+    sRoot = sProjectRepoPath or sProjectRoot
     sCandidate = (
         sFilePath if sFilePath.startswith("/")
         else posixpath.join(sRoot, sFilePath)
@@ -653,13 +656,16 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         request: SaveAndRunTestRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
         sFilePath = _fsResolveTestFilePath(
             request.sFilePath,
             dictWorkflow.get("sProjectRepoPath", ""),
+            projectRoots.fsResolveProjectRoot(
+                sContainerId, WORKSPACE_ROOT,
+            ),
         )
 
         def ftWriteThenRunTheTest():
@@ -705,7 +711,7 @@ def _fnRegisterTestRun(app, dictCtx):
         requestHttp: Request,
     ):
         from ..workflowManager import flistBuildTestCommands
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -763,7 +769,7 @@ def _fnRegisterTestRun(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sCategory = (await request.json()).get("sCategory", "")
         (dictWorkflow, dictStep, dictCat, listCmds,
          sVerifKey) = _ftResolveCategoryContext(

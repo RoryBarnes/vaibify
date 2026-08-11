@@ -8,6 +8,7 @@ import posixpath
 import threading
 import time
 
+from vaibify.config.registryManager import fbIsHostProject
 from . import pipelineState
 from . import workflowManager
 
@@ -189,8 +190,14 @@ async def _ftRunCommandList(
     connectionDocker, sContainerId, listCommands,
     sWorkdir, dictVariables, fnStatusCallback,
 ):
-    """Execute commands, return (iExitCode, fTotalCpuSeconds)."""
-    fTotalCpu = 0.0
+    """Execute commands, return ``(iExitCode, fTotalCpuSeconds)``.
+
+    The CPU total is ``None`` when the commands ran on the HOST: the
+    measurement comes from a GNU ``/usr/bin/time`` wrapper that host
+    mode does not use, and reporting 0.0 would put a measurement on the
+    dashboard that nobody took.
+    """
+    fTotalCpu = None if fbIsHostProject(sContainerId) else 0.0
     sEnvPrefix = ""
     if dictVariables:
         sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
@@ -203,7 +210,8 @@ async def _ftRunCommandList(
             sCommand, sResolved, sWorkdir, fnStatusCallback,
             sEnvPrefix=sEnvPrefix,
         )
-        fTotalCpu += fCpu
+        if fTotalCpu is not None and fCpu is not None:
+            fTotalCpu += fCpu
         if iExitCode != 0:
             return (iExitCode, fTotalCpu)
     return (0, fTotalCpu)
@@ -233,7 +241,15 @@ async def _ftRunSingleCommand(
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
     )
-    sTimedCmd = sEnvPrefix + _fsWrapWithTime(sResolved)
+    # No time wrapper on the host. ``/usr/bin/time`` exists on macOS
+    # and is the BSD one, which has no ``-f``: the wrapper would exit
+    # non-zero before the researcher's command ever ran, so every host
+    # step would fail. The container branch keeps it, guarded by its
+    # own ``-x`` test for the same reason in reverse.
+    sTimedCmd = sEnvPrefix + (
+        sResolved if fbIsHostProject(sContainerId)
+        else _fsWrapWithTime(sResolved)
+    )
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
     fnEmitChunk, fnDrainPending = _ftBuildBatchingEmitter(
@@ -255,6 +271,8 @@ async def _ftRunSingleCommand(
             "sDirectory": sWorkdir,
             "iExitCode": tExecResult.iExitCode,
         })
+    if fbIsHostProject(sContainerId):
+        return (tExecResult.iExitCode, None)
     return (tExecResult.iExitCode, dictAccum["fCpu"])
 
 
@@ -694,25 +712,10 @@ async def _fnEmitDiscoveredOutputs(
     })
 
 
-_S_VERIFY_PATHFILE_PREFIX = "/tmp/vaibifyVerify."
-# A per-step output-existence check is one cheap exec; 30s is generous.
-# The bound exists so a stalled docker exec surfaces as a loud
-# unverified result instead of an invisible, unbounded hang.
+# A per-step output-existence check is one cheap typed read; 30s is
+# generous. The bound exists so a stalled container read surfaces as a
+# loud unverified result instead of an invisible, unbounded hang.
 _F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS = 30.0
-
-
-def _fsVerifyPathfileForCall():
-    """Return a per-call temp pathfile so concurrent verifies don't clobber.
-
-    Two interleaved ``_fbVerifyStepList`` calls (badge-driven L3 +
-    user-triggered verify, or two parallel step runs) used to share a
-    single ``/tmp/vaibifyVerify.list``: the second write truncated the
-    first between write and read, producing false "missing" reports.
-    A uuid suffix per call keeps each invocation's pathfile distinct
-    and ``rm -f`` cleans up afterward.
-    """
-    import uuid
-    return f"{_S_VERIFY_PATHFILE_PREFIX}{uuid.uuid4().hex}.list"
 
 
 async def _fbVerifyStepOutputs(
@@ -804,55 +807,30 @@ def _fsetMissingPathsBatched(
 ):
     """Return the set of absolute paths absent from the container.
 
-    Mirrors ``fileStatusManager._fdictStatViaPathfile``: writes the
-    path list into ``_S_VERIFY_PATHFILE`` via tar, then runs one
-    ``xargs`` that prints each path that exists. The host parses the
-    output and diffs against the requested list to find the missing
-    ones. A failed write or exec degrades to "all missing" so a broken
-    container fails loud rather than silently passing verification.
+    ONE TYPED READ, and it used to be a write plus two execs: the path
+    list went into a per-call ``/tmp/vaibifyVerify.<uuid>.list`` via
+    tar, an ``xargs`` printed the paths that existed, and an ``rm -f``
+    cleaned up. That is a container mutation on the core RUN path,
+    performed to answer a question about existence -- and the batched
+    existence probe already answers exactly that question, from a
+    program the adapter builds, on both the container and the host leg.
+    The uuid-per-call pathfile existed because two interleaved verifies
+    truncated each other's file; with no file there is nothing to
+    interleave.
+
+    A failed read degrades to "all missing" so a broken container fails
+    loud rather than silently passing verification.
     """
-    baContent = ("\n".join(listAbsolutePaths) + "\n").encode("utf-8")
-    sPathfile = _fsVerifyPathfileForCall()
     try:
-        try:
-            _fnWriteVerifyPathfile(
-                connectionDocker, sContainerId, sPathfile, baContent,
-            )
-            _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-                sContainerId,
-                "xargs -d '\\n' -a " + sPathfile
-                + " -I{} sh -c 'test -e \"$1\" && printf %s\\\\n \"$1\"'"
-                " _ {} 2>/dev/null",
-            )
-        except OSError:
-            return set(listAbsolutePaths)
-    finally:
-        _fnRemoveVerifyPathfile(connectionDocker, sContainerId, sPathfile)
-    setPresent = {
-        sLine.strip() for sLine in (sOutput or "").splitlines()
-        if sLine.strip()
-    }
-    return {sPath for sPath in listAbsolutePaths if sPath not in setPresent}
-
-
-def _fnWriteVerifyPathfile(
-    connectionDocker, sContainerId, sPathfile, baContent,
-):
-    """Write the temp pathfile via the preferred docker write helper."""
-    fnWriter = getattr(connectionDocker, "fnWriteFileViaTar", None)
-    if fnWriter is None:
-        fnWriter = connectionDocker.fnWriteFile
-    fnWriter(sContainerId, sPathfile, baContent)
-
-
-def _fnRemoveVerifyPathfile(connectionDocker, sContainerId, sPathfile):
-    """Best-effort cleanup of the per-call verify pathfile."""
-    try:
-        connectionDocker.ftResultExecuteCommand(
-            sContainerId, f"rm -f {sPathfile}",
+        listPresent = connectionDocker.flistContainerPathsExist(
+            sContainerId, list(listAbsolutePaths),
         )
-    except Exception:
-        pass
+    except OSError:
+        return set(listAbsolutePaths)
+    return {
+        sPath for sPath, bExists
+        in zip(listAbsolutePaths, listPresent) if not bExists
+    }
 
 
 async def _fbVerifyStepList(

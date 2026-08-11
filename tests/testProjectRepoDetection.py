@@ -115,7 +115,9 @@ def test_badges_returns_not_a_repo_when_project_repo_missing():
     assert dictBody["listTracked"] == []
 
 
-def test_badges_hydrates_when_project_repo_is_set():
+def test_badges_hydrates_when_project_repo_is_set(
+    fixtureCarrierStoodDown,
+):
     sRepo = "/workspace/DemoRepo"
     dictWorkflow = {
         "sPlotDirectory": "Plot",

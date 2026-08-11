@@ -20,16 +20,28 @@ It prints KILLED / SURVIVED / ERROR per entry, lists any
 ``falsification``-marked test that has no registry entry, and exits
 nonzero unless every entry is KILLED and every marked test is covered.
 
-A mutation guarded by a real-container (``docker_live``) test cannot be
-evaluated on a host with no Docker daemon, and there is no honest way to
-score it there: crediting it is a false kill, and the child-side daemon
-requirement -- which exists so a skip is never misread as a survivor --
-turns it into an ERROR indistinguishable from a broken guard. Such
-entries are therefore reported by name as NOT EVALUATED and left out of
-the denominator. That is safe only because they ARE evaluated on every
-lane that has a daemon; set ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` on those
-lanes so losing Docker turns them red instead of silently shrinking the
+A mutation guarded by a test that needs a FACILITY this host does not
+have cannot be evaluated here, and there is no honest way to score it:
+crediting it is a false kill, and the child-side requirement -- which
+exists so a skip is never misread as a survivor -- turns it into an
+ERROR indistinguishable from a broken guard. Such entries are reported
+by name as NOT EVALUATED, with the facility named, and left out of the
 denominator.
+
+Two facilities are recognised, and the pattern generalises to a third
+by adding one row to ``T_DEFERRABLE_FACILITIES``:
+
+* a live Docker daemon (marker ``docker_live``), and
+* a browser (marker ``browser``), which the frontend guards need --
+  a JavaScript mutation is only observable to a test that loads the
+  page, so leaving the frontend out of this harness would mean the
+  one surface this repository has already shipped un-executed is also
+  the one with no negative control.
+
+Deferral is safe only because these entries ARE evaluated on the lanes
+that have the facility. Set ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` and
+``VAIBIFY_REQUIRE_BROWSER`` on those lanes so losing the facility turns
+them red instead of silently shrinking the denominator.
 
 STRUCTURAL ISOLATION -- this harness never touches your files.
 Everything runs inside a disposable git worktree checked out from HEAD
@@ -53,6 +65,14 @@ untracked non-ignored files into the worktree first.
 
     python tools/reconfirmFalsification.py
     python tools/reconfirmFalsification.py --include-local-diff
+    python tools/reconfirmFalsification.py --only tests/testHostCancel.py
+
+``--only`` narrows the run to entries matching a node-id or source
+substring, for the per-chunk re-confirmation the house rhythm asks for
+after every commit. It filters AFTER the facility partition, so a
+deferred entry is still reported as unevaluated rather than run
+without its facility and scored as broken; and it declines to judge
+registry completeness, saying so, because a subset cannot.
 """
 
 import argparse
@@ -88,6 +108,41 @@ S_REQUIRE_DAEMON_ENV = "VAIBIFY_REQUIRE_DOCKER_DAEMON"
 # The marker that says a test drives a real container, so no host
 # without a daemon can evaluate the mutation guarding it.
 S_LIVE_DAEMON_MARKER = "docker_live"
+
+# The same pair for the browser lane.
+S_REQUIRE_BROWSER_ENV = "VAIBIFY_REQUIRE_BROWSER"
+S_BROWSER_MARKER = "browser"
+
+
+def _fbPlaywrightInstalled():
+    """Return True when the browser lane can actually run here."""
+    import importlib.util
+    return importlib.util.find_spec("playwright") is not None
+
+
+# One row per facility a test may need and this host may lack:
+# (marker, env var demanding it, availability probe, phrase for the
+# NOT EVALUATED line). Adding a facility is adding a row.
+#
+# The phrase is a bare noun phrase with NO article, because it is read
+# in two grammatical positions -- "needs a <phrase>" and "no <phrase>"
+# -- and an article baked into it makes one of them wrong. It used to
+# read "no a live Docker daemon".
+#
+# Each probe is wrapped rather than named directly so the lookup
+# happens when the partition runs, not when this module is imported --
+# otherwise a test could not substitute "no daemon" or "no browser"
+# and the two tiers would be unassertable.
+T_DEFERRABLE_FACILITIES = (
+    (
+        S_LIVE_DAEMON_MARKER, S_REQUIRE_DAEMON_ENV,
+        lambda: _fbDaemonReachable(), "live Docker daemon",
+    ),
+    (
+        S_BROWSER_MARKER, S_REQUIRE_BROWSER_ENV,
+        lambda: _fbPlaywrightInstalled(), "browser",
+    ),
+)
 
 # A private exit code for "the test never ran". pytest has none: a
 # skipped test exits 0, which is indistinguishable from a passing one
@@ -135,6 +190,10 @@ def _fiRunTests(listNodeIds):
     # a machine with no Docker reports an ERROR it can act on instead of
     # five phantom survivors.
     dictEnvironment[S_REQUIRE_DAEMON_ENV] = "1"
+    # Same argument for the browser lane: without Playwright those
+    # tests skip, a skip exits 0, and this harness would score every
+    # frontend mutant as having survived.
+    dictEnvironment[S_REQUIRE_BROWSER_ENV] = "1"
     with tempfile.TemporaryDirectory() as sPycachePrefix:
         dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
         result = subprocess.run(
@@ -334,13 +393,13 @@ def fnRemoveDisposableWorktree(sWorktree):
     shutil.rmtree(pathlib.Path(sWorktree).parent, ignore_errors=True)
 
 
-def fsetSelectNodeIdsNeedingALiveDaemon():
-    """Return the node ids pytest reports as carrying the live-daemon marker.
+def fsetSelectNodeIdsCarryingMarker(sMarker):
+    """Return the node ids pytest reports as carrying one marker.
 
     Asked of pytest rather than matched against file or test names: the
-    marker is what makes a test need a daemon, and a hand-kept list goes
-    stale the first time a marked test is added, renamed, or moved --
-    silently, and in the direction that drops entries.
+    marker is what makes a test need its facility, and a hand-kept list
+    goes stale the first time a marked test is added, renamed, or moved
+    -- silently, and in the direction that drops entries.
     """
     dictEnvironment = dict(os.environ)
     # Same reason as the test runs below: an editable install resolves
@@ -349,14 +408,14 @@ def fsetSelectNodeIdsNeedingALiveDaemon():
     dictEnvironment["PYTHONPATH"] = str(PATH_TREE)
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q",
-         "-m", S_LIVE_DAEMON_MARKER, "-p", "no:cacheprovider"],
+         "-m", sMarker, "-p", "no:cacheprovider"],
         cwd=PATH_TREE, capture_output=True, text=True,
         env=dictEnvironment,
     )
     if result.returncode != 0:
         raise RuntimeError(
-            "Could not ask pytest which tests need a live Docker "
-            "daemon, so the registry cannot be partitioned honestly:\n"
+            f"Could not ask pytest which tests carry the {sMarker!r} "
+            "marker, so the registry cannot be partitioned honestly:\n"
             + (result.stdout or "") + (result.stderr or "")
         )
     return {
@@ -365,44 +424,109 @@ def fsetSelectNodeIdsNeedingALiveDaemon():
     }
 
 
+def _fdictSelectDeferredNodeIdsByReason():
+    """Return ``{node id: phrase}`` for what this host cannot evaluate.
+
+    A mutation guarded by a test needing a facility this host lacks
+    cannot be evaluated, and the harness must not pretend otherwise in
+    either direction: crediting it would be a false kill, and the
+    unconditional child-side requirement turns it into an ERROR that
+    reads like a broken guard. Naming it as unevaluated, with the
+    facility, is the only honest third answer -- and the entries are
+    still evaluated on every lane that HAS the facility, which is what
+    makes the deferral safe rather than a hole. Setting a requirement
+    env var refuses the deferral outright, so a lane that is supposed
+    to have the facility goes red when it loses it instead of quietly
+    dropping to a smaller denominator.
+    """
+    dictReasonByNodeId = {}
+    for sMarker, sEnvVar, fbAvailable, sPhrase in T_DEFERRABLE_FACILITIES:
+        sOutcome = fsDaemonRequirementOutcome(
+            fbAvailable(), bool(os.environ.get(sEnvVar)),
+        )
+        if sOutcome == S_OUTCOME_PROCEED:
+            continue
+        if sOutcome == S_OUTCOME_FAIL:
+            print(
+                f"Refusing to run: this host has no {sPhrase} but "
+                f"{sEnvVar} is set, so this run was required to "
+                f"evaluate the entries guarded by {sMarker!r} tests. "
+                "Deferring them here would report a smaller "
+                "denominator as success.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        for sNodeId in fsetSelectNodeIdsCarryingMarker(sMarker):
+            dictReasonByNodeId.setdefault(sNodeId, sPhrase)
+    return dictReasonByNodeId
+
+
 def _tPartitionRegistryForThisHost():
     """Split the registry into what this host can evaluate and what it cannot.
 
-    A mutation guarded by a real-container test cannot be evaluated
-    without a daemon, and the harness must not pretend otherwise in
-    either direction: crediting it would be a false kill, and the
-    unconditional child-side daemon requirement turns it into an ERROR
-    that reads like a broken guard. Naming it as unevaluated is the only
-    honest third answer -- and the entries are still evaluated on every
-    lane that HAS a daemon, which is what makes the deferral safe rather
-    than a hole. Setting the requirement env var refuses the deferral
-    outright, so a lane that is supposed to have Docker goes red when it
-    loses it instead of quietly dropping to a smaller denominator.
+    Returns ``(evaluable, [(entry, phrase), ...])`` so the report can
+    name WHICH facility each deferred entry was waiting on; "not
+    evaluated" without the reason is the shape of message a reader
+    stops acting on.
     """
-    sOutcome = fsDaemonRequirementOutcome(
-        _fbDaemonReachable(), bool(os.environ.get(S_REQUIRE_DAEMON_ENV)),
-    )
-    if sOutcome == S_OUTCOME_PROCEED:
+    dictReasonByNodeId = _fdictSelectDeferredNodeIdsByReason()
+    if not dictReasonByNodeId:
         return LIST_FALSIFICATIONS, []
-    if sOutcome == S_OUTCOME_FAIL:
-        print(
-            "Refusing to run: no Docker daemon is reachable but "
-            f"{S_REQUIRE_DAEMON_ENV} is set, so this run was required "
-            "to evaluate the real-container entries. Deferring them "
-            "here would report a smaller denominator as success.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    setNeedsDaemon = fsetSelectNodeIdsNeedingALiveDaemon()
     return (
-        [e for e in LIST_FALSIFICATIONS if e.nodeid not in setNeedsDaemon],
-        [e for e in LIST_FALSIFICATIONS if e.nodeid in setNeedsDaemon],
+        [e for e in LIST_FALSIFICATIONS
+         if e.nodeid not in dictReasonByNodeId],
+        [(e, dictReasonByNodeId[e.nodeid]) for e in LIST_FALSIFICATIONS
+         if e.nodeid in dictReasonByNodeId],
     )
 
 
-def fnReconfirmAll():
-    """Re-confirm all entries; exit nonzero on any failure or coverage gap."""
-    listEvaluable, listDeferred = _tPartitionRegistryForThisHost()
+def _fbEntryMatchesAnyNeedle(entry, listNeedles):
+    """Return True when a --only needle names this entry."""
+    return any(
+        sNeedle in entry.nodeid or sNeedle in entry.source
+        for sNeedle in listNeedles
+    )
+
+
+def _tSelectRequestedEntries(listEvaluable, listDeferred, listNeedles):
+    """Narrow both partitions to the entries ``--only`` asked for.
+
+    Applied AFTER the facility partition, never instead of it. A
+    selector that filtered the raw registry would hand a
+    ``docker_live`` entry to a daemon-less run, whose child sets
+    ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` and turns the skip into a
+    failure — reported as "does not pass on clean code", which is a
+    deferral wearing a defect's clothes. That is the exact confusion
+    the NOT-EVALUATED tier exists to prevent, and it is easy to
+    reintroduce by filtering one line too early.
+    """
+    if not listNeedles:
+        return listEvaluable, listDeferred
+    return (
+        [e for e in listEvaluable
+         if _fbEntryMatchesAnyNeedle(e, listNeedles)],
+        [(e, sPhrase) for e, sPhrase in listDeferred
+         if _fbEntryMatchesAnyNeedle(e, listNeedles)],
+    )
+
+
+def fnReconfirmAll(listOnly=()):
+    """Re-confirm entries; exit nonzero on any failure or coverage gap.
+
+    ``listOnly`` narrows the run to entries whose node id or source
+    file contains one of the given substrings. It exists because the
+    house rhythm re-confirms a chunk's own entries after every commit
+    and the full registry takes far longer than a chunk does — but a
+    narrowed run is NOT the standing negative control, so it declines
+    to judge registry completeness and says so rather than reporting a
+    clean coverage check it did not perform.
+    """
+    listEvaluable, listDeferred = _tSelectRequestedEntries(
+        *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+    )
+    if listOnly and not listEvaluable and not listDeferred:
+        print(f"No registry entry matches {list(listOnly)}")
+        sys.exit(2)
     dictOriginal = _fdictCaptureOriginals()
     bBatchClean = _fbAllPreconditionsPassInOneRun(listEvaluable)
     if not bBatchClean:
@@ -422,18 +546,33 @@ def fnReconfirmAll():
         _fnRestoreOriginals(dictOriginal)
     for sNodeId, sStatus in listResults:
         print(f"{sStatus:48}  {sNodeId}")
-    for entry in listDeferred:
-        print(f"{'NOT EVALUATED: needs a live Docker daemon':48}  "
+    for entry, sPhrase in listDeferred:
+        print(f"{'NOT EVALUATED: needs a ' + sPhrase:48}  "
               f"{entry.nodeid}")
     listBad = [r for r in listResults if not r[1].startswith("KILLED")]
-    listUncovered = _flistMarkedTestsWithoutEntry()
+    # A narrowed run cannot speak to registry COMPLETENESS: almost every
+    # marked test is outside the selection by construction, so running
+    # the check would report a wall of phantom gaps. Announced rather
+    # than silently skipped -- a check that can be skipped must say
+    # what the skip reported.
+    listUncovered = [] if listOnly else _flistMarkedTestsWithoutEntry()
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
+    if listOnly:
+        print(
+            f"NARROWED run (--only {' '.join(listOnly)}): this is not "
+            "the standing negative control. Registry completeness was "
+            "NOT checked, and every entry outside the selection was "
+            "neither run nor judged."
+        )
     if listDeferred:
+        setPhrases = sorted({sPhrase for _, sPhrase in listDeferred})
         print(f"{len(listDeferred)} entr"
               f"{'y' if len(listDeferred) == 1 else 'ies'} NOT evaluated "
-              "on this host: no Docker daemon. They are evaluated on "
-              f"every lane that has one; set {S_REQUIRE_DAEMON_ENV} to "
+              f"on this host: no {', no '.join(setPhrases)}. They are "
+              "evaluated on every lane that has the facility; set the "
+              "matching requirement variable "
+              f"({S_REQUIRE_DAEMON_ENV}, {S_REQUIRE_BROWSER_ENV}) to "
               "refuse the deferral instead.")
     if listUncovered:
         print(f"\n{len(listUncovered)} falsification-marked test(s) with "
@@ -462,6 +601,16 @@ def main():
             "reports on code you do not have."
         ),
     )
+    parser.add_argument(
+        "--only", dest="listOnly", action="append", default=[],
+        metavar="SUBSTRING",
+        help=(
+            "Re-confirm only the entries whose pytest node id or source "
+            "file contains SUBSTRING (repeatable). For checking a "
+            "chunk's own entries after a commit; the result is NOT the "
+            "standing negative control, and the run says so."
+        ),
+    )
     args = parser.parse_args()
 
     listDirty = _flistUncommittedChanges()
@@ -482,7 +631,7 @@ def main():
         if args.include_local_diff:
             fnCopyLocalChangesIntoWorktree(sWorktree)
         PATH_TREE = pathlib.Path(sWorktree)
-        fnReconfirmAll()
+        fnReconfirmAll(args.listOnly)
     finally:
         PATH_TREE = REPO
         fnRemoveDisposableWorktree(sWorktree)
