@@ -1071,8 +1071,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old='return (iPlotExit, fCpuTime + fPlotCpu)',
-        new='return (iExitCode, fCpuTime + fPlotCpu)  # mutant',
+        old='return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
+        new='return (iExitCode, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fnVerifyOnly_missing_output_emits_stepFail_badge',
@@ -10093,5 +10093,19 @@ def _fdictEntry(sRel):
             '                dictCtx["workflows"], sContainerId)\n'
         ),
         new='            dictWorkflow = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testRunningAStepWritesARealFileAndTheDashboardSeesIt'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shipped defect, restored: add two CPU readings blindly.
+        # Host runs record none, so every host step reaching the plot
+        # phase raised TypeError AFTER its command had succeeded --
+        # "Pipeline Failed" for completed work, and no log, because the
+        # finalizer never ran.
+        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
+        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
     ),
 ]

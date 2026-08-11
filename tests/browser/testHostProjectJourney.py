@@ -226,6 +226,29 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
         + "\n  ".join(listFailures)
     )
     assert pageDashboard.listPageErrors == []
+    # The run LOG, which nothing asserted until a researcher's
+    # successful host runs each produced none. The log is what a
+    # researcher opens to see why a step behaved as it did, and its
+    # absence is invisible from the dashboard, which shows the live
+    # output it already has in memory.
+    sLogsDirectory = os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY, ".vaibify", "logs",
+    )
+    _fnWaitForAnyLog(sLogsDirectory)
+
+
+def _fnWaitForAnyLog(sLogsDirectory, fTimeoutSeconds=20.0):
+    """Wait for the run to leave a log file behind."""
+    import time
+    fDeadline = time.time() + fTimeoutSeconds
+    while time.time() < fDeadline:
+        if os.path.isdir(sLogsDirectory) and os.listdir(sLogsDirectory):
+            return
+        time.sleep(0.5)
+    raise AssertionError(
+        f"the run wrote no log into {sLogsDirectory}; a researcher has "
+        "no record of what the step printed"
+    )
 
 
 def _fnClickRunUntilItIsNotRefused(page, fTimeoutSeconds=45.0):
