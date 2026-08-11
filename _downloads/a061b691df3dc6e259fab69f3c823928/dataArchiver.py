@@ -149,16 +149,32 @@ def _fnWriteEnvironmentTier(filesRepo, sContainerName,
 
 def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
                                   listHostBinaries):
-    """Assemble the environment.json payload from snapshot helpers."""
+    """Assemble the environment.json payload from snapshot helpers.
+
+    A HOST project records ``sMode`` and no image digest. There is no
+    container to inspect -- its resource id is a registry name Docker
+    has never heard of -- so asking would shell out to ``docker
+    inspect`` and fail. This capture runs automatically when a workflow
+    crosses Level 1, and an error there would surface as a
+    reproducibility envelope that failed to regenerate rather than as
+    the honest "this project has no image".
+    """
+    from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import environmentSnapshot
     dictPayload = {
-        "dictContainer": environmentSnapshot.
-            fdictCaptureContainerImageDigest(sContainerName),
         "dictSystemTools": environmentSnapshot.
             fdictCaptureSystemTools(filesRepo),
         "iSourceDateEpoch": environmentSnapshot.
             fiCaptureSourceDateEpoch(filesRepo),
     }
+    if fbIsHostProject(sContainerName):
+        dictPayload["sMode"] = "host"
+    else:
+        dictPayload["dictContainer"] = (
+            environmentSnapshot.fdictCaptureContainerImageDigest(
+                sContainerName,
+            )
+        )
     if listHostBinaries:
         dictPayload["dictHostBinaries"] = environmentSnapshot.\
             fdictCaptureHostBinaryHashes(filesRepo, listHostBinaries)

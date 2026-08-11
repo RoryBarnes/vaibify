@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev882 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev940 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a339d299"></script>
+      <script src="_static/documentation_options.js?v=99be5f40"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -82,6 +82,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#host-mode-the-same-hub-a-different-substrate">Host mode: the same hub, a different substrate</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#container-mutations-announce-themselves">Container mutations announce themselves</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
@@ -767,10 +768,9 @@ closed 4409, and the browser reported a healthy server as unreachable.</p>
 <p>So the budget is: at most one live <strong>pipeline</strong> WebSocket per container
 (<code class="docutils literal notranslate"><span class="pre">iLivePipelineConnectionCount</span></code>); sockets on any other lane are counted
 in <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> for liveness (the reaper and the idle watchdog
-read it) but are never refused. The terminal is disabled (see “The
-interactive terminal is disabled” in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>), so the unbudgeted
-lane has no production caller today; the budget still holds and is
-driven through the real wrapper by a test-owned socket on that lane. <code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> /
+read it) but are never refused. The terminal is that lane’s production
+caller, which is exactly why the budget must never be extended back
+over it. <code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> /
 <code class="docutils literal notranslate"><span class="pre">fnDecrementLiveConnection</span></code> keep both counts, and a second concurrent
 pipeline connection presenting the same lease is refused with 4409.</p>
 <p>Every deliberate refusal (4003/4401/4403/4409) is sent <strong>after</strong> the
@@ -938,6 +938,81 @@ never reaped. No new dependency is introduced; the probe shells out to
 host-side enumerator over these same files – the analog of
 <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
 </section>
+</section>
+<section id="host-mode-the-same-hub-a-different-substrate">
+<h2>Host mode: the same hub, a different substrate<a class="headerlink" href="#host-mode-the-same-hub-a-different-substrate" title="Link to this heading"></a></h2>
+<p>A project is either <strong>containerized</strong> or <strong>host</strong>. A host project has
+no image, no container and no volume: its pipeline runs directly on the
+researcher’s machine, in the directory they registered. It exists
+because the image build ends most first encounters with vaibify before
+they begin (see <a class="reference internal" href="philosophy.html"><span class="std std-doc">philosophy.md</span></a> for the stance, which is
+that the container remains the default and the destination).</p>
+<p>Almost nothing above changes, and that is the design. The ownership
+model — flock, lease, two-tab arbitration, orphan and expiry, transfer
+— was already Docker-free and name-keyed, so it is reused whole. The
+mutation boundary is reused whole. The journal is reused whole, with
+one new record kind. What is swapped is the <em>substrate</em>, at exactly one
+seam.</p>
+<p><strong>The seam is the connection object.</strong> <code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;docker&quot;]</span></code> holds a
+<code class="docutils literal notranslate"><span class="pre">ConnectionRouter</span></code> that dispatches per call on the resource id every
+call site already passes: a Docker container id routes to
+<code class="docutils literal notranslate"><span class="pre">DockerConnection</span></code>, a registry name that names a host project routes to
+<code class="docutils literal notranslate"><span class="pre">HostConnection</span></code> (<code class="docutils literal notranslate"><span class="pre">vaibify/host/hostConnection.py</span></code>), which implements
+the same duck-typed surface against <code class="docutils literal notranslate"><span class="pre">subprocess</span></code> and <code class="docutils literal notranslate"><span class="pre">os.*</span></code>. The
+router’s twelve delegations are explicit rather than a dynamic
+<code class="docutils literal notranslate"><span class="pre">__getattr__</span></code>, so the capability inventory can read them. A host-path
+<em>fork</em> of the workflow manager was tried once (the withdrawn
+<code class="docutils literal notranslate"><span class="pre">director</span></code> module) and abandoned: swap the connection, never fork the
+path handling.</p>
+<p><strong>Every host subprocess is gated and journaled, with no exceptions.</strong>
+The child is spawned suspended behind a stdin gate in its own session;
+a <code class="docutils literal notranslate"><span class="pre">host-exec</span></code> journal record carrying its recycle-proof identity (PID,
+process group, in-flight stamp) is persisted and identity-gated; only
+then is the gate released. A crash at any point leaves an <em>identified</em>
+record rather than a process nobody can name. This is the host
+analogue of Docker’s <code class="docutils literal notranslate"><span class="pre">exec_create</span> <span class="pre">→</span> <span class="pre">journal</span> <span class="pre">→</span> <span class="pre">exec_start</span></code> split, and it
+is what makes the quiescence claim — “every process vaibify started has
+exited” — sayable at all. The record carries a bounded operation label
+(<code class="docutils literal notranslate"><span class="pre">pipeline-step:A03</span></code>, <code class="docutils literal notranslate"><span class="pre">git-status</span></code>), never command text, because the
+journal’s schema allowlist admits no commands.</p>
+<p><strong>What that claim is NOT.</strong> A command can <code class="docutils literal notranslate"><span class="pre">setsid</span></code> out of its process
+group, and nothing in the journal can see it. Host mode therefore never
+says “nothing is running”; it says what it can prove, in the quarantine
+copy, in the Cancel confirmation, and in the CLI. This is the same
+boundary the interactive terminal was withdrawn over.</p>
+<p><strong>Cancel signals a recorded group, never a matched name.</strong> The
+container lane greps its own process table, which is safe there
+because the whole table belongs to vaibify. On the host that same
+sweep matches the researcher’s editor. So the host lane signals only
+process groups it journaled, and only while the recorded identity is
+still <em>provable</em> — a PID that vanished may have been handed to
+something else. An unprovable record is reported and routed to
+reconciliation, never guessed at (<code class="docutils literal notranslate"><span class="pre">vaibify/host/hostCancellation.py</span></code>).</p>
+<p><strong>Two quarantine exits, and they are not the same act.</strong> A container’s
+break-glass stops the container first, so clearing the marker
+afterwards rests on something proven; it refuses a host project by
+name. A host project instead has <code class="docutils literal notranslate"><span class="pre">--terminate-recorded</span></code>, which signals
+the journaled groups and re-runs the proof, and — for a marker too
+damaged to parse — <code class="docutils literal notranslate"><span class="pre">--abandon-host-journal</span></code>, which proves nothing and
+says so. Abandonment writes an attributable audit entry (project name
+<em>and</em> canonical directory, marker sha256, UTC timestamp, host uid and
+session) beside the journal, appended and fsynced <strong>before</strong> the marker
+is unlinked and idempotent by marker hash, so “a marker abandoned with
+no record of who abandoned it” is unreachable rather than unlikely.</p>
+<p><strong>Three capabilities are given up by name.</strong> PROOF Level 3 is defined
+by a pinned image; Supervised attribution is only honest when vaibify
+mediates every path to the files; the agent lane does not exist,
+because on the host the agent <em>is</em> the user and <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> has no
+discriminator left. Each is refused at its own door with a message
+naming the mode, rather than degrading into a misleading cascade.</p>
+<p><strong>Paths.</strong> Every direct path argument and working directory is
+validated against exactly two roots — the project directory and the
+project’s <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp/host-diagnostics/&lt;digest&gt;/</span></code> scratch subtree —
+with symlinks resolved before containment is checked. It defends
+against hostile wire input; it deliberately cannot see paths embedded
+inside opaque workflow shell text, and the warning modal owns that
+disclosure. Windows is refused outright: there the <code class="docutils literal notranslate"><span class="pre">bash</span> <span class="pre">-c</span></code> command
+composition and the POSIX guards weaken silently rather than failing.</p>
 </section>
 <section id="container-mutations-announce-themselves">
 <h2>Container mutations announce themselves<a class="headerlink" href="#container-mutations-announce-themselves" title="Link to this heading"></a></h2>
@@ -1149,9 +1224,10 @@ via <code class="docutils literal notranslate"><span class="pre">fsReadLoaderSou
 <li><p><code class="docutils literal notranslate"><span class="pre">commandUtilities.py</span></code> — script path extraction from commands.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dependencyScanner.py</span></code> — code dependency analysis for scripts.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">registryRoutes.py</span></code> — project registry API.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">terminalSession.py</span></code> — PTY bridge for the terminal WebSocket. No
-production path constructs one: the terminal is disabled (see
-<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, “The interactive terminal is disabled”).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">terminalSession.py</span></code> — PTY bridge for the terminal WebSocket.
+Constructed only by <code class="docutils literal notranslate"><span class="pre">routes/terminalRoutes.py</span></code>, after the ownership
+gate (see <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, “The terminal serves containers, and costs
+the quiescence claim”).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">resourceMonitor.py</span></code> — container CPU and memory stats.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">figureServer.py</span></code> — small utility; see source.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">setupServer.py</span></code> — setup wizard host-side server.</p></li>

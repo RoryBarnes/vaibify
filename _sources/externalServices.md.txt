@@ -363,7 +363,6 @@ python -m pytest tests/testArchitecturalInvariants.py -v
 The ones most relevant to new services:
 - `testNoRawFetchInFeatureModules` — use `VaibifyApi.*` wrappers in
   the frontend.
-- `testDirectorUsesOsPath` — host-side Python uses `os.path`.
 - `testLeafModuleHasNoIntraPackageImports` — don't add vaibify-gui
   imports to any file that ships into the container.
 - `testEveryJsFileIsRecognizedAsIIFE` — register new JS modules in

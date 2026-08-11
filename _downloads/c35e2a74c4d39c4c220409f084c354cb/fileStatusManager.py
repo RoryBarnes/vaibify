@@ -41,17 +41,14 @@ State Transitions
 
 import logging
 import posixpath
-import shlex
 
-from docker.errors import APIError, NotFound
-
+from ..docker.dockerConnection import fbErrorMeansContainerUnreachable
 from ..reproducibility.stepPredicates import (
     fbStepTestsPassing,
     fbStepTimingClean,
     fbStepUserApproved,
 )
 
-_S_POLL_PATHFILE = "/tmp/vaibifyPoll.list"
 
 _LIST_CATEGORY_KEYS = (
     ("dictIntegrity", "sIntegrity"),
@@ -1531,81 +1528,58 @@ def _fdictMtimeHintsForStep(
     return dictHints
 
 
-def _fdictStatViaPathfile(connectionDocker, sContainerId, listPaths):
-    """Return {sAbsPath: sMtime} for paths that exist; one exec total."""
-    dictModTimes, _sFingerprint = _ftStatAndFingerprintViaPathfile(
+def _fdictStatPaths(connectionDocker, sContainerId, listPaths):
+    """Return {sAbsPath: sMtime} for paths that exist; one typed read."""
+    dictModTimes, _sFingerprint = _ftStatAndFingerprint(
         connectionDocker, sContainerId, listPaths, "",
     )
     return dictModTimes
 
 
-def _ftStatAndFingerprintViaPathfile(
+def _ftStatAndFingerprint(
     connectionDocker, sContainerId, listPaths, sFingerprintPath,
 ):
-    """Return ``({sAbsPath: sMtime}, sFingerprint)``; one exec total.
+    """Return ``({sAbsPath: sMtime}, sFingerprint)`` from typed reads.
 
-    When ``sFingerprintPath`` is given, the same exec also emits a
-    ``fingerprint:<sha256>`` line for that file, giving the workflow
-    reload detector a content signal without a second docker-exec
-    round trip per poll tick. The fingerprint comes back empty when
-    the file is missing or the hash command flaked.
+    TWO TYPED READS, and it used to be a container WRITE plus an exec.
+    The write existed only to carry the path list: a shell argv will
+    not hold a thousand paths, so the poll pushed them into
+    ``/tmp/vaibifyPoll.list`` and ran ``xargs -a`` over it. A typed
+    read embeds the list as a Python literal instead, so the file is
+    gone — and with it the dashboard's only container mutation on a
+    timer, which is what kept this route outside the commit-guard
+    boundary. The round-trip count is unchanged: the tar push was
+    itself a round-trip.
+
+    The fingerprint is its own read rather than a second slot in the
+    first program. The two are read microseconds apart now instead of
+    inside one shell, which is not a weaker guarantee than it looks:
+    the old command ran ``stat`` and ``sha256sum`` sequentially too,
+    so there was never an instant at which both were true at once.
+
+    A container that vanishes mid-poll answers empty rather than
+    raising, as before — the panel's next tick will find it gone.
     """
     if not listPaths and not sFingerprintPath:
         return {}, ""
-    baContent = ("\n".join(listPaths) + "\n").encode("utf-8")
-    sCmd = (
-        f"xargs -d '\\n' -a {_S_POLL_PATHFILE} "
-        f"stat -c '%n %Y' 2>/dev/null"
-    )
-    if sFingerprintPath:
-        sCmd += (
-            f"; printf 'fingerprint:%s\\n' "
-            f"\"$(sha256sum -- {shlex.quote(sFingerprintPath)} "
-            f"2>/dev/null | cut -d' ' -f1)\""
-        )
     try:
-        connectionDocker.fnWriteFileViaTar(
-            sContainerId, _S_POLL_PATHFILE, baContent,
+        dictModTimes = connectionDocker.fdictStatPathMtimes(
+            sContainerId, listPaths,
         )
-        _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId, sCmd,
+        sFingerprint = (
+            connectionDocker.fsHashContainerFileSha256(
+                sContainerId, sFingerprintPath,
+            )
+            if sFingerprintPath else ""
         )
-    except (APIError, NotFound):
+    except Exception as error:
+        if not fbErrorMeansContainerUnreachable(error):
+            raise
         logger.info(
             "container vanished mid-poll, container=%s", sContainerId,
         )
         return {}, ""
-    return _ftParseStatAndFingerprintLines(sOutput)
-
-
-def _ftParseStatAndFingerprintLines(sOutput):
-    """Split the ``fingerprint:`` marker line out of stat output.
-
-    Stat lines are '%n %Y' with absolute paths, so no stat line can
-    start with the marker; the marker line is unambiguous.
-    """
-    sFingerprint = ""
-    listStatLines = []
-    for sLine in (sOutput or "").strip().split("\n"):
-        sLine = sLine.strip()
-        if sLine.startswith("fingerprint:"):
-            sFingerprint = sLine[len("fingerprint:"):].strip()
-        elif sLine:
-            listStatLines.append(sLine)
-    return _fdictParseStatLines("\n".join(listStatLines)), sFingerprint
-
-
-def _fdictParseStatLines(sOutput):
-    """Parse 'name mtime' lines from stat output into a dict."""
-    dictResult = {}
-    for sLine in (sOutput or "").strip().split("\n"):
-        sLine = sLine.strip()
-        if not sLine:
-            continue
-        listParts = sLine.rsplit(" ", 1)
-        if len(listParts) == 2:
-            dictResult[listParts[0]] = listParts[1]
-    return dictResult
+    return dictModTimes, sFingerprint
 
 
 def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
@@ -1764,8 +1738,8 @@ def _fnEvictHostIncidentBuckets(moduleHostIncidents, setRunning):
 def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
     """Return {sAbsPath: sMtime} for each polled path that exists.
 
-    Stats every requested path directly in a single batched exec via
-    ``_fdictStatViaPathfile``. The previous design indirected through
+    Stats every requested path directly in one typed read via
+    ``_fdictStatPaths``. The previous design indirected through
     a parent-directory mtime cache so unchanged subtrees could skip
     per-child stat, but POSIX does not bump a directory's mtime when
     an existing child is rewritten in place — only add/remove/rename
@@ -1775,11 +1749,11 @@ def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
     returning the pre-edit mtime, and the reload detector / "step
     source modified" invalidation silently no-op'd. Stat-the-children
     directly removes the silent-stale failure mode at the cost of one
-    extra path-list per poll exec (still one exec round-trip).
+    extra path-list per poll (still one round-trip).
     """
     if not listPaths:
         return {}
-    return _fdictStatViaPathfile(
+    return _fdictStatPaths(
         connectionDocker, sContainerId, listPaths,
     )
 
@@ -1787,14 +1761,14 @@ def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
 def ftGetModTimesAndFingerprint(
     connectionDocker, sContainerId, listPaths, sFingerprintPath,
 ):
-    """Return ``(dictModTimes, sFingerprint)`` in one exec round trip.
+    """Return ``(dictModTimes, sFingerprint)`` from the poll's reads.
 
     Same contract as :func:`_fdictGetModTimes` plus the sha256 content
-    fingerprint of ``sFingerprintPath``, collected in the same batched
-    exec so the workflow reload detector's content comparison adds no
-    per-tick container load.
+    fingerprint of ``sFingerprintPath``, so the workflow reload
+    detector's content comparison costs one typed read rather than a
+    poll of its own.
     """
-    return _ftStatAndFingerprintViaPathfile(
+    return _ftStatAndFingerprint(
         connectionDocker, sContainerId, listPaths, sFingerprintPath,
     )
 
@@ -1950,7 +1924,10 @@ def _ffilesForWorkflowRepo(dictWorkflow, connectionDocker, sContainerId):
     dual-accept wraps it in a host adapter.
     """
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if connectionDocker is None or not sContainerId:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker) or not sContainerId:
         return sProjectRepoPath
     from vaibify.reproducibility.repoFiles import ContainerRepoFiles
     return ContainerRepoFiles(

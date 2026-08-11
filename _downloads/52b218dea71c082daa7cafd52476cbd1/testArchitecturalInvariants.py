@@ -14,7 +14,6 @@ __all__ = [
     "testAllRouteModulesRegisteredInInit",
     "testAllPackageModulesDefineDunderAll",
     "testWorkflowManagerUsesPosixPath",
-    "testDirectorUsesOsPath",
     "testNoScienceSpecificIdentifiersInSource",
     "testNoScienceSpecificIdentifiersInShippedTemplates",
     "testScienceTermScanMatchesSeparatedSpellings",
@@ -1197,8 +1196,41 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     Pair with ``testContainerUserUidIsOneThousand``: that test pins the
     Dockerfile's user UID to 1000; this test pins the dispatcher's
     default to the same value.
+
+    SCOPE: the DOCKER leg only, and the scope is pinned rather than
+    assumed. The uid-1000 contract exists because a tarball entry's
+    uid/gid IS the file's owner inside a container; a host-mode
+    connection (``vaibify/host/``) writes host files as the invoking
+    user, never builds tar entries, and carries its own guardrails
+    (``tests/testHostSubprocessConfinement.py``). The scan below pins
+    that scope structurally: every ``tarfile.TarInfo`` construction in
+    the package lives in ``vaibify/docker/dockerConnection.py``, so a
+    second tar-building write path cannot appear outside this
+    invariant's reach, and moving the builder out of the Docker leg
+    fails here instead of silently orphaning the test.
     """
     from vaibify.docker.dockerConnection import DockerConnection
+    assert DockerConnection._finfoBuildTarEntry.__module__ == (
+        "vaibify.docker.dockerConnection"
+    ), (
+        "the tar-entry builder left the Docker gateway; this invariant "
+        "is scoped to the Docker leg and must move (or split) with it"
+    )
+    listTarBuilders = []
+    for pathFile in PACKAGE_DIR.rglob("*.py"):
+        if "__pycache__" in pathFile.parts:
+            continue
+        if "TarInfo(" in fsReadSource(pathFile):
+            listTarBuilders.append(
+                str(pathFile.relative_to(REPO_ROOT))
+            )
+    assert listTarBuilders == ["vaibify/docker/dockerConnection.py"], (
+        f"tar entries are built in {listTarBuilders}; this invariant "
+        f"pins the uid-1000 default of the ONE builder in the Docker "
+        f"gateway. A new tar-building write path is outside its reach "
+        f"— either route the write through the gateway or give the new "
+        f"path its own ownership invariant before extending this list."
+    )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
     )
@@ -1892,7 +1924,31 @@ def testContainerUserUidIsOneThousand():
     keyring files would become unreadable across rebuilds and the
     user would silently lose stored Overleaf and Zenodo tokens.
     Defense-in-depth for audit finding F-R-07.
+
+    SCOPE: the DOCKER leg only, and the scope is pinned rather than
+    assumed. The uid-1000 contract binds the container image's user to
+    the keyring volume and to the tar-write default
+    (``testFnWriteFileDefaultsToContainerUserOwnership``); a host-mode
+    connection (``vaibify/host/``) runs as the invoking host user, has
+    no image, and must never inherit a hard-coded uid — its guardrails
+    live in ``tests/testHostSubprocessConfinement.py``. The scan below
+    pins the scope: the ONE ``useradd`` in the package's Dockerfiles is
+    the base image's, so an agent-overlay or future host-leg Dockerfile
+    minting a differently-numbered user fails here instead of sitting
+    silently outside this invariant.
     """
+    listUseraddFiles = sorted(
+        str(pathFile.relative_to(REPO_ROOT))
+        for pathFile in PACKAGE_DIR.rglob("Dockerfile*")
+        if "__pycache__" not in pathFile.parts
+        and "useradd" in fsReadSource(pathFile)
+    )
+    assert listUseraddFiles == ["vaibify/containerImage/Dockerfile"], (
+        f"user creation happens in {listUseraddFiles}; this invariant "
+        f"pins the uid of the ONE useradd in the base image. A second "
+        f"Dockerfile creating a user is outside its reach — pin that "
+        f"user's uid with its own invariant before extending this list."
+    )
     sDockerfile = fsReadSource(
         REPO_ROOT / "vaibify" / "containerImage" / "Dockerfile",
     )
@@ -3409,90 +3465,112 @@ def _flistProductionPythonModules():
     ]
 
 
-def testWithdrawnTerminalRouteTouchesNothing():
-    """The terminal route refuses first and touches no shared state.
+# The one module allowed to build a terminal, now that there is one
+# again. It is named rather than the check being deleted: the parking
+# controls stopped being about a withdrawn feature on 2026-08-11 and
+# became about a CONTAINED one — a terminal must be reachable through
+# the gated route and nowhere else, so a background task or a
+# convenience helper cannot start a shell nobody authorized and nobody
+# journals.
+_S_TERMINAL_ROUTE_MODULE = "gui/routes/terminalRoutes.py"
 
-    Ordering is the whole contract. The pre-withdrawal handler resolved
-    the docker id, ran the ownership gate (which REFRESHES liveness),
-    and entered the connection counters before it could refuse anything
-    -- so an unauthenticated dial-in learned whether a named container
-    existed, and a refused one had already disturbed the owner's
-    liveness stamp. The withdrawn handler must reach none of that: the
-    close is the only statement it executes.
+
+def testTheTerminalRouteGatesBeforeItBuildsAnything():
+    """Standing is established before a session or a record exists.
+
+    Ordering is the contract, and it survives the feature coming back
+    with its emphasis moved. While the terminal was withdrawn the
+    ordering rule was "refuse first, touch nothing". Now that the route
+    serves, what must hold is that the ownership gate runs BEFORE the
+    session is constructed: a TerminalSession built ahead of the gate
+    would put a quarantine-bearing operation on a container for a
+    caller with no standing in it, and a refused dial-in would leave
+    the record behind.
+
+    The host refusal is checked in the same order for a different
+    reason: it must precede ``require``, because a host-only machine
+    has no daemon and answering "install Docker" about a project that
+    never wanted one is the ordering bug the container-only HTTP
+    routes already fixed.
     """
-    pathRoute = ROUTES_DIR / "terminalRoutes.py"
-    sSource = fsReadSource(pathRoute)
-    for sForbidden in (
-        "fsContainerNameForId",
-        "fiContainerSessionRejectionCode",
-        "fnServeUnderLiveConnectionCounters",
-        "TerminalSession",
-        "fnRunTerminalSession",
-    ):
-        assert f"{sForbidden}(" not in sSource, (
-            f"the withdrawn terminal route must not call {sForbidden}; "
-            f"the refusal is the first and only statement so it creates "
-            f"no ownership, no counters, no records, and reveals nothing "
-            f"about whether the container exists"
-        )
-    assert "I_REJECT_TERMINAL_DISABLED" in sSource, (
-        "the terminal route must close with the one fixed withdrawal "
-        "code, distinct from every authorization refusal"
+    sSource = fsReadSource(ROUTES_DIR / _S_TERMINAL_ROUTE_MODULE.split("/")[-1])
+    iGate = sSource.index("fiContainerSessionRejectionCode(")
+    iHostRefusal = sSource.index("fbIsHostProject(")
+    iRequire = sSource.index('dictCtx["require"](')
+    iSession = sSource.index("TerminalSession(")
+    assert iGate < iHostRefusal < iRequire < iSession, (
+        "the terminal route must gate, then refuse a host project, "
+        "then require the daemon, then build the session; found order "
+        f"gate={iGate} host={iHostRefusal} require={iRequire} "
+        f"session={iSession}"
     )
     assert "fnCloseWithCode(" in sSource, (
-        "the refusal must accept then close (fnCloseWithCode) so the "
+        "every refusal must accept then close (fnCloseWithCode) so the "
         "browser observes the real code instead of an opaque 1006"
+    )
+    assert "I_REJECT_TERMINAL_NOT_ON_HOST" in sSource, (
+        "a host project's refusal needs its own code: it is neither a "
+        "withdrawn feature nor a rejected credential"
     )
 
 
-def testNoProductionPathConstructsATerminalSession():
-    """Nothing in the shipped package constructs a terminal session.
+def testOnlyTheGatedRouteConstructsATerminalSession():
+    """Control 1: a shell exists only where the gate put it.
 
-    This is parking control 1. The route no longer builds one; this
-    fails the build if any production path -- a new route, a background
-    task, a convenience helper -- starts building one again while the
-    containment boundary is still unprovable.
+    This was "nothing constructs one" while the terminal was
+    withdrawn. The narrower rule that replaces it is the one that was
+    always doing the work: a second construction site — a background
+    task, a helper, a new route — would be a shell nobody authorized
+    and no journal record covers.
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
         if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
             continue
+        sRelative = str(pathModule.relative_to(PACKAGE_DIR))
+        if sRelative == _S_TERMINAL_ROUTE_MODULE:
+            continue
         _, treeAst = ftParseFile(pathModule)
         if "TerminalSession" in _flistCallNames(treeAst):
-            listViolations.append(str(pathModule.relative_to(PACKAGE_DIR)))
+            listViolations.append(sRelative)
     assert listViolations == [], (
-        f"no production path may construct a TerminalSession while the "
-        f"terminal is withdrawn; found in: {listViolations}"
+        f"only {_S_TERMINAL_ROUTE_MODULE} may construct a "
+        f"TerminalSession, so every shell is one the ownership gate "
+        f"admitted; found in: {listViolations}"
     )
 
 
-def testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket():
-    """Parking control 2: exactly one handler answers ``/ws/terminal``."""
+def testOnlyOneHandlerServesTheTerminalWebSocket():
+    """Control 2: exactly one handler answers ``/ws/terminal``."""
     listServing = [
         str(pathModule.relative_to(PACKAGE_DIR))
         for pathModule in _flistProductionPythonModules()
         if _S_TERMINAL_WS_PATH in fsReadSource(pathModule)
     ]
-    assert listServing == ["gui/routes/terminalRoutes.py"], (
-        f"only the withdrawn refusal handler may answer "
+    assert listServing == [_S_TERMINAL_ROUTE_MODULE], (
+        f"only the gated handler may answer "
         f"{_S_TERMINAL_WS_PATH}; found in: {listServing}"
     )
     sSource = fsReadSource(ROUTES_DIR / "terminalRoutes.py")
     assert sSource.count("@app.websocket(") == 1, (
-        "terminalRoutes must register exactly one WebSocket endpoint -- "
-        "the refusal -- so no second path can serve a session"
+        "terminalRoutes must register exactly one WebSocket endpoint, "
+        "so no second path can serve a session past the gate"
     )
 
 
-def testNoProductionPathPreparesATerminalExecutionRecord():
-    """Parking control 3: only the parked seam names the creation calls.
+def testOnlyTheSeamPreparesATerminalExecutionRecord():
+    """Control 3: only the seam names the record-creation calls.
 
     A terminal execution becomes durable through
     ``fsPrepareTerminalOperation`` -> ``fnPromoteTerminalOperation`` ->
-    ``fnRegisterTerminalRecord``. Outside the seam module (whose own
-    constructor is unreachable, per parking control 1) no shipped module
-    may name any of them, so no container can acquire a new
-    quarantine-bearing terminal record.
+    ``fnRegisterTerminalRecord``. That record is what makes the weaker
+    quiescence claim honest: a container whose terminal ran reports
+    UNPROVEN instead of quiet, and it can only do that if the record
+    exists. A module that assembled the pieces itself could start a
+    shell with no record at all — invisible rather than unproven,
+    which is the failure mode the withdrawal was protecting against.
+    The route is exempt for ``TerminalSession`` alone (control 1); it
+    names none of the rest.
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
@@ -3501,25 +3579,37 @@ def testNoProductionPathPreparesATerminalExecutionRecord():
         _, treeAst = ftParseFile(pathModule)
         setCalled = set(_flistCallNames(treeAst))
         setOffending = setCalled & _SET_TERMINAL_CREATION_SYMBOLS
+        if str(pathModule.relative_to(PACKAGE_DIR)) == (
+            _S_TERMINAL_ROUTE_MODULE
+        ):
+            setOffending = setOffending - {"TerminalSession"}
         if setOffending:
             listViolations.append(
                 (str(pathModule.relative_to(PACKAGE_DIR)),
                  sorted(setOffending))
             )
     assert listViolations == [], (
-        f"terminal-record creation is parked; only the seam module may "
-        f"name these calls. Found: {listViolations}"
+        f"terminal-record creation belongs to the seam module alone, "
+        f"so no shell can run without the record that makes the "
+        f"quiescence claim honest. Found: {listViolations}"
     )
 
 
 def testRemainingContainmentCallsAreCleanupOnly():
-    """Parking control 4: every live containment caller is cleanup.
+    """Control 4: every containment caller outside the seam is cleanup.
 
-    ``terminalContainment`` keeps production callers -- appFactory
-    builds the registry and drains it at shutdown, sessionLifecycle and
+    ``terminalContainment`` has production callers -- appFactory builds
+    the registry and drains it at shutdown, sessionLifecycle and
     serverLifespan drain and query it on release, reap, and shutdown --
     which is why a no-callers invariant cannot pass. What must hold is
     narrower: none of those callers CREATES anything.
+
+    The gated route is exempt for ``TerminalSession`` alone, the same
+    single exemption control 1 grants. Note it lands here only because
+    its module docstring NAMES ``terminalContainment`` while explaining
+    the quiescence claim -- the scan selects modules by that word -- so
+    without the exemption this control would be enforcing "do not
+    mention the module you are describing".
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
@@ -3532,6 +3622,10 @@ def testRemainingContainmentCallsAreCleanupOnly():
         setOffending = (
             set(_flistCallNames(treeAst)) & _SET_TERMINAL_CREATION_SYMBOLS
         )
+        if str(pathModule.relative_to(PACKAGE_DIR)) == (
+            _S_TERMINAL_ROUTE_MODULE
+        ):
+            setOffending = setOffending - {"TerminalSession"}
         if setOffending:
             listViolations.append(
                 (str(pathModule.relative_to(PACKAGE_DIR)),
@@ -3932,7 +4026,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single clearer. Poison and fencing are one act, and the fence
     # needs the lane on ConnectionRecord, so both live beside the
     # record they act on.
-    "containerOwnership.py": 898,
+    # +9 (2026-08-08): the agent-token mint is mode-aware (host-mode
+    # decision 6) — a host project's credential is UNMINTED, not
+    # undelivered, and the branch lives inside the mint so no caller
+    # can forget it.
+    "containerOwnership.py": 907,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4064,7 +4162,32 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # worker rather than a typed-read declaration, and the two to_thread
     # hops it used to make became direct calls inside that worker.
     # **No route in this module is awaiting any longer.**
-    "routes/pipelineRoutes.py": 3070,
+    # +3 (2026-08-08): the test-marker fetch stopped naming Docker SDK
+    # exception types and asks the connection-level predicate
+    # fbErrorMeansContainerUnreachable instead — the re-raise branch
+    # for non-substrate errors is the pinned behaviour, not padding
+    # (host-mode connections raise plain OSErrors that the old except
+    # clause misclassified).
+    # +16 (2026-08-08): the pipeline-state read joins the enforced
+    # branch (host-mode wave 3). The persister it now passes already
+    # existed for the kill route, so the added lines are the
+    # declaration, the request parameter, and the comment recording
+    # why a route polled every ten seconds may declare mode (b)
+    # without holding a drain on a timer — its carrier opens only on
+    # the reconcile branch.
+    # +5 (2026-08-08): the poll threads the project's MODE into the
+    # level gates, because Level 3 is defined by a pinned image and a
+    # host project must be told that once rather than handed seven
+    # container criteria it can never satisfy.
+    # +60 (2026-08-10): Cancel grows a host lane (host-mode wave 5).
+    # The container sweep pattern-matches a process table, which is
+    # safe only where the whole table is vaibify's; on the host the
+    # only thing that may be signalled is a journaled process group,
+    # so the two are separate lanes rather than one parameterized
+    # one. Not a split seam: both lanes are the kill route's single
+    # responsibility, and moving one out would leave the route
+    # choosing between two modules by mode — the branch, relocated.
+    "routes/pipelineRoutes.py": 3154,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4077,7 +4200,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # raises happens at or after a write). Reaching 800 exactly was
     # possible only by deleting the blank line after each docstring's
     # summary, which is deforming the source to satisfy a number.
-    "routes/testRoutes.py": 802,
+    # +6 (2026-08-08): the save-and-run-test write path threads the
+    # resource's own root instead of the module constant, so a host
+    # project's repo-relative test file resolves under its own
+    # directory (host-mode wave 4).
+    "routes/testRoutes.py": 808,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4179,7 +4306,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the mtime comparison alone discarded every attestation on a
     # machine hop; content decides now. Cohesive with the verification
     # state machine this module already owns.
-    "fileStatusManager.py": 2196,
+    # +1 (2026-08-08): the vanished-mid-poll net migrated from naming
+    # Docker SDK exception types to the connection-level predicate
+    # fbErrorMeansContainerUnreachable, keeping its re-raise branch for
+    # non-substrate errors explicit.
+    # +3 (2026-08-08): the poll's repo-file builder asks
+    # fbDockerReachable instead of `is None`, so a leg-less
+    # connection router reads as daemon-down (host-mode wave 2).
+    "fileStatusManager.py": 2200,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -4231,7 +4365,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The dashboard's "add test command" and save-and-run-test both
     # write there, so the fallback reading dropped hand-added tests from
     # green runs. Still one function answering one question.
-    "workflowManager.py": 2347,
+    # +6 (2026-08-08): the discovery search root is quoted into the
+    # find command, with the paragraph explaining why a constant that
+    # never needed quoting does now — a host project's root is the
+    # directory the researcher registered, and it reaches ``bash -c``.
+    # +18 (2026-08-10): fsLogsDirectoryFor, extracted on the third
+    # instance. The runner, the test runner and the logs routes each
+    # built <root>/.vaibify/logs from the container constant, and each
+    # was wrong for a host project the same way -- the path guard
+    # refuses the write, so the final log flush failed and the pipeline
+    # reported exit 1 for a step whose command had succeeded.
+    "workflowManager.py": 2371,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4344,7 +4488,34 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # being refused. Splitting the three apart would put one refusal's
     # reasons a call hop away from its siblings while they still share
     # the event, the loop and the ordering between them.
-    "pipelineServer.py": 2489,
+    # +1 (2026-08-08): registration line for the preferencesRoutes
+    # module in _fnRegisterAllRoutes, like every other route module.
+    # +19 (2026-08-08): the routed-connection factory
+    # (fconnectionBuildRouted), the require closure's resource-id
+    # pass-through, and the name resolver's designed host branch
+    # (host-mode wave 2) -- context plumbing, the module's own
+    # responsibility.
+    # +11 (2026-08-08): the connect authorization's host branch (wave
+    # 2 chunk B) — the host user is resolved in-process and no agent
+    # session is pushed, because no host container exists to receive
+    # one; the viewer's token mint names its resource for the same
+    # mode-aware mint the claim path uses.
+    # +13 (2026-08-08): the connect path guard and the workflow-
+    # directory fallback ask which root this resource's files live
+    # under instead of naming the container volume (host-mode wave 4).
+    # The answering is a new module; what lands here is the question
+    # and the paragraph saying why measuring a host path against
+    # ``/workspace`` refuses every legitimate one.
+    # +16 (2026-08-09): the connect handshake answers which MODE the
+    # resource is, so the uncontained badge is the server's claim on
+    # every entry path rather than something the dashboard infers.
+    # +25 (2026-08-10): the same handshake answers WHERE the resource's
+    # files live. The frontend wrote ``/workspace`` as a constant in
+    # twenty-five places, which is true of a container and false of a
+    # host project; the root is now the server's answer for the same
+    # reason the mode is, and sits beside it because they are learned
+    # on the same entry paths and would drift if split.
+    "pipelineServer.py": 2575,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4369,7 +4540,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # moved in or out -- the module is still the §8 commit boundary --
     # and the rationale lives once, on the base class, rather than
     # being restated here.
-    "commitCarrier.py": 1066,
+    # +80 (2026-08-08): the automatic-read pause (host mode wave 3).
+    # An automatic read -- one the dashboard issues on its own -- must
+    # never QUEUE behind live work, so mode (b) grew a "report what is
+    # busy instead of acquiring" path. The decision has to be taken
+    # inside the supervisor, immediately before the acquire and with no
+    # await in between, or it can go stale between deciding not to wait
+    # and the wait it decided against; that is why it lands here rather
+    # than in the caller. The three busy states it reads (a live
+    # supervisor, a drain held by a non-carrier such as reconcile, a
+    # live durable task) are the three this module already tracks, so
+    # no responsibility moved in.
+    "commitCarrier.py": 1146,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -4389,7 +4571,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that is most of the rise, and it earns its place -- the suite is
     # developed on macOS and CI was the only place the difference could
     # ever appear.
-    "hostControlChannel.py": 833,
+    # +51 (2026-08-10): one more allowlisted opcode,
+    # ``abandon-host-journal`` (host-mode wave 5). Deliberately a
+    # SEPARATE handler rather than a mode branch inside the
+    # break-glass: the two clear the same marker for opposite reasons,
+    # one having proven the writer gone and one having recorded that
+    # nobody could, and a single opcode choosing between them on a
+    # registry lookup would make the unproven path reachable by
+    # accident. The duplication is the point.
+    "hostControlChannel.py": 884,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -4447,7 +4637,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cases (lock-held refuses, durable adopts, unregistered is
     # invisible) after an earlier wording claimed the opposite of the
     # third.
-    "sessionLifecycle.py": 1319,
+    # +51 (2026-08-10): fbOwningBrowserIsPresentBeforeFirstSocket, the
+    # reaper's presence veto for a claim that has not opened its first
+    # socket. It is a lifecycle clock, and this module is where the
+    # lifecycle clocks live — it reads the browser-session stamp the
+    # §11 sweep reads and answers about the same ACTIVE/ORPHANED states
+    # the §4 trigger two functions above it answers about. Homing it in
+    # serverLifespan (its only caller) would put a window that decides
+    # whether an ownership survives in the module that merely schedules
+    # the pass.
+    "sessionLifecycle.py": 1370,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -4473,7 +4672,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-derive the reservation's state to act.
     # +13 (2026-08-02): the quarantine path poisons through the single
     # writer and fences the container's pipeline socket.
-    "startReservation.py": 973,
+    # +3 (2026-08-08): the reservation probe's daemon-down guard
+    # asks fbDockerReachable (host-mode wave 2).
+    "startReservation.py": 976,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -4562,7 +4763,31 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and cannot take a lock that needs an owner record. Trimming that
     # to hit the number would delete the finding and leave the bare
     # declaration reading like a guarantee.
-    "registryRoutes.py": 1288,
+    # +9 (2026-08-08): three daemon-down guards ask
+    # fbDockerReachable instead of `is None` (host-mode wave 2's
+    # connection router made bare None checks meaningless).
+    # +11 (2026-08-08): the claim path's host branches (wave 2 chunk
+    # B) — a host project's resource id is its registry name (no
+    # Docker query), and the take-over veto asks the host busy oracle
+    # instead of walking the container list for a name Docker has
+    # never heard of.
+    # +9 (2026-08-08): start, cancel-a-start and stop refuse a host
+    # project before asking the daemon (wave 3). One shared call and
+    # its ordering comment per route — the refusal itself lives once,
+    # in routeContext, because a second copy is how one of them would
+    # come to answer differently from the others.
+    # +18 (2026-08-08): registration carries the project's MODE. Until
+    # it did, a host project could be created only from Python, so
+    # nothing a researcher can reach could make one. The mode decides
+    # which leg every later call takes, so it is recorded here rather
+    # than inferred later.
+    # +27: container recognition moved off an arbitrary exec onto the
+    # typed read, and stopped swallowing a control-plane refusal as
+    # "not a vaibify container". The added lines are the reasoning for
+    # both — this defect cost a researcher a working dashboard and
+    # every link in its chain was silent, so the next reader gets the
+    # chain rather than a one-line docstring.
+    "registryRoutes.py": 1362,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -4598,7 +4823,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-08-02): saQueryFields on the three actions whose routes
     # read a parameter from the query string, so a generated command
     # sends each field on the transport the route actually reads.
-    "actionCatalog.py": 964,
+    # +4 (2026-08-08): the host-warning acknowledgement preference PUT
+    # excluded from the agent lane. Same governance responsibility.
+    # +4 (2026-08-08): the host exit from Supervised mode joins its
+    # sibling in the exclusion list, with the reason they share.
+    "actionCatalog.py": 972,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -4621,7 +4850,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module and repoRoutes are now fully migrated, so their
     # entries are ratcheted back down to what they actually measure
     # rather than left holding the migration's headroom.
-    "routes/gitRoutes.py": 1037,
+    # +31 (2026-08-08): the badge refresh migrated too (host mode wave
+    # 3), and it is this panel's first AUTOMATIC read. The lines are
+    # the serialized collector that replaced the `asyncio.gather`, the
+    # typed paused payload, and the two docstrings stating why the
+    # probes are no longer concurrent and why a paused answer carries
+    # no badge map. Same responsibility, same panel.
+    # +27 (2026-08-10): the fetch route asks whether an origin exists
+    # before running `git fetch --no-tags origin`. That command NAMES
+    # the remote, so a repository with none exits 128 and the route
+    # answered 502 on every workflow open -- the ordinary state of a
+    # brand-new project, and the near-universal state of a host one.
+    # Pre-existing and mode-independent; the first journey that ever
+    # opened a workflow in a remote-less repository is what surfaced it.
+    "routes/gitRoutes.py": 1095,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -4634,7 +4876,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # thread the panel's own sidecar and remote through, and a
     # sibling route module may not import them.
     # −38 (2026-08-05): the lifted drain wrapper, as above.
-    "routes/repoRoutes.py": 786,
+    # +12 (2026-08-10): the status route declares `typed-read` and
+    # threads the project root into the repository-status batch. The
+    # comment carries most of it: this route is a five-second poll, and
+    # the reason it may declare a mode with no carrier is that every
+    # container primitive it reaches is now a declared read.
+    "routes/repoRoutes.py": 798,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:
@@ -4659,7 +4906,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reuse fdictCommitWorkflowSave's record without handing the journal
     # probe a hash belonging to a different file. Same cohesive
     # responsibility: the Replay axis, in the module that owns it.
-    "routes/replayRoutes.py": 962,
+    # +1 (2026-08-08): the file-write payload's Docker-id stamp
+    # became mode-aware for host mode (one import line); the
+    # payload site itself swapped line for line.
+    # +86 (2026-08-08): the two halves of the Supervised honesty gate
+    # (host mode decision 3). Entering Supervised mode is refused for a
+    # host project, and the ONE mutation such a workflow is permitted
+    # -- the recorded exit -- lives here beside the setting it undoes.
+    # The flag is permanent and the event log hash-chained, so both
+    # halves have to exist together: a refusal with no way out would
+    # strand a workflow, and a way out with no refusal would let the
+    # log keep claiming attribution it cannot support.
+    "routes/replayRoutes.py": 1049,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev882 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev940 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a339d299"></script>
+      <script src="_static/documentation_options.js?v=99be5f40"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -170,16 +170,25 @@ at any corner of the screen tells you where the project stands.</p>
 </section>
 <section id="terminal">
 <h2>Terminal<a class="headerlink" href="#terminal" title="Link to this heading"></a></h2>
-<p><strong>The in-browser terminal is disabled.</strong> The terminal strip explains
-this in place of a shell.</p>
-<p>The reason is containment. A shell can start a process that detaches
-from the process group vaibify records for it, so vaibify cannot prove
-such a process has stopped — and if it cannot prove that, then
-releasing a container, handing it to another session, or shutting the
-hub down could not honestly report the container quiet. An unprovable
-boundary is worse than a missing feature, so the feature is the one
-that goes.</p>
-<p>To reach a shell inside the container, use Docker directly:</p>
+<p><strong>Containerized projects get a shell in the dashboard.</strong> The terminal
+strip opens a session inside the container, with tabs and panes.</p>
+<p><strong>It costs one guarantee, and you should know which.</strong> A shell can
+start a process that detaches from the process group vaibify records
+for it, so vaibify cannot prove such a process has stopped. Rather than
+claim otherwise, vaibify stops claiming: once a terminal has run in a
+container, releasing it, handing it to another session, or shutting the
+hub down reports the container’s quiescence as <strong>unproven</strong> instead of
+quiet, and asks you to settle it with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reconcile
+</pre></div>
+</div>
+<p>Nothing is lost silently — a container in that state is quarantined
+until reconcile proves it, rather than being reported clean.</p>
+<p><strong>A project that runs on your machine has no in-dashboard terminal.</strong>
+There is no container to open a shell inside, and your own terminal is
+the same shell with the same authority; the strip names the project’s
+directory so you can <code class="docutils literal notranslate"><span class="pre">cd</span></code> straight to it.</p>
+<p>You can always reach a container’s shell outside vaibify:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>&lt;container-name&gt;<span class="w"> </span>bash
 </pre></div>
 </div>
@@ -352,12 +361,14 @@ tweaking a script without re-running the simulation.</p>
 </section>
 <section id="interactive-steps">
 <h4>Interactive steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h4>
-<p>An <em>interactive</em> step is one a human drives in a shell. Because the
-in-browser terminal is disabled (see <a class="reference internal" href="#terminal">Terminal</a>), <strong>an
-interactive step cannot be run from the dashboard</strong>: <strong>Run in Terminal</strong>
-reports the refusal instead of starting a step that could never
-finish. Make the step automated, or run its commands yourself in a
-<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> shell.</p>
+<p>An <em>interactive</em> step is one a human drives in a shell. <strong>Run in
+Terminal</strong> opens a tab, runs the step’s commands there, and watches for
+the exit code, so the step’s badge settles when you are done with it.</p>
+<p>In a project that runs on your machine there is no terminal in the
+dashboard (see <a class="reference internal" href="#terminal">Terminal</a>), so an interactive step reports
+the refusal rather than starting something that could never report
+finishing. Make the step automated, or run its commands in your own
+shell.</p>
 </section>
 <section id="the-expanded-step-view">
 <h4>The expanded step view<a class="headerlink" href="#the-expanded-step-view" title="Link to this heading"></a></h4>

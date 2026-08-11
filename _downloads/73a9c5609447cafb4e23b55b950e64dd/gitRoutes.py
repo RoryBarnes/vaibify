@@ -50,6 +50,7 @@ from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     ffilesForWorkflow,
     fdictCommitWorkflowSave,
+    fdictRunAutomaticReadUnderTheDrain,
     fgenericRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
@@ -224,7 +225,7 @@ def _fnRegisterGitStatus(app, dictCtx):
 
     @app.get("/api/git/{sContainerId}/status")
     async def fdictHandleGitStatus(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -253,41 +254,67 @@ def _fdictProjectGitView(dictGit, sRemoteUrl):
     }
 
 
-async def _ftCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
-    """Gather badge inputs: three independent execs run concurrently,
-    then blob hashing runs against the resolved tracked-file list.
+def _ftCollectGitBadgeInputs(
+    docker, sContainerId, dictWorkflow, sRepo, filesRepo,
+):
+    """Gather every badge input in one pass, in one carrier's worker.
 
-    The docker SDK is synchronous but multiple ``asyncio.to_thread``
-    calls dispatched together hit the docker daemon over independent
-    HTTP requests — concurrent exec_create on one connection is safe.
+    The four probes ran CONCURRENTLY through ``asyncio.gather`` before
+    the carrier migration, and are serialized here deliberately. Each
+    reaches the general exec primitive, which the gate treats as
+    mutating, so on the enforced branch each needs a live admission —
+    and a badge refresh is one logical operation, not four. Three
+    concurrent mode-(b) acquisitions of the same container's drain
+    would be three carriers where the coherent refresh wanted one, and
+    the second and third would wait on the first. The cost is stated:
+    three sequential round-trips instead of one, on a route the
+    dashboard fires when a workflow opens and when the sync epoch
+    bumps, never on the five-second poll.
+
+    The cached arXiv status joins them because it is part of the same
+    snapshot; it is a typed read (``fbaFetchFile``), so it needs no
+    admission of its own and takes one only by being here.
     """
-    dictGit, listTracked, sRemoteUrl = await asyncio.gather(
-        asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
-        ),
-        asyncio.to_thread(
-            _flistCanonicalFromContainer,
-            docker, sContainerId, dictWorkflow, sRepo,
-        ),
-        asyncio.to_thread(
-            containerGit.fsRemoteUrlInContainer,
-            docker, sContainerId, sRepo,
-        ),
+    dictGit = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
     )
-    dictHashes = await asyncio.to_thread(
-        containerGit.fdictComputeBlobShasInContainer,
+    listTracked = _flistCanonicalFromContainer(
+        docker, sContainerId, dictWorkflow, sRepo,
+    )
+    sRemoteUrl = containerGit.fsRemoteUrlInContainer(
+        docker, sContainerId, sRepo,
+    )
+    dictHashes = containerGit.fdictComputeBlobShasInContainer(
         docker, sContainerId, listTracked, sWorkspace=sRepo,
     )
-    return dictGit, listTracked, dictHashes, sRemoteUrl
+    return (
+        dictGit, listTracked, dictHashes, sRemoteUrl,
+        _fdictLoadCachedArxivStatus(filesRepo),
+    )
+
+
+def _fdictBadgeRefreshPaused(sPausedBy):
+    """Return the typed payload for a refresh the container is too busy for.
+
+    Deliberately carries NO badge map. A paused response that answered
+    with an empty one would render as "this repository has no remote
+    state" — a claim about the researcher's repository, made because
+    something else was running. The absence of the key is what makes an
+    unguarded consumer visibly wrong rather than quietly wrong.
+    """
+    return {
+        "bRefreshPaused": True,
+        "sPausedBy": sPausedBy or "another operation",
+    }
 
 
 def _fnRegisterGitBadges(app, dictCtx):
     """Register GET /api/git/{sContainerId}/badges."""
 
     @app.get("/api/git/{sContainerId}/badges")
-    async def fdictGitBadges(sContainerId: str):
-        dictCtx["require"]()
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictGitBadges(sContainerId: str, requestHttp: Request):
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -295,15 +322,19 @@ def _fnRegisterGitBadges(app, dictCtx):
         if not sRepo:
             return _fdictNoProjectRepoResponse()
         docker = dictCtx["docker"]
-        dictGit, listTracked, dictHashes, sRemoteUrl = (
-            await _ftCollectGitBadgeInputs(
-                docker, sContainerId, dictWorkflow, sRepo,
-            )
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictRead = await fdictRunAutomaticReadUnderTheDrain(
+            sContainerId,
+            lambda supervisor=None: _ftCollectGitBadgeInputs(
+                docker, sContainerId, dictWorkflow, sRepo, filesRepo,
+            ),
+            "git-badges", requestHttp,
         )
-        dictArxivStatus = await asyncio.to_thread(
-            _fdictLoadCachedArxivStatus,
-            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-        )
+        if dictRead["bPaused"]:
+            return _fdictBadgeRefreshPaused(dictRead["sPausedBy"])
+        (
+            dictGit, listTracked, dictHashes, sRemoteUrl, dictArxivStatus,
+        ) = dictRead["objResult"]
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit,
             dictWorkflow.get("dictSyncStatus", {}) or {},
@@ -329,7 +360,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
     async def fdictManifestCheck(
         sContainerId: str, sService: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -408,7 +439,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
         sContainerId: str, request: CommitCanonicalRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -550,7 +581,7 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
         sContainerId: str, request: UntrackAiDeclarationRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -671,6 +702,31 @@ def _fnRecordFetchTime(sContainerId):
     _DICT_LAST_FETCH[sContainerId] = time.time()
 
 
+def _fbProjectRepoHasAnOrigin(docker, sContainerId, sRepo):
+    """Return True when the project repo has an ``origin`` to fetch from.
+
+    ``git fetch --no-tags origin`` NAMES the remote, so in a repository
+    that has none it exits 128 with "'origin' does not appear to be a
+    git repository" — and this route turned that into a 502 on every
+    workflow open. A repository with no remote is not an error; it is a
+    researcher who has not pushed anywhere yet, which is the ordinary
+    state of a brand-new project and the near-universal state of a host
+    project, since host mode exists to get somebody working in minutes.
+
+    Pre-existing and mode-independent: a containerized local-only repo
+    502'd identically. It surfaced here because this is the first
+    journey that ever opened a workflow in a repository with no remote.
+
+    One extra read on a path that is TTL-cached and about to run git
+    anyway, and it stays inside the caller's carrier.
+    """
+    return bool(
+        containerGit.fsRemoteUrlInContainer(
+            docker, sContainerId, sRepo,
+        ),
+    )
+
+
 def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
     """Run ``git fetch`` in the container, raising HTTP 502 on failure.
 
@@ -714,7 +770,7 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
         sContainerId: str, requestHttp: Request,
         request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -740,7 +796,9 @@ def _fdictFetchThenReadStatus(dictCtx, sContainerId, sRepo, bCacheUsed):
     failed still records the fetch — as it did before this migration.
     """
     docker = dictCtx["docker"]
-    if not bCacheUsed:
+    if not bCacheUsed and _fbProjectRepoHasAnOrigin(
+        docker, sContainerId, sRepo,
+    ):
         _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
         _fnRecordFetchTime(sContainerId)
         fnBumpSyncEpoch(dictCtx, sContainerId)
@@ -783,7 +841,7 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
         sContainerId: str, requestHttp: Request,
         request: RefreshRemotesRequest = RefreshRemotesRequest(),
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -851,7 +909,7 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
     @app.post("/api/git/{sContainerId}/pull-project-repo")
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandlePullProjectRepo(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -992,7 +1050,7 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
     async def fdictReconcileRemoteState(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
