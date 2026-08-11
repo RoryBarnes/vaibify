@@ -55,13 +55,38 @@ html, body {
 
 /* --- Layout --- */
 
+/* The two picker screens scroll THEMSELVES. `html, body` are
+   overflow:hidden because the dashboard is a fixed-viewport layout
+   whose panels do their own scrolling — relaxing that globally would
+   let the whole dashboard slide under its own toolbar. These two
+   screens are ordinary vertical lists that grow with the number of
+   environments, so each gets its own scroll region instead.
+
+   `justify-content: center` is NOT used, deliberately: a centred flex
+   column whose content overflows is cut off at the TOP, and the lost
+   rows cannot be scrolled back to. The auto margins on the first and
+   last child centre the group while there is room to spare and
+   collapse to zero when there is not, which is the same look without
+   the trap. */
 #containerLanding {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     height: 100%;
+    overflow-y: auto;
+    padding: 24px 20px;
     gap: 20px;
+}
+
+#containerLanding > :first-child,
+#workflowPicker > :first-child {
+    margin-top: auto;
+}
+
+#containerLanding > :last-child,
+#workflowPicker > :last-child {
+    margin-bottom: auto;
 }
 
 #containerLanding .subtitle {
@@ -645,8 +670,9 @@ body.proof-level-3 .toolbar-label {
     display: none;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 100vh;
+    justify-content: flex-start;
+    height: 100%;
+    overflow-y: auto;
     padding: 40px;
 }
 

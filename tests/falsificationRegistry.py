@@ -9875,4 +9875,46 @@ def _fdictEntry(sRel):
         old='            (bHost ? "uncontained" : "contained") + "</span>"\n',
         new='            "contained" + "</span>"\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPickerScreensScroll.py::'
+            'testTheEnvironmentListScrollsToBothEnds'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # The landing screen as it shipped: a centred column inside an
+        # overflow:hidden body. Every environment past the fold is
+        # unreachable.
+        old=(
+            '    justify-content: flex-start;\n'
+            '    height: 100%;\n'
+            '    overflow-y: auto;\n'
+            '    padding: 24px 20px;\n'
+        ),
+        new=(
+            '    justify-content: center;\n'
+            '    height: 100%;\n'
+            '    padding: 24px 20px;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPickerScreensScroll.py::'
+            'testTheProjectListScrollsToBothEnds'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # Fix only the landing screen: the Project list keeps the same
+        # defect, which is how it shipped and what the report named
+        # second.
+        old=(
+            '    justify-content: flex-start;\n'
+            '    height: 100%;\n'
+            '    overflow-y: auto;\n'
+            '    padding: 40px;\n'
+        ),
+        new=(
+            '    justify-content: center;\n'
+            '    min-height: 100vh;\n'
+            '    padding: 40px;\n'
+        ),
+    ),
 ]
