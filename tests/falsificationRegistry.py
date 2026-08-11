@@ -10059,4 +10059,39 @@ def _fdictEntry(sRel):
         old='    return listTokens[0]\n',
         new='    return None\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testStopDoesNotNeedTheSession.py::'
+            'testAHostRunCanBeStoppedWithNoWorkflowCached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The shipped defect: require the cached workflow before
+        # branching, so a hub that restarted under a live tab answers
+        # 404 and the researcher's processes cannot be stopped.
+        old=(
+            '        bTaskCancelled = _fbCancelPipelineTask(\n'
+            '            dictCtx["pipelineTasks"], sContainerId)\n'
+        ),
+        new=(
+            '        fdictRequireWorkflow(\n'
+            '            dictCtx["workflows"], sContainerId)\n'
+            '        bTaskCancelled = _fbCancelPipelineTask(\n'
+            '            dictCtx["pipelineTasks"], sContainerId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStopDoesNotNeedTheSession.py::'
+            'testAContainerStopStillRequiresItsWorkflow'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Drop the requirement for the container branch too, so the
+        # sweep has no step directories and reports success for work it
+        # never did.
+        old=(
+            '            dictWorkflow = fdictRequireWorkflow(\n'
+            '                dictCtx["workflows"], sContainerId)\n'
+        ),
+        new='            dictWorkflow = {}\n',
+    ),
 ]

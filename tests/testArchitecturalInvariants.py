@@ -4187,7 +4187,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one. Not a split seam: both lanes are the kill route's single
     # responsibility, and moving one out would leave the route
     # choosing between two modules by mode — the branch, relocated.
-    "routes/pipelineRoutes.py": 3154,
+    # +14: the kill route requires the cached workflow inside the
+    # container branch, which is the only branch that reads it. The
+    # added lines are the reason, not new behaviour: requiring it up
+    # front made the stop button depend on the hub's session
+    # bookkeeping, so a restarted hub left a researcher's processes
+    # running with no way to stop them from the dashboard.
+    "routes/pipelineRoutes.py": 3168,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
