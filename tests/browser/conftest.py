@@ -95,6 +95,89 @@ def _fnWaitUntilServing(iPort, fTimeoutSeconds=20.0):
     )
 
 
+# The workflow the host journey opens and runs. It is a REAL git repo
+# with a REAL script, because the point of the host lane is that no
+# adapter stands between the dashboard and the machine: the step this
+# runs is run by the actual HostConnection, through the actual gated
+# and journaled launch, against the actual filesystem.
+S_HOST_WORKFLOW_NAME = "hostLaneProject"
+S_HOST_STEP_NAME = "MakeNumbers"
+S_HOST_STEP_OUTPUT = "numbers.json"
+
+_S_HOST_STEP_SCRIPT = """import argparse
+import json
+
+parserArguments = argparse.ArgumentParser()
+parserArguments.add_argument("--output", required=True)
+namespaceArguments = parserArguments.parse_args()
+with open(namespaceArguments.output, "w") as fileOutput:
+    json.dump({"listValues": [1, 2, 3]}, fileOutput)
+print("wrote " + namespaceArguments.output)
+"""
+
+
+def fdictHostWorkflowDocument():
+    """Return the project document the host journey opens."""
+    return {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+        "iNumberOfCores": 1,
+        "listSteps": [{
+            "sName": S_HOST_STEP_NAME,
+            "sStepId": "make-numbers",
+            "sDirectory": S_HOST_STEP_NAME,
+            "bRunEnabled": True,
+            "bPlotOnly": False,
+            "saDataCommands": [
+                "python3 makeNumbers.py --output " + S_HOST_STEP_OUTPUT,
+            ],
+            "saOutputDataFiles": [S_HOST_STEP_OUTPUT],
+            "saPlotCommands": [],
+            "saPlotFiles": [],
+        }],
+    }
+
+
+def fnSeedRunnableHostWorkflow(sProjectDirectory):
+    """Make the ready host project a git repo holding a runnable step.
+
+    Every vaibify workflow must live inside a git repository, and the
+    project document lives at ``.vaibify/projects/<name>.json`` where
+    discovery looks for it. Committing is deliberate: an empty repo has
+    no HEAD, and the git badges the workflow view fetches on open would
+    then be answering about a repository with no commits rather than
+    about an ordinary one.
+    """
+    import subprocess
+    sStepDirectory = os.path.join(sProjectDirectory, S_HOST_STEP_NAME)
+    os.makedirs(sStepDirectory, exist_ok=True)
+    with open(
+        os.path.join(sStepDirectory, "makeNumbers.py"), "w",
+    ) as fileScript:
+        fileScript.write(_S_HOST_STEP_SCRIPT)
+    sProjectsDirectory = os.path.join(
+        sProjectDirectory, ".vaibify", "projects",
+    )
+    os.makedirs(sProjectsDirectory, exist_ok=True)
+    with open(
+        os.path.join(sProjectsDirectory, S_HOST_WORKFLOW_NAME + ".json"),
+        "w",
+    ) as fileWorkflow:
+        json.dump(fdictHostWorkflowDocument(), fileWorkflow)
+    for listCommand in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "lane@example.invalid"],
+        ["git", "config", "user.name", "Browser Lane"],
+        ["git", "add", "-A"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q",
+         "-m", "seed"],
+    ):
+        subprocess.run(
+            listCommand, cwd=sProjectDirectory, check=True,
+            capture_output=True,
+        )
+
+
 @contextlib.contextmanager
 def _fnIsolateProjectRegistry():
     """Point the global registry at a throwaway directory.
@@ -124,6 +207,7 @@ def _fnIsolateProjectRegistry():
             os.path.join(sReadyDirectory, "vaibify.yml"), "w",
         ) as fileConfig:
             fileConfig.write(f"projectName: {S_HOST_PROJECT_READY}\n")
+        fnSeedRunnableHostWorkflow(sReadyDirectory)
         with open(sRegistry, "w") as fileHandle:
             json.dump({"listProjects": [{
                 "sName": S_CONTAINER_NAME,

@@ -4922,7 +4922,12 @@ class DockerDoubleForTheKillRoute(DockerDoubleThatCallsTheRealGates):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir,
         )
-        if sCommand.startswith("mv " + pipelineState.S_STATE_PATH_TEMP):
+        if sCommand.startswith("mv ") and (
+            pipelineState.S_STATE_PATH_TEMP in sCommand
+        ):
+            # Matched on containment rather than on a prefix: the
+            # writer quotes both operands now, because a host project
+            # directory may contain a space.
             self._dictFiles[pipelineState.S_STATE_PATH] = (
                 self._dictFiles.pop(pipelineState.S_STATE_PATH_TEMP, b"")
             )

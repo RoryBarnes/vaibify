@@ -9568,4 +9568,77 @@ def _fdictEntry(sRel):
             '        ),\n'
         ),
     ),
+    # --- What the FIRST real host workflow found (2026-08-10) ---
+    #
+    # Four backend paths written as the container constant, each found
+    # by opening a host workflow in a browser and reading the network
+    # log, and each breaking a different part of the journey. Plus the
+    # relative-path rule, which the file poll disproved on the first
+    # tick.
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testThePipelineStatePathFollowsTheProject'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),\n'
+            '        _S_STATE_RELATIVE,\n'
+            '    )\n'
+        ),
+        new='    return S_STATE_PATH\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testTheLogsDirectoryFollowsTheProject'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # The symptom this one produced is the reason it is registered
+        # separately: the step SUCCEEDED and the pipeline reported exit
+        # 1, so a researcher would have gone looking at their script.
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),\n'
+            '        VAIBIFY_LOGS_DIR,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return posixpath.join(\n'
+            '        DEFAULT_SEARCH_ROOT, VAIBIFY_LOGS_DIR,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testTheTrackedRepositoriesSidecarFollowsTheProject'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    return posixpath.join(\n'
+            '        fsRepositoryRootFor(sResourceId), _S_SIDECAR_RELATIVE,\n'
+            '    )\n'
+        ),
+        new='    return S_TRACKED_REPOS_PATH\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_relative_path_resolves_against_the_project_root'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The rule this replaced. Written before any host workflow had
+        # been opened, and disproved by the first one: the file poll
+        # asks about repo-relative paths, which is the wire contract.
+        old=(
+            '        if not os.path.isabs(sPath):\n'
+            '            sPath = os.path.join(sProjectRoot, sPath)\n'
+        ),
+        new=(
+            '        if not os.path.isabs(sPath):\n'
+            '            raise HostPathOutsideProjectError(sPath)\n'
+        ),
+    ),
 ]

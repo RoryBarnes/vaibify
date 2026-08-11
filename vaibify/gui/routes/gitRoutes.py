@@ -702,6 +702,31 @@ def _fnRecordFetchTime(sContainerId):
     _DICT_LAST_FETCH[sContainerId] = time.time()
 
 
+def _fbProjectRepoHasAnOrigin(docker, sContainerId, sRepo):
+    """Return True when the project repo has an ``origin`` to fetch from.
+
+    ``git fetch --no-tags origin`` NAMES the remote, so in a repository
+    that has none it exits 128 with "'origin' does not appear to be a
+    git repository" — and this route turned that into a 502 on every
+    workflow open. A repository with no remote is not an error; it is a
+    researcher who has not pushed anywhere yet, which is the ordinary
+    state of a brand-new project and the near-universal state of a host
+    project, since host mode exists to get somebody working in minutes.
+
+    Pre-existing and mode-independent: a containerized local-only repo
+    502'd identically. It surfaced here because this is the first
+    journey that ever opened a workflow in a repository with no remote.
+
+    One extra read on a path that is TTL-cached and about to run git
+    anyway, and it stays inside the caller's carrier.
+    """
+    return bool(
+        containerGit.fsRemoteUrlInContainer(
+            docker, sContainerId, sRepo,
+        ),
+    )
+
+
 def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
     """Run ``git fetch`` in the container, raising HTTP 502 on failure.
 
@@ -771,7 +796,9 @@ def _fdictFetchThenReadStatus(dictCtx, sContainerId, sRepo, bCacheUsed):
     failed still records the fetch — as it did before this migration.
     """
     docker = dictCtx["docker"]
-    if not bCacheUsed:
+    if not bCacheUsed and _fbProjectRepoHasAnOrigin(
+        docker, sContainerId, sRepo,
+    ):
         _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
         _fnRecordFetchTime(sContainerId)
         fnBumpSyncEpoch(dictCtx, sContainerId)

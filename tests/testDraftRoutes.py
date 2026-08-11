@@ -100,6 +100,13 @@ class MockDockerDraft:
             return (1, "")
         if "ps aux" in sCommand:
             return (0, "0\n")
+        if "remote get-url origin" in sCommand:
+            # The fetch route now ASKS whether there is an origin
+            # before running `git fetch --no-tags origin`, because a
+            # repository with none exits 128 and used to 502 on every
+            # workflow open. A double that answered "" would skip the
+            # fetch and quietly hollow out every test about it.
+            return (0, "https://example.invalid/origin.git\n")
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, S_PROJECT_REPO + "\n")
         return (0, "")

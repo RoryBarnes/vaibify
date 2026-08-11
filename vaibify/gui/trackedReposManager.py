@@ -38,6 +38,8 @@ only, following the pipelineUtils.py pattern.
 
 __all__ = [
     "S_TRACKED_REPOS_PATH",
+    "fsRepositoryRootFor",
+    "fsSidecarPathFor",
     "S_TRACKED_REPOS_DIR",
     "I_SCHEMA_VERSION",
     "fdictReadSidecar",
@@ -65,9 +67,31 @@ import json
 import posixpath
 import threading
 
+from .pipelineUtils import fsShellQuote
+
+# The container answers, kept as constants because they are the
+# container's real paths and several callers and doubles name them.
+# Every SITE below asks the resolver instead: a host project's
+# repositories live under the directory the researcher registered, and
+# /workspace exists on nobody's laptop.
 S_WORKSPACE_ROOT = "/workspace"
 S_TRACKED_REPOS_DIR = "/workspace/.vaibify"
 S_TRACKED_REPOS_PATH = "/workspace/.vaibify/tracked_repos.json"
+_S_SIDECAR_RELATIVE = ".vaibify/tracked_repos.json"
+
+
+def fsRepositoryRootFor(sResourceId):
+    """Return the directory this resource's repositories live under."""
+    from .pipelineServer import WORKSPACE_ROOT
+    from .projectRoots import fsResolveProjectRoot
+    return fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT)
+
+
+def fsSidecarPathFor(sResourceId):
+    """Return this resource's tracked-repositories sidecar path."""
+    return posixpath.join(
+        fsRepositoryRootFor(sResourceId), _S_SIDECAR_RELATIVE,
+    )
 I_SCHEMA_VERSION = 1
 
 _dictLocks = {}
@@ -192,7 +216,7 @@ def fdictReadSidecar(connectionDocker, sContainerId):
     """
     try:
         baContent = connectionDocker.fbaFetchFile(
-            sContainerId, S_TRACKED_REPOS_PATH,
+            sContainerId, fsSidecarPathFor(sContainerId),
         )
         if not baContent.strip():
             return None
@@ -204,11 +228,15 @@ def fdictReadSidecar(connectionDocker, sContainerId):
 def fnWriteSidecar(connectionDocker, sContainerId, dictSidecar):
     """Write the sidecar dict to the container as indented JSON."""
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"mkdir -p {S_TRACKED_REPOS_DIR}"
+        sContainerId,
+        "mkdir -p " + fsShellQuote(
+            posixpath.dirname(fsSidecarPathFor(sContainerId)),
+        ),
     )
     sContent = json.dumps(dictSidecar, indent=2)
     connectionDocker.fnWriteFile(
-        sContainerId, S_TRACKED_REPOS_PATH, sContent.encode("utf-8")
+        sContainerId, fsSidecarPathFor(sContainerId),
+        sContent.encode("utf-8"),
     )
 
 
@@ -235,9 +263,10 @@ def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
     has no ``.git`` child, and the workspace's own dot-directories are
     filtered by name as they always were.
     """
+    sRepositoryRoot = fsRepositoryRootFor(sContainerId)
     try:
         listEntries = connectionDocker.flistDirectoryEntries(
-            sContainerId, S_WORKSPACE_ROOT,
+            sContainerId, sRepositoryRoot,
         )
     except OSError:
         return ([], [])
@@ -248,7 +277,8 @@ def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
     if not listNames:
         return ([], [])
     listGitMarkers = [
-        S_WORKSPACE_ROOT + "/" + sName + "/.git" for sName in listNames
+        posixpath.join(sRepositoryRoot, sName, ".git")
+        for sName in listNames
     ]
     try:
         listHasGit = connectionDocker.flistContainerPathsExist(
@@ -372,7 +402,7 @@ def _fdictMissingStatus(sRepoName):
 
 def flistBatchComputeRepoStatus(
     connectionDocker, sContainerId, listRepoNames,
-    sRepoRoot=S_WORKSPACE_ROOT,
+    sRepoRoot=None,
 ):
     """Return one status dict per repository name, in the order given.
 
@@ -396,6 +426,8 @@ def flistBatchComputeRepoStatus(
     """
     if not listRepoNames:
         return []
+    if sRepoRoot is None:
+        sRepoRoot = fsRepositoryRootFor(sContainerId)
     listRepoPaths = [
         posixpath.join(sRepoRoot, sName) for sName in listRepoNames
     ]

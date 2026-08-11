@@ -205,6 +205,13 @@ def test_fetch_project_repo_bumps_epoch_only_when_fetching(
         containerGit, "ftResultGitFetchInContainer",
         return_value=(0, "fetched"),
     ), patch.object(
+        # The route asks whether an origin exists before fetching --
+        # a repository with none used to 502 on every workflow open --
+        # and this context's docker stand-in answers no commands, so
+        # the read is stubbed rather than the stand-in widened.
+        containerGit, "fsRemoteUrlInContainer",
+        return_value="https://example.invalid/origin.git",
+    ), patch.object(
         containerGit, "fdictGitStatusInContainer",
         return_value=_fdictRepoStatus(),
     ):

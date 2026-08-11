@@ -17,12 +17,22 @@ differs from its directory's basename throughout: this repository has
 shipped a fatal bug under a fully green suite whose fixtures collapsed
 two identifiers that production keeps distinct.
 
-**The corpus is hostile input, not typos.** Traversal, absolute
-smuggling, a symlink escaping at validation time, a symlinked
-DIRECTORY inside the project, the prefix collision that a naive
-``startswith`` admits, and the scratch subtree's own sibling. Each
-names where it comes from — a wire field, a project.json, a config
-file — because the guard exists for values vaibify did not write.
+**The corpus is hostile input, not typos.** Traversal (absolute and
+relative), absolute smuggling, a symlink escaping at validation time,
+a symlinked DIRECTORY inside the project, the prefix collision that a
+naive ``startswith`` admits, and the scratch subtree's own sibling.
+Each names where it comes from — a wire field, a project.json, a
+config file — because the guard exists for values vaibify did not
+write.
+
+A plain relative path is deliberately NOT in the hostile list. It
+resolves against the project root, which is what the container leg has
+always done with one (docker exec runs in the image's working
+directory), and the repo-relative form is the wire contract for every
+step directory, script and output in a workflow. The join happens
+before containment is checked, so a relative path that escapes is
+refused exactly as its absolute spelling is — which is why the two
+entries above it exist.
 
 **The generators are consumed.** ``fiterStreamFile`` validates nothing
 until its first ``next()``, so a test that merely calls it passes
@@ -105,7 +115,15 @@ def _flistBuildHostileCorpus(sProjectRoot, tmp_path):
     os.makedirs(sPrefixSibling, exist_ok=True)
 
     return [
-        ("a relative path", "notes.txt"),
+        # A relative path is NOT hostile -- it resolves against the
+        # project root, exactly as it does against the container root
+        # on the other leg. A relative path that ESCAPES is, and that
+        # is what belongs here.
+        ("relative traversal", os.path.join("..", "escaped.txt")),
+        (
+            "relative traversal into a sibling",
+            os.path.join("..", S_PROJECT_DIRECTORY_BASENAME + "Backup"),
+        ),
         ("plain traversal", os.path.join(sProjectRoot, "..", "escaped")),
         (
             "traversal buried mid-path",
@@ -250,6 +268,11 @@ def testTheLegitimateProjectPathsAreStillAdmitted(tProjectAndConnection):
     sFilePath = os.path.join(sProjectRoot, "results.json")
     connection.fnWriteFile(S_PROJECT_NAME, sFilePath, b"{}")
     assert connection.fbaFetchFile(S_PROJECT_NAME, sFilePath) == b"{}"
+    # The repo-relative spelling of the same file, which is the form
+    # the file poll and every step command actually use.
+    assert connection.fbaFetchFile(
+        S_PROJECT_NAME, "results.json",
+    ) == b"{}"
     assert connection.fbContainerPathIsFile(S_PROJECT_NAME, sFilePath)
     assert connection.fbContainerPathIsDirectory(
         S_PROJECT_NAME, sProjectRoot,

@@ -112,9 +112,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
     @app.get("/api/logs/{sContainerId}")
     async def flistLogs(sContainerId: str):
         dictCtx["require"](sContainerId)
-        sLogsDir = posixpath.join(
-            WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
-        )
+        sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
         listEntries = flistQueryDirectory(
             dictCtx["docker"], sContainerId, sLogsDir
         )
@@ -129,9 +127,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
         sContainerId: str, sLogFilename: str
     ):
         dictCtx["require"](sContainerId)
-        sLogsDir = posixpath.join(
-            WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
-        )
+        sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
         sLogPath = posixpath.join(sLogsDir, sLogFilename)
         fsValidatePathWithinRoot(sLogPath, sLogsDir)
         try:

@@ -11,6 +11,7 @@ through end-to-end.
 
 import asyncio
 import json
+import shlex
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -44,7 +45,10 @@ class MockDockerConnection:
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("mv "):
-            tParts = sCommand.split()
+            # shlex: the state writer quotes both operands so a host
+            # project directory containing a space survives, and a
+            # shell-shaped double must unquote the way a shell does.
+            tParts = shlex.split(sCommand)
             sSrc, sDst = tParts[1], tParts[2]
             tKey = (sContainerId, sSrc)
             if tKey not in self.dictFiles:

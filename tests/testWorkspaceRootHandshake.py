@@ -118,3 +118,82 @@ def _fnRaiseValueError(sResourceId, sContainerRoot):
     """Stand in for a host entry that records no directory."""
     del sResourceId, sContainerRoot
     raise ValueError("host entry records no directory")
+
+
+# ── The roots the first real host workflow found missing ─────────────
+#
+# Every entry below was found the same way: by opening a host workflow
+# in a browser and watching the network log. Each is a backend path
+# that was written as the container constant, and each broke a
+# different part of the journey — which is why they are asserted
+# separately rather than as one "no /workspace anywhere" sweep.
+
+
+@pytest.mark.falsification
+def testThePipelineStatePathFollowsTheProject(tmp_path):
+    """The state file the whole dashboard reads to know if a run is live.
+
+    Rooted at /workspace it landed outside a host project, the path
+    guard refused the read, and the file-status poll answered 500 four
+    times a minute for as long as the workflow was open.
+
+    Kills: rooting the state file at the container constant.
+    """
+    from vaibify.gui import pipelineState
+    sProjectDirectory = _fsRegisterProject(
+        tmp_path, S_HOST_PROJECT, "host",
+    )
+    assert pipelineState.fsStatePathFor(S_HOST_PROJECT) == (
+        sProjectDirectory + "/.vaibify/pipeline_state.json"
+    )
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    assert pipelineState.fsStatePathFor(
+        S_CONTAINER_PROJECT,
+    ) == pipelineState.S_STATE_PATH
+
+
+@pytest.mark.falsification
+def testTheLogsDirectoryFollowsTheProject(tmp_path):
+    """The defect with the most misleading symptom of the four.
+
+    The step's command SUCCEEDED and wrote its output; the run then
+    failed writing its log to /workspace, and the dashboard reported
+    "Pipeline failed (exit 1)" for a step that had done its job. A
+    researcher would have gone looking at their script.
+
+    Kills: rooting the logs directory at the container constant.
+    """
+    from vaibify.gui import workflowManager
+    sProjectDirectory = _fsRegisterProject(
+        tmp_path, S_HOST_PROJECT, "host",
+    )
+    assert workflowManager.fsLogsDirectoryFor(S_HOST_PROJECT) == (
+        sProjectDirectory + "/" + workflowManager.VAIBIFY_LOGS_DIR
+    )
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    assert workflowManager.fsLogsDirectoryFor(
+        S_CONTAINER_PROJECT,
+    ) == (
+        workflowManager.DEFAULT_SEARCH_ROOT + "/"
+        + workflowManager.VAIBIFY_LOGS_DIR
+    )
+
+
+@pytest.mark.falsification
+def testTheTrackedRepositoriesSidecarFollowsTheProject(tmp_path):
+    """The Repositories panel's own state file.
+
+    Kills: rooting the sidecar at the container constant, which made
+    the panel 500 on every five-second tick for a host project.
+    """
+    from vaibify.gui import trackedReposManager
+    sProjectDirectory = _fsRegisterProject(
+        tmp_path, S_HOST_PROJECT, "host",
+    )
+    assert trackedReposManager.fsSidecarPathFor(S_HOST_PROJECT) == (
+        sProjectDirectory + "/.vaibify/tracked_repos.json"
+    )
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    assert trackedReposManager.fsSidecarPathFor(
+        S_CONTAINER_PROJECT,
+    ) == trackedReposManager.S_TRACKED_REPOS_PATH

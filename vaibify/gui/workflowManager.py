@@ -1512,6 +1512,24 @@ def ffResolveStepWallClockBudget(dictWorkflow, dictStep):
     )
 
 
+def fsLogsDirectoryFor(sResourceId):
+    """Return the directory this resource's pipeline logs live in.
+
+    Extracted on the third instance, which is when the rule of three
+    says to: the runner, the test runner and the logs routes each built
+    ``<root>/.vaibify/logs`` from the container constant, and each was
+    wrong for a host project in the same way. The failure was not
+    cosmetic — the host path guard refuses a write to ``/workspace``,
+    so the run's final log flush failed and the pipeline reported exit
+    1 for a step whose command had already succeeded.
+    """
+    from .projectRoots import fsResolveProjectRoot
+    return posixpath.join(
+        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),
+        VAIBIFY_LOGS_DIR,
+    )
+
+
 def fsResolveStepWorkdir(sStepDirectory, dictVariables):
     """Return absolute container workdir for a step's sDirectory."""
     if not sStepDirectory or posixpath.isabs(sStepDirectory):

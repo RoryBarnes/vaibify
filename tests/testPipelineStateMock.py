@@ -1,6 +1,7 @@
 """Tests for pipelineState with mock Docker connection."""
 
 import json
+import shlex
 
 from vaibify.gui.pipelineState import (
     fnWriteState,
@@ -49,7 +50,11 @@ class MockDockerConnection:
         return baContent
 
     def _ftHandleRename(self, sContainerId, sCommand):
-        listParts = sCommand.split()
+        # shlex, not split(): the state writer quotes both
+        # operands because a host project's directory may contain
+        # a space, and a mock that models a shell must unquote
+        # the way a shell does.
+        listParts = shlex.split(sCommand)
         sSrc, sDst = listParts[1], listParts[2]
         sKey = (sContainerId, sSrc)
         if sKey not in self.dictFiles:
@@ -65,7 +70,10 @@ class MockDockerConnection:
         return (0, self.dictFiles[sKey].decode("utf-8"))
 
     def _fnHandleRemove(self, sContainerId, sCommand):
-        for sToken in sCommand.split():
+        # shlex for the same reason the rename uses it: the clear
+        # quotes its operands so a host project directory containing a
+        # space survives, and a shell-shaped double must unquote.
+        for sToken in shlex.split(sCommand):
             if sToken.startswith("/"):
                 self.dictFiles.pop((sContainerId, sToken), None)
 

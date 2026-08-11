@@ -134,10 +134,7 @@ async def _fnWriteTestLog(
 ):
     """Write test output to a separate log file."""
     from .pipelineLogger import fnWriteLogToContainer
-    sLogsDir = posixpath.join(
-        workflowManager.DEFAULT_SEARCH_ROOT,
-        workflowManager.VAIBIFY_LOGS_DIR,
-    )
+    sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
     sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sFilename = f"test_Step{iStepNumber:02d}_{sTimestamp}.log"
     sLogPath = posixpath.join(sLogsDir, sFilename)

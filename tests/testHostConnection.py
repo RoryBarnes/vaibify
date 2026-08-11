@@ -57,11 +57,34 @@ def tProjectAndConnection(tmp_path):
 
 class TestHostPathGuard:
 
-    def test_relative_path_is_refused(self, tProjectAndConnection):
-        _, connection = tProjectAndConnection
+    def test_relative_path_resolves_against_the_project_root(
+        self, tProjectAndConnection,
+    ):
+        """Superseding "a relative path is refused" (2026-08-10).
+
+        That rule was written before any host workflow had been
+        opened, and the first one that was found it wrong: the file
+        poll asks about ``MakeNumbers/analysis.py``, because
+        repo-relative is the wire contract for every step directory,
+        script and output. The container leg has always resolved such
+        a path against the container root -- docker exec runs in the
+        image's working directory -- so refusing it here made one
+        connection answer one input two ways depending on the leg.
+
+        The escaping relative path beside it is the reason nothing is
+        given up: the join happens BEFORE containment is checked.
+        """
+        sProjectRoot, connection = tProjectAndConnection
+        with open(
+            os.path.join(sProjectRoot, "inside.txt"), "w",
+        ) as fileInside:
+            fileInside.write("here")
+        assert connection.fbContainerPathIsFile(
+            S_PROJECT_NAME, "inside.txt",
+        )
         with pytest.raises(HostPathOutsideProjectError):
             connection.fbContainerPathIsFile(
-                S_PROJECT_NAME, "relative/path.txt",
+                S_PROJECT_NAME, "../escaped.txt",
             )
 
     def test_absolute_smuggling_is_refused(self, tProjectAndConnection):

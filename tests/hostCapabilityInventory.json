@@ -290,11 +290,6 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "_fdictCheckGithub, _S_GITHUB_REACHABILITY_COMMAND"
     },
-    "e6ffde0a647e5cbb844e95fa92c33f2a92501d79a8d50527f65946cfd8ff990e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "fnWriteSidecar, S_TRACKED_REPOS_DIR"
-    },
     "e80dd597dc12c94fd3c8e0bbff5847c77e2ef1c7a84008b28a7e7700f4f31d02": {
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
@@ -322,7 +317,7 @@
     }
   },
   "iRowCount": 131,
-  "iUndisposedSiteBudget": 67,
+  "iUndisposedSiteBudget": 68,
   "listRows": [
     {
       "sCommandExpression": "sCommand",
@@ -661,16 +656,16 @@
       "sModule": "vaibify/gui/pipelineServer.py"
     },
     {
-      "sCommandExpression": "f'rm -f {S_STATE_PATH} {S_STATE_PATH_TEMP}'",
+      "sCommandExpression": "f\"rm -f {fsShellQuote(sStatePath)} {fsShellQuote(sStatePath + '.tmp')}\"",
       "sEnclosingFunction": "fnClearState",
-      "sFingerprint": "77ad3421b10d500fa7521dc6d0695eb88c2e8aa31ec0c8d0fc01da200b6204b8",
+      "sFingerprint": "29dd44b8df8096a39d0988cf22fbd63b96081c1815ae1333e8f5d39fc8927886",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineState.py"
     },
     {
-      "sCommandExpression": "f'mv {S_STATE_PATH_TEMP} {S_STATE_PATH}'",
+      "sCommandExpression": "f'mv {fsShellQuote(sTempPath)} {fsShellQuote(sStatePath)}'",
       "sEnclosingFunction": "fnWriteState",
-      "sFingerprint": "a2690f151837444b2076f5cd5a247d8cbacdafa84e32e55a84ad46c0d60eb5da",
+      "sFingerprint": "05ee1d90a83e9b70d78ee3faa48f30346477bb0465188b10ce313c23c32c9ffa",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineState.py"
     },
@@ -1172,9 +1167,9 @@
       "sModule": "vaibify/gui/trackedReposManager.py"
     },
     {
-      "sCommandExpression": "f'mkdir -p {S_TRACKED_REPOS_DIR}'",
+      "sCommandExpression": "'mkdir -p ' + fsShellQuote(posixpath.dirname(fsSidecarPathFor(sContainerId)))",
       "sEnclosingFunction": "fnWriteSidecar",
-      "sFingerprint": "e6ffde0a647e5cbb844e95fa92c33f2a92501d79a8d50527f65946cfd8ff990e",
+      "sFingerprint": "1118c1781e49ed4ff3b093ddce2814ee09eb54c710f3d16cd5ac4512a4f936ac",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/trackedReposManager.py"
     },

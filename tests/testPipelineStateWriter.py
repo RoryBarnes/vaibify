@@ -6,6 +6,7 @@ HIGH #13 lock-dict eviction helper.
 """
 
 import json
+import shlex
 import threading
 import time
 
@@ -39,7 +40,11 @@ class MockDockerConnection:
         with self.lockRecord:
             self.listCommands.append(sCommand)
         if sCommand.startswith("mv "):
-            listParts = sCommand.split()
+            # shlex, not split(): the state writer quotes both
+            # operands because a host project's directory may
+            # contain a space, and a mock that models a shell
+            # must unquote the way a shell does.
+            listParts = shlex.split(sCommand)
             sSrc, sDst = listParts[1], listParts[2]
             sKey = (sContainerId, sSrc)
             with self.lockRecord:

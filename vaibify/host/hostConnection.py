@@ -134,15 +134,28 @@ class HostConnection:
         ``os.sep`` suffix on the prefix comparison is load-bearing:
         without it, a sibling directory whose name extends the root's
         (``projectX`` vs ``projectXY``) would pass.
+
+        A RELATIVE path resolves against the project root, and that is
+        the container leg's behaviour rather than a concession. Docker
+        exec runs with the image's working directory, so a
+        repo-relative path like ``MakeNumbers/analysis.py`` — which is
+        the wire contract for every step directory, output and script —
+        has always resolved against the container root. Refusing it
+        here made the same connection answer the same input two
+        different ways depending on the leg, which is the bug; the file
+        poll hit it on the first host workflow ever opened.
+
+        Nothing is given up by admitting it. The join happens BEFORE
+        the containment check, so ``../../etc/passwd`` becomes an
+        absolute path outside the roots and is refused exactly as its
+        absolute spelling is.
         """
-        if not os.path.isabs(sPath):
-            raise HostPathOutsideProjectError(
-                f"Host paths must be absolute, got: {sPath!r}"
-            )
-        sRealPath = os.path.realpath(sPath)
         sProjectRoot = os.path.realpath(
             self._fnResolveProjectRoot(sResourceId),
         )
+        if not os.path.isabs(sPath):
+            sPath = os.path.join(sProjectRoot, sPath)
+        sRealPath = os.path.realpath(sPath)
         sScratchRoot = fsHostScratchRootForProject(sProjectRoot)
         for sAllowedRoot in (sProjectRoot, sScratchRoot):
             if sRealPath == sAllowedRoot or sRealPath.startswith(

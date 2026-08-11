@@ -4331,7 +4331,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # find command, with the paragraph explaining why a constant that
     # never needed quoting does now — a host project's root is the
     # directory the researcher registered, and it reaches ``bash -c``.
-    "workflowManager.py": 2353,
+    # +18 (2026-08-10): fsLogsDirectoryFor, extracted on the third
+    # instance. The runner, the test runner and the logs routes each
+    # built <root>/.vaibify/logs from the container constant, and each
+    # was wrong for a host project the same way -- the path guard
+    # refuses the write, so the final log flush failed and the pipeline
+    # reported exit 1 for a step whose command had succeeded.
+    "workflowManager.py": 2371,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4797,7 +4803,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # typed paused payload, and the two docstrings stating why the
     # probes are no longer concurrent and why a paused answer carries
     # no badge map. Same responsibility, same panel.
-    "routes/gitRoutes.py": 1068,
+    # +27 (2026-08-10): the fetch route asks whether an origin exists
+    # before running `git fetch --no-tags origin`. That command NAMES
+    # the remote, so a repository with none exits 128 and the route
+    # answered 502 on every workflow open -- the ordinary state of a
+    # brand-new project, and the near-universal state of a host one.
+    # Pre-existing and mode-independent; the first journey that ever
+    # opened a workflow in a remote-less repository is what surfaced it.
+    "routes/gitRoutes.py": 1095,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
