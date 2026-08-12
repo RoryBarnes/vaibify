@@ -396,9 +396,23 @@ def _flistUntrackedFiles():
 
 
 def fsCreateDisposableWorktree():
-    """Return the path of a fresh detached worktree checked out at HEAD."""
+    """Return the path of a fresh detached worktree checked out at HEAD.
+
+    The LEAF name is unique, not just the parent directory. Git names
+    its bookkeeping entry after the leaf basename and disambiguates a
+    collision by appending a number -- and that disambiguation is not
+    atomic across processes. Four workers each asking for a worktree
+    called ``tree`` raced on ``.git/worktrees/tree2/`` and one died
+    with "failed to read ... commondir: Success", after its three
+    siblings had each re-confirmed their slice perfectly.
+
+    Borrowing the parent's random suffix keeps the name unique without
+    inventing a second source of randomness.
+    """
     sParent = tempfile.mkdtemp(prefix="vaibify-falsification-")
-    sWorktree = str(pathlib.Path(sParent) / "tree")
+    sWorktree = str(
+        pathlib.Path(sParent) / ("tree-" + pathlib.Path(sParent).name[-8:])
+    )
     subprocess.run(
         ["git", "worktree", "add", "--detach", "--quiet", sWorktree,
          "HEAD"],

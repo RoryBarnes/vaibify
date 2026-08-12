@@ -9097,6 +9097,22 @@ def _fdictEntry(sRel):
         old='--summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"',
         new='--summary-json "$RUNNER_TEMP/exclusiveSummary.json"',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testConcurrentWorktreesDoNotCollideOnOneName'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # Every worktree is called "tree" again, so git disambiguates
+        # by appending a number -- non-atomically, across processes.
+        old=(
+            '    sWorktree = str(\n'
+            '        pathlib.Path(sParent) / ("tree-" + '
+            'pathlib.Path(sParent).name[-8:])\n'
+            '    )\n'
+        ),
+        new='    sWorktree = str(pathlib.Path(sParent) / "tree")\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

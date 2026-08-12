@@ -488,3 +488,39 @@ def testEveryUploadedSummaryIsOneTheAggregatorWillFind():
             "the summary job globs for -- its leg would report nothing "
             "while its work passed"
         )
+
+
+@pytest.mark.falsification
+def testConcurrentWorktreesDoNotCollideOnOneName():
+    """Workers each get a worktree, and git must not have to guess.
+
+    Git names its bookkeeping entry after the worktree's LEAF
+    basename and disambiguates a collision by appending a number.
+    That disambiguation is not atomic across processes: four workers
+    each asking for a worktree called ``tree`` raced on
+    ``.git/worktrees/tree2/`` and one died with "failed to read ...
+    commondir: Success" — after its three siblings had each
+    re-confirmed their slice perfectly.
+
+    The property is asserted rather than the race, deliberately. A
+    test that spawned four processes and hoped they collided would
+    fail to fail most of the time, which is worse than no test; a
+    unique name cannot collide at all.
+
+    Kills: naming every worktree ``tree``, which is what shipped.
+    """
+    moduleTool = _fmoduleLoadTool("reconfirmFalsification.py")
+    listLeafNames = []
+    listWorktrees = []
+    try:
+        for _iWorktree in range(3):
+            sWorktree = moduleTool.fsCreateDisposableWorktree()
+            listWorktrees.append(sWorktree)
+            listLeafNames.append(pathlib.Path(sWorktree).name)
+    finally:
+        for sWorktree in listWorktrees:
+            moduleTool.fnRemoveDisposableWorktree(sWorktree)
+    assert len(set(listLeafNames)) == len(listLeafNames), (
+        f"two worktrees share a leaf name, so git must disambiguate "
+        f"them and concurrent workers race: {listLeafNames}"
+    )
