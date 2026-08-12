@@ -381,7 +381,18 @@ def fnCopyLocalChangesIntoWorktree(sWorktree):
     for sRelative in _flistUntrackedFiles():
         pathTarget = pathlib.Path(sWorktree) / sRelative
         pathTarget.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO / sRelative, pathTarget)
+        try:
+            shutil.copy2(REPO / sRelative, pathTarget)
+        except (FileNotFoundError, NotADirectoryError):
+            # The listing and the copy are two moments, and a test run
+            # in this checkout creates and deletes temp directories
+            # between them. A file that no longer exists cannot be part
+            # of the change being confirmed, so skipping it is right --
+            # and dying instead made the harness unusable whenever a
+            # suite happened to be running, which is the same
+            # shared-working-tree hazard the module docstring already
+            # warns about, arriving from the other direction.
+            continue
 
 
 def fnRemoveDisposableWorktree(sWorktree):

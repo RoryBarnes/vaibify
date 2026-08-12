@@ -306,7 +306,13 @@ def test_draft_write_rejected_when_no_workflow_path(clientHttp):
         f"/api/draft/{S_CONTAINER_ID}/workspace/src/foo.py",
         json={"sContent": "abc"},
     )
-    assert response.status_code in (400, 503)
+    # 404 since 2026-08-12, where this accepted 400: "no project is
+    # open in this session" is ONE state, and the read paths already
+    # answered 404 for it. The refusal key is what a caller should act
+    # on; the status is now merely consistent with its siblings.
+    assert response.status_code in (404, 503), response.text
+    if response.status_code == 404:
+        assert response.json()["detail"]["sRefusal"] == "no-project-open"
 
 
 def test_draft_write_rejects_oversize_payload(clientHttp):

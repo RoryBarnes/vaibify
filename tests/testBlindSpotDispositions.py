@@ -159,8 +159,16 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
 # and reading testADispositionExpiresWhenItsSupportingSymbolsChange,
 # whose failure names every symbol that moved and its new hash.
 DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
+    # Re-read 2026-08-12 and the ruling SURVIVES. The change was to the
+    # quarantine refusal's SENTENCE — it now names the kind, target and
+    # timestamp of the record that poisoned the container instead of a
+    # bare hex id. The gated helper's disposition rests on the identity
+    # ASSERTION (a helper whose promoted identity the journal did not
+    # accept never reaches its release line), and every branch of that
+    # assertion is unchanged: the same scan, the same own-record check,
+    # the same holder comparison, the same exception type.
     "config/mutationAdmission.py::fnAssertOperationAdmittedByIdentity":
-        "712b9ca458bbe5ee",
+        "7e18213dca68a496",
     "gui/commitCarrier.py::S_GATED_HELPER_STUB": "2bd6936769eb618c",
     "gui/commitCarrier.py::fdictLaunchGatedHelperProcess":
         "58b0217540f74765",
