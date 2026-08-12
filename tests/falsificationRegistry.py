@@ -8914,6 +8914,31 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(configProject.sProjectName):\n',
         new='    if False:\n',
     ),
+    # --- Which interpreter runs a vaibify-authored program (phase C) ---
+    #
+    # Not the same question as which root a file lives under, and it
+    # has the same two-sided failure: `python3` on the host is
+    # whatever the researcher's PATH resolves and routinely lacks
+    # vaibify's dependencies, while `sys.executable` names nothing at
+    # all inside a container.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsHelperProgramRunsOnVaibifysInterpreter'
+        ),
+        source='vaibify/gui/helperPrograms.py',
+        old='    if not fbIsHostProject(sResourceId):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsHelperProgramStillRunsOnPython3'
+        ),
+        source='vaibify/gui/helperPrograms.py',
+        old='    if not fbIsHostProject(sResourceId):\n',
+        new='    if False:\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

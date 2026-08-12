@@ -486,6 +486,12 @@ def test_fdictMetadataRequestToDict_flattens_creator_models():
 # Archive script: structural invariants that must hold forever
 # ----------------------------------------------------------------------
 
+# Both builders name the interpreter and the module directory their
+# resource uses. These assertions are about the SCRIPT BODY, so they
+# ask about an id nothing registered, which resolves to the container
+# answers; the host branch is covered where the mode branch is.
+S_UNREGISTERED_CONTAINER = "cid_unregistered_for_zenodo_scripts"
+
 
 def test_archive_script_no_vaibify_imports_with_parent():
     """The newversion-branch script body must not import from vaibify."""
@@ -494,7 +500,7 @@ def test_archive_script_no_vaibify_imports_with_parent():
     sCommand = _fsBuildZenodoArchiveCommand(
         "https://sandbox.zenodo.org/api", "zenodo_token_sandbox",
         ["/a.txt"], {"title": "T", "creators": [{"name": "X"}]},
-        iParentDepositId=42,
+        S_UNREGISTERED_CONTAINER, iParentDepositId=42,
     )
     sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
     sScript = base64.b64decode(sMatch.group(1)).decode("utf-8")
@@ -510,7 +516,7 @@ def test_archive_script_parses_cleanly_with_unicode_title():
         "https://sandbox.zenodo.org/api", "zenodo_token_sandbox",
         ["/a.txt"],
         {"title": "Héllo — unicode", "creators": [{"name": "X"}]},
-        iParentDepositId=0,
+        S_UNREGISTERED_CONTAINER, iParentDepositId=0,
     )
     sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
     sScript = base64.b64decode(sMatch.group(1)).decode("utf-8")
@@ -521,10 +527,12 @@ def test_archive_script_zero_parent_yields_same_shape_as_absent():
     """Explicit ``iParentDepositId=0`` produces the same first-publish script."""
     from vaibify.gui.syncDispatcher import _fsBuildZenodoArchiveCommand
     sZero = _fsBuildZenodoArchiveCommand(
-        "https://api", "slot", ["/a"], {"title": "T"}, 0,
+        "https://api", "slot", ["/a"], {"title": "T"},
+        S_UNREGISTERED_CONTAINER, 0,
     )
     sDefault = _fsBuildZenodoArchiveCommand(
         "https://api", "slot", ["/a"], {"title": "T"},
+        S_UNREGISTERED_CONTAINER,
     )
     assert sZero == sDefault
 
@@ -536,7 +544,7 @@ def test_validation_script_no_vaibify_imports():
     )
     sCmd = _fsBuildZenodoValidationCommand(
         "https://sandbox.zenodo.org/api/deposit/depositions",
-        "zenodo_token_sandbox",
+        "zenodo_token_sandbox", S_UNREGISTERED_CONTAINER,
     )
     assert "from vaibify" not in sCmd
     assert "import vaibify" not in sCmd

@@ -1160,6 +1160,7 @@ def _fsRunIntrospection(
     """
     import secrets
     from . import projectRoots
+    from .helperPrograms import fsResolveHelperInterpreter
     from .pipelineUtils import fsShellQuote
     sScript = _fsBuildIntrospectionScript(
         listDataFiles, sDirectory,
@@ -1179,8 +1180,9 @@ def _fsRunIntrospection(
     # researcher's home directory, whose name they chose; the
     # container path was a literal and never needed it.
     sQuotedPath = fsShellQuote(sScriptPath)
+    sInterpreter = fsResolveHelperInterpreter(sContainerId)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"python3 {sQuotedPath}",
+        sContainerId, f"{sInterpreter} {sQuotedPath}",
     )
     connectionDocker.ftResultExecuteCommand(
         sContainerId, f"rm -f {sQuotedPath}",

@@ -4726,7 +4726,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that follow them. Cohesive with the credential family already
     # here -- the container primitives beneath them are unchanged and
     # still say what they do.
-    "syncDispatcher.py": 1861,
+    # +54 (2026-08-12): every program this module composes imports
+    # vaibify, keyring or requests, so each names the interpreter
+    # that has them and the directory where this resource keeps
+    # zenodoClient. Cohesive with the command building already
+    # here.
+    "syncDispatcher.py": 1915,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -4746,7 +4751,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
     # because a host scratch path descends from the researcher's home.
-    "introspectionScript.py": 1212,
+    # +2 (2026-08-12): the program runs on the interpreter that has
+    # vaibify's dependencies, which on the host is not python3.
+    "introspectionScript.py": 1214,
     "testGenerator.py": 1063,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host

@@ -700,3 +700,82 @@ def _fnAddStepToTheOpenWorkflow(client, sProject):
         params={"sWorkflowPath": sWorkflowPath},
     )
     assert responseConnect.status_code == 200, responseConnect.text
+
+
+# ── Which interpreter runs a vaibify-authored helper program ─────
+
+@pytest.mark.falsification
+def testAHostProjectsHelperProgramRunsOnVaibifysInterpreter(
+    fixtureHostRegistryOnly,
+):
+    """The interpreter with the dependencies, not the one on PATH.
+
+    Every program vaibify composes here imports something vaibify
+    depends on — numpy through the loaders, ``keyring``, ``requests``,
+    ``vaibify`` itself. Inside the container ``python3`` is the image's
+    and has them all. On the host it is whatever the researcher's PATH
+    resolves, and on a machine with a science stack in a virtual
+    environment that is routinely the system interpreter with none of
+    them: the first host project ever to generate a test failed with
+    ``ModuleNotFoundError: No module named 'numpy'``, from an
+    interpreter the researcher uses for nothing.
+
+    Kills: the resolver answering ``python3`` for a host project,
+    which is the literal every one of these composers shipped with.
+    """
+    import sys
+    from vaibify.gui.helperPrograms import fsResolveHelperInterpreter
+    from vaibify.gui.syncDispatcher import fsPythonCommand
+    sInterpreter = fsResolveHelperInterpreter("credentialHostProject")
+    assert sys.executable in sInterpreter
+    assert fsPythonCommand(
+        "import keyring", "print(1)", "credentialHostProject",
+    ).startswith(sInterpreter + " -c ")
+
+
+@pytest.mark.falsification
+def testAContainerProjectsHelperProgramStillRunsOnPython3(
+    fixtureHostRegistryOnly,
+):
+    """The other direction, and it cannot be anything else.
+
+    ``sys.executable`` is a path on the HOST. Inside a container it
+    names nothing, so a container handed it would fail to start every
+    helper program vaibify has — the keyring probes, the archive
+    build, the introspection pass.
+
+    Kills: the resolver stuck on the host answer.
+    """
+    from vaibify.gui.helperPrograms import fsResolveHelperInterpreter
+    assert fsResolveHelperInterpreter(
+        "credentialContainerProject",
+    ) == "python3"
+
+
+def testTheStepRunnerNeverAsksWhichInterpreterToUse():
+    """A step's interpreter is the researcher's choice and stays theirs.
+
+    The line is authorship: vaibify's programs run on vaibify's
+    interpreter, the researcher's run on theirs. ``python3
+    makeNumbers.py`` names the environment they built for their
+    science, and a step command rewritten to vaibify's interpreter
+    would run their analysis under vaibify's dependencies instead of
+    their own — silently producing different numbers.
+
+    Asserted structurally, over the source, because the failure is a
+    call that should not exist rather than an output that can be
+    compared.
+    """
+    import pathlib
+    for sModuleName in (
+        "pipelineRunner.py", "workflowManager.py", "pipelineUtils.py",
+    ):
+        pathModule = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "vaibify" / "gui" / sModuleName
+        )
+        assert "fsResolveHelperInterpreter" not in pathModule.read_text(), (
+            f"{sModuleName} resolves an interpreter; the step command "
+            "is the researcher's text and must be composed from it "
+            "unchanged"
+        )

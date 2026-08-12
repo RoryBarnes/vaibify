@@ -55,6 +55,11 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "_fsReadGithubRemoteUrl, _S_GITHUB_REMOTE_URL_COMMAND"
     },
+    "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47": {
+      "sDisposition": "portable",
+      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify itself.",
+      "sSupportingSymbols": "ftResultArchiveProject, fsPythonCommand, fsResolveHelperInterpreter"
+    },
     "46f73300f81ff8f8390a4608f29b94cf5bacdd6eccbf8ce7ba168d089c6f6670": {
       "sDisposition": "host-variant",
       "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
@@ -65,25 +70,25 @@
       "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     },
-    "53000c9137848d404188467861c4fb5e86a9061f66fbe511e43f5c9883e1e718": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultArchiveProject, fsPythonCommand, sCall, sImport"
-    },
     "55981e39eb916ce295b3ef61e0505a4c57fe1bab78f9c9bfc0e32fe496f8424e": {
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "ftResultGitPullFastForwardInContainer, sCommand"
     },
-    "58a6d71fbc7cf963a2cacd6c059ddfc1ed80363a4805dceb02ccd39c918da073": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultGenerateLatex, fsPythonCommand, sCall, sImport"
+    "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb": {
+      "sDisposition": "portable",
+      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program's own path is resolved the same way.",
+      "sSupportingSymbols": "_fsRunIntrospection, fsResolveHelperInterpreter, fsResolveScratchDirectory, sInterpreter"
     },
     "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3": {
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "ftResultGitCommitInContainer, sBase"
+    },
+    "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b": {
+      "sDisposition": "portable",
+      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. keyring and requests are vaibify dependencies.",
+      "sSupportingSymbols": "fbValidateZenodoToken, _fsBuildZenodoValidationCommand, fsPythonCommand"
     },
     "637548aeb3b50dfea561214ed0569a70dc6e9260b9c11564dd8959b0ddf27cd9": {
       "sDisposition": "container-only",
@@ -104,11 +109,6 @@
       "sDisposition": "host-variant",
       "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
       "sSupportingSymbols": "fnMigrateFlatMarkers, sCommand"
-    },
-    "72950229e754e31c9e38b865ad695f9cecb9485bb20fe3431fca273cbad27423": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultArchiveToZenodo, _fsBuildZenodoArchiveCommand, dictApi, iParentDepositId, listFilePaths, sBaseApi, sSlot"
     },
     "795b567f8946337be46b77a21ed968f102971c5550e9d7d5d9c5e5322414f200": {
       "sDisposition": "container-only",
@@ -170,11 +170,6 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "fnStoreCredentialInContainer, sCommand"
     },
-    "a5f4a17ce71a058c1368170133dd1a31c85e551e60b26e67873ef9a9f772b2d3": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fbValidateZenodoToken, _fsBuildZenodoValidationCommand, sSlot, sUrl"
-    },
     "a806873115e2623aed0b0a5fe9ae40e7f1de2d37cb247eb9d31ab29a8af2058c": {
       "sDisposition": "host-variant",
       "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
@@ -235,11 +230,6 @@
       "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
       "sSupportingSymbols": "_fsRunGitCommand, sCommand"
     },
-    "c6414625a63ed7b1074e0cb9d439f30fe5a2b77fbc1b225aa466c33d836506fb": {
-      "sDisposition": "portable",
-      "sRationale": "The introspection program's path is resolved per resource before the command is composed, so one command text serves both legs: /tmp inside a container, the project's own scratch directory on the host, which is what the host path guard admits.",
-      "sSupportingSymbols": "_fsRunIntrospection, fsResolveScratchDirectory, sQuotedPath"
-    },
     "c7883f59ab1799cae17a6cfc90412dcfdb13c91dd91bc3856e77cc63bd2d9000": {
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
@@ -260,6 +250,11 @@
       "sRationale": "ps aux | grep | xargs kill -9 against a host process table would kill unrelated host processes.",
       "sSupportingSymbols": "_fnKillMatchingProcesses, sKill"
     },
+    "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8": {
+      "sDisposition": "portable",
+      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify.reproducibility.",
+      "sSupportingSymbols": "ftResultGenerateLatex, fsPythonCommand, fsResolveHelperInterpreter"
+    },
     "d34f2eba8d24dbf9d82799abac7d63cee73352a1ecfccb3be2dd6622bdbaa741": {
       "sDisposition": "host-variant",
       "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
@@ -274,6 +269,11 @@
       "sDisposition": "host-variant",
       "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
       "sSupportingSymbols": "_fsetSnapshotDirectory, fsShellQuote, iMaxDepth, sDirectory"
+    },
+    "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0": {
+      "sDisposition": "portable",
+      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. zenodoClient is found where this resource keeps it: the image's staged copy, or the installed package's own directory on the host.",
+      "sSupportingSymbols": "ftResultArchiveToZenodo, _fsBuildZenodoArchiveCommand, _fsZenodoClientDirectory, fsResolveHelperInterpreter"
     },
     "e35acd949a66dccfc76c0b690ca2d486c2859a32236a415853b8c2fce63dc283": {
       "sDisposition": "portable",
@@ -534,16 +534,16 @@
       "sModule": "vaibify/gui/diskSpace.py"
     },
     {
-      "sCommandExpression": "f'python3 {sQuotedPath}'",
+      "sCommandExpression": "f'rm -f {sQuotedPath}'",
       "sEnclosingFunction": "_fsRunIntrospection",
-      "sFingerprint": "c6414625a63ed7b1074e0cb9d439f30fe5a2b77fbc1b225aa466c33d836506fb",
+      "sFingerprint": "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/introspectionScript.py"
     },
     {
-      "sCommandExpression": "f'rm -f {sQuotedPath}'",
+      "sCommandExpression": "f'{sInterpreter} {sQuotedPath}'",
       "sEnclosingFunction": "_fsRunIntrospection",
-      "sFingerprint": "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5",
+      "sFingerprint": "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/introspectionScript.py"
     },
@@ -1017,9 +1017,9 @@
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "_fsBuildZenodoValidationCommand(sUrl, sSlot)",
+      "sCommandExpression": "_fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId)",
       "sEnclosingFunction": "fbValidateZenodoToken",
-      "sFingerprint": "a5f4a17ce71a058c1368170133dd1a31c85e551e60b26e67873ef9a9f772b2d3",
+      "sFingerprint": "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
@@ -1066,23 +1066,23 @@
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "fsPythonCommand(sImport, sCall)",
+      "sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)",
       "sEnclosingFunction": "ftResultArchiveProject",
-      "sFingerprint": "53000c9137848d404188467861c4fb5e86a9061f66fbe511e43f5c9883e1e718",
+      "sFingerprint": "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "_fsBuildZenodoArchiveCommand(sBaseApi, sSlot, listFilePaths, dictApi, iParentDepositId)",
+      "sCommandExpression": "_fsBuildZenodoArchiveCommand(sBaseApi, sSlot, listFilePaths, dictApi, sContainerId, iParentDepositId)",
       "sEnclosingFunction": "ftResultArchiveToZenodo",
-      "sFingerprint": "72950229e754e31c9e38b865ad695f9cecb9485bb20fe3431fca273cbad27423",
+      "sFingerprint": "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "fsPythonCommand(sImport, sCall)",
+      "sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)",
       "sEnclosingFunction": "ftResultGenerateLatex",
-      "sFingerprint": "58a6d71fbc7cf963a2cacd6c059ddfc1ed80363a4805dceb02ccd39c918da073",
+      "sFingerprint": "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },

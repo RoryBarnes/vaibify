@@ -24,6 +24,7 @@ from vaibify.config.registryManager import fbIsHostProject
 
 from . import stateContract
 from . import workflowManager
+from .helperPrograms import fsResolveHelperInterpreter
 from .pipelineUtils import fsShellQuote
 
 __all__ = [
@@ -183,8 +184,8 @@ def fnValidateServiceName(sService):
         raise ValueError(f"Invalid service: {sService}")
 
 
-def fsPythonCommand(sImportLine, sFunctionCall):
-    """Build a python3 -c command string from import and call.
+def fsPythonCommand(sImportLine, sFunctionCall, sResourceId):
+    """Build a ``-c`` command string from import and call.
 
     Uses ``fsShellQuote`` so embedded double quotes, semicolons, or
     other shell metacharacters in ``sFunctionCall`` cannot break out
@@ -193,12 +194,21 @@ def fsPythonCommand(sImportLine, sFunctionCall):
     ``conftestManager._fsBuildFlatMarkerMigrationCommand``. When
     ``sImportLine`` is empty the leading ``; `` separator is omitted
     so the resulting Python source is syntactically valid.
+
+    Every program built here imports ``vaibify``, ``keyring`` or
+    ``requests``, so it runs on the interpreter that HAS them: the
+    image's ``python3`` in a container, and vaibify's own interpreter
+    on the host, where ``python3`` is whatever the researcher's PATH
+    resolves and routinely has none of them.
     """
     if sImportLine:
         sScript = sImportLine + "; " + sFunctionCall
     else:
         sScript = sFunctionCall
-    return "python3 -c " + fsShellQuote(sScript)
+    return (
+        fsResolveHelperInterpreter(sResourceId) + " -c "
+        + fsShellQuote(sScript)
+    )
 
 
 def ftResultPushToOverleaf(
@@ -248,15 +258,32 @@ def fsParsePushStatusFromOutput(sOutput):
 
 
 _S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
+_S_OVERLEAF_MODULE = "vaibify.reproducibility.overleafSync"
+
+
+def _flistOverleafProgramWords(sResourceId):
+    """Return the words that invoke the Overleaf CLI for this resource.
+
+    The container image installs the script at a fixed path under
+    ``/usr/share/vaibify``, which is a path that exists nowhere on the
+    researcher's machine. On the host the same code is an ordinary
+    module of the installed package, so it is invoked as one -- which
+    also means the import machinery finds its dependencies instead of
+    a ``sys.path`` entry having to.
+    """
+    sInterpreter = fsResolveHelperInterpreter(sResourceId)
+    if fbIsHostProject(sResourceId):
+        return [sInterpreter, "-m", _S_OVERLEAF_MODULE]
+    return [sInterpreter, _S_OVERLEAF_SCRIPT]
 
 
 def _fsOverleafCliBase(
-    sSubcommand, sProjectId, sTargetDirectory=None, sMirrorSha="",
+    sSubcommand, sProjectId, sResourceId,
+    sTargetDirectory=None, sMirrorSha="",
 ):
-    """Build the python3 invocation prefix for an overleafSync CLI call."""
-    listParts = [
-        "python3", _S_OVERLEAF_SCRIPT, sSubcommand,
-        "--project", fsShellQuote(sProjectId),
+    """Build the invocation prefix for an overleafSync CLI call."""
+    listParts = _flistOverleafProgramWords(sResourceId) + [
+        sSubcommand, "--project", fsShellQuote(sProjectId),
     ]
     if sTargetDirectory is not None:
         listParts += ["--target", fsShellQuote(sTargetDirectory)]
@@ -289,7 +316,7 @@ def _ftResultPlainPush(
     sStdin = _fsPrependToken(
         _fsFetchOverleafToken(), "\n".join(listFilePaths))
     sCli = _fsOverleafCliBase(
-        "push", sProjectId, sTargetDirectory, sMirrorSha,
+        "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha,
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, _fsPipeStdinCommand(sStdin, sCli),
@@ -309,7 +336,8 @@ def _ftResultAnnotatedPush(
     sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
     sCli = (
         _fsOverleafCliBase(
-            "push-annotated", sProjectId, sTargetDirectory, sMirrorSha)
+            "push-annotated", sProjectId, sContainerId,
+            sTargetDirectory, sMirrorSha)
         + f" --github-base-url {fsShellQuote(sGithubBaseUrl)}"
         + f" --doi {fsShellQuote(sDoi)}"
         + f" --tex-filename {fsShellQuote(sTexFilename)}"
@@ -327,7 +355,9 @@ def ftResultPullFromOverleaf(
     fnValidateOverleafProjectId(sProjectId)
     sStdin = _fsPrependToken(
         _fsFetchOverleafToken(), "\n".join(listPullPaths))
-    sCli = _fsOverleafCliBase("pull", sProjectId, sTargetDirectory)
+    sCli = _fsOverleafCliBase(
+        "pull", sProjectId, sContainerId, sTargetDirectory,
+    )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, _fsPipeStdinCommand(sStdin, sCli),
     )
@@ -372,7 +402,7 @@ def ftResultArchiveToZenodo(
     return connectionDocker.ftResultExecuteCommand(
         sContainerId,
         _fsBuildZenodoArchiveCommand(
-            sBaseApi, sSlot, listFilePaths, dictApi,
+            sBaseApi, sSlot, listFilePaths, dictApi, sContainerId,
             iParentDepositId,
         ),
     )
@@ -463,7 +493,7 @@ def _fnValidateArchiveFilePaths(listFilePaths):
 
 _S_ARCHIVE_SCRIPT_TEMPLATE = '''import json, sys
 import keyring
-sys.path.insert(0, '/usr/share/vaibify')
+sys.path.insert(0, %(clientdir)s)
 from zenodoClient import ZenodoClient, ZenodoError
 
 _SLOT = %(slot)s
@@ -527,20 +557,26 @@ print('ZENODO_RESULT=' + json.dumps({
 
 
 def _fsBuildZenodoArchiveCommand(
-    sBaseApi, sSlot, listFilePaths, dictApiMetadata,
+    sBaseApi, sSlot, listFilePaths, dictApiMetadata, sResourceId,
     iParentDepositId=0,
 ):
-    """Build a python3 command that runs the base64-encoded archive script.
+    """Build a command that runs the base64-encoded archive script.
 
     The script itself is parameterized via ``%%(name)s`` substitutions
     filled with ``repr()``-quoted Python literals, then base64-encoded
     and executed inside the container via ``exec``. Every user-provided
     value travels as opaque data; no shell or Python quoting depends
     on the input contents.
+
+    ``zenodoClient`` is found where this resource keeps it: the image
+    stages a copy under ``/usr/share/vaibify``, and on the host it is
+    a module of the installed package, whose directory this asks for
+    by importing it rather than walking up from a file.
     """
     import base64
     iParent = int(iParentDepositId or 0)
     sScript = _S_ARCHIVE_SCRIPT_TEMPLATE % {
+        "clientdir": repr(_fsZenodoClientDirectory(sResourceId)),
         "slot": repr(sSlot),
         "base": repr(sBaseApi),
         "meta": repr(json.dumps(dictApiMetadata)),
@@ -551,9 +587,19 @@ def _fsBuildZenodoArchiveCommand(
         sScript.encode("utf-8")
     ).decode("ascii")
     return (
-        "python3 -c \"import base64; "
+        fsResolveHelperInterpreter(sResourceId)
+        + " -c \"import base64; "
         f"exec(base64.b64decode('{sScriptB64}').decode())\""
     )
+
+
+def _fsZenodoClientDirectory(sResourceId):
+    """Return the directory holding ``zenodoClient`` for this resource."""
+    if not fbIsHostProject(sResourceId):
+        return "/usr/share/vaibify"
+    import os
+    from vaibify.reproducibility import zenodoClient
+    return os.path.dirname(os.path.abspath(zenodoClient.__file__))
 
 
 def _fsGithubHardeningFlags():
@@ -791,7 +837,7 @@ def ftResultGenerateLatex(
         f"{repr(listFigurePaths)}, {repr(sOutputPath)})"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, fsPythonCommand(sImport, sCall, sContainerId)
     )
 
 
@@ -944,6 +990,7 @@ def _fbKeyringBackendHealthy(connectionDocker, sContainerId):
         "import keyring",
         "print(type(keyring.get_keyring()).__module__, "
         "type(keyring.get_keyring()).__name__)",
+        sContainerId,
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -966,6 +1013,7 @@ def _fdictProbeKeyringToken(
         "import keyring",
         f"t=keyring.get_password('vaibify',{repr(sTokenName)}); "
         f"print('ok' if t else 'missing')",
+        sContainerId,
     )
     _, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -1006,6 +1054,7 @@ def fnStoreCredentialInContainer(
         "import keyring",
         f"keyring.set_password('vaibify', {repr(sName)}, "
         f"open({repr(sTempPath)}).read().strip())",
+        sContainerId,
     )
     connectionDocker.fnWriteFile(
         sContainerId, sTempPath, sValue.encode("utf-8")
@@ -1135,6 +1184,7 @@ def fbCopyCredentialInContainer(
         f"v is not None and keyring.set_password("
         f"'vaibify',{repr(sTargetName)},v); "
         f"print('copied' if v is not None else 'missing')",
+        sContainerId,
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -1157,6 +1207,7 @@ def fnDeleteCredentialFromContainer(
         "import keyring; "
         "from keyring.errors import PasswordDeleteError",
         f"t=keyring.delete_password('vaibify', {repr(sName)})",
+        sContainerId,
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -1267,13 +1318,14 @@ def fbValidateZenodoToken(
         raise ValueError(f"Invalid Zenodo service: {sService}")
     sUrl, sSlot = _DICT_ZENODO_VALIDATION_ENDPOINT[sService]
     iExit, sOut = connectionDocker.ftResultExecuteCommand(
-        sContainerId, _fsBuildZenodoValidationCommand(sUrl, sSlot),
+        sContainerId,
+        _fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId),
     )
     return iExit == 0 and "ok" in sOut
 
 
-def _fsBuildZenodoValidationCommand(sUrl, sSlot):
-    """Build a self-contained python3 command to validate the token."""
+def _fsBuildZenodoValidationCommand(sUrl, sSlot, sResourceId):
+    """Build a self-contained command that validates the token."""
     sCall = (
         f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
         "or keyring.get_password('vaibify', 'zenodo_token') "
@@ -1283,7 +1335,9 @@ def _fsBuildZenodoValidationCommand(sUrl, sSlot):
         "params={'size': 1}); "
         "r.raise_for_status(); print('ok')"
     )
-    return fsPythonCommand("import keyring, requests, sys", sCall)
+    return fsPythonCommand(
+        "import keyring, requests, sys", sCall, sResourceId,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1674,7 +1728,7 @@ def ftResultArchiveProject(
         f"print('Published:', d['id'])"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, fsPythonCommand(sImport, sCall)
+        sContainerId, fsPythonCommand(sImport, sCall, sContainerId)
     )
 
 
