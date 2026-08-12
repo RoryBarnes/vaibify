@@ -204,7 +204,7 @@ def _fiRunTests(listNodeIds):
             env=dictEnvironment,
         )
     finally:
-        _fnDiscardPycachePrefix(sPycachePrefix)
+        _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds)
     if result.returncode == 0 and _fbOutputReportsASkip(result.stdout):
         # Belt and braces for every OTHER reason a test can skip: an
         # unevaluated mutation must never be reported as a survivor.
@@ -212,7 +212,7 @@ def _fiRunTests(listNodeIds):
     return result.returncode
 
 
-def _fnDiscardPycachePrefix(sPycachePrefix):
+def _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds):
     """Remove the bytecode cache, and never fail the run over it.
 
     ``TemporaryDirectory`` raised ``Directory not empty`` here the
@@ -232,9 +232,27 @@ def _fnDiscardPycachePrefix(sPycachePrefix):
     except OSError as error:
         print(
             f"note: left the bytecode cache {sPycachePrefix} behind "
-            f"({error}). Something a test started was still writing "
-            "into it after pytest exited."
+            f"({error}). Something these tests started was still "
+            f"writing into it after pytest exited: {listNodeIds}. "
+            f"What it had written: {_flistNameCacheContents(sPycachePrefix)}"
         )
+
+
+def _flistNameCacheContents(sPycachePrefix):
+    """Return the first few paths under the cache, for diagnosis.
+
+    The leftover tree mirrors the source path of whatever was still
+    importing, so its contents name the process that outlived its
+    test. Without this the note says only that SOMETHING leaked, which
+    is what the first occurrence said -- and three attempts to
+    reproduce it from that description found nothing.
+    """
+    listFound = []
+    for pathEntry in pathlib.Path(sPycachePrefix).rglob("*.pyc"):
+        listFound.append(str(pathEntry.relative_to(sPycachePrefix)))
+        if len(listFound) >= 5:
+            break
+    return listFound or ["<nothing readable>"]
 
 
 def _fbOutputReportsASkip(sOutput):

@@ -398,10 +398,16 @@ def testALeftoverGrandchildDoesNotFailTheRun(monkeypatch, capsys):
 
     monkeypatch.setattr(moduleShutil, "rmtree", fnRefuseToRemove)
     monkeypatch.setattr(moduleTool, "shutil", moduleShutil)
-    moduleTool._fnDiscardPycachePrefix("/tmp/somePycachePrefix")
+    moduleTool._fnDiscardPycachePrefix(
+        "/tmp/somePycachePrefix", ["tests/testThing.py::testGuard"],
+    )
     sOutput = capsys.readouterr().out
     assert "left the bytecode cache" in sOutput, sOutput
     assert "after pytest exited" in sOutput, sOutput
+    # The note names the entries that were running, because the first
+    # occurrence said only that SOMETHING leaked and three attempts to
+    # reproduce it from that description found nothing.
+    assert "testGuard" in sOutput, sOutput
 
 
 @pytest.mark.falsification

@@ -159,10 +159,14 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
     scheduling; the deadline is generous because a slow tick is not
     the failure this guards, while no tick at all still fails loudly.
 
-    Nineteen other tests in this suite still sleep a fixed span and
-    assert on what happened during it. They are the same latent flake
-    and are not fixed here, because each one needs its own judgement
-    about what it is really waiting for.
+    A grep for this shape finds twenty-two sleeps in the suite, and
+    reading them found that almost none are this bug: most sleep
+    because the delay IS the subject (a coalesce window, a task that
+    answers late), and several already poll for their condition. Three
+    were real and are fixed alongside this one -- two in
+    ``testCommitCarrier`` waiting on a done-callback, one in
+    ``testPipelineRunnerStepsAndLog`` waiting on a heartbeat thread.
+    The count in a grep is not the count of a problem.
     """
     fakeDocker = _FakeDockerForSweep(["alive"])
     dictCtx = {
