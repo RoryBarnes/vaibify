@@ -81,7 +81,25 @@ jobs:
         # in place, and AGENTS.md records what happened when a
         # source-mutating tool shared a working tree -- failures in
         # tests nobody had touched, twice misdiagnosed as flakiness.
-        timeout-minutes: 60
+        #
+        # 60 -> 90 on 2026-08-12, and it tripped exactly as predicted
+        # above. The registry reached 752 entries; the ubuntu-3.14 leg
+        # printed "721/721 kill-confirmed" and was then killed about
+        # two minutes past the ceiling, so the work had FINISHED and
+        # the red said nothing about the code. That leg is the slowest
+        # of the four because it evaluates the docker_live entries the
+        # macOS runners defer AND runs roughly 35% slower than the 3.9
+        # leg beside it (47m).
+        #
+        # Raising is the symptom's fix, chosen deliberately over
+        # sharding so one leg still re-confirms the WHOLE registry --
+        # a sharded leg proves a quarter of it, and the standing
+        # negative control is the thing worth keeping. The cause is
+        # that entries are replayed serially, one worktree at a time;
+        # the durable fix is N workers with one disposable worktree
+        # each, which preserves the isolation discipline the comment
+        # above is about. Measure before doing it.
+        timeout-minutes: 90
         env:
           # The Linux runners ship a Docker daemon, so they are where
           # the real-container entries are actually judged. Demanding
