@@ -5249,3 +5249,51 @@ def testShippedFrontendCarriesNoPersonalContactDetails():
         + "\n  ".join(listOffenders)
     )
 
+
+# A temp-then-rename whose temp name is derived from the TARGET alone
+# assumes there is only ever one writer. Where two overlap, the first
+# to rename consumes the file the second is about to rename, and the
+# second's install fails against a path that no longer exists. That
+# shipped: two savers of ``state.json`` — a step edit under the drain,
+# the file poll on the event loop, the run on its own thread — and the
+# loser's OSError poisoned a journal record and quarantined the whole
+# project (fixed 2026-08-12, `pipelineUtils.fsBuildUniqueTemporaryPath`).
+#
+# The budget is the remaining unaudited sites and MAY ONLY FALL. It is
+# not a to-do list to clear mechanically: each one needs its own
+# judgement about whether two writers can overlap there, and
+# ``mtimeCache``'s two are documented as deliberately benign (a cache
+# whose racing writers each leave a valid file, with the failure
+# swallowed). What the budget forbids is a NEW one appearing unnoticed.
+I_FIXED_TEMPORARY_NAME_BUDGET = 7
+
+_REGEX_FIXED_TEMPORARY_NAME = re.compile(r'\+\s*"\.tmp"')
+
+
+def testFixedTemporaryNamesDoNotSpread():
+    """Count the temp names derived from their target alone.
+
+    Deliberately a COUNT and not a ban. Banning would force six edits
+    in modules whose concurrency nobody has examined, and an unexamined
+    edit to an atomic-write path is a worse trade than a documented
+    ratchet — three of these are in ``config`` and cannot import the
+    shared helper without inverting the layering.
+
+    Fixing one lowers the constant in the same commit, which is the
+    same contract the style and mutation inventories carry.
+    """
+    listSites = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        for iLine, sLine in enumerate(
+            fsReadSource(pathFile).splitlines(), 1
+        ):
+            if _REGEX_FIXED_TEMPORARY_NAME.search(sLine):
+                listSites.append(
+                    f"{pathFile.relative_to(REPO_ROOT)}:{iLine}"
+                )
+    assert len(listSites) <= I_FIXED_TEMPORARY_NAME_BUDGET, (
+        "A new fixed-name temp file appeared. Derive it with "
+        "pipelineUtils.fsBuildUniqueTemporaryPath, or lower "
+        "I_FIXED_TEMPORARY_NAME_BUDGET if you removed one:\n  "
+        + "\n  ".join(listSites)
+    )
