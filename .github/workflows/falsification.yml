@@ -136,7 +136,7 @@ jobs:
             --class shareable \
             --shard ${{ matrix.shard }}/4 \
             --workers 4 \
-            --summary-json shardSummary.json
+            --summary-json "$RUNNER_TEMP/shardSummary.json"
 
       # `always()` because a shard that FAILED is the one the summary
       # most needs to hear from: its survivors travel in this file and
@@ -147,7 +147,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-shareable-${{ matrix.shard }}
-          path: shardSummary.json
+          path: ${{ runner.temp }}/shardSummary.json
           if-no-files-found: ignore
 
   falsification-macos:
@@ -199,7 +199,7 @@ jobs:
         run: |
           python tools/reconfirmFalsification.py \
             --class exclusive \
-            --summary-json exclusiveSummary.json
+            --summary-json "$RUNNER_TEMP/exclusiveSummary.json"
 
       - name: Re-confirm (shareable, 4 workers)
         timeout-minutes: 45
@@ -207,7 +207,7 @@ jobs:
           python tools/reconfirmFalsification.py \
             --class shareable \
             --workers 4 \
-            --summary-json shardSummary.json
+            --summary-json "$RUNNER_TEMP/shardSummary.json"
 
       # Two artifacts from one job, named exactly as the summary
       # expects them. It cares that each class reported, never which
@@ -217,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: falsificationSummary-macos-26-${{ matrix.python-version }}-exclusive-1
-          path: exclusiveSummary.json
+          path: ${{ runner.temp }}/exclusiveSummary.json
           if-no-files-found: ignore
 
       - name: Upload this leg's shareable summary
@@ -225,7 +225,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: falsificationSummary-macos-26-${{ matrix.python-version }}-shareable-1
-          path: shardSummary.json
+          path: ${{ runner.temp }}/shardSummary.json
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------
@@ -282,14 +282,14 @@ jobs:
         run: |
           python tools/reconfirmFalsification.py \
             --class exclusive \
-            --summary-json shardSummary.json
+            --summary-json "$RUNNER_TEMP/shardSummary.json"
 
       - name: Upload this leg's summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-exclusive-1
-          path: shardSummary.json
+          path: ${{ runner.temp }}/shardSummary.json
           if-no-files-found: ignore
 
   falsification-summary:

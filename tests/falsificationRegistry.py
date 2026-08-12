@@ -9069,6 +9069,18 @@ def _fdictEntry(sRel):
         old='    except OSError as error:\n',
         new='    except ValueError as error:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testNoSummaryIsWrittenIntoTheCheckout'
+        ),
+        source='.github/workflows/falsification.yml',
+        # The summary lands in the repo root again, so the step after
+        # it sees an untracked file, decides the tree is dirty, and
+        # refuses -- naming the guard instead of the cause.
+        old='--summary-json "$RUNNER_TEMP/exclusiveSummary.json"',
+        new='--summary-json exclusiveSummary.json',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

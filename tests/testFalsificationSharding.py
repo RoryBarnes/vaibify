@@ -402,3 +402,37 @@ def testALeftoverGrandchildDoesNotFailTheRun(monkeypatch, capsys):
     sOutput = capsys.readouterr().out
     assert "left the bytecode cache" in sOutput, sOutput
     assert "after pytest exited" in sOutput, sOutput
+
+
+@pytest.mark.falsification
+def testNoSummaryIsWrittenIntoTheCheckout():
+    """A job's own output must not make its next step refuse to run.
+
+    The harness refuses a dirty working tree, because it checks out
+    HEAD and would otherwise report on code the caller does not have.
+    That guard is right, and it fired on the first macOS job to run two
+    invocations in one checkout: the exclusive step wrote
+    ``exclusiveSummary.json`` into the repo root, and the shareable
+    step that followed saw ``?? exclusiveSummary.json`` and stopped.
+
+    The single-invocation jobs never notice, which is what makes this
+    worth pinning: it appears only when a job grows a second step, and
+    the failure names the guard rather than the cause.
+
+    Kills: writing a summary to a bare filename, which resolves inside
+    the checkout.
+    """
+    sWorkflow = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / ".github" / "workflows" / "falsification.yml"
+    ).read_text()
+    import re
+    listTargets = re.findall(r"--summary-json (\S+)", sWorkflow)
+    assert listTargets, "no summary is written at all"
+    listInsideCheckout = [
+        s for s in listTargets if "RUNNER_TEMP" not in s
+    ]
+    assert listInsideCheckout == [], (
+        "these summaries land in the checkout, so a following step "
+        f"sees a dirty tree and refuses: {listInsideCheckout}"
+    )
