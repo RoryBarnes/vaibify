@@ -1662,7 +1662,7 @@ def _fnCleanupCredential(
             sZenodoInstance
         )
     try:
-        syncDispatcher.fnDeleteCredentialFromContainer(
+        syncDispatcher.fnDeleteCredentialForProject(
             connectionDocker, sContainerId, sTokenName,
         )
     except Exception:
@@ -1710,7 +1710,7 @@ def _fnDispatchStore(
         sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
             sZenodoInstance or "sandbox"
         )
-    syncDispatcher.fnStoreCredentialInContainer(
+    syncDispatcher.fnStoreCredentialForProject(
         dictCtx["docker"], sContainerId, sTokenName, sToken,
     )
 
@@ -1781,7 +1781,7 @@ def _ftSnapshotContainerCredential(
     )
     sBackupSlot = sPrimarySlot + "_backup"
     try:
-        bCopied = syncDispatcher.fbCopyCredentialInContainer(
+        bCopied = syncDispatcher.fbCopyCredentialForProject(
             dictCtx["docker"], sContainerId, sPrimarySlot, sBackupSlot,
         )
     except Exception:
@@ -1796,7 +1796,7 @@ def _fnDropContainerSnapshot(
     if not sBackupSlot:
         return
     try:
-        syncDispatcher.fnDeleteCredentialFromContainer(
+        syncDispatcher.fnDeleteCredentialForProject(
             dictCtx["docker"], sContainerId, sBackupSlot,
         )
     except Exception:
@@ -1811,7 +1811,7 @@ def _fbRestoreContainerSnapshot(
     if not sBackupSlot:
         return False
     try:
-        bRestored = syncDispatcher.fbCopyCredentialInContainer(
+        bRestored = syncDispatcher.fbCopyCredentialForProject(
             dictCtx["docker"], sContainerId, sBackupSlot, sPrimarySlot,
         )
     except Exception:

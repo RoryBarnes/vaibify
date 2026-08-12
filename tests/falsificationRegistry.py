@@ -8855,6 +8855,65 @@ def _fdictEntry(sRel):
         ),
         new='        listIsDirectory = [True] * len(listPaths)\n',
     ),
+    # --- Which keyring holds this project's credentials (phase C) ---
+    #
+    # The container leg writes the value to a temporary file and runs an
+    # in-container python that reads it back into keyring. For a host
+    # project that lane is wrong twice: there is no container to run it
+    # in, and the file would be a secret written to the researcher's
+    # own disk on the way to a keyring this process can reach directly.
+    # The other direction is the wider failure -- a container project
+    # whose token went to the host keychain would authenticate every
+    # push with nothing.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsTokenGoesToTheResearchersOwnKeyring'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsTokenStillGoesIntoItsContainer'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+    ),
+    # --- push and pull with no container to cross (phase C) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheCliCopiesWithinAHostProjectInsteadOfCallingDockerCp'
+        ),
+        source='vaibify/cli/main.py',
+        old='    if not fbIsHostProject(configProject.sProjectName):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheCliStillUsesDockerCpForAContainerProject'
+        ),
+        source='vaibify/cli/main.py',
+        old='    if not fbIsHostProject(configProject.sProjectName):\n',
+        new='    if False:\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

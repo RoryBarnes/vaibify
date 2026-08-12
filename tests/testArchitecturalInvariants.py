@@ -4721,7 +4721,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # resource. Net of the collapse it is +16 of docstring stating why
     # a host project cannot render into /tmp or /workspace, and one
     # fewer duplicated body.
-    "syncDispatcher.py": 1758,
+    # +103 (2026-08-12): the three credential dispatchers that pick
+    # the keyring this project uses, and the two connectivity probes
+    # that follow them. Cohesive with the credential family already
+    # here -- the container primitives beneath them are unchanged and
+    # still say what they do.
+    "syncDispatcher.py": 1861,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

@@ -20,6 +20,8 @@ from vaibify.reproducibility.overleafAuth import (
     fsWriteAskpassScript,
 )
 
+from vaibify.config.registryManager import fbIsHostProject
+
 from . import stateContract
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
@@ -41,7 +43,10 @@ __all__ = [
     "flistExtractAllScriptPaths",
     "flistGetDirtyFiles",
     "flistListOverleafTree",
+    "fbCopyCredentialForProject",
+    "fnDeleteCredentialForProject",
     "fnDeleteCredentialFromContainer",
+    "fnStoreCredentialForProject",
     "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
     "fnValidateServiceName",
@@ -808,6 +813,12 @@ def fdictCheckConnectivity(
 
 def _fdictCheckZenodoKeyring(connectionDocker, sContainerId):
     """Return Connected if any Zenodo token slot is populated."""
+    if fbIsHostProject(sContainerId):
+        for sName in _LIST_ZENODO_TOKEN_NAMES:
+            dictProbe = _fdictCheckHostKeyring(sName)
+            if dictProbe["bConnected"]:
+                return dictProbe
+        return {"bConnected": False, "sMessage": "Token not found"}
     if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
         return {
             "bConnected": False,
@@ -972,6 +983,8 @@ def _fdictCheckKeyring(
     """Check if a keyring token exists inside the container."""
     if sTokenName not in SET_VALID_TOKEN_NAMES:
         raise ValueError(f"Invalid token name: {sTokenName}")
+    if fbIsHostProject(sContainerId):
+        return _fdictCheckHostKeyring(sTokenName)
     if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
         return {
             "bConnected": False,
@@ -1009,6 +1022,96 @@ def fnStoreCredentialInContainer(
         connectionDocker.ftResultExecuteCommand(
             sContainerId, f"rm -f {fsShellQuote(sTempPath)}"
         )
+
+
+# ---------------------------------------------------------------------
+# Which keyring holds this project's credentials.
+#
+# A container project's tokens live in the container's keyring, which
+# is thrown away with the container and is reachable only from inside
+# it. A host project has no container: its tokens belong in the
+# researcher's own OS keyring, which is where Overleaf's token has
+# always gone -- that service keeps a host-side token in BOTH modes,
+# because the Overleaf push runs on the host.
+#
+# The dispatchers below are what callers use. The ``InContainer``
+# functions beneath them keep their names and their behaviour, because
+# that is exactly what they do.
+# ---------------------------------------------------------------------
+
+
+def fnStoreCredentialForProject(
+    connectionDocker, sContainerId, sName, sValue,
+):
+    """Store one credential in whichever keyring this project uses."""
+    if fbIsHostProject(sContainerId):
+        from vaibify.config.secretManager import fnStoreSecret
+        _fnRefuseUnknownTokenName(sName)
+        fnStoreSecret(sName, sValue, "keyring")
+        return
+    fnStoreCredentialInContainer(
+        connectionDocker, sContainerId, sName, sValue,
+    )
+
+
+def fbCopyCredentialForProject(
+    connectionDocker, sContainerId, sSourceName, sTargetName,
+):
+    """Copy one credential slot to another; True iff the source existed.
+
+    On the host the value passes through this process rather than
+    through a shell, which is strictly less exposure than the
+    container leg's in-container python: nothing is written, nothing
+    is quoted, and the secret never becomes command text.
+    """
+    if fbIsHostProject(sContainerId):
+        from vaibify.config.secretManager import (
+            fbSecretExists, fnStoreSecret, fsRetrieveSecret,
+        )
+        for sName in (sSourceName, sTargetName):
+            _fnRefuseUnknownTokenName(sName)
+        if not fbSecretExists(sSourceName, "keyring"):
+            return False
+        fnStoreSecret(
+            sTargetName, fsRetrieveSecret(sSourceName, "keyring"),
+            "keyring",
+        )
+        return True
+    return fbCopyCredentialInContainer(
+        connectionDocker, sContainerId, sSourceName, sTargetName,
+    )
+
+
+def fnDeleteCredentialForProject(connectionDocker, sContainerId, sName):
+    """Delete one credential from whichever keyring this project uses.
+
+    An absent credential is not an error in either lane, matching the
+    container leg's tolerance of ``PasswordDeleteError``: every caller
+    of this is a rollback or a cleanup, and a failure there would
+    replace the error the researcher needs to read.
+    """
+    if fbIsHostProject(sContainerId):
+        from vaibify.config.secretManager import fnDeleteSecret
+        _fnRefuseUnknownTokenName(sName)
+        try:
+            fnDeleteSecret(sName, "keyring")
+        except Exception:  # noqa: BLE001 -- absent is not an error
+            pass
+        return
+    fnDeleteCredentialFromContainer(
+        connectionDocker, sContainerId, sName,
+    )
+
+
+def _fnRefuseUnknownTokenName(sName):
+    """Refuse a token slot outside the closed vocabulary.
+
+    The container functions each carry this check; the host branch
+    needs it just as much, because the name reaches a keyring service
+    slot and arrives from a request body.
+    """
+    if sName not in SET_VALID_TOKEN_NAMES:
+        raise ValueError(f"Invalid token name: {sName}")
 
 
 def fbCopyCredentialInContainer(
