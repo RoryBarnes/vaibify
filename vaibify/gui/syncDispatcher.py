@@ -1475,25 +1475,11 @@ def ftResultGenerateDagSvg(
     connectionDocker, sContainerId, dictWorkflow,
     dictCachedDeps=None,
 ):
-    """Write DOT to container, convert to SVG, return bytes."""
-    sDotContent = fsBuildDagDot(dictWorkflow, dictCachedDeps)
-    sDotPath = "/tmp/_vaibify_dag.dot"
-    sSvgPath = "/tmp/_vaibify_dag.svg"
-    connectionDocker.fnWriteFile(
-        sContainerId, sDotPath, sDotContent.encode("utf-8")
+    """Render the DAG to SVG where this resource may write, return bytes."""
+    return _ftRenderDagThroughDot(
+        connectionDocker, sContainerId, dictWorkflow, "svg",
+        dictCachedDeps,
     )
-    sPersistPath = "/workspace/.vaibify/dag.svg"
-    sConvert = (
-        f"dot -Tsvg {sDotPath} -o {sSvgPath} && "
-        f"cp {sSvgPath} {sPersistPath}"
-    )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sConvert
-    )
-    if iExitCode != 0:
-        return (iExitCode, sOutput)
-    baSvg = connectionDocker.fbaFetchFile(sContainerId, sSvgPath)
-    return (0, baSvg)
 
 
 DICT_DAG_MEDIA_TYPES = {
@@ -1511,26 +1497,56 @@ def ftResultExportDag(
     sFormat = sFormat.lower().lstrip(".")
     if sFormat not in DICT_DAG_MEDIA_TYPES:
         return (1, f"Unsupported DAG format: {sFormat}")
-    sDotContent = fsBuildDagDot(dictWorkflow, dictCachedDeps)
-    sDotPath = "/tmp/_vaibify_dag.dot"
-    sOutPath = f"/tmp/_vaibify_dag.{sFormat}"
-    connectionDocker.fnWriteFile(
-        sContainerId, sDotPath, sDotContent.encode("utf-8")
+    return _ftRenderDagThroughDot(
+        connectionDocker, sContainerId, dictWorkflow, sFormat,
+        dictCachedDeps,
     )
-    sPersistPath = f"/workspace/.vaibify/dag.{sFormat}"
-    sConvert = (
-        f"dot -T{sFormat} {sDotPath} -o {sOutPath} && "
-        f"cp {sOutPath} {sPersistPath}"
+
+
+def _ftRenderDagThroughDot(
+    connectionDocker, sContainerId, dictWorkflow, sFormat,
+    dictCachedDeps,
+):
+    """Write the DOT source, run ``dot`` over it, return the rendered bytes.
+
+    The scratch paths are resolved per resource: a container writes to
+    ``/tmp``, a host project to its own operation directory under the
+    host-diagnostics subtree, which is the only ephemeral root the host
+    path guard admits. The operation name also makes the file names
+    unique, so two exports requested at once no longer read and
+    overwrite one ``/tmp/_vaibify_dag.dot``.
+
+    ``dot`` is graphviz, which the container image installs and a
+    researcher's machine may not. A missing binary comes back as the
+    shell's own non-zero result and reaches the caller as the failure
+    it is, rather than an empty diagram.
+    """
+    from . import projectRoots
+    sOperationName = "dag-" + uuid.uuid4().hex[:12]
+    sScratchDirectory = projectRoots.fsResolveScratchDirectory(
+        sContainerId, sOperationName, "/tmp",
+    )
+    sDotPath = posixpath.join(sScratchDirectory, sOperationName + ".dot")
+    sOutPath = posixpath.join(
+        sScratchDirectory, sOperationName + "." + sFormat,
+    )
+    connectionDocker.fnWriteFile(
+        sContainerId, sDotPath,
+        fsBuildDagDot(dictWorkflow, dictCachedDeps).encode("utf-8"),
+    )
+    sPersistPath = posixpath.join(
+        projectRoots.fsResolveProjectRoot(sContainerId, "/workspace"),
+        ".vaibify", f"dag.{sFormat}",
     )
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sConvert
+        sContainerId,
+        f"dot -T{sFormat} {fsShellQuote(sDotPath)} "
+        f"-o {fsShellQuote(sOutPath)} && "
+        f"cp {fsShellQuote(sOutPath)} {fsShellQuote(sPersistPath)}",
     )
     if iExitCode != 0:
         return (iExitCode, sOutput)
-    baContent = connectionDocker.fbaFetchFile(
-        sContainerId, sOutPath
-    )
-    return (0, baContent)
+    return (0, connectionDocker.fbaFetchFile(sContainerId, sOutPath))
 
 
 def ftResultArchiveProject(

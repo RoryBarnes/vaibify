@@ -1149,21 +1149,41 @@ def _fsRunIntrospection(
     connectionDocker, sContainerId, sDirectory, listDataFiles,
     bScriptStochastic=False,
 ):
-    """Run introspection script in container, return parsed reports."""
+    """Run the introspection program where this resource may write it.
+
+    The program is written, executed and removed through the
+    connection, so on the host it is a real file on the researcher's
+    own machine — and the host path guard admits only the project root
+    and the host-diagnostics subtree, never ``/tmp``. Asking where
+    this resource's scratch belongs is what keeps one program serving
+    both legs.
+    """
     import secrets
+    from . import projectRoots
+    from .pipelineUtils import fsShellQuote
     sScript = _fsBuildIntrospectionScript(
         listDataFiles, sDirectory,
         bScriptStochastic=bScriptStochastic,
     )
-    sScriptPath = f"/tmp/_vaibify_introspect_{secrets.token_hex(8)}.py"
+    sOperationName = f"_vaibify_introspect_{secrets.token_hex(8)}"
+    sScriptPath = posixpath.join(
+        projectRoots.fsResolveScratchDirectory(
+            sContainerId, sOperationName, "/tmp",
+        ),
+        sOperationName + ".py",
+    )
     connectionDocker.fnWriteFile(
         sContainerId, sScriptPath, sScript.encode("utf-8"),
     )
+    # Quoted because a host scratch path descends from the
+    # researcher's home directory, whose name they chose; the
+    # container path was a literal and never needed it.
+    sQuotedPath = fsShellQuote(sScriptPath)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"python3 {sScriptPath}",
+        sContainerId, f"python3 {sQuotedPath}",
     )
     connectionDocker.ftResultExecuteCommand(
-        sContainerId, f"rm -f {sScriptPath}",
+        sContainerId, f"rm -f {sQuotedPath}",
     )
     if iExitCode != 0:
         raise RuntimeError(

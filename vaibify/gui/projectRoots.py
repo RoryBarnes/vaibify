@@ -1,4 +1,4 @@
-"""The root directory a project's files live under, resolved per resource.
+"""The roots a resource's files live under, resolved per resource.
 
 A container project's files live under the workspace volume mounted
 into the container, so ``/workspace`` is both the discovery root and
@@ -14,9 +14,20 @@ here: the sites that ask already know which root they mean (the
 workflow search root, the connect path guard's root), and threading it
 keeps this module from becoming a second authority on what those roots
 are. Only a host resource overrides it.
+
+**Ephemeral working files ask the same question about a different
+root.** A container may write a throwaway program, a credential it is
+about to hand to a keyring, or a graph description to ``/tmp``,
+because ``/tmp`` inside a container is disposable by construction. On
+the host it is neither disposable nor admitted: the host path guard
+permits exactly the project root and the host-diagnostics subtree, so
+a ``/tmp`` literal is refused there -- which is how the whole
+introspection lane came to answer 500 for a host project. That is one
+question ("which root does this resource use") with two answers, so it
+lives beside the other one rather than in a module of its own.
 """
 
-__all__ = ["fsResolveProjectRoot"]
+__all__ = ["fsResolveProjectRoot", "fsResolveScratchDirectory"]
 
 from vaibify.config import registryManager
 
@@ -53,6 +64,11 @@ def fsResolveProjectRoot(sResourceId, sContainerRoot):
     """
     if not registryManager.fbIsHostProject(sResourceId):
         return sContainerRoot
+    return _fsHostProjectDirectory(sResourceId)
+
+
+def _fsHostProjectDirectory(sResourceId):
+    """Return a host project's registered directory, or raise."""
     dictProject = registryManager.fdictGetProject(sResourceId) or {}
     sDirectory = dictProject.get("sDirectory") or ""
     if not sDirectory:
@@ -62,3 +78,40 @@ def fsResolveProjectRoot(sResourceId, sContainerRoot):
             "restored."
         )
     return sDirectory
+
+
+def fsResolveScratchDirectory(
+    sResourceId, sOperationName, sContainerScratchRoot,
+):
+    """Return the directory one operation's ephemeral files belong in.
+
+    Parameters
+    ----------
+    sResourceId : str
+        The identifier every container-scoped route already carries.
+    sOperationName : str
+        A bare name identifying this operation, unique per call where
+        two of them can overlap. On the host it names the operation's
+        own directory under the project's scratch subtree, which is
+        what the sweeper later retires by age; callers compose their
+        file name from it in both modes, so a second export cannot
+        overwrite the first one's input while it is still being read.
+    sContainerScratchRoot : str
+        The directory to answer with for anything that is not a host
+        project -- ``/tmp`` at every call site today.
+
+    Returns
+    -------
+    str
+        ``sContainerScratchRoot`` unchanged for container resources; a
+        freshly created, private (0700) operation directory under the
+        host-diagnostics subtree for a host project. That subtree is
+        one of the two roots the host path guard admits, so a write
+        there is permitted where a ``/tmp`` write is refused.
+    """
+    if not registryManager.fbIsHostProject(sResourceId):
+        return sContainerScratchRoot
+    from vaibify.host import hostScratch
+    return hostScratch.fsCreateOperationScratchDirectory(
+        _fsHostProjectDirectory(sResourceId), sOperationName,
+    )

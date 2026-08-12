@@ -4713,7 +4713,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "Connected" while every dashboard push was refused; the check now
     # resolves the same credential the push will use and reports both
     # lanes separately. Cohesive with the connectivity family here.
-    "syncDispatcher.py": 1742,
+    # +16 (2026-08-12): the two DAG exporters collapse into one
+    # renderer whose scratch and persist paths are resolved per
+    # resource. Net of the collapse it is +16 of docstring stating why
+    # a host project cannot render into /tmp or /workspace, and one
+    # fewer duplicated body.
+    "syncDispatcher.py": 1758,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -4730,7 +4735,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the interactive lane. No new responsibility.
     "pipelineRunner.py": 1500,
     "dataLoaders.py": 1222,
-    "introspectionScript.py": 1192,
+    # +20 (2026-08-12): the runner asks where this resource may write
+    # its program instead of naming /tmp, and shell-quotes the answer
+    # because a host scratch path descends from the researcher's home.
+    "introspectionScript.py": 1212,
     "testGenerator.py": 1063,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host

@@ -566,3 +566,229 @@ def testTheTestWriteFallbackRootFollowsTheMode(tmp_path):
     with pytest.raises(HTTPException) as excInfo:
         _fsResolveTestFilePath("/workspace/Step/testStep.py", "", sRoot)
     assert excInfo.value.status_code == 403
+
+
+# ── Scratch: where an ephemeral working file may be written ──────
+
+@pytest.fixture(autouse=True)
+def fixtureIsolateHostScratch(tmp_path, monkeypatch):
+    """Keep every scratch directory this module creates in tmp_path."""
+    from vaibify.host import hostScratch
+    monkeypatch.setattr(
+        hostScratch, "_S_HOST_DIAGNOSTICS_ROOT",
+        str(tmp_path / "hostDiagnostics"),
+    )
+
+
+class RecordingWriteConnection:
+    """Records the paths written and the commands run, answering JSON.
+
+    The introspection runner rejects unparseable output, so the run
+    answers an empty report; everything else answers success. Both are
+    what the real legs answer for a program that ran and found no
+    files.
+    """
+
+    def __init__(self):
+        self.listWrittenPaths = []
+        self.listCommands = []
+
+    def fnWriteFile(self, sResourceId, sPath, baContent):
+        del sResourceId, baContent
+        self.listWrittenPaths.append(sPath)
+
+    def ftResultExecuteCommand(self, sResourceId, sCommand, **kwargs):
+        del sResourceId, kwargs
+        self.listCommands.append(sCommand)
+        return 0, "[]"
+
+
+@pytest.mark.falsification
+def testAHostProjectsScratchIsSomewhereItsPathGuardAdmits(tmp_path):
+    """The resolved scratch path passes the REAL host path guard.
+
+    Not "it is under some directory": the oracle is the guard itself,
+    because the guard is what refused the ``/tmp`` literal. It admits
+    exactly the project root and the host-diagnostics subtree, so a
+    scratch directory it accepts is by construction one the connection
+    can write to.
+
+    Kills: answering the container's temporary root for a host
+    project, which is what every one of these call sites did — the
+    introspection lane answered 500 "Path escapes the project and
+    scratch roots" for the first host project that reached it.
+    """
+    from vaibify.host.hostConnection import HostConnection
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sScratchDirectory = projectRoots.fsResolveScratchDirectory(
+        S_HOST_PROJECT, "probe-operation", "/tmp",
+    )
+    sScriptPath = os.path.join(sScratchDirectory, "probe.py")
+    assert HostConnection()._fsValidateHostPath(
+        S_HOST_PROJECT, sScriptPath,
+    ) == os.path.realpath(sScriptPath)
+    assert not sScriptPath.startswith(sDirectory + os.sep), (
+        "scratch landed inside the researcher's project directory; "
+        "a throwaway program would show up as an untracked file in "
+        "their repository"
+    )
+
+
+@pytest.mark.falsification
+def testAContainerProjectsScratchStaysInTheContainerTemporaryRoot(
+    tmp_path,
+):
+    """The other direction, and it is the one with a footprint.
+
+    A container's ``/tmp`` is thrown away with the container. Sending
+    its scratch to the host-diagnostics subtree instead would write
+    the researcher's home directory for work that never left their
+    container, and — worse — hand the container a path that does not
+    exist inside it, so every write would fail where nothing failed
+    before.
+
+    Kills: dropping the mode test, so every resource is answered the
+    host subtree.
+    """
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    assert projectRoots.fsResolveScratchDirectory(
+        S_CONTAINER_PROJECT, "probe-operation", "/tmp",
+    ) == "/tmp"
+
+
+def testTheScratchDirectoryIsCreatedPrivately(tmp_path):
+    """It exists when the caller gets it, and only the owner may read it.
+
+    Scratch holds a credential on its way to a keyring and whatever a
+    diagnostic program was handed, in a directory under the
+    researcher's home that other local accounts can otherwise list.
+    """
+    _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sScratchDirectory = projectRoots.fsResolveScratchDirectory(
+        S_HOST_PROJECT, "probe-operation", "/tmp",
+    )
+    assert os.path.isdir(sScratchDirectory)
+    assert oct(os.stat(sScratchDirectory).st_mode & 0o777) == oct(0o700)
+
+
+@pytest.mark.falsification
+def testTheIntrospectionProgramIsWrittenWhereTheHostMayWriteIt(tmp_path):
+    """The lane that found this, driven end to end for a host project.
+
+    The generator writes a program, runs it and removes it, all
+    through the connection. On the host those are three real
+    operations on the researcher's machine, and the path guard admits
+    neither ``/tmp`` nor anything else outside the two roots.
+
+    Kills: the runner composing its path from a ``/tmp`` literal.
+    """
+    from vaibify.gui.introspectionScript import _fsRunIntrospection
+    _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    connection = RecordingWriteConnection()
+    _fsRunIntrospection(
+        connection, S_HOST_PROJECT, "Step", ["numbers.json"],
+    )
+    from vaibify.host.hostConnection import HostConnection
+    assert len(connection.listWrittenPaths) == 1
+    HostConnection()._fsValidateHostPath(
+        S_HOST_PROJECT, connection.listWrittenPaths[0],
+    )
+
+
+@pytest.mark.falsification
+def testTheIntrospectionProgramStillGoesToTmpInAContainer(tmp_path):
+    """The other direction: a container has no scratch subtree at all.
+
+    ``~/.vaibify`` is the HOST's directory. A container answered the
+    host subtree would be handed a path nothing inside it can create,
+    and the write would fail for every containerized project — the
+    failure mode that matters most here, because it is the mode
+    almost every user is in.
+
+    Kills: the runner resolving unconditionally to the host subtree.
+    """
+    from vaibify.gui.introspectionScript import _fsRunIntrospection
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    connection = RecordingWriteConnection()
+    _fsRunIntrospection(
+        connection, S_CONTAINER_PROJECT, "Step", ["numbers.json"],
+    )
+    assert connection.listWrittenPaths[0].startswith("/tmp/")
+
+
+class RecordingDagConnection(RecordingWriteConnection):
+    """Answers the DAG render and hands back the rendered bytes."""
+
+    def __init__(self):
+        super().__init__()
+        self.listFetchedPaths = []
+
+    def fbaFetchFile(self, sResourceId, sPath, iMaxBytes=None):
+        del sResourceId, iMaxBytes
+        self.listFetchedPaths.append(sPath)
+        return b"<svg/>"
+
+
+@pytest.mark.falsification
+def testTheDagRenderWritesAndPersistsUnderTheHostsOwnRoots(tmp_path):
+    """Both of the DAG's paths follow the mode, and they differ.
+
+    The renderer writes its DOT source to scratch and copies the
+    result into the project's own ``.vaibify`` directory. For a host
+    project the first is the diagnostics subtree and the second is the
+    researcher's repository; a ``/workspace`` literal for either one
+    is a path that does not exist on their machine.
+
+    Kills: either literal surviving — the scratch ``/tmp`` write, or
+    the ``/workspace/.vaibify`` persist target.
+    """
+    from vaibify.gui import syncDispatcher
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    connection = RecordingDagConnection()
+    syncDispatcher.ftResultGenerateDagSvg(
+        connection, S_HOST_PROJECT, {"listSteps": []},
+    )
+    from vaibify.host.hostConnection import HostConnection
+    HostConnection()._fsValidateHostPath(
+        S_HOST_PROJECT, connection.listWrittenPaths[0],
+    )
+    assert os.path.join(sDirectory, ".vaibify", "dag.svg") in (
+        connection.listCommands[0]
+    ), connection.listCommands
+
+
+@pytest.mark.falsification
+def testTheDagRenderStillUsesTheContainersOwnPaths(tmp_path):
+    """The other direction: a container renders where it always did.
+
+    Kills: resolving either path unconditionally to the host answer,
+    which would hand every containerized project a scratch directory
+    and a persist target that exist only outside it.
+    """
+    from vaibify.gui import syncDispatcher
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    connection = RecordingDagConnection()
+    syncDispatcher.ftResultGenerateDagSvg(
+        connection, S_CONTAINER_PROJECT, {"listSteps": []},
+    )
+    assert connection.listWrittenPaths[0].startswith("/tmp/")
+    assert "/workspace/.vaibify/dag.svg" in connection.listCommands[0]
+
+
+def testTwoDagExportsDoNotShareOneTemporaryName(tmp_path):
+    """The rendered input is per-call, so a second export cannot eat it.
+
+    Both renders previously wrote ``/tmp/_vaibify_dag.dot`` and read
+    ``/tmp/_vaibify_dag.svg``: two exports in flight together produced
+    one diagram twice, silently. The same fix the state files needed.
+    """
+    from vaibify.gui import syncDispatcher
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    connection = RecordingDagConnection()
+    for _iRender in range(2):
+        syncDispatcher.ftResultGenerateDagSvg(
+            connection, S_CONTAINER_PROJECT, {"listSteps": []},
+        )
+    assert len(set(connection.listWrittenPaths)) == 2, (
+        connection.listWrittenPaths
+    )

@@ -8650,6 +8650,123 @@ def _fdictEntry(sRel):
         ),
         iExpectedOccurrences=2,
     ),
+    # --- The root an EPHEMERAL file may be written under (phase C) ---
+    #
+    # A container writes a throwaway program, a graph description or a
+    # credential to /tmp, which the container throws away with itself.
+    # On the host /tmp is admitted by nothing: the path guard permits
+    # the project root and the host-diagnostics subtree and refuses
+    # everything else, so every one of these lanes answered 500 for a
+    # host project. Both directions, because the container answer has
+    # a footprint the host answer must not acquire: sending a
+    # container's scratch to ~/.vaibify writes the researcher's home
+    # for work that never left their container, and hands the
+    # container a path that does not exist inside it.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsScratchIsSomewhereItsPathGuardAdmits'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerScratchRoot\n'
+        ),
+        new='    if True:\n        return sContainerScratchRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerProjectsScratchStaysInTheContainer'
+            'TemporaryRoot'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerScratchRoot\n'
+        ),
+        new='    if False:\n        return sContainerScratchRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheIntrospectionProgramIsWrittenWhereTheHostMayWriteIt'
+        ),
+        source='vaibify/gui/introspectionScript.py',
+        # The literal this lane shipped with, which is what refused
+        # the first host project ever to generate a test.
+        old=(
+            '    sScriptPath = posixpath.join(\n'
+            '        projectRoots.fsResolveScratchDirectory(\n'
+            '            sContainerId, sOperationName, "/tmp",\n'
+            '        ),\n'
+            '        sOperationName + ".py",\n'
+            '    )\n'
+        ),
+        new='    sScriptPath = posixpath.join("/tmp", sOperationName)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheIntrospectionProgramStillGoesToTmpInAContainer'
+        ),
+        source='vaibify/gui/introspectionScript.py',
+        # The other direction: the resolver dropped and the host
+        # subtree taken unconditionally, which no container can write.
+        old=(
+            '        projectRoots.fsResolveScratchDirectory(\n'
+            '            sContainerId, sOperationName, "/tmp",\n'
+            '        ),\n'
+        ),
+        new=(
+            '        __import__("vaibify.host.hostScratch", '
+            'fromlist=["x"]).fsCreateOperationScratchDirectory(\n'
+            '            __import__("vaibify.gui.projectRoots", '
+            'fromlist=["x"])._fsHostProjectDirectory(sContainerId),\n'
+            '            sOperationName),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheDagRenderWritesAndPersistsUnderTheHostsOwnRoots'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The persist target reverts to the container volume: the
+        # rendered diagram is copied to a path the researcher's
+        # machine does not have, so the export fails after the render
+        # succeeded.
+        old=(
+            '    sPersistPath = posixpath.join(\n'
+            '        projectRoots.fsResolveProjectRoot('
+            'sContainerId, "/workspace"),\n'
+            '        ".vaibify", f"dag.{sFormat}",\n'
+            '    )\n'
+        ),
+        new=(
+            '    sPersistPath = f"/workspace/.vaibify/dag.{sFormat}"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheDagRenderStillUsesTheContainersOwnPaths'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The registry shortcut that never consults the mode, which
+        # would persist every container's diagram into the folder
+        # holding its vaibify.yml -- on the host, from inside the
+        # container, where that folder does not exist.
+        old=(
+            '        projectRoots.fsResolveProjectRoot('
+            'sContainerId, "/workspace"),\n'
+        ),
+        new=(
+            '        (__import__("vaibify.config.registryManager", '
+            'fromlist=["x"]).fdictGetProject(sContainerId) or {}).get('
+            '"sDirectory", "/workspace"),\n'
+        ),
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

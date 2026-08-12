@@ -109,7 +109,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # an assembled shell script -- became one typed read. Its exec row
 # went, two rows arrived (the read and its router delegation), and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 294
+I_UNCLASSIFIED_ROW_BUDGET = 291
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -161,7 +161,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 294
 # Its git-status batch was a shell script assembled here with
 # repository names interpolated raw; it is a typed read now, and with
 # it gone that route could finally leave the awaiting set.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 207
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 205
 
 
 # Every acquisition of a declared capability that still has no reviewed
