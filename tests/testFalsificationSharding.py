@@ -436,3 +436,49 @@ def testNoSummaryIsWrittenIntoTheCheckout():
         "these summaries land in the checkout, so a following step "
         f"sees a dirty tree and refuses: {listInsideCheckout}"
     )
+
+
+@pytest.mark.falsification
+def testEveryUploadedSummaryIsOneTheAggregatorWillFind():
+    """The workflow writes files; the summary job globs for them.
+
+    That is a contract, and nothing was checking it. When the macOS
+    exclusive step began writing ``exclusiveSummary.json``, its
+    artifact uploaded cleanly, appeared in the run, and was then
+    ignored by an aggregator globbing ``*/shardSummary.json`` — so two
+    legs read as "reported nothing" while their work had passed.
+
+    The failure is the worst available shape: everything green except
+    a summary complaining about jobs that succeeded, pointing at the
+    guard rather than the mismatch.
+
+    So the filename is canonical for every writer, the class lives in
+    the DIRECTORY instead, and this reads both halves and refuses to
+    let them drift.
+
+    Kills: a writer or an upload naming the file anything else.
+    """
+    import re
+    pathRepository = pathlib.Path(__file__).resolve().parent.parent
+    sWorkflow = (
+        pathRepository / ".github" / "workflows" / "falsification.yml"
+    ).read_text()
+    sAggregator = (
+        pathRepository / "tools" / "summarizeFalsificationShards.py"
+    ).read_text()
+
+    matchGlob = re.search(r'glob\(\s*"\*/([^"]+)"', sAggregator)
+    assert matchGlob, "the aggregator's glob could not be read"
+    sExpectedName = matchGlob.group(1)
+
+    listWritten = re.findall(r"--summary-json \"?([^\"\s]+)", sWorkflow)
+    listUploaded = re.findall(
+        r"path: \$\{\{ runner\.temp \}\}/(\S+)", sWorkflow,
+    )
+    assert listWritten and listUploaded, "nothing writes or uploads"
+    for sPath in listWritten + listUploaded:
+        assert sPath.rsplit("/", 1)[-1] == sExpectedName, (
+            f"{sPath} does not end in {sExpectedName!r}, which is what "
+            "the summary job globs for -- its leg would report nothing "
+            "while its work passed"
+        )

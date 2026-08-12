@@ -9078,8 +9078,24 @@ def _fdictEntry(sRel):
         # The summary lands in the repo root again, so the step after
         # it sees an untracked file, decides the tree is dirty, and
         # refuses -- naming the guard instead of the cause.
-        old='--summary-json "$RUNNER_TEMP/exclusiveSummary.json"',
-        new='--summary-json exclusiveSummary.json',
+        # Re-pinned 2026-08-12: the file is canonically named now
+        # and the class lives in the directory. The mutation is
+        # unchanged in meaning -- drop RUNNER_TEMP and the summary
+        # lands in the checkout, which the next step reads as dirty.
+        old='--summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"',
+        new='--summary-json "exclusive/shardSummary.json"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testEveryUploadedSummaryIsOneTheAggregatorWillFind'
+        ),
+        source='.github/workflows/falsification.yml',
+        # A writer names its file something the aggregator's glob does
+        # not match. The artifact uploads, appears in the run, and is
+        # ignored -- so a leg that passed reads as "reported nothing".
+        old='--summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"',
+        new='--summary-json "$RUNNER_TEMP/exclusiveSummary.json"',
     ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #

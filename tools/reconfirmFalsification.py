@@ -747,6 +747,9 @@ def _fnWriteShardSummary(
             for sNodeId, sStatus in listBad
         ],
     }
+    pathlib.Path(sSummaryPath).parent.mkdir(
+        parents=True, exist_ok=True,
+    )
     pathlib.Path(sSummaryPath).write_text(
         json.dumps(dictSummary, indent=2) + "\n", encoding="utf-8",
     )
@@ -873,6 +876,9 @@ def _fiReportWorkerResults(listResults, sSummaryDirectory, args, tShard):
         print(f"worker(s) {listFailed} exited nonzero; their output is "
               "above, and the entries they name are the ones to read")
     if args.sSummaryPath:
+        pathlib.Path(args.sSummaryPath).parent.mkdir(
+            parents=True, exist_ok=True,
+        )
         pathlib.Path(args.sSummaryPath).write_text(json.dumps({
             "iShard": tShard[0] if tShard else 1,
             "iShards": tShard[1] if tShard else 1,
