@@ -4187,7 +4187,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one. Not a split seam: both lanes are the kill route's single
     # responsibility, and moving one out would leave the route
     # choosing between two modules by mode — the branch, relocated.
-    "routes/pipelineRoutes.py": 3154,
+    # +14: the kill route requires the cached workflow inside the
+    # container branch, which is the only branch that reads it. The
+    # added lines are the reason, not new behaviour: requiring it up
+    # front made the stop button depend on the hub's session
+    # bookkeeping, so a restarted hub left a researcher's processes
+    # running with no way to stop them from the dashboard.
+    "routes/pipelineRoutes.py": 3168,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4515,7 +4521,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # host project; the root is now the server's answer for the same
     # reason the mode is, and sits beside it because they are learned
     # on the same entry paths and would drift if split.
-    "pipelineServer.py": 2575,
+    # +23 (2026-08-12): the figure/log/download path resolver restores
+    # a URL-stripped leading slash against the project's OWN root
+    # rather than the one container spelling it knew, which is why
+    # every host run's log answered 404. The growth is the paragraph
+    # explaining why the new parameter has no default — defaulting it
+    # would give a host project the container's answer silently, which
+    # is the defect itself.
+    "pipelineServer.py": 2598,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
