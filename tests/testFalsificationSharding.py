@@ -370,3 +370,35 @@ def testAWorkerSliceIsStillAPartitionOfItsParentShard():
             f"workers of shard {tParent} cover {len(listSeen)} of "
             f"{len(listParent)} entries"
         )
+
+
+@pytest.mark.falsification
+def testALeftoverGrandchildDoesNotFailTheRun(monkeypatch, capsys):
+    """A bytecode cache that will not delete is not a verdict.
+
+    The first CI run that ever re-confirmed the browser entries died
+    here, with ``OSError: Directory not empty``. The entry being judged
+    had already passed; what failed was removing the throwaway
+    ``PYTHONPYCACHEPREFIX`` tree, because a test's uvicorn hub or its
+    Chromium outlived the pytest process and kept writing bytecode into
+    it. Failing a whole lane over that reports a guard as undefended
+    when nothing of the sort happened.
+
+    It must still SAY so, because a process outliving its test is worth
+    knowing about even though it is not this tool's to fix.
+
+    Kills: letting the cleanup raise -- which is what
+    ``TemporaryDirectory`` does, and what shipped.
+    """
+    import shutil as moduleShutil
+    moduleTool = _fmoduleLoadTool("reconfirmFalsification.py")
+
+    def fnRefuseToRemove(sPath, *tArguments, **dictKeywords):
+        raise OSError(39, "Directory not empty", "python3.9")
+
+    monkeypatch.setattr(moduleShutil, "rmtree", fnRefuseToRemove)
+    monkeypatch.setattr(moduleTool, "shutil", moduleShutil)
+    moduleTool._fnDiscardPycachePrefix("/tmp/somePycachePrefix")
+    sOutput = capsys.readouterr().out
+    assert "left the bytecode cache" in sOutput, sOutput
+    assert "after pytest exited" in sOutput, sOutput

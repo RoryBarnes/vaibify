@@ -194,19 +194,47 @@ def _fiRunTests(listNodeIds):
     # tests skip, a skip exits 0, and this harness would score every
     # frontend mutant as having survived.
     dictEnvironment[S_REQUIRE_BROWSER_ENV] = "1"
-    with tempfile.TemporaryDirectory() as sPycachePrefix:
-        dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+    sPycachePrefix = tempfile.mkdtemp()
+    dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+    try:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *listNodeIds, "-q",
              "-p", "no:cacheprovider", "-rs"],
             cwd=PATH_TREE, capture_output=True, text=True,
             env=dictEnvironment,
         )
+    finally:
+        _fnDiscardPycachePrefix(sPycachePrefix)
     if result.returncode == 0 and _fbOutputReportsASkip(result.stdout):
         # Belt and braces for every OTHER reason a test can skip: an
         # unevaluated mutation must never be reported as a survivor.
         return I_EXIT_SKIPPED
     return result.returncode
+
+
+def _fnDiscardPycachePrefix(sPycachePrefix):
+    """Remove the bytecode cache, and never fail the run over it.
+
+    ``TemporaryDirectory`` raised ``Directory not empty`` here the
+    first time the browser entries were ever re-confirmed: a test's
+    uvicorn hub or its Chromium outlived the pytest process, kept
+    importing, and kept writing bytecode into this tree while it was
+    being removed. The entry it was judging had already passed.
+
+    Failing a whole lane because a leftover grandchild wrote one more
+    ``.pyc`` into a throwaway cache is the wrong trade. Saying nothing
+    would be the other wrong trade, so the leftover is named: it is a
+    process that outlived its test, which is worth knowing about even
+    though it is not this tool's to fix.
+    """
+    try:
+        shutil.rmtree(sPycachePrefix)
+    except OSError as error:
+        print(
+            f"note: left the bytecode cache {sPycachePrefix} behind "
+            f"({error}). Something a test started was still writing "
+            "into it after pytest exited."
+        )
 
 
 def _fbOutputReportsASkip(sOutput):

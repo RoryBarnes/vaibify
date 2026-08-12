@@ -9057,6 +9057,18 @@ def _fdictEntry(sRel):
             'iShards * iWorkers + 1)\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testALeftoverGrandchildDoesNotFailTheRun'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The cleanup raises again, the way TemporaryDirectory did, so
+        # a lane dies over a bytecode cache while every entry it was
+        # judging had already passed.
+        old='    except OSError as error:\n',
+        new='    except ValueError as error:\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub
