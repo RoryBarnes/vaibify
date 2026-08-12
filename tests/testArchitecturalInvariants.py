@@ -4665,7 +4665,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # serverLifespan (its only caller) would put a window that decides
     # whether an ownership survives in the module that merely schedules
     # the pass.
-    "sessionLifecycle.py": 1370,
+    # +1 (2026-08-12): the transfer's quarantine refusal names the
+    # record's kind and target, like the sentence directly below it
+    # already did. A refusal identified only by a hex id sends its
+    # reader to debug the guard rather than the operation.
+    "sessionLifecycle.py": 1371,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

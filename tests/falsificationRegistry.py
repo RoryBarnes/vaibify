@@ -10139,6 +10139,50 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testQuarantineRefusalNamesItsCause.py::'
+            'testTheRefusalNamesTheOperationThatCausedIt'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        # The shipped sentence, restored: a hex id and nothing else,
+        # repeated once per refused request, pointing at no operation.
+        old=(
+            '    return (\n'
+            '        f"Container \'{sContainerName}\' has a quarantined '
+            'journal record "\n'
+            '        f"({sRecordId}): a \'{sKind}\' operation on '
+            '\'{sTarget}\'"\n'
+            '        f"{sSince} was left unfinished, so no new operation '
+            'may commit "\n'
+            '        "until it is reconciled. That operation is where the '
+            'original "\n'
+            '        "failure is, not here."\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        f"Container \'{sContainerName}\' has a quarantined '
+            'journal "\n'
+            '        f"record ({sRecordId}) that needs reconciliation."\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testQuarantineRefusalNamesItsCause.py::'
+            'testTheRefusalSaysTheFailureIsElsewhere'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        # Accurate about the state, silent about where to look -- the
+        # shape that sends a reader to debug the guard.
+        old=(
+            '        "until it is reconciled. That operation is where the '
+            'original "\n'
+            '        "failure is, not here."\n'
+        ),
+        new='        "until it is reconciled."\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testNoProjectOpenRefusal.py::'
             'testTheRefusalDoesNotClaimTheCallerIsDisconnected'
         ),

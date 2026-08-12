@@ -351,6 +351,45 @@ def fnAssertDurableExecAdmitted(sContainerId, sPrimitiveName):
     _fnAssertAdmissionCurrent(admission, sContainerId, sPrimitiveName)
 
 
+def _fsDescribeQuarantiningRecord(sContainerName, sRecordId, dictRecord):
+    """Return a refusal that names the operation that caused it.
+
+    This used to say only that a record with some hash needed
+    reconciliation. That sentence is the loudest thing in the log when
+    a container is quarantined — it repeats once per refused request —
+    and it pointed at nothing: the reader learned that something had
+    failed earlier, not what.
+
+    It cost an hour of a real investigation. One failed rename of
+    ``state.json`` poisoned its record, and the twelve copies of this
+    message that followed read as the primary failure, so the
+    diagnosis started at the quarantine and worked outwards. The
+    record already held the kind, the target and the timestamp; only
+    the message was silent about them.
+
+    The three fields are journal-native — an allowlisted kind, a
+    bounded target string, an ISO stamp — so naming them leaks nothing
+    the caller could not already ask the journal for, and the journal
+    contract's ban on raw command text is untouched because no command
+    text is stored to begin with.
+    """
+    sKind = dictRecord.get("sKind") or "unknown"
+    sTarget = dictRecord.get("sTarget") or "an unrecorded target"
+    sWhen = (
+        dictRecord.get("sInFlightIso")
+        or dictRecord.get("sPreparedIso")
+        or ""
+    )
+    sSince = f", last recorded {sWhen}" if sWhen else ""
+    return (
+        f"Container '{sContainerName}' has a quarantined journal record "
+        f"({sRecordId}): a '{sKind}' operation on '{sTarget}'"
+        f"{sSince} was left unfinished, so no new operation may commit "
+        "until it is reconciled. That operation is where the original "
+        "failure is, not here."
+    )
+
+
 def fnAssertOperationAdmittedByIdentity(
     sContainerName, sOperationId, dictHolderIdentity,
 ):
@@ -381,9 +420,9 @@ def fnAssertOperationAdmittedByIdentity(
             operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
         ):
             raise MutationNotAdmittedError(
-                f"Container '{sContainerName}' has a quarantined journal "
-                f"record ({sRecordId}) that needs reconciliation; no new "
-                "operation may commit until it is reconciled."
+                _fsDescribeQuarantiningRecord(
+                    sContainerName, sRecordId, dictRecord,
+                )
             )
     dictOwnRecord = dictOperations.get(sOperationId)
     if dictOwnRecord is None:

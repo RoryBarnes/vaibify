@@ -833,8 +833,9 @@ def _fsUnadoptableJournalReason(appState, sName, recordTask):
         ):
             return (
                 f"Container '{sName}' has a quarantined journal record "
-                f"({sOperationId}); run 'vaibify reconcile' before "
-                "transferring."
+                f"({sOperationId}, kind {dictRecord['sKind']}, target "
+                f"{dictRecord.get('sTarget', 'unrecorded')}); run "
+                "'vaibify reconcile' before transferring."
             )
         if sOperationId == sAdoptableExecId:
             continue
