@@ -891,6 +891,29 @@ because on the host the agent *is* the user and `bAgentSafe` has no
 discriminator left. Each is refused at its own door with a message
 naming the mode, rather than degrading into a misleading cascade.
 
+**Which root, asked per resource.** `/workspace` was written as a
+constant wherever code needed "the root this project's files live
+under", because until host mode there was only one answer.
+`vaibify/gui/projectRoots.py` asks the question instead, and answers
+it twice over: `fsResolveProjectRoot` for a project's own files, and
+`fsResolveScratchDirectory` for the ephemeral ones — the throwaway
+program an introspection runs, the DOT source a diagram is rendered
+from, the file a credential passes through. A container's scratch is
+`/tmp`, disposable by construction; a host project's is a private
+0700 directory under the diagnostics subtree, which is the only
+ephemeral root its path guard admits. The container answer is passed
+in at every call site rather than known here, so this module never
+becomes a second authority on what those roots are.
+
+**Which keyring, likewise.** A container project's service tokens live
+in the container's keyring, reachable only from inside it and thrown
+away with it. A host project's live in the researcher's own OS
+keyring, which is where Overleaf's token already went in both modes
+because the Overleaf push has always run on the host. The dispatchers
+in `syncDispatcher` pick the store; the `InContainer` primitives
+beneath them are unchanged, because that is still exactly what they
+do.
+
 **Paths.** Every direct path argument and working directory is
 validated against exactly two roots — the project directory and the
 project's `~/.vaibify/tmp/host-diagnostics/<digest>/` scratch subtree —

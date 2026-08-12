@@ -554,3 +554,149 @@ def testTheCliRefusesAHostDestinationWhoseParentIsMissing(
     )
     assert tResult.exit_code != 0
     assert "does not exist" in tResult.output, tResult.output
+
+
+# ── The marker cycle: a test result that survives the dashboard ──
+
+_S_STEP_SCRIPT = """import json
+with open("numbers.json", "w") as fileOutput:
+    json.dump({"listValues": [1, 2, 3]}, fileOutput)
+"""
+
+_S_TEST_SOURCE = """import json
+import os
+
+
+def testNumbersAreWhatTheStepWrote():
+    sHere = os.path.dirname(os.path.abspath(__file__))
+    sRoot = os.path.dirname(sHere)
+    with open(os.path.join(sRoot, "numbers.json")) as fileInput:
+        assert json.load(fileInput)["listValues"] == [1, 2, 3]
+"""
+
+
+def _fbPytestIsInvokableAsTheDashboardInvokesIt():
+    """Return True when ``python -m pytest`` runs on this machine.
+
+    The dashboard runs a step's tests with ``python -m pytest``, and
+    on a host project that is the researcher's own interpreter. This
+    is an environment fact, not a lane that may skip itself green:
+    when it is false the machine genuinely cannot run the thing under
+    test, and the reason is printed.
+    """
+    return subprocess.run(
+        ["python", "-m", "pytest", "--version"],
+        capture_output=True,
+    ).returncode == 0
+
+
+def testAHostProjectsTestRunLeavesAMarkerTheDashboardCanRead(
+    tHostPanel,
+):
+    """The verification cycle, on the researcher's own machine.
+
+    The conftest vaibify installs into the step's tests directory is
+    what writes the marker, and the marker is what the dashboard reads
+    to colour the badge. Every path in that chain is a host path here:
+    the conftest is written into their repository, pytest runs on
+    their interpreter, and the marker lands under their
+    ``.vaibify/test_markers/``.
+
+    The oracle is the FILE, not the response: a route can report a
+    pass from the exit code alone, and the badge would still be grey
+    on the next poll because nothing was recorded.
+    """
+    if not _fbPytestIsInvokableAsTheDashboardInvokesIt():
+        pytest.skip(
+            "`python -m pytest` does not run on this machine, which is "
+            "exactly what the dashboard invokes for a host project"
+        )
+    client, sProject = tHostPanel
+    sStepDirectory = os.path.join(sProject, "QuickCheck")
+    os.makedirs(os.path.join(sStepDirectory, "tests"))
+    with open(
+        os.path.join(sStepDirectory, "makeNumbers.py"), "w",
+    ) as fileScript:
+        fileScript.write(_S_STEP_SCRIPT)
+    with open(
+        os.path.join(sStepDirectory, "tests", "testNumbers.py"), "w",
+    ) as fileTest:
+        fileTest.write(_S_TEST_SOURCE)
+    with open(
+        os.path.join(sStepDirectory, "numbers.json"), "w",
+    ) as fileOutput:
+        fileOutput.write('{"listValues": [1, 2, 3]}')
+    _fnAddStepToTheOpenWorkflow(client, sProject)
+
+    responseTests = client.post(f"/api/steps/{S_PROJECT}/0/run-tests")
+    assert responseTests.status_code == 200, responseTests.text
+    assert responseTests.json()["bPassed"] is True, responseTests.text
+    listMarkers = _flistMarkerFiles(sProject)
+    assert listMarkers, (
+        "the test run wrote no marker; the dashboard has nothing to "
+        "colour the badge from, so a passing step reads as untested"
+    )
+    with open(listMarkers[0]) as fileMarker:
+        dictMarker = json.load(fileMarker)
+    dictCategories = dictMarker.get("dictCategories") or {}
+    assert dictCategories, dictMarker
+    assert all(
+        dictCategory["iFailed"] == 0 and dictCategory["iPassed"] > 0
+        for dictCategory in dictCategories.values()
+    ), dictMarker
+    # The hashes are the half that proves this ran on the host: the
+    # conftest opened the step's real output file, on this filesystem,
+    # and recorded what it found.
+    assert dictMarker["dictOutputHashes"], dictMarker
+
+
+def _flistMarkerFiles(sProject):
+    """Return every marker file under the project's test_markers tree."""
+    sMarkerRoot = os.path.join(sProject, ".vaibify", "test_markers")
+    if not os.path.isdir(sMarkerRoot):
+        return []
+    return [
+        os.path.join(sRoot, sFile)
+        for sRoot, _listDirectories, listFiles in os.walk(sMarkerRoot)
+        for sFile in listFiles if sFile.endswith(".json")
+    ]
+
+
+def _fnAddStepToTheOpenWorkflow(client, sProject):
+    """Give the open workflow one step with a qualitative test.
+
+    Written to the project document and re-opened rather than posted
+    through the step editor: what this test is about is the marker the
+    RUN writes, and building the workflow through five route calls
+    would put four other features in front of it.
+    """
+    sWorkflowPath = os.path.join(
+        sProject, ".vaibify", "projects", "panel.json",
+    )
+    with open(sWorkflowPath) as fileWorkflow:
+        dictWorkflow = json.load(fileWorkflow)
+    dictWorkflow["listSteps"] = [{
+        "sName": "QuickCheck",
+        "sStepId": "quick-check",
+        "sDirectory": "QuickCheck",
+        "bRunEnabled": True,
+        "bPlotOnly": False,
+        "saDataCommands": ["python makeNumbers.py"],
+        "saOutputDataFiles": ["numbers.json"],
+        "saPlotCommands": [],
+        "saPlotFiles": [],
+        "dictTests": {
+            "dictQualitative": {
+                "saCommands": ["python -m pytest tests/testNumbers.py -q"],
+                "sFilePath": "QuickCheck/tests/testNumbers.py",
+            },
+            "dictQuantitative": {"saCommands": [], "sFilePath": ""},
+        },
+    }]
+    with open(sWorkflowPath, "w") as fileWorkflow:
+        json.dump(dictWorkflow, fileWorkflow)
+    responseConnect = client.post(
+        f"/api/connect/{S_PROJECT}",
+        params={"sWorkflowPath": sWorkflowPath},
+    )
+    assert responseConnect.status_code == 200, responseConnect.text
