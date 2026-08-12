@@ -8958,6 +8958,73 @@ def _fdictEntry(sRel):
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if True:\n        return\n',
     ),
+    # --- Sharding the standing negative control (2026-08-12) ---
+    #
+    # Splitting the re-kill harness across machines is a throughput
+    # change that can quietly become a weaker CLAIM. Each of these
+    # mutations is a way that happens while every job stays green.
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testEveryEntryLandsInExactlyOneShard'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The stride loses the first entry of every shard, so ~N
+        # entries are re-confirmed by nobody and every shard still
+        # reports success for the slice it did run.
+        old=(
+            '        listEvaluable[iShard - 1::iShards],\n'
+            '        listDeferred[iShard - 1::iShards],\n'
+        ),
+        new=(
+            '        listEvaluable[iShard::iShards],\n'
+            '        listDeferred[iShard::iShards],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testShardingNeverPromotesADeferredEntryIntoTheJudgedSet'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The shape that looks obviously correct: slice everything,
+        # deferred entries included. A docker_live entry then reaches
+        # a daemon-less runner, whose child demands a daemon, and the
+        # skip is reported as a broken guard.
+        old='        listEvaluable[iShard - 1::iShards],\n',
+        new=(
+            '        (listEvaluable + [t[0] for t in listDeferred])'
+            '[iShard - 1::iShards],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAMissingShardFailsTheSummaryInsteadOfBeingAddedAround'
+        ),
+        source='tools/summarizeFalsificationShards.py',
+        # Discover the shards instead of requiring them: the summary
+        # then adds up whatever arrived and calls it a total, which is
+        # a green lane for work nobody ran.
+        old=(
+            '        setMissing = set(range(1, iShards + 1)) - '
+            'set(dictShards)\n'
+        ),
+        new='        setMissing = set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAShardRunningADifferentSplitIsRefused'
+        ),
+        source='tools/summarizeFalsificationShards.py',
+        # Stop checking the denominator each shard reports. Eight
+        # shards of an eight-way split then satisfy a summary that
+        # believes it saw a four-way one, leaving half the registry
+        # unjudged.
+        old="            if dictSummary.get('iShards') != iShards:\n",
+        new='            if False:\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

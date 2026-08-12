@@ -90,6 +90,18 @@ enforceable, re-checkable guarantee:
    python tools/reconfirmFalsification.py
    ```
 
+   In CI it is **sharded across machines** — each leg splits its work
+   with `--shard I/N`, and the union of a leg's shards is that leg's
+   whole registry, so every entry is still re-confirmed on every OS and
+   Python in the matrix. A single shard says so in its own report and
+   declines the whole-registry coverage check, because a slice cannot
+   speak for the registry. The `falsification:summary` job is the only
+   place the union exists: it runs that coverage check, requires every
+   declared shard to have reported, and names any surviving mutation by
+   leg and shard so a red lane never means opening jobs one at a time.
+   Locally the flag is for machines, not people — `--only SUBSTRING` is
+   what you want when re-confirming a chunk you just wrote.
+
    Entries whose test drives a real container (`docker_live`) cannot be
    judged on a host with no Docker daemon: the harness demands a daemon
    for every run it judges, precisely so a skip is never miscounted as a
@@ -212,7 +224,7 @@ window.
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
-| `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14) |
+| `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union |
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
 | `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
 

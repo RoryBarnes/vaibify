@@ -16,6 +16,35 @@
 # representative subset (min/max Python on one Linux + one macOS) rather
 # than the full matrix. README badges are owned by the Badge phase; this
 # workflow does not touch README.
+#
+# SHARDING, and why the two operating systems are split unevenly
+# ---------------------------------------------------------------
+# The re-confirm step is the long pole: it applies one mutation and runs
+# one pytest node per registry entry, serially, and the registry only
+# grows. It passed 25 minutes, then 60, then 90 (2026-08-12), each time
+# by raising a ceiling rather than doing less work.
+#
+# Each leg now splits its slice across machines. The union of a leg's
+# shards is that leg's whole registry, so the matrix is UNCHANGED in
+# what it proves: every entry is still re-confirmed on every OS and
+# Python in the matrix. That property is not decoration — the mutant
+# that survived on 2026-08-12 survived on both Linux legs and was
+# killed on both macOS legs, so an entry that ran on only one OS would
+# have shipped the defect.
+#
+# Linux gets 8 shards and macOS gets 2, from measurement rather than
+# taste. On this repository Linux jobs start within a second of the
+# trigger, while macOS jobs queue: on the run that prompted this, the
+# twelve macOS unit cells started 38 to 60 minutes late and the second
+# macOS falsification leg waited 13. Each job also pays a fixed ~3
+# minute prefix (checkout, install, invariants, the falsification
+# suite), so past a point more shards buy queueing and setup rather
+# than speed. Two long macOS jobs also CAMP on a scarce runner; four
+# shorter ones release it sooner, which helps every other macOS lane.
+#
+# Measured on the 2026-08-12 run: prefix 3m05s, re-confirm 38m03s on
+# macOS and ~60m on the slowest Linux leg. So Linux lands near 10
+# minutes a shard and macOS near 22, against 41-62 before.
 
 name: falsification
 
@@ -25,20 +54,95 @@ on:
   workflow_dispatch:
 
 jobs:
-  falsification:
+  falsification-linux:
     # Named exactly like the tests-linux / tests-macos matrix legs, this
     # lane produced check names such as `ubuntu-24.04:python-3.14` that
     # a second workflow also produced. Requiring that name is then
     # satisfied by whichever lane reports it, so the two are not
     # independently requireable — and searching "falsification" in the
     # required-checks picker returns nothing at all.
-    name: 'falsification:${{ matrix.os }}:python-${{ matrix.python-version }}'
-    runs-on: ${{ matrix.os }}
+    name: 'falsification:ubuntu-24.04:python-${{ matrix.python-version }}:shard-${{ matrix.shard }}'
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-26]
         python-version: ["3.9", "3.14"]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      # Once per LEG, not once per shard. These two are ordinary test
+      # runs over the whole suite, so a second shard running them again
+      # would re-prove the same thing on the same interpreter and add
+      # two minutes to every job.
+      - name: Architectural invariants
+        if: matrix.shard == 1
+        timeout-minutes: 15
+        run: |
+          python -m pytest tests/testArchitecturalInvariants.py -v
+
+      - name: Falsification tests
+        if: matrix.shard == 1
+        timeout-minutes: 15
+        run: |
+          python -m pytest -m falsification -v
+
+      - name: Re-confirm falsification kills (shard ${{ matrix.shard }}/8)
+        # A shard's own ceiling, not the whole registry's. Generous
+        # against the ~10 minutes a shard measures at, because the
+        # thing this must never do is kill a run that had FINISHED --
+        # which is exactly what the 60-minute ceiling did on
+        # 2026-08-12, printing "721/721 kill-confirmed" and then
+        # failing the job two minutes later.
+        timeout-minutes: 30
+        env:
+          # The Linux runners ship a Docker daemon, so they are where
+          # the real-container entries are actually judged. Demanding
+          # the daemon here means losing it turns this lane RED rather
+          # than silently shrinking the denominator it reports against.
+          # The macOS runners have no daemon and cannot get one, so
+          # they defer those entries by name instead.
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        run: |
+          python tools/reconfirmFalsification.py \
+            --shard ${{ matrix.shard }}/8 \
+            --summary-json shardSummary.json
+
+      # `always()` because a shard that FAILED is the one the summary
+      # most needs to hear from: its survivors travel in this file and
+      # get named there, so a red lane never means opening jobs one at
+      # a time to find which slice holds the problem.
+      - name: Upload this shard's summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: shardSummary.json
+          if-no-files-found: ignore
+
+  falsification-macos:
+    name: 'falsification:macos-26:python-${{ matrix.python-version }}:shard-${{ matrix.shard }}'
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.14"]
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v5
@@ -58,56 +162,82 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Architectural invariants
+        if: matrix.shard == 1
         timeout-minutes: 15
         run: |
           python -m pytest tests/testArchitecturalInvariants.py -v
 
       - name: Falsification tests
+        if: matrix.shard == 1
         timeout-minutes: 15
         run: |
           python -m pytest -m falsification -v
 
-      - name: Re-confirm falsification kills
-        # 25 -> 60 on 2026-08-07. The step timed out rather than finding
-        # a surviving mutant: the registry grew 412 -> 559 entries during
-        # the carrier migration, and every entry applies a mutation and
-        # runs a pytest node. Measured locally at ~1.9s per entry, so
-        # ~18 minutes here and roughly double that on a hosted runner.
-        #
-        # This is a capacity limit that will be reached again -- it
-        # scales with the registry, which only grows. When it next
-        # trips, RAISE it again or shard the registry across matrix
-        # legs. Do NOT reach for `-n auto`: this harness mutates source
-        # in place, and AGENTS.md records what happened when a
-        # source-mutating tool shared a working tree -- failures in
-        # tests nobody had touched, twice misdiagnosed as flakiness.
-        #
-        # 60 -> 90 on 2026-08-12, and it tripped exactly as predicted
-        # above. The registry reached 752 entries; the ubuntu-3.14 leg
-        # printed "721/721 kill-confirmed" and was then killed about
-        # two minutes past the ceiling, so the work had FINISHED and
-        # the red said nothing about the code. That leg is the slowest
-        # of the four because it evaluates the docker_live entries the
-        # macOS runners defer AND runs roughly 35% slower than the 3.9
-        # leg beside it (47m).
-        #
-        # Raising is the symptom's fix, chosen deliberately over
-        # sharding so one leg still re-confirms the WHOLE registry --
-        # a sharded leg proves a quarter of it, and the standing
-        # negative control is the thing worth keeping. The cause is
-        # that entries are replayed serially, one worktree at a time;
-        # the durable fix is N workers with one disposable worktree
-        # each, which preserves the isolation discipline the comment
-        # above is about. Measure before doing it.
-        timeout-minutes: 90
-        env:
-          # The Linux runners ship a Docker daemon, so they are where
-          # the real-container entries are actually judged. Demanding
-          # the daemon here means losing it turns this lane RED rather
-          # than silently shrinking the denominator it reports against.
-          # The macOS runners have no daemon and cannot get one, so
-          # they defer those entries by name instead.
-          VAIBIFY_REQUIRE_DOCKER_DAEMON: >-
-            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
+      - name: Re-confirm falsification kills (shard ${{ matrix.shard }}/2)
+        timeout-minutes: 45
         run: |
-          python tools/reconfirmFalsification.py
+          python tools/reconfirmFalsification.py \
+            --shard ${{ matrix.shard }}/2 \
+            --summary-json shardSummary.json
+
+      - name: Upload this shard's summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: falsificationSummary-macos-26-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: shardSummary.json
+          if-no-files-found: ignore
+
+  falsification-summary:
+    # The claim no single shard can make. A shard judges its own slice
+    # and says so; this job is the only place the UNION exists, so it
+    # owns the two whole-registry questions: did every shard report,
+    # and does every falsification-marked test have a registry entry.
+    #
+    # It FAILS CLOSED. A shard that was cancelled, timed out, or never
+    # started uploads nothing, and summing the ones that did arrive
+    # would report a green lane for work nobody ran — the shape this
+    # repository's Lessons list already records once, when a CI step
+    # reported success for having run nothing.
+    name: 'falsification:summary'
+    needs: [falsification-linux, falsification-macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Download every shard's summary
+        uses: actions/download-artifact@v4
+        with:
+          pattern: falsificationSummary-*
+          path: shardSummaries
+
+      - name: Registry completeness
+        # Whole-registry, collection-level, and independent of any
+        # shard: every `@pytest.mark.falsification` test must have a
+        # registry entry. Each shard declines this check because a
+        # slice cannot speak for the registry; it lives here instead of
+        # nowhere.
+        run: |
+          python tools/reconfirmFalsification.py --completeness-only
+
+      - name: Add the shards up
+        run: |
+          python tools/summarizeFalsificationShards.py \
+            --directory shardSummaries \
+            --expect "ubuntu-24.04:3.9:8" \
+            --expect "ubuntu-24.04:3.14:8" \
+            --expect "macos-26:3.9:2" \
+            --expect "macos-26:3.14:2"

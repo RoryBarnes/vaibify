@@ -521,7 +521,35 @@ def _tSelectRequestedEntries(listEvaluable, listDeferred, listNeedles):
     )
 
 
-def fnReconfirmAll(listOnly=()):
+def _tSelectShard(listEvaluable, listDeferred, tShard):
+    """Narrow both partitions to one shard of a ``I/N`` split.
+
+    Applied AFTER the facility partition, for the same reason
+    ``--only`` is: a selector reaching the raw registry hands a
+    facility-gated entry to a host that lacks the facility, and its
+    skip is then reported as a broken guard.
+
+    The split is by STRIDE, not by block. Entries sit in the registry
+    grouped by the feature they defend, so consecutive ones cost
+    similar amounts and a block split would hand one shard the browser
+    entries and another the cheap unit ones. Striding interleaves
+    them, which is the closest thing to balance available without
+    timing every entry.
+
+    Both lists are split, so the union of all N shards is exactly the
+    registry — the deferred entries included, since each shard reports
+    its own slice of them and the summary job adds the slices up.
+    """
+    if tShard is None:
+        return listEvaluable, listDeferred
+    iShard, iShards = tShard
+    return (
+        listEvaluable[iShard - 1::iShards],
+        listDeferred[iShard - 1::iShards],
+    )
+
+
+def fnReconfirmAll(listOnly=(), tShard=None, sSummaryPath=""):
     """Re-confirm entries; exit nonzero on any failure or coverage gap.
 
     ``listOnly`` narrows the run to entries whose node id or source
@@ -531,9 +559,19 @@ def fnReconfirmAll(listOnly=()):
     narrowed run is NOT the standing negative control, so it declines
     to judge registry completeness and says so rather than reporting a
     clean coverage check it did not perform.
+
+    ``tShard`` is ``(I, N)`` and splits the registry across N machines
+    that each run one slice. A shard makes a WEAKER claim than a
+    narrowed run makes, not a stronger one: it judges only its slice,
+    and the standing negative control is the union of all N shards,
+    which only the summary job can see. So a shard declines the
+    completeness check too, and says which claim belongs where.
     """
-    listEvaluable, listDeferred = _tSelectRequestedEntries(
-        *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+    listEvaluable, listDeferred = _tSelectShard(
+        *_tSelectRequestedEntries(
+            *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+        ),
+        tShard=tShard,
     )
     if listOnly and not listEvaluable and not listDeferred:
         print(f"No registry entry matches {list(listOnly)}")
@@ -566,9 +604,19 @@ def fnReconfirmAll(listOnly=()):
     # the check would report a wall of phantom gaps. Announced rather
     # than silently skipped -- a check that can be skipped must say
     # what the skip reported.
-    listUncovered = [] if listOnly else _flistMarkedTestsWithoutEntry()
+    listUncovered = (
+        [] if listOnly or tShard else _flistMarkedTestsWithoutEntry()
+    )
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
+    if tShard:
+        print(
+            f"SHARD {tShard[0]} of {tShard[1]}: this leg judged its own "
+            "slice and nothing else. The standing negative control is "
+            "the UNION of all shards, which only the summary job can "
+            "see -- it is where registry completeness is checked and "
+            "where a missing shard is caught."
+        )
     if listOnly:
         print(
             f"NARROWED run (--only {' '.join(listOnly)}): this is not "
@@ -590,8 +638,85 @@ def fnReconfirmAll(listOnly=()):
               "no registry entry:")
         for sNodeId in listUncovered:
             print("  " + sNodeId)
+    if sSummaryPath:
+        _fnWriteShardSummary(
+            sSummaryPath, tShard, listResults, listBad, listDeferred,
+        )
     if listBad or listUncovered:
         sys.exit(1)
+
+
+def _fnWriteShardSummary(
+    sSummaryPath, tShard, listResults, listBad, listDeferred,
+):
+    """Write this shard's counts for the summary job to add up.
+
+    The node ids of the FAILURES travel, so the summary can name them
+    without a reader opening thirty-two job logs to find which shard
+    holds the survivor. The passes travel only as a count: they are
+    the bulk, and nothing downstream needs their names.
+    """
+    import json
+    dictSummary = {
+        "iShard": tShard[0] if tShard else 1,
+        "iShards": tShard[1] if tShard else 1,
+        "iRan": len(listResults),
+        "iKilled": len(listResults) - len(listBad),
+        "iDeferred": len(listDeferred),
+        "listSurvivors": [
+            {"sNodeId": sNodeId, "sStatus": sStatus}
+            for sNodeId, sStatus in listBad
+        ],
+    }
+    pathlib.Path(sSummaryPath).write_text(
+        json.dumps(dictSummary, indent=2) + "\n", encoding="utf-8",
+    )
+
+
+def _fiReportRegistryCompleteness():
+    """Print the coverage verdict for the whole registry; return an exit code.
+
+    No worktree and no mutation: this reads which tests carry the
+    falsification mark and which node ids the registry names, so it is
+    a collection-level question that a sharded run can answer once
+    rather than N times over slices that each see almost none of it.
+    """
+    listUncovered = _flistMarkedTestsWithoutEntry()
+    if not listUncovered:
+        print(
+            f"registry completeness: every falsification-marked test "
+            f"of {len(LIST_FALSIFICATIONS)} entries has an entry"
+        )
+        return 0
+    print(f"{len(listUncovered)} falsification-marked test(s) with no "
+          "registry entry:")
+    for sNodeId in listUncovered:
+        print("  " + sNodeId)
+    return 1
+
+
+def _tParseShardArgument(sShard):
+    """Return ``(I, N)`` from an ``I/N`` argument, or None when absent.
+
+    Refuses anything it cannot read rather than guessing, because
+    every wrong reading here is silent: a shard index past the count
+    runs NO entries and reports "0/0 kill-confirmed", which is a green
+    lane that checked nothing.
+    """
+    if not sShard:
+        return None
+    try:
+        iShard, iShards = (int(sPart) for sPart in sShard.split("/", 1))
+    except ValueError:
+        raise SystemExit(
+            f"--shard wants I/N with two integers, not {sShard!r}"
+        )
+    if iShards < 1 or not 1 <= iShard <= iShards:
+        raise SystemExit(
+            f"--shard {sShard} is out of range: I must be between 1 "
+            f"and N, and N at least 1"
+        )
+    return (iShard, iShards)
 
 
 def main():
@@ -622,7 +747,44 @@ def main():
             "standing negative control, and the run says so."
         ),
     )
+    parser.add_argument(
+        "--shard", dest="sShard", default="", metavar="I/N",
+        help=(
+            "Re-confirm only shard I of an N-way split, so N machines "
+            "can cover the registry between them. The union of the "
+            "shards is the standing negative control; a single shard "
+            "is not, and says so."
+        ),
+    )
+    parser.add_argument(
+        "--completeness-only", action="store_true",
+        help=(
+            "Run ONLY the whole-registry coverage check -- every "
+            "falsification-marked test has an entry -- and skip every "
+            "replay. For the summary job over a sharded run, where no "
+            "single shard can make that claim."
+        ),
+    )
+    parser.add_argument(
+        "--summary-json", dest="sSummaryPath", default="",
+        metavar="PATH",
+        help=(
+            "Write this run's counts and any survivors to PATH as "
+            "JSON, for a summary job to add up across shards."
+        ),
+    )
     args = parser.parse_args()
+    tShard = _tParseShardArgument(args.sShard)
+    if tShard and args.listOnly:
+        parser.error(
+            "--shard and --only answer different questions: one splits "
+            "the whole registry across machines, the other narrows it "
+            "to a chunk you are working on. Combining them would "
+            "produce a slice of a subset that nothing can reason about."
+        )
+
+    if args.completeness_only:
+        sys.exit(_fiReportRegistryCompleteness())
 
     listDirty = _flistUncommittedChanges()
     if listDirty and not args.include_local_diff:
@@ -642,7 +804,7 @@ def main():
         if args.include_local_diff:
             fnCopyLocalChangesIntoWorktree(sWorktree)
         PATH_TREE = pathlib.Path(sWorktree)
-        fnReconfirmAll(args.listOnly)
+        fnReconfirmAll(args.listOnly, tShard, args.sSummaryPath)
     finally:
         PATH_TREE = REPO
         fnRemoveDisposableWorktree(sWorktree)
