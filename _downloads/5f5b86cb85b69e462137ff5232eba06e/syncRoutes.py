@@ -50,6 +50,7 @@ from ..pipelineServer import (
     fnBumpSyncEpoch,
     fsValidatePathWithinRoot,
 )
+from ..projectRoots import fsResolveProjectRoot
 from .scriptRoutes import _fnStoreCommitHash
 
 logger = logging.getLogger("vaibify")
@@ -128,9 +129,18 @@ def _fnRequireNetworkAccess(sContainerId):
     button and waits 30 seconds for a DNS timeout before seeing a
     generic error. Audit finding F-R-08.
     """
+    from vaibify.config.registryManager import fbIsHostProject
     from vaibify.docker.containerManager import (
         fbContainerIsNetworkIsolated,
     )
+    # A host project has no container, so nothing can have sealed one.
+    # Asking anyway is not merely wasted: the probe is a `docker
+    # inspect` subprocess about a name Docker never heard of, started
+    # on the researcher's own machine outside the gated primitive
+    # every host subprocess is supposed to go through, and it costs up
+    # to its five-second timeout on every push.
+    if fbIsHostProject(sContainerId):
+        return
     if fbContainerIsNetworkIsolated(sContainerId):
         raise HTTPException(
             status_code=409,
@@ -138,72 +148,74 @@ def _fnRequireNetworkAccess(sContainerId):
         )
 
 
-def _fnValidateOverleafFilePaths(listFilePaths):
-    """Reject any file path outside WORKSPACE_ROOT or with NUL bytes.
+def _fnValidateOverleafFilePaths(listFilePaths, sContainerId):
+    """Reject any path outside this resource's root, or with NUL bytes.
 
     Raises HTTP 400 when a caller submits a path that would exfiltrate
     host files (e.g. ``/etc/passwd``) through the push or diff flow.
     The existing HTTP 403 from ``fsValidatePathWithinRoot`` is
     translated to 400 here so the GUI treats the request as
     input-validation error and surfaces a clear message.
+
+    The root is the resource's own. Measured against ``/workspace`` a
+    host project's every legitimate path is outside it, so the guard
+    refused the whole feature rather than an attack -- which is how
+    the GitHub push below was found to answer 400 for every host
+    project, before any git ran.
     """
     if listFilePaths is None:
         return
+    sProjectRoot = fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT)
     for sFilePath in listFilePaths:
-        if not isinstance(sFilePath, str) or sFilePath == "":
-            raise HTTPException(
-                status_code=400,
-                detail="File path must be a non-empty string.",
-            )
-        if "\x00" in sFilePath:
-            raise HTTPException(
-                status_code=400,
-                detail="File path must not contain null bytes.",
-            )
-        try:
-            fsValidatePathWithinRoot(sFilePath, WORKSPACE_ROOT)
-        except HTTPException as error:
-            raise HTTPException(
-                status_code=400,
-                detail="File path must be within workspace root.",
-            ) from error
+        _fnRefuseUnusablePathText(sFilePath)
+        _fnRefusePathOutsideRoot(sFilePath, sProjectRoot)
 
 
-def _fnValidateGithubPushPaths(listFilePaths, sWorkdir):
+def _fnValidateGithubPushPaths(listFilePaths, sWorkdir, sContainerId):
     """Validate paths submitted to the GitHub push endpoint.
 
     Accepts workdir-relative paths (the common case) and absolute
     paths. Each is resolved against sWorkdir before being checked
-    against WORKSPACE_ROOT so a payload like
+    against the resource's own root, so a payload like
     ``{"listFilePaths": ["../../etc/passwd"]}`` is rejected at the
     route layer, before any git subprocess runs.
     """
     if listFilePaths is None:
         return
+    sProjectRoot = fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT)
     for sFilePath in listFilePaths:
-        if not isinstance(sFilePath, str) or sFilePath == "":
-            raise HTTPException(
-                status_code=400,
-                detail="File path must be a non-empty string.",
-            )
-        if "\x00" in sFilePath:
-            raise HTTPException(
-                status_code=400,
-                detail="File path must not contain null bytes.",
-            )
-        if sFilePath.startswith("/"):
-            sAbs = sFilePath
-        else:
-            sAbs = posixpath.normpath(
-                posixpath.join(sWorkdir or WORKSPACE_ROOT, sFilePath)
-            )
-        try:
-            fsValidatePathWithinRoot(sAbs, WORKSPACE_ROOT)
-        except HTTPException as error:
-            raise HTTPException(
-                status_code=400,
-                detail="File path must be within workspace root.",
-            ) from error
+        _fnRefuseUnusablePathText(sFilePath)
+        _fnRefusePathOutsideRoot(
+            sFilePath if sFilePath.startswith("/") else posixpath.normpath(
+                posixpath.join(sWorkdir or sProjectRoot, sFilePath),
+            ),
+            sProjectRoot,
+        )
+
+
+def _fnRefuseUnusablePathText(sFilePath):
+    """Refuse a path that is not usable text at all."""
+    if not isinstance(sFilePath, str) or sFilePath == "":
+        raise HTTPException(
+            status_code=400,
+            detail="File path must be a non-empty string.",
+        )
+    if "\x00" in sFilePath:
+        raise HTTPException(
+            status_code=400,
+            detail="File path must not contain null bytes.",
+        )
+
+
+def _fnRefusePathOutsideRoot(sFilePath, sProjectRoot):
+    """Refuse a path outside the root, as a 400 rather than a 403."""
+    try:
+        fsValidatePathWithinRoot(sFilePath, sProjectRoot)
+    except HTTPException as error:
+        raise HTTPException(
+            status_code=400,
+            detail="File path must be within the project root.",
+        ) from error
 
 
 def _fnValidateOverleafTargetDirectory(sTargetDirectory):
@@ -502,7 +514,7 @@ async def _fdictHandleOverleafPushRequest(
     """End-to-end Overleaf push: flow + post-push bookkeeping."""
     dictCtx["require"](sContainerId)
     _fnRequireNetworkAccess(sContainerId)
-    _fnValidateOverleafFilePaths(request.listFilePaths)
+    _fnValidateOverleafFilePaths(request.listFilePaths, sContainerId)
     _fnValidateOverleafTargetDirectory(
         getattr(request, "sTargetDirectory", None)
     )
@@ -1333,7 +1345,9 @@ def _fnRegisterGithubPush(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
-        _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
+        _fnValidateGithubPushPaths(
+            request.listFilePaths, sWorkdir, sContainerId,
+        )
         fNow = time.monotonic()
         dictPushed = await _fdictPushToGithubUnderTheDrain(
             dictCtx, sContainerId, sWorkdir, request,
@@ -1517,7 +1531,7 @@ def _fnRegisterGithubAddFile(app, dictCtx):
             posixpath.normpath(
                 posixpath.join(sWorkdir, request.sFilePath)
             ),
-            WORKSPACE_ROOT,
+            fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
         )
         logger.info(
             "GitHub add-file requested: container=%s", sContainerId,
@@ -1657,7 +1671,7 @@ def _fnCleanupCredential(
             sZenodoInstance
         )
     try:
-        syncDispatcher.fnDeleteCredentialFromContainer(
+        syncDispatcher.fnDeleteCredentialForProject(
             connectionDocker, sContainerId, sTokenName,
         )
     except Exception:
@@ -1705,7 +1719,7 @@ def _fnDispatchStore(
         sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
             sZenodoInstance or "sandbox"
         )
-    syncDispatcher.fnStoreCredentialInContainer(
+    syncDispatcher.fnStoreCredentialForProject(
         dictCtx["docker"], sContainerId, sTokenName, sToken,
     )
 
@@ -1776,7 +1790,7 @@ def _ftSnapshotContainerCredential(
     )
     sBackupSlot = sPrimarySlot + "_backup"
     try:
-        bCopied = syncDispatcher.fbCopyCredentialInContainer(
+        bCopied = syncDispatcher.fbCopyCredentialForProject(
             dictCtx["docker"], sContainerId, sPrimarySlot, sBackupSlot,
         )
     except Exception:
@@ -1791,7 +1805,7 @@ def _fnDropContainerSnapshot(
     if not sBackupSlot:
         return
     try:
-        syncDispatcher.fnDeleteCredentialFromContainer(
+        syncDispatcher.fnDeleteCredentialForProject(
             dictCtx["docker"], sContainerId, sBackupSlot,
         )
     except Exception:
@@ -1806,7 +1820,7 @@ def _fbRestoreContainerSnapshot(
     if not sBackupSlot:
         return False
     try:
-        bRestored = syncDispatcher.fbCopyCredentialInContainer(
+        bRestored = syncDispatcher.fbCopyCredentialForProject(
             dictCtx["docker"], sContainerId, sBackupSlot, sPrimarySlot,
         )
     except Exception:
@@ -2452,7 +2466,7 @@ def _fnRegisterOverleafDiff(app, dictCtx):
     ):
         dictCtx["require"](sContainerId)
         _fnRequireNetworkAccess(sContainerId)
-        _fnValidateOverleafFilePaths(request.listFilePaths)
+        _fnValidateOverleafFilePaths(request.listFilePaths, sContainerId)
         _fnValidateOverleafTargetDirectory(request.sTargetDirectory)
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)

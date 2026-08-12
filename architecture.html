@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev952 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev964 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=6ef18177"></script>
+      <script src="_static/documentation_options.js?v=ac50e56f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1005,6 +1005,27 @@ mediates every path to the files; the agent lane does not exist,
 because on the host the agent <em>is</em> the user and <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> has no
 discriminator left. Each is refused at its own door with a message
 naming the mode, rather than degrading into a misleading cascade.</p>
+<p><strong>Which root, asked per resource.</strong> <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> was written as a
+constant wherever code needed “the root this project’s files live
+under”, because until host mode there was only one answer.
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/projectRoots.py</span></code> asks the question instead, and answers
+it twice over: <code class="docutils literal notranslate"><span class="pre">fsResolveProjectRoot</span></code> for a project’s own files, and
+<code class="docutils literal notranslate"><span class="pre">fsResolveScratchDirectory</span></code> for the ephemeral ones — the throwaway
+program an introspection runs, the DOT source a diagram is rendered
+from, the file a credential passes through. A container’s scratch is
+<code class="docutils literal notranslate"><span class="pre">/tmp</span></code>, disposable by construction; a host project’s is a private
+0700 directory under the diagnostics subtree, which is the only
+ephemeral root its path guard admits. The container answer is passed
+in at every call site rather than known here, so this module never
+becomes a second authority on what those roots are.</p>
+<p><strong>Which keyring, likewise.</strong> A container project’s service tokens live
+in the container’s keyring, reachable only from inside it and thrown
+away with it. A host project’s live in the researcher’s own OS
+keyring, which is where Overleaf’s token already went in both modes
+because the Overleaf push has always run on the host. The dispatchers
+in <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code> pick the store; the <code class="docutils literal notranslate"><span class="pre">InContainer</span></code> primitives
+beneath them are unchanged, because that is still exactly what they
+do.</p>
 <p><strong>Paths.</strong> Every direct path argument and working directory is
 validated against exactly two roots — the project directory and the
 project’s <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp/host-diagnostics/&lt;digest&gt;/</span></code> scratch subtree —

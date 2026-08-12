@@ -4294,7 +4294,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # coroutine was removed, which is why the rise is smaller than the
     # additions. **No route in this module is awaiting any longer, so
     # this entry may only fall from here.**
-    "routes/syncRoutes.py": 3067,
+    # +5 (2026-08-12): the two path validators measure against the
+    # resource's own root, and their shared refusals are named
+    # rather than written out twice.
+    # +9 (2026-08-12): the isolation gate returns for a host project
+    # instead of asking Docker about a container that does not exist.
+    "routes/syncRoutes.py": 3081,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4713,7 +4718,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "Connected" while every dashboard push was refused; the check now
     # resolves the same credential the push will use and reports both
     # lanes separately. Cohesive with the connectivity family here.
-    "syncDispatcher.py": 1742,
+    # +16 (2026-08-12): the two DAG exporters collapse into one
+    # renderer whose scratch and persist paths are resolved per
+    # resource. Net of the collapse it is +16 of docstring stating why
+    # a host project cannot render into /tmp or /workspace, and one
+    # fewer duplicated body.
+    # +103 (2026-08-12): the three credential dispatchers that pick
+    # the keyring this project uses, and the two connectivity probes
+    # that follow them. Cohesive with the credential family already
+    # here -- the container primitives beneath them are unchanged and
+    # still say what they do.
+    # +54 (2026-08-12): every program this module composes imports
+    # vaibify, keyring or requests, so each names the interpreter
+    # that has them and the directory where this resource keeps
+    # zenodoClient. Cohesive with the command building already
+    # here.
+    "syncDispatcher.py": 1915,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -4730,7 +4750,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the interactive lane. No new responsibility.
     "pipelineRunner.py": 1500,
     "dataLoaders.py": 1222,
-    "introspectionScript.py": 1192,
+    # +20 (2026-08-12): the runner asks where this resource may write
+    # its program instead of naming /tmp, and shell-quotes the answer
+    # because a host scratch path descends from the researcher's home.
+    # +2 (2026-08-12): the program runs on the interpreter that has
+    # vaibify's dependencies, which on the host is not python3.
+    "introspectionScript.py": 1214,
     "testGenerator.py": 1063,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
@@ -4904,7 +4929,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # comment carries most of it: this route is a five-second poll, and
     # the reason it may declare a mode with no carrier is that every
     # container primitive it reaches is now a declared read.
-    "routes/repoRoutes.py": 798,
+    # +19 (2026-08-12): _fsRepositoryPathFor, the one derivation of
+    # where a repository lives for THIS resource. The panel composed
+    # "/workspace/" + name in five places, so Init answered 500
+    # "mkdir: /workspace: Read-only file system" on a host project
+    # and the 500 quarantined it.
+    "routes/repoRoutes.py": 817,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:

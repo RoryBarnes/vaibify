@@ -1555,7 +1555,10 @@ def test_overleaf_push_rejects_path_outside_workspace(clientHttp):
             },
         )
     assert responseHttp.status_code == 400
-    assert "workspace" in responseHttp.json()["detail"].lower()
+    # "project root", not "workspace root": the guard measures against
+    # whichever root the resource uses, and a host project has never
+    # had a workspace to be outside of.
+    assert "project root" in responseHttp.json()["detail"].lower()
 
 
 def test_overleaf_push_rejects_dotdot_traversal(clientHttp):
@@ -2062,12 +2065,19 @@ def test_zenodo_archive_passes_zero_when_no_prior_deposit(clientHttp):
 # Path/target-directory validator helpers (non-Zenodo coverage)
 # ----------------------------------------------------------------------
 
+# Both validators measure against the ROOT their resource uses, so
+# they need a resource to ask about. An id nothing registered resolves
+# to the container root, which is what every assertion below is
+# written against; the host direction is covered where the resolver
+# is, in testHostModeProjectRoots.
+S_UNREGISTERED_CONTAINER = "cid_unregistered_for_validators"
+
 
 def test_fnValidateOverleafFilePaths_none_returns_silently():
     from vaibify.gui.routes.syncRoutes import (
         _fnValidateOverleafFilePaths,
     )
-    _fnValidateOverleafFilePaths(None)
+    _fnValidateOverleafFilePaths(None, S_UNREGISTERED_CONTAINER)
 
 
 def test_fnValidateOverleafFilePaths_rejects_empty_string():
@@ -2075,7 +2085,9 @@ def test_fnValidateOverleafFilePaths_rejects_empty_string():
         _fnValidateOverleafFilePaths,
     )
     with pytest.raises(Exception) as excInfo:
-        _fnValidateOverleafFilePaths([""])
+        _fnValidateOverleafFilePaths(
+            [""], S_UNREGISTERED_CONTAINER,
+        )
     assert excInfo.value.status_code == 400
 
 
@@ -2083,7 +2095,9 @@ def test_fnValidateGithubPushPaths_none_returns_silently():
     from vaibify.gui.routes.syncRoutes import (
         _fnValidateGithubPushPaths,
     )
-    _fnValidateGithubPushPaths(None, "/workspace/repo")
+    _fnValidateGithubPushPaths(
+        None, "/workspace/repo", S_UNREGISTERED_CONTAINER,
+    )
 
 
 def test_fnValidateGithubPushPaths_rejects_empty_string():
@@ -2091,7 +2105,9 @@ def test_fnValidateGithubPushPaths_rejects_empty_string():
         _fnValidateGithubPushPaths,
     )
     with pytest.raises(Exception) as excInfo:
-        _fnValidateGithubPushPaths([""], "/workspace/repo")
+        _fnValidateGithubPushPaths(
+            [""], "/workspace/repo", S_UNREGISTERED_CONTAINER,
+        )
     assert excInfo.value.status_code == 400
 
 
@@ -2100,7 +2116,9 @@ def test_fnValidateGithubPushPaths_rejects_non_string():
         _fnValidateGithubPushPaths,
     )
     with pytest.raises(Exception) as excInfo:
-        _fnValidateGithubPushPaths([123], "/workspace/repo")
+        _fnValidateGithubPushPaths(
+            [123], "/workspace/repo", S_UNREGISTERED_CONTAINER,
+        )
     assert excInfo.value.status_code == 400
 
 
@@ -2110,7 +2128,8 @@ def test_fnValidateGithubPushPaths_rejects_null_byte():
     )
     with pytest.raises(Exception) as excInfo:
         _fnValidateGithubPushPaths(
-            ["bad\x00name"], "/workspace/repo"
+            ["bad\x00name"], "/workspace/repo",
+            S_UNREGISTERED_CONTAINER,
         )
     assert excInfo.value.status_code == 400
 
@@ -2121,7 +2140,8 @@ def test_fnValidateGithubPushPaths_rejects_traversal_to_host_root():
     )
     with pytest.raises(Exception) as excInfo:
         _fnValidateGithubPushPaths(
-            ["../../etc/passwd"], "/workspace/repo"
+            ["../../etc/passwd"], "/workspace/repo",
+            S_UNREGISTERED_CONTAINER,
         )
     assert excInfo.value.status_code == 400
 
@@ -2131,7 +2151,8 @@ def test_fnValidateGithubPushPaths_accepts_relative_inside_workspace():
         _fnValidateGithubPushPaths,
     )
     _fnValidateGithubPushPaths(
-        ["step01/output.dat"], "/workspace/repo"
+        ["step01/output.dat"], "/workspace/repo",
+        S_UNREGISTERED_CONTAINER,
     )
 
 
@@ -2141,6 +2162,7 @@ def test_fnValidateGithubPushPaths_accepts_absolute_inside_workspace():
     )
     _fnValidateGithubPushPaths(
         ["/workspace/repo/step01/output.dat"], "/workspace/repo",
+        S_UNREGISTERED_CONTAINER,
     )
 
 
