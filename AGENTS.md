@@ -1126,6 +1126,23 @@ correct approach.
   raising it produced the first one that ever finished and immediately
   exposed seven entries that no daemon-less host can evaluate. A red
   lane nobody can read is indistinguishable from a lane that never ran.
+- **A pull request whose base is not `main` runs no CI at all.** Every
+  workflow is `on: pull_request: branches: [main]`, so a PR stacked on
+  another open branch shows a clean, empty check list — the same shape
+  as the older "a pushed branch with no PR runs no browser lane" trap,
+  and just as easy to read as a pass. Retargeting the base does not
+  trigger the workflows either; `gh pr close` then `gh pr reopen`
+  does.
+- **A git fixture inherits the machine's `init.defaultBranch`.** A
+  host-mode test that pushed `HEAD:refs/heads/main` with `-u` passed
+  on a laptop defaulting to `main` and failed all four falsification
+  legs on runners defaulting to `master`, because the production
+  `git push` was then handed a local branch and an upstream with
+  different names. Pin it with `git symbolic-ref HEAD
+  refs/heads/<name>` (works on every git version, unlike `init -b`),
+  and reproduce a divergence like this locally with
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch
+  GIT_CONFIG_VALUE_0=master` rather than pushing a guess at CI.
 
 ## Pointers
 
