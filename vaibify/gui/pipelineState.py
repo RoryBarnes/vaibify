@@ -12,7 +12,6 @@ __all__ = [
     "I_EXIT_CODE_RUNNER_DISAPPEARED",
     "S_STATE_PATH",
     "fsStatePathFor",
-    "S_STATE_PATH_TEMP",
     "fdictBuildInitialState",
     "fdictBuildStepStarted",
     "fdictBuildStepResult",
@@ -44,7 +43,7 @@ from datetime import datetime, timezone
 from ..docker.dockerConnection import fbErrorMeansContainerUnreachable
 # The leaf module, not the runner's re-export: importing the
 # runner here closes a load-time cycle.
-from .pipelineUtils import fsShellQuote
+from .pipelineUtils import fsBuildUniqueTemporaryPath, fsShellQuote
 
 _loggerState = logging.getLogger("vaibify")
 
@@ -69,12 +68,16 @@ _F_STATE_IO_TIMEOUT_SECONDS = 15.0
 I_EXIT_CODE_RUNNER_DISAPPEARED = -9999
 # The container answer, and the DEFAULT rather than the only one:
 # a host project's state lives under the directory the researcher
-# registered, because /workspace exists on nobody's laptop. The two
-# constants stay because they are the container's real paths and
-# several tests and doubles name them; the functions below ask
-# :func:`fsStatePathFor` instead of embedding either.
+# registered, because /workspace exists on nobody's laptop. The
+# constant stays because it is the container's real path and several
+# tests and doubles name it; the functions below ask
+# :func:`fsStatePathFor` instead of embedding it.
+#
+# Its ``_TEMP`` companion is GONE. The temp name is per-writer, so no
+# constant can name it, and a double that kept keying on the old
+# spelling would model a rename the product never performs -- which is
+# exactly what one of them did until this was removed.
 S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
-S_STATE_PATH_TEMP = "/workspace/.vaibify/pipeline_state.json.tmp"
 _S_STATE_RELATIVE = ".vaibify/pipeline_state.json"
 
 
@@ -185,17 +188,35 @@ def fnWriteState(connectionDocker, sContainerId, dictState):
     plus ``mv`` pattern relies on POSIX rename atomicity within the
     same filesystem so the canonical path either has the previous
     contents or the new contents — never a truncated mix.
+
+    The temp name is unique per WRITER, for the reason state.json's
+    is: the run's writer thread and the stale-heartbeat reconciler
+    both write this file, and one fixed name lets whichever renames
+    first consume the other's temp file. Here the loser said nothing
+    at all — the rename's exit code was discarded — so the update
+    simply vanished, and a lost terminal update is a pipeline the
+    dashboard shows running forever. It is reported now, at the
+    volume the callers can act on: this writer is on the run's own
+    thread and inside a carrier worker, where raising would poison a
+    journal record over a state file.
     """
     sContent = json.dumps(dictState, indent=2)
     sStatePath = fsStatePathFor(sContainerId)
-    sTempPath = sStatePath + ".tmp"
+    sTempPath = fsBuildUniqueTemporaryPath(sStatePath)
+    sQuotedTempPath = fsShellQuote(sTempPath)
     connectionDocker.fnWriteFile(
         sContainerId, sTempPath, sContent.encode("utf-8")
     )
-    connectionDocker.ftResultExecuteCommand(
+    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId,
-        f"mv {fsShellQuote(sTempPath)} {fsShellQuote(sStatePath)}",
+        f"mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || "
+        f"{{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}",
     )
+    if iExit != 0:
+        _loggerState.warning(
+            "pipeline state rename to %s failed (exit %d): %s",
+            sStatePath, iExit, sOutput,
+        )
 
 
 def fnUpdateState(connectionDocker, sContainerId, dictState, dictUpdate):
@@ -336,12 +357,20 @@ def fdictReadState(connectionDocker, sContainerId):
 
 
 def fnClearState(connectionDocker, sContainerId):
-    """Remove the pipeline state file."""
+    """Remove the pipeline state file and any temp file left beside it.
+
+    The temp suffix is a wildcard because the name is per-writer now.
+    The glob sits OUTSIDE the quotes deliberately — the state path is
+    quoted, so a directory containing a space is still one argument,
+    and only the suffix is left for the shell to expand. An
+    unmatched pattern reaches ``rm -f``, which is silent about a file
+    that is not there.
+    """
     sStatePath = fsStatePathFor(sContainerId)
     connectionDocker.ftResultExecuteCommand(
         sContainerId,
         f"rm -f {fsShellQuote(sStatePath)} "
-        f"{fsShellQuote(sStatePath + '.tmp')}",
+        f"{fsShellQuote(sStatePath)}.*.tmp",
     )
 
 

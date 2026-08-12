@@ -1,4 +1,9 @@
-"""Two savers of one state file must not destroy each other's install.
+"""Two writers of one state file must not destroy each other's install.
+
+Covers both files vaibify keeps this way — ``state.json`` through
+``stateManager`` and ``pipeline_state.json`` through ``pipelineState``.
+They are separate modules running one protocol, which is why they had
+one defect, and why their proofs live together.
 
 Driven against the REAL ``HostConnection`` — real files, a real
 ``mv``, a real journal in a temp directory — because the defect these
@@ -18,13 +23,14 @@ thread — without depending on a scheduler to reproduce it.
 one the container leg runs too; only the connection under it differs.
 """
 
+import json
 import os
 from unittest.mock import patch
 
 import pytest
 
 from vaibify.config import containerLock, operationJournal
-from vaibify.gui import stateManager
+from vaibify.gui import pipelineState, stateManager
 from vaibify.host import hostScratch
 from vaibify.host.hostConnection import HostConnection
 
@@ -196,3 +202,106 @@ def testAFailedInstallDiscardsItsOwnTemporaryFile(
             )
     assert listTempPaths
     assert not os.path.exists(listTempPaths[0]), listTempPaths[0]
+
+
+# ── pipeline_state.json: the same protocol, in the other module ──────
+
+
+class _ConnectionRunningASecondWriteAtTheRename:
+    """Delegate everything, but run a second write inside the window.
+
+    The pipeline-state writer has no seam between its temp write and
+    its rename, so the overlap is forced from the connection: the
+    first ``mv`` it is asked to perform triggers a whole second write,
+    which lands its own file and renames it away before the original
+    rename is allowed through.
+    """
+
+    def __init__(self, connectionReal, dictSecondState):
+        self._connectionReal = connectionReal
+        self._dictSecondState = dictSecondState
+        self.listSecondWrites = []
+
+    def fnWriteFile(self, *aArgs, **dictKwargs):
+        return self._connectionReal.fnWriteFile(*aArgs, **dictKwargs)
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand, *aArgs):
+        if sCommand.startswith("mv ") and not self.listSecondWrites:
+            self.listSecondWrites.append(sCommand)
+            pipelineState.fnWriteState(
+                self._connectionReal, sContainerId, self._dictSecondState,
+            )
+        return self._connectionReal.ftResultExecuteCommand(
+            sContainerId, sCommand, *aArgs,
+        )
+
+
+@pytest.mark.falsification
+def testAnOverlappingPipelineStateWriteIsNotSilentlyDropped(
+    tProjectAndConnection,
+):
+    """The run's writer and the reconciler both write this file.
+
+    The document on disk must be the one whose rename ran LAST — here
+    the run writer's, which reports the run finished. With one temp
+    name per target its rename found nothing, and because this writer
+    discarded the exit code the update vanished without a word: a
+    pipeline the dashboard shows running forever, blocking the next
+    run.
+
+    Asserting merely that SOME whole document landed would have been
+    satisfied by the bug, since the other writer's file was sitting
+    there — the first version of this test was, and the mutant walked
+    through it.
+
+    Kills: deriving the temp name from the state path alone.
+    """
+    sStatePath, connection = tProjectAndConnection
+    sPipelineStatePath = os.path.join(
+        os.path.dirname(sStatePath), "pipeline_state.json",
+    )
+    connectionOverlapping = _ConnectionRunningASecondWriteAtTheRename(
+        connection, {"bRunning": True, "sWho": "reconciler"},
+    )
+    with patch.object(
+        pipelineState, "fsStatePathFor",
+        lambda sResourceId: sPipelineStatePath,
+    ):
+        pipelineState.fnWriteState(
+            connectionOverlapping, S_RESOURCE_ID,
+            {"bRunning": False, "sWho": "run-writer"},
+        )
+    assert connectionOverlapping.listSecondWrites, (
+        "the second writer never ran; the test proves nothing"
+    )
+    with open(sPipelineStatePath) as fileState:
+        dictLanded = json.load(fileState)
+    assert dictLanded["sWho"] == "run-writer", dictLanded
+    assert dictLanded["bRunning"] is False
+
+
+def testClearingThePipelineStateSweepsAPerWriterTemporaryFile(
+    tProjectAndConnection,
+):
+    """The clear's wildcard is expanded by a REAL shell, or not at all.
+
+    A double that pops the literal tokens of an ``rm`` would answer
+    the same whether the pattern globs or is passed through as text,
+    so this one runs the command the product composes against a real
+    file on disk.
+    """
+    sStatePath, connection = tProjectAndConnection
+    sPipelineStatePath = os.path.join(
+        os.path.dirname(sStatePath), "pipeline_state.json",
+    )
+    sAbandonedTempPath = sPipelineStatePath + ".deadbeef.tmp"
+    for sPath in (sPipelineStatePath, sAbandonedTempPath):
+        with open(sPath, "w") as fileState:
+            fileState.write("{}")
+    with patch.object(
+        pipelineState, "fsStatePathFor",
+        lambda sResourceId: sPipelineStatePath,
+    ):
+        pipelineState.fnClearState(connection, S_RESOURCE_ID)
+    assert not os.path.exists(sPipelineStatePath)
+    assert not os.path.exists(sAbandonedTempPath)

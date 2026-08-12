@@ -18,7 +18,6 @@ from vaibify.gui.pipelineState import (
     I_EXIT_CODE_RUNNER_DISAPPEARED,
     I_HEARTBEAT_STALE_SECONDS,
     S_STATE_PATH,
-    S_STATE_PATH_TEMP,
     fdictReadReconciledState,
     fdictReadState,
 )
@@ -141,9 +140,13 @@ async def testReconciliationPersistsToDisk():
     dictPersisted = fdictReadState(mockDocker, "ctr1")
     assert dictPersisted["bRunning"] is False
     assert dictPersisted["iExitCode"] == I_EXIT_CODE_RUNNER_DISAPPEARED
-    assert (
-        ("ctr1", S_STATE_PATH_TEMP) not in mockDocker.dictFiles
-    ), "temp file should be renamed away after atomic write"
+    # Any temp file, not one named path: the temp name carries a
+    # per-writer suffix, so an assertion against a single constant
+    # would hold whether or not the rename ever happened.
+    assert not [
+        sPath for _sContainer, sPath in mockDocker.dictFiles
+        if sPath.endswith(".tmp")
+    ], "temp file should be renamed away after atomic write"
 
 
 @pytest.mark.asyncio

@@ -10135,6 +10135,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testConcurrentStateSaves.py::'
+            'testAnOverlappingPipelineStateWriteIsNotSilentlyDropped'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # The same defect in the other module that runs this protocol:
+        # one temp name per target, so the run's writer and the
+        # reconciler destroy each other's install.
+        old='    sTempPath = fsBuildUniqueTemporaryPath(sStatePath)\n',
+        new='    sTempPath = sStatePath + ".tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
             'testAFailedInstallDiscardsItsOwnTemporaryFile'
         ),
         source='vaibify/gui/stateManager.py',
