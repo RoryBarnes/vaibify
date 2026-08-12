@@ -269,10 +269,11 @@ def testANarrowedRunDoesNotClaimToHaveCheckedRegistryCompleteness():
     # cannot speak for coverage -- and the summary job over the union
     # owns that check instead.
     # Pinned on the EXPRESSION rather than the whole statement: the
-    # statement wraps once the condition has two terms, and a pin that
-    # breaks on reflowing teaches people to edit the pin.
+    # statement wraps once the condition has several terms, and a pin
+    # that breaks on reflowing teaches people to edit the pin. A
+    # CLASS run is partial in the same way a shard is.
     assert (
-        "[] if listOnly or tShard else _flistMarkedTestsWithoutEntry()"
+        "[] if listOnly or tShard or sClass"
     ) in sSource, (
         "a narrowed run must not run the completeness check over the "
         "whole registry"

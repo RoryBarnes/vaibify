@@ -90,10 +90,22 @@ enforceable, re-checkable guarantee:
    python tools/reconfirmFalsification.py
    ```
 
-   In CI it is **sharded across machines** — each leg splits its work
-   with `--shard I/N`, and the union of a leg's shards is that leg's
-   whole registry, so every entry is still re-confirmed on every OS and
-   Python in the matrix. A single shard says so in its own report and
+   In CI the work is divided twice: **across machines** with
+   `--shard I/N`, and **within a machine** with `--workers W`, each
+   worker a child harness holding its own disposable worktree. The
+   union of a leg's shards is that leg's whole registry, so every entry
+   is still re-confirmed on every OS and Python in the matrix.
+
+   Workers are only safe for entries that hold nothing the machine
+   owns, so the registry splits into two classes. An entry whose test
+   binds a port, opens a unix socket, drives the Docker daemon or
+   starts a browser is `exclusive` and runs in a lane of its own at one
+   worker; the other ~92% are `shareable`. Sharding across machines
+   never needed this — every runner has its own daemon and its own
+   ports — which is why the class split arrives only alongside workers.
+   The `exclusive` marker is applied per file and enforced: a file that
+   binds a port and forgets it fails the build rather than colliding
+   weeks later in an unrelated test. A single shard says so in its own report and
    declines the whole-registry coverage check, because a slice cannot
    speak for the registry. The `falsification:summary` job is the only
    place the union exists: it runs that coverage check, requires every
