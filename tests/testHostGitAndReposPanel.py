@@ -71,6 +71,14 @@ def _fsBuildHostProject(sHome):
             "listSteps": [],
         }, fileWorkflow)
     _fnRunGit(sProject, "init", "-q")
+    # Pin the branch name rather than inheriting init.defaultBranch.
+    # The push below sets an upstream, and a runner whose git still
+    # defaults to `master` gave the production `git push` a local
+    # branch and an upstream with different names — which git refuses,
+    # correctly, and which is a property of the fixture rather than of
+    # anything under test. `symbolic-ref` instead of `init -b` because
+    # it works on every git version.
+    _fnRunGit(sProject, "symbolic-ref", "HEAD", "refs/heads/main")
     _fnRunGit(sProject, "config", "user.email", "panel@example.invalid")
     _fnRunGit(sProject, "config", "user.name", "Panel Lane")
     _fnRunGit(sProject, "add", "-A")
