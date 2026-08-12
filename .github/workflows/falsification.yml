@@ -189,6 +189,18 @@ jobs:
         run: |
           python -m pytest -m falsification -v
 
+      # Both classes in ONE job, which is the whole point of this
+      # shape. A separate macOS exclusive job took the count back to
+      # four against a concurrency of three, and the queue it created
+      # (7 to 14 minutes, measured) cost more than the three minutes
+      # of work it contained.
+      - name: Re-confirm (exclusive, 1 worker)
+        timeout-minutes: 20
+        run: |
+          python tools/reconfirmFalsification.py \
+            --class exclusive \
+            --summary-json exclusiveSummary.json
+
       - name: Re-confirm (shareable, 4 workers)
         timeout-minutes: 45
         run: |
@@ -197,7 +209,18 @@ jobs:
             --workers 4 \
             --summary-json shardSummary.json
 
-      - name: Upload this leg's summary
+      # Two artifacts from one job, named exactly as the summary
+      # expects them. It cares that each class reported, never which
+      # job did the reporting.
+      - name: Upload this leg's exclusive summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: falsificationSummary-macos-26-${{ matrix.python-version }}-exclusive-1
+          path: exclusiveSummary.json
+          if-no-files-found: ignore
+
+      - name: Upload this leg's shareable summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -217,12 +240,14 @@ jobs:
   # Playwright into a red lane rather than a smaller denominator.
   # ---------------------------------------------------------------
   falsification-exclusive:
-    name: 'falsification:exclusive:${{ matrix.os }}:python-${{ matrix.python-version }}'
-    runs-on: ${{ matrix.os }}
+    # Linux only. macOS runs its exclusive entries inside its own
+    # shareable job, because a fourth macOS job queues behind a
+    # concurrency of three and the wait dwarfs the work.
+    name: 'falsification:exclusive:ubuntu-24.04:python-${{ matrix.python-version }}'
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-26]
         python-version: ["3.9", "3.14"]
 
     steps:
@@ -245,7 +270,6 @@ jobs:
       # Linux only, matching browser.yml's own single-cell lane: the
       # browser entries are a Linux claim there and stay one here.
       - name: Install the browser
-        if: startsWith(matrix.os, 'ubuntu')
         run: |
           python -m pip install -e ".[browser]"
           python -m playwright install --with-deps chromium
@@ -253,10 +277,8 @@ jobs:
       - name: Re-confirm (exclusive, 1 worker)
         timeout-minutes: 45
         env:
-          VAIBIFY_REQUIRE_DOCKER_DAEMON: >-
-            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
-          VAIBIFY_REQUIRE_BROWSER: >-
-            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+          VAIBIFY_REQUIRE_BROWSER: '1' 
         run: |
           python tools/reconfirmFalsification.py \
             --class exclusive \
@@ -266,7 +288,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: falsificationSummary-${{ matrix.os }}-${{ matrix.python-version }}-exclusive-1
+          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-exclusive-1
           path: shardSummary.json
           if-no-files-found: ignore
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from types import SimpleNamespace
 
 from vaibify.gui import pipelineServer
@@ -148,7 +149,21 @@ class _FakeDockerForSweep:
 
 
 def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
-    """The background loop ticks > once and removes stale entries each tick."""
+    """The background loop ticks > once and removes stale entries each tick.
+
+    The property is "it ticks more than once", not "it ticks within
+    eighty milliseconds". This slept for a fixed 0.08s against a 0.02s
+    interval -- a four-tick margin -- and a loaded macOS runner missed
+    it, failing with ``assert 1 >= 2`` about a loop that was working.
+    Waiting for the condition keeps the claim and drops the bet on
+    scheduling; the deadline is generous because a slow tick is not
+    the failure this guards, while no tick at all still fails loudly.
+
+    Nineteen other tests in this suite still sleep a fixed span and
+    assert on what happened during it. They are the same latent flake
+    and are not fixed here, because each one needs its own judgement
+    about what it is really waiting for.
+    """
     fakeDocker = _FakeDockerForSweep(["alive"])
     dictCtx = {
         "docker": fakeDocker,
@@ -173,8 +188,10 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
     async def fnDrive():
         contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
-        # Let the loop tick at least twice before shutdown.
-        await asyncio.sleep(0.08)
+        fDeadline = time.monotonic() + 10.0
+        while (fakeDocker.iListCalls < 2
+                and time.monotonic() < fDeadline):
+            await asyncio.sleep(0.01)
         await contextLifespan.__aexit__(None, None, None)
     asyncio.run(fnDrive())
 
