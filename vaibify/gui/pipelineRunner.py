@@ -39,6 +39,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
+    fsBuildUniqueTemporaryPath,
     fbStepIsInteractive,
     fsLabelFromStepIndex,
     fiStepIndexFromLabel,

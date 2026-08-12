@@ -209,8 +209,19 @@ def _fsBakPathFor(sStatePath):
 
 
 def _fsTmpPathFor(sStatePath):
-    """Return the sibling ``.tmp`` path used during atomic write."""
-    return sStatePath + ".tmp"
+    """Return a WRITER-UNIQUE sibling ``.tmp`` path for the atomic write.
+
+    The name used to be the state path plus ``.tmp``, which two
+    concurrent savers share. A step edit saves under the drain while
+    the file poll saves from the event loop and the run saves from its
+    own thread; whichever renamed first consumed the other's temp file,
+    and the loser's ``mv`` failed against a path that no longer
+    existed. On the host leg that surfaced as a 500 on a step edit and
+    then a quarantined project, because a half-finished write poisons
+    the journal record — correctly, for a write that really did fail.
+    """
+    from .pipelineUtils import fsBuildUniqueTemporaryPath
+    return fsBuildUniqueTemporaryPath(sStatePath)
 
 
 def _fnQuarantineCorruptStateFile(
@@ -328,11 +339,19 @@ def _fnCheckpointPriorState(
 def _fnAtomicInstallTempFile(
     connectionDocker, sContainerId, sTempPath, sStatePath,
 ):
-    """POSIX-atomic rename of state.json.tmp over state.json."""
+    """POSIX-atomic rename of the temp file over state.json.
+
+    A failed rename discards the temp file in the SAME command, and
+    keeps the rename's own exit code for the diagnosis. The temp name
+    is unique per writer, so nothing reclaims an abandoned one the way
+    the next save used to overwrite the old fixed name — and this is
+    the only path that can abandon one.
+    """
     from .pipelineUtils import fsShellQuote
+    sQuotedTempPath = fsShellQuote(sTempPath)
     sCommand = (
-        f"mv -f {fsShellQuote(sTempPath)} "
-        f"{fsShellQuote(sStatePath)}"
+        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)} || "
+        f"{{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}"
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,

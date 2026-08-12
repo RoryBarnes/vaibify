@@ -10108,4 +10108,48 @@ def _fdictEntry(sRel):
         old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
         new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testAnOverlappingSaveDoesNotBreakTheOtherOnesInstall'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # The shipped defect, restored: one temp name per TARGET rather
+        # than per WRITER. Two savers then share it and the second's
+        # rename fails against a file the first already consumed.
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new='    return f"{sTargetPath}.tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testTheOverlappingSaveLeavesAWholeReadableStateFile'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # "Why build a random uuid on every save?" -- a machine-derived
+        # suffix reads as unique and is unique against another machine
+        # only. The two savers are inside ONE hub.
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new='    return f"{sTargetPath}.{uuid.getnode():x}.tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testAFailedInstallDiscardsItsOwnTemporaryFile'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # A per-writer temp name is never reclaimed by the next save,
+        # so a failed install that walks away leaves one behind for
+        # good -- and one more per failure. The mutation is the rename
+        # as it was written before the discard rode along with it.
+        old=(
+            '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)} '
+            '|| "\n'
+            '        f"{{ iStatus=$?; rm -f {sQuotedTempPath}; '
+            'exit $iStatus; }}"\n'
+        ),
+        new=(
+            '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)}"\n'
+        ),
+    ),
 ]
