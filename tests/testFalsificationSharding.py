@@ -524,3 +524,4 @@ def testConcurrentWorktreesDoNotCollideOnOneName():
         f"two worktrees share a leaf name, so git must disambiguate "
         f"them and concurrent workers race: {listLeafNames}"
     )
+
