@@ -429,11 +429,41 @@ def fdictStepFromRequest(request):
     )
 
 
+# The refusal a caller can act on: this session holds the resource but
+# has no project open in it, which is an ordinary state — the
+# no-workflow view is entered on purpose — not a lost connection.
+S_REFUSAL_NO_PROJECT_OPEN = "no-project-open"
+
+
+def _fnRefuseWithNoProjectOpen(sContainerId):
+    """Raise the 404 that says which of two things is actually missing.
+
+    This said "Not connected to container", which is false twice over.
+    The caller IS connected — ``/api/connect`` answered 200 and minted
+    the lease it is presenting — and a host project has no container to
+    be connected to, so a researcher who read the message went looking
+    for a Docker problem they do not have.
+
+    What is missing is a PROJECT open in this session. The dashboard
+    reaches this rarely, because its no-workflow view does not offer
+    the controls that need one; the in-container agent reaches it
+    whenever it acts while the researcher has none open, and the
+    message is the only thing it gets.
+    """
+    raise HTTPException(404, {
+        "sMessage": (
+            f"No project is open in '{sContainerId}' for this session. "
+            "Open one first — nothing is wrong with the connection."
+        ),
+        "sRefusal": S_REFUSAL_NO_PROJECT_OPEN,
+    })
+
+
 def fdictRequireWorkflow(dictWorkflowCache, sContainerId):
-    """Return cached workflow or raise 404."""
+    """Return the open project's workflow, or refuse saying so."""
     dictWorkflow = dictWorkflowCache.get(sContainerId)
     if not dictWorkflow:
-        raise HTTPException(404, "Not connected to container")
+        _fnRefuseWithNoProjectOpen(sContainerId)
     return dictWorkflow
 
 
@@ -2328,10 +2358,17 @@ def __getattr__(sName):
 
 
 def fsRequireWorkflowPath(dictPaths, sContainerId):
-    """Return workflow path or raise 404."""
+    """Return the open project's path, or refuse saying so.
+
+    The same refusal as :func:`fdictRequireWorkflow` and deliberately
+    the same shape: the two caches are written together by the connect
+    handler, so a caller that finds one empty finds the other empty,
+    and two different sentences for one state would send the same
+    researcher to two different explanations.
+    """
     sPath = dictPaths.get(sContainerId)
     if not sPath:
-        raise HTTPException(404, "Not connected to container")
+        _fnRefuseWithNoProjectOpen(sContainerId)
     return sPath
 
 

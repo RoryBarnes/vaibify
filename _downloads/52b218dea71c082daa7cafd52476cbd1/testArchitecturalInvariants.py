@@ -4528,7 +4528,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # explaining why the new parameter has no default — defaulting it
     # would give a host project the container's answer silently, which
     # is the defect itself.
-    "pipelineServer.py": 2598,
+    # +37 (2026-08-12): the "not connected" refusal became one that
+    # states which of two things is missing. It sits here because both
+    # require-helpers raise it and they live here; the growth is the
+    # paragraph recording that the old sentence was false twice over —
+    # the caller IS connected, and a host project has no container to
+    # be connected to.
+    "pipelineServer.py": 2635,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4659,7 +4665,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # serverLifespan (its only caller) would put a window that decides
     # whether an ownership survives in the module that merely schedules
     # the pass.
-    "sessionLifecycle.py": 1370,
+    # +1 (2026-08-12): the transfer's quarantine refusal names the
+    # record's kind and target, like the sentence directly below it
+    # already did. A refusal identified only by a hex id sends its
+    # reader to debug the guard rather than the operation.
+    "sessionLifecycle.py": 1371,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5237,4 +5247,53 @@ def testShippedFrontendCarriesNoPersonalContactDetails():
     assert listOffenders == [], (
         "Personal contact details in shipped frontend source:\n  "
         + "\n  ".join(listOffenders)
+    )
+
+
+# A temp-then-rename whose temp name is derived from the TARGET alone
+# assumes there is only ever one writer. Where two overlap, the first
+# to rename consumes the file the second is about to rename, and the
+# second's install fails against a path that no longer exists. That
+# shipped: two savers of ``state.json`` — a step edit under the drain,
+# the file poll on the event loop, the run on its own thread — and the
+# loser's OSError poisoned a journal record and quarantined the whole
+# project (fixed 2026-08-12, `pipelineUtils.fsBuildUniqueTemporaryPath`).
+#
+# The budget is the remaining unaudited sites and MAY ONLY FALL. It is
+# not a to-do list to clear mechanically: each one needs its own
+# judgement about whether two writers can overlap there, and
+# ``mtimeCache``'s two are documented as deliberately benign (a cache
+# whose racing writers each leave a valid file, with the failure
+# swallowed). What the budget forbids is a NEW one appearing unnoticed.
+I_FIXED_TEMPORARY_NAME_BUDGET = 7
+
+_REGEX_FIXED_TEMPORARY_NAME = re.compile(r'\+\s*"\.tmp"')
+
+
+def testFixedTemporaryNamesDoNotSpread():
+    """Count the temp names derived from their target alone.
+
+    Deliberately a COUNT and not a ban. Banning would force six edits
+    in modules whose concurrency nobody has examined, and an unexamined
+    edit to an atomic-write path is a worse trade than a documented
+    ratchet — three of these are in ``config`` and cannot import the
+    shared helper without inverting the layering.
+
+    Fixing one lowers the constant in the same commit, which is the
+    same contract the style and mutation inventories carry.
+    """
+    listSites = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        for iLine, sLine in enumerate(
+            fsReadSource(pathFile).splitlines(), 1
+        ):
+            if _REGEX_FIXED_TEMPORARY_NAME.search(sLine):
+                listSites.append(
+                    f"{pathFile.relative_to(REPO_ROOT)}:{iLine}"
+                )
+    assert len(listSites) <= I_FIXED_TEMPORARY_NAME_BUDGET, (
+        "A new fixed-name temp file appeared. Derive it with "
+        "pipelineUtils.fsBuildUniqueTemporaryPath, or lower "
+        "I_FIXED_TEMPORARY_NAME_BUDGET if you removed one:\n  "
+        + "\n  ".join(listSites)
     )
