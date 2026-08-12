@@ -713,7 +713,15 @@ def testTheIntrospectionProgramStillGoesToTmpInAContainer(tmp_path):
     _fsRunIntrospection(
         connection, S_CONTAINER_PROJECT, "Step", ["numbers.json"],
     )
-    assert connection.listWrittenPaths[0].startswith("/tmp/")
+    # The PARENT is /tmp, not merely a prefix of it. A prefix check let
+    # this mutant survive on Linux, where pytest's own temp directory
+    # lives under /tmp: the host answer this test exists to reject
+    # started with "/tmp/" too, so the assertion was satisfied by the
+    # wrong cause. The scratch answer is nested three levels deeper and
+    # can never have /tmp as its parent.
+    assert os.path.dirname(
+        connection.listWrittenPaths[0],
+    ) == "/tmp", connection.listWrittenPaths
 
 
 class RecordingDagConnection(RecordingWriteConnection):
@@ -771,7 +779,9 @@ def testTheDagRenderStillUsesTheContainersOwnPaths(tmp_path):
     syncDispatcher.ftResultGenerateDagSvg(
         connection, S_CONTAINER_PROJECT, {"listSteps": []},
     )
-    assert connection.listWrittenPaths[0].startswith("/tmp/")
+    assert os.path.dirname(
+        connection.listWrittenPaths[0],
+    ) == "/tmp", connection.listWrittenPaths
     assert "/workspace/.vaibify/dag.svg" in connection.listCommands[0]
 
 
