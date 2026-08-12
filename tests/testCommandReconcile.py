@@ -30,6 +30,12 @@ S_PROJECT = "demo"
 I_HUB_PORT = 8123
 
 
+# This file binds a real port or unix socket, so two of its tests
+# on one machine contend however isolated their source trees are.
+# The re-kill harness keeps them out of its parallel workers.
+pytestmark = pytest.mark.exclusive
+
+
 @pytest.fixture(autouse=True)
 def fixtureIsolateJournalAndLockDirs(tmp_path, monkeypatch):
     """Redirect ~/.vaibify/journal and ~/.vaibify/locks to tmp_path."""

@@ -491,6 +491,50 @@ def _tPartitionRegistryForThisHost():
     )
 
 
+S_CLASS_EXCLUSIVE = "exclusive"
+S_CLASS_SHAREABLE = "shareable"
+
+# The markers that mean "this entry holds something the MACHINE owns".
+# `browser` spins a real uvicorn hub and a real Chromium; `docker_live`
+# drives a real container through one daemon; `exclusive` is the file
+# marker for a bound port or unix socket. Two of any of them on one
+# machine contend however isolated their source trees are -- which is
+# the whole reason the worker lane must never be handed one.
+#
+# Sharding across MACHINES does not need this: every runner has its own
+# daemon, its own ports and its own browser. Workers within a machine
+# do, and that is the distinction the class split exists to hold.
+T_EXCLUSIVE_MARKERS = ("exclusive", "browser", "docker_live")
+
+
+def _fsetSelectExclusiveNodeIds():
+    """Return the node ids that must not run beside another of their kind."""
+    setNodeIds = set()
+    for sMarker in T_EXCLUSIVE_MARKERS:
+        setNodeIds |= fsetSelectNodeIdsCarryingMarker(sMarker)
+    return setNodeIds
+
+
+def _tSelectContentionClass(listEvaluable, listDeferred, sClass):
+    """Narrow both partitions to one contention class.
+
+    Applied AFTER the facility partition, exactly as ``--only`` and
+    ``--shard`` are: a class filter reaching the raw registry would
+    hand a facility-gated entry to a host that lacks the facility and
+    report the skip as a broken guard.
+    """
+    if not sClass:
+        return listEvaluable, listDeferred
+    setExclusive = _fsetSelectExclusiveNodeIds()
+    bWantExclusive = sClass == S_CLASS_EXCLUSIVE
+    return (
+        [e for e in listEvaluable
+         if (e.nodeid in setExclusive) is bWantExclusive],
+        [(e, sPhrase) for e, sPhrase in listDeferred
+         if (e.nodeid in setExclusive) is bWantExclusive],
+    )
+
+
 def _fbEntryMatchesAnyNeedle(entry, listNeedles):
     """Return True when a --only needle names this entry."""
     return any(
@@ -549,7 +593,9 @@ def _tSelectShard(listEvaluable, listDeferred, tShard):
     )
 
 
-def fnReconfirmAll(listOnly=(), tShard=None, sSummaryPath=""):
+def fnReconfirmAll(
+    listOnly=(), tShard=None, sSummaryPath="", sClass="",
+):
     """Re-confirm entries; exit nonzero on any failure or coverage gap.
 
     ``listOnly`` narrows the run to entries whose node id or source
@@ -568,8 +614,12 @@ def fnReconfirmAll(listOnly=(), tShard=None, sSummaryPath=""):
     completeness check too, and says which claim belongs where.
     """
     listEvaluable, listDeferred = _tSelectShard(
-        *_tSelectRequestedEntries(
-            *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+        *_tSelectContentionClass(
+            *_tSelectRequestedEntries(
+                *_tPartitionRegistryForThisHost(),
+                listNeedles=list(listOnly),
+            ),
+            sClass=sClass,
         ),
         tShard=tShard,
     )
@@ -605,7 +655,8 @@ def fnReconfirmAll(listOnly=(), tShard=None, sSummaryPath=""):
     # than silently skipped -- a check that can be skipped must say
     # what the skip reported.
     listUncovered = (
-        [] if listOnly or tShard else _flistMarkedTestsWithoutEntry()
+        [] if listOnly or tShard or sClass
+        else _flistMarkedTestsWithoutEntry()
     )
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
@@ -695,6 +746,128 @@ def _fiReportRegistryCompleteness():
     return 1
 
 
+def _tSubShardForWorker(tShard, iWorker, iWorkers):
+    """Return the ``(I, N)`` a worker runs, given its parent's shard.
+
+    A worker takes a slice of a slice, and the arithmetic has to be a
+    partition or the whole scheme silently drops entries. Shard ``i``
+    of ``N`` is every index congruent to ``i-1`` modulo ``N``; the
+    workers split it into ``i + N*(w-1)`` of ``N*W``, whose union is
+    exactly the parent's residue class again, because
+    ``(i-1 + N*(w-1)) mod N == i-1`` for every ``w``.
+    """
+    iShard, iShards = tShard or (1, 1)
+    return (iShard + iShards * (iWorker - 1), iShards * iWorkers)
+
+
+def _fiRunWorkersAndSummarize(args, tShard):
+    """Run W child harnesses concurrently, one worktree each; return an exit code.
+
+    Child PROCESSES rather than threads, because the harness tracks the
+    tree it is mutating in a module global and two threads would share
+    it -- which is the shape of the bug this repository already has a
+    Lessons entry about, one working tree and two writers.
+
+    Each child is an ordinary invocation of this tool, so the isolation
+    it gets is the isolation that has been exercised all along: its own
+    disposable worktree, checked out from HEAD.
+    """
+    import concurrent.futures
+    import tempfile
+    with tempfile.TemporaryDirectory() as sSummaryDirectory:
+        listCommands = [
+            (iWorker, _flistBuildWorkerCommand(
+                args, _tSubShardForWorker(
+                    tShard, iWorker, args.iWorkers,
+                ),
+                os.path.join(
+                    sSummaryDirectory, f"worker{iWorker}.json",
+                ),
+            ))
+            for iWorker in range(1, args.iWorkers + 1)
+        ]
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=args.iWorkers,
+        ) as executor:
+            listResults = list(executor.map(
+                lambda t: (t[0], _tRunOneWorker(*t)), listCommands,
+            ))
+        return _fiReportWorkerResults(
+            listResults, sSummaryDirectory, args, tShard,
+        )
+
+
+def _flistBuildWorkerCommand(args, tSubShard, sSummaryPath):
+    """Return the argv for one worker's child harness."""
+    listCommand = [
+        sys.executable, os.path.abspath(__file__),
+        "--shard", f"{tSubShard[0]}/{tSubShard[1]}",
+        "--summary-json", sSummaryPath,
+    ]
+    if args.sClass:
+        listCommand += ["--class", args.sClass]
+    if args.include_local_diff:
+        listCommand.append("--include-local-diff")
+    return listCommand
+
+
+def _tRunOneWorker(iWorker, listCommand):
+    """Run one worker to completion; return ``(returncode, output)``."""
+    del iWorker
+    processWorker = subprocess.run(
+        listCommand, cwd=REPO, capture_output=True, text=True,
+    )
+    return (processWorker.returncode, processWorker.stdout
+            + processWorker.stderr)
+
+
+def _fiReportWorkerResults(listResults, sSummaryDirectory, args, tShard):
+    """Print every worker's output in order, then the combined verdict."""
+    import json
+    iRan = iKilled = iDeferred = 0
+    for iWorker, (iCode, sOutput) in listResults:
+        print(f"----- worker {iWorker} (exit {iCode}) -----")
+        print(sOutput.rstrip())
+        pathSummary = pathlib.Path(
+            sSummaryDirectory, f"worker{iWorker}.json",
+        )
+        if not pathSummary.exists():
+            continue
+        dictSummary = json.loads(pathSummary.read_text(encoding="utf-8"))
+        iRan += dictSummary["iRan"]
+        iKilled += dictSummary["iKilled"]
+        iDeferred += dictSummary["iDeferred"]
+    listFailed = [i for i, (iCode, _s) in listResults if iCode != 0]
+    print(f"\n{iKilled}/{iRan} kill-confirmed across "
+          f"{len(listResults)} workers"
+          + (f", {iDeferred} not evaluated" if iDeferred else ""))
+    if listFailed:
+        print(f"worker(s) {listFailed} exited nonzero; their output is "
+              "above, and the entries they name are the ones to read")
+    if args.sSummaryPath:
+        pathlib.Path(args.sSummaryPath).write_text(json.dumps({
+            "iShard": tShard[0] if tShard else 1,
+            "iShards": tShard[1] if tShard else 1,
+            "iRan": iRan, "iKilled": iKilled, "iDeferred": iDeferred,
+            "listSurvivors": _flistCollectWorkerSurvivors(
+                sSummaryDirectory,
+            ),
+        }, indent=2) + "\n", encoding="utf-8")
+    return 1 if listFailed else 0
+
+
+def _flistCollectWorkerSurvivors(sSummaryDirectory):
+    """Return every survivor any worker reported, for the parent summary."""
+    import json
+    listSurvivors = []
+    for pathSummary in sorted(
+        pathlib.Path(sSummaryDirectory).glob("worker*.json"),
+    ):
+        dictSummary = json.loads(pathSummary.read_text(encoding="utf-8"))
+        listSurvivors.extend(dictSummary.get("listSurvivors", []))
+    return listSurvivors
+
+
 def _tParseShardArgument(sShard):
     """Return ``(I, N)`` from an ``I/N`` argument, or None when absent.
 
@@ -757,6 +930,26 @@ def main():
         ),
     )
     parser.add_argument(
+        "--class", dest="sClass", default="",
+        choices=[S_CLASS_EXCLUSIVE, S_CLASS_SHAREABLE],
+        help=(
+            "Run only one contention class. `exclusive` entries hold "
+            "something the machine owns -- a port, a socket, the "
+            "Docker daemon, a browser -- so they get a lane to "
+            "themselves; `shareable` entries hold nothing and may run "
+            "under workers."
+        ),
+    )
+    parser.add_argument(
+        "--workers", dest="iWorkers", type=int, default=1,
+        metavar="W",
+        help=(
+            "Run W child harnesses concurrently, each in its own "
+            "disposable worktree. Only safe for the `shareable` class, "
+            "and refused without it."
+        ),
+    )
+    parser.add_argument(
         "--completeness-only", action="store_true",
         help=(
             "Run ONLY the whole-registry coverage check -- every "
@@ -775,6 +968,19 @@ def main():
     )
     args = parser.parse_args()
     tShard = _tParseShardArgument(args.sShard)
+    if args.iWorkers > 1 and args.sClass != S_CLASS_SHAREABLE:
+        parser.error(
+            "--workers is only safe for --class shareable. The "
+            "exclusive entries hold a port, a socket, the Docker "
+            "daemon or a browser, and two of those on one machine "
+            "contend however isolated their source trees are."
+        )
+    if args.iWorkers > 1 and args.listOnly:
+        parser.error(
+            "--workers and --only do not compose: a narrowed run is "
+            "already short, and slicing it further produces workers "
+            "with nothing to do."
+        )
     if tShard and args.listOnly:
         parser.error(
             "--shard and --only answer different questions: one splits "
@@ -799,12 +1005,17 @@ def main():
             print("  " + sLine, file=sys.stderr)
         sys.exit(2)
 
+    if args.iWorkers > 1:
+        sys.exit(_fiRunWorkersAndSummarize(args, tShard))
+
     sWorktree = fsCreateDisposableWorktree()
     try:
         if args.include_local_diff:
             fnCopyLocalChangesIntoWorktree(sWorktree)
         PATH_TREE = pathlib.Path(sWorktree)
-        fnReconfirmAll(args.listOnly, tShard, args.sSummaryPath)
+        fnReconfirmAll(
+            args.listOnly, tShard, args.sSummaryPath, args.sClass,
+        )
     finally:
         PATH_TREE = REPO
         fnRemoveDisposableWorktree(sWorktree)
