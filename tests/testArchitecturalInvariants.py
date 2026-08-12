@@ -5300,6 +5300,7 @@ I_FIXED_TEMPORARY_NAME_BUDGET = 7
 _REGEX_FIXED_TEMPORARY_NAME = re.compile(r'\+\s*"\.tmp"')
 
 
+@pytest.mark.falsification
 def testFixedTemporaryNamesDoNotSpread():
     """Count the temp names derived from their target alone.
 
@@ -5328,6 +5329,12 @@ def testFixedTemporaryNamesDoNotSpread():
 
     Fixing one lowers the constant in the same commit, which is the
     same contract the style and mutation inventories carry.
+
+    Kills: introducing a NEW fixed temporary name. The mutation adds
+    one rather than breaking a counted site, because that is the only
+    thing that distinguishes a class guard from a list of seeds -- an
+    instance guard proves one line is defended, and this has to be
+    shown catching a member it has never seen.
     """
     listSites = []
     for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):

@@ -9113,6 +9113,25 @@ def _fdictEntry(sRel):
         ),
         new='    sWorktree = str(pathlib.Path(sParent) / "tree")\n',
     ),
+    # --- The class both temp-name bugs belong to (2026-08-12) ---
+    #
+    # An INSTANCE guard proves one line is defended. A CLASS guard has
+    # to be shown catching a member it has never seen, so the mutation
+    # ADDS one rather than breaking an existing site -- the same shape
+    # as the path-corpus entry above, which adds an unguarded method.
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testFixedTemporaryNamesDoNotSpread'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new=(
+            '    sUnused = sTargetPath + ".tmp"\n'
+            '    del sUnused\n'
+            '    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n'
+        ),
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub
