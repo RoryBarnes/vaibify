@@ -71,6 +71,18 @@ class MockDockerConnection:
             for sPath in listPaths
         ]
 
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Answer discovery's second probe: is this entry a directory.
+
+        Everything this fixture holds is one; a file would answer no
+        here and stay out of both lists, which is the point.
+        """
+        return [
+            sPath[len("/workspace/"):] in self.listWorkspaceRepos
+            or sPath[len("/workspace/"):] in self.listWorkspaceNonRepos
+            for sPath in listPaths
+        ]
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listCommands.append(sCommand)
         for sNeedle, tResult in self.dictScripted.items():

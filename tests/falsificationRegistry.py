@@ -2030,8 +2030,19 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_after_push_gate_is_exact_equality_not_ordering',
         source='vaibify/gui/routes/repoRoutes.py',
-        old='    if sRepoPath != "/workspace/" + sRepoName:',
-        new='    if sRepoPath > "/workspace/" + sRepoName:',
+        # Re-pinned 2026-08-12: the comparison stopped naming the
+        # container volume and asks the resolver for the resource's
+        # own root. The mutation is unchanged in meaning -- the
+        # equality that decides "is this the project repo" becomes an
+        # ordering.
+        old=(
+            '    if sRepoPath != _fsRepositoryPathFor('
+            'sContainerId, sRepoName):'
+        ),
+        new=(
+            '    if sRepoPath > _fsRepositoryPathFor('
+            'sContainerId, sRepoName):'
+        ),
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_files_response_carries_verify_warning',
@@ -8766,6 +8777,83 @@ def _fdictEntry(sRel):
             'fromlist=["x"]).fdictGetProject(sContainerId) or {}).get('
             '"sDirectory", "/workspace"),\n'
         ),
+    ),
+    # --- The panels that mutate a repository (phase C) ---
+    #
+    # Every one of these was found by driving the routes against a real
+    # repository, and every one is a container path composed as a
+    # literal: the push validator measuring against /workspace, the
+    # Repositories panel composing "/workspace/" + name, and discovery
+    # asking only whether an entry has a .git child. The container
+    # direction for each lives with the doubles in testRepoRoutes and
+    # testSyncRoutesCoverage, which drive the same routes with
+    # /workspace fixtures and are untouched by this work.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsGitHubPushReachesTheRemote'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # The validator takes the container volume back as its
+        # boundary: every host path is outside it, so the push is
+        # refused 400 before any git runs.
+        old=(
+            '    sProjectRoot = fsResolveProjectRoot('
+            'sContainerId, WORKSPACE_ROOT)\n'
+            '    for sFilePath in listFilePaths:\n'
+            '        _fnRefuseUnusablePathText(sFilePath)\n'
+            '        _fnRefusePathOutsideRoot(\n'
+        ),
+        new=(
+            '    sProjectRoot = WORKSPACE_ROOT\n'
+            '    for sFilePath in listFilePaths:\n'
+            '        _fnRefuseUnusablePathText(sFilePath)\n'
+            '        _fnRefusePathOutsideRoot(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectCommitsItsCanonicalFiles'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # The router stops consulting the mode and sends every git verb
+        # to the Docker leg, which for a host project is either absent
+        # or holding a container that does not exist.
+        old='        if fbIsHostProject(sResourceId):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheRepositoriesPanelInitializesInsideTheHostProject'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # The literal this panel shipped with, at the one place it is
+        # now derived.
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),\n'
+            '        sRepositoryName,\n'
+            '    )\n'
+        ),
+        new='    return "/workspace/" + sRepositoryName\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAPlainFileIsNotOfferedAsARepositoryToBe'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Discovery stops asking whether an entry is a directory, which
+        # is how a plain file came to be offered as one.
+        old=(
+            '        listIsDirectory = '
+            'connectionDocker.flistContainerDirectoriesExist(\n'
+            '            sContainerId, listPaths,\n'
+            '        )\n'
+        ),
+        new='        listIsDirectory = [True] * len(listPaths)\n',
     ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #

@@ -63,6 +63,13 @@ class FakeDockerMinimal:
             for sPath in listPaths
         ]
 
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Everything this fake holds is a repository directory."""
+        return [
+            sPath[len("/workspace/"):] in self.dictRepos
+            for sPath in listPaths
+        ]
+
     def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
         """The repository-status batch, as the typed read answers it."""
         listStatuses = []

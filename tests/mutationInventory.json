@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 325,
+  "iRowCount": 327,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -355,7 +355,7 @@
       "sScopeFingerprint": "2b0dfd1fe935b926"
     },
     {
-      "iLine": 1424,
+      "iLine": 1476,
       "iOrdinal": 0,
       "sAcquisitionKind": "import-from",
       "sCapability": "docker-client",
@@ -459,7 +459,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 192,
+      "iLine": 203,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -667,7 +667,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2130,
+      "iLine": 2135,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -2992,6 +2992,34 @@
       "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
       "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
       "sPrimitive": "fiterStreamFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "c367465668bcf99c",
+      "sFunction": "flistContainerDirectoriesExist",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistContainerDirectoriesExist",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8531,24 +8559,52 @@
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "sAccess": "typed-read",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission -- which is the point: the Repositories panel polls discovery every five seconds, and a route on a timer that took the mutation drain would make Run Step refuse at random for as long as the panel stayed open. The three reads of this function are one question asked in three parts and share this disposition.",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "f19a5404f5ba9b6c",
+      "sFingerprint": "0ee3ff17ea105a73",
       "sFunction": "_ftPartitionWorkspaceDirectories",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which discovered entries are directories at all",
+      "sOperationMetadata": "one path per entry; added because a plain FILE answers no to the .git probe and was then offered to the researcher as a directory to run git init in",
+      "sPrimitive": "flistContainerDirectoriesExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission -- which is the point: the Repositories panel polls discovery every five seconds, and a route on a timer that took the mutation drain would make Run Step refuse at random for as long as the panel stayed open. The three reads of this function are one question asked in three parts and share this disposition.",
+      "sFile": "gui/trackedReposManager.py",
+      "sFingerprint": "12de34dc6c4dbfa9",
+      "sFunction": "_ftPartitionWorkspaceDirectories",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which discovered entries carry a .git child",
+      "sOperationMetadata": "one path per entry, composed from the resolved root and the listed names; the program is fixed text in the typed-read table",
       "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
@@ -8557,24 +8613,25 @@
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "sAccess": "typed-read",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission -- which is the point: the Repositories panel polls discovery every five seconds, and a route on a timer that took the mutation drain would make Run Step refuse at random for as long as the panel stayed open. The three reads of this function are one question asked in three parts and share this disposition.",
       "sFile": "gui/trackedReposManager.py",
       "sFingerprint": "8a9383a56deb857b",
       "sFunction": "_ftPartitionWorkspaceDirectories",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "list the entries directly under the resource's repository root",
+      "sOperationMetadata": "one directory path, resolved per resource by fsRepositoryRootFor",
       "sPrimitive": "flistDirectoryEntries",
       "sReferenceKind": "direct-call"
     },
@@ -9469,7 +9526,7 @@
       "sScopeFingerprint": "60f361fd2a414d1d"
     },
     {
-      "iLine": 709,
+      "iLine": 748,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9478,7 +9535,7 @@
       "sScopeFingerprint": "48b2dac70f916724"
     },
     {
-      "iLine": 573,
+      "iLine": 612,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9487,7 +9544,7 @@
       "sScopeFingerprint": "06a006562db2c70f"
     },
     {
-      "iLine": 1249,
+      "iLine": 1301,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9496,7 +9553,7 @@
       "sScopeFingerprint": "d3b234adfa828f4e"
     },
     {
-      "iLine": 543,
+      "iLine": 582,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9505,7 +9562,7 @@
       "sScopeFingerprint": "4cb7e49aec6101b0"
     },
     {
-      "iLine": 1237,
+      "iLine": 1289,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9514,7 +9571,7 @@
       "sScopeFingerprint": "60430d34c7a6d2f7"
     },
     {
-      "iLine": 1224,
+      "iLine": 1276,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9523,7 +9580,7 @@
       "sScopeFingerprint": "f28373336e34b240"
     },
     {
-      "iLine": 1231,
+      "iLine": 1283,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9532,7 +9589,7 @@
       "sScopeFingerprint": "5775912ab9f828b7"
     },
     {
-      "iLine": 677,
+      "iLine": 716,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9541,7 +9598,7 @@
       "sScopeFingerprint": "de871645e02ba7a2"
     },
     {
-      "iLine": 672,
+      "iLine": 711,
       "iOrdinal": 1,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9613,7 +9670,7 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 510,
+      "iLine": 517,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",

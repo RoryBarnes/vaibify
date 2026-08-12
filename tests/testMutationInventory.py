@@ -109,7 +109,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # an assembled shell script -- became one typed read. Its exec row
 # went, two rows arrived (the read and its router delegation), and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 291
+I_UNCLASSIFIED_ROW_BUDGET = 289
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

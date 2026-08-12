@@ -186,6 +186,7 @@ DICT_PRIMITIVE_ACCESS = {
     # own ended the heredoc and made the rest shell, and the whole
     # thing went through the general exec primitive besides.
     "flistContainerPathsExist": S_ACCESS_TYPED_READ,
+    "flistContainerDirectoriesExist": S_ACCESS_TYPED_READ,
     # The file panel's five-second poll, on the same terms again. Both
     # replaced a container WRITE plus an exec: the poll pushed its path
     # list into /tmp because a shell argv would not hold it, and that

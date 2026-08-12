@@ -186,6 +186,11 @@ def _fdictBuildPathTakingCalls(connection):
                 S_PROJECT_NAME, [sPath],
             )
         ),
+        "flistContainerDirectoriesExist": (
+            lambda sPath: connection.flistContainerDirectoriesExist(
+                S_PROJECT_NAME, [sPath],
+            )
+        ),
         "fdictStatPathMtimes": (
             lambda sPath: connection.fdictStatPathMtimes(
                 S_PROJECT_NAME, [sPath],
@@ -280,6 +285,9 @@ def testTheLegitimateProjectPathsAreStillAdmitted(tProjectAndConnection):
     assert connection.flistContainerPathsExist(
         S_PROJECT_NAME, [sFilePath],
     ) == [True]
+    assert connection.flistContainerDirectoriesExist(
+        S_PROJECT_NAME, [sFilePath, sProjectRoot],
+    ) == [False, True]
 
 
 @pytest.mark.falsification

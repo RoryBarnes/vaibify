@@ -4294,7 +4294,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # coroutine was removed, which is why the rise is smaller than the
     # additions. **No route in this module is awaiting any longer, so
     # this entry may only fall from here.**
-    "routes/syncRoutes.py": 3067,
+    # +5 (2026-08-12): the two path validators measure against the
+    # resource's own root, and their shared refusals are named
+    # rather than written out twice.
+    "routes/syncRoutes.py": 3072,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4912,7 +4915,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # comment carries most of it: this route is a five-second poll, and
     # the reason it may declare a mode with no carrier is that every
     # container primitive it reaches is now a declared read.
-    "routes/repoRoutes.py": 798,
+    # +19 (2026-08-12): _fsRepositoryPathFor, the one derivation of
+    # where a repository lives for THIS resource. The panel composed
+    # "/workspace/" + name in five places, so Init answered 500
+    # "mkdir: /workspace: Read-only file system" on a host project
+    # and the 500 quarantined it.
+    "routes/repoRoutes.py": 817,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:

@@ -98,7 +98,13 @@ def _fnRejectDuplicateWorkflowName(
 def _fsValidateRepoDirectory(
     connectionDocker, sContainerId, sRepoDirectory
 ):
-    """Validate the directory exists under /workspace/ and is a git repo."""
+    """Validate the directory is under this resource's root and is a repo.
+
+    The root is resolved rather than named: a host project's
+    repositories are under the directory the researcher registered,
+    and a ``/workspace`` prefix would answer "Repo directory not
+    found" about a path that was never theirs.
+    """
     sClean = sRepoDirectory.strip().strip("/")
     if not sClean:
         raise HTTPException(
@@ -108,7 +114,12 @@ def _fsValidateRepoDirectory(
         raise HTTPException(
             400, "sRepoDirectory may not contain '..'"
         )
-    sFullPath = posixpath.join("/workspace", sClean)
+    sFullPath = posixpath.join(
+        projectRoots.fsResolveProjectRoot(
+            sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
+        ),
+        sClean,
+    )
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
         sContainerId,
         f"test -d {fsShellQuote(sFullPath)}",
