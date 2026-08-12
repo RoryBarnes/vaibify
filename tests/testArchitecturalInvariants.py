@@ -4297,7 +4297,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +5 (2026-08-12): the two path validators measure against the
     # resource's own root, and their shared refusals are named
     # rather than written out twice.
-    "routes/syncRoutes.py": 3072,
+    # +9 (2026-08-12): the isolation gate returns for a host project
+    # instead of asking Docker about a container that does not exist.
+    "routes/syncRoutes.py": 3081,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

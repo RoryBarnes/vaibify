@@ -8939,6 +8939,25 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(sResourceId):\n',
         new='    if False:\n',
     ),
+    # --- The isolation gate has no container to ask about (phase C) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsPushNeverAsksDockerAboutIsolation'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if fbIsHostProject(sContainerId):\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsPushStillChecksIsolation'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if fbIsHostProject(sContainerId):\n        return\n',
+        new='    if True:\n        return\n',
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

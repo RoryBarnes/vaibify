@@ -129,9 +129,18 @@ def _fnRequireNetworkAccess(sContainerId):
     button and waits 30 seconds for a DNS timeout before seeing a
     generic error. Audit finding F-R-08.
     """
+    from vaibify.config.registryManager import fbIsHostProject
     from vaibify.docker.containerManager import (
         fbContainerIsNetworkIsolated,
     )
+    # A host project has no container, so nothing can have sealed one.
+    # Asking anyway is not merely wasted: the probe is a `docker
+    # inspect` subprocess about a name Docker never heard of, started
+    # on the researcher's own machine outside the gated primitive
+    # every host subprocess is supposed to go through, and it costs up
+    # to its five-second timeout on every push.
+    if fbIsHostProject(sContainerId):
+        return
     if fbContainerIsNetworkIsolated(sContainerId):
         raise HTTPException(
             status_code=409,

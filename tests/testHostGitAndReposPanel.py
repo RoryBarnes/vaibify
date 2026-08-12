@@ -779,3 +779,54 @@ def testTheStepRunnerNeverAsksWhichInterpreterToUse():
             "is the researcher's text and must be composed from it "
             "unchanged"
         )
+
+
+@pytest.mark.falsification
+def testAHostProjectsPushNeverAsksDockerAboutIsolation(
+    fixtureHostRegistryOnly, monkeypatch,
+):
+    """No container exists, so nothing can have sealed one.
+
+    The isolation gate exists so a researcher whose container runs
+    with ``--network none`` gets an actionable refusal instead of a
+    thirty-second DNS timeout. For a host project it is a ``docker
+    inspect`` subprocess about a name Docker never heard of, started
+    on the researcher's own machine, outside the gated primitive every
+    host subprocess is meant to go through — and it costs up to its
+    five-second timeout on every push.
+
+    Kills: dropping the mode branch, so the probe runs again.
+    """
+    from vaibify.docker import containerManager
+    from vaibify.gui.routes.syncRoutes import _fnRequireNetworkAccess
+    listProbes = []
+    monkeypatch.setattr(
+        containerManager, "fbContainerIsNetworkIsolated",
+        lambda sIdentifier: listProbes.append(sIdentifier) or False,
+    )
+    _fnRequireNetworkAccess("credentialHostProject")
+    assert listProbes == [], (
+        f"Docker was asked about a host project: {listProbes}"
+    )
+
+
+@pytest.mark.falsification
+def testAContainerProjectsPushStillChecksIsolation(
+    fixtureHostRegistryOnly, monkeypatch,
+):
+    """The other direction: a sealed container must still refuse.
+
+    Kills: the branch stuck on the host answer, which would send every
+    containerized Overleaf and Zenodo push into a thirty-second DNS
+    timeout instead of the refusal that names the cause.
+    """
+    from fastapi import HTTPException
+    from vaibify.docker import containerManager
+    from vaibify.gui.routes.syncRoutes import _fnRequireNetworkAccess
+    monkeypatch.setattr(
+        containerManager, "fbContainerIsNetworkIsolated",
+        lambda sIdentifier: True,
+    )
+    with pytest.raises(HTTPException) as excInfo:
+        _fnRequireNetworkAccess("credentialContainerProject")
+    assert excInfo.value.status_code == 409
