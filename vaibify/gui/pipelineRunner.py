@@ -39,6 +39,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
+    fsBuildUniqueTemporaryPath,
     fbStepIsInteractive,
     fsLabelFromStepIndex,
     fiStepIndexFromLabel,
@@ -613,7 +614,29 @@ async def ftRunStepCommands(
         dictStep.get("saPlotCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
     )
-    return (iPlotExit, fCpuTime + fPlotCpu)
+    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))
+
+
+def _ffTotalCpuTime(fFirst, fSecond):
+    """Add two CPU readings, either of which may be ABSENT (None).
+
+    Host runs record no CPU time at all: ``/usr/bin/time -f`` is a GNU
+    spelling that BSD ``time`` rejects, so rather than report a
+    fabricated 0.0 the reading is omitted. Adding the two readings
+    blindly therefore raised ``TypeError: unsupported operand type(s)
+    for +: 'NoneType' and 'NoneType'`` on every host step that reached
+    the plot phase — which aborted the run AFTER the step's command had
+    already succeeded, so the researcher saw "Pipeline Failed" for work
+    that had completed, and the log was never written because the
+    finalizer never ran.
+
+    An absent part makes the TOTAL absent, never a partial sum
+    presented as a whole: reporting the plot phase's CPU as the step's
+    CPU would be a smaller number wearing a bigger number's name.
+    """
+    if fFirst is None or fSecond is None:
+        return None
+    return fFirst + fSecond
 
 
 async def _ftRunSetupIfNeeded(

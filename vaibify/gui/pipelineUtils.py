@@ -7,12 +7,14 @@ dependency cycles between pipelineRunner and its extracted submodules.
 import posixpath
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 
 
 __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
+    "fsBuildUniqueTemporaryPath",
     "fbStepIsInteractive",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
@@ -168,6 +170,25 @@ def fsShellQuote(sValue):
     quotes with the standard '\\'' idiom, preventing shell injection.
     """
     return "'" + sValue.replace("'", "'\\''") + "'"
+
+
+def fsBuildUniqueTemporaryPath(sTargetPath):
+    """Return a sibling temp path no other writer can already hold.
+
+    Temp-then-rename buys atomicity for ONE writer. A temp name derived
+    only from the target — ``state.json`` plus ``.tmp`` — assumes there
+    is only ever one, and the moment two writers overlap they share the
+    name: the first to rename consumes the file the second is about to
+    rename, and the second's install fails against a path that no
+    longer exists. Both state files vaibify keeps are written by the
+    drain-held route, the file poll and the run at once, so the overlap
+    is ordinary rather than exotic.
+
+    The target's own path stays the prefix, so the temp is a sibling on
+    the same filesystem — rename atomicity requires that — and ``.tmp``
+    stays last so a reader can still recognise what the file is.
+    """
+    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"
 
 
 # ---------------------------------------------------------------------------

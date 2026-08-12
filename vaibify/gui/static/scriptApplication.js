@@ -3681,6 +3681,36 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnSetupDelegatedEvents(elList);
     }
 
+    function _fsDescribeSaveFailure(error) {
+        /* One sentence for every failure is one sentence too few. The
+           old message said "Save failed" and nothing else, so a
+           refused lane, a server exception and an unreachable hub were
+           indistinguishable on screen -- three different problems with
+           three different fixes, and a researcher who reported any of
+           them could only say "it didn't save". Diagnosing one cost a
+           maintainer and a researcher an afternoon of guessing.
+
+           The reason comes from the server's own detail where there is
+           one, because that is the string that names the operation
+           that failed. The status is included even when a detail
+           exists: 403 and 500 send a reader to different places, and
+           the sentence should not make them equivalent. */
+        var dictDetail = (error && error.dictDetail) || {};
+        var iStatus = (error && error.iStatus) || 0;
+        var sTail =
+            " The dashboard reloaded to match the server, so it is not "
+            + "showing an unsaved change.";
+        if (!iStatus) {
+            return "Could not reach the server, so the edit was not "
+                + "saved." + sTail;
+        }
+        var sReason = dictDetail.sMessage
+            || (error && error.message)
+            || "no reason given";
+        return "Save failed (" + iStatus + "): "
+            + VaibifyUtilities.fsSanitizeErrorForUser(sReason) + sTail;
+    }
+
     async function fnPutStepEdit(iStep, dictUpdate) {
         // Single choke-point for every step edit. Attaches the
         // compare-and-swap fingerprint so a concurrent writer (the
@@ -3718,10 +3748,7 @@ const VaibifyApp = (function () {
                     + "overwrite it. Re-apply it if you still want it.",
                     "warning");
             } else {
-                fnShowToast(
-                    "Save failed — reloaded to match the server so the "
-                    + "dashboard doesn't show an unsaved change.",
-                    "error");
+                fnShowToast(_fsDescribeSaveFailure(error), "error");
             }
             // ANY failed save leaves the caller's optimistic local edit
             // diverged from the server. Callers across every module

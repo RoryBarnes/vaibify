@@ -40,6 +40,7 @@ import json
 import logging
 import os
 import posixpath
+import shlex
 import threading
 import time
 from types import SimpleNamespace
@@ -4923,13 +4924,16 @@ class DockerDoubleForTheKillRoute(DockerDoubleThatCallsTheRealGates):
             sContainerId, sCommand, sWorkdir,
         )
         if sCommand.startswith("mv ") and (
-            pipelineState.S_STATE_PATH_TEMP in sCommand
+            pipelineState.S_STATE_PATH in sCommand
         ):
-            # Matched on containment rather than on a prefix: the
-            # writer quotes both operands now, because a host project
+            # Keyed on the DESTINATION, and the source is read out of
+            # the command: the temp name carries a per-writer suffix
+            # now, so no constant names it. Unquoted with shlex because
+            # the writer quotes both operands — a host project's
             # directory may contain a space.
+            sTempPath = shlex.split(sCommand)[1]
             self._dictFiles[pipelineState.S_STATE_PATH] = (
-                self._dictFiles.pop(pipelineState.S_STATE_PATH_TEMP, b"")
+                self._dictFiles.pop(sTempPath, b"")
             )
             return tExec
         if S_SWEEP_COMMAND_MARKER in sCommand and "wc -l" in sCommand:

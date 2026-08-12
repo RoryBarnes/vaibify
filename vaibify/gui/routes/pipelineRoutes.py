@@ -518,8 +518,20 @@ def _fnRegisterPipelineKill(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"](sContainerId)
-        dictWorkflow = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId)
+        # The workflow is required INSIDE the container branch, which is
+        # the only branch that reads it (the sweep needs the step
+        # directories). Requiring it up front made the stop button
+        # depend on the hub's in-memory session bookkeeping, and a
+        # researcher whose hub had restarted under a live tab was
+        # answered "Not connected to container" -- naming a container a
+        # host project does not have -- while their processes kept
+        # running with no way to stop them from the dashboard.
+        #
+        # The stop control must not depend on session state, because
+        # the situation where it is most needed is the one where
+        # something has already gone wrong. A host cancellation reads
+        # the operation JOURNAL, which is on disk and survives a
+        # restart, so it needs nothing from the cache at all.
         bTaskCancelled = _fbCancelPipelineTask(
             dictCtx["pipelineTasks"], sContainerId)
         listRefused = []
@@ -530,6 +542,8 @@ def _fnRegisterPipelineKill(app, dictCtx):
             iCountBefore = dictCancelled["iGroupsTerminated"]
             listRefused = dictCancelled["listRefused"]
         else:
+            dictWorkflow = fdictRequireWorkflow(
+                dictCtx["workflows"], sContainerId)
             iCountBefore = await _fiSweepContainerProcesses(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
             )

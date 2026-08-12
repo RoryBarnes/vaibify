@@ -161,10 +161,16 @@ def test_save_writes_via_temp_then_renames():
         mockDocker, "cid", "/p/.vaibify/state.json", dictState,
     )
     assert listWrites
-    assert listWrites[0][0] == "/p/.vaibify/state.json.tmp"
+    # The temp name carries a per-writer suffix; it named
+    # "state.json.tmp" exactly until two concurrent savers were found
+    # to share that one name and destroy each other's install.
+    sTempPath = listWrites[0][0]
+    assert sTempPath.startswith("/p/.vaibify/state.json.")
+    assert sTempPath.endswith(".tmp")
+    assert sTempPath != "/p/.vaibify/state.json.tmp"
     assert any("cp -f" in sCmd and "/state.json'" in sCmd
                and "/state.json.bak" in sCmd for sCmd in listCmds)
-    assert any("mv -f" in sCmd and "/state.json.tmp" in sCmd
+    assert any("mv -f" in sCmd and sTempPath in sCmd
                and "/state.json'" in sCmd for sCmd in listCmds)
 
 

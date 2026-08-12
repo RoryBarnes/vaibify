@@ -447,12 +447,35 @@ def fsResolveWorkflowPath(connectionDocker, sContainerId, sWorkflowPath):
     return listWorkflows[0]["sPath"] if listWorkflows else None
 
 
-def fsResolveFigurePath(sWorkflowDirectory, sFilePath):
-    """Return absolute path for a figure file."""
+def fsResolveFigurePath(sWorkflowDirectory, sFilePath, sProjectRoot):
+    """Return the absolute path for a figure, log, or download.
+
+    The dashboard strips the leading slash from an absolute path
+    before putting it in the URL, because the route's ``{path}``
+    segment cannot carry one. The middle branch below puts it back,
+    and it used to recognise exactly one root — ``workspace/``, the
+    container's, spelled without its slash. A host project's files
+    live under the directory the researcher registered, so its run
+    logs and figures arrived as ``home/someone/project/...``, were
+    read as repo-relative, resolved under the workflow directory and
+    answered 404. Every host run's log was unreachable.
+
+    ``sProjectRoot`` therefore has NO DEFAULT. Defaulting it to the
+    container root would give a host project the container's answer
+    silently, which is the defect this parameter exists to end; a
+    caller that forgets it gets a TypeError instead.
+
+    Nothing is loosened. This returns a candidate path — every caller
+    validates it against that same root immediately afterwards, and a
+    path that does not lie under the root is not restored here at all.
+    """
     if sFilePath.startswith("/"):
         return sFilePath
-    if sFilePath.startswith("workspace/"):
-        return "/" + sFilePath
+    sRestored = "/" + sFilePath
+    if sRestored == sProjectRoot or sRestored.startswith(
+        sProjectRoot.rstrip("/") + "/",
+    ):
+        return sRestored
     return posixpath.join(sWorkflowDirectory, sFilePath)
 
 

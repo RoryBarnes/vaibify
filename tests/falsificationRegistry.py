@@ -1071,8 +1071,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old='return (iPlotExit, fCpuTime + fPlotCpu)',
-        new='return (iExitCode, fCpuTime + fPlotCpu)  # mutant',
+        old='return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
+        new='return (iExitCode, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fnVerifyOnly_missing_output_emits_stepFail_badge',
@@ -8587,6 +8587,10 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
         new='        sProjectRoot = sWorkspaceRoot\n',
+        # Two copies since the download route began resolving the root
+        # before it resolves the path, rather than after. "The guard is
+        # gone" means both, or the surviving copy scores the mutation.
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -8608,6 +8612,7 @@ def _fdictEntry(sRel):
             '            sContainerId) or {}).get('
             '"sDirectory", sWorkspaceRoot)\n'
         ),
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -9979,5 +9984,222 @@ def _fdictEntry(sRel):
             '        raise\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSaveFailureNamesItsReason.py::'
+            'testAFailedSaveNamesTheStatusAndTheReason'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # One fixed sentence for every non-conflict failure: a refused
+        # lane, a server exception and an unreachable hub become
+        # indistinguishable, which is what made a real report
+        # undiagnosable.
+        old=(
+            '                fnShowToast(_fsDescribeSaveFailure(error), '
+            '"error");\n'
+        ),
+        new=(
+            '                fnShowToast("Save failed.", "error");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSaveFailureNamesItsReason.py::'
+            'testAConflictKeepsItsOwnMessage'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Describe a conflict with the status sentence too, losing the
+        # one message whose advice is "re-apply your edit".
+        old='            if (error && error.iStatus === 409) {\n',
+        new='            if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testInlineCodeAndModulesNameNoScriptFile'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # The shipped defect: the token after the interpreter is taken
+        # as the script, so `-c` is read as a filename and pre-flight
+        # refuses the step with "command not found: -c".
+        old='        return fsExtractScriptPathFromArguments(listTokens[1:])\n',
+        new='        return listTokens[1]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testAnOrdinaryScriptIsStillFound'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # Answer "no script" for everything, which silently switches
+        # off pre-flight's missing-script protection for every step.
+        old='        if sToken.startswith("-"):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testFlagsThatTakeAValueDoNotHideTheScript'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # Skip the flag but keep its value, so `-W ignore run.py`
+        # reports a script called "ignore" and refuses the step.
+        old=(
+            '        if sToken in _SET_FLAGS_TAKING_A_VALUE:\n'
+            '            iIndex += 2\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testPreflightFallsBackToCheckingTheInterpreter'
+        ),
+        source='vaibify/gui/pipelineValidator.py',
+        # Drop the fallback: a command with no script file is not
+        # validated at all, so a missing interpreter surfaces only when
+        # the run has already started.
+        old='    return listTokens[0]\n',
+        new='    return None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStopDoesNotNeedTheSession.py::'
+            'testAHostRunCanBeStoppedWithNoWorkflowCached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The shipped defect: require the cached workflow before
+        # branching, so a hub that restarted under a live tab answers
+        # 404 and the researcher's processes cannot be stopped.
+        old=(
+            '        bTaskCancelled = _fbCancelPipelineTask(\n'
+            '            dictCtx["pipelineTasks"], sContainerId)\n'
+        ),
+        new=(
+            '        fdictRequireWorkflow(\n'
+            '            dictCtx["workflows"], sContainerId)\n'
+            '        bTaskCancelled = _fbCancelPipelineTask(\n'
+            '            dictCtx["pipelineTasks"], sContainerId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStopDoesNotNeedTheSession.py::'
+            'testAContainerStopStillRequiresItsWorkflow'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Drop the requirement for the container branch too, so the
+        # sweep has no step directories and reports success for work it
+        # never did.
+        old=(
+            '            dictWorkflow = fdictRequireWorkflow(\n'
+            '                dictCtx["workflows"], sContainerId)\n'
+        ),
+        new='            dictWorkflow = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testRunningAStepWritesARealFileAndTheDashboardSeesIt'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shipped defect, restored: add two CPU readings blindly.
+        # Host runs record none, so every host step reaching the plot
+        # phase raised TypeError AFTER its command had succeeded --
+        # "Pipeline Failed" for completed work, and no log, because the
+        # finalizer never ran.
+        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
+        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testAnOverlappingSaveDoesNotBreakTheOtherOnesInstall'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # The shipped defect, restored: one temp name per TARGET rather
+        # than per WRITER. Two savers then share it and the second's
+        # rename fails against a file the first already consumed.
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new='    return f"{sTargetPath}.tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testTheOverlappingSaveLeavesAWholeReadableStateFile'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # "Why build a random uuid on every save?" -- a machine-derived
+        # suffix reads as unique and is unique against another machine
+        # only. The two savers are inside ONE hub.
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new='    return f"{sTargetPath}.{uuid.getnode():x}.tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsOwnAbsolutePathIsRestoredNotJoined'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The shipped defect: restore the slash only for the container
+        # root, so a host project's absolute path is read as
+        # repo-relative and every run log 404s.
+        old=(
+            '    if sRestored == sProjectRoot or sRestored.startswith(\n'
+            '        sProjectRoot.rstrip("/") + "/",\n'
+            '    ):\n'
+        ),
+        new='    if sFilePath.startswith("workspace/"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectNeverReachesOutToTheContainerRoot'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other direction: restore the slash for ANY path, which
+        # would send a host project to /workspace -- a path that means
+        # nothing on a laptop -- and is refused by the root check
+        # rather than answered from the researcher's project.
+        old=(
+            '    if sRestored == sProjectRoot or sRestored.startswith(\n'
+            '        sProjectRoot.rstrip("/") + "/",\n'
+            '    ):\n'
+        ),
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testAnOverlappingPipelineStateWriteIsNotSilentlyDropped'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # The same defect in the other module that runs this protocol:
+        # one temp name per target, so the run's writer and the
+        # reconciler destroy each other's install.
+        old='    sTempPath = fsBuildUniqueTemporaryPath(sStatePath)\n',
+        new='    sTempPath = sStatePath + ".tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentStateSaves.py::'
+            'testAFailedInstallDiscardsItsOwnTemporaryFile'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # A per-writer temp name is never reclaimed by the next save,
+        # so a failed install that walks away leaves one behind for
+        # good -- and one more per failure. The mutation is the rename
+        # as it was written before the discard rode along with it.
+        old=(
+            '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)} '
+            '|| "\n'
+            '        f"{{ iStatus=$?; rm -f {sQuotedTempPath}; '
+            'exit $iStatus; }}"\n'
+        ),
+        new=(
+            '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)}"\n'
+        ),
     ),
 ]

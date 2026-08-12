@@ -651,16 +651,16 @@
       "sModule": "vaibify/gui/pipelineServer.py"
     },
     {
-      "sCommandExpression": "f\"rm -f {fsShellQuote(sStatePath)} {fsShellQuote(sStatePath + '.tmp')}\"",
+      "sCommandExpression": "f'rm -f {fsShellQuote(sStatePath)} {fsShellQuote(sStatePath)}.*.tmp'",
       "sEnclosingFunction": "fnClearState",
-      "sFingerprint": "29dd44b8df8096a39d0988cf22fbd63b96081c1815ae1333e8f5d39fc8927886",
+      "sFingerprint": "a279bac00d295cc022fb033077f4b47e3899b7c36055eae37ae698cc7d16d52b",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineState.py"
     },
     {
-      "sCommandExpression": "f'mv {fsShellQuote(sTempPath)} {fsShellQuote(sStatePath)}'",
+      "sCommandExpression": "f'mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || {{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}'",
       "sEnclosingFunction": "fnWriteState",
-      "sFingerprint": "05ee1d90a83e9b70d78ee3faa48f30346477bb0465188b10ce313c23c32c9ffa",
+      "sFingerprint": "153a5bdc198879113e094643959b7aac8d793878379ee525601cd20e9814b6ee",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineState.py"
     },

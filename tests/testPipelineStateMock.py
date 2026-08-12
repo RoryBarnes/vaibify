@@ -10,7 +10,6 @@ from vaibify.gui.pipelineState import (
     fdictReadState,
     fnClearState,
     S_STATE_PATH,
-    S_STATE_PATH_TEMP,
 )
 
 

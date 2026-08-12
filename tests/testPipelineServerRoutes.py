@@ -1087,21 +1087,24 @@ def test_filter_non_none():
 
 def test_resolve_figure_path_absolute():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/project", "/absolute/path/fig.png"
+        "/workspace/project", "/absolute/path/fig.png",
+        "/workspace",
     )
     assert sResult == "/absolute/path/fig.png"
 
 
 def test_resolve_figure_path_workspace_prefix():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/project", "workspace/Plot/fig.png"
+        "/workspace/project", "workspace/Plot/fig.png",
+        "/workspace",
     )
     assert sResult == "/workspace/Plot/fig.png"
 
 
 def test_resolve_figure_path_relative():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/project", "Plot/fig.png"
+        "/workspace/project", "Plot/fig.png",
+        "/workspace",
     )
     assert sResult == "/workspace/project/Plot/fig.png"
 

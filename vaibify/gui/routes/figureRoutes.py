@@ -57,10 +57,10 @@ def _fnRegisterFigure(app, dictCtx):
         import asyncio
         dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
-        sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         sProjectRoot = projectRoots.fsResolveProjectRoot(
             sContainerId, WORKSPACE_ROOT,
         )
+        sAbsPath = fsResolveFigurePath(sDir, sFilePath, sProjectRoot)
         fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
         listPaths = _flistBuildFigureCheckPaths(
             sAbsPath, sWorkdir, sDir, sFilePath, sProjectRoot,
@@ -87,10 +87,10 @@ def _fnRegisterFigure(app, dictCtx):
         import asyncio
         dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
-        sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         sProjectRoot = projectRoots.fsResolveProjectRoot(
             sContainerId, WORKSPACE_ROOT,
         )
+        sAbsPath = fsResolveFigurePath(sDir, sFilePath, sProjectRoot)
         fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
         baContent = await asyncio.to_thread(
             fbaFetchFigureWithFallback,

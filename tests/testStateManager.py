@@ -6,6 +6,23 @@ from unittest.mock import MagicMock
 from vaibify.gui import stateManager
 
 
+def _fbIsWriterUniqueTempOf(sPath, sStatePath):
+    """Return True for a per-writer temp sibling of ``sStatePath``.
+
+    These assertions named ``state.json.tmp`` exactly until the fixed
+    name was found to be the defect: two concurrent savers shared it,
+    and the one that renamed second failed against a file the first had
+    already consumed. So the contract they pin now is the one that
+    matters — a sibling, still recognisable as a temp, and NOT the old
+    shared spelling.
+    """
+    return (
+        sPath.startswith(sStatePath + ".")
+        and sPath.endswith(".tmp")
+        and sPath != sStatePath + ".tmp"
+    )
+
+
 # ----------------------------------------------------------------------
 # Path helpers
 # ----------------------------------------------------------------------
@@ -178,7 +195,7 @@ def test_fnSaveStateToContainer_stamps_sLastUpdated_and_writes():
     )
     sContainerId, sPath, baPayload = mockDocker.fnWriteFile.call_args[0]
     assert sContainerId == "cid"
-    assert sPath == "/state.json.tmp"
+    assert _fbIsWriterUniqueTempOf(sPath, "/state.json"), sPath
     dictPersisted = json.loads(baPayload.decode("utf-8"))
     assert dictPersisted["iStateSchemaVersion"] == (
         stateManager.I_CURRENT_STATE_SCHEMA_VERSION
@@ -189,10 +206,9 @@ def test_fnSaveStateToContainer_stamps_sLastUpdated_and_writes():
         for call in mockDocker.ftResultExecuteCommand.call_args_list
     ]
     assert any(
-        "mv -f" in sCmd and "/state.json.tmp" in sCmd
-        and "/state.json'" in sCmd
+        "mv -f" in sCmd and sPath in sCmd and "/state.json'" in sCmd
         for sCmd in listCommands
-    ), f"Expected atomic rename in {listCommands}"
+    ), f"Expected atomic rename of {sPath} in {listCommands}"
 
 
 def test_fnSaveStateToContainer_creates_bak_checkpoint():
@@ -567,7 +583,9 @@ def test_load_persists_bootstrap_when_state_file_absent():
     )
     listStateWrites = [
         (sPath, baPayload) for sPath, baPayload in listWrites
-        if sPath.endswith(".vaibify/state.json.tmp")
+        if _fbIsWriterUniqueTempOf(
+            sPath, "/workspace/Project/.vaibify/state.json",
+        )
     ]
     assert listStateWrites, (
         "Bootstrap must persist state.json (via atomic .tmp+rename) "
@@ -602,7 +620,9 @@ def test_save_split_workflow_json_carries_no_stateful_fields():
     for sPath, baPayload in listWrites:
         if sPath.endswith("/workflows/w.json"):
             dictWorkflowWritten = json.loads(baPayload.decode("utf-8"))
-        elif sPath.endswith(".vaibify/state.json.tmp"):
+        elif _fbIsWriterUniqueTempOf(
+            sPath, "/workspace/Project/.vaibify/state.json",
+        ):
             dictStateWritten = json.loads(baPayload.decode("utf-8"))
     assert dictWorkflowWritten is not None
     assert dictStateWritten is not None
