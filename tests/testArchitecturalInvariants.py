@@ -4528,7 +4528,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # explaining why the new parameter has no default — defaulting it
     # would give a host project the container's answer silently, which
     # is the defect itself.
-    "pipelineServer.py": 2598,
+    # +37 (2026-08-12): the "not connected" refusal became one that
+    # states which of two things is missing. It sits here because both
+    # require-helpers raise it and they live here; the growth is the
+    # paragraph recording that the old sentence was false twice over —
+    # the caller IS connected, and a host project has no container to
+    # be connected to.
+    "pipelineServer.py": 2635,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5238,3 +5244,4 @@ def testShippedFrontendCarriesNoPersonalContactDetails():
         "Personal contact details in shipped frontend source:\n  "
         + "\n  ".join(listOffenders)
     )
+

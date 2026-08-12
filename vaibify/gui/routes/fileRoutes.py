@@ -37,6 +37,7 @@ from ..pipelineServer import (
     fsValidatePathWithinRoot,
     fsResolveFigurePath,
     _fsSanitizeServerError,
+    _fnRefuseWithNoProjectOpen,
 )
 
 
@@ -489,7 +490,12 @@ def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
     """Return the active workflow's project-repo path or raise HTTP 400."""
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
     if not dictWorkflow:
-        raise HTTPException(400, "Not connected to container")
+        # Same state as fdictRequireWorkflow's, so the same sentence,
+        # the same refusal key AND the same status. These two answered
+        # 400 for the condition the read paths answer 404 for, which
+        # is one state with two answers -- exactly the drift a shared
+        # refusal exists to end.
+        _fnRefuseWithNoProjectOpen(sContainerId)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if not sProjectRepoPath:
         raise HTTPException(

@@ -10139,6 +10139,47 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testNoProjectOpenRefusal.py::'
+            'testTheRefusalDoesNotClaimTheCallerIsDisconnected'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The shipped sentence, restored: false in both halves at once
+        # -- the caller is connected, and a host project has no
+        # container to be connected to.
+        old=(
+            '    raise HTTPException(404, {\n'
+            '        "sMessage": (\n'
+            '            f"No project is open in \'{sContainerId}\' for '
+            'this session. "\n'
+            '            "Open one first \u2014 nothing is wrong with '
+            'the connection."\n'
+            '        ),\n'
+            '        "sRefusal": S_REFUSAL_NO_PROJECT_OPEN,\n'
+            '    })\n'
+        ),
+        new='    raise HTTPException(404, "Not connected to container")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testNoProjectOpenRefusal.py::'
+            'testBothRequireHelpersRefuseIdentically'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The drift this shared refusal exists to prevent: the path
+        # helper answering the same state in its own words.
+        old=(
+            '    sPath = dictPaths.get(sContainerId)\n'
+            '    if not sPath:\n'
+            '        _fnRefuseWithNoProjectOpen(sContainerId)\n'
+        ),
+        new=(
+            '    sPath = dictPaths.get(sContainerId)\n'
+            '    if not sPath:\n'
+            '        raise HTTPException(404, "No workflow path")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testHostModeProjectRoots.py::'
             'testAHostProjectsOwnAbsolutePathIsRestoredNotJoined'
         ),
