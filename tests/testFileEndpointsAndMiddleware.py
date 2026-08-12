@@ -804,21 +804,24 @@ def test_flistParseDirectoryOutput_short_lines():
 
 def test_fsResolveFigurePath_absolute():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/step1", "/workspace/other/fig.pdf"
+        "/workspace/step1", "/workspace/other/fig.pdf",
+        "/workspace",
     )
     assert sResult == "/workspace/other/fig.pdf"
 
 
 def test_fsResolveFigurePath_workspace_prefix():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/step1", "workspace/images/fig.png"
+        "/workspace/step1", "workspace/images/fig.png",
+        "/workspace",
     )
     assert sResult == "/workspace/images/fig.png"
 
 
 def test_fsResolveFigurePath_relative():
     sResult = pipelineServer.fsResolveFigurePath(
-        "/workspace/step1", "Plot/fig.pdf"
+        "/workspace/step1", "Plot/fig.pdf",
+        "/workspace",
     )
     assert sResult == "/workspace/step1/Plot/fig.pdf"
 

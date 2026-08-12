@@ -483,14 +483,27 @@ def testAContainerFigureIsStillJailedToTheVolume(tmp_path):
     ]
 
 
-def testTheContainerEscapeHatchDoesNotOpenAHostProject(tmp_path):
-    """``fsResolveFigurePath`` promotes a ``workspace/``-prefixed name.
+@pytest.mark.falsification
+def testAHostProjectNeverReachesOutToTheContainerRoot(tmp_path):
+    """Superseding "the ``workspace/`` prefix is refused" (2026-08-12).
 
-    That prefix is a container convenience: it turns a relative name
-    into ``/workspace/...`` rather than joining it onto the workflow
-    directory. For a host project that lands outside the root, and the
-    guard must say so rather than reaching for a path on the
-    researcher's machine that has nothing to do with their project.
+    The resolver used to promote exactly one prefix — ``workspace/``,
+    the container root spelled without its leading slash — because
+    that is how the dashboard sends back an absolute path. Refusing it
+    for a host project was right about the destination and wrong about
+    the rule: the promotion now happens against whichever root the
+    project actually has, so ``workspace/Plot/figure.pdf`` is simply a
+    relative path in a host project that happens to have a directory
+    of that name, and the request is answered from INSIDE the
+    researcher's own project.
+
+    What is unchanged, and is the point, is that nothing takes a host
+    project to ``/workspace`` — a path that means nothing on a
+    laptop.
+
+    Kills: restoring the leading slash for ANY path, which sends a
+    host project to the container volume instead of answering from
+    the researcher's own directory.
     """
     sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
     client, connection = _ftBuildFigureClient(
@@ -499,8 +512,38 @@ def testTheContainerEscapeHatchDoesNotOpenAHostProject(tmp_path):
     response = client.get(
         f"/api/figure/{S_HOST_PROJECT}/workspace/Plot/figure.pdf",
     )
-    assert response.status_code == 403
-    assert connection.listFetchedPaths == []
+    assert response.status_code == 200
+    assert connection.listFetchedPaths, "nothing was read at all"
+    for sFetched in connection.listFetchedPaths:
+        assert sFetched.startswith(sDirectory + os.sep), sFetched
+
+
+@pytest.mark.falsification
+def testAHostProjectsOwnAbsolutePathIsRestoredNotJoined(tmp_path):
+    """The run log, which is how this was found.
+
+    The dashboard strips the leading slash from an absolute path
+    before putting it in the URL. A host run's log path is absolute
+    and under the researcher's directory, so the slash-stripped form
+    is ``home/someone/project/.vaibify/logs/....log``. Read as
+    repo-relative it resolved under the workflow directory and 404'd:
+    every host run's log was unreachable, which the browser lane found
+    only once the run started reaching its finalizer.
+
+    Kills: restoring the leading slash for the container root alone,
+    which is the spelling this resolver shipped with.
+    """
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sRepositoryPath = os.path.join(sDirectory, "repo")
+    client, connection = _ftBuildFigureClient(sRepositoryPath)
+    sLogPath = os.path.join(
+        sDirectory, ".vaibify", "logs", "pipeline_20260812_015939.log",
+    )
+    response = client.get(
+        f"/api/figure/{S_HOST_PROJECT}/{sLogPath.lstrip('/')}",
+    )
+    assert response.status_code == 200
+    assert connection.listFetchedPaths[0] == sLogPath
 
 
 def testTheTestWriteFallbackRootFollowsTheMode(tmp_path):

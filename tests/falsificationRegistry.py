@@ -8587,6 +8587,10 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
         new='        sProjectRoot = sWorkspaceRoot\n',
+        # Two copies since the download route began resolving the root
+        # before it resolves the path, rather than after. "The guard is
+        # gone" means both, or the surviving copy scores the mutation.
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -8608,6 +8612,7 @@ def _fdictEntry(sRel):
             '            sContainerId) or {}).get('
             '"sDirectory", sWorkspaceRoot)\n'
         ),
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -10131,6 +10136,39 @@ def _fdictEntry(sRel):
         # only. The two savers are inside ONE hub.
         old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
         new='    return f"{sTargetPath}.{uuid.getnode():x}.tmp"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsOwnAbsolutePathIsRestoredNotJoined'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The shipped defect: restore the slash only for the container
+        # root, so a host project's absolute path is read as
+        # repo-relative and every run log 404s.
+        old=(
+            '    if sRestored == sProjectRoot or sRestored.startswith(\n'
+            '        sProjectRoot.rstrip("/") + "/",\n'
+            '    ):\n'
+        ),
+        new='    if sFilePath.startswith("workspace/"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectNeverReachesOutToTheContainerRoot'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other direction: restore the slash for ANY path, which
+        # would send a host project to /workspace -- a path that means
+        # nothing on a laptop -- and is refused by the root check
+        # rather than answered from the researcher's project.
+        old=(
+            '    if sRestored == sProjectRoot or sRestored.startswith(\n'
+            '        sProjectRoot.rstrip("/") + "/",\n'
+            '    ):\n'
+        ),
+        new='    if True:\n',
     ),
     Falsification(
         nodeid=(

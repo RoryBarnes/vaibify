@@ -196,16 +196,18 @@ class TestFlistParseDirectoryOutput:
 class TestFsResolveFigurePath:
     def test_absolute_path(self):
         assert fsResolveFigurePath(
-            "/workspace/proj", "/abs/path.pdf") == "/abs/path.pdf"
+            "/workspace/proj", "/abs/path.pdf",
+            "/workspace") == "/abs/path.pdf"
 
     def test_workspace_prefix(self):
         assert fsResolveFigurePath(
-            "/workspace/proj", "workspace/plot.pdf") == (
+            "/workspace/proj", "workspace/plot.pdf",
+            "/workspace") == (
             "/workspace/plot.pdf")
 
     def test_relative_path(self):
         sResult = fsResolveFigurePath(
-            "/workspace/proj", "Plot/fig.pdf")
+            "/workspace/proj", "Plot/fig.pdf", "/workspace")
         assert sResult == "/workspace/proj/Plot/fig.pdf"
 
 

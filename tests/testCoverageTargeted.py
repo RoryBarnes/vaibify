@@ -653,14 +653,16 @@ def test_flistBuildPrefix_without_buildx():
 def test_fsResolveFigurePath_absolute():
     from vaibify.gui.pipelineServer import fsResolveFigurePath
     sResult = fsResolveFigurePath(
-        "/workspace/.vaibify/workflows", "/workspace/data.csv")
+        "/workspace/.vaibify/workflows", "/workspace/data.csv",
+        "/workspace")
     assert sResult == "/workspace/data.csv"
 
 
 def test_fsResolveFigurePath_relative():
     from vaibify.gui.pipelineServer import fsResolveFigurePath
     sResult = fsResolveFigurePath(
-        "/workspace/.vaibify/workflows", "Plot/fig.pdf")
+        "/workspace/.vaibify/workflows", "Plot/fig.pdf",
+        "/workspace")
     assert sResult == "/workspace/.vaibify/workflows/Plot/fig.pdf"
 
 

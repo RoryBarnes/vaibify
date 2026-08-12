@@ -4521,7 +4521,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # host project; the root is now the server's answer for the same
     # reason the mode is, and sits beside it because they are learned
     # on the same entry paths and would drift if split.
-    "pipelineServer.py": 2575,
+    # +23 (2026-08-12): the figure/log/download path resolver restores
+    # a URL-stripped leading slash against the project's OWN root
+    # rather than the one container spelling it knew, which is why
+    # every host run's log answered 404. The growth is the paragraph
+    # explaining why the new parameter has no default — defaulting it
+    # would give a host project the container's answer silently, which
+    # is the defect itself.
+    "pipelineServer.py": 2598,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

@@ -387,15 +387,14 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, sFilePath: str
     ):
         dictCtx["require"](sContainerId)
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, sWorkspaceRoot,
+        )
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath,
+            sProjectRoot,
         )
-        fsValidatePathWithinRoot(
-            sAbsPath,
-            projectRoots.fsResolveProjectRoot(
-                sContainerId, sWorkspaceRoot,
-            ),
-        )
+        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
         baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
@@ -569,7 +568,8 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
         sAbsPath = fsResolveFigurePath(
-            dictCtx["workflowDir"](sContainerId), sFilePath
+            dictCtx["workflowDir"](sContainerId), sFilePath,
+            sProjectRepoPath,
         )
         sNormalized = fsValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
