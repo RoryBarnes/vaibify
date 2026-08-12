@@ -9025,6 +9025,38 @@ def _fdictEntry(sRel):
         old="            if dictSummary.get('iShards') != iShards:\n",
         new='            if False:\n',
     ),
+    # --- Contention classes and workers (2026-08-12) ---
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAFileThatBindsAPortCarriesTheExclusiveMarker'
+        ),
+        source='tests/testVaibifyOpen.py',
+        # A file that starts a real hub loses its marker, so its
+        # entries join the shareable lane and two of them meet on one
+        # machine under workers -- a port collision weeks later, in an
+        # unrelated test, reading as flakiness.
+        old='pytestmark = pytest.mark.exclusive\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAWorkerSliceIsStillAPartitionOfItsParentShard'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The worker composition drops a stride: the union of the
+        # workers is no longer the parent shard, so entries are
+        # re-confirmed by nobody while every job reports success.
+        old=(
+            '    return (iShard + iShards * (iWorker - 1), '
+            'iShards * iWorkers)\n'
+        ),
+        new=(
+            '    return (iShard + iShards * (iWorker - 1), '
+            'iShards * iWorkers + 1)\n'
+        ),
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

@@ -154,8 +154,7 @@ def testAShardSaysItIsNotTheStandingNegativeControl():
     ).read_text()
     assert "SHARD {tShard[0]} of {tShard[1]}" in sSource
     assert (
-        "[] if listOnly or tShard else _flistMarkedTestsWithoutEntry()"
-        in sSource
+        "[] if listOnly or tShard or sClass" in sSource
     ), (
         "a shard must decline the whole-registry completeness check, "
         "the way a narrowed run does"
@@ -196,10 +195,10 @@ def testAMissingShardFailsTheSummaryInsteadOfBeingAddedAround(tmp_path):
     moduleSummary = _fmoduleLoadTool("summarizeFalsificationShards.py")
     for iShard in (1, 2, 3):
         _fnWriteShardArtifact(
-            tmp_path, "ubuntu-24.04-3.14", iShard, 4, 100, 100,
+            tmp_path, "ubuntu-24.04-3.14-shareable", iShard, 4, 100, 100,
         )
     iExit = moduleSummary.fiSummarizeShards(
-        str(tmp_path), [("ubuntu-24.04-3.14", 4)],
+        str(tmp_path), [("ubuntu-24.04-3.14-shareable", 4)],
     )
     assert iExit == 1, (
         "three shards of four reported and the summary passed anyway"
@@ -211,10 +210,10 @@ def testAllShardsPresentAndKillingPassesTheSummary(tmp_path):
     moduleSummary = _fmoduleLoadTool("summarizeFalsificationShards.py")
     for iShard in (1, 2):
         _fnWriteShardArtifact(
-            tmp_path, "macos-26-3.9", iShard, 2, 350, 350,
+            tmp_path, "macos-26-3.9-shareable", iShard, 2, 350, 350,
         )
     assert moduleSummary.fiSummarizeShards(
-        str(tmp_path), [("macos-26-3.9", 2)],
+        str(tmp_path), [("macos-26-3.9-shareable", 2)],
     ) == 0
 
 
@@ -235,10 +234,10 @@ def testAShardRunningADifferentSplitIsRefused(tmp_path):
     moduleSummary = _fmoduleLoadTool("summarizeFalsificationShards.py")
     for iShard in (1, 2, 3, 4):
         _fnWriteShardArtifact(
-            tmp_path, "ubuntu-24.04-3.9", iShard, 8, 90, 90,
+            tmp_path, "ubuntu-24.04-3.9-shareable", iShard, 8, 90, 90,
         )
     assert moduleSummary.fiSummarizeShards(
-        str(tmp_path), [("ubuntu-24.04-3.9", 4)],
+        str(tmp_path), [("ubuntu-24.04-3.9-shareable", 4)],
     ) == 1
 
 
@@ -246,17 +245,17 @@ def testASurvivingMutationIsNamedByLegAndShard(tmp_path, capsys):
     """A red summary must say where to look, across thirty-two jobs."""
     moduleSummary = _fmoduleLoadTool("summarizeFalsificationShards.py")
     _fnWriteShardArtifact(
-        tmp_path, "ubuntu-24.04-3.14", 1, 2, 90, 89,
+        tmp_path, "ubuntu-24.04-3.14-shareable", 1, 2, 90, 89,
         listSurvivors=[{
             "sNodeId": "tests/testThing.py::testGuard",
             "sStatus": "SURVIVED: test did NOT catch the mutation",
         }],
     )
     _fnWriteShardArtifact(
-        tmp_path, "ubuntu-24.04-3.14", 2, 2, 90, 90,
+        tmp_path, "ubuntu-24.04-3.14-shareable", 2, 2, 90, 90,
     )
     assert moduleSummary.fiSummarizeShards(
-        str(tmp_path), [("ubuntu-24.04-3.14", 2)],
+        str(tmp_path), [("ubuntu-24.04-3.14-shareable", 2)],
     ) == 1
     sOutput = capsys.readouterr().out
     assert "tests/testThing.py::testGuard" in sOutput
@@ -278,9 +277,96 @@ def testTheWorkflowAndTheSummaryAgreeOnEveryLeg():
     listExpected = re.findall(r'--expect "([^"]+)"', sWorkflow)
     assert listExpected, "the summary job declares no legs at all"
     for sExpectation in listExpected:
-        sOperatingSystem, sPython, sCount = sExpectation.split(":")
+        sOperatingSystem, sPython, _sClass, sCount = sExpectation.split(":")
         assert f"runs-on: {sOperatingSystem}" in sWorkflow, sExpectation
         assert f'"{sPython}"' in sWorkflow, sExpectation
         # The shard list must actually contain the highest index the
         # summary demands, or that shard is expected and never built.
         assert f"{sCount}]" in sWorkflow or f"{sCount},", sExpectation
+
+
+# ── The classification, which is a grep unless something enforces it ──
+
+_T_MACHINE_RESOURCE_IDIOMS = (
+    "uvicorn.Server", "_fiFreePort", "AF_UNIX",
+)
+
+
+@pytest.mark.falsification
+def testAFileThatBindsAPortCarriesTheExclusiveMarker():
+    """The class split is only as good as the thing that assigns it.
+
+    ``browser`` and ``docker_live`` are markers the harness already
+    partitions on, so those two classes look after themselves. "Binds
+    a port" is marked nowhere by nature: it is a property of a fixture
+    that happens to start a real server, and the only reason the 19
+    entries are classified today is that somebody grepped for the
+    idioms once. A grep run once rots.
+
+    So the grep runs here instead, every build. A file using any of
+    these idioms must carry ``pytestmark = pytest.mark.exclusive``, or
+    its entries land in the shareable lane and two of them meet on one
+    machine under workers -- which fails as a port collision in an
+    unrelated test, weeks later, and reads as flakiness.
+
+    Kills: adding a real-server fixture to a test file and not marking
+    it, which is what a future contributor will do.
+    """
+    pathTests = pathlib.Path(__file__).resolve().parent
+    listUnmarked = []
+    for pathFile in sorted(pathTests.glob("test*.py")):
+        sSource = pathFile.read_text(encoding="utf-8")
+        if not any(s in sSource for s in _T_MACHINE_RESOURCE_IDIOMS):
+            continue
+        if "pytest.mark.exclusive" in sSource:
+            continue
+        listUnmarked.append(pathFile.name)
+    assert listUnmarked == [], (
+        "these files bind a machine-global resource but are not marked "
+        f"exclusive, so the harness would run them under parallel "
+        f"workers: {listUnmarked}"
+    )
+
+
+def testTheExclusiveClassIsWhatTheHarnessActuallySelects():
+    """The marker names it and the harness partitions on it.
+
+    Regression cover for the wiring rather than a separate property:
+    a marker nothing reads classifies nothing.
+    """
+    moduleTool = _fmoduleLoadTool("reconfirmFalsification.py")
+    assert "exclusive" in moduleTool.T_EXCLUSIVE_MARKERS
+    assert "browser" in moduleTool.T_EXCLUSIVE_MARKERS
+    assert "docker_live" in moduleTool.T_EXCLUSIVE_MARKERS
+
+
+@pytest.mark.falsification
+def testAWorkerSliceIsStillAPartitionOfItsParentShard():
+    """Workers split a shard, and the arithmetic must not lose entries.
+
+    A worker takes a slice of a slice. If the composition is wrong the
+    lost entries are re-confirmed by nobody, every job still reports
+    success for what it did run, and the registry quietly stops being
+    covered.
+
+    Kills: any sub-shard arithmetic whose union is not the parent's
+    slice -- an off-by-one in the worker index or the wrong
+    denominator.
+    """
+    moduleTool = _fmoduleLoadTool("reconfirmFalsification.py")
+    listEntries = _flistFakeEntries(200)
+    for tParent in ((1, 4), (3, 4), (1, 1)):
+        listParent, _listDeferred = moduleTool._tSelectShard(
+            listEntries, [], tParent,
+        )
+        listSeen = []
+        for iWorker in range(1, 5):
+            tSub = moduleTool._tSubShardForWorker(tParent, iWorker, 4)
+            listSlice, _listUnused = moduleTool._tSelectShard(
+                listEntries, [], tSub,
+            )
+            listSeen.extend(listSlice)
+        assert sorted(listSeen) == sorted(listParent), (
+            f"workers of shard {tParent} cover {len(listSeen)} of "
+            f"{len(listParent)} entries"
+        )

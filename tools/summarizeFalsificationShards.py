@@ -31,20 +31,27 @@ import sys
 
 
 def _tParseExpectation(sExpectation):
-    """Return ``(sLeg, iShards)`` from an ``os:python:count`` argument."""
+    """Return ``(sLeg, iShards)`` from an ``os:python:class:count`` argument.
+
+    The CLASS is part of the leg's identity, not decoration: the
+    exclusive entries and the shareable ones are re-confirmed by
+    different jobs, and a summary that could not tell them apart would
+    accept the shareable ones twice and never notice the exclusive lane
+    was missing.
+    """
     listParts = sExpectation.split(":")
-    if len(listParts) != 3:
+    if len(listParts) != 4:
         raise SystemExit(
-            f"--expect wants os:python:count, not {sExpectation!r}"
+            f"--expect wants os:python:class:count, not {sExpectation!r}"
         )
-    sOperatingSystem, sPython, sCount = listParts
+    sOperatingSystem, sPython, sClass, sCount = listParts
     try:
         iShards = int(sCount)
     except ValueError:
         raise SystemExit(
             f"--expect count is not a number in {sExpectation!r}"
         )
-    return (f"{sOperatingSystem}-{sPython}", iShards)
+    return (f"{sOperatingSystem}-{sPython}-{sClass}", iShards)
 
 
 def _fdictReadShardSummaries(sDirectory):

@@ -17,34 +17,46 @@
 # than the full matrix. README badges are owned by the Badge phase; this
 # workflow does not touch README.
 #
-# SHARDING, and why the two operating systems are split unevenly
-# ---------------------------------------------------------------
-# The re-confirm step is the long pole: it applies one mutation and runs
-# one pytest node per registry entry, serially, and the registry only
-# grows. It passed 25 minutes, then 60, then 90 (2026-08-12), each time
-# by raising a ceiling rather than doing less work.
+# SHARDING, WORKERS, and the two things measurement changed
+# ----------------------------------------------------------
+# The re-confirm step is the long pole: one mutation and one pytest node
+# per registry entry, serially, and the registry only grows. Its ceiling
+# went 25 -> 60 -> 90 minutes, each time by allowing more time rather
+# than doing less work per machine.
 #
-# Each leg now splits its slice across machines. The union of a leg's
-# shards is that leg's whole registry, so the matrix is UNCHANGED in
-# what it proves: every entry is still re-confirmed on every OS and
-# Python in the matrix. That property is not decoration — the mutant
-# that survived on 2026-08-12 survived on both Linux legs and was
-# killed on both macOS legs, so an entry that ran on only one OS would
-# have shipped the defect.
+# Work is now divided twice. ACROSS machines by shard, and WITHIN a
+# machine by worker -- each worker a child harness with its own
+# disposable worktree, which is the isolation the tool has always used
+# for its single run.
 #
-# Linux gets 8 shards and macOS gets 2, from measurement rather than
-# taste. On this repository Linux jobs start within a second of the
-# trigger, while macOS jobs queue: on the run that prompted this, the
-# twelve macOS unit cells started 38 to 60 minutes late and the second
-# macOS falsification leg waited 13. Each job also pays a fixed ~3
-# minute prefix (checkout, install, invariants, the falsification
-# suite), so past a point more shards buy queueing and setup rather
-# than speed. Two long macOS jobs also CAMP on a scarce runner; four
-# shorter ones release it sooner, which helps every other macOS lane.
+# Every entry is still re-confirmed on every OS and Python in the
+# matrix: the union of a leg's shards is that leg's whole registry.
+# That property is not decoration. The mutant that survived on
+# 2026-08-12 survived on both Linux legs and was killed on both macOS
+# legs, so an entry assigned to a single machine would have shipped the
+# defect.
 #
-# Measured on the 2026-08-12 run: prefix 3m05s, re-confirm 38m03s on
-# macOS and ~60m on the slowest Linux leg. So Linux lands near 10
-# minutes a shard and macOS near 22, against 41-62 before.
+# TWO CLASSES, because a worktree separates source and nothing else.
+# An entry whose test binds a port, opens a unix socket, drives the
+# Docker daemon or starts a browser holds something the MACHINE owns,
+# and two of those in parallel contend however isolated their trees
+# are. Those run in a lane of their own at one worker; the other ~92%
+# run under workers. Sharding across machines never needed this --
+# every runner has its own daemon and its own ports -- which is why it
+# arrives only now that workers exist.
+#
+# THE SPLIT IS UNEVEN BY MEASUREMENT, and the first sharded run
+# corrected the guess. Linux jobs start within a second; macOS jobs
+# queue at a concurrency of THREE. With four macOS jobs the fourth
+# waited 21 minutes and began the moment the first finished, so the
+# macOS lane took 37.7 minutes when 22 was predicted. macOS therefore
+# takes NO shard axis and four workers instead: two jobs, no queue.
+# Linux takes four shards of four workers -- the same speed as eight
+# shards of two, with half the jobs.
+#
+# Measured per entry: 5.0s on Linux, 3.2s on macOS, plus a ~3 minute
+# fixed prefix per job. Expected: Linux ~7 min, macOS ~12, exclusive
+# ~8, against 62 before any of this and 38.8 after sharding alone.
 
 name: falsification
 
@@ -54,6 +66,10 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ---------------------------------------------------------------
+  # The shareable entries: no port, no socket, no daemon, no browser.
+  # Free to run under workers, and ~92% of the registry.
+  # ---------------------------------------------------------------
   falsification-linux:
     # Named exactly like the tests-linux / tests-macos matrix legs, this
     # lane produced check names such as `ubuntu-24.04:python-3.14` that
@@ -67,7 +83,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.14"]
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@v5
@@ -102,25 +118,24 @@ jobs:
         run: |
           python -m pytest -m falsification -v
 
-      - name: Re-confirm falsification kills (shard ${{ matrix.shard }}/8)
-        # A shard's own ceiling, not the whole registry's. Generous
-        # against the ~10 minutes a shard measures at, because the
-        # thing this must never do is kill a run that had FINISHED --
-        # which is exactly what the 60-minute ceiling did on
-        # 2026-08-12, printing "721/721 kill-confirmed" and then
-        # failing the job two minutes later.
+      - name: Re-confirm (shareable, shard ${{ matrix.shard }}/4, 4 workers)
+        # A shard's own ceiling, generous against the ~7 minutes it
+        # measures at. The thing this must never do is kill a run that
+        # had FINISHED, which is what the 60-minute whole-registry
+        # ceiling did on 2026-08-12: it printed "721/721
+        # kill-confirmed" and failed the job two minutes later.
         timeout-minutes: 30
         env:
           # The Linux runners ship a Docker daemon, so they are where
           # the real-container entries are actually judged. Demanding
           # the daemon here means losing it turns this lane RED rather
           # than silently shrinking the denominator it reports against.
-          # The macOS runners have no daemon and cannot get one, so
-          # they defer those entries by name instead.
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
         run: |
           python tools/reconfirmFalsification.py \
-            --shard ${{ matrix.shard }}/8 \
+            --class shareable \
+            --shard ${{ matrix.shard }}/4 \
+            --workers 4 \
             --summary-json shardSummary.json
 
       # `always()` because a shard that FAILED is the one the summary
@@ -131,18 +146,21 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-${{ matrix.shard }}
+          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-shareable-${{ matrix.shard }}
           path: shardSummary.json
           if-no-files-found: ignore
 
   falsification-macos:
-    name: 'falsification:macos-26:python-${{ matrix.python-version }}:shard-${{ matrix.shard }}'
+    # NO shard axis, deliberately: macOS concurrency here is three, so
+    # a fourth job waits for a slot and the lane pays the wait twice
+    # over. Two jobs and four workers each is strictly faster than four
+    # jobs of two -- measured, not assumed.
+    name: 'falsification:macos-26:python-${{ matrix.python-version }}'
     runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.14"]
-        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v5
@@ -162,45 +180,110 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Architectural invariants
-        if: matrix.shard == 1
         timeout-minutes: 15
         run: |
           python -m pytest tests/testArchitecturalInvariants.py -v
 
       - name: Falsification tests
-        if: matrix.shard == 1
         timeout-minutes: 15
         run: |
           python -m pytest -m falsification -v
 
-      - name: Re-confirm falsification kills (shard ${{ matrix.shard }}/2)
+      - name: Re-confirm (shareable, 4 workers)
         timeout-minutes: 45
         run: |
           python tools/reconfirmFalsification.py \
-            --shard ${{ matrix.shard }}/2 \
+            --class shareable \
+            --workers 4 \
             --summary-json shardSummary.json
 
-      - name: Upload this shard's summary
+      - name: Upload this leg's summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: falsificationSummary-macos-26-${{ matrix.python-version }}-${{ matrix.shard }}
+          name: falsificationSummary-macos-26-${{ matrix.python-version }}-shareable-1
+          path: shardSummary.json
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------
+  # The exclusive entries: a bound port, a unix socket, the Docker
+  # daemon, a real browser. One worker, by definition.
+  #
+  # This lane also closes a hole. Until now NOTHING re-confirmed the
+  # browser entries: `VAIBIFY_REQUIRE_BROWSER` was set only in
+  # browser.yml, which runs the browser TESTS and not this harness, so
+  # all 31 deferred on every leg and were picked up nowhere. Here the
+  # Linux leg installs the browser and demands it, which turns losing
+  # Playwright into a red lane rather than a smaller denominator.
+  # ---------------------------------------------------------------
+  falsification-exclusive:
+    name: 'falsification:exclusive:${{ matrix.os }}:python-${{ matrix.python-version }}'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+        python-version: ["3.9", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      # Linux only, matching browser.yml's own single-cell lane: the
+      # browser entries are a Linux claim there and stay one here.
+      - name: Install the browser
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          python -m pip install -e ".[browser]"
+          python -m playwright install --with-deps chromium
+
+      - name: Re-confirm (exclusive, 1 worker)
+        timeout-minutes: 45
+        env:
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: >-
+            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
+          VAIBIFY_REQUIRE_BROWSER: >-
+            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
+        run: |
+          python tools/reconfirmFalsification.py \
+            --class exclusive \
+            --summary-json shardSummary.json
+
+      - name: Upload this leg's summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: falsificationSummary-${{ matrix.os }}-${{ matrix.python-version }}-exclusive-1
           path: shardSummary.json
           if-no-files-found: ignore
 
   falsification-summary:
-    # The claim no single shard can make. A shard judges its own slice
-    # and says so; this job is the only place the UNION exists, so it
-    # owns the two whole-registry questions: did every shard report,
-    # and does every falsification-marked test have a registry entry.
+    # The claim no single job can make. Each one judges its own class
+    # and slice and says so; this job is the only place the UNION
+    # exists, so it owns the two whole-registry questions: did every
+    # job report, and does every falsification-marked test have a
+    # registry entry.
     #
-    # It FAILS CLOSED. A shard that was cancelled, timed out, or never
+    # It FAILS CLOSED. A job that was cancelled, timed out, or never
     # started uploads nothing, and summing the ones that did arrive
     # would report a green lane for work nobody ran — the shape this
     # repository's Lessons list already records once, when a CI step
     # reported success for having run nothing.
     name: 'falsification:summary'
-    needs: [falsification-linux, falsification-macos]
+    needs: [falsification-linux, falsification-macos, falsification-exclusive]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -218,7 +301,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: Download every shard's summary
+      - name: Download every job's summary
         uses: actions/download-artifact@v4
         with:
           pattern: falsificationSummary-*
@@ -226,18 +309,22 @@ jobs:
 
       - name: Registry completeness
         # Whole-registry, collection-level, and independent of any
-        # shard: every `@pytest.mark.falsification` test must have a
-        # registry entry. Each shard declines this check because a
-        # slice cannot speak for the registry; it lives here instead of
-        # nowhere.
+        # shard or class: every `@pytest.mark.falsification` test must
+        # have a registry entry. Each partial run declines this check
+        # because a slice cannot speak for the registry; it lives here
+        # instead of nowhere.
         run: |
           python tools/reconfirmFalsification.py --completeness-only
 
-      - name: Add the shards up
+      - name: Add the jobs up
         run: |
           python tools/summarizeFalsificationShards.py \
             --directory shardSummaries \
-            --expect "ubuntu-24.04:3.9:8" \
-            --expect "ubuntu-24.04:3.14:8" \
-            --expect "macos-26:3.9:2" \
-            --expect "macos-26:3.14:2"
+            --expect "ubuntu-24.04:3.9:shareable:4" \
+            --expect "ubuntu-24.04:3.14:shareable:4" \
+            --expect "macos-26:3.9:shareable:1" \
+            --expect "macos-26:3.14:shareable:1" \
+            --expect "ubuntu-24.04:3.9:exclusive:1" \
+            --expect "ubuntu-24.04:3.14:exclusive:1" \
+            --expect "macos-26:3.9:exclusive:1" \
+            --expect "macos-26:3.14:exclusive:1"
