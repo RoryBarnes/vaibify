@@ -8,6 +8,7 @@ workflow: they only require a connected container.
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import posixpath
 import re
 from typing import List
 
@@ -288,6 +289,23 @@ def _fbDirectoryExists(connectionDocker, sContainerId, sFullPath):
     return iExitCode == 0
 
 
+def _fsRepositoryPathFor(sResourceId, sRepositoryName):
+    """Return the absolute path of one repository under this resource.
+
+    The repositories a project holds live under the root the resolver
+    names -- the workspace volume for a container, the registered
+    directory for a host project. Composing "/workspace/" + name here
+    is what made every button on this panel reach for a directory that
+    does not exist on the researcher's machine: Init answered "mkdir:
+    /workspace: Read-only file system", and the 500 quarantined the
+    project on its way out.
+    """
+    return posixpath.join(
+        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),
+        sRepositoryName,
+    )
+
+
 def _fbDirectoryIsGitRepo(connectionDocker, sContainerId, sFullPath):
     """Return True if sFullPath contains a .git/ subdirectory."""
     sGitPath = sFullPath.rstrip("/") + "/.git"
@@ -403,7 +421,7 @@ def _fdictDoInitProjectRepo(
             400, f"Project repositories must be visible "
             f"directories; refusing hidden '{sDirectory}'"
         )
-    sFullPath = "/workspace/" + sDirectory
+    sFullPath = _fsRepositoryPathFor(sContainerId, sDirectory)
     _fnEnsureInitTargetDirectory(
         connectionDocker, sContainerId, sFullPath, bCreateIfMissing,
     )
@@ -708,7 +726,7 @@ async def _fsAfterRepoPushSuccess(
     if not dictWorkflow:
         return ""
     sRepoPath = (dictWorkflow.get("sProjectRepoPath") or "").rstrip("/")
-    if sRepoPath != "/workspace/" + sRepoName:
+    if sRepoPath != _fsRepositoryPathFor(sContainerId, sRepoName):
         return ""
     return await fsRefreshVerifyCacheAfterPush(
         dictCtx, sContainerId, dictWorkflow, "github",
@@ -732,7 +750,8 @@ def _fnRegisterPushStaged(app, dictCtx):
             lambda: syncDispatcher.fdictSyncResult(
                 *syncDispatcher.ftResultPushStagedToGithub(
                     dictCtx["docker"], sContainerId,
-                    request.sCommitMessage, "/workspace/" + sRepoName,
+                    request.sCommitMessage,
+                    _fsRepositoryPathFor(sContainerId, sRepoName),
                 )
             ),
             requestHttp,
@@ -759,7 +778,7 @@ def _fnRegisterPushFiles(app, dictCtx):
                 *syncDispatcher.ftResultPushToGithub(
                     dictCtx["docker"], sContainerId,
                     request.listFilePaths, request.sCommitMessage,
-                    "/workspace/" + sRepoName,
+                    _fsRepositoryPathFor(sContainerId, sRepoName),
                 )
             ),
             requestHttp,
@@ -779,7 +798,7 @@ def _fnRegisterDirtyFiles(app, dictCtx):
         _fnRequireTracked(
             dictCtx["docker"], sContainerId, sRepoName
         )
-        sWorkdir = "/workspace/" + sRepoName
+        sWorkdir = _fsRepositoryPathFor(sContainerId, sRepoName)
         listDirty = syncDispatcher.flistGetDirtyFiles(
             dictCtx["docker"], sContainerId, sWorkdir
         )

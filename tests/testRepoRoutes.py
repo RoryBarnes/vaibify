@@ -59,11 +59,25 @@ class FakeDocker:
         return sorted(list(self.dictRepos) + list(self.setNonGitDirs))
 
     def flistContainerPathsExist(self, sContainerId, listPaths):
-        listAnswers = []
-        for sPath in listPaths:
-            sName = sPath[len("/workspace/"):].rsplit("/.git", 1)[0]
-            listAnswers.append(sName in self.dictRepos)
-        return listAnswers
+        return [
+            sPath[len("/workspace/"):].rsplit("/.git", 1)[0]
+            in self.dictRepos
+            for sPath in listPaths
+        ]
+
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Answer discovery's second probe: is this entry a directory.
+
+        Its own call rather than a suffix on the existence probe: a
+        plain FILE has no ``.git`` child either, and used to land in
+        the panel's "directories that are not repositories" list,
+        where it was offered as somewhere to run ``git init``.
+        """
+        return [
+            sPath[len("/workspace/"):] in self.dictRepos
+            or sPath[len("/workspace/"):] in self.setNonGitDirs
+            for sPath in listPaths
+        ]
 
     def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
         """Answer the repository-status batch as the typed read does.

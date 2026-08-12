@@ -2030,8 +2030,19 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_after_push_gate_is_exact_equality_not_ordering',
         source='vaibify/gui/routes/repoRoutes.py',
-        old='    if sRepoPath != "/workspace/" + sRepoName:',
-        new='    if sRepoPath > "/workspace/" + sRepoName:',
+        # Re-pinned 2026-08-12: the comparison stopped naming the
+        # container volume and asks the resolver for the resource's
+        # own root. The mutation is unchanged in meaning -- the
+        # equality that decides "is this the project repo" becomes an
+        # ordering.
+        old=(
+            '    if sRepoPath != _fsRepositoryPathFor('
+            'sContainerId, sRepoName):'
+        ),
+        new=(
+            '    if sRepoPath > _fsRepositoryPathFor('
+            'sContainerId, sRepoName):'
+        ),
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_files_response_carries_verify_warning',
@@ -8649,6 +8660,303 @@ def _fdictEntry(sRel):
             '"sDirectory", WORKSPACE_ROOT)\n'
         ),
         iExpectedOccurrences=2,
+    ),
+    # --- The root an EPHEMERAL file may be written under (phase C) ---
+    #
+    # A container writes a throwaway program, a graph description or a
+    # credential to /tmp, which the container throws away with itself.
+    # On the host /tmp is admitted by nothing: the path guard permits
+    # the project root and the host-diagnostics subtree and refuses
+    # everything else, so every one of these lanes answered 500 for a
+    # host project. Both directions, because the container answer has
+    # a footprint the host answer must not acquire: sending a
+    # container's scratch to ~/.vaibify writes the researcher's home
+    # for work that never left their container, and hands the
+    # container a path that does not exist inside it.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsScratchIsSomewhereItsPathGuardAdmits'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerScratchRoot\n'
+        ),
+        new='    if True:\n        return sContainerScratchRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerProjectsScratchStaysInTheContainer'
+            'TemporaryRoot'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerScratchRoot\n'
+        ),
+        new='    if False:\n        return sContainerScratchRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheIntrospectionProgramIsWrittenWhereTheHostMayWriteIt'
+        ),
+        source='vaibify/gui/introspectionScript.py',
+        # The literal this lane shipped with, which is what refused
+        # the first host project ever to generate a test.
+        old=(
+            '    sScriptPath = posixpath.join(\n'
+            '        projectRoots.fsResolveScratchDirectory(\n'
+            '            sContainerId, sOperationName, "/tmp",\n'
+            '        ),\n'
+            '        sOperationName + ".py",\n'
+            '    )\n'
+        ),
+        new='    sScriptPath = posixpath.join("/tmp", sOperationName)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheIntrospectionProgramStillGoesToTmpInAContainer'
+        ),
+        source='vaibify/gui/introspectionScript.py',
+        # The other direction: the resolver dropped and the host
+        # subtree taken unconditionally, which no container can write.
+        old=(
+            '        projectRoots.fsResolveScratchDirectory(\n'
+            '            sContainerId, sOperationName, "/tmp",\n'
+            '        ),\n'
+        ),
+        new=(
+            '        __import__("vaibify.host.hostScratch", '
+            'fromlist=["x"]).fsCreateOperationScratchDirectory(\n'
+            '            __import__("vaibify.gui.projectRoots", '
+            'fromlist=["x"])._fsHostProjectDirectory(sContainerId),\n'
+            '            sOperationName),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheDagRenderWritesAndPersistsUnderTheHostsOwnRoots'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The persist target reverts to the container volume: the
+        # rendered diagram is copied to a path the researcher's
+        # machine does not have, so the export fails after the render
+        # succeeded.
+        old=(
+            '    sPersistPath = posixpath.join(\n'
+            '        projectRoots.fsResolveProjectRoot('
+            'sContainerId, "/workspace"),\n'
+            '        ".vaibify", f"dag.{sFormat}",\n'
+            '    )\n'
+        ),
+        new=(
+            '    sPersistPath = f"/workspace/.vaibify/dag.{sFormat}"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheDagRenderStillUsesTheContainersOwnPaths'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The registry shortcut that never consults the mode, which
+        # would persist every container's diagram into the folder
+        # holding its vaibify.yml -- on the host, from inside the
+        # container, where that folder does not exist.
+        old=(
+            '        projectRoots.fsResolveProjectRoot('
+            'sContainerId, "/workspace"),\n'
+        ),
+        new=(
+            '        (__import__("vaibify.config.registryManager", '
+            'fromlist=["x"]).fdictGetProject(sContainerId) or {}).get('
+            '"sDirectory", "/workspace"),\n'
+        ),
+    ),
+    # --- The panels that mutate a repository (phase C) ---
+    #
+    # Every one of these was found by driving the routes against a real
+    # repository, and every one is a container path composed as a
+    # literal: the push validator measuring against /workspace, the
+    # Repositories panel composing "/workspace/" + name, and discovery
+    # asking only whether an entry has a .git child. The container
+    # direction for each lives with the doubles in testRepoRoutes and
+    # testSyncRoutesCoverage, which drive the same routes with
+    # /workspace fixtures and are untouched by this work.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsGitHubPushReachesTheRemote'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # The validator takes the container volume back as its
+        # boundary: every host path is outside it, so the push is
+        # refused 400 before any git runs.
+        old=(
+            '    sProjectRoot = fsResolveProjectRoot('
+            'sContainerId, WORKSPACE_ROOT)\n'
+            '    for sFilePath in listFilePaths:\n'
+            '        _fnRefuseUnusablePathText(sFilePath)\n'
+            '        _fnRefusePathOutsideRoot(\n'
+        ),
+        new=(
+            '    sProjectRoot = WORKSPACE_ROOT\n'
+            '    for sFilePath in listFilePaths:\n'
+            '        _fnRefuseUnusablePathText(sFilePath)\n'
+            '        _fnRefusePathOutsideRoot(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectCommitsItsCanonicalFiles'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # The router stops consulting the mode and sends every git verb
+        # to the Docker leg, which for a host project is either absent
+        # or holding a container that does not exist.
+        old='        if fbIsHostProject(sResourceId):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheRepositoriesPanelInitializesInsideTheHostProject'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # The literal this panel shipped with, at the one place it is
+        # now derived.
+        old=(
+            '    return posixpath.join(\n'
+            '        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),\n'
+            '        sRepositoryName,\n'
+            '    )\n'
+        ),
+        new='    return "/workspace/" + sRepositoryName\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAPlainFileIsNotOfferedAsARepositoryToBe'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Discovery stops asking whether an entry is a directory, which
+        # is how a plain file came to be offered as one.
+        old=(
+            '        listIsDirectory = '
+            'connectionDocker.flistContainerDirectoriesExist(\n'
+            '            sContainerId, listPaths,\n'
+            '        )\n'
+        ),
+        new='        listIsDirectory = [True] * len(listPaths)\n',
+    ),
+    # --- Which keyring holds this project's credentials (phase C) ---
+    #
+    # The container leg writes the value to a temporary file and runs an
+    # in-container python that reads it back into keyring. For a host
+    # project that lane is wrong twice: there is no container to run it
+    # in, and the file would be a secret written to the researcher's
+    # own disk on the way to a keyring this process can reach directly.
+    # The other direction is the wider failure -- a container project
+    # whose token went to the host keychain would authenticate every
+    # push with nothing.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsTokenGoesToTheResearchersOwnKeyring'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsTokenStillGoesIntoItsContainer'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        from vaibify.config.secretManager import fnStoreSecret\n'
+        ),
+    ),
+    # --- push and pull with no container to cross (phase C) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheCliCopiesWithinAHostProjectInsteadOfCallingDockerCp'
+        ),
+        source='vaibify/cli/main.py',
+        old='    if not fbIsHostProject(configProject.sProjectName):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testTheCliStillUsesDockerCpForAContainerProject'
+        ),
+        source='vaibify/cli/main.py',
+        old='    if not fbIsHostProject(configProject.sProjectName):\n',
+        new='    if False:\n',
+    ),
+    # --- Which interpreter runs a vaibify-authored program (phase C) ---
+    #
+    # Not the same question as which root a file lives under, and it
+    # has the same two-sided failure: `python3` on the host is
+    # whatever the researcher's PATH resolves and routinely lacks
+    # vaibify's dependencies, while `sys.executable` names nothing at
+    # all inside a container.
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsHelperProgramRunsOnVaibifysInterpreter'
+        ),
+        source='vaibify/gui/helperPrograms.py',
+        old='    if not fbIsHostProject(sResourceId):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsHelperProgramStillRunsOnPython3'
+        ),
+        source='vaibify/gui/helperPrograms.py',
+        old='    if not fbIsHostProject(sResourceId):\n',
+        new='    if False:\n',
+    ),
+    # --- The isolation gate has no container to ask about (phase C) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAHostProjectsPushNeverAsksDockerAboutIsolation'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if fbIsHostProject(sContainerId):\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitAndReposPanel.py::'
+            'testAContainerProjectsPushStillChecksIsolation'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if fbIsHostProject(sContainerId):\n        return\n',
+        new='    if True:\n        return\n',
     ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #

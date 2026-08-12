@@ -288,6 +288,21 @@ class FailClosedDockerAdapter:
             self._fbPathExists(sPath) for sPath in listPaths
         ]
 
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Answer discovery's type probe for the paths it models.
+
+        Every workspace entry this adapter knows about is a
+        repository directory, so this and the existence probe agree
+        here. They do not agree in production, which is the point of
+        asking separately: a plain FILE has no ``.git`` child either,
+        and used to be offered as somewhere to run ``git init``.
+        """
+        return [
+            sPath[len(S_WORKSPACE_ROOT) + 1:]
+            in self.setWorkspaceRepositories
+            for sPath in listPaths
+        ]
+
     def _fbPathExists(self, sPath):
         """Answer the typed existence read for the paths it models.
 

@@ -134,7 +134,7 @@ def test_failed_snapshot_restore_reports_false_and_keeps_the_snapshot():
     """
     from vaibify.gui.routes.syncRoutes import _fbRestoreContainerSnapshot
     mockDispatcher = MagicMock()
-    mockDispatcher.fbCopyCredentialInContainer.side_effect = RuntimeError(
+    mockDispatcher.fbCopyCredentialForProject.side_effect = RuntimeError(
         "exec failed",
     )
     bRestored = _fbRestoreContainerSnapshot(
@@ -142,7 +142,7 @@ def test_failed_snapshot_restore_reports_false_and_keeps_the_snapshot():
         ("zenodo_token_sandbox", "zenodo_token_sandbox_backup"),
     )
     assert bRestored is False
-    mockDispatcher.fnDeleteCredentialFromContainer.assert_not_called()
+    mockDispatcher.fnDeleteCredentialForProject.assert_not_called()
 
 
 def test_overleaf_rollback_restores_the_host_keyring_token():

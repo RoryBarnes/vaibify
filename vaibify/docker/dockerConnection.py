@@ -250,6 +250,7 @@ S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
 S_TYPED_READ_FILE_EXISTS = "fileExists"
 S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
+S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
@@ -316,6 +317,21 @@ _DICT_TYPED_READ_PROGRAMS = {
         "import json,os,sys; "
         "sys.stdout.write(json.dumps("
         "[os.path.exists(s) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
+    # The same batch, asking whether each path is a DIRECTORY. It is
+    # its own program because the question cannot be spelled as a path
+    # and asked through the one above: `<name>/.` exists only for a
+    # directory on both legs, but the host guard resolves every path
+    # through `realpath`, which strips the `/.` and answers about the
+    # file. Repository discovery asks both questions about the same
+    # entries in one round trip -- "is it a repo" and "is it even a
+    # directory" -- because a plain file answering no to the first was
+    # being offered to the researcher as somewhere to run `git init`.
+    S_TYPED_READ_DIRECTORIES_EXIST: (
+        "import json,os,sys; "
+        "sys.stdout.write(json.dumps("
+        "[os.path.isdir(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
     ),
     # The file panel's five-second poll, which is the hottest read in
@@ -486,6 +502,29 @@ def _fsTypedReadPathLiteral(objPaths):
         "a repr that is a string literal, so nothing else may be "
         "embedded in the program."
     )
+
+
+def _flistInterpretBooleanBatch(tExecResult, listPaths, sProbeName):
+    """Return one boolean per path from a batched probe's output.
+
+    A failed READ raises ``OSError``. An answer count that does not
+    match the request is also an ``OSError`` -- a short list would
+    otherwise silently realign every answer after the gap onto the
+    wrong path.
+    """
+    if tExecResult.iExitCode != 0:
+        raise OSError(
+            "Cannot probe paths in container "
+            f"({tExecResult.sStderr.strip()})"
+        )
+    listAnswers = json.loads(tExecResult.sStdout.strip() or "[]")
+    if len(listAnswers) != len(listPaths):
+        raise OSError(
+            f"The batched {sProbeName} probe answered "
+            f"{len(listAnswers)} of {len(listPaths)} paths; refusing to "
+            "realign the answers onto the wrong paths."
+        )
+    return [bool(bAnswer) for bAnswer in listAnswers]
 
 
 def _fbInterpretPathProbe(tExecResult, sPath):
@@ -956,22 +995,35 @@ class DockerConnection:
         """
         if not listPaths:
             return []
-        tExecResult = self._ftRunTypedRead(
-            sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
+        return _flistInterpretBooleanBatch(
+            self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
+            ),
+            listPaths, "existence",
         )
-        if tExecResult.iExitCode != 0:
-            raise OSError(
-                "Cannot probe paths in container "
-                f"({tExecResult.sStderr.strip()})"
-            )
-        listAnswers = json.loads(tExecResult.sStdout.strip() or "[]")
-        if len(listAnswers) != len(listPaths):
-            raise OSError(
-                f"The batched existence probe answered {len(listAnswers)} "
-                f"of {len(listPaths)} paths; refusing to realign the "
-                "answers onto the wrong paths."
-            )
-        return [bool(bExists) for bExists in listAnswers]
+
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Return one is-a-directory answer per path, in the order given.
+
+        The type sibling of ``flistContainerPathsExist``, batched for
+        the same reason and answered by its own declared program. A
+        caller that needs both asks both and gets two round trips
+        rather than one per entry.
+
+        The operation name is written out here rather than threaded in
+        beside the paths, as it is in the sibling above: the exemption
+        is granted to a NAME this class chooses, and a name arriving as
+        a variable is a name a caller could choose.
+        """
+        if not listPaths:
+            return []
+        return _flistInterpretBooleanBatch(
+            self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_DIRECTORIES_EXIST,
+                list(listPaths),
+            ),
+            listPaths, "directory",
+        )
 
     def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
         """Return one raw status record per repository path, in order.

@@ -322,6 +322,24 @@ fork the path handling.
 Modules that are host-only (`vaibify/host/`) still use `os.path`,
 because they say what they mean.
 
+**Never write `/workspace` — or `/tmp` — as a constant.** Both name a
+root, and a host project's roots are different ones. Ask
+`projectRoots.fsResolveProjectRoot(sResourceId, sContainerRoot)` for
+the root a project's FILES live under, and
+`projectRoots.fsResolveScratchDirectory(sResourceId, sOperationName,
+sContainerScratchRoot)` for the one an EPHEMERAL file may be written
+to. The container answer is passed in at every call site, so that
+module never becomes a second authority on what those roots are; only
+a host resource overrides it, and its scratch answer is a private
+0700 directory under the host-diagnostics subtree, which is the only
+ephemeral root the host path guard admits. A `/tmp` literal is not a
+style problem there — it is a refusal, and the whole introspection
+lane answered 500 for a host project until this existed.
+`tests/testHostModeProjectRoots.py` carries a symmetric falsification
+pair for each resolver, and the container direction is the one with
+the wider blast radius: a container handed the host answer gets a
+path that does not exist inside it.
+
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
 auto-detected from the project.json's parent via
@@ -1108,6 +1126,23 @@ correct approach.
   raising it produced the first one that ever finished and immediately
   exposed seven entries that no daemon-less host can evaluate. A red
   lane nobody can read is indistinguishable from a lane that never ran.
+- **A pull request whose base is not `main` runs no CI at all.** Every
+  workflow is `on: pull_request: branches: [main]`, so a PR stacked on
+  another open branch shows a clean, empty check list — the same shape
+  as the older "a pushed branch with no PR runs no browser lane" trap,
+  and just as easy to read as a pass. Retargeting the base does not
+  trigger the workflows either; `gh pr close` then `gh pr reopen`
+  does.
+- **A git fixture inherits the machine's `init.defaultBranch`.** A
+  host-mode test that pushed `HEAD:refs/heads/main` with `-u` passed
+  on a laptop defaulting to `main` and failed all four falsification
+  legs on runners defaulting to `master`, because the production
+  `git push` was then handed a local branch and an upstream with
+  different names. Pin it with `git symbolic-ref HEAD
+  refs/heads/<name>` (works on every git version, unlike `init -b`),
+  and reproduce a divergence like this locally with
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch
+  GIT_CONFIG_VALUE_0=master` rather than pushing a guess at CI.
 
 ## Pointers
 

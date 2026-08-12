@@ -383,8 +383,10 @@ def fnGuiCommand(sProjectName):
 @click.argument("source")
 @click.argument("destination")
 def fnPushCommand(project, source, destination):
-    """Push files from the host into the container workspace."""
+    """Push files from the host into the project workspace."""
     configProject = fconfigResolveProject(project)
+    if _fbCopiedWithinHostProject(configProject, source, destination):
+        return
     from vaibify.docker.fileTransfer import fnPushToContainer
     fnPushToContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pushed {source} -> {destination}")
@@ -398,8 +400,69 @@ def fnPushCommand(project, source, destination):
 @click.argument("source")
 @click.argument("destination")
 def fnPullCommand(project, source, destination):
-    """Pull files from the container workspace to the host."""
+    """Pull files from the project workspace to the host."""
     configProject = fconfigResolveProject(project)
+    if _fbCopiedWithinHostProject(configProject, source, destination):
+        return
     from vaibify.docker.fileTransfer import fnPullFromContainer
     fnPullFromContainer(configProject.sProjectName, source, destination)
     click.echo(f"Pulled {source} -> {destination}")
+
+
+def _fbCopiedWithinHostProject(configProject, sSource, sDestination):
+    """Copy on the researcher's own machine; False if not a host project.
+
+    ``docker cp`` is the wrong verb twice for a host project: there is
+    no container on the other side, and the files were never anywhere
+    else. What is left is an ordinary copy, with project-relative
+    paths resolved against the project directory so ``vaibify push
+    data.csv Step01/`` means what it says in both modes.
+
+    A copy onto itself is refused rather than performed: ``shutil``
+    would truncate the file before reading it, and a researcher who
+    typed the same path twice meant to move nothing.
+    """
+    import shutil
+    from vaibify.config.registryManager import fbIsHostProject
+    if not fbIsHostProject(configProject.sProjectName):
+        return False
+    sSourcePath = _fsResolveAgainstProject(configProject, sSource)
+    sDestinationPath = _fsResolveAgainstProject(
+        configProject, sDestination,
+    )
+    if os.path.isdir(sDestinationPath):
+        sDestinationPath = os.path.join(
+            sDestinationPath, os.path.basename(sSourcePath.rstrip(os.sep)),
+        )
+    if os.path.exists(sDestinationPath) and os.path.samefile(
+        sSourcePath, sDestinationPath,
+    ):
+        click.echo(
+            f"{sSourcePath} is already where you asked for it; this "
+            "project's files live on this machine."
+        )
+        return True
+    sDestinationParent = os.path.dirname(sDestinationPath)
+    if sDestinationParent and not os.path.isdir(sDestinationParent):
+        raise click.ClickException(
+            f"{sDestinationParent} does not exist. Create it first — "
+            "this command copies, it does not build a tree, and "
+            "neither does the container lane it mirrors."
+        )
+    if os.path.isdir(sSourcePath):
+        shutil.copytree(sSourcePath, sDestinationPath, dirs_exist_ok=True)
+    else:
+        shutil.copy2(sSourcePath, sDestinationPath)
+    click.echo(f"Copied {sSourcePath} -> {sDestinationPath}")
+    return True
+
+
+def _fsResolveAgainstProject(configProject, sPath):
+    """Return an absolute path, resolving a relative one in the project."""
+    from vaibify.config.registryManager import fdictGetProject
+    if os.path.isabs(sPath):
+        return sPath
+    dictProject = fdictGetProject(configProject.sProjectName) or {}
+    return os.path.join(
+        dictProject.get("sDirectory") or os.getcwd(), sPath,
+    )

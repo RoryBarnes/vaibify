@@ -22,22 +22,36 @@ from vaibify.gui.syncDispatcher import (
 # fsPythonCommand
 # -----------------------------------------------------------------------
 
+# Every program this builder composes imports vaibify, keyring or
+# requests, so it names the interpreter that HAS them: the image's
+# python3 in a container, and vaibify's own on the host. These
+# assertions are about the QUOTING, so they ask about an id nothing
+# registered, which resolves to the container answer; the mode
+# branch itself is covered in testHostGitAndReposPanel.
+S_UNREGISTERED_CONTAINER = "cid_unregistered_for_quoting"
+
 
 def test_fsPythonCommand_basic():
-    sResult = fsPythonCommand("import os", "print(os.getcwd())")
+    sResult = fsPythonCommand(
+        "import os", "print(os.getcwd())", S_UNREGISTERED_CONTAINER,
+    )
     assert sResult.startswith("python3 -c ")
     assert "import os" in sResult
     assert "print(os.getcwd())" in sResult
 
 
 def test_fsPythonCommand_semicolon_separation():
-    sResult = fsPythonCommand("import sys", "sys.exit(0)")
+    sResult = fsPythonCommand(
+        "import sys", "sys.exit(0)", S_UNREGISTERED_CONTAINER,
+    )
     assert "; " in sResult
 
 
 def test_fsPythonCommand_uses_single_quote_wrapping():
     """Single-quote wrapping (not double) means $ and ` stay literal."""
-    sResult = fsPythonCommand("import os", "print(os.getcwd())")
+    sResult = fsPythonCommand(
+        "import os", "print(os.getcwd())", S_UNREGISTERED_CONTAINER,
+    )
     sArgument = sResult[len("python3 -c "):]
     assert sArgument.startswith("'")
     assert sArgument.endswith("'")
@@ -54,7 +68,9 @@ def test_fsPythonCommand_resists_double_quote_injection(tmp_path):
     """
     sCanary = str(tmp_path / "injection_proof")
     sMalicious = f'print(1)"; touch {sCanary} #'
-    sResult = fsPythonCommand("import os", sMalicious)
+    sResult = fsPythonCommand(
+        "import os", sMalicious, S_UNREGISTERED_CONTAINER,
+    )
     subprocess.run(
         ["bash", "-c", sResult],
         capture_output=True,
@@ -66,7 +82,7 @@ def test_fsPythonCommand_passes_dangerous_chars_as_literals():
     """Round-trip a dict literal containing dangerous shell chars."""
     sPayload = repr({"sName": 'x"; rm -rf / #', "sValue": "$(id)"})
     sCall = f"print({sPayload})"
-    sResult = fsPythonCommand("", sCall)
+    sResult = fsPythonCommand("", sCall, S_UNREGISTERED_CONTAINER)
     resultProcess = subprocess.run(
         ["bash", "-c", sResult],
         capture_output=True, text=True,

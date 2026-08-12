@@ -259,9 +259,20 @@ def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
     consistent view of the workspace, and neither reaches the general
     exec primitive.
 
-    Anything that is not a directory falls out naturally: a plain file
-    has no ``.git`` child, and the workspace's own dot-directories are
-    filtered by name as they always were.
+    A plain FILE is asked about explicitly. It has no ``.git`` child,
+    so it falls out of the git half on its own -- and then landed in
+    the other half, where the panel offered to make a git repository
+    out of it. A container workspace holds mostly directories so this
+    was rare; a host project's root is the researcher's own repository,
+    whose top level is mostly files, and every one of them appeared.
+    The second question is its own batched probe rather than a
+    cleverer path handed to the first: ``<name>/.`` does distinguish a
+    directory on both legs, but the host path guard resolves every
+    path through ``realpath``, which strips the ``/.`` and answers
+    about the file.
+
+    The workspace's own dot-directories are filtered by name as they
+    always were.
     """
     sRepositoryRoot = fsRepositoryRootFor(sContainerId)
     try:
@@ -276,22 +287,28 @@ def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
     )
     if not listNames:
         return ([], [])
-    listGitMarkers = [
-        posixpath.join(sRepositoryRoot, sName, ".git")
-        for sName in listNames
+    listPaths = [
+        posixpath.join(sRepositoryRoot, sName) for sName in listNames
     ]
     try:
         listHasGit = connectionDocker.flistContainerPathsExist(
-            sContainerId, listGitMarkers,
+            sContainerId,
+            [posixpath.join(sPath, ".git") for sPath in listPaths],
+        )
+        listIsDirectory = connectionDocker.flistContainerDirectoriesExist(
+            sContainerId, listPaths,
         )
     except OSError:
         return ([], [])
     listGitDirs = [
-        sName for sName, bHasGit in zip(listNames, listHasGit) if bHasGit
+        sName for sName, bHasGit, bIsDirectory
+        in zip(listNames, listHasGit, listIsDirectory)
+        if bHasGit and bIsDirectory
     ]
     listNonGitDirs = [
-        sName for sName, bHasGit in zip(listNames, listHasGit)
-        if not bHasGit
+        sName for sName, bHasGit, bIsDirectory
+        in zip(listNames, listHasGit, listIsDirectory)
+        if bIsDirectory and not bHasGit
     ]
     return (listGitDirs, listNonGitDirs)
 

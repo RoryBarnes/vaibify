@@ -218,6 +218,13 @@ class HostConnection:
             for sPath in listPaths
         ]
 
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        """Return one is-a-directory answer per path, in the order given."""
+        return [
+            os.path.isdir(self._fsValidateHostPath(sContainerId, sPath))
+            for sPath in listPaths
+        ]
+
     def fdictStatPathMtimes(self, sContainerId, listPaths):
         """Return ``{sPath: sMtime}`` for the host paths that exist.
 
