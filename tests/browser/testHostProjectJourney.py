@@ -342,3 +342,66 @@ def _fsTerminalNoticeText(page):
     """Return the terminal pane's rendered text, whitespace collapsed."""
     page.wait_for_selector(".xterm-rows", timeout=20000)
     return " ".join(page.text_content(".xterm-rows").split())
+
+
+def _fsStepStatusClass(page):
+    """Return the class list of the seeded step's run-status dot."""
+    return page.get_attribute(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status',
+        "class",
+    )
+
+
+@pytest.mark.falsification
+def testStoppingTasksDoesNotUnRunAFinishedStep(
+    pageDashboard, serverHub,
+):
+    """A stop ends work in progress; it does not erase work that ended.
+
+    Kills: clearing EVERY step light on a successful kill. Stopping
+    took a finished step's pale-blue dot back to a hollow never-run
+    circle, so the dashboard forgot -- and told the researcher it had
+    forgotten -- that the step had succeeded. The running light beside
+    it MUST go, which is the half that stops "clear nothing" from
+    passing this test.
+
+    The kill POST is answered here rather than served: what is under
+    test is what the dashboard does with a success, and the route that
+    produces one is driven against real processes in
+    ``tests/testHostCancel.py``.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/pipeline/*/kill",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bSuccess": True,
+                "iProcessesKilled": 1,
+                "bTaskCancelled": True,
+                "listCancellationRefusals": [],
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => { VaibifyApp.fnSetStepStatus(0, 'pass');"
+        " VaibifyApp.fnSetStepStatus(1, 'running');"
+        " VaibifyApp.fnRenderStepList(); }",
+    )
+    assert "pass" in _fsStepStatusClass(pageDashboard)
+
+    pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector("text=Killed 1 process", timeout=5000)
+
+    assert "pass" in _fsStepStatusClass(pageDashboard), (
+        "stopping tasks erased a completed step's result; the "
+        "dashboard now reports the step as never run"
+    )
+    assert pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+    ) is False, "the stop left a running light on"
+    assert pageDashboard.listPageErrors == []

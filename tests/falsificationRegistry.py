@@ -10879,4 +10879,24 @@ def _fdictEntry(sRel):
             '    listExists = [True] * len(listAbsolute)\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testStoppingTasksDoesNotUnRunAFinishedStep'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The behaviour the kill handler used to reach for by calling
+        # `fnClearAllStepStatuses`: forget every status, not only the
+        # ones a stop invalidates. Mutated in the surviving function
+        # rather than at the call site because that helper was removed
+        # with its only caller -- keeping a "forget everything" export
+        # alive to make a mutation possible would keep the footgun.
+        old=(
+            '            if (sVal === "running" || sVal === "queued"\n'
+            '                || sVal === "overBudget") {\n'
+        ),
+        new=(
+            '            if (true) {\n'
+        ),
+    ),
 ]

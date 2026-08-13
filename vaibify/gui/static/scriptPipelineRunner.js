@@ -1032,7 +1032,16 @@ var VaibifyPipelineRunner = (function () {
                         "/api/pipeline/" + sContainerId + "/kill"
                     );
                     if (dictResult.bSuccess) {
-                        VaibifyApp.fnClearAllStepStatuses();
+                        /* Only the lights a stop actually
+                           invalidates: running, queued, over-budget.
+                           This cleared EVERY status, so stopping took
+                           a finished step's pale-blue dot back to a
+                           hollow never-run circle and lost the record
+                           that it had succeeded. A stop ends work in
+                           progress; it does not un-run what already
+                           ran, and the dashboard must not say it did.
+                           (Live report, 2026-08-13.) */
+                        VaibifyApp.fnClearRunningStatuses();
                         VaibifyApp.fnRenderStepList();
                         _fnReportKillOutcome(dictResult);
                     } else {

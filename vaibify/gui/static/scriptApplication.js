@@ -4984,9 +4984,13 @@ const VaibifyApp = (function () {
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
         fnResetQueuedSteps: fnResetQueuedSteps,
-        fnClearAllStepStatuses: function () {
-            _dictWorkflowState.dictStepStatus = {};
-        },
+        /* `fnClearAllStepStatuses` was removed with its only caller.
+           Its whole effect there was the defect -- a stop erasing a
+           completed step's result -- and a "forget every status"
+           helper sitting on the public surface is an invitation to
+           reintroduce it. Clearing across a workflow switch belongs
+           to `_fnResetWorkflowState`, which rebuilds the whole state
+           object rather than reaching into this one. */
         fnStartFileChangePolling: fnStartFileChangePolling,
         fnToggleStepEnabled: fnToggleStepEnabled,
         fnClearFileExistenceCache: function () {
