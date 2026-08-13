@@ -263,9 +263,17 @@ def testANarrowedRunDoesNotClaimToHaveCheckedRegistryCompleteness():
         PathAlias(__file__).resolve().parent.parent
         / "tools" / "reconfirmFalsification.py"
     ).read_text()
+    # The condition grew a second term on 2026-08-12, when the harness
+    # learned to run one SHARD of the registry. A shard is the same
+    # kind of partial run for this purpose -- it sees a slice, so it
+    # cannot speak for coverage -- and the summary job over the union
+    # owns that check instead.
+    # Pinned on the EXPRESSION rather than the whole statement: the
+    # statement wraps once the condition has several terms, and a pin
+    # that breaks on reflowing teaches people to edit the pin. A
+    # CLASS run is partial in the same way a shard is.
     assert (
-        "listUncovered = [] if listOnly else "
-        "_flistMarkedTestsWithoutEntry()"
+        "[] if listOnly or tShard or sClass"
     ) in sSource, (
         "a narrowed run must not run the completeness check over the "
         "whole registry"

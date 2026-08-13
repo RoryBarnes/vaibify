@@ -293,9 +293,15 @@ def test_fnRunHeartbeatLoop_writes_updated_heartbeat():
             daemon=True,
         )
         threadHeartbeat.start()
-        # Give the loop time to write at least once before stopping.
+        # Wait for the loop to write once rather than betting 0.2s of
+        # wall clock on it: the assertion below is "it wrote", and a
+        # loaded runner that had not got there yet failed as though it
+        # never would.
         import time
-        time.sleep(0.2)
+        fDeadline = time.monotonic() + 5.0
+        while (not mockDocker.fnWriteFile.called
+                and time.monotonic() < fDeadline):
+            time.sleep(0.01)
         eventStop.set()
         threadHeartbeat.join(timeout=2)
     assert mockDocker.fnWriteFile.called

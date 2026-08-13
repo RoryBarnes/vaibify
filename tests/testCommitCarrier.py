@@ -171,6 +171,23 @@ def clientWithProbeRoutes():
 # ---------------------------------------------------------------------
 
 @pytest.mark.falsification
+
+async def _fnWaitUntilTheRecordIsCleared(appState, fTimeoutSeconds=5.0):
+    """Wait for the done-callback to drop the durable-task record.
+
+    The task itself has already been awaited by the time this is
+    called; what has not necessarily run is the callback that clears
+    the registry entry. Sleeping a fixed 0.05s and asserting was a bet
+    on that callback being scheduled promptly, which a loaded runner
+    loses -- and the failure reads as "the entry was never cleared",
+    naming a leak that is not there.
+    """
+    fDeadline = time.monotonic() + fTimeoutSeconds
+    while (appState.dictDurableTaskRecords
+            and time.monotonic() < fDeadline):
+        await asyncio.sleep(0.01)
+
+
 def test_route_write_without_carrier_admission_is_refused_mode_a(
     clientWithProbeRoutes,
 ):
@@ -862,7 +879,7 @@ def test_mode_c_refuses_second_durable_launch_and_compare_matches():
         assert dictStaleCancel["bCancelled"] is False
         eventRelease.set()
         await dictLaunch["taskAsync"]
-        await asyncio.sleep(0.05)
+        await _fnWaitUntilTheRecordIsCleared(appState)
         assert appState.dictDurableTaskRecords == {}
 
     asyncio.run(_fnDrive())
@@ -908,7 +925,7 @@ def test_mode_c_cancel_refuses_and_leaves_the_task_running():
         )
         eventRelease.set()
         assert await dictLaunch["taskAsync"] == "ran"
-        await asyncio.sleep(0.05)
+        await _fnWaitUntilTheRecordIsCleared(appState)
         assert appState.dictDurableTaskRecords == {}
 
     asyncio.run(_fnDrive())

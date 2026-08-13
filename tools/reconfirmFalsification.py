@@ -194,19 +194,65 @@ def _fiRunTests(listNodeIds):
     # tests skip, a skip exits 0, and this harness would score every
     # frontend mutant as having survived.
     dictEnvironment[S_REQUIRE_BROWSER_ENV] = "1"
-    with tempfile.TemporaryDirectory() as sPycachePrefix:
-        dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+    sPycachePrefix = tempfile.mkdtemp()
+    dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+    try:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *listNodeIds, "-q",
              "-p", "no:cacheprovider", "-rs"],
             cwd=PATH_TREE, capture_output=True, text=True,
             env=dictEnvironment,
         )
+    finally:
+        _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds)
     if result.returncode == 0 and _fbOutputReportsASkip(result.stdout):
         # Belt and braces for every OTHER reason a test can skip: an
         # unevaluated mutation must never be reported as a survivor.
         return I_EXIT_SKIPPED
     return result.returncode
+
+
+def _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds):
+    """Remove the bytecode cache, and never fail the run over it.
+
+    ``TemporaryDirectory`` raised ``Directory not empty`` here the
+    first time the browser entries were ever re-confirmed: a test's
+    uvicorn hub or its Chromium outlived the pytest process, kept
+    importing, and kept writing bytecode into this tree while it was
+    being removed. The entry it was judging had already passed.
+
+    Failing a whole lane because a leftover grandchild wrote one more
+    ``.pyc`` into a throwaway cache is the wrong trade. Saying nothing
+    would be the other wrong trade, so the leftover is named: it is a
+    process that outlived its test, which is worth knowing about even
+    though it is not this tool's to fix.
+    """
+    try:
+        shutil.rmtree(sPycachePrefix)
+    except OSError as error:
+        print(
+            f"note: left the bytecode cache {sPycachePrefix} behind "
+            f"({error}). Something these tests started was still "
+            f"writing into it after pytest exited: {listNodeIds}. "
+            f"What it had written: {_flistNameCacheContents(sPycachePrefix)}"
+        )
+
+
+def _flistNameCacheContents(sPycachePrefix):
+    """Return the first few paths under the cache, for diagnosis.
+
+    The leftover tree mirrors the source path of whatever was still
+    importing, so its contents name the process that outlived its
+    test. Without this the note says only that SOMETHING leaked, which
+    is what the first occurrence said -- and three attempts to
+    reproduce it from that description found nothing.
+    """
+    listFound = []
+    for pathEntry in pathlib.Path(sPycachePrefix).rglob("*.pyc"):
+        listFound.append(str(pathEntry.relative_to(sPycachePrefix)))
+        if len(listFound) >= 5:
+            break
+    return listFound or ["<nothing readable>"]
 
 
 def _fbOutputReportsASkip(sOutput):
@@ -350,9 +396,23 @@ def _flistUntrackedFiles():
 
 
 def fsCreateDisposableWorktree():
-    """Return the path of a fresh detached worktree checked out at HEAD."""
+    """Return the path of a fresh detached worktree checked out at HEAD.
+
+    The LEAF name is unique, not just the parent directory. Git names
+    its bookkeeping entry after the leaf basename and disambiguates a
+    collision by appending a number -- and that disambiguation is not
+    atomic across processes. Four workers each asking for a worktree
+    called ``tree`` raced on ``.git/worktrees/tree2/`` and one died
+    with "failed to read ... commondir: Success", after its three
+    siblings had each re-confirmed their slice perfectly.
+
+    Borrowing the parent's random suffix keeps the name unique without
+    inventing a second source of randomness.
+    """
     sParent = tempfile.mkdtemp(prefix="vaibify-falsification-")
-    sWorktree = str(pathlib.Path(sParent) / "tree")
+    sWorktree = str(
+        pathlib.Path(sParent) / ("tree-" + pathlib.Path(sParent).name[-8:])
+    )
     subprocess.run(
         ["git", "worktree", "add", "--detach", "--quiet", sWorktree,
          "HEAD"],
@@ -491,6 +551,50 @@ def _tPartitionRegistryForThisHost():
     )
 
 
+S_CLASS_EXCLUSIVE = "exclusive"
+S_CLASS_SHAREABLE = "shareable"
+
+# The markers that mean "this entry holds something the MACHINE owns".
+# `browser` spins a real uvicorn hub and a real Chromium; `docker_live`
+# drives a real container through one daemon; `exclusive` is the file
+# marker for a bound port or unix socket. Two of any of them on one
+# machine contend however isolated their source trees are -- which is
+# the whole reason the worker lane must never be handed one.
+#
+# Sharding across MACHINES does not need this: every runner has its own
+# daemon, its own ports and its own browser. Workers within a machine
+# do, and that is the distinction the class split exists to hold.
+T_EXCLUSIVE_MARKERS = ("exclusive", "browser", "docker_live")
+
+
+def _fsetSelectExclusiveNodeIds():
+    """Return the node ids that must not run beside another of their kind."""
+    setNodeIds = set()
+    for sMarker in T_EXCLUSIVE_MARKERS:
+        setNodeIds |= fsetSelectNodeIdsCarryingMarker(sMarker)
+    return setNodeIds
+
+
+def _tSelectContentionClass(listEvaluable, listDeferred, sClass):
+    """Narrow both partitions to one contention class.
+
+    Applied AFTER the facility partition, exactly as ``--only`` and
+    ``--shard`` are: a class filter reaching the raw registry would
+    hand a facility-gated entry to a host that lacks the facility and
+    report the skip as a broken guard.
+    """
+    if not sClass:
+        return listEvaluable, listDeferred
+    setExclusive = _fsetSelectExclusiveNodeIds()
+    bWantExclusive = sClass == S_CLASS_EXCLUSIVE
+    return (
+        [e for e in listEvaluable
+         if (e.nodeid in setExclusive) is bWantExclusive],
+        [(e, sPhrase) for e, sPhrase in listDeferred
+         if (e.nodeid in setExclusive) is bWantExclusive],
+    )
+
+
 def _fbEntryMatchesAnyNeedle(entry, listNeedles):
     """Return True when a --only needle names this entry."""
     return any(
@@ -521,7 +625,37 @@ def _tSelectRequestedEntries(listEvaluable, listDeferred, listNeedles):
     )
 
 
-def fnReconfirmAll(listOnly=()):
+def _tSelectShard(listEvaluable, listDeferred, tShard):
+    """Narrow both partitions to one shard of a ``I/N`` split.
+
+    Applied AFTER the facility partition, for the same reason
+    ``--only`` is: a selector reaching the raw registry hands a
+    facility-gated entry to a host that lacks the facility, and its
+    skip is then reported as a broken guard.
+
+    The split is by STRIDE, not by block. Entries sit in the registry
+    grouped by the feature they defend, so consecutive ones cost
+    similar amounts and a block split would hand one shard the browser
+    entries and another the cheap unit ones. Striding interleaves
+    them, which is the closest thing to balance available without
+    timing every entry.
+
+    Both lists are split, so the union of all N shards is exactly the
+    registry — the deferred entries included, since each shard reports
+    its own slice of them and the summary job adds the slices up.
+    """
+    if tShard is None:
+        return listEvaluable, listDeferred
+    iShard, iShards = tShard
+    return (
+        listEvaluable[iShard - 1::iShards],
+        listDeferred[iShard - 1::iShards],
+    )
+
+
+def fnReconfirmAll(
+    listOnly=(), tShard=None, sSummaryPath="", sClass="",
+):
     """Re-confirm entries; exit nonzero on any failure or coverage gap.
 
     ``listOnly`` narrows the run to entries whose node id or source
@@ -531,9 +665,23 @@ def fnReconfirmAll(listOnly=()):
     narrowed run is NOT the standing negative control, so it declines
     to judge registry completeness and says so rather than reporting a
     clean coverage check it did not perform.
+
+    ``tShard`` is ``(I, N)`` and splits the registry across N machines
+    that each run one slice. A shard makes a WEAKER claim than a
+    narrowed run makes, not a stronger one: it judges only its slice,
+    and the standing negative control is the union of all N shards,
+    which only the summary job can see. So a shard declines the
+    completeness check too, and says which claim belongs where.
     """
-    listEvaluable, listDeferred = _tSelectRequestedEntries(
-        *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+    listEvaluable, listDeferred = _tSelectShard(
+        *_tSelectContentionClass(
+            *_tSelectRequestedEntries(
+                *_tPartitionRegistryForThisHost(),
+                listNeedles=list(listOnly),
+            ),
+            sClass=sClass,
+        ),
+        tShard=tShard,
     )
     if listOnly and not listEvaluable and not listDeferred:
         print(f"No registry entry matches {list(listOnly)}")
@@ -566,9 +714,20 @@ def fnReconfirmAll(listOnly=()):
     # the check would report a wall of phantom gaps. Announced rather
     # than silently skipped -- a check that can be skipped must say
     # what the skip reported.
-    listUncovered = [] if listOnly else _flistMarkedTestsWithoutEntry()
+    listUncovered = (
+        [] if listOnly or tShard or sClass
+        else _flistMarkedTestsWithoutEntry()
+    )
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
+    if tShard:
+        print(
+            f"SHARD {tShard[0]} of {tShard[1]}: this leg judged its own "
+            "slice and nothing else. The standing negative control is "
+            "the UNION of all shards, which only the summary job can "
+            "see -- it is where registry completeness is checked and "
+            "where a missing shard is caught."
+        )
     if listOnly:
         print(
             f"NARROWED run (--only {' '.join(listOnly)}): this is not "
@@ -590,8 +749,213 @@ def fnReconfirmAll(listOnly=()):
               "no registry entry:")
         for sNodeId in listUncovered:
             print("  " + sNodeId)
+    if sSummaryPath:
+        _fnWriteShardSummary(
+            sSummaryPath, tShard, listResults, listBad, listDeferred,
+        )
     if listBad or listUncovered:
         sys.exit(1)
+
+
+def _fnWriteShardSummary(
+    sSummaryPath, tShard, listResults, listBad, listDeferred,
+):
+    """Write this shard's counts for the summary job to add up.
+
+    The node ids of the FAILURES travel, so the summary can name them
+    without a reader opening thirty-two job logs to find which shard
+    holds the survivor. The passes travel only as a count: they are
+    the bulk, and nothing downstream needs their names.
+    """
+    import json
+    dictSummary = {
+        "iShard": tShard[0] if tShard else 1,
+        "iShards": tShard[1] if tShard else 1,
+        "iRan": len(listResults),
+        "iKilled": len(listResults) - len(listBad),
+        "iDeferred": len(listDeferred),
+        "listSurvivors": [
+            {"sNodeId": sNodeId, "sStatus": sStatus}
+            for sNodeId, sStatus in listBad
+        ],
+    }
+    pathlib.Path(sSummaryPath).parent.mkdir(
+        parents=True, exist_ok=True,
+    )
+    pathlib.Path(sSummaryPath).write_text(
+        json.dumps(dictSummary, indent=2) + "\n", encoding="utf-8",
+    )
+
+
+def _fiReportRegistryCompleteness():
+    """Print the coverage verdict for the whole registry; return an exit code.
+
+    No worktree and no mutation: this reads which tests carry the
+    falsification mark and which node ids the registry names, so it is
+    a collection-level question that a sharded run can answer once
+    rather than N times over slices that each see almost none of it.
+    """
+    listUncovered = _flistMarkedTestsWithoutEntry()
+    if not listUncovered:
+        print(
+            f"registry completeness: every falsification-marked test "
+            f"of {len(LIST_FALSIFICATIONS)} entries has an entry"
+        )
+        return 0
+    print(f"{len(listUncovered)} falsification-marked test(s) with no "
+          "registry entry:")
+    for sNodeId in listUncovered:
+        print("  " + sNodeId)
+    return 1
+
+
+def _tSubShardForWorker(tShard, iWorker, iWorkers):
+    """Return the ``(I, N)`` a worker runs, given its parent's shard.
+
+    A worker takes a slice of a slice, and the arithmetic has to be a
+    partition or the whole scheme silently drops entries. Shard ``i``
+    of ``N`` is every index congruent to ``i-1`` modulo ``N``; the
+    workers split it into ``i + N*(w-1)`` of ``N*W``, whose union is
+    exactly the parent's residue class again, because
+    ``(i-1 + N*(w-1)) mod N == i-1`` for every ``w``.
+    """
+    iShard, iShards = tShard or (1, 1)
+    return (iShard + iShards * (iWorker - 1), iShards * iWorkers)
+
+
+def _fiRunWorkersAndSummarize(args, tShard):
+    """Run W child harnesses concurrently, one worktree each; return an exit code.
+
+    Child PROCESSES rather than threads, because the harness tracks the
+    tree it is mutating in a module global and two threads would share
+    it -- which is the shape of the bug this repository already has a
+    Lessons entry about, one working tree and two writers.
+
+    Each child is an ordinary invocation of this tool, so the isolation
+    it gets is the isolation that has been exercised all along: its own
+    disposable worktree, checked out from HEAD.
+    """
+    import concurrent.futures
+    import tempfile
+    with tempfile.TemporaryDirectory() as sSummaryDirectory:
+        listCommands = [
+            (iWorker, _flistBuildWorkerCommand(
+                args, _tSubShardForWorker(
+                    tShard, iWorker, args.iWorkers,
+                ),
+                os.path.join(
+                    sSummaryDirectory, f"worker{iWorker}.json",
+                ),
+            ))
+            for iWorker in range(1, args.iWorkers + 1)
+        ]
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=args.iWorkers,
+        ) as executor:
+            listResults = list(executor.map(
+                lambda t: (t[0], _tRunOneWorker(*t)), listCommands,
+            ))
+        return _fiReportWorkerResults(
+            listResults, sSummaryDirectory, args, tShard,
+        )
+
+
+def _flistBuildWorkerCommand(args, tSubShard, sSummaryPath):
+    """Return the argv for one worker's child harness."""
+    listCommand = [
+        sys.executable, os.path.abspath(__file__),
+        "--shard", f"{tSubShard[0]}/{tSubShard[1]}",
+        "--summary-json", sSummaryPath,
+    ]
+    if args.sClass:
+        listCommand += ["--class", args.sClass]
+    if args.include_local_diff:
+        listCommand.append("--include-local-diff")
+    return listCommand
+
+
+def _tRunOneWorker(iWorker, listCommand):
+    """Run one worker to completion; return ``(returncode, output)``."""
+    del iWorker
+    processWorker = subprocess.run(
+        listCommand, cwd=REPO, capture_output=True, text=True,
+    )
+    return (processWorker.returncode, processWorker.stdout
+            + processWorker.stderr)
+
+
+def _fiReportWorkerResults(listResults, sSummaryDirectory, args, tShard):
+    """Print every worker's output in order, then the combined verdict."""
+    import json
+    iRan = iKilled = iDeferred = 0
+    for iWorker, (iCode, sOutput) in listResults:
+        print(f"----- worker {iWorker} (exit {iCode}) -----")
+        print(sOutput.rstrip())
+        pathSummary = pathlib.Path(
+            sSummaryDirectory, f"worker{iWorker}.json",
+        )
+        if not pathSummary.exists():
+            continue
+        dictSummary = json.loads(pathSummary.read_text(encoding="utf-8"))
+        iRan += dictSummary["iRan"]
+        iKilled += dictSummary["iKilled"]
+        iDeferred += dictSummary["iDeferred"]
+    listFailed = [i for i, (iCode, _s) in listResults if iCode != 0]
+    print(f"\n{iKilled}/{iRan} kill-confirmed across "
+          f"{len(listResults)} workers"
+          + (f", {iDeferred} not evaluated" if iDeferred else ""))
+    if listFailed:
+        print(f"worker(s) {listFailed} exited nonzero; their output is "
+              "above, and the entries they name are the ones to read")
+    if args.sSummaryPath:
+        pathlib.Path(args.sSummaryPath).parent.mkdir(
+            parents=True, exist_ok=True,
+        )
+        pathlib.Path(args.sSummaryPath).write_text(json.dumps({
+            "iShard": tShard[0] if tShard else 1,
+            "iShards": tShard[1] if tShard else 1,
+            "iRan": iRan, "iKilled": iKilled, "iDeferred": iDeferred,
+            "listSurvivors": _flistCollectWorkerSurvivors(
+                sSummaryDirectory,
+            ),
+        }, indent=2) + "\n", encoding="utf-8")
+    return 1 if listFailed else 0
+
+
+def _flistCollectWorkerSurvivors(sSummaryDirectory):
+    """Return every survivor any worker reported, for the parent summary."""
+    import json
+    listSurvivors = []
+    for pathSummary in sorted(
+        pathlib.Path(sSummaryDirectory).glob("worker*.json"),
+    ):
+        dictSummary = json.loads(pathSummary.read_text(encoding="utf-8"))
+        listSurvivors.extend(dictSummary.get("listSurvivors", []))
+    return listSurvivors
+
+
+def _tParseShardArgument(sShard):
+    """Return ``(I, N)`` from an ``I/N`` argument, or None when absent.
+
+    Refuses anything it cannot read rather than guessing, because
+    every wrong reading here is silent: a shard index past the count
+    runs NO entries and reports "0/0 kill-confirmed", which is a green
+    lane that checked nothing.
+    """
+    if not sShard:
+        return None
+    try:
+        iShard, iShards = (int(sPart) for sPart in sShard.split("/", 1))
+    except ValueError:
+        raise SystemExit(
+            f"--shard wants I/N with two integers, not {sShard!r}"
+        )
+    if iShards < 1 or not 1 <= iShard <= iShards:
+        raise SystemExit(
+            f"--shard {sShard} is out of range: I must be between 1 "
+            f"and N, and N at least 1"
+        )
+    return (iShard, iShards)
 
 
 def main():
@@ -622,7 +986,77 @@ def main():
             "standing negative control, and the run says so."
         ),
     )
+    parser.add_argument(
+        "--shard", dest="sShard", default="", metavar="I/N",
+        help=(
+            "Re-confirm only shard I of an N-way split, so N machines "
+            "can cover the registry between them. The union of the "
+            "shards is the standing negative control; a single shard "
+            "is not, and says so."
+        ),
+    )
+    parser.add_argument(
+        "--class", dest="sClass", default="",
+        choices=[S_CLASS_EXCLUSIVE, S_CLASS_SHAREABLE],
+        help=(
+            "Run only one contention class. `exclusive` entries hold "
+            "something the machine owns -- a port, a socket, the "
+            "Docker daemon, a browser -- so they get a lane to "
+            "themselves; `shareable` entries hold nothing and may run "
+            "under workers."
+        ),
+    )
+    parser.add_argument(
+        "--workers", dest="iWorkers", type=int, default=1,
+        metavar="W",
+        help=(
+            "Run W child harnesses concurrently, each in its own "
+            "disposable worktree. Only safe for the `shareable` class, "
+            "and refused without it."
+        ),
+    )
+    parser.add_argument(
+        "--completeness-only", action="store_true",
+        help=(
+            "Run ONLY the whole-registry coverage check -- every "
+            "falsification-marked test has an entry -- and skip every "
+            "replay. For the summary job over a sharded run, where no "
+            "single shard can make that claim."
+        ),
+    )
+    parser.add_argument(
+        "--summary-json", dest="sSummaryPath", default="",
+        metavar="PATH",
+        help=(
+            "Write this run's counts and any survivors to PATH as "
+            "JSON, for a summary job to add up across shards."
+        ),
+    )
     args = parser.parse_args()
+    tShard = _tParseShardArgument(args.sShard)
+    if args.iWorkers > 1 and args.sClass != S_CLASS_SHAREABLE:
+        parser.error(
+            "--workers is only safe for --class shareable. The "
+            "exclusive entries hold a port, a socket, the Docker "
+            "daemon or a browser, and two of those on one machine "
+            "contend however isolated their source trees are."
+        )
+    if args.iWorkers > 1 and args.listOnly:
+        parser.error(
+            "--workers and --only do not compose: a narrowed run is "
+            "already short, and slicing it further produces workers "
+            "with nothing to do."
+        )
+    if tShard and args.listOnly:
+        parser.error(
+            "--shard and --only answer different questions: one splits "
+            "the whole registry across machines, the other narrows it "
+            "to a chunk you are working on. Combining them would "
+            "produce a slice of a subset that nothing can reason about."
+        )
+
+    if args.completeness_only:
+        sys.exit(_fiReportRegistryCompleteness())
 
     listDirty = _flistUncommittedChanges()
     if listDirty and not args.include_local_diff:
@@ -637,12 +1071,17 @@ def main():
             print("  " + sLine, file=sys.stderr)
         sys.exit(2)
 
+    if args.iWorkers > 1:
+        sys.exit(_fiRunWorkersAndSummarize(args, tShard))
+
     sWorktree = fsCreateDisposableWorktree()
     try:
         if args.include_local_diff:
             fnCopyLocalChangesIntoWorktree(sWorktree)
         PATH_TREE = pathlib.Path(sWorktree)
-        fnReconfirmAll(args.listOnly)
+        fnReconfirmAll(
+            args.listOnly, tShard, args.sSummaryPath, args.sClass,
+        )
     finally:
         PATH_TREE = REPO
         fnRemoveDisposableWorktree(sWorktree)

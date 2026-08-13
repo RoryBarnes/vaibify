@@ -104,6 +104,12 @@ SET_RAW_EFFECT_CAPABILITIES = frozenset({
 S_LANE_EXCEPTION_TYPE = "exception-type"
 
 
+# This file binds a real port or unix socket, so two of its tests
+# on one machine contend however isolated their source trees are.
+# The re-kill harness keeps them out of its parallel workers.
+pytestmark = pytest.mark.exclusive
+
+
 def _fdictAuthority(listLanes, sRationale):
     """Return one named authority's record."""
     return {"listLanes": listLanes, "sRationale": sRationale}

@@ -8958,6 +8958,180 @@ def _fdictEntry(sRel):
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if True:\n        return\n',
     ),
+    # --- Sharding the standing negative control (2026-08-12) ---
+    #
+    # Splitting the re-kill harness across machines is a throughput
+    # change that can quietly become a weaker CLAIM. Each of these
+    # mutations is a way that happens while every job stays green.
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testEveryEntryLandsInExactlyOneShard'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The stride loses the first entry of every shard, so ~N
+        # entries are re-confirmed by nobody and every shard still
+        # reports success for the slice it did run.
+        old=(
+            '        listEvaluable[iShard - 1::iShards],\n'
+            '        listDeferred[iShard - 1::iShards],\n'
+        ),
+        new=(
+            '        listEvaluable[iShard::iShards],\n'
+            '        listDeferred[iShard::iShards],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testShardingNeverPromotesADeferredEntryIntoTheJudgedSet'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The shape that looks obviously correct: slice everything,
+        # deferred entries included. A docker_live entry then reaches
+        # a daemon-less runner, whose child demands a daemon, and the
+        # skip is reported as a broken guard.
+        old='        listEvaluable[iShard - 1::iShards],\n',
+        new=(
+            '        (listEvaluable + [t[0] for t in listDeferred])'
+            '[iShard - 1::iShards],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAMissingShardFailsTheSummaryInsteadOfBeingAddedAround'
+        ),
+        source='tools/summarizeFalsificationShards.py',
+        # Discover the shards instead of requiring them: the summary
+        # then adds up whatever arrived and calls it a total, which is
+        # a green lane for work nobody ran.
+        old=(
+            '        setMissing = set(range(1, iShards + 1)) - '
+            'set(dictShards)\n'
+        ),
+        new='        setMissing = set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAShardRunningADifferentSplitIsRefused'
+        ),
+        source='tools/summarizeFalsificationShards.py',
+        # Stop checking the denominator each shard reports. Eight
+        # shards of an eight-way split then satisfy a summary that
+        # believes it saw a four-way one, leaving half the registry
+        # unjudged.
+        old="            if dictSummary.get('iShards') != iShards:\n",
+        new='            if False:\n',
+    ),
+    # --- Contention classes and workers (2026-08-12) ---
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAFileThatBindsAPortCarriesTheExclusiveMarker'
+        ),
+        source='tests/testVaibifyOpen.py',
+        # A file that starts a real hub loses its marker, so its
+        # entries join the shareable lane and two of them meet on one
+        # machine under workers -- a port collision weeks later, in an
+        # unrelated test, reading as flakiness.
+        old='pytestmark = pytest.mark.exclusive\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAWorkerSliceIsStillAPartitionOfItsParentShard'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The worker composition drops a stride: the union of the
+        # workers is no longer the parent shard, so entries are
+        # re-confirmed by nobody while every job reports success.
+        old=(
+            '    return (iShard + iShards * (iWorker - 1), '
+            'iShards * iWorkers)\n'
+        ),
+        new=(
+            '    return (iShard + iShards * (iWorker - 1), '
+            'iShards * iWorkers + 1)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testALeftoverGrandchildDoesNotFailTheRun'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The cleanup raises again, the way TemporaryDirectory did, so
+        # a lane dies over a bytecode cache while every entry it was
+        # judging had already passed.
+        old='    except OSError as error:\n',
+        new='    except ValueError as error:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testNoSummaryIsWrittenIntoTheCheckout'
+        ),
+        source='.github/workflows/falsification.yml',
+        # The summary lands in the repo root again, so the step after
+        # it sees an untracked file, decides the tree is dirty, and
+        # refuses -- naming the guard instead of the cause.
+        # Re-pinned 2026-08-12: the file is canonically named now
+        # and the class lives in the directory. The mutation is
+        # unchanged in meaning -- drop RUNNER_TEMP and the summary
+        # lands in the checkout, which the next step reads as dirty.
+        old='--summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"',
+        new='--summary-json "exclusive/shardSummary.json"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testEveryUploadedSummaryIsOneTheAggregatorWillFind'
+        ),
+        source='.github/workflows/falsification.yml',
+        # A writer names its file something the aggregator's glob does
+        # not match. The artifact uploads, appears in the run, and is
+        # ignored -- so a leg that passed reads as "reported nothing".
+        old='--summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"',
+        new='--summary-json "$RUNNER_TEMP/exclusiveSummary.json"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testConcurrentWorktreesDoNotCollideOnOneName'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # Every worktree is called "tree" again, so git disambiguates
+        # by appending a number -- non-atomically, across processes.
+        old=(
+            '    sWorktree = str(\n'
+            '        pathlib.Path(sParent) / ("tree-" + '
+            'pathlib.Path(sParent).name[-8:])\n'
+            '    )\n'
+        ),
+        new='    sWorktree = str(pathlib.Path(sParent) / "tree")\n',
+    ),
+    # --- The class both temp-name bugs belong to (2026-08-12) ---
+    #
+    # An INSTANCE guard proves one line is defended. A CLASS guard has
+    # to be shown catching a member it has never seen, so the mutation
+    # ADDS one rather than breaking an existing site -- the same shape
+    # as the path-corpus entry above, which adds an unguarded method.
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testFixedTemporaryNamesDoNotSpread'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n',
+        new=(
+            '    sUnused = sTargetPath + ".tmp"\n'
+            '    del sUnused\n'
+            '    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n'
+        ),
+    ),
     # --- The daemon gate names its resource (host mode wave 4) ---
     #
     # Host mode exists for the researcher who has no Docker, so a hub

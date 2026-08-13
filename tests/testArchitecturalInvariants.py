@@ -5300,8 +5300,26 @@ I_FIXED_TEMPORARY_NAME_BUDGET = 7
 _REGEX_FIXED_TEMPORARY_NAME = re.compile(r'\+\s*"\.tmp"')
 
 
+@pytest.mark.falsification
 def testFixedTemporaryNamesDoNotSpread():
     """Count the temp names derived from their target alone.
+
+    THE CLASS, which has now bitten twice in different clothes: a name
+    that is unique at the wrong GRANULARITY for whoever keys on it.
+    ``state.json.tmp`` was unique per TARGET where temp-then-rename
+    needs one per WRITER, and two savers destroyed each other's file.
+    The falsification harness built every disposable worktree at
+    ``<mkdtemp>/tree``: unique per PARENT, while git names its
+    bookkeeping entry after the LEAF, so four concurrent workers all
+    asked for ``tree`` and raced on git's non-atomic disambiguation.
+
+    Both are invisible to a reading that stops at "this path is
+    unique" -- the question is unique TO WHOM. And both were invisible
+    to running the code: the worktree race did not reproduce here in
+    eight concurrent threads or eight concurrent processes with the
+    defect present, only on a Linux runner. So the guard that works is
+    the one that reads the NAME, which is why this is a name check and
+    not a concurrency test.
 
     Deliberately a COUNT and not a ban. Banning would force six edits
     in modules whose concurrency nobody has examined, and an unexamined
@@ -5311,6 +5329,12 @@ def testFixedTemporaryNamesDoNotSpread():
 
     Fixing one lowers the constant in the same commit, which is the
     same contract the style and mutation inventories carry.
+
+    Kills: introducing a NEW fixed temporary name. The mutation adds
+    one rather than breaking a counted site, because that is the only
+    thing that distinguishes a class guard from a list of seeds -- an
+    instance guard proves one line is defended, and this has to be
+    shown catching a member it has never seen.
     """
     listSites = []
     for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):

@@ -14,6 +14,12 @@ from vaibify.config.bindMountValidator import (
 )
 
 
+# This file binds a real port or unix socket, so two of its tests
+# on one machine contend however isolated their source trees are.
+# The re-kill harness keeps them out of its parallel workers.
+pytestmark = pytest.mark.exclusive
+
+
 def _ftConfigureHome(monkeypatch, tmp_path):
     """Point $HOME at a fresh tmp_path and return it."""
     monkeypatch.setenv("HOME", str(tmp_path))

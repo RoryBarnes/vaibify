@@ -41,6 +41,12 @@ from tests.browser.fakeDockerAdapter import (
 S_PROBE_ACTION = "get-pipeline-state"
 
 
+# This file binds a real port or unix socket, so two of its tests
+# on one machine contend however isolated their source trees are.
+# The re-kill harness keeps them out of its parallel workers.
+pytestmark = pytest.mark.exclusive
+
+
 @pytest.fixture(autouse=True)
 def fixtureIsolateHostDirectories(tmp_path, monkeypatch):
     """Keep the journal, locks, and control sockets out of ~/.vaibify."""

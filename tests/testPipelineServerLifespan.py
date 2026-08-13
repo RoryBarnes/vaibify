@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from types import SimpleNamespace
 
 from vaibify.gui import pipelineServer
@@ -148,7 +149,25 @@ class _FakeDockerForSweep:
 
 
 def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
-    """The background loop ticks > once and removes stale entries each tick."""
+    """The background loop ticks > once and removes stale entries each tick.
+
+    The property is "it ticks more than once", not "it ticks within
+    eighty milliseconds". This slept for a fixed 0.08s against a 0.02s
+    interval -- a four-tick margin -- and a loaded macOS runner missed
+    it, failing with ``assert 1 >= 2`` about a loop that was working.
+    Waiting for the condition keeps the claim and drops the bet on
+    scheduling; the deadline is generous because a slow tick is not
+    the failure this guards, while no tick at all still fails loudly.
+
+    A grep for this shape finds twenty-two sleeps in the suite, and
+    reading them found that almost none are this bug: most sleep
+    because the delay IS the subject (a coalesce window, a task that
+    answers late), and several already poll for their condition. Three
+    were real and are fixed alongside this one -- two in
+    ``testCommitCarrier`` waiting on a done-callback, one in
+    ``testPipelineRunnerStepsAndLog`` waiting on a heartbeat thread.
+    The count in a grep is not the count of a problem.
+    """
     fakeDocker = _FakeDockerForSweep(["alive"])
     dictCtx = {
         "docker": fakeDocker,
@@ -173,8 +192,10 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
     async def fnDrive():
         contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
-        # Let the loop tick at least twice before shutdown.
-        await asyncio.sleep(0.08)
+        fDeadline = time.monotonic() + 10.0
+        while (fakeDocker.iListCalls < 2
+                and time.monotonic() < fDeadline):
+            await asyncio.sleep(0.01)
         await contextLifespan.__aexit__(None, None, None)
     asyncio.run(fnDrive())
 
