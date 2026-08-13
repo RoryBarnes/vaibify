@@ -105,6 +105,12 @@ def _fsExtractLogLine(dictEvent):
     if dictEvent.get("sType") == "commandFailed":
         return (f"FAILED: {dictEvent.get('sCommand', '')} "
                 f"(exit {dictEvent.get('iExitCode', '?')})")
+    if dictEvent.get("sType") == "started":
+        # The header exists so the log FILE exists. Flushing an empty
+        # buffer writes nothing, so without a line to carry there is
+        # no file until a step finishes -- and a run cancelled before
+        # one does left `sLogPath` naming a path that never existed.
+        return f"=== {dictEvent.get('sCommand', 'run')} started ==="
     return None
 
 
@@ -241,12 +247,29 @@ def _ffBuildFlushingCallback(
             lockState, stateWriter=stateWriter,
         )
         sEventType = dictEvent.get("sType", "")
-        if sEventType in ("stepPass", "stepFail"):
+        if sEventType in _T_FLUSHING_EVENTS:
             await fnWriteLogToContainer(
                 connectionDocker, sContainerId, sLogPath,
                 listLogLines,
             )
     return fnLoggingWithFlush
+
+
+# The run's state records `sLogPath` before the first step starts, so
+# a run that is stopped before any step FINISHES used to leave that
+# path naming a file nothing had created -- and the Logs tab answered
+# "Could not load logs" for that run forever after. Flushing at the
+# start makes the recorded path true from the moment it is recorded;
+# flushing at each step start bounds how much of a stopped run's
+# output is lost with the buffer.
+#
+# What is deliberately NOT here is a flush from the cancelled task's
+# teardown, which is the only thing that would save the output of the
+# step being cancelled. That write would run inside a carrier worker
+# that is already unwinding, where an error poisons the run's journal
+# record and quarantines the container -- a heavy price for the tail
+# of a log the researcher chose to stop.
+_T_FLUSHING_EVENTS = ("started", "stepStarted", "stepPass", "stepFail")
 
 
 _DICT_STEP_RESULT_STATUS = {

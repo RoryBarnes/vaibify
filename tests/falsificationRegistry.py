@@ -10899,4 +10899,41 @@ def _fdictEntry(sRel):
             '            if (true) {\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testARunStoppedBeforeAnyStepFinishedStillHasALog'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The flush set as it was: the log is written only once a step
+        # has passed or failed, so a run stopped during its first step
+        # writes nothing and `sLogPath` -- already in the state file --
+        # names a path that never existed.
+        old=(
+            '_T_FLUSHING_EVENTS = ("started", "stepStarted", '
+            '"stepPass", "stepFail")\n'
+        ),
+        new=(
+            '_T_FLUSHING_EVENTS = ("stepPass", "stepFail")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testTheLogSaysWhichActionProducedIt'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The other half, and the one that looks harmless: without a
+        # line to carry, the flush at `started` writes NOTHING --
+        # `fnWriteLogToContainer` returns early on an empty buffer --
+        # so the file still does not exist and the flush set alone
+        # fixes nothing.
+        old=(
+            '        return f"=== {dictEvent.get(\'sCommand\', \'run\')} '
+            'started ==="\n'
+        ),
+        new=(
+            '        return None\n'
+        ),
+    ),
 ]
