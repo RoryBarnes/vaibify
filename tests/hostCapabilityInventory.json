@@ -306,8 +306,8 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 129,
-  "iUndisposedSiteBudget": 68,
+  "iRowCount": 128,
+  "iUndisposedSiteBudget": 67,
   "listRows": [
     {
       "sCommandExpression": "sCommand",
@@ -635,13 +635,6 @@
       "sCommandExpression": "'printenv CONTAINER_USER'",
       "sEnclosingFunction": "_fsResolveContainerUser",
       "sFingerprint": "d8e9b3f867d92d4f1002ae4120046f1fda2f6452d1d72f3ad0fef4bf1a2eb0bd",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineServer.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "flistQueryDirectory",
-      "sFingerprint": "e8291ee177c2a75716b413e77ab40efbe8ea2d4572cdc9cda14668707b7f0bb6",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineServer.py"
     },

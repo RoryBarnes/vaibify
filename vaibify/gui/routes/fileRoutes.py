@@ -235,10 +235,19 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
                 sContainerId, sWorkspaceRoot,
             ),
         )
-        return await asyncio.to_thread(
-            flistQueryDirectory,
-            dictCtx["docker"], sContainerId, sAbsPath,
-        )
+        try:
+            return await asyncio.to_thread(
+                flistQueryDirectory,
+                dictCtx["docker"], sContainerId, sAbsPath,
+            )
+        except FileNotFoundError as error:
+            # An unlistable directory used to answer with an empty
+            # list, which the file panel renders as "Empty directory"
+            # -- a claim about the researcher's project made because
+            # the read failed. Say it could not be read instead.
+            raise HTTPException(
+                404, f"Cannot list directory: {sAbsPath}",
+            ) from error
 
 
 def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):

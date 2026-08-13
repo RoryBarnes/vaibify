@@ -1437,26 +1437,9 @@ class TestPipelineRunnerHelpers:
         assert dictParsed["listSteps"][0]["sName"] == "Build"
 
 
-class TestPipelineServerDirectoryParsing:
-    """Test directory listing parsing."""
-
-    def test_flistParseDirectoryOutput_mixed_types(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        sOutput = "f /workspace/data.csv\nd /workspace/output\nf /workspace/plot.pdf\n"
-        listEntries = _flistParseDirectoryOutput(sOutput)
-        assert len(listEntries) == 3
-        assert listEntries[0]["sName"] == "data.csv"
-        assert listEntries[0]["bIsDirectory"] is False
-        assert listEntries[1]["sName"] == "output"
-        assert listEntries[1]["bIsDirectory"] is True
-
-    def test_flistParseDirectoryOutput_empty(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        assert _flistParseDirectoryOutput("") == []
-
-    def test_flistParseDirectoryOutput_short_lines(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        assert _flistParseDirectoryOutput("f\n\n  \n") == []
+# ``TestPipelineServerDirectoryParsing`` was retired with its mechanism:
+# the parser it drove read ``find -printf`` output, and that command is
+# gone. See tests/testDirectoryListing.py.
 
 
 class TestPipelineServerFigureFetch:

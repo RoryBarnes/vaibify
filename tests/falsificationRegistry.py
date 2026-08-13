@@ -10769,4 +10769,59 @@ def _fdictEntry(sRel):
             '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)}"\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDirectoryListing.py::'
+            'TestTheContainerLegComposesNoCommand::'
+            'testAListingReachesNoArbitraryExecutionPrimitive'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The listing goes back to assembling shell text. The kill is
+        # the PRIMITIVE, not the answer: `ls -1` and `find -printf`
+        # both work on a Linux runner, so a test that only checked the
+        # entries would report this green on every CI leg and red only
+        # on the macOS host where the defect was found.
+        old=(
+            '    listNames = connectionDocker.flistDirectoryEntries(\n'
+            '        sContainerId, sAbsPath,\n'
+            '    )\n'
+            '    listPaths = [\n'
+            '        posixpath.join(sAbsPath, sName) for sName in listNames\n'
+            '    ]\n'
+        ),
+        new=(
+            '    _, sOutput = connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "ls -1 " + fsShellQuote(sAbsPath),\n'
+            '    )\n'
+            '    listNames = sOutput.split()\n'
+            '    listPaths = [\n'
+            '        posixpath.join(sAbsPath, sName) for sName in listNames\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDirectoryListing.py::'
+            'TestTheHostLegListsARealDirectory::'
+            'testAnUnreadableHostDirectoryRaisesRatherThanReadingEmpty'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other half of the defect, and the half that outlived the
+        # GNU-only primary: a listing that cannot be read answers with
+        # emptiness. "Empty directory" is a claim about the
+        # researcher's project; a failed read is a claim about vaibify.
+        old=(
+            '    listNames = connectionDocker.flistDirectoryEntries(\n'
+            '        sContainerId, sAbsPath,\n'
+            '    )\n'
+        ),
+        new=(
+            '    try:\n'
+            '        listNames = connectionDocker.flistDirectoryEntries(\n'
+            '            sContainerId, sAbsPath,\n'
+            '        )\n'
+            '    except FileNotFoundError:\n'
+            '        return []\n'
+        ),
+    ),
 ]

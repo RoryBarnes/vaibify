@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 327,
+  "iRowCount": 328,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2347,
+      "iLine": 2350,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2342,
+      "iLine": 2345,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -667,7 +667,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2135,
+      "iLine": 2144,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -4578,28 +4578,54 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission. The two reads of this function are one question asked in two parts -- the names, then which of them are directories -- and share this disposition. They replaced a `find -maxdepth 1 -printf` piped to `sort`, which is a GNU extension BSD find refuses: on a macOS host project the command produced nothing, and because it redirected stderr away and discarded the exit code, a failed listing and an empty directory were the same answer.",
       "sFile": "gui/pipelineServer.py",
-      "sFingerprint": "4e8a68f645f43b87",
+      "sFingerprint": "820a4938f20b828d",
       "sFunction": "flistQueryDirectory",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which of those entries are directories rather than files",
+      "sOperationMetadata": "one path per listed entry, composed from the directory just listed and the names it returned",
+      "sPrimitive": "flistContainerDirectoriesExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission. The two reads of this function are one question asked in two parts -- the names, then which of them are directories -- and share this disposition. They replaced a `find -maxdepth 1 -printf` piped to `sort`, which is a GNU extension BSD find refuses: on a macOS host project the command produced nothing, and because it redirected stderr away and discarded the exit code, a failed listing and an empty directory were the same answer.",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "13b3451535fe043c",
+      "sFunction": "flistQueryDirectory",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "list the entries directly inside one directory of the project",
+      "sOperationMetadata": "one directory path, already validated against the resource's project root by the calling route",
+      "sPrimitive": "flistDirectoryEntries",
       "sReferenceKind": "direct-call"
     },
     {

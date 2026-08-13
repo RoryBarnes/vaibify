@@ -14,7 +14,6 @@ from vaibify.gui.pipelineServer import (
     _flistCollectUpstreamOutputs,
     _flistExtractKillPatterns,
     _flistFilterOwnOutputs,
-    _flistParseDirectoryOutput,
     _flistResolvePlotPaths,
     _fnClearDownstreamUpstreamFlags,
     _fnInvalidateDownstreamStep,
@@ -173,24 +172,9 @@ class TestFnClearDownstreamUpstreamFlags:
         _fnClearDownstreamUpstreamFlags({"listSteps": []}, 0)
 
 
-class TestFlistParseDirectoryOutput:
-    def test_parses_files_and_dirs(self):
-        sOutput = "f /workspace/data.h5\nd /workspace/plots\n"
-        listResult = _flistParseDirectoryOutput(sOutput)
-        assert len(listResult) == 2
-        assert listResult[0]["sName"] == "data.h5"
-        assert listResult[0]["bIsDirectory"] is False
-        assert listResult[1]["sName"] == "plots"
-        assert listResult[1]["bIsDirectory"] is True
-
-    def test_empty_output(self):
-        assert _flistParseDirectoryOutput("") == []
-
-    def test_short_lines_skipped(self):
-        assert _flistParseDirectoryOutput("x\n") == []
-
-    def test_whitespace_only(self):
-        assert _flistParseDirectoryOutput("   \n  \n") == []
+# ``TestFlistParseDirectoryOutput`` was retired with its mechanism: the
+# parser read ``find -printf`` output, which BSD find refuses. See
+# tests/testDirectoryListing.py.
 
 
 class TestFsResolveFigurePath:

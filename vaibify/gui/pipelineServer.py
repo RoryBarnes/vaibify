@@ -557,32 +557,32 @@ def _fbaFetchFallback(
 
 
 def flistQueryDirectory(connectionDocker, sContainerId, sAbsPath):
-    """List files and directories in a single Docker exec call."""
-    sCommand = (
-        f"find {fsShellQuote(sAbsPath)} -maxdepth 1 -mindepth 1 "
-        f"-printf '%y %p\\n' 2>/dev/null | sort -k2"
-    )
-    _, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return _flistParseDirectoryOutput(sOutput)
+    """List the entries directly inside a directory, by name and type.
 
-
-def _flistParseDirectoryOutput(sOutput):
-    """Parse find -printf '%y %p' output into entry dicts."""
-    listEntries = []
-    for sLine in sOutput.splitlines():
-        sLine = sLine.strip()
-        if not sLine or len(sLine) < 3:
-            continue
-        sType = sLine[0]
-        sPath = sLine[2:]
-        listEntries.append({
-            "sName": posixpath.basename(sPath),
-            "sPath": sPath,
-            "bIsDirectory": sType == "d",
-        })
-    return listEntries
+    Two typed reads where there used to be one ``find -printf``, a GNU
+    extension BSD find rejects outright: on a macOS host project the
+    command produced nothing, and since it discarded the exit code and
+    redirected the error away, "this failed" and "this is empty"
+    arrived as the same answer. The typed reads raise where that
+    shrugged, which is the half of the fix that keeps the next failure
+    visible. Two round trips, deliberately -- names and types are
+    separate declared operations, and probing each entry's type
+    separately would be one round trip per file.
+    """
+    listNames = connectionDocker.flistDirectoryEntries(
+        sContainerId, sAbsPath,
+    )
+    listPaths = [
+        posixpath.join(sAbsPath, sName) for sName in listNames
+    ]
+    listIsDirectory = connectionDocker.flistContainerDirectoriesExist(
+        sContainerId, listPaths,
+    )
+    return [
+        {"sName": sName, "sPath": sPath, "bIsDirectory": bIsDirectory}
+        for sName, sPath, bIsDirectory
+        in zip(listNames, listPaths, listIsDirectory)
+    ]
 
 
 def _fsSanitizeServerError(sRawError):
