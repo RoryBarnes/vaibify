@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev964 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev977 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ac50e56f"></script>
+      <script src="_static/documentation_options.js?v=ff67bf41"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -204,6 +204,28 @@ mutates source, so it is deliberately <strong>not</strong> collected by
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/reconfirmFalsification.py
 </pre></div>
 </div>
+<p>In CI the work is divided twice: <strong>across machines</strong> with
+<code class="docutils literal notranslate"><span class="pre">--shard</span> <span class="pre">I/N</span></code>, and <strong>within a machine</strong> with <code class="docutils literal notranslate"><span class="pre">--workers</span> <span class="pre">W</span></code>, each
+worker a child harness holding its own disposable worktree. The
+union of a leg’s shards is that leg’s whole registry, so every entry
+is still re-confirmed on every OS and Python in the matrix.</p>
+<p>Workers are only safe for entries that hold nothing the machine
+owns, so the registry splits into two classes. An entry whose test
+binds a port, opens a unix socket, drives the Docker daemon or
+starts a browser is <code class="docutils literal notranslate"><span class="pre">exclusive</span></code> and runs in a lane of its own at one
+worker; the other ~92% are <code class="docutils literal notranslate"><span class="pre">shareable</span></code>. Sharding across machines
+never needed this — every runner has its own daemon and its own
+ports — which is why the class split arrives only alongside workers.
+The <code class="docutils literal notranslate"><span class="pre">exclusive</span></code> marker is applied per file and enforced: a file that
+binds a port and forgets it fails the build rather than colliding
+weeks later in an unrelated test. A single shard says so in its own report and
+declines the whole-registry coverage check, because a slice cannot
+speak for the registry. The <code class="docutils literal notranslate"><span class="pre">falsification:summary</span></code> job is the only
+place the union exists: it runs that coverage check, requires every
+declared shard to have reported, and names any surviving mutation by
+leg and shard so a red lane never means opening jobs one at a time.
+Locally the flag is for machines, not people — <code class="docutils literal notranslate"><span class="pre">--only</span> <span class="pre">SUBSTRING</span></code> is
+what you want when re-confirming a chunk you just wrote.</p>
 <p>Entries whose test drives a real container (<code class="docutils literal notranslate"><span class="pre">docker_live</span></code>) cannot be
 judged on a host with no Docker daemon: the harness demands a daemon
 for every run it judges, precisely so a skip is never miscounted as a
@@ -353,7 +375,7 @@ window.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code></p></td>
 <td><p>the invariants, the falsification tests, and the re-kill harness</p></td>
-<td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14)</p></td>
+<td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser.yml</span></code></p></td>
 <td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
