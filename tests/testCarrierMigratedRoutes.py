@@ -281,6 +281,25 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         return ""
 
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """Answer the existence batch the way the real adapter does.
+
+        The badge refresh asks it so a file that is not on disk cannot
+        be badged "in sync with remote". Every path answers absent
+        here, which is the harsher direction: a route that stopped
+        threading the answer through would still be reported by its
+        own tests, not by this one.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.extend(listPaths)
+        return [False] * len(listPaths)
+
     def fbContainerPathIsDirectory(self, sContainerId, sPath):
         """Probe a directory the way the real typed-read adapter does.
 

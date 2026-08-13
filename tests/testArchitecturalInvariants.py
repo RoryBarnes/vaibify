@@ -4911,7 +4911,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # brand-new project, and the near-universal state of a host one.
     # Pre-existing and mode-independent; the first journey that ever
     # opened a workflow in a remote-less repository is what surfaced it.
-    "routes/gitRoutes.py": 1095,
+    # 1095 -> 1120: the badge refresh now asks which tracked files are
+    # actually on disk, because `git status --porcelain` reports
+    # nothing about a file it has nothing to say about and the GitHub
+    # badge was reading that silence as "in sync with remote". The
+    # probe is its own named function beside the collector rather than
+    # a fifth line inside it -- the reason it costs a round trip is
+    # the whole point and belongs where a reader will find it.
+    "routes/gitRoutes.py": 1120,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one

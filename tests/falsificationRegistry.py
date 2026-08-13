@@ -10824,4 +10824,59 @@ def _fdictEntry(sRel):
             '        return []\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::TestTheRuleItself::'
+            'testAMissingFileClaimsNothingOnAnyRemote'
+        ),
+        source='vaibify/gui/badgeState.py',
+        # The defect verbatim: nothing consults existence, so the git
+        # badge falls through to "porcelain did not mention it" and
+        # answers `synced` about a file that is not there.
+        old=(
+            '    if bFileIsMissing:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::TestTheRuleItself::'
+            'testAPresentTrackedFileStillReportsItsRealState'
+        ),
+        source='vaibify/gui/badgeState.py',
+        # The symmetric half. "No file has any state" satisfies the
+        # missing-file test perfectly and blanks every badge in the
+        # dashboard, so the rule needs a guard in both directions.
+        old=(
+            '    if bFileIsMissing:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::'
+            'testTheBadgeRouteAsksWhichTrackedFilesAreOnDisk'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The shortcut a developer would actually write: assume every
+        # tracked file is present rather than pay a fifth round trip.
+        # It leaves the rule in badgeState correct and unreachable,
+        # with every unit test still green.
+        old=(
+            '    listExists = docker.flistContainerPathsExist(\n'
+            '        sContainerId, listAbsolute,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listExists = [True] * len(listAbsolute)\n'
+        ),
+    ),
 ]

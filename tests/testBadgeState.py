@@ -123,7 +123,15 @@ def test_overleaf_badge_drifted_when_digest_differs(tmp_path):
     assert dictResult["sOverleaf"] == badgeState.S_BADGE_DRIFTED
 
 
-def test_overleaf_badge_drifted_when_file_missing(tmp_path):
+def test_overleaf_badge_none_when_file_missing(tmp_path):
+    """Superseding "a missing file drifts" (Rory's ruling, 2026-08-13).
+
+    This test predates the rule and asserted the old answer: a file
+    that does not exist showed orange "local differs from last push".
+    A file that is not there has no local content to differ, and the
+    same silence made the GitHub column claim ``synced``. Every column
+    now says nothing about a file that is not there.
+    """
     dictEntry = {
         "bOverleaf": True,
         "sOverleafLastPushedDigest": "a" * 40,
@@ -132,7 +140,7 @@ def test_overleaf_badge_drifted_when_file_missing(tmp_path):
         "ghost.pdf", _fdictGit(), dictEntry,
         str(tmp_path), {},
     )
-    assert dictResult["sOverleaf"] == badgeState.S_BADGE_DRIFTED
+    assert dictResult["sOverleaf"] == badgeState.S_BADGE_NONE
 
 
 def test_overleaf_badge_none_when_not_tracked(tmp_path):
@@ -318,7 +326,7 @@ def test_zenodo_badge_from_hashes_respects_endpoint(tmp_path):
     }
     dictResult = badgeState.fdictBadgeStateFromHashes(
         ["fig.pdf"], _fdictGit(), dictSync,
-        {"fig.pdf": "abc123"}, sZenodoService="zenodo",
+        {"fig.pdf": "abc123"}, set(), sZenodoService="zenodo",
     )
     assert dictResult["fig.pdf"]["sZenodo"] == (
         badgeState.S_BADGE_DRIFTED
@@ -332,7 +340,7 @@ def test_zenodo_badge_from_hashes_synced_on_matching_endpoint():
     }
     dictResult = badgeState.fdictBadgeStateFromHashes(
         ["fig.pdf"], _fdictGit(), dictSync,
-        {"fig.pdf": "abc123"}, sZenodoService="sandbox",
+        {"fig.pdf": "abc123"}, set(), sZenodoService="sandbox",
     )
     assert dictResult["fig.pdf"]["sZenodo"] == (
         badgeState.S_BADGE_SYNCED
@@ -361,7 +369,7 @@ def test_zenodo_badge_round_trip_persists_endpoint_synced():
     dictResult = badgeState.fdictBadgeStateFromHashes(
         ["Plot/fig.pdf"], _fdictGit(),
         dictReloaded["dictSyncStatus"],
-        {"Plot/fig.pdf": "abc123"}, sZenodoService="sandbox",
+        {"Plot/fig.pdf": "abc123"}, set(), sZenodoService="sandbox",
     )
     assert dictResult["Plot/fig.pdf"]["sZenodo"] == (
         badgeState.S_BADGE_SYNCED
@@ -386,7 +394,7 @@ def test_zenodo_badge_round_trip_drifts_when_service_flips():
     dictResult = badgeState.fdictBadgeStateFromHashes(
         ["Plot/fig.pdf"], _fdictGit(),
         dictReloaded["dictSyncStatus"],
-        {"Plot/fig.pdf": "abc123"}, sZenodoService="zenodo",
+        {"Plot/fig.pdf": "abc123"}, set(), sZenodoService="zenodo",
     )
     assert dictResult["Plot/fig.pdf"]["sZenodo"] == (
         badgeState.S_BADGE_DRIFTED
@@ -515,7 +523,8 @@ def test_arxiv_badge_drifted_when_file_in_diverged(tmp_path):
 def test_arxiv_badge_from_hashes_threads_status_through():
     """fdictBadgeStateFromHashes also paints the arxiv column."""
     dictResult = badgeState.fdictBadgeStateFromHashes(
-        ["a.pdf", "b.pdf"], _fdictGit(), {}, {"a.pdf": "x", "b.pdf": "y"},
+        ["a.pdf", "b.pdf"], _fdictGit(), {},
+        {"a.pdf": "x", "b.pdf": "y"}, set(),
         dictArxivStatus=_fdictArxivStatusFor(["b.pdf"]),
         bArxivConfigured=True,
     )

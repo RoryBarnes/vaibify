@@ -17,7 +17,19 @@ Badge values:
 - ``untracked``  (git only) not tracked by git
 - ``ignored``    (git only) explicitly gitignored
 - ``none``       the service is not configured for this file
+
+A file that is NOT THERE gets ``none`` from every column. ``git status
+--porcelain`` lists only files it has something to say about, and the
+git badge read "not mentioned" as ``synced`` -- absence of evidence as
+evidence of sync. That is true of a tracked, clean file and false of a
+file that was never committed and does not exist, which the dashboard
+then labelled "in sync with remote" beside its own red "missing"
+marker. Existence is therefore asked as its own question rather than
+inferred from silence, or from an empty content hash, which would be
+the same mistake one step along.
 """
+
+import os
 
 from . import mtimeCache
 from . import workflowManager
@@ -162,14 +174,35 @@ def fdictBadgesForFile(
     return _fdictAssembleBadges(
         sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
         sZenodoService, dictArxivStatus, bArxivConfigured,
+        not os.path.exists(
+            os.path.join(sWorkspaceRoot, sRepoRelPath),
+        ),
     )
+
+
+def _fdictAllBadgesNone():
+    """Return the badge dict for a file that is not there to have state."""
+    return {
+        "sGithub": S_BADGE_NONE,
+        "sOverleaf": S_BADGE_NONE,
+        "sZenodo": S_BADGE_NONE,
+        "sArxiv": S_BADGE_NONE,
+    }
 
 
 def _fdictAssembleBadges(
     sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
     sZenodoService, dictArxivStatus, bArxivConfigured,
+    bFileIsMissing,
 ):
-    """Combine the four per-remote badge functions into the per-file dict."""
+    """Combine the four per-remote badge functions into the per-file dict.
+
+    ``bFileIsMissing`` has no default on purpose: defaulting it to
+    False is precisely the bug -- every caller that forgot to answer
+    would go on reporting absent files as in sync.
+    """
+    if bFileIsMissing:
+        return _fdictAllBadgesNone()
     return {
         "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
         "sOverleaf": _fsRemoteBadge(
@@ -220,8 +253,8 @@ def fdictBadgeStateForWorkspace(
 
 def fdictBadgeStateFromHashes(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
-    dictCurrentHashes, sProjectRepoPath="", sZenodoService="",
-    dictArxivStatus=None, bArxivConfigured=False,
+    dictCurrentHashes, setMissingRepoRelPaths, sProjectRepoPath="",
+    sZenodoService="", dictArxivStatus=None, bArxivConfigured=False,
 ):
     """Compute badges when current hashes were obtained by some other means.
 
@@ -233,6 +266,13 @@ def fdictBadgeStateFromHashes(
     ``sZenodoService`` is the workflow's currently selected Zenodo
     endpoint; ``dictArxivStatus`` is the cached arXiv verify report
     from ``syncStatus.json``; see :func:`fdictBadgesForFile`.
+
+    ``setMissingRepoRelPaths`` is positional and has no default: this
+    variant cannot see the filesystem, so it must be TOLD which files
+    are absent. Deriving it from an empty hash would repeat the defect
+    -- the hash map is also empty when the probe that built it failed,
+    and a whole repository badged ``none`` because one read broke is
+    the same lie in the other direction.
     """
     dictResult = {}
     dictSync = dictSyncStatus or {}
@@ -245,6 +285,7 @@ def fdictBadgeStateFromHashes(
             sRelPath, dictGitStatus, dictEntry,
             dictHashes.get(sRelPath, ""), sZenodoService,
             dictArxivStatus, bArxivConfigured,
+            sRelPath in setMissingRepoRelPaths,
         )
     return dictResult
 
@@ -252,10 +293,11 @@ def fdictBadgeStateFromHashes(
 def _fdictBadgesForHashedFile(
     sRepoRelPath, dictGitStatus, dictEntry,
     sCurrentSha, sZenodoService,
-    dictArxivStatus, bArxivConfigured,
+    dictArxivStatus, bArxivConfigured, bFileIsMissing,
 ):
     """Compose the per-file badge dict from a precomputed hash."""
     return _fdictAssembleBadges(
         sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
         sZenodoService, dictArxivStatus, bArxivConfigured,
+        bFileIsMissing,
     )

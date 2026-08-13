@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 328,
+  "iRowCount": 329,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2350,
+      "iLine": 2347,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2345,
+      "iLine": 2342,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -5666,6 +5666,32 @@
       "sLogicalOperation": "land an uploaded file's bytes at a validated destination inside the project repo",
       "sOperationMetadata": "destination validated within the project repo and refused on the write denylist; expected sha256 is the uploaded content's, prior sha256 is what is on disk now",
       "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "lock-held"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "carrier-supervisor"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission of its own. It runs inside the badge refresh's mode-(b) worker only because it is part of that one coherent snapshot -- the four probes beside it are what hold the drain. It exists because no other input can answer the question: porcelain omits a file it has nothing to say about, and the blob-sha map omits both a file it could not open and every file when the probe that built it failed.",
+      "sFile": "gui/routes/gitRoutes.py",
+      "sFingerprint": "14e2fd8197ba4e9a",
+      "sFunction": "_fsetSelectMissingPaths",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which of the workflow's tracked files are on disk at all",
+      "sOperationMetadata": "one path per tracked file, joined to the project repo root; a failed probe raises rather than emptying the badge map",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {

@@ -29,6 +29,7 @@ __all__ = ["fnRegisterAll"]
 import asyncio
 import datetime
 import logging
+import posixpath
 import time
 
 from typing import List, Optional
@@ -290,7 +291,30 @@ def _ftCollectGitBadgeInputs(
     return (
         dictGit, listTracked, dictHashes, sRemoteUrl,
         _fdictLoadCachedArxivStatus(filesRepo),
+        _fsetSelectMissingPaths(docker, sContainerId, listTracked, sRepo),
     )
+
+
+def _fsetSelectMissingPaths(docker, sContainerId, listTracked, sRepo):
+    """Return the repo-relative tracked paths that are not on disk.
+
+    A typed read, batched, and a fifth round trip on a route that
+    already makes four. It is here because no other input answers the
+    question: porcelain omits a file it has nothing to say about, and
+    the blob-sha map omits a file it could not open AND every file
+    when the probe itself fails. Asked directly, a failed probe raises
+    instead of quietly emptying the repository's badges.
+    """
+    listAbsolute = [
+        posixpath.join(sRepo, sRelPath) for sRelPath in listTracked
+    ]
+    listExists = docker.flistContainerPathsExist(
+        sContainerId, listAbsolute,
+    )
+    return {
+        sRelPath for sRelPath, bExists
+        in zip(listTracked, listExists) if not bExists
+    }
 
 
 def _fdictBadgeRefreshPaused(sPausedBy):
@@ -334,11 +358,12 @@ def _fnRegisterGitBadges(app, dictCtx):
             return _fdictBadgeRefreshPaused(dictRead["sPausedBy"])
         (
             dictGit, listTracked, dictHashes, sRemoteUrl, dictArxivStatus,
+            setMissing,
         ) = dictRead["objResult"]
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit,
             dictWorkflow.get("dictSyncStatus", {}) or {},
-            dictHashes,
+            dictHashes, setMissing,
             sProjectRepoPath=sRepo,
             sZenodoService=dictWorkflow.get(
                 "sZenodoService", "sandbox",
