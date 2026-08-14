@@ -326,11 +326,16 @@ def fdictLoadWorkflowFromContainer(
         raise ValueError(
             f"Invalid project.json at {sWorkflowPath}: {sFailure}"
         )
+    # Ids are ensured BEFORE the state merge: state.json sections are
+    # keyed by sStepId, so the merge needs every step to carry one.
+    # Validation ran first, so a duplicate already present in the file
+    # fails closed above rather than being quietly carried through.
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     _fnLoadAndMergeState(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+        sWorkflowPath,
     )
     fbDeriveUnnecessaryVerification(dictWorkflow)
-    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
     _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
@@ -423,6 +428,7 @@ def _fdictLegacyGithubEntry(dictWorkflow):
 
 def _fnLoadAndMergeState(
     connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+    sWorkflowPath="",
 ):
     """Load .vaibify/state.json (or bootstrap from markers) and merge in.
 
@@ -435,23 +441,89 @@ def _fnLoadAndMergeState(
     if not sRepoPath:
         return
     sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    sWorkflowKey = stateManager.fsWorkflowKeyFromPath(
+        sWorkflowPath, sRepoPath,
+    )
     dictState, sStatus = stateManager.ftLoadStateWithStatus(
         connectionDocker, sContainerId, sStatePath,
     )
+    dictBootstrappedSection = None
     if dictState is None:
-        dictState = stateManager.fdictBootstrapStateFromMarkers(
-            connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+        # A fresh checkout: the section is synthesized from markers and
+        # written under this workflow's key, then merged directly — it
+        # is already this project's slice, so it needs no lookup.
+        dictBootstrappedSection = (
+            stateManager.fdictBootstrapStateFromMarkers(
+                connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+            )
         )
         stateManager.fnSaveStateToContainer(
-            connectionDocker, sContainerId, sStatePath, dictState,
+            connectionDocker, sContainerId, sStatePath,
+            dictBootstrappedSection, sWorkflowKey=sWorkflowKey,
         )
+    elif stateManager.fbDocumentNeedsMigration(dictState):
+        # The repo scan runs ONLY here. It is a general exec — a cost
+        # on every load if unguarded, and refusable under an enforced
+        # mutation lane — and only a pre-namespace document has any
+        # use for its answer.
+        dictState = stateManager.fdictMigrateStateDocument(
+            dictState,
+            _flistWorkflowKeysInRepo(
+                connectionDocker, sContainerId, sRepoPath,
+            ),
+        )
+        # NOT persisted here, deliberately. Writing the migrated
+        # document at load time would make LOAD a writer of a document
+        # that has no lock and no CAS, and a load runs concurrently
+        # with a live run: the browser lane caught it immediately, a
+        # finished step reverting to "running" because a load-time
+        # write installed a document derived from pre-run state. The
+        # migration is cheap, deterministic and idempotent, so
+        # recomputing it per load costs nothing that matters; the
+        # WRITER quarantines legacy roots, which is what makes the
+        # data durable. Persisting here can be revisited once every
+        # writer of this document shares one commit protocol.
     dictNotice = _fdictBuildStateLoadNotice(sStatus)
     if dictNotice:
         dictWorkflow["dictStateLoadNotice"] = dictNotice
-    stateManager.fnMergeStateIntoWorkflow(dictWorkflow, dictState)
+    if dictBootstrappedSection is not None:
+        stateManager.fnMergeStateIntoWorkflow(
+            dictWorkflow, dictBootstrappedSection,
+        )
+    else:
+        stateManager.fnMergeStateIntoWorkflow(
+            dictWorkflow, dictState, sWorkflowKey,
+        )
     stateManager.fnEnsureVaibifyGitignore(
         connectionDocker, sContainerId, sRepoPath,
     )
+
+
+def _flistWorkflowKeysInRepo(connectionDocker, sContainerId, sRepoPath):
+    """Return every project file in the repo, repo-relative, or None.
+
+    ``None`` means "could not establish", and the state migration
+    treats that exactly like "more than one" — it quarantines rather
+    than attributing. That is deliberate: the legacy document carries
+    no owner, so attributing it is defensible ONLY when this repo
+    provably holds a single project. A discovery failure is not proof
+    of anything, and the exec this uses can be refused outright under
+    an enforced mutation lane, so the negative case must be the safe
+    one.
+    """
+    if not sRepoPath:
+        return None
+    try:
+        listFound = _flistDiscoverCandidatePaths(
+            connectionDocker, sContainerId, sRepoPath,
+        )
+    except Exception:  # noqa: BLE001 — see the conservative note above
+        return None
+    listKeys = [
+        stateManager.fsWorkflowKeyFromPath(sPath, sRepoPath)
+        for sPath in listFound or []
+    ]
+    return [sKey for sKey in listKeys if sKey] or None
 
 
 def _fdictBuildStateLoadNotice(sStatus):
@@ -527,6 +599,10 @@ def fsDescribeValidationFailure(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return f"{sLabel} is missing required field '{sField}'"
+    from .pipelineUtils import fsDescribeStepIdConflict
+    sIdConflict = fsDescribeStepIdConflict(dictWorkflow)
+    if sIdConflict:
+        return sIdConflict
     listOutWarnings = flistValidateOutputFilePaths(dictWorkflow)
     if listOutWarnings:
         return listOutWarnings[0]
@@ -1162,10 +1238,20 @@ def fnSaveWorkflowToContainer(
     before writing. Callers continue to mutate one merged dict; the
     split is invisible upstream.
     """
-    from .pipelineUtils import fnAttachStepLabels
+    from .pipelineUtils import fnAttachStepLabels, fsDescribeStepIdConflict
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    # Fail closed BEFORE either file is written: sStepId is the merge
+    # authority for run-produced state, and persisting a duplicate
+    # would let one step's results silently claim another's.
+    sIdConflict = fsDescribeStepIdConflict(
+        dictWorkflow, bRequirePresent=True,
+    )
+    if sIdConflict:
+        raise ValueError(
+            f"Refusing to save {sWorkflowPath}: {sIdConflict}"
+        )
     workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnMigrateLegacyRemotes(dictWorkflow)
@@ -1183,6 +1269,9 @@ def fnSaveWorkflowToContainer(
     if sStatePath:
         stateManager.fnSaveStateToContainer(
             connectionDocker, sContainerId, sStatePath, dictState,
+            sWorkflowKey=stateManager.fsWorkflowKeyFromPath(
+                sWorkflowPath, sRepoPath,
+            ),
         )
         stateManager.fnEnsureVaibifyGitignore(
             connectionDocker, sContainerId, sRepoPath,

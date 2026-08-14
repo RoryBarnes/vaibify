@@ -2425,9 +2425,19 @@ def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
             return b"state.json\n"
         raise FileNotFoundError(sPath)
 
+    def _fExec(_sContainerId, sCommand):
+        # The pre-namespace state document above carries no owner, so
+        # the migration asks how many projects share the repo and
+        # attributes only to a sole occupant. This is a one-project
+        # fixture; answering "none" would quarantine the state and this
+        # test would fail for a reason unrelated to what it asserts.
+        if sCommand.startswith("find "):
+            return (0, "/workspace/Project/.vaibify/workflows/w.json")
+        return (0, "")
+
     mockDocker.fbaFetchFile.side_effect = _fFetch
     mockDocker.fnWriteFile.side_effect = lambda *a, **k: None
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    mockDocker.ftResultExecuteCommand.side_effect = _fExec
     dictLoaded = fdictLoadWorkflowFromContainer(
         mockDocker, "cid",
         sWorkflowPath="/workspace/Project/.vaibify/workflows/w.json",
@@ -4193,7 +4203,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # front made the stop button depend on the hub's session
     # bookkeeping, so a restarted hub left a researcher's processes
     # running with no way to stop them from the dashboard.
-    "routes/pipelineRoutes.py": 3168,
+    # +7 (2026-08-13, slice 3): the poll payload carries the
+    # exact-source fingerprint beside the canonical one, explicitly
+    # distinct -- the exact-source value is the dispatch freshness
+    # authority, the canonical serves the edit CAS, and they differ
+    # for any hand-edited or migrated project.
+    "routes/pipelineRoutes.py": 3175,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4386,7 +4401,69 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # was wrong for a host project the same way -- the path guard
     # refuses the write, so the final log flush failed and the pipeline
     # reported exit 1 for a step whose command had succeeded.
-    "workflowManager.py": 2371,
+    # +60 (2026-08-13): the state workflow-namespace. The loader
+    # threads the project file's repo-relative path as the state key,
+    # the pre-namespace document is migrated once (attributed only to
+    # a provable sole occupant, otherwise quarantined), and the repo
+    # scan that answers "sole occupant?" lives here because it is a
+    # general exec that must run ONLY for a legacy document. Same
+    # cohesive responsibility: loading and saving a workflow, which is
+    # what this module is.
+    # +11 (2026-08-13, round 21): the comment recording why the
+    # migrated document is NOT persisted at load. Doing so made LOAD a
+    # writer of a document with no lock and no CAS, and the browser
+    # lane caught it at once -- a finished step reverted to "running"
+    # because a load-time write installed a document derived from
+    # pre-run state. The reason is longer than the code it replaces
+    # because the next reader will otherwise re-add the write.
+    # +18 (2026-08-13, slice 1): the duplicate-step-id fail-closed
+    # checks on the load and save paths. sStepId became the merge
+    # authority for run-produced state; fnEnsureStepIds preserves an
+    # existing duplicate, so validation refuses one before ids are
+    # trusted -- at load (before the state merge reads them) and at
+    # save (before either file is written).
+    "workflowManager.py": 2460,
+    # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
+    # adding the schema-v3 workflow namespace. state.json is
+    # repo-scoped and a repo may hold several projects, but v2 kept one
+    # flat dictStepState at the document root and every save rebuilt
+    # the document from the ONE workflow being saved -- so saving
+    # project A discarded project B's verification and run statistics,
+    # with no run involved and no directory overlap needed. The added
+    # surface is the namespace itself: key derivation, section
+    # read/install, the migration with its attribution rule, and the
+    # read-modify-write save. All of it is this module's single
+    # responsibility -- it IS the state file's schema and access -- so
+    # there is no seam here to split along.
+    # +21 (2026-08-13, round 21): the writer now QUARANTINES legacy
+    # roots instead of dropping them. Dropping looked safe because the
+    # load path migrates first -- but migration transformed only the
+    # in-memory dict, so the next ordinary save re-read the v2 document
+    # and deleted the very data the ambiguous-attribution branch exists
+    # to preserve. The writer has to be safe without a loader having
+    # run.
+    # +32 (2026-08-13, round 22): quarantine became a LIST of stamped
+    # records with its own append helper. A single slot could not be
+    # made correct -- keyed on a non-empty step map it dropped
+    # workflow-level fields, and refusing to overwrite an existing
+    # rescue discarded the new payload it had already popped. Merging
+    # instead would silently pick a winner between two directory-keyed
+    # bodies of state nobody can attribute.
+    # +103 (2026-08-13, slice 1): the completion merge
+    # (fdictMergeRunResultsIntoState) and the shared persist tail it
+    # required. Completion is now state-only (spec D2): the run's
+    # per-step delta is applied entry-by-entry into a freshly loaded
+    # document, by stable step id, migrating pre-id directory keys.
+    # This is the state file's own read-modify-write discipline -- the
+    # module's single responsibility -- and putting it anywhere else
+    # would give the document a second author with its own notion of
+    # how sections merge.
+    # +10 (2026-08-13, slice 2): both writers hold the cross-process
+    # write lock (stateWriteLock) from the read through the rename, so
+    # a concurrent cooperative writer cannot have its section dropped
+    # by a stale read. The lock itself lives in its own module; these
+    # lines are only the two holds.
+    "stateManager.py": 968,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4539,7 +4616,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # paragraph recording that the old sentence was false twice over —
     # the caller IS connected, and a host project has no container to
     # be connected to.
-    "pipelineServer.py": 2635,
+    # +153 (2026-08-13, slice 3): the dispatch freshness gate. Every
+    # run action proves three-way agreement -- caller-acknowledged
+    # exact-source fingerprint, session record, fresh disk bytes --
+    # before dispatch; a mismatch reloads and republishes in the same
+    # operation and refuses typed. The gate lives beside the message
+    # loop it guards, with the loop now consulting the LIVE cache per
+    # frame (the captured-object defect, spec D1). The self-write
+    # atomicity note in fnSave is part of the same contract.
+    "pipelineServer.py": 2788,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4749,6 +4834,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single interactive-flag classifier the runner now uses to pick
     # the interactive lane. No new responsibility.
     "pipelineRunner.py": 1500,
+    # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
+    # default cap gaining the acknowledged-write path
+    # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
+    # with revert-on-failure, plus the executed-step stats record the
+    # completion merge reads back. All of it is this module's one
+    # responsibility -- the pipeline state file's schema and its
+    # writers -- and the terminal flush must live beside the writer
+    # thread whose in-memory state it merges into and reverts.
+    # +68 (2026-08-13, slice 1 round 2): the terminal flush now rides
+    # the writer thread's OWN queue as a result-carrying request. The
+    # first version wrote synchronously from the caller's thread,
+    # which broke single-writer ordering -- the writer thread could
+    # land a pre-terminal snapshot AFTER the terminal write, so the
+    # run's final durable state said running and the next poll lit a
+    # phantom running marker (caught by the stop-test under full-suite
+    # load). Ordering machinery belongs beside the thread it orders.
+    "pipelineState.py": 944,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
@@ -4911,7 +5013,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # brand-new project, and the near-universal state of a host one.
     # Pre-existing and mode-independent; the first journey that ever
     # opened a workflow in a remote-less repository is what surfaced it.
-    "routes/gitRoutes.py": 1095,
+    # 1095 -> 1120: the badge refresh now asks which tracked files are
+    # actually on disk, because `git status --porcelain` reports
+    # nothing about a file it has nothing to say about and the GitHub
+    # badge was reading that silence as "in sync with remote". The
+    # probe is its own named function beside the collector rather than
+    # a fifth line inside it -- the reason it costs a round trip is
+    # the whole point and belongs where a reader will find it.
+    "routes/gitRoutes.py": 1120,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -4946,7 +5055,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # poison -- a judgement read out of stepRename's source that a
     # reader must not have to re-derive. Same cohesive responsibility:
     # step CRUD, in the module that owns it.
-    "routes/stepRoutes.py": 808,
+    # +12 (2026-08-13, slice 3): step-writing responses carry the
+    # post-save exact-source fingerprint, which the client adopts as
+    # its acknowledged value so its own edit never trips the dispatch
+    # freshness gate.
+    "routes/stepRoutes.py": 820,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
