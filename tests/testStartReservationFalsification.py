@@ -728,16 +728,17 @@ def testTheJournalDirectoryIsIsolatedForTheseTests():
     breaking the machine it runs on, the same hazard class as the
     startup sweep that deleted a live bind-mounted credential file.
 
-    Kills: in tests/conftest.py, point the autouse journal fixture at
-    the module's own directory instead of tmp_path — the isolation is
-    then a no-op and these tests write the real journal.
+    Kills: in tests/conftest.py, make the autouse state-directory
+    fixture point the journal at the real ~/.vaibify/journal instead of
+    the isolated home — the isolation is then a no-op and these tests
+    write the researcher's real journal.
     """
-    assert "operationJournalIsolated" in (
-        operationJournal._S_JOURNAL_DIRECTORY
-    ), "these tests would otherwise write the researcher's real journal"
-    assert not os.path.expanduser("~/.vaibify/journal") in (
-        operationJournal._S_JOURNAL_DIRECTORY
+    sRealJournal = os.path.expanduser("~/.vaibify/journal")
+    assert operationJournal._S_JOURNAL_DIRECTORY != sRealJournal, (
+        "these tests would otherwise write the researcher's real journal"
     )
+    assert not operationJournal._S_JOURNAL_DIRECTORY.startswith(sRealJournal)
+    assert "vaibifyHome" in operationJournal._S_JOURNAL_DIRECTORY
 
 
 @pytest.mark.asyncio

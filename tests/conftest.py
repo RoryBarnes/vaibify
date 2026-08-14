@@ -10,6 +10,7 @@ overwrite, or delete the researcher's real stored credentials).
 """
 
 import logging
+import os
 
 import pytest
 
@@ -80,21 +81,70 @@ def fixtureHermeticKeyring(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def fnIsolateOperationJournalDirectory(monkeypatch, tmp_path):
-    """Keep every test's write-ahead journal out of ~/.vaibify/journal.
+def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
+    """Keep every test out of the researcher's real ~/.vaibify state.
 
-    The commit-guard carrier journals every guarded mutation, so any
-    test that saves settings or pushes through the real routes would
-    otherwise write (and, on failure, leave quarantine records in) the
-    researcher's real journal directory — the same host-state hazard
-    class as the log and keyring fixtures above.
+    Each state directory is a module-level constant computed from
+    ``os.path.expanduser`` at import, so a test that boots a hub or
+    runs the CLI without its own redirect writes the operation journal,
+    locks, hub-port.json, session slots, the registry, preferences,
+    caffeinate pids, build staging, and the host-control socket into the
+    REAL ~/.vaibify. That leak once clobbered a live hub's port
+    registration — a running suite wrote hub-port.json into the
+    researcher's home and pointed the survival contract at a dead port.
+
+    Function-scoped so each test gets a FRESH home: the session-slot
+    and cardinality machinery accumulates on-disk state, so a shared
+    home would let one test's records leak into the next (a shared
+    session scope was tried and produced exactly that cross-test
+    pollution). A test that patches its own directory still overrides
+    these, so per-test isolation is unchanged; what changes is that an
+    UNpatched writer can no longer reach the real home. Same host-state
+    hazard class as the log and keyring fixtures above, generalised from
+    what used to be a journal-only redirect. The module-scoped browser
+    lane boots its hub before this runs, so it carries its OWN redirect
+    of the boot-time writers (registry, preferences, hub-port, sessions)
+    in tests/browser/conftest.py.
     """
-    from vaibify.config import operationJournal
-    monkeypatch.setattr(
-        operationJournal, "_S_JOURNAL_DIRECTORY",
-        str(tmp_path / "operationJournalIsolated"),
+    from vaibify.cli import commandBuild
+    from vaibify.config import (
+        containerLock, hubPortRegistry, keepAliveManager,
+        operationJournal, sessionRegistry,
     )
-    yield
+    from vaibify.gui import hostControlChannel
+    # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
+    # their whole tmp_path to model a missing directory, and a home
+    # created inside it would make that rmdir fail on a non-empty tree.
+    sHome = str(tmp_path_factory.mktemp("vaibifyHome"))
+
+    def fnRedirectDirectory(moduleTarget, sAttribute, sSubdirectory=""):
+        monkeypatch.setattr(
+            moduleTarget, sAttribute,
+            os.path.join(sHome, sSubdirectory) if sSubdirectory else sHome,
+        )
+
+    fnRedirectDirectory(containerLock, "_S_LOCK_DIRECTORY", "locks")
+    fnRedirectDirectory(hubPortRegistry, "_S_VAIBIFY_DIRECTORY")
+    fnRedirectDirectory(sessionRegistry, "_S_SESSION_DIRECTORY", "sessions")
+    fnRedirectDirectory(keepAliveManager, "_S_PID_DIRECTORY", "caffeinate")
+    fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")
+    fnRedirectDirectory(hostControlChannel, "_S_CONTROL_DIRECTORY", "control")
+    fnRedirectDirectory(commandBuild, "_S_BUILD_STAGING_DIRECTORY", "build")
+    fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
+    # registryManager and preferencesStore are deliberately NOT
+    # redirected here. Each precomputes full-path constants that the
+    # long-lived hub reads at REQUEST time, and the lanes that boot a hub
+    # already redirect them at their own scope (the module-scoped browser
+    # lane, and tLiveHub for the headless lane). A function-scoped
+    # redirect here would clobber those per test — the browser hub would
+    # read an empty registry mid-test and render no tiles. They were
+    # never the leak this fixture exists for (hub-port and session slots
+    # were); leaving them to the per-lane fixtures keeps both correct.
+    # ephemeralStore is deliberately NOT redirected here: it computes
+    # its root from os.path.expanduser("~") at call time (no import-time
+    # constant to patch), and its own tests exercise that real behaviour
+    # — a blanket patch here broke them. It carries its own isolation.
+    yield sHome
 
 
 @pytest.fixture(autouse=True)
