@@ -8,9 +8,15 @@ answered "Could not load logs" for that run, permanently. Seen on a
 cancelled ``time.sleep`` step: the state named a log timestamped at
 the cancel while only the previous run's log was on disk.
 
-The fix is that the log exists from the moment the path is recorded:
-the ``started`` event carries a header line, and the flush set
-includes ``started`` and ``stepStarted``.
+The fix is that the log exists from the moment the path is recorded,
+and it has THREE halves: the ``started`` event carries a header line,
+the flush set includes ``started`` and ``stepStarted``, and the
+production runner builds the flushing wrapper BEFORE emitting
+``started`` through it. The first shipped version had only the first
+two — ``started`` went through the plain callback one line before the
+wrapper existed, so the header sat in the buffer and the file still
+did not exist. The test that let it ship built the wrapper itself,
+which is why the stopped-run test now drives ``_fiRunStepsAndLog``.
 
 What is deliberately absent is a flush from the cancelled task's own
 teardown, which is the only thing that would preserve the output of
@@ -23,6 +29,7 @@ rather than paid: a stopped step's buffered output is lost.
 import asyncio
 import base64
 import re
+from unittest.mock import patch
 
 import pytest
 
@@ -121,23 +128,48 @@ def _fsDecodeAppendedText(sCommand):
 
 @pytest.mark.falsification
 def testARunStoppedBeforeAnyStepFinishedStillHasALog():
-    """Kills: writing the log only when a step passes or fails.
+    """Kills: emitting ``started`` before the flushing wrapper exists.
 
-    The run has announced itself and nothing else has happened, which
-    is exactly the state a Cancel finds during a long first step. The
-    path is already in ``pipeline_state.json`` by now, so if nothing
-    has been written the dashboard is pointing at a file that does not
-    exist.
+    This drives the PRODUCTION path — ``_fiRunStepsAndLog`` — with the
+    step list cancelled mid-flight, which is exactly what Stop does
+    during a long first step. The original version of this test built
+    the flushing wrapper itself and fed ``started`` into it, so it
+    passed while the production caller emitted ``started`` through the
+    PLAIN callback one line before the wrapper was built: the header
+    was buffered, never flushed, the cancel prevented every later
+    flush, and ``sLogPath`` — already durable in
+    ``pipeline_state.json`` — named a file nothing had created. A flush
+    set without the production ordering reads like a fix and is not
+    one.
     """
-    connection = ConnectionRecordingLogAppends()
+    from vaibify.gui import pipelineRunner
 
-    _fnDriveEvents(connection, [
-        {"sType": "started", "sCommand": "runStep"},
-    ])
+    connection = ConnectionRecordingLogAppends()
+    listLogLines = []
+    fnLogging = ffBuildLoggingCallback(_fnIgnoreEvent, listLogLines)
+
+    async def fnStepListCancelled(*tArgs, **dictKeywords):
+        raise asyncio.CancelledError()
+
+    async def fnDriveTheProductionRun():
+        with patch.object(
+            pipelineRunner, "_fiRunStepList", fnStepListCancelled,
+        ):
+            await pipelineRunner._fiRunStepsAndLog(
+                connection, S_CONTAINER_ID,
+                {"sWorkflowName": "demo", "listSteps": [{"sName": "s1"}]},
+                "/work", {}, fnLogging, _fnIgnoreEvent,
+                S_LOG_PATH, listLogLines, "runStep", 1,
+            )
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.new_event_loop().run_until_complete(
+            fnDriveTheProductionRun(),
+        )
 
     assert connection.listAppendCommands, (
-        "a run that announced itself wrote no log; a Cancel now leaves "
-        "sLogPath naming a file nothing created"
+        "a run that announced itself wrote no log before its first "
+        "step was cancelled; sLogPath names a file nothing created"
     )
     assert S_LOG_PATH in connection.listAppendCommands[0]
 

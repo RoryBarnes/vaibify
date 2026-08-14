@@ -10936,4 +10936,37 @@ def _fdictEntry(sRel):
             '        return None\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testARunStoppedBeforeAnyStepFinishedStillHasALog'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The third half, and the one the first shipped fix missed:
+        # the production runner emitted `started` through the PLAIN
+        # callback one line before the flushing wrapper was built, so
+        # the flush set and the header were both correct and neither
+        # ever fired. The header sat in the buffer, the cancel
+        # prevented every later flush, and the file still did not
+        # exist. This mutation restores that ordering.
+        old=(
+            '        fnLoggingWithFlush = _ffBuildFlushingCallback(\n'
+            '            fnLogging, connectionDocker, sContainerId,\n'
+            '            dictState, sLogPath, listLogLines,\n'
+            '            stateWriter=stateWriter,\n'
+            '        )\n'
+            '        await fnLoggingWithFlush(\n'
+            '            {"sType": "started", "sCommand": sAction},\n'
+            '        )\n'
+        ),
+        new=(
+            '        await fnLogging('
+            '{"sType": "started", "sCommand": sAction})\n'
+            '        fnLoggingWithFlush = _ffBuildFlushingCallback(\n'
+            '            fnLogging, connectionDocker, sContainerId,\n'
+            '            dictState, sLogPath, listLogLines,\n'
+            '            stateWriter=stateWriter,\n'
+            '        )\n'
+        ),
+    ),
 ]

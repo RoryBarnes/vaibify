@@ -1224,11 +1224,20 @@ async def _fiRunStepsAndLog(
         stateWriter, eventStopHeartbeat,
     )
     try:
-        await fnLogging({"sType": "started", "sCommand": sAction})
+        # The wrapper must exist BEFORE `started` is emitted: the flush
+        # set includes `started` precisely so the log file exists from
+        # the moment pipeline_state.json records its path, and an event
+        # sent through the plain callback is buffered, never flushed. A
+        # run cancelled during its first step then leaves `sLogPath`
+        # naming a file nothing created — the very defect the flush set
+        # was written to close.
         fnLoggingWithFlush = _ffBuildFlushingCallback(
             fnLogging, connectionDocker, sContainerId,
             dictState, sLogPath, listLogLines,
             stateWriter=stateWriter,
+        )
+        await fnLoggingWithFlush(
+            {"sType": "started", "sCommand": sAction},
         )
         iResult = await _fiRunStepList(
             connectionDocker, sContainerId,
