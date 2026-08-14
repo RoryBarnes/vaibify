@@ -858,6 +858,29 @@ def _fdictDescribeHostExecHolder(sOperationId, dictRecord):
     }
 
 
+def _fbErrorMeansExecGone(error):
+    """Return True when the daemon has no record of an exec instance.
+
+    ``exec_inspect`` answers 404 once its container has stopped,
+    restarted, or been removed: Docker discards a container's exec
+    instances with the container. A gone exec instance therefore proves
+    the exec-root process is no longer running — the same
+    container-stop settlement the group-emptiness probe already honours
+    (v13 §6.1). For a terminal record it does NOT prove a detached
+    descendant died; that stays the group probe's job. The status code
+    is read by attribute so this classification never imports the
+    Docker SDK, keeping the module in the ``vaibify.config`` layer as
+    ``fbDockerReachable`` does. Anything other than a 404 proves
+    nothing, so an unreachable daemon stays indeterminate.
+    """
+    iStatusCode = getattr(error, "status_code", None)
+    if iStatusCode is None:
+        iStatusCode = getattr(
+            getattr(error, "response", None), "status_code", None,
+        )
+    return iStatusCode == 404
+
+
 def _fdictProbeExecOperation(dictRecord, connectionDocker):
     """Probe a Docker exec record by its recorded exec id."""
     sDockerExecId = dictRecord.get("sDockerExecId")
@@ -879,6 +902,12 @@ def _fdictProbeExecOperation(dictRecord, connectionDocker):
     try:
         dictInspect = connectionDocker.fdictInspectExec(sDockerExecId)
     except Exception as error:
+        if _fbErrorMeansExecGone(error):
+            return _fdictProbeOutcome(
+                False, True, False,
+                "the daemon has no record of the exec instance; it "
+                "stopped with its container and is not running",
+            )
         return _fdictProbeOutcome(
             False, False, True, f"exec inspect failed: {error}",
         )
@@ -906,6 +935,16 @@ def _fdictProbeTerminalOperation(dictRecord, connectionDocker):
     exited AND an in-container probe proves no process with the
     recorded group remains (or the container itself is definitively
     gone, which no process survives).
+
+    A stopped container reaches that second clause: once the container
+    stops, the daemon discards its exec instance, so the exec probe
+    reports it gone rather than exited (both mean the exec-root is not
+    running). The group-emptiness probe is then the authority, and it
+    settles conclusively because no process survives a stopped
+    container. Without this, a machine restart that killed the
+    container while a terminal record was open left the container
+    permanently quarantined — the exec-inspect 404 read as
+    indeterminate and refused before the group probe ever ran.
     """
     sDockerExecId = dictRecord.get("sDockerExecId")
     sDockerContainerId = dictRecord.get("sDockerContainerId")
