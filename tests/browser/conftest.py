@@ -134,6 +134,22 @@ def fdictHostWorkflowDocument():
             "saOutputDataFiles": [S_HOST_STEP_OUTPUT],
             "saPlotCommands": [],
             "saPlotFiles": [],
+        }, {
+            # A second step no journey RUNS: the stop test needs a
+            # step that can wear an in-flight light while the first
+            # step's finished light is backed by (stubbed) server
+            # state — one step cannot wear both.
+            "sName": "Second Stage",
+            "sStepId": "second-stage",
+            "sDirectory": "SecondStage",
+            "bRunEnabled": True,
+            "bPlotOnly": False,
+            "saDataCommands": [
+                "python3 -c \"print('second stage ran')\"",
+            ],
+            "saOutputDataFiles": [],
+            "saPlotCommands": [],
+            "saPlotFiles": [],
         }],
     }
 
@@ -155,6 +171,14 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
         os.path.join(sStepDirectory, "makeNumbers.py"), "w",
     ) as fileScript:
         fileScript.write(_S_HOST_STEP_SCRIPT)
+    sSecondStageDirectory = os.path.join(
+        sProjectDirectory, "SecondStage",
+    )
+    os.makedirs(sSecondStageDirectory, exist_ok=True)
+    with open(
+        os.path.join(sSecondStageDirectory, ".gitkeep"), "w",
+    ) as fileKeep:
+        fileKeep.write("")
     sProjectsDirectory = os.path.join(
         sProjectDirectory, ".vaibify", "projects",
     )

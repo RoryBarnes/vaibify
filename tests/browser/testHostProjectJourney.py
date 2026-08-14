@@ -382,21 +382,34 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
     The kill POST is answered here rather than served: what is under
     test is what the dashboard does with a success, and the route that
     produces one is driven against real processes in
-    ``tests/testHostCancel.py``. The state poll is stubbed not-running
-    for the same reason: this test's subject is the KILL handler, and
-    the injected step lights are fixture state no server run backs —
-    a neighbouring test's still-finalizing run once answered the
-    recovery poll with bRunning=true and repainted step 0 "running"
-    mid-test, which failed this test for a reason that had nothing to
-    do with stopping (full-suite runs, 2026-08-13; recovery has its
-    own tests).
+    ``tests/testHostCancel.py``.
+
+    The finished step's light is BACKED BY (stubbed) SERVER STATE, not
+    injected: this page keeps reconciling itself against the server —
+    that is the ground-truth contract — so a fixture-injected light
+    with no server backing is erased by whichever reconciliation lands
+    first, and this test failed three different ways on slow runners
+    before the modelling was fixed. With the state poll answering "a
+    completed run in which step 1 passed", every reconciliation
+    RE-DERIVES the pale-blue dot instead of erasing it. Only the
+    second step's "running" light is injected, faithfully: an
+    in-flight light is set by live events and backed by nothing
+    durable, which is exactly what a stop interrupts.
     """
     pageDashboard.route(
         "**/api/pipeline/*/state",
         lambda routeIntercepted: routeIntercepted.fulfill(
             status=200,
             content_type="application/json",
-            body=json.dumps({"bRunning": False}),
+            body=json.dumps({
+                "bRunning": False,
+                "iExitCode": 0,
+                "sLogPath": "/journey/.vaibify/logs/stop-demo.log",
+                "iStepCount": 2,
+                "dictStepResults": {
+                    "1": {"sStatus": "passed", "iExitCode": 0},
+                },
+            }),
         ),
     )
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
@@ -413,9 +426,12 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
             }),
         ),
     )
+    pageDashboard.wait_for_selector(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
+        timeout=15000,
+    )
     pageDashboard.evaluate(
-        "() => { VaibifyApp.fnSetStepStatus(0, 'pass');"
-        " VaibifyApp.fnSetStepStatus(1, 'running');"
+        "() => { VaibifyApp.fnSetStepStatus(1, 'running');"
         " VaibifyApp.fnRenderStepList(); }",
     )
     assert "pass" in _fsStepStatusClass(pageDashboard)

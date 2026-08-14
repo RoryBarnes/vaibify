@@ -1635,16 +1635,55 @@ def fsetSweepAllContainerCaches(dictCtx, listRunningContainers):
     list (e.g. the registry route, the periodic background sweep) so
     all sweeps see one consistent snapshot. Returns the union of
     evicted container ids.
+
+    HOST projects are outside this sweep's jurisdiction, exempted HERE
+    so every caller is covered: the running list is Docker's answer,
+    and a host project is never a Docker container, so sweeping on
+    that list alone evicted every host project's workflow ~60 s after
+    it was opened. The dashboard kept rendering from its own copy
+    while the server had forgotten the project — cache-dependent
+    routes answered "no project open" and, once dispatch read the
+    live cache, Run was turned away as "Not connected" (found live
+    2026-08-12, root-caused 2026-08-14). A host resource's lifetime is
+    its registry entry, not any container's.
     """
     setRunning = set(listRunningContainers or [])
     setEvicted = set()
     if dictCtx is None:
         return setEvicted
+    setRunning |= _fsetRegisteredHostResourceKeys(dictCtx)
     setEvicted |= _fsetSweepPlainDicts(dictCtx, setRunning)
     setEvicted |= _fsetSweepStateLocks(dictCtx, setRunning)
     setEvicted |= _fsetSweepInteractiveContexts(setRunning)
     _fnFanOutToSiblingModules(dictCtx, setRunning)
     return setEvicted
+
+
+def _fsetRegisteredHostResourceKeys(dictCtx):
+    """Return every cached key that names a registered HOST project.
+
+    Consulted per sweep rather than cached: a project can be
+    registered or re-registered between ticks, and a stale "not a
+    host project" answer is an eviction. The candidate population is
+    every key any swept cache holds — including the state locks and
+    the module-global interactive contexts — so a host key cannot be
+    spared in one cache and swept from another.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from .pipelineServer import DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER
+    setCandidates = set()
+    for sCacheName in _LIST_CONTAINER_KEYED_CACHES:
+        dictCache = dictCtx.get(sCacheName)
+        if isinstance(dictCache, dict):
+            setCandidates |= set(dictCache.keys())
+    setCandidates |= set(
+        (dictCtx.get("dictPipelineStateLocks") or {}).keys(),
+    )
+    setCandidates |= set(DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.keys())
+    return {
+        sResourceId for sResourceId in setCandidates
+        if fbIsHostProject(sResourceId)
+    }
 
 
 def _fsetSweepPlainDicts(dictCtx, setRunning):
