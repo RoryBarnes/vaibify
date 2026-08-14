@@ -50,3 +50,10 @@ vaibify/_version.py
 
 # Browser-lane failure artifacts (trace, video, screenshot)
 test-results/
+
+# Browser-lane scratch homes: the picker's registry-isolation makes a
+# throwaway project tree beneath the checkout (the path guard requires
+# it be under the user's home). A killed run leaves one behind; keeping
+# them here means a stray tree can never be git-added (a bare repo-root
+# temp dir once shipped into history as tmpu2uv9b_9/).
+/.browserLaneTmp/
