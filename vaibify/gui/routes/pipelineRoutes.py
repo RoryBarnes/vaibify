@@ -1944,6 +1944,13 @@ def _fdictAssemblePollResponse(
         "sWorkflowFingerprint": (
             workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
         ),
+        # The EXACT-SOURCE fingerprint (sha256 of the file's bytes) is
+        # the dispatch freshness authority; the canonical one above
+        # serves the edit CAS. Never conflated — they differ for any
+        # hand-edited or migrated project.
+        "sExactSourceFingerprint": dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        ),
         "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
             dictWorkflow, dictModTimes,
         ),

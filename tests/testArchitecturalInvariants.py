@@ -4203,7 +4203,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # front made the stop button depend on the hub's session
     # bookkeeping, so a restarted hub left a researcher's processes
     # running with no way to stop them from the dashboard.
-    "routes/pipelineRoutes.py": 3168,
+    # +7 (2026-08-13, slice 3): the poll payload carries the
+    # exact-source fingerprint beside the canonical one, explicitly
+    # distinct -- the exact-source value is the dispatch freshness
+    # authority, the canonical serves the edit CAS, and they differ
+    # for any hand-edited or migrated project.
+    "routes/pipelineRoutes.py": 3175,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4611,7 +4616,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # paragraph recording that the old sentence was false twice over —
     # the caller IS connected, and a host project has no container to
     # be connected to.
-    "pipelineServer.py": 2635,
+    # +153 (2026-08-13, slice 3): the dispatch freshness gate. Every
+    # run action proves three-way agreement -- caller-acknowledged
+    # exact-source fingerprint, session record, fresh disk bytes --
+    # before dispatch; a mismatch reloads and republishes in the same
+    # operation and refuses typed. The gate lives beside the message
+    # loop it guards, with the loop now consulting the LIVE cache per
+    # frame (the captured-object defect, spec D1). The self-write
+    # atomicity note in fnSave is part of the same contract.
+    "pipelineServer.py": 2788,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5042,7 +5055,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # poison -- a judgement read out of stepRename's source that a
     # reader must not have to re-derive. Same cohesive responsibility:
     # step CRUD, in the module that owns it.
-    "routes/stepRoutes.py": 808,
+    # +12 (2026-08-13, slice 3): step-writing responses carry the
+    # post-save exact-source fingerprint, which the client adopts as
+    # its acknowledged value so its own edit never trips the dispatch
+    # freshness gate.
+    "routes/stepRoutes.py": 820,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

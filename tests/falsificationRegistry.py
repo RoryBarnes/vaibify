@@ -11158,4 +11158,87 @@ def _fdictEntry(sRel):
             '        dictDocument, _sStatus = ftLoadStateWithStatus(\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_dispatch_after_an_external_edit_runs_the_new_command'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The shipped D1 defect, restored: the loop dispatches the
+        # object captured at socket accept, so every dispatch after a
+        # reload-detector rebind runs superseded commands.
+        old=(
+            '            dictWorkflowBound = dictWorkflow\n'
+            '            if fdictGetLiveWorkflow is not None:\n'
+            '                dictWorkflowBound = (\n'
+            '                    fdictGetLiveWorkflow() or dictWorkflow\n'
+            '                )\n'
+        ),
+        new=(
+            '            dictWorkflowBound = dictWorkflow\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_a_stale_acknowledgment_is_refused_and_republished'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Ignore the caller's acknowledgment: a client rendering a
+        # superseded copy dispatches code the researcher never saw.
+        old=(
+            '    sAckFingerprint = '
+            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
+            '    sAckPath = '
+            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return None\n'
+        ),
+        new=(
+            '    sAckFingerprint = '
+            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
+            '    sAckPath = '
+            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
+            '    if True:\n'
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_an_unreloaded_disk_edit_refuses_and_reloads'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Trust the cache over the file: an out-of-band edit the
+        # poller has not yet noticed is dispatched as though the disk
+        # never moved, and no reload is published.
+        old=(
+            '    if sDiskFingerprint != sRecordFingerprint:\n'
+            '        from . import workflowReloadDetector\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        from . import workflowReloadDetector\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testARunClickAcknowledgesTheAppliedRevision'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Send run frames with no acknowledgment: the dispatch gate
+        # falls back to the legacy two-way check and can no longer
+        # prove what this dashboard displayed.
+        old=(
+            '            dictAction.sAcknowledgedSourceFingerprint =\n'
+            '                VaibifyApp'
+            '.fsGetAcknowledgedSourceFingerprint();\n'
+            '            dictAction.sAcknowledgedWorkflowPath =\n'
+            '                VaibifyApp.fsGetWorkflowPath();\n'
+        ),
+        new=(
+            '            void dictAction;\n'
+        ),
+    ),
 ]

@@ -147,6 +147,17 @@ var VaibifyPipelineRunner = (function () {
                 _fnHandleRemoteOverwriteRefusal(dictEvent);
                 return;
             }
+            if (dictEvent.sReason === "workflowSuperseded") {
+                /* Not a busy container: the project changed under
+                   this dashboard and the server refreshed it. The
+                   generic "already running" text would be actively
+                   false here. */
+                VaibifyApp.fnShowToast(
+                    dictEvent.sMessage ||
+                    "The project changed on disk; the dashboard was " +
+                    "refreshed. Review it and run again.", "warning");
+                return;
+            }
             VaibifyApp.fnShowToast(
                 dictEvent.sMessage ||
                 "A pipeline action is already running.", "error");
@@ -173,8 +184,24 @@ var VaibifyPipelineRunner = (function () {
             "warning");
     }
 
+    var _SET_FRESHNESS_GATED_ACTIONS = {
+        "runAll": true, "forceRunAll": true, "runFrom": true,
+        "runSelected": true, "verify": true, "runAllTests": true,
+    };
+
     function fnSendPipelineAction(dictAction) {
         _fnMaybeShowRuntimeLimitNotice(dictAction);
+        if (dictAction && _SET_FRESHNESS_GATED_ACTIONS[
+            dictAction.sAction]) {
+            /* The dispatch freshness gate proves three-way agreement:
+               what this dashboard has APPLIED, the server's record,
+               and the file's bytes. Omitting these fields would put
+               this client on the legacy two-way check. */
+            dictAction.sAcknowledgedSourceFingerprint =
+                VaibifyApp.fsGetAcknowledgedSourceFingerprint();
+            dictAction.sAcknowledgedWorkflowPath =
+                VaibifyApp.fsGetWorkflowPath();
+        }
         fnConnectPipelineWebSocket();
         VaibifyWebSocket.fnSend(dictAction);
     }

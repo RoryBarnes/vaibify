@@ -437,6 +437,64 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
 
 
 @pytest.mark.falsification
+def testARunClickAcknowledgesTheAppliedRevision(
+    pageDashboard, serverHub,
+):
+    """Kills: sending run frames with no freshness acknowledgment.
+
+    The dispatch freshness gate proves three-way agreement — what
+    this dashboard APPLIED, the server's record, and the file's
+    bytes. A frame without the acknowledgment fields drops the
+    client to the legacy two-way check, so the browser must attach
+    what it has applied; and a ``workflowSuperseded`` refusal must
+    say the project changed, never "already running" — the generic
+    text is actively false and sends the researcher to the Kill
+    button, which cannot help.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    dictSent = pageDashboard.evaluate(
+        "() => {"
+        " const fnRealSend = VaibifyWebSocket.fnSend;"
+        " let dictCaptured = null;"
+        " VaibifyWebSocket.fnSend = function (dictAction) {"
+        "   dictCaptured = dictAction; };"
+        " try {"
+        "   VaibifyPipelineRunner.fnSendPipelineAction("
+        "     { sAction: 'runSelected', listStepIndices: [0] });"
+        " } finally { VaibifyWebSocket.fnSend = fnRealSend; }"
+        " return dictCaptured; }",
+    )
+    assert dictSent is not None, "the action never reached the socket"
+    assert dictSent.get("sAcknowledgedSourceFingerprint"), (
+        "the run frame carries no acknowledged fingerprint; the "
+        "dispatch gate cannot prove what this dashboard displayed"
+    )
+    assert dictSent.get("sAcknowledgedWorkflowPath"), (
+        "the run frame names no workflow; byte-identical projects in "
+        "one repo would be indistinguishable"
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'runRefused', sReason: 'workflowSuperseded',"
+        " sAction: 'runSelected', listStepIndices: [0],"
+        " sMessage: \"Refused 'runSelected': project.json changed on"
+        " disk after this dashboard loaded it; the dashboard has been"
+        " refreshed. Review the refreshed project and run again —"
+        " nothing was started.\" })",
+    )
+    sToasts = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "changed on disk" in sToasts, sToasts
+    assert "already running" not in sToasts, (
+        "a superseded-workflow refusal was reported as a busy "
+        "container; the researcher is sent to the Kill button"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testADegradedCompletionIsNotReportedClean(pageDashboard, serverHub):
     """Kills: swallowing ``bRunMetadataPersisted: false`` on completion.
 

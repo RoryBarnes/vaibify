@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 328,
+  "iRowCount": 329,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2347,
+      "iLine": 2492,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2342,
+      "iLine": 2487,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -4471,6 +4471,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fbaFetchFile",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "websocket"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pre-dispatch freshness read: one fbaFetchFile of the bound project.json so the dispatch gate can compare the file's bytes against the session record before any command runs. Read-only by construction -- the path comes from the server's own path cache, never the frame -- and the admission gate for the underlying read lives inside the connection primitive.",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "a06e3e23921ae1b4",
+      "sFunction": "_fdictStaleWorkflowRefusal",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "hash project.json bytes for the dispatch freshness gate",
+      "sOperationMetadata": "workflow path from dictCtx['paths']; sha256 compared to _sSourceFingerprint; mismatch reloads and refuses typed",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "passed-callable"
     },
     {
       "bInsideGateway": false,
