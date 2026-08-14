@@ -461,9 +461,20 @@ def _fnRefuseWithNoProjectOpen(sContainerId):
 
 
 def fdictRequireWorkflow(dictWorkflowCache, sContainerId):
-    """Return the open project's workflow, or refuse saying so."""
+    """Return the open project's workflow, or refuse saying so.
+
+    The refusal logs what the cache DID hold at that instant: a
+    no-project-open answer for a project the researcher can see on
+    their own screen went undiagnosable for an afternoon (2026-08-14)
+    because nothing recorded whether the cache was empty, held the
+    project under another key, or held other projects entirely.
+    """
     dictWorkflow = dictWorkflowCache.get(sContainerId)
     if not dictWorkflow:
+        logger.warning(
+            "Refusing no-project-open for %r; the workflow cache "
+            "holds %s", sContainerId, sorted(dictWorkflowCache),
+        )
         _fnRefuseWithNoProjectOpen(sContainerId)
     return dictWorkflow
 
@@ -1633,6 +1644,15 @@ async def fnHandlePipelineWs(
     await websocket.accept()
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
     if not dictWorkflow:
+        # The socket twin of fdictRequireWorkflow's logged refusal: a
+        # "Not connected" answer for a project the researcher can see
+        # rendered went undiagnosable (2026-08-14) because this path
+        # said nothing about what the cache held instead.
+        logger.warning(
+            "Pipeline socket refused not-connected for %r; the "
+            "workflow cache holds %s",
+            sContainerId, sorted(dictCtx["workflows"]),
+        )
         await fnRejectNotConnected(websocket)
         return
     sDir = posixpath.dirname(dictCtx["paths"].get(sContainerId, ""))
@@ -2022,6 +2042,14 @@ async def fdictHandleConnect(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
+        # The cache's POPULATION logs beside its eviction and its
+        # refusals: a session whose project was never cached is
+        # indistinguishable from one whose project was torn down
+        # unless the log records both ends (2026-08-14 diagnosis).
+        logger.info(
+            "CONNECT cached project under key %r (path %s)",
+            sContainerId, sWorkflowPath,
+        )
         _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId)
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
