@@ -11258,4 +11258,25 @@ def _fdictEntry(sRel):
             '\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAStoppedRunsLightsSurviveAReconnect'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Restore lights only for clean exits: a stopped run ends by
+        # signal with a negative code, so reopening after a stop shows
+        # every step as never-run while the durable state knows the
+        # finished steps passed.
+        old=(
+            '                if (dictState && dictState.sLogPath &&\n'
+            '                    typeof dictState.iExitCode === '
+            '"number" &&\n'
+            '                    dictState.iExitCode !== -1) {\n'
+        ),
+        new=(
+            '                if (dictState && dictState.sLogPath &&\n'
+            '                    dictState.iExitCode >= 0) {\n'
+        ),
+    ),
 ]

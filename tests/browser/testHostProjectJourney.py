@@ -453,6 +453,47 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
 
 
 @pytest.mark.falsification
+def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
+    """Kills: restoring lights only for runs that exited cleanly.
+
+    A Stop ends the in-flight step by signal, so the run's exit code
+    is negative (-15 live). The reconnect recovery guarded its light
+    restoration with ``iExitCode >= 0`` — meant to skip the -1
+    never-completed sentinel — so reopening the dashboard after a
+    stop showed every step as never-run while the durable state knew
+    the first step had passed. Found live in Rory's 2026-08-14
+    walkthrough: a hub restart after a stopped run turned both lights
+    into open circles.
+    """
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bRunning": False,
+                "iExitCode": -15,
+                "sLogPath": "/journey/.vaibify/logs/stopped.log",
+                "iStepCount": 2,
+                "dictStepResults": {
+                    "1": {"sStatus": "passed", "iExitCode": 0},
+                    "2": {"sStatus": "failed", "iExitCode": -15},
+                },
+            }),
+        ),
+    )
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
+        timeout=15000,
+    )
+    assert "fail" in pageDashboard.get_attribute(
+        '.step-item:has-text("Second Stage") .step-status', "class",
+    ), "the killed step's result was not restored"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testARunClickAcknowledgesTheAppliedRevision(
     pageDashboard, serverHub,
 ):

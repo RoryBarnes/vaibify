@@ -493,8 +493,15 @@ var VaibifyPipelineRunner = (function () {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
             if (!dictState || !dictState.bRunning) {
+                /* -1 is the initial "never completed" sentinel; a
+                   NEGATIVE exit is a run killed by a signal (a Stop
+                   ends the sleep with -15) and its step results are
+                   as real as any. The old `>= 0` guard skipped them,
+                   so reopening after a stop showed every light as
+                   never-run while state.json knew better. */
                 if (dictState && dictState.sLogPath &&
-                    dictState.iExitCode >= 0) {
+                    typeof dictState.iExitCode === "number" &&
+                    dictState.iExitCode !== -1) {
                     fnApplyCompletedState(dictState);
                 }
                 VaibifyApp.fnStartFileChangePolling();
