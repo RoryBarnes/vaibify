@@ -136,6 +136,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterCreateHostDirectory(app, dictCtx)
     _fnRegisterClaimContainer(app, dictCtx)
     _fnRegisterReleaseContainer(app, dictCtx)
+    _fnRegisterQuarantineDetail(app, dictCtx)
 
 
 def _fnRegisterGetRegistry(app, dictCtx):
@@ -261,6 +262,48 @@ def _fnRejectInvalidProjectName(sName):
             status_code=400,
             detail=f"Invalid container name: {sName!r}",
         )
+
+
+def _fnRegisterQuarantineDetail(app, dictCtx):
+    """Register GET /api/registry/{sName}/quarantine.
+
+    The registry listing already flags ``bQuarantined``; this surfaces
+    the WHY, so a researcher whose tile is refused does not have to
+    reach an agent to learn there are unsettled operations (e.g. a
+    terminal whose process group could not be proven empty) holding the
+    container. Read-only and allowlisted: it echoes only the fields
+    ``flistDescribeJournalRecords`` already exposes to the CLI, plus the
+    exact host command that clears the quarantine.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.config.reconciliation import (
+        ReconciliationRefusedError,
+        flistDescribeJournalRecords,
+    )
+
+    @app.get("/api/registry/{sName}/quarantine")
+    async def fdictExplainQuarantine(sName: str):
+        _fnRejectInvalidProjectName(sName)
+        dictResolution = operationJournal.fdictResolveContainerJournal(
+            sName, dictCtx.get("docker"), bPersistResolution=False,
+        )
+        sResolution = dictResolution["sResolution"]
+        try:
+            listRecords = flistDescribeJournalRecords(sName)
+            sReadState = "valid"
+        except ReconciliationRefusedError as errorRefused:
+            listRecords = []
+            sReadState = errorRefused.sReadState or "malformed"
+        return {
+            "sName": sName,
+            "sJournalState": sResolution,
+            "bQuarantined": (
+                sResolution == operationJournal.S_RESOLUTION_QUARANTINED
+            ),
+            "sReadState": sReadState,
+            "listRecords": listRecords,
+            "sRemedy": f"vaibify reconcile {sName}",
+        }
 
 
 def _fnRegisterClaimContainer(app, dictCtx):

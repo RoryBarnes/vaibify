@@ -4942,7 +4942,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # both — this defect cost a researcher a working dashboard and
     # every link in its chain was silent, so the next reader gets the
     # chain rather than a one-line docstring.
-    "registryRoutes.py": 1362,
+    # +43 (quarantine visibility): the read-only
+    # GET /api/registry/{sName}/quarantine route surfaces WHY a
+    # container is refused (its unsettled journal records + the host
+    # remedy) so a researcher need not reach an agent. It is one more
+    # container-scoped registry route, cohesive with claim/release
+    # beside it; splitting it into its own module would be the premature
+    # abstraction the "When to modularize" guide warns against.
+    "registryRoutes.py": 1405,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

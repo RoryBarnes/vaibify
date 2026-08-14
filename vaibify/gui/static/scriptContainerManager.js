@@ -180,8 +180,17 @@ var VaibifyContainerManager = (function () {
         var sId = bHost
             ? (dictContainer.sName || "")
             : (dictContainer.sContainerId || "");
-        var bUnavailable = _fbContainerUnavailable(dictContainer);
-        var sLockedClass = bUnavailable ? " container-tile--locked" : "";
+        var bQuarantined = dictContainer.bQuarantined === true;
+        /* A quarantined container is refused for a reason the researcher
+           can act on, so it must NOT wear the generic "locked" grey and
+           its "in use by another session" message -- that mislabels a
+           zombie-process problem as somebody else's tab. It gets its own
+           attention state and a clickable chip instead. */
+        var bUnavailable = !bQuarantined && _fbContainerUnavailable(
+            dictContainer);
+        var sStateClass = bQuarantined
+            ? " container-tile--quarantined"
+            : (bUnavailable ? " container-tile--locked" : "");
         var sLockedMessage = _fsUnavailableMessage(dictContainer);
         var sLockedTitle = bUnavailable
             ? ' title="' + sLockedMessage + '"' : "";
@@ -190,18 +199,19 @@ var VaibifyContainerManager = (function () {
               sLockedMessage + '"'
             : "";
         return (
-            '<div class="container-tile' + sLockedClass +
+            '<div class="container-tile' + sStateClass +
             '" data-name="' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
             '" data-mode="' + (bHost ? "host" : "container") +
+            '" data-quarantined="' + (bQuarantined ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
-            _fsRenderContainmentChip(bHost) +
+            _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -215,14 +225,29 @@ var VaibifyContainerManager = (function () {
         );
     }
 
-    function _fsRenderContainmentChip(bHost) {
+    function _fsRenderContainmentChip(dictContainer, bHost) {
         /* The list is grouped by MACHINE, so the tile has to say the
            other thing: whether the work is contained. It used to be
            said by the status dot alone, in the brand colour, which
            spent vaibify's own blue on "this one is the odd one out"
            and told a researcher nothing about why. The uncontained
            chip deliberately matches the in-workflow badge, because it
-           is the same claim about the same project. */
+           is the same claim about the same project.
+
+           A quarantined container overrides that label entirely: the
+           chip becomes a clickable "quarantined" button that opens the
+           explanation, because the researcher's first question is not
+           "is this contained" but "why can't I get in". */
+        if (dictContainer.bQuarantined === true) {
+            return (
+                '<button type="button" class="containment-chip ' +
+                'containment-chip--quarantined" ' +
+                'data-quarantine-name="' +
+                VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
+                '" title="Why is this container blocked?">' +
+                "quarantined</button>"
+            );
+        }
         return (
             '<span class="containment-chip containment-chip--' +
             (bHost ? "direct" : "contained") + '">' +
@@ -315,6 +340,71 @@ var VaibifyContainerManager = (function () {
         return "In use by another vaibify session" + sSuffix + ".";
     }
 
+    async function _fnShowQuarantineExplanation(sName) {
+        /* The "why" a researcher would otherwise reach an agent for. The
+           detail route is read-only and returns only the journal's
+           allowlisted fields, so nothing here needs the container's
+           lease. */
+        try {
+            var dictDetail = await VaibifyApi.fdictGet(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/quarantine");
+            VaibifyModals.fnShowInfoModal(
+                "Container '" + sName + "' is blocked (quarantined)",
+                _fsRenderQuarantineExplanation(dictDetail));
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    function _fsRenderQuarantineExplanation(dictDetail) {
+        var listRecords = dictDetail.listRecords || [];
+        var sIntro =
+            "<p>Vaibify blocked this container because it could not " +
+            "prove that every operation on it finished cleanly — most " +
+            "often a terminal or command left a process running inside " +
+            "the container. This is a safety check to keep the " +
+            "dashboard honest, <strong>not</strong> data loss: your " +
+            "workspace is untouched.</p>";
+        var sBody = listRecords.length
+            ? _fsRenderQuarantineRecords(listRecords)
+            : ("<p>The container's operation journal could not be read " +
+               "(state: " +
+               VaibifyUtilities.fnEscapeHtml(dictDetail.sReadState || "") +
+               ").</p>");
+        var sRemedy =
+            "<p><strong>To clear it,</strong> run this on the host " +
+            "machine (not inside the container):</p>" +
+            '<pre class="quarantine-remedy">' +
+            VaibifyUtilities.fnEscapeHtml(dictDetail.sRemedy || "") +
+            "</pre><p>If it reports that a process is still alive, that " +
+            "leftover process must be stopped first; then reconcile " +
+            "again.</p>";
+        return sIntro + sBody + sRemedy;
+    }
+
+    function _fsRenderQuarantineRecords(listRecords) {
+        var sRows = listRecords.map(function (dictRecord) {
+            var sReason = dictRecord.sNote || dictRecord.sState || "";
+            var sWhen = dictRecord.sPreparedIso
+                ? ' <span class="quarantine-when">(since ' +
+                  VaibifyUtilities.fnEscapeHtml(dictRecord.sPreparedIso) +
+                  ")</span>"
+                : "";
+            return (
+                "<li><strong>" +
+                VaibifyUtilities.fnEscapeHtml(
+                    dictRecord.sKind || "operation") +
+                "</strong>: " +
+                VaibifyUtilities.fnEscapeHtml(sReason) + sWhen + "</li>");
+        }).join("");
+        return (
+            "<p>Unsettled operations still holding this container:</p>" +
+            "<ul class=\"quarantine-records\">" + sRows + "</ul>");
+    }
+
     function _fsStatusDotClass(sStatus) {
         if (sStatus === "running") return "status-running";
         if (sStatus === "stopped") return "status-stopped";
@@ -342,6 +432,17 @@ var VaibifyContainerManager = (function () {
         var elActions = elTile.querySelector(".container-tile-actions");
         var elGear = elTile.querySelector(".container-tile-gear");
         var elMenu = elTile.querySelector(".container-tile-menu");
+        var elQuarantine = elTile.querySelector(
+            ".containment-chip--quarantined");
+        if (elQuarantine) {
+            elQuarantine.addEventListener("click", function (event) {
+                /* Stop the bubble to the tile-main handler so the modal
+                   opens exactly once, from the affordance the chip is. */
+                event.stopPropagation();
+                _fnCloseAllActionsMenus();
+                _fnShowQuarantineExplanation(sName);
+            });
+        }
         elActions.addEventListener("click", function (event) {
             event.stopPropagation();
             _fnToggleActionsMenu(elMenu);
@@ -382,6 +483,10 @@ var VaibifyContainerManager = (function () {
         var elTile = document.querySelector(
             '.container-tile[data-name="' + sName + '"]'
         );
+        if (elTile && elTile.dataset.quarantined === "true") {
+            await _fnShowQuarantineExplanation(sName);
+            return;
+        }
         if (elTile && elTile.dataset.locked === "true") {
             VaibifyApp.fnShowToast(
                 "Container '" + sName + "': " +
