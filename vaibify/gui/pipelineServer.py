@@ -2,6 +2,7 @@
 
 import asyncio
 import getpass
+import hashlib
 import json
 import logging
 import os
@@ -146,7 +147,7 @@ class StepUpdateRequest(BaseModel):
     # the third state (undeclared) is inputs empty + flag False.
     bNoInputData: Optional[bool] = None
     # Remote-pull provenance records: {sPath, sSourceUrl,
-    # sRetrievedUtc, sSha256} per pulled file. sSourceUrl is inert
+    # sDigestBecameCurrentUtc, sSha256} per pulled file. sSourceUrl is inert
     # metadata — never fetched, never rendered as a hyperlink.
     listRemoteData: Optional[List[dict]] = None
     saDependencies: Optional[List[str]] = None
@@ -557,32 +558,32 @@ def _fbaFetchFallback(
 
 
 def flistQueryDirectory(connectionDocker, sContainerId, sAbsPath):
-    """List files and directories in a single Docker exec call."""
-    sCommand = (
-        f"find {fsShellQuote(sAbsPath)} -maxdepth 1 -mindepth 1 "
-        f"-printf '%y %p\\n' 2>/dev/null | sort -k2"
-    )
-    _, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return _flistParseDirectoryOutput(sOutput)
+    """List the entries directly inside a directory, by name and type.
 
-
-def _flistParseDirectoryOutput(sOutput):
-    """Parse find -printf '%y %p' output into entry dicts."""
-    listEntries = []
-    for sLine in sOutput.splitlines():
-        sLine = sLine.strip()
-        if not sLine or len(sLine) < 3:
-            continue
-        sType = sLine[0]
-        sPath = sLine[2:]
-        listEntries.append({
-            "sName": posixpath.basename(sPath),
-            "sPath": sPath,
-            "bIsDirectory": sType == "d",
-        })
-    return listEntries
+    Two typed reads where there used to be one ``find -printf``, a GNU
+    extension BSD find rejects outright: on a macOS host project the
+    command produced nothing, and since it discarded the exit code and
+    redirected the error away, "this failed" and "this is empty"
+    arrived as the same answer. The typed reads raise where that
+    shrugged, which is the half of the fix that keeps the next failure
+    visible. Two round trips, deliberately -- names and types are
+    separate declared operations, and probing each entry's type
+    separately would be one round trip per file.
+    """
+    listNames = connectionDocker.flistDirectoryEntries(
+        sContainerId, sAbsPath,
+    )
+    listPaths = [
+        posixpath.join(sAbsPath, sName) for sName in listNames
+    ]
+    listIsDirectory = connectionDocker.flistContainerDirectoriesExist(
+        sContainerId, listPaths,
+    )
+    return [
+        {"sName": sName, "sPath": sPath, "bIsDirectory": bIsDirectory}
+        for sName, sPath, bIsDirectory
+        in zip(listNames, listPaths, listIsDirectory)
+    ]
 
 
 def _fsSanitizeServerError(sRawError):
@@ -833,6 +834,7 @@ async def fnPipelineMessageLoop(
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
     dictPipelineTasks=None, dictDurableContext=None,
     fbFrameCredentialStillActive=None,
+    fdictGetLiveWorkflow=None, dictCtx=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -899,20 +901,38 @@ async def fnPipelineMessageLoop(
                     ),
                 )
                 continue
+            # The LIVE cache object, re-read per frame: the reload
+            # detector REBINDS the cache key, so a workflow captured
+            # at socket accept silently runs superseded commands for
+            # the socket's whole life (spec D1). Commands already in
+            # flight keep the object they started with.
+            dictWorkflowBound = dictWorkflow
+            if fdictGetLiveWorkflow is not None:
+                dictWorkflowBound = (
+                    fdictGetLiveWorkflow() or dictWorkflow
+                )
+            dictFreshnessRefusal = await _fdictStaleWorkflowRefusal(
+                dictCtx, sContainerId, sAction, dictRequest,
+                dictWorkflowBound,
+            )
+            if dictFreshnessRefusal is not None:
+                await fnCallback(dictFreshnessRefusal)
+                continue
             dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
                 sAction, dictRequest, connectionDocker,
-                sContainerId, dictWorkflow,
+                sContainerId, dictWorkflowBound,
             )
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
             def ftaskStartDispatch(
                 sActionBound=sAction, dictRequestBound=dictRequest,
+                dictWorkflowFrame=dictWorkflowBound,
             ):
                 return asyncio.create_task(
                     _fnSafeDispatch(
                         sActionBound, dictRequestBound, connectionDocker,
-                        sContainerId, dictWorkflow,
+                        sContainerId, dictWorkflowFrame,
                         dictWorkflowPathCache, sWorkflowDirectory,
                         fnCallback, dictInteractive,
                     )
@@ -1033,6 +1053,108 @@ async def _fnSafeDispatch(
             })
         except Exception:
             pass
+
+
+# Actions whose dispatch runs workflow commands and therefore must
+# pass the freshness gate; interactive responses and kills act on a
+# run already in flight, which keeps the workflow it started with.
+_SET_RUN_DISPATCH_ACTIONS = {
+    "runAll", "forceRunAll", "runFrom", "runSelected",
+    "verify", "runAllTests",
+}
+
+
+async def _fdictStaleWorkflowRefusal(
+    dictCtx, sContainerId, sAction, dictRequest, dictWorkflowBound,
+):
+    """Return a typed ``runRefused`` when the bound workflow is stale.
+
+    The guarantee, in the spec's words: *the bound workflow matched
+    the exact bytes read during the pre-dispatch check* — three-way
+    agreement between the caller-acknowledged exact-source
+    fingerprint, the session record, and the file's bytes read NOW.
+    Not "no edit exists": the check is check-then-act, and an edit
+    landing after the read is the next dispatch's problem.
+
+    The freshness authority is the EXACT-SOURCE fingerprint (sha256 of
+    the file's bytes), never the canonical one — they differ for any
+    hand-edited or migrated project. On a disk mismatch the refusal
+    RELOADS the cache and publishes through the workflow epoch in the
+    same operation, so the researcher is never stranded clicking Run
+    against a cache nothing will refresh. A frame with no
+    acknowledgment fields (a legacy ``vaibify-do``) gets the two-way
+    record==disk check only — grandfathered, stated here.
+    """
+    if dictCtx is None or dictWorkflowBound is None:
+        return None
+    if sAction not in _SET_RUN_DISPATCH_ACTIONS:
+        return None
+    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sRecordFingerprint = dictWorkflowBound.get("_sSourceFingerprint", "")
+    if not sWorkflowPath or not sRecordFingerprint:
+        return None
+    try:
+        baDiskBytes = await asyncio.to_thread(
+            dictCtx["docker"].fbaFetchFile, sContainerId, sWorkflowPath,
+        )
+        sDiskFingerprint = hashlib.sha256(baDiskBytes).hexdigest()
+    except Exception as errorRead:
+        return _fdictSupersededRefusalEvent(
+            sAction, dictRequest, sRecordFingerprint,
+            f"project.json could not be read for the pre-dispatch "
+            f"check ({fsSanitizeExceptionForClient(errorRead)})",
+        )
+    if sDiskFingerprint != sRecordFingerprint:
+        from . import workflowReloadDetector
+        workflowReloadDetector.fdictMaybeReloadWorkflow(
+            dictCtx, sContainerId, sWorkflowPath,
+            {sWorkflowPath: "present"},
+            sPolledFingerprint=sDiskFingerprint,
+        )
+        dictLiveNow = dictCtx["workflows"].get(sContainerId) or {}
+        return _fdictSupersededRefusalEvent(
+            sAction, dictRequest,
+            dictLiveNow.get("_sSourceFingerprint", ""),
+            "project.json changed on disk after this dashboard loaded "
+            "it; the dashboard has been refreshed",
+        )
+    sAckFingerprint = dictRequest.get("sAcknowledgedSourceFingerprint")
+    sAckPath = dictRequest.get("sAcknowledgedWorkflowPath")
+    if sAckFingerprint is None and sAckPath is None:
+        return None
+    if sAckFingerprint != sRecordFingerprint or (
+        sAckPath is not None and sAckPath != sWorkflowPath
+    ):
+        return _fdictSupersededRefusalEvent(
+            sAction, dictRequest, sRecordFingerprint,
+            "this dashboard was showing a superseded copy of the "
+            "project; it has been refreshed",
+        )
+    return None
+
+
+def _fdictSupersededRefusalEvent(
+    sAction, dictRequest, sCurrentFingerprint, sCause,
+):
+    """Build the typed stale-workflow refusal.
+
+    ``sReason`` is what the frontend and ``vaibify-do`` branch on —
+    the generic refusal toast reads "already running", which is
+    actively false here. The current fingerprint rides along so a
+    client that has already applied the current workflow can
+    re-acknowledge without another round-trip.
+    """
+    return {
+        "sType": "runRefused",
+        "sReason": "workflowSuperseded",
+        "sAction": sAction,
+        "listStepIndices": dictRequest.get("listStepIndices", []),
+        "sCurrentSourceFingerprint": sCurrentFingerprint,
+        "sMessage": (
+            f"Refused '{sAction}': {sCause}. Review the refreshed "
+            "project and run again — nothing was started."
+        ),
+    }
 
 
 def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
@@ -1497,13 +1619,34 @@ async def fnRunTerminalSession(
 async def fnHandlePipelineWs(
     websocket, dictCtx, sContainerId, fbFrameCredentialStillActive=None,
 ):
-    """Accept and run the pipeline WebSocket session."""
+    """Accept and run the pipeline WebSocket session.
+
+    The workflow is NOT captured for the socket's lifetime: the loop
+    receives a live-cache getter, so a reload-detector rebind reaches
+    the very next dispatch instead of every later dispatch silently
+    running the pre-edit object (spec D1). The ``workflowBound`` event
+    tells the client which workflow this socket serves and its current
+    exact-source fingerprint, so a caller with no other channel — the
+    in-container ``vaibify-do``, whose token names no workflow — can
+    echo an acknowledgment in its run frames.
+    """
     await websocket.accept()
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
     if not dictWorkflow:
         await fnRejectNotConnected(websocket)
         return
     sDir = posixpath.dirname(dictCtx["paths"].get(sContainerId, ""))
+    await websocket.send_json({
+        "sType": "workflowBound",
+        "sWorkflowPath": dictCtx["paths"].get(sContainerId, ""),
+        "sExactSourceFingerprint": dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        ),
+    })
+
+    def fdictGetLiveWorkflow():
+        return dictCtx["workflows"].get(sContainerId)
+
     try:
         await fnPipelineMessageLoop(
             websocket, dictCtx["docker"], sContainerId,
@@ -1513,6 +1656,8 @@ async def fnHandlePipelineWs(
                 websocket, dictCtx, sContainerId,
             ),
             fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+            fdictGetLiveWorkflow=fdictGetLiveWorkflow,
+            dictCtx=dictCtx,
         )
     except WebSocketDisconnect:
         pass
@@ -2400,11 +2545,19 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         from .workflowReloadDetector import (
             fnRecordSelfWriteFingerprint,
         )
+        sSavedFingerprint = workflowManager.fsComputeWorkflowFingerprint(
+            dictWorkflow,
+        )
+        # A self-write moves the session record and the exact-source
+        # fingerprint ATOMICALLY: the file's bytes are now exactly the
+        # serializer's output, so the canonical and exact-source
+        # fingerprints coincide until the next out-of-band edit. This
+        # is why vaibify's own step edit never trips the dispatch
+        # freshness gate — the record moved with the file, not because
+        # any baseline suppresses the check.
+        dictWorkflow["_sSourceFingerprint"] = sSavedFingerprint
         fnRecordSelfWriteFingerprint(
-            dictRaw, sContainerId,
-            workflowManager.fsComputeWorkflowFingerprint(
-                dictWorkflow,
-            ),
+            dictRaw, sContainerId, sSavedFingerprint,
         )
 
     def fdictBuildVariables(sContainerId):

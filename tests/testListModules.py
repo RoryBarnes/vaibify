@@ -62,6 +62,8 @@ def testExtractsDunderAll():
         "fsValidateStepName",
         "fnRequireUniqueStepSlug",
         "fbStepDirectoryConforms",
+        "fsDescribeStepIdConflict",
+        "T_RUN_CLEARED_VERIFICATION_FLAGS",
     ]
     assert dictEntry["listSymbols"] == listExpected
 

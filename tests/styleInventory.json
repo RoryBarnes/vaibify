@@ -1017,11 +1017,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineState.py::StateWriter._fnDrainCoalesced.item",
-      "sDebtClass": "legacy-variable",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/pipelineState.py::StateWriter._fnRunWriter.item",
       "sDebtClass": "legacy-variable",
       "sReason": ""
@@ -2004,6 +1999,6 @@
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
     "legacy-annotation-mismatch": 0,
-    "legacy-variable": 388
+    "legacy-variable": 387
   }
 }

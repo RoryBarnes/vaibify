@@ -251,6 +251,12 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictResult["sWorkflowFingerprint"] = (
             workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
         )
+        # Post-save exact-source fingerprint: the client adopts it as
+        # its acknowledged value, so its own edit never trips the
+        # dispatch freshness gate.
+        dictResult["sExactSourceFingerprint"] = dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        )
         return dictResult
 
 
@@ -537,6 +543,9 @@ def _fnRegisterStepRename(app, dictCtx):
         )
         dictReport["dictStep"] = fdictStepWithLabel(
             dictWorkflow, iStepIndex)
+        dictReport["sExactSourceFingerprint"] = dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        )
         dictReport["sWorkflowFingerprint"] = (
             workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
         )
@@ -672,6 +681,9 @@ def _fnRegisterAlignDirectories(app, dictCtx):
             "sWorkflowFingerprint":
                 workflowManager.fsComputeWorkflowFingerprint(
                     dictWorkflow),
+            "sExactSourceFingerprint": dictWorkflow.get(
+                "_sSourceFingerprint", "",
+            ),
         }
 
 

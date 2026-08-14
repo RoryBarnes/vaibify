@@ -37,18 +37,27 @@ __all__ = [
     "I_CURRENT_STATE_SCHEMA_VERSION",
     "S_STATE_FILE_RELATIVE",
     "S_VAIBIFY_GITIGNORE_BODY",
+    "S_QUARANTINE_LIST_KEY",
     "S_VAIBIFY_GITIGNORE_RELATIVE",
+    "S_WORKFLOW_STATE_KEY",
     "T_STATEFUL_STEP_FIELDS",
     "T_STATEFUL_TOP_FIELDS",
     "fbRatchetLevelHighWater",
     "fdictBootstrapStateFromMarkers",
     "fdictBuildEmptyState",
+    "fdictInstallWorkflowSection",
+    "fbDocumentNeedsMigration",
+    "fdictMigrateStateDocument",
+    "fnAppendQuarantineRecord",
+    "fdictSectionForWorkflow",
     "fdictLoadStateFromContainer",
+    "fdictMergeRunResultsIntoState",
     "fnEnsureVaibifyGitignore",
     "fnMergeStateIntoWorkflow",
     "fnSaveStateToContainer",
     "fsGitignorePathFromRepo",
     "fsStatePathFromRepo",
+    "fsWorkflowKeyFromPath",
     "ftSplitMergedDict",
     "ftLoadStateWithStatus",
 ]
@@ -60,7 +69,26 @@ __all__ = [
 # merge/split copies only keys that are present, so an absent
 # high-water dict simply means the level was never attained. No
 # migration code exists or is needed in either direction.
-I_CURRENT_STATE_SCHEMA_VERSION = 2
+# Schema v3 namespaces per-workflow state by the project file's
+# repo-relative path. state.json is repo-scoped and a repo may hold
+# several projects, but v2 held one flat ``dictStepState`` keyed by
+# directory and every save rebuilt the document from the ONE workflow
+# being saved — so saving project A discarded project B's verification
+# and run statistics outright, with no run involved and no directory
+# overlap needed.
+#
+# Identity is the PATH, not an id stored inside project.json: two files
+# in a directory cannot share a name, so uniqueness is free, whereas an
+# id is copied when a researcher duplicates a project to start a
+# variant — and two projects claiming one identity reintroduces exactly
+# the clobbering this replaces. The cost is that a rename outside
+# vaibify orphans the state, which shows unverified and is recoverable
+# by re-verifying. That failure is loud and conservative; the id one is
+# silent and asserts something false. The marker subsystem already
+# keys on the workflow file for the same reason.
+I_CURRENT_STATE_SCHEMA_VERSION = 3
+S_WORKFLOW_STATE_KEY = "dictWorkflowState"
+S_QUARANTINE_LIST_KEY = "listQuarantinedState"
 S_STATE_FILE_RELATIVE = ".vaibify/state.json"
 S_VAIBIFY_GITIGNORE_RELATIVE = ".vaibify/.gitignore"
 S_TEST_MARKERS_RELATIVE = ".vaibify/test_markers"
@@ -98,13 +126,178 @@ def fsGitignorePathFromRepo(sProjectRepoPath):
 
 
 def fdictBuildEmptyState():
-    """Return a fresh, empty state dict at the current schema version."""
+    """Return a fresh, empty per-workflow state SECTION.
+
+    Still the v1/v2 shape, deliberately: this is one project's slice,
+    which schema v3 stores under its workflow key rather than at the
+    document root. Splitting and merging continue to work in sections;
+    only installation into the shared document is namespaced.
+    """
     return {
         "iStateSchemaVersion": I_CURRENT_STATE_SCHEMA_VERSION,
         "sLastUpdated": _fsCurrentUtcIso(),
         "dictStepState": {},
         "bWarnedHundredSteps": False,
     }
+
+
+def fsWorkflowKeyFromPath(sWorkflowPath, sRepoPath):
+    """Return the repo-relative project path used as the state key.
+
+    Empty when either input is missing, or when the workflow does not
+    sit under the repo — callers treat an empty key as "cannot
+    attribute", which fails conservative rather than writing into a
+    namespace that may belong to somebody else.
+    """
+    if not sWorkflowPath or not sRepoPath:
+        return ""
+    sNormalizedRepo = sRepoPath.rstrip("/") + "/"
+    if not sWorkflowPath.startswith(sNormalizedRepo):
+        return ""
+    return sWorkflowPath[len(sNormalizedRepo):]
+
+
+def fdictSectionForWorkflow(dictDocument, sWorkflowKey):
+    """Return one workflow's state section, or None when absent."""
+    if not dictDocument or not sWorkflowKey:
+        return None
+    dictSections = dictDocument.get(S_WORKFLOW_STATE_KEY)
+    if not isinstance(dictSections, dict):
+        return None
+    dictSection = dictSections.get(sWorkflowKey)
+    return dictSection if isinstance(dictSection, dict) else None
+
+
+def fdictInstallWorkflowSection(dictDocument, sWorkflowKey, dictSection):
+    """Return the document with one workflow's section replaced.
+
+    Every other workflow's section is carried through untouched, which
+    is the whole point: the v2 writer rebuilt the document from the
+    workflow being saved and dropped the rest.
+    """
+    dictResult = copy.deepcopy(dictDocument) if dictDocument else {}
+    dictResult["iStateSchemaVersion"] = I_CURRENT_STATE_SCHEMA_VERSION
+    dictResult["sLastUpdated"] = _fsCurrentUtcIso()
+    dictSections = dictResult.get(S_WORKFLOW_STATE_KEY)
+    if not isinstance(dictSections, dict):
+        dictSections = {}
+    if sWorkflowKey:
+        dictSections[sWorkflowKey] = dictSection
+    dictResult[S_WORKFLOW_STATE_KEY] = dictSections
+    # Legacy roots are QUARANTINED, never dropped. Dropping them looked
+    # safe because the load path migrates before anything reads them —
+    # but migration transforms only the in-memory dict, so the document
+    # on disk stays v2 until something rewrites it. An ordinary save
+    # that re-read that v2 document and deleted its roots destroyed the
+    # very data the ambiguous-attribution branch exists to preserve.
+    # The writer therefore has to be safe on its own, without relying
+    # on a loader having run first.
+    dictLegacy = {
+        sLegacyKey: dictResult.pop(sLegacyKey)
+        for sLegacyKey in ("dictStepState",) + T_STATEFUL_TOP_FIELDS
+        if sLegacyKey in dictResult
+    }
+    fnAppendQuarantineRecord(dictResult, dictLegacy)
+    return dictResult
+
+
+def fnAppendQuarantineRecord(dictDocument, dictPayload):
+    """Retain one ambiguous payload; never overwrite, never merge.
+
+    Quarantine is a LIST because a repo can present ambiguous legacy
+    state more than once — a second pre-namespace document arriving
+    after one was already rescued, most obviously. A single slot got
+    this wrong twice: keyed on a non-empty ``dictStepState`` it dropped
+    workflow-level fields (``iProofLevel``,
+    ``dictWorkflowLevelHighWater``) whenever the step map was empty,
+    and refusing to overwrite an existing rescue discarded the NEW
+    payload it had already removed from the document.
+
+    Merging the payloads instead would be worse: their step keys are
+    directories, they can collide, and a merge would silently pick a
+    winner between two bodies of state nobody can attribute.
+
+    A payload with nothing meaningful in it is not recorded — every
+    value empty means there is nothing to lose, and an empty record per
+    save would bury the real ones.
+    """
+    if not any(dictPayload.values()):
+        return
+    listQuarantine = dictDocument.get(S_QUARANTINE_LIST_KEY)
+    if isinstance(listQuarantine, dict):
+        # The single-slot shape this replaced; carry it in as record 0.
+        listQuarantine = [listQuarantine]
+    elif not isinstance(listQuarantine, list):
+        listQuarantine = []
+    dictRecord = dict(dictPayload)
+    dictRecord["sQuarantinedUtc"] = _fsCurrentUtcIso()
+    listQuarantine.append(dictRecord)
+    dictDocument[S_QUARANTINE_LIST_KEY] = listQuarantine
+
+
+def fbDocumentNeedsMigration(dictDocument):
+    """True when a loaded document predates the workflow namespace.
+
+    Callers use this to avoid the repo scan on the normal path: only a
+    legacy document needs to know how many projects share the repo,
+    and that scan is a general exec, which is both a cost on every
+    load and refusable under an enforced mutation lane.
+    """
+    return (
+        isinstance(dictDocument, dict)
+        and S_WORKFLOW_STATE_KEY not in dictDocument
+    )
+
+
+def fdictMigrateStateDocument(dictDocument, listWorkflowKeys):
+    """Return a v3 document, attributing legacy state only when provable.
+
+    ``listWorkflowKeys`` is every project file in the repo, or None
+    when the caller could not establish it. Legacy state carries no
+    owner, so it can be attributed only when the repo holds exactly
+    ONE project. Anything else is QUARANTINED: kept in the document
+    under ``dictQuarantinedState`` so nothing is destroyed, but
+    attributed to nobody, so the affected steps read unverified until
+    the researcher re-verifies.
+
+    Guessing is the alternative, and it is worse. In a repo with
+    several projects the surviving v2 document is not merely unlabelled
+    — it is the residue of whichever project was saved LAST, because
+    every earlier save destroyed the others. Attributing that to a
+    project by directory match can report one project's step as
+    verified on the strength of a result a different project produced.
+    A researcher cannot detect that; losing a badge they can.
+    """
+    if not isinstance(dictDocument, dict):
+        return dictDocument
+    if S_WORKFLOW_STATE_KEY in dictDocument:
+        return dictDocument
+    dictSection = {
+        sKey: dictDocument[sKey]
+        for sKey in ("dictStepState",) + T_STATEFUL_TOP_FIELDS
+        if sKey in dictDocument
+    }
+    if not dictSection:
+        return fdictInstallWorkflowSection(dictDocument, "", {})
+    bSoleOccupant = (
+        isinstance(listWorkflowKeys, (list, tuple))
+        and len(listWorkflowKeys) == 1
+    )
+    # The legacy roots are consumed here, so they must not also reach
+    # the writer's own rescue path — an attributed document would
+    # otherwise carry its state twice, once owned and once quarantined,
+    # and read as though nobody could account for it.
+    dictStripped = {
+        sKey: dictValue for sKey, dictValue in dictDocument.items()
+        if sKey not in ("dictStepState",) + T_STATEFUL_TOP_FIELDS
+    }
+    if bSoleOccupant:
+        return fdictInstallWorkflowSection(
+            dictStripped, listWorkflowKeys[0], dictSection,
+        )
+    dictResult = fdictInstallWorkflowSection(dictStripped, "", {})
+    fnAppendQuarantineRecord(dictResult, dictSection)
+    return dictResult
 
 
 def fdictLoadStateFromContainer(
@@ -267,6 +460,7 @@ def _fnQuarantineCorruptStateFile(
 
 def fnSaveStateToContainer(
     connectionDocker, sContainerId, sStatePath, dictState,
+    sWorkflowKey="",
 ):
     """Serialize and persist the state dict atomically with a checkpoint.
 
@@ -285,9 +479,44 @@ def fnSaveStateToContainer(
     and provide no fallback. If step 3 fails, the prior ``state.json``
     is intact and the next save retries cleanly.
     """
+    from .stateWriteLock import fcontextHoldStateWriteLock
     if not sStatePath:
         return
-    dictPersisted = dict(dictState)
+    if sWorkflowKey:
+        # Read-modify-write under the cross-process write lock, not
+        # replace: the document is shared with every other project in
+        # this repo, and rebuilding it from the workflow being saved
+        # is what erased them. The lock is held from the read through
+        # the rename so a concurrent cooperative writer (another save,
+        # a completion merge, the CLI) cannot land between them and
+        # have its section dropped by this writer's stale read.
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictExisting, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            dictPersisted = fdictInstallWorkflowSection(
+                dictExisting, sWorkflowKey, dict(dictState),
+            )
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath, dictPersisted,
+            )
+        return
+    _fnPersistStateDocument(
+        connectionDocker, sContainerId, sStatePath, dict(dictState),
+    )
+
+
+def _fnPersistStateDocument(
+    connectionDocker, sContainerId, sStatePath, dictPersisted,
+):
+    """Write a full state document atomically with a checkpoint.
+
+    The shared write tail of :func:`fnSaveStateToContainer` and
+    :func:`fdictMergeRunResultsIntoState` — the second reads the
+    document itself before merging, and re-reading it inside the save
+    would widen the window in which a concurrent writer's section is
+    read stale.
+    """
     dictPersisted["sLastUpdated"] = _fsCurrentUtcIso()
     sJson = json.dumps(dictPersisted, indent=2) + "\n"
     sTempPath = _fsTmpPathFor(sStatePath)
@@ -301,6 +530,77 @@ def fnSaveStateToContainer(
     _fnAtomicInstallTempFile(
         connectionDocker, sContainerId, sTempPath, sStatePath,
     )
+
+
+def fdictMergeRunResultsIntoState(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey,
+    dictRunDeltaByStepId, dictStepIdToDirectory,
+):
+    """Merge a run's per-step results into a freshly loaded document.
+
+    The completion writer for D2: the run's in-memory workflow is a
+    SNAPSHOT from dispatch time, so nothing from it may be written
+    wholesale — a researcher's mid-run edit or attestation would be
+    destroyed. Instead the run's delta — ``{sStepId: dictRunStats}``
+    for the steps that actually EXECUTED — is applied entry-by-entry
+    into the document read from disk NOW. Within each entry only
+    ``dictRunStats`` is replaced and the run-invalidated modification
+    flags are cleared; a ``dictVerification`` the researcher updated
+    mid-run survives untouched.
+
+    ``dictStepIdToDirectory`` maps each delta id to the run's directory
+    for that step, so an entry persisted under the pre-id directory key
+    is migrated to its id key rather than forked.
+
+    Returns ``{"bPersisted": bool, "sDetail": str}``. Refusals name
+    their reason; the caller surfaces it on the terminal event rather
+    than raising, because this runs inside a carrier worker where an
+    expected failure must not poison the journal record.
+    """
+    from .pipelineUtils import T_RUN_CLEARED_VERIFICATION_FLAGS
+    if not sStatePath:
+        return {
+            "bPersisted": False,
+            "sDetail": "no project repo; run results were not recorded",
+        }
+    if not sWorkflowKey:
+        return {
+            "bPersisted": False,
+            "sDetail": (
+                "cannot attribute run results: the project file is "
+                "not under its project repo"
+            ),
+        }
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+        dictDocument, _sStatus = ftLoadStateWithStatus(
+            connectionDocker, sContainerId, sStatePath,
+        )
+        dictSection = fdictSectionForWorkflow(dictDocument, sWorkflowKey)
+        if dictSection is None:
+            dictSection = fdictBuildEmptyState()
+        dictStepMap = dictSection.setdefault("dictStepState", {})
+        for sStepId, dictRunStats in dictRunDeltaByStepId.items():
+            dictEntry = dictStepMap.get(sStepId)
+            if dictEntry is None:
+                sDirectoryKey = dictStepIdToDirectory.get(sStepId, "")
+                if sDirectoryKey and sDirectoryKey in dictStepMap:
+                    dictEntry = dictStepMap.pop(sDirectoryKey)
+                else:
+                    dictEntry = {}
+                dictStepMap[sStepId] = dictEntry
+            dictEntry["dictRunStats"] = dictRunStats
+            dictVerification = dictEntry.get("dictVerification")
+            if isinstance(dictVerification, dict):
+                for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
+                    dictVerification.pop(sFlag, None)
+        dictPersisted = fdictInstallWorkflowSection(
+            dictDocument, sWorkflowKey, dictSection,
+        )
+        _fnPersistStateDocument(
+            connectionDocker, sContainerId, sStatePath, dictPersisted,
+        )
+    return {"bPersisted": True, "sDetail": ""}
 
 
 def _fnCheckpointPriorState(
@@ -363,20 +663,41 @@ def _fnAtomicInstallTempFile(
         )
 
 
-def fnMergeStateIntoWorkflow(dictWorkflow, dictState):
-    """Copy state.json fields back into the in-memory workflow dict.
+def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
+    """Copy this workflow's state fields back into the workflow dict.
 
     No-op when ``dictState`` is None. Steps without a matching
     ``dictStepState`` entry keep whatever stateful fields the loaded
-    project.json happened to carry — the migration v2→v3 owns the
-    one-shot extraction; this routine is the steady-state merger.
+    project.json happened to carry — the project-schema v2→v3
+    migration owns the one-shot extraction; this routine is the
+    steady-state merger.
+
+    With a workflow key, only that project's section is read, so one
+    project can no longer pick up another's verification results. An
+    absent section yields nothing, which is the correct reading of
+    "this project has no recorded state" — including after a rename
+    orphaned it, or after an ambiguous legacy document was
+    quarantined.
+
+    The keyless call is the pre-namespace shape and reads the document
+    root. It survives for the bootstrap path, which builds a section
+    from markers and merges it before any key exists.
     """
     if dictState is None:
         return
+    if sWorkflowKey:
+        dictSection = fdictSectionForWorkflow(dictState, sWorkflowKey)
+        dictState = dictSection if dictSection is not None else {}
     dictStepState = dictState.get("dictStepState", {}) or {}
     for dictStep in dictWorkflow.get("listSteps", []):
-        sDirectory = dictStep.get("sDirectory", "")
-        dictForStep = dictStepState.get(sDirectory, {})
+        # Sections are keyed by the stable step id; a directory key is
+        # the pre-id shape, still readable so state written before the
+        # id keying survives a load. The id is tried first because a
+        # rename changes the directory and must not orphan the entry.
+        dictForStep = dictStepState.get(
+            dictStep.get("sStepId", ""),
+            dictStepState.get(dictStep.get("sDirectory", ""), {}),
+        )
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictForStep:
                 dictStep[sKey] = dictForStep[sKey]
@@ -397,14 +718,19 @@ def ftSplitMergedDict(dictWorkflow):
     dictDeclarative.pop("sProjectRepoPath", None)
     dictStepState = {}
     for dictStep in dictDeclarative.get("listSteps", []):
-        sDirectory = dictStep.get("sDirectory", "")
+        # Keyed by the stable step id so a rename mid-run cannot fork
+        # the entry; the directory is the pre-id fallback for a step
+        # that somehow has no id (the save path ensures ids first).
+        sStateKey = dictStep.get("sStepId") or dictStep.get(
+            "sDirectory", "",
+        )
         dictExtracted = {}
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictStep:
                 dictExtracted[sKey] = dictStep.pop(sKey)
         dictStep.pop("sLabel", None)
-        if dictExtracted and sDirectory:
-            dictStepState[sDirectory] = dictExtracted
+        if dictExtracted and sStateKey:
+            dictStepState[sStateKey] = dictExtracted
     dictState = fdictBuildEmptyState()
     dictState["dictStepState"] = dictStepState
     for sKey in T_STATEFUL_TOP_FIELDS:
@@ -523,13 +849,16 @@ def fdictBootstrapStateFromMarkers(
         listAllOutputs, sProjectRepoPath,
     )
     dictStepState = {}
-    for sDirectory, dictMarker in listMarkers:
+    for dictStep, dictMarker in listMarkers:
         if dictMarker is None:
             continue
         dictVerification = _fdictVerificationFromMarker(
             dictMarker, dictOnDiskHashes,
         )
-        dictStepState[sDirectory] = {
+        sStateKey = dictStep.get("sStepId") or dictStep.get(
+            "sDirectory", "",
+        )
+        dictStepState[sStateKey] = {
             "dictVerification": dictVerification,
             "dictRunStats": {},
         }
@@ -542,12 +871,15 @@ def _flistFetchMarkers(
     connectionDocker, sContainerId, sProjectRepoPath,
     sWorkflowSlug, listSteps,
 ):
-    """Return ``[(sDirectory, dictMarker_or_None), ...]`` for every step.
+    """Return ``[(dictStep, dictMarker_or_None), ...]`` for every step.
 
     Marker filenames use the canonical ``fsMarkerNameFromStepDirectory``
     encoding (slashes → underscores) so a nested step directory like
     ``Step01/sub`` resolves to the same ``Step01_sub.json`` the conftest
-    writes — never a literal ``Step01/sub.json``.
+    writes — never a literal ``Step01/sub.json``. The step dict itself
+    rides along because the caller keys the synthesized state by the
+    step's stable id, while the marker file on disk is named by
+    directory.
     """
     from .fileStatusManager import fsMarkerNameFromStepDirectory
     listResult = []
@@ -563,7 +895,7 @@ def _flistFetchMarkers(
         dictMarker = _fdictReadMarker(
             connectionDocker, sContainerId, sMarkerPath,
         )
-        listResult.append((sDirectory, dictMarker))
+        listResult.append((dictStep, dictMarker))
     return listResult
 
 

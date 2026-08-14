@@ -121,6 +121,7 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
                 _fsCompletedToast(dictEvent.sCommand), "success");
+            _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             _fnOfferCommitIfRemoteDataPulled();
@@ -131,6 +132,7 @@ var VaibifyPipelineRunner = (function () {
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")",
                 "error"
             );
+            _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             // A later step failing does not un-pull the data: the
@@ -145,6 +147,17 @@ var VaibifyPipelineRunner = (function () {
                 _fnHandleRemoteOverwriteRefusal(dictEvent);
                 return;
             }
+            if (dictEvent.sReason === "workflowSuperseded") {
+                /* Not a busy container: the project changed under
+                   this dashboard and the server refreshed it. The
+                   generic "already running" text would be actively
+                   false here. */
+                VaibifyApp.fnShowToast(
+                    dictEvent.sMessage ||
+                    "The project changed on disk; the dashboard was " +
+                    "refreshed. Review it and run again.", "warning");
+                return;
+            }
             VaibifyApp.fnShowToast(
                 dictEvent.sMessage ||
                 "A pipeline action is already running.", "error");
@@ -155,8 +168,40 @@ var VaibifyPipelineRunner = (function () {
         }
     }
 
+    function _fnWarnIfRunMetadataUnrecorded(dictEvent) {
+        /* The run itself finished as reported; what failed is the
+           RECORDING of its results. Silence here would suppress a
+           degraded state the researcher needs to know about — the
+           step lights on screen are live, but a reload would show
+           stale statistics and verification flags. */
+        if (dictEvent.bRunMetadataPersisted !== false) return;
+        VaibifyApp.fnShowToast(
+            "The run finished, but recording its results failed" +
+            (dictEvent.sRunMetadataDetail
+                ? ": " + dictEvent.sRunMetadataDetail
+                : ".") +
+            " Statistics shown after a reload may be stale.",
+            "warning");
+    }
+
+    var _SET_FRESHNESS_GATED_ACTIONS = {
+        "runAll": true, "forceRunAll": true, "runFrom": true,
+        "runSelected": true, "verify": true, "runAllTests": true,
+    };
+
     function fnSendPipelineAction(dictAction) {
         _fnMaybeShowRuntimeLimitNotice(dictAction);
+        if (dictAction && _SET_FRESHNESS_GATED_ACTIONS[
+            dictAction.sAction]) {
+            /* The dispatch freshness gate proves three-way agreement:
+               what this dashboard has APPLIED, the server's record,
+               and the file's bytes. Omitting these fields would put
+               this client on the legacy two-way check. */
+            dictAction.sAcknowledgedSourceFingerprint =
+                VaibifyApp.fsGetAcknowledgedSourceFingerprint();
+            dictAction.sAcknowledgedWorkflowPath =
+                VaibifyApp.fsGetWorkflowPath();
+        }
         fnConnectPipelineWebSocket();
         VaibifyWebSocket.fnSend(dictAction);
     }
@@ -1032,7 +1077,16 @@ var VaibifyPipelineRunner = (function () {
                         "/api/pipeline/" + sContainerId + "/kill"
                     );
                     if (dictResult.bSuccess) {
-                        VaibifyApp.fnClearAllStepStatuses();
+                        /* Only the lights a stop actually
+                           invalidates: running, queued, over-budget.
+                           This cleared EVERY status, so stopping took
+                           a finished step's pale-blue dot back to a
+                           hollow never-run circle and lost the record
+                           that it had succeeded. A stop ends work in
+                           progress; it does not un-run what already
+                           ran, and the dashboard must not say it did.
+                           (Live report, 2026-08-13.) */
+                        VaibifyApp.fnClearRunningStatuses();
                         VaibifyApp.fnRenderStepList();
                         _fnReportKillOutcome(dictResult);
                     } else {

@@ -171,6 +171,11 @@ class RecordingConnection:
         self.listProbedPaths.append(sPath)
         return []
 
+    def flistContainerDirectoriesExist(self, sResourceId, listPaths):
+        del sResourceId
+        self.listProbedPaths.extend(listPaths)
+        return [False] * len(listPaths)
+
 
 def _ftBuildDiscoveryClient():
     """Return ``(client, connection)`` serving the workflow routes."""
@@ -421,7 +426,9 @@ def testDirectoryListingIsJailedToTheHostProjectRoot(tmp_path):
         f"/api/files/{S_HOST_PROJECT}{sDirectory}/repo",
     )
     assert response.status_code == 200, response.text
-    assert f"{sDirectory}/repo" in connection.listCommands[0]
+    # The listing composes no command now, so the path that passed the
+    # guard is read off the typed read rather than off shell text.
+    assert connection.listProbedPaths[0] == f"{sDirectory}/repo"
     responseEscape = client.get(f"/api/files/{S_HOST_PROJECT}/etc")
     assert responseEscape.status_code == 403
 

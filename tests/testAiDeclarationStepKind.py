@@ -168,6 +168,10 @@ def test_workflow_json_on_disk_preserves_declaration_file(tmp_path):
         lambda _cid, sPath, baBody: dictWritten.setdefault(sPath, baBody)
     )
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    # The save re-reads state.json to install this project's section
+    # without disturbing sibling projects in the same repo-scoped
+    # document; an absent file is the fresh-checkout case.
+    mockDocker.fbaFetchFile.side_effect = FileNotFoundError
 
     dictStep = fdictBuildAiDeclarationStep(
         "AI Declaration", "docs/AI_USAGE.md",

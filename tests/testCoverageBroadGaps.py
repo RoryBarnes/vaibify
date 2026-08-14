@@ -1416,47 +1416,15 @@ class TestPipelineRunnerHelpers:
         assert dictContext["sResponse"] == "resume"
         assert dictContext["eventResume"].is_set()
 
-    def test_fnSaveWorkflowStats_handles_error(self):
-        from vaibify.gui.pipelineRunner import _fnSaveWorkflowStats
-        mockDocker = MagicMock()
-        mockDocker.fnWriteFile.side_effect = RuntimeError("write error")
-        _fnSaveWorkflowStats(
-            mockDocker, "ctn1", {"listSteps": []}, "/w.yaml"
-        )
-
-    def test_fnSaveWorkflowStats_writes_json(self):
-        from vaibify.gui.pipelineRunner import _fnSaveWorkflowStats
-        mockDocker = MagicMock()
-        dictWorkflow = {"listSteps": [{"sName": "Build"}]}
-        _fnSaveWorkflowStats(
-            mockDocker, "ctn1", dictWorkflow, "/w.yaml"
-        )
-        mockDocker.fnWriteFile.assert_called_once()
-        baWritten = mockDocker.fnWriteFile.call_args[0][2]
-        dictParsed = json.loads(baWritten.decode("utf-8"))
-        assert dictParsed["listSteps"][0]["sName"] == "Build"
+    # ``test_fnSaveWorkflowStats_*`` were retired WITH their mechanism:
+    # the end-of-run whole-workflow write over project.json was the D2
+    # edit-destroying defect, and completion is now state-only. Its
+    # replacement is driven in tests/testCompletionIsStateOnly.py.
 
 
-class TestPipelineServerDirectoryParsing:
-    """Test directory listing parsing."""
-
-    def test_flistParseDirectoryOutput_mixed_types(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        sOutput = "f /workspace/data.csv\nd /workspace/output\nf /workspace/plot.pdf\n"
-        listEntries = _flistParseDirectoryOutput(sOutput)
-        assert len(listEntries) == 3
-        assert listEntries[0]["sName"] == "data.csv"
-        assert listEntries[0]["bIsDirectory"] is False
-        assert listEntries[1]["sName"] == "output"
-        assert listEntries[1]["bIsDirectory"] is True
-
-    def test_flistParseDirectoryOutput_empty(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        assert _flistParseDirectoryOutput("") == []
-
-    def test_flistParseDirectoryOutput_short_lines(self):
-        from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-        assert _flistParseDirectoryOutput("f\n\n  \n") == []
+# ``TestPipelineServerDirectoryParsing`` was retired with its mechanism:
+# the parser it drove read ``find -printf`` output, and that command is
+# gone. See tests/testDirectoryListing.py.
 
 
 class TestPipelineServerFigureFetch:

@@ -41,6 +41,23 @@ def _fnBuildRecoveryMock(dictByPath, listMissing=()):
 
     def _fExec(_sContainerId, sCommand):
         listCommands.append(sCommand)
+        if sCommand.startswith("find "):
+            # The pre-namespace state migration asks how many projects
+            # share this repo, because legacy state carries no owner
+            # and may be attributed only to a sole occupant. Answer
+            # from the files this mock actually has: a double that
+            # reports none would quarantine, which is the right
+            # behaviour for an unknown repo and the wrong fixture for
+            # a test about recovering one project's state.
+            listProjects = [
+                sPath for sPath in dictByPath
+                if sPath.endswith(".json")
+                and (
+                    "/.vaibify/projects/" in sPath
+                    or "/.vaibify/workflows/" in sPath
+                )
+            ]
+            return (0, "\n".join(listProjects))
         return (0, "")
 
     mockDocker.fbaFetchFile.side_effect = _fFetch
@@ -253,6 +270,11 @@ def test_workflow_load_notice_stripped_on_save():
     mockDocker.fnWriteFile.side_effect = (
         lambda _cid, sPath, baBody: listWrites.append((sPath, baBody))
     )
+    # The save re-reads state.json before installing this workflow's
+    # section, so a bare mock is no longer enough: an unreadable
+    # document must not be answered by writing one that contains only
+    # our section, which is what erased sibling projects.
+    mockDocker.fbaFetchFile.side_effect = FileNotFoundError
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
     dictWorkflow = {
         "iWorkflowSchemaVersion": 3,

@@ -8,7 +8,6 @@ import pytest
 from vaibify.gui.pipelineLogger import (
     _ffBuildFlushingCallback,
     _fnFinalizeRun,
-    _fnSaveWorkflowStats,
     _fnUpdatePipelineState,
     fnWriteLogToContainer,
 )
@@ -100,14 +99,20 @@ class TestFfBuildFlushingCallback:
 # ---------------------------------------------------------------------------
 
 class TestFnFinalizeRun:
-    """Cover the finalize-run path."""
+    """Cover the finalize-run path.
+
+    Completion is state-only: the deeper guarantees (an external edit
+    to project.json survives completion, the merge is by stable step
+    id, a failed terminal flush is reported) are driven end-to-end in
+    tests/testCompletionIsStateOnly.py; these cover the event shape.
+    """
 
     @pytest.mark.asyncio
-    async def test_completed_with_workflow_save(self):
+    async def test_completed_emits_event_without_writing_project(self):
         mockDocker = MagicMock()
         fnCallback = AsyncMock()
-        dictWorkflow = {"sName": "test"}
-        sWorkflowPath = "/workspace/workflow.json"
+        dictWorkflow = {"sName": "test", "listSteps": []}
+        sWorkflowPath = "/workspace/repo/.vaibify/projects/w.json"
 
         with patch(
             "vaibify.gui.pipelineLogger.pipelineState"
@@ -123,8 +128,7 @@ class TestFnFinalizeRun:
                 "/log", ["done"], dictWorkflow,
                 sWorkflowPath, fnCallback,
             )
-            mockPS.fnUpdateState.assert_called_once()
-            mockDocker.fnWriteFile.assert_called_once()
+            mockDocker.fnWriteFile.assert_not_called()
             fnCallback.assert_awaited_once()
             dictEmitted = fnCallback.call_args[0][0]
             assert dictEmitted["sType"] == "completed"
@@ -153,51 +157,9 @@ class TestFnFinalizeRun:
             dictEmitted = fnCallback.call_args[0][0]
             assert dictEmitted["sType"] == "failed"
             assert dictEmitted["iExitCode"] == 1
-
-    @pytest.mark.asyncio
-    async def test_failed_with_workflow_save_error(self):
-        mockDocker = MagicMock()
-        mockDocker.fnWriteFile.side_effect = RuntimeError("disk full")
-        fnCallback = AsyncMock()
-
-        with patch(
-            "vaibify.gui.pipelineLogger.pipelineState"
-        ) as mockPS, patch(
-            "vaibify.gui.pipelineLogger.asyncio.to_thread",
-            new_callable=AsyncMock,
-        ):
-            mockPS.fdictBuildCompletedState.return_value = {}
-            await _fnFinalizeRun(
-                mockDocker, "cid", {}, 2,
-                "/log", ["err"], {"sName": "w"}, "/wf.json",
-                fnCallback,
-            )
-            fnCallback.assert_awaited_once()
-            dictEmitted = fnCallback.call_args[0][0]
-            assert dictEmitted["sType"] == "failed"
-
-
-# ---------------------------------------------------------------------------
-# _fnSaveWorkflowStats  (lines 127-134)
-# ---------------------------------------------------------------------------
-
-class TestFnSaveWorkflowStats:
-    """Cover workflow stats persistence."""
-
-    def test_writes_json_to_container(self):
-        mockDocker = MagicMock()
-        dictWorkflow = {"sName": "myWorkflow"}
-        _fnSaveWorkflowStats(
-            mockDocker, "cid", dictWorkflow, "/wf.json"
-        )
-        mockDocker.fnWriteFile.assert_called_once()
-
-    def test_logs_error_on_failure(self):
-        mockDocker = MagicMock()
-        mockDocker.fnWriteFile.side_effect = OSError("fail")
-        _fnSaveWorkflowStats(
-            mockDocker, "cid", {}, "/wf.json"
-        )
+            # No workflow path means the results had nowhere
+            # attributable to go, and the event says so.
+            assert dictEmitted["bRunMetadataPersisted"] is False
 
 
 # ---------------------------------------------------------------------------

@@ -235,6 +235,20 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
         serverHub.sHome, S_HOST_PROJECT_READY, ".vaibify", "logs",
     )
     _fnWaitForAnyLog(sLogsDirectory)
+    # Wait for the run to actually END, not merely for its output to
+    # exist. The file appears while the server is still FINALIZING
+    # (state merge, acknowledged terminal flush), and a test that
+    # returns inside that window leaves a bRunning=true state behind
+    # for the NEXT test's recovery poll to find — which is exactly how
+    # the stop test intermittently saw a phantom "running" light under
+    # full-suite load. The terminal event that clears the light is
+    # emitted only after the terminal state is durably flushed, so
+    # this wait is also the proof the run's state settled.
+    pageDashboard.wait_for_function(
+        "() => !Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+        timeout=30000,
+    )
 
 
 def _fnWaitForAnyLog(sLogsDirectory, fTimeoutSeconds=20.0):
@@ -342,3 +356,186 @@ def _fsTerminalNoticeText(page):
     """Return the terminal pane's rendered text, whitespace collapsed."""
     page.wait_for_selector(".xterm-rows", timeout=20000)
     return " ".join(page.text_content(".xterm-rows").split())
+
+
+def _fsStepStatusClass(page):
+    """Return the class list of the seeded step's run-status dot."""
+    return page.get_attribute(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status',
+        "class",
+    )
+
+
+@pytest.mark.falsification
+def testStoppingTasksDoesNotUnRunAFinishedStep(
+    pageDashboard, serverHub,
+):
+    """A stop ends work in progress; it does not erase work that ended.
+
+    Kills: clearing EVERY step light on a successful kill. Stopping
+    took a finished step's pale-blue dot back to a hollow never-run
+    circle, so the dashboard forgot -- and told the researcher it had
+    forgotten -- that the step had succeeded. The running light beside
+    it MUST go, which is the half that stops "clear nothing" from
+    passing this test.
+
+    The kill POST is answered here rather than served: what is under
+    test is what the dashboard does with a success, and the route that
+    produces one is driven against real processes in
+    ``tests/testHostCancel.py``. The state poll is stubbed not-running
+    for the same reason: this test's subject is the KILL handler, and
+    the injected step lights are fixture state no server run backs —
+    a neighbouring test's still-finalizing run once answered the
+    recovery poll with bRunning=true and repainted step 0 "running"
+    mid-test, which failed this test for a reason that had nothing to
+    do with stopping (full-suite runs, 2026-08-13; recovery has its
+    own tests).
+    """
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"bRunning": False}),
+        ),
+    )
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/pipeline/*/kill",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bSuccess": True,
+                "iProcessesKilled": 1,
+                "bTaskCancelled": True,
+                "listCancellationRefusals": [],
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => { VaibifyApp.fnSetStepStatus(0, 'pass');"
+        " VaibifyApp.fnSetStepStatus(1, 'running');"
+        " VaibifyApp.fnRenderStepList(); }",
+    )
+    assert "pass" in _fsStepStatusClass(pageDashboard)
+
+    pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector("text=Killed 1 process", timeout=5000)
+
+    assert "pass" in _fsStepStatusClass(pageDashboard), (
+        "stopping tasks erased a completed step's result; the "
+        "dashboard now reports the step as never run"
+    )
+    assert pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+    ) is False, "the stop left a running light on"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testARunClickAcknowledgesTheAppliedRevision(
+    pageDashboard, serverHub,
+):
+    """Kills: sending run frames with no freshness acknowledgment.
+
+    The dispatch freshness gate proves three-way agreement — what
+    this dashboard APPLIED, the server's record, and the file's
+    bytes. A frame without the acknowledgment fields drops the
+    client to the legacy two-way check, so the browser must attach
+    what it has applied; and a ``workflowSuperseded`` refusal must
+    say the project changed, never "already running" — the generic
+    text is actively false and sends the researcher to the Kill
+    button, which cannot help.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    dictSent = pageDashboard.evaluate(
+        "() => {"
+        " const fnRealSend = VaibifyWebSocket.fnSend;"
+        " let dictCaptured = null;"
+        " VaibifyWebSocket.fnSend = function (dictAction) {"
+        "   dictCaptured = dictAction; };"
+        " try {"
+        "   VaibifyPipelineRunner.fnSendPipelineAction("
+        "     { sAction: 'runSelected', listStepIndices: [0] });"
+        " } finally { VaibifyWebSocket.fnSend = fnRealSend; }"
+        " return dictCaptured; }",
+    )
+    assert dictSent is not None, "the action never reached the socket"
+    assert dictSent.get("sAcknowledgedSourceFingerprint"), (
+        "the run frame carries no acknowledged fingerprint; the "
+        "dispatch gate cannot prove what this dashboard displayed"
+    )
+    assert dictSent.get("sAcknowledgedWorkflowPath"), (
+        "the run frame names no workflow; byte-identical projects in "
+        "one repo would be indistinguishable"
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'runRefused', sReason: 'workflowSuperseded',"
+        " sAction: 'runSelected', listStepIndices: [0],"
+        " sMessage: \"Refused 'runSelected': project.json changed on"
+        " disk after this dashboard loaded it; the dashboard has been"
+        " refreshed. Review the refreshed project and run again —"
+        " nothing was started.\" })",
+    )
+    sToasts = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "changed on disk" in sToasts, sToasts
+    assert "already running" not in sToasts, (
+        "a superseded-workflow refusal was reported as a busy "
+        "container; the researcher is sent to the Kill button"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testADegradedCompletionIsNotReportedClean(pageDashboard, serverHub):
+    """Kills: swallowing ``bRunMetadataPersisted: false`` on completion.
+
+    Completion is state-only, and the backend reports honestly when
+    recording the run's results FAILED — the run itself finished, but
+    a reload would show stale statistics. A dashboard that shows only
+    the success toast suppresses a degraded state, which the
+    ground-truth rule forbids. The clean completion is asserted
+    beside it, because a warning that fires on every completion would
+    train the researcher to ignore it.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'completed', iExitCode: 0, sLogPath: '',"
+        " bRunMetadataPersisted: false,"
+        " sRunMetadataDetail: 'no project repo' })",
+    )
+    sToasts = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "recording its results failed" in sToasts, (
+        "the backend said the run's results were not recorded and the "
+        "dashboard reported a clean completion"
+    )
+    pageDashboard.evaluate(
+        "() => document.querySelectorAll('.toast')"
+        ".forEach(el => el.remove())",
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'completed', iExitCode: 0, sLogPath: '',"
+        " bRunMetadataPersisted: true })",
+    )
+    sToastsClean = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "recording its results failed" not in sToastsClean, (
+        "a clean completion warned anyway; a warning that always fires "
+        "is one the researcher learns to ignore"
+    )
+    assert pageDashboard.listPageErrors == []

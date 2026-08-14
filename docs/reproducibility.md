@@ -70,7 +70,7 @@ release) must be committed to the repository — the remote may vanish
 or silently change, and a Project whose raw data cannot be
 re-obtained is not reproducible. Each pulled file carries a
 provenance record in the pulling step's `listRemoteData`
-(`sPath`, `sSourceUrl`, `sRetrievedUtc`, `sSha256`), refreshed
+(`sPath`, `sSourceUrl`, `sDigestBecameCurrentUtc`, `sSha256`), refreshed
 automatically after every successful pull; the URL is inert
 metadata, never fetched by vaibify. Because a re-pull overwrites the
 canonical copy, any run covering such a step whose files already

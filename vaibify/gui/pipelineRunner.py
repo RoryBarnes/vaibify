@@ -36,6 +36,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 # Re-exports from pipelineUtils (true leaf — breaks circular imports).
 # ---------------------------------------------------------------------------
 
+from .workflowMigrations import S_DIGEST_TIMESTAMP_KEY
 from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
@@ -51,6 +52,8 @@ from .pipelineUtils import (  # noqa: F401
     fsValidateStepName,
     fnRequireUniqueStepSlug,
     fbStepDirectoryConforms,
+    fsDescribeStepIdConflict,
+    T_RUN_CLEARED_VERIFICATION_FLAGS,
     _fnRecordRunStats,
     _fdictBuildWorkflowVars,
     fnClearOutputModifiedFlags,
@@ -85,7 +88,6 @@ from .pipelineLogger import (  # noqa: F401
     I_LOG_RETENTION_COUNT,
     _ffBuildFlushingCallback,
     _fnUpdatePipelineState,
-    _fnSaveWorkflowStats,
     _fnFinalizeRun,
 )
 
@@ -124,6 +126,14 @@ async def _flistPreflightValidate(
 ):
     """Return preflight errors (hard-blocks). Soft warnings flow separately."""
     listErrors = []
+    sIdConflict = fsDescribeStepIdConflict(
+        dictWorkflow, bRequirePresent=True,
+    )
+    if sIdConflict:
+        # Refused BEFORE any step runs: sStepId is the identity the
+        # completion merge attaches results to, and running with a
+        # duplicate would attribute one step's results to another.
+        return [sIdConflict]
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbStepIncludedInRun(
@@ -1055,11 +1065,13 @@ async def _fnRecordRemoteDataProvenance(
     """Refresh listRemoteData provenance after a successful pull.
 
     One docker exec hashes every declared remote-pulled file; each
-    record's ``sSha256`` updates and ``sRetrievedUtc`` is stamped
-    when the content changed or was hashed for the first time. An
-    unchanged file keeps its original retrieval stamp, a failed or
+    record's ``sSha256`` updates and ``sDigestBecameCurrentUtc`` is
+    stamped when the content changed or was hashed for the first
+    time. An unchanged file keeps its existing stamp, a failed or
     missing hash leaves the record untouched — provenance never
-    guesses. Persistence rides the end-of-run workflow save. The
+    guesses. ``sSourceUrl`` is user-DECLARED metadata throughout:
+    vaibify does not observe the download and cannot attest that the
+    bytes came from it. Persistence rides the end-of-run workflow save. The
     fresh data is NOT auto-committed: it flows through the normal
     badges / commit-canonical review so the researcher decides when
     the new pull becomes canonical.
@@ -1113,7 +1125,17 @@ def _fdictHashRemoteDataFiles(
 
 
 def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
-    """Update sSha256/sRetrievedUtc in place; True when anything moved."""
+    """Update the digest and its timestamp; True when anything moved.
+
+    The timestamp records when this digest BECAME CURRENT, which is
+    the only thing the surrounding code observes. It is not a
+    retrieval time — nothing here watches a download, arbitrary
+    commands may have run between any fetch and this hash, and the
+    file may never have been downloaded at all. It is not a
+    last-hashed time either: an unchanged file is re-hashed on every
+    run and deliberately keeps its existing stamp, because the digest
+    did not become current again.
+    """
     from datetime import datetime, timezone
     sNowUtc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     bChanged = False
@@ -1125,7 +1147,7 @@ def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
             continue
         if dictRemote.get("sSha256") != sSha:
             dictRemote["sSha256"] = sSha
-            dictRemote["sRetrievedUtc"] = sNowUtc
+            dictRemote[S_DIGEST_TIMESTAMP_KEY] = sNowUtc
             bChanged = True
     return bChanged
 
@@ -1173,7 +1195,7 @@ async def _fiRunStepList(
 
 def _ftInitializeRunState(
     connectionDocker, sContainerId, dictWorkflow,
-    sAction, sLogPath,
+    sAction, sLogPath, sWorkflowPath="",
 ):
     """Build initial run state and start the single-writer thread.
 
@@ -1184,7 +1206,8 @@ def _ftInitializeRunState(
     """
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
-        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
+        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid(),
+        sWorkflowPath=sWorkflowPath,
     )
     stateWriter = pipelineState.StateWriter(
         connectionDocker, sContainerId, dictState,
@@ -1203,7 +1226,7 @@ async def _fiRunStepsAndLog(
     """Execute steps, write log, and emit final status."""
     dictState, stateWriter = _ftInitializeRunState(
         connectionDocker, sContainerId, dictWorkflow,
-        sAction, sLogPath,
+        sAction, sLogPath, sWorkflowPath=sWorkflowPath,
     )
     eventStopHeartbeat = threading.Event()
     threadHeartbeat = _fthreadStartHeartbeat(
@@ -1211,11 +1234,20 @@ async def _fiRunStepsAndLog(
         stateWriter, eventStopHeartbeat,
     )
     try:
-        await fnLogging({"sType": "started", "sCommand": sAction})
+        # The wrapper must exist BEFORE `started` is emitted: the flush
+        # set includes `started` precisely so the log file exists from
+        # the moment pipeline_state.json records its path, and an event
+        # sent through the plain callback is buffered, never flushed. A
+        # run cancelled during its first step then leaves `sLogPath`
+        # naming a file nothing created — the very defect the flush set
+        # was written to close.
         fnLoggingWithFlush = _ffBuildFlushingCallback(
             fnLogging, connectionDocker, sContainerId,
             dictState, sLogPath, listLogLines,
             stateWriter=stateWriter,
+        )
+        await fnLoggingWithFlush(
+            {"sType": "started", "sCommand": sAction},
         )
         iResult = await _fiRunStepList(
             connectionDocker, sContainerId,

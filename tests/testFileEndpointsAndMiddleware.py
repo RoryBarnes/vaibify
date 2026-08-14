@@ -780,26 +780,10 @@ def test_connect_without_workflow(clientHttp):
 # ── Pure helper functions ─────────────────────────────────────
 
 
-def test_flistParseDirectoryOutput_normal():
-    sOutput = "f /workspace/file.txt\nd /workspace/subdir\n"
-    listResult = pipelineServer._flistParseDirectoryOutput(sOutput)
-    assert len(listResult) == 2
-    assert listResult[0]["sName"] == "file.txt"
-    assert listResult[0]["bIsDirectory"] is False
-    assert listResult[1]["sName"] == "subdir"
-    assert listResult[1]["bIsDirectory"] is True
-
-
-def test_flistParseDirectoryOutput_empty():
-    listResult = pipelineServer._flistParseDirectoryOutput("")
-    assert listResult == []
-
-
-def test_flistParseDirectoryOutput_short_lines():
-    sOutput = "x\n\n  \nf /workspace/ok.py\n"
-    listResult = pipelineServer._flistParseDirectoryOutput(sOutput)
-    assert len(listResult) == 1
-    assert listResult[0]["sName"] == "ok.py"
+# The three ``_flistParseDirectoryOutput`` tests here were retired with
+# their mechanism -- the parser read ``find -printf`` output, a GNU-only
+# command now replaced by two typed reads. See
+# tests/testDirectoryListing.py.
 
 
 def test_fsResolveFigurePath_absolute():

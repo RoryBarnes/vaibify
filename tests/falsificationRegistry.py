@@ -10769,4 +10769,476 @@ def _fdictEntry(sRel):
             '        f"mv -f {sQuotedTempPath} {fsShellQuote(sStatePath)}"\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDirectoryListing.py::'
+            'TestTheContainerLegComposesNoCommand::'
+            'testAListingReachesNoArbitraryExecutionPrimitive'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The listing goes back to assembling shell text. The kill is
+        # the PRIMITIVE, not the answer: `ls -1` and `find -printf`
+        # both work on a Linux runner, so a test that only checked the
+        # entries would report this green on every CI leg and red only
+        # on the macOS host where the defect was found.
+        old=(
+            '    listNames = connectionDocker.flistDirectoryEntries(\n'
+            '        sContainerId, sAbsPath,\n'
+            '    )\n'
+            '    listPaths = [\n'
+            '        posixpath.join(sAbsPath, sName) for sName in listNames\n'
+            '    ]\n'
+        ),
+        new=(
+            '    _, sOutput = connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "ls -1 " + fsShellQuote(sAbsPath),\n'
+            '    )\n'
+            '    listNames = sOutput.split()\n'
+            '    listPaths = [\n'
+            '        posixpath.join(sAbsPath, sName) for sName in listNames\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDirectoryListing.py::'
+            'TestTheHostLegListsARealDirectory::'
+            'testAnUnreadableHostDirectoryRaisesRatherThanReadingEmpty'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other half of the defect, and the half that outlived the
+        # GNU-only primary: a listing that cannot be read answers with
+        # emptiness. "Empty directory" is a claim about the
+        # researcher's project; a failed read is a claim about vaibify.
+        old=(
+            '    listNames = connectionDocker.flistDirectoryEntries(\n'
+            '        sContainerId, sAbsPath,\n'
+            '    )\n'
+        ),
+        new=(
+            '    try:\n'
+            '        listNames = connectionDocker.flistDirectoryEntries(\n'
+            '            sContainerId, sAbsPath,\n'
+            '        )\n'
+            '    except FileNotFoundError:\n'
+            '        return []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::TestTheRuleItself::'
+            'testAMissingFileClaimsNothingOnAnyRemote'
+        ),
+        source='vaibify/gui/badgeState.py',
+        # The defect verbatim: nothing consults existence, so the git
+        # badge falls through to "porcelain did not mention it" and
+        # answers `synced` about a file that is not there.
+        old=(
+            '    if bFileIsMissing:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::TestTheRuleItself::'
+            'testAPresentTrackedFileStillReportsItsRealState'
+        ),
+        source='vaibify/gui/badgeState.py',
+        # The symmetric half. "No file has any state" satisfies the
+        # missing-file test perfectly and blanks every badge in the
+        # dashboard, so the rule needs a guard in both directions.
+        old=(
+            '    if bFileIsMissing:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return _fdictAllBadgesNone()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMissingFileBadges.py::'
+            'testTheBadgeRouteAsksWhichTrackedFilesAreOnDisk'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The shortcut a developer would actually write: assume every
+        # tracked file is present rather than pay a fifth round trip.
+        # It leaves the rule in badgeState correct and unreachable,
+        # with every unit test still green.
+        old=(
+            '    listExists = docker.flistContainerPathsExist(\n'
+            '        sContainerId, listAbsolute,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listExists = [True] * len(listAbsolute)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testStoppingTasksDoesNotUnRunAFinishedStep'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The behaviour the kill handler used to reach for by calling
+        # `fnClearAllStepStatuses`: forget every status, not only the
+        # ones a stop invalidates. Mutated in the surviving function
+        # rather than at the call site because that helper was removed
+        # with its only caller -- keeping a "forget everything" export
+        # alive to make a mutation possible would keep the footgun.
+        old=(
+            '            if (sVal === "running" || sVal === "queued"\n'
+            '                || sVal === "overBudget") {\n'
+        ),
+        new=(
+            '            if (true) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testTheFlushSetCoversRunStart'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The flush set as it was: the log is written only once a step
+        # has passed or failed, so a run stopped during its first step
+        # writes nothing and `sLogPath` -- already in the state file --
+        # names a path that never existed.
+        old=(
+            '_T_FLUSHING_EVENTS = ("started", "stepStarted", '
+            '"stepPass", "stepFail")\n'
+        ),
+        new=(
+            '_T_FLUSHING_EVENTS = ("stepPass", "stepFail")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testTheLogSaysWhichActionProducedIt'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The other half, and the one that looks harmless: without a
+        # line to carry, the flush at `started` writes NOTHING --
+        # `fnWriteLogToContainer` returns early on an empty buffer --
+        # so the file still does not exist and the flush set alone
+        # fixes nothing.
+        old=(
+            '        return f"=== {dictEvent.get(\'sCommand\', \'run\')} '
+            'started ==="\n'
+        ),
+        new=(
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCancelledRunLeavesItsLog.py::'
+            'testARunStoppedBeforeAnyStepFinishedStillHasALog'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The third half, and the one the first shipped fix missed:
+        # the production runner emitted `started` through the PLAIN
+        # callback one line before the flushing wrapper was built, so
+        # the flush set and the header were both correct and neither
+        # ever fired. The header sat in the buffer, the cancel
+        # prevented every later flush, and the file still did not
+        # exist. This mutation restores that ordering.
+        old=(
+            '        fnLoggingWithFlush = _ffBuildFlushingCallback(\n'
+            '            fnLogging, connectionDocker, sContainerId,\n'
+            '            dictState, sLogPath, listLogLines,\n'
+            '            stateWriter=stateWriter,\n'
+            '        )\n'
+            '        await fnLoggingWithFlush(\n'
+            '            {"sType": "started", "sCommand": sAction},\n'
+            '        )\n'
+        ),
+        new=(
+            '        await fnLogging('
+            '{"sType": "started", "sCommand": sAction})\n'
+            '        fnLoggingWithFlush = _ffBuildFlushingCallback(\n'
+            '            fnLogging, connectionDocker, sContainerId,\n'
+            '            dictState, sLogPath, listLogLines,\n'
+            '            stateWriter=stateWriter,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testAnExternalEditToProjectJsonSurvivesCompletion'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The shipped D2 defect, restored: completion writes the run's
+        # whole in-memory snapshot over project.json, destroying any
+        # edit the reload detector accepted mid-run.
+        old=(
+            '    if sWorkflowPath:\n'
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState,'
+            ' dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+        new=(
+            '    if sWorkflowPath:\n'
+            '        import json as _json\n'
+            '        connectionDocker.fnWriteFile(\n'
+            '            sContainerId, sWorkflowPath,\n'
+            '            _json.dumps(dictWorkflow, indent=2)'
+            '.encode("utf-8"),\n'
+            '        )\n'
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState,'
+            ' dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testTheMergePreservesAMidRunAttestation'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Replace the fresh entry wholesale instead of merging into
+        # it: the run's stats land, and the attestation the researcher
+        # recorded mid-run is silently erased.
+        old=(
+            '            dictEntry["dictRunStats"] = dictRunStats\n'
+            '            dictVerification = '
+            'dictEntry.get("dictVerification")\n'
+        ),
+        new=(
+            '            dictEntry = {"dictRunStats": dictRunStats}\n'
+            '            dictStepMap[sStepId] = dictEntry\n'
+            '            dictVerification = '
+            'dictEntry.get("dictVerification")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testADuplicateStepIdRefusesTheMergeWithoutWriting'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Merge by id without proving ids are identity: with a
+        # duplicate, the delta attaches one step's results to whichever
+        # occurrence wins.
+        old=(
+            '        if sIdConflict:\n'
+            '            return {\n'
+            '                "bPersisted": False,\n'
+            '                "sDetail": f"run results not recorded: '
+            '{sIdConflict}",\n'
+            '            }\n'
+        ),
+        new=(
+            '        if sIdConflict:\n'
+            '            sIdConflict = ""\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testADuplicateStepIdRefusesTheRun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Let a duplicate-id workflow run: the completion merge must
+        # refuse it anyway, so the run computes for hours and its
+        # results cannot be attributed.
+        old=(
+            '    listErrors = []\n'
+            '    sIdConflict = fsDescribeStepIdConflict(\n'
+            '        dictWorkflow, bRequirePresent=True,\n'
+            '    )\n'
+            '    if sIdConflict:\n'
+        ),
+        new=(
+            '    listErrors = []\n'
+            '    sIdConflict = ""\n'
+            '    if sIdConflict:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testAFailedTerminalFlushIsReported'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Presume the terminal write landed: the acknowledged flush
+        # answers its waiter with success it never verified, the
+        # terminal fields stay merged, and a later drain can install a
+        # terminal state nobody proved durable.
+        old=(
+            '        bLanded = False\n'
+            '        for _ in range(_I_ACKNOWLEDGED_FLUSH_ATTEMPTS):\n'
+            '            if fbWriteStateAcknowledged(\n'
+            '                self.connectionDocker, self.sContainerId,'
+            ' dictSnapshot,\n'
+            '            ):\n'
+            '                bLanded = True\n'
+            '                break\n'
+        ),
+        new=(
+            '        bLanded = True\n'
+            '        fbWriteStateAcknowledged(\n'
+            '            self.connectionDocker, self.sContainerId,'
+            ' dictSnapshot,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testADegradedCompletionIsNotReportedClean'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Drop the degraded-persistence warning from the completed
+        # branch: the backend says the run's results were not
+        # recorded, and the dashboard shows only the success toast.
+        old=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                _fsCompletedToast(dictEvent.sCommand),'
+            ' "success");\n'
+            '            _fnWarnIfRunMetadataUnrecorded(dictEvent);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                _fsCompletedToast(dictEvent.sCommand),'
+            ' "success");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateWriteLock.py::'
+            'testTwoConcurrentSaversBothSurvive'
+        ),
+        source='vaibify/gui/stateWriteLock.py',
+        # A lock that never takes the flock: every writer "holds" it
+        # simultaneously, the second writer's read-modify-write lands
+        # inside the first's read-to-write window, and the first's
+        # install erases the second's section.
+        old=(
+            '        fcntl.flock(fileLock, fcntl.LOCK_EX)\n'
+            '        try:\n'
+            '            yield\n'
+            '        finally:\n'
+            '            fcntl.flock(fileLock, fcntl.LOCK_UN)\n'
+        ),
+        new=(
+            '        yield\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateWriteLock.py::'
+            'testTheCompletionMergeContendsOnTheSameLock'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # The completion merge keyed to a lock of its own: it excludes
+        # nothing against a concurrent save of the same document, and
+        # the lost update returns through the run's own writer.
+        old=(
+            '    from .stateWriteLock import fcontextHoldStateWriteLock\n'
+            '    with fcontextHoldStateWriteLock('
+            'sContainerId, sStatePath):\n'
+            '        dictDocument, _sStatus = ftLoadStateWithStatus(\n'
+        ),
+        new=(
+            '    from .stateWriteLock import fcontextHoldStateWriteLock\n'
+            '    with fcontextHoldStateWriteLock('
+            'sContainerId, ""):\n'
+            '        dictDocument, _sStatus = ftLoadStateWithStatus(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_dispatch_after_an_external_edit_runs_the_new_command'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The shipped D1 defect, restored: the loop dispatches the
+        # object captured at socket accept, so every dispatch after a
+        # reload-detector rebind runs superseded commands.
+        old=(
+            '            dictWorkflowBound = dictWorkflow\n'
+            '            if fdictGetLiveWorkflow is not None:\n'
+            '                dictWorkflowBound = (\n'
+            '                    fdictGetLiveWorkflow() or dictWorkflow\n'
+            '                )\n'
+        ),
+        new=(
+            '            dictWorkflowBound = dictWorkflow\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_a_stale_acknowledgment_is_refused_and_republished'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Ignore the caller's acknowledgment: a client rendering a
+        # superseded copy dispatches code the researcher never saw.
+        old=(
+            '    sAckFingerprint = '
+            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
+            '    sAckPath = '
+            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return None\n'
+        ),
+        new=(
+            '    sAckFingerprint = '
+            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
+            '    sAckPath = '
+            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
+            '    if True:\n'
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_an_unreloaded_disk_edit_refuses_and_reloads'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Trust the cache over the file: an out-of-band edit the
+        # poller has not yet noticed is dispatched as though the disk
+        # never moved, and no reload is published.
+        old=(
+            '    if sDiskFingerprint != sRecordFingerprint:\n'
+            '        from . import workflowReloadDetector\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        from . import workflowReloadDetector\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testARunClickAcknowledgesTheAppliedRevision'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Send run frames with no acknowledgment: the dispatch gate
+        # falls back to the legacy two-way check and can no longer
+        # prove what this dashboard displayed.
+        old=(
+            '            dictAction.sAcknowledgedSourceFingerprint =\n'
+            '                VaibifyApp'
+            '.fsGetAcknowledgedSourceFingerprint();\n'
+            '            dictAction.sAcknowledgedWorkflowPath =\n'
+            '                VaibifyApp.fsGetWorkflowPath();\n'
+        ),
+        new=(
+            '            void dictAction;\n'
+        ),
+    ),
 ]

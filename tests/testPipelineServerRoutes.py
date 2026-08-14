@@ -83,6 +83,17 @@ class MockDockerConnection:
     def fsHashContainerFileSha256(self, sContainerId, sPath):
         return ""
 
+    # The directory listing's typed reads, keeping this double's old
+    # ``find`` fixture ("this directory is empty") in the shape the
+    # listing now asks for. Empty is still an ANSWER here -- an
+    # unlistable directory raises on the real legs, and the routes
+    # distinguish the two.
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        return []
+
+    def flistContainerDirectoriesExist(self, sContainerId, listPaths):
+        return [False] * len(listPaths)
+
     def _ftFileExists(self, sCommand):
         sPath = sCommand.split("test -e ", 1)[1].strip().strip("'")
         if sPath in self._dictFiles:

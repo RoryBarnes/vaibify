@@ -12,7 +12,6 @@ __all__ = [
 ]
 
 import asyncio
-import json
 import logging
 import posixpath
 import re
@@ -105,6 +104,12 @@ def _fsExtractLogLine(dictEvent):
     if dictEvent.get("sType") == "commandFailed":
         return (f"FAILED: {dictEvent.get('sCommand', '')} "
                 f"(exit {dictEvent.get('iExitCode', '?')})")
+    if dictEvent.get("sType") == "started":
+        # The header exists so the log FILE exists. Flushing an empty
+        # buffer writes nothing, so without a line to carry there is
+        # no file until a step finishes -- and a run cancelled before
+        # one does left `sLogPath` naming a path that never existed.
+        return f"=== {dictEvent.get('sCommand', 'run')} started ==="
     return None
 
 
@@ -241,12 +246,29 @@ def _ffBuildFlushingCallback(
             lockState, stateWriter=stateWriter,
         )
         sEventType = dictEvent.get("sType", "")
-        if sEventType in ("stepPass", "stepFail"):
+        if sEventType in _T_FLUSHING_EVENTS:
             await fnWriteLogToContainer(
                 connectionDocker, sContainerId, sLogPath,
                 listLogLines,
             )
     return fnLoggingWithFlush
+
+
+# The run's state records `sLogPath` before the first step starts, so
+# a run that is stopped before any step FINISHES used to leave that
+# path naming a file nothing had created -- and the Logs tab answered
+# "Could not load logs" for that run forever after. Flushing at the
+# start makes the recorded path true from the moment it is recorded;
+# flushing at each step start bounds how much of a stopped run's
+# output is lost with the buffer.
+#
+# What is deliberately NOT here is a flush from the cancelled task's
+# teardown, which is the only thing that would save the output of the
+# step being cancelled. That write would run inside a carrier worker
+# that is already unwinding, where an error poisons the run's journal
+# record and quarantines the container -- a heavy price for the tail
+# of a log the researcher chose to stop.
+_T_FLUSHING_EVENTS = ("started", "stepStarted", "stepPass", "stepFail")
 
 
 _DICT_STEP_RESULT_STATUS = {
@@ -309,6 +331,12 @@ def _fnDispatchEventToWriter(stateWriter, dictEvent):
                 dictEvent.get("fWallClockBudgetSeconds", 0.0),
             )
         )
+    elif sEventType == "stepStats":
+        # The durable record of which steps this run EXECUTED and what
+        # they measured; completion reads it back as the merge delta.
+        stateWriter.fnEnqueueStepStats(
+            dictEvent["iStepNumber"], dictEvent.get("dictRunStats", {}),
+        )
     elif sEventType in _DICT_STEP_RESULT_STATUS:
         stateWriter.fnEnqueueStepResult(
             pipelineState.fdictBuildStepResult(
@@ -341,6 +369,11 @@ def _fnDispatchEventInline(
                 pipelineState.fdictBuildStepStarted(
                     dictEvent["iStepNumber"],
                     dictEvent.get("fWallClockBudgetSeconds", 0.0)))
+    elif sEventType == "stepStats":
+        with lockState:
+            dictState.setdefault("dictStepStats", {})[
+                str(dictEvent["iStepNumber"])
+            ] = dictEvent.get("dictRunStats", {})
     elif sEventType in _DICT_STEP_RESULT_STATUS:
         _fnApplyStepResultEvent(
             connectionDocker, sContainerId, dictState, dictEvent,
@@ -348,19 +381,86 @@ def _fnDispatchEventInline(
         )
 
 
-def _fnSaveWorkflowStats(
-    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+def _fdictPersistRunResultsToState(
+    connectionDocker, sContainerId, dictState, dictWorkflow,
+    sWorkflowPath,
 ):
-    """Save updated workflow (with run stats) back to container."""
+    """Merge the run's executed-step results into ``.vaibify/state.json``.
+
+    Completion is STATE-ONLY (spec D2): it must not write
+    ``project.json`` at all. The run's in-memory workflow is a snapshot
+    from dispatch time, and the previous writer — ``json.dumps`` of
+    that whole snapshot over ``project.json`` — destroyed any edit the
+    reload detector had correctly accepted mid-run, while also writing
+    stateful fields into the declarative file.
+
+    The delta is what the run's own event stream recorded
+    (``dictStepStats``, keyed by step number in the run's frame),
+    translated to stable step ids through the run's OWN workflow
+    snapshot — the id names *which step* in the fresh document, where
+    a list index would name whatever now happens to sit at that
+    position. Returns the merge outcome for the terminal event; it
+    never raises, because it runs inside a carrier worker where an
+    expected failure would poison the run's journal record.
+    """
+    from . import stateManager
+    from .pipelineUtils import fsDescribeStepIdConflict
     try:
-        sContent = json.dumps(dictWorkflow, indent=2)
-        connectionDocker.fnWriteFile(
-            sContainerId, sWorkflowPath,
-            sContent.encode("utf-8"),
+        sIdConflict = fsDescribeStepIdConflict(
+            dictWorkflow, bRequirePresent=True,
+        )
+        if sIdConflict:
+            return {
+                "bPersisted": False,
+                "sDetail": f"run results not recorded: {sIdConflict}",
+            }
+        sRepoPath = workflowManager.fsDeriveProjectRepoPathFromWorkflow(
+            sWorkflowPath,
+        )
+        dictDelta, dictIdToDirectory = _ftBuildRunResultDelta(
+            dictState, dictWorkflow,
+        )
+        if not dictDelta:
+            return {"bPersisted": True, "sDetail": ""}
+        return stateManager.fdictMergeRunResultsIntoState(
+            connectionDocker, sContainerId,
+            stateManager.fsStatePathFromRepo(sRepoPath),
+            stateManager.fsWorkflowKeyFromPath(sWorkflowPath, sRepoPath),
+            dictDelta, dictIdToDirectory,
         )
     except Exception as error:
         logging.getLogger("vaibify").error(
-            "Failed to save workflow stats: %s", error)
+            "Failed to record run results: %s", error,
+        )
+        return {"bPersisted": False, "sDetail": str(error)}
+
+
+def _ftBuildRunResultDelta(dictState, dictWorkflow):
+    """Return ``({sStepId: dictRunStats}, {sStepId: sDirectory})``.
+
+    Step numbers in ``dictStepStats`` are 1-based positions in the
+    RUN's workflow snapshot — the frame the events were emitted in —
+    so translating them through that same snapshot is exact. The
+    directory map lets the merge migrate an entry persisted under the
+    pre-id directory key.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    dictDelta = {}
+    dictIdToDirectory = {}
+    for sNumber, dictRunStats in (
+        dictState.get("dictStepStats") or {}
+    ).items():
+        iIndex = int(sNumber) - 1
+        if not 0 <= iIndex < len(listSteps):
+            continue
+        sStepId = listSteps[iIndex].get("sStepId", "")
+        if not sStepId:
+            continue
+        dictDelta[sStepId] = dictRunStats
+        dictIdToDirectory[sStepId] = listSteps[iIndex].get(
+            "sDirectory", "",
+        )
+    return dictDelta, dictIdToDirectory
 
 
 async def _fnFinalizeRun(
@@ -368,27 +468,70 @@ async def _fnFinalizeRun(
     sLogPath, listLogLines, dictWorkflow, sWorkflowPath,
     fnStatusCallback, lockState=None, stateWriter=None,
 ):
-    """Write final state, log, and emit completion event."""
-    dictCompleted = pipelineState.fdictBuildCompletedState(iResult)
+    """Commit run results, persist terminal state, emit the event.
+
+    The order is the contract (spec §4.3): enter *finalizing* → flush
+    the log → attempt the state commit and record its outcome →
+    persist the terminal state carrying that outcome through an
+    ACKNOWLEDGED flush → emit the terminal event. A failed terminal
+    flush leaves the durable state running/finalizing, so the
+    stale-heartbeat reconciliation reports the failure instead of the
+    dashboard trusting a completion that never became durable.
+
+    The finalizing and terminal writes are inline rather than
+    extracted: each branch pair threads this function's own state
+    through one write path, and a helper would be a single-call
+    pass-through.
+    """
+    import threading as _threading
+    if stateWriter is None and lockState is None:
+        lockState = _threading.Lock()
     if stateWriter is not None:
-        stateWriter.fnEnqueueUpdate(dictCompleted)
+        stateWriter.fnEnqueueUpdate(
+            pipelineState.fdictBuildFinalizingState(),
+        )
     else:
-        import threading as _threading
-        if lockState is None:
-            lockState = _threading.Lock()
         with lockState:
             pipelineState.fnUpdateState(
-                connectionDocker, sContainerId, dictState, dictCompleted,
+                connectionDocker, sContainerId, dictState,
+                pipelineState.fdictBuildFinalizingState(),
             )
     await fnWriteLogToContainer(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )
     if sWorkflowPath:
-        _fnSaveWorkflowStats(
-            connectionDocker, sContainerId, dictWorkflow,
+        dictOutcome = _fdictPersistRunResultsToState(
+            connectionDocker, sContainerId, dictState, dictWorkflow,
             sWorkflowPath,
         )
-    await fnStatusCallback(
-        {"sType": "completed" if iResult == 0 else "failed",
-         "iExitCode": iResult, "sLogPath": sLogPath}
-    )
+    else:
+        dictOutcome = {
+            "bPersisted": False,
+            "sDetail": "no workflow path; run results not recorded",
+        }
+    dictCompleted = pipelineState.fdictBuildCompletedState(iResult)
+    dictCompleted["bRunMetadataPersisted"] = dictOutcome["bPersisted"]
+    dictCompleted["sRunMetadataDetail"] = dictOutcome["sDetail"]
+    if stateWriter is not None:
+        bTerminalFlushed = stateWriter.fbFlushTerminalStateAcknowledged(
+            dictCompleted,
+        )
+    else:
+        with lockState:
+            dictState.update(dictCompleted)
+            bTerminalFlushed = pipelineState.fbWriteStateAcknowledged(
+                connectionDocker, sContainerId, dictState,
+            )
+    dictEvent = {
+        "sType": "completed" if iResult == 0 else "failed",
+        "iExitCode": iResult, "sLogPath": sLogPath,
+        "bRunMetadataPersisted": (
+            dictOutcome["bPersisted"] and bTerminalFlushed
+        ),
+    }
+    if not dictEvent["bRunMetadataPersisted"]:
+        dictEvent["sRunMetadataDetail"] = (
+            dictOutcome["sDetail"]
+            or "the run's final state could not be written"
+        )
+    await fnStatusCallback(dictEvent)

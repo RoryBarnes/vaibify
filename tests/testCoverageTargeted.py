@@ -397,31 +397,12 @@ def test_middleware_rejects_wrong_token():
     assert response.status_code == 401
 
 
-# -----------------------------------------------------------------------
-# pipelineServer: _flistParseDirectoryOutput
-# -----------------------------------------------------------------------
-
-
-def test_flistParseDirectoryOutput_mixed():
-    from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-    sOutput = "d /workspace/subdir\nf /workspace/file.txt\n"
-    listResult = _flistParseDirectoryOutput(sOutput)
-    assert len(listResult) == 2
-    assert listResult[0]["bIsDirectory"] is True
-    assert listResult[0]["sName"] == "subdir"
-    assert listResult[1]["bIsDirectory"] is False
-
-
-def test_flistParseDirectoryOutput_empty():
-    from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-    assert _flistParseDirectoryOutput("") == []
-
-
-def test_flistParseDirectoryOutput_short_lines_skipped():
-    from vaibify.gui.pipelineServer import _flistParseDirectoryOutput
-    sOutput = "x\n\nf /workspace/ok.txt\n"
-    listResult = _flistParseDirectoryOutput(sOutput)
-    assert len(listResult) == 1
+# The three ``_flistParseDirectoryOutput`` tests that stood here were
+# retired with their mechanism, not deleted to pass: the parser existed
+# only to read ``find -printf`` output, and that command is gone (it is
+# a GNU extension BSD find refuses, so it never worked on a macOS host
+# project). The listing is now two typed reads, covered by
+# tests/testDirectoryListing.py on both legs.
 
 
 # -----------------------------------------------------------------------

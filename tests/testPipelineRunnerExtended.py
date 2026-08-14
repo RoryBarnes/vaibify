@@ -141,14 +141,26 @@ def test_ffBuildLoggingCallback_logs_failure():
 
 
 def test_ffBuildLoggingCallback_ignores_other_types():
+    """Superseding "started logs nothing" (2026-08-13).
+
+    ``started`` was this test's example of an event that contributes
+    no log line, and it now contributes the header. That header is
+    what makes the log FILE exist at the moment the run records its
+    path, so a run stopped before any step finished no longer points
+    the Logs tab at a file nothing wrote. ``stepStats`` carries the
+    original claim: an event the log buffer has nothing to say about.
+    """
     listLogLines = []
 
     async def fnOriginal(dictEvent):
         pass
 
     fnCallback = ffBuildLoggingCallback(fnOriginal, listLogLines)
-    _fnRunAsync(fnCallback({"sType": "started"}))
+    _fnRunAsync(fnCallback({"sType": "stepStats", "iStepNumber": 1}))
     assert len(listLogLines) == 0
+
+    _fnRunAsync(fnCallback({"sType": "started", "sCommand": "runStep"}))
+    assert listLogLines == ["=== runStep started ==="]
 
 
 def test_ffBuildLoggingCallback_forwards_to_original():

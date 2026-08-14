@@ -70,12 +70,29 @@ var VaibifyApi = (function () {
         return {sMessage: String(detail)};
     }
 
+    function fdictAdoptSourceFingerprint(dictPayload) {
+        /* Any response carrying the post-save exact-source
+           fingerprint updates the dashboard's acknowledged value:
+           the client is by definition rendering the edit it just
+           made, and without this its own step edit would make the
+           next Run refuse at the dispatch freshness gate. */
+        if (dictPayload &&
+            typeof dictPayload.sExactSourceFingerprint === "string" &&
+            dictPayload.sExactSourceFingerprint &&
+            typeof VaibifyApp !== "undefined" &&
+            VaibifyApp.fnAcknowledgeSourceFingerprint) {
+            VaibifyApp.fnAcknowledgeSourceFingerprint(
+                dictPayload.sExactSourceFingerprint);
+        }
+        return dictPayload;
+    }
+
     async function fdictGet(sUrl) {
         var response = await _frResponseOrThrow(sUrl);
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
         }
-        return response.json();
+        return response.json().then(fdictAdoptSourceFingerprint);
     }
 
     async function fdictPost(sUrl, dictBody) {
@@ -90,7 +107,7 @@ var VaibifyApi = (function () {
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
         }
-        return response.json();
+        return response.json().then(fdictAdoptSourceFingerprint);
     }
 
     async function fdictPostRaw(sUrl) {
@@ -100,7 +117,7 @@ var VaibifyApi = (function () {
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
         }
-        return response.json();
+        return response.json().then(fdictAdoptSourceFingerprint);
     }
 
     async function fdictPut(sUrl, dictBody) {
@@ -112,7 +129,7 @@ var VaibifyApi = (function () {
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
         }
-        return response.json();
+        return response.json().then(fdictAdoptSourceFingerprint);
     }
 
     async function fnDelete(sUrl) {
@@ -122,7 +139,7 @@ var VaibifyApi = (function () {
         if (!response.ok) {
             await _fnThrowForStatus(response, "Delete failed");
         }
-        return response.json();
+        return response.json().then(fdictAdoptSourceFingerprint);
     }
 
     async function fsGetText(sUrl) {

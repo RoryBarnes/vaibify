@@ -113,9 +113,14 @@ def _fnRegisterLogRoutes(app, dictCtx):
     async def flistLogs(sContainerId: str):
         dictCtx["require"](sContainerId)
         sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
-        listEntries = flistQueryDirectory(
-            dictCtx["docker"], sContainerId, sLogsDir
-        )
+        try:
+            listEntries = flistQueryDirectory(
+                dictCtx["docker"], sContainerId, sLogsDir
+            )
+        except FileNotFoundError:
+            # The logs directory is created by the first run, so its
+            # absence is honestly "no logs yet" rather than a fault.
+            return []
         listLogs = [
             e["sName"] for e in listEntries
             if e["sName"].endswith(".log")

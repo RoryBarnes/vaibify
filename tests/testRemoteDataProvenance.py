@@ -2,7 +2,7 @@
 
 After a successful run of a step carrying ``listRemoteData``, the
 runner hashes the declared pulled files in one container exec and
-updates each record's ``sSha256``, stamping ``sRetrievedUtc`` only
+updates each record's ``sSha256``, stamping ``sDigestBecameCurrentUtc`` only
 when content changed or was hashed for the first time. Failures
 leave records untouched — provenance never guesses.
 """
@@ -32,14 +32,14 @@ class _FakeDocker:
         return (0, self.sOutput)
 
 
-def _fdictRemoteStep(sSha256="", sRetrievedUtc=""):
+def _fdictRemoteStep(sSha256="", sDigestBecameCurrentUtc=""):
     return {
         "sName": "Pull",
         "sDirectory": "pull",
         "listRemoteData": [{
             "sPath": "data/archive_pull.fits",
             "sSourceUrl": "https://archive.example/query",
-            "sRetrievedUtc": sRetrievedUtc,
+            "sDigestBecameCurrentUtc": sDigestBecameCurrentUtc,
             "sSha256": sSha256,
         }],
     }
@@ -66,12 +66,12 @@ def test_changed_content_updates_sha_and_stamps_timestamp():
         f"{_S_SHA_B}  /workspace/repo/data/archive_pull.fits\n"
     )
     dictStep = _fdictRemoteStep(
-        sSha256=_S_SHA_A, sRetrievedUtc="2026-01-01T00:00:00Z",
+        sSha256=_S_SHA_A, sDigestBecameCurrentUtc="2026-01-01T00:00:00Z",
     )
     listEvents = _flistRunRecorder(connectionDocker, dictStep)
     dictRecord = dictStep["listRemoteData"][0]
     assert dictRecord["sSha256"] == _S_SHA_B
-    assert dictRecord["sRetrievedUtc"] != "2026-01-01T00:00:00Z"
+    assert dictRecord["sDigestBecameCurrentUtc"] != "2026-01-01T00:00:00Z"
     assert len(listEvents) == 1
     assert listEvents[0]["sType"] == "remoteDataRecorded"
     assert listEvents[0]["iStepNumber"] == 3
@@ -85,7 +85,7 @@ def test_first_pull_stamps_new_record():
     _flistRunRecorder(connectionDocker, dictStep)
     dictRecord = dictStep["listRemoteData"][0]
     assert dictRecord["sSha256"] == _S_SHA_A
-    assert dictRecord["sRetrievedUtc"].endswith("Z")
+    assert dictRecord["sDigestBecameCurrentUtc"].endswith("Z")
 
 
 def test_unchanged_content_keeps_original_stamp_and_emits_nothing():
@@ -93,23 +93,23 @@ def test_unchanged_content_keeps_original_stamp_and_emits_nothing():
         f"{_S_SHA_A}  /workspace/repo/data/archive_pull.fits\n"
     )
     dictStep = _fdictRemoteStep(
-        sSha256=_S_SHA_A, sRetrievedUtc="2026-01-01T00:00:00Z",
+        sSha256=_S_SHA_A, sDigestBecameCurrentUtc="2026-01-01T00:00:00Z",
     )
     listEvents = _flistRunRecorder(connectionDocker, dictStep)
     dictRecord = dictStep["listRemoteData"][0]
-    assert dictRecord["sRetrievedUtc"] == "2026-01-01T00:00:00Z"
+    assert dictRecord["sDigestBecameCurrentUtc"] == "2026-01-01T00:00:00Z"
     assert listEvents == []
 
 
 def test_missing_file_leaves_record_untouched():
     connectionDocker = _FakeDocker("")
     dictStep = _fdictRemoteStep(
-        sSha256=_S_SHA_A, sRetrievedUtc="2026-01-01T00:00:00Z",
+        sSha256=_S_SHA_A, sDigestBecameCurrentUtc="2026-01-01T00:00:00Z",
     )
     listEvents = _flistRunRecorder(connectionDocker, dictStep)
     dictRecord = dictStep["listRemoteData"][0]
     assert dictRecord["sSha256"] == _S_SHA_A
-    assert dictRecord["sRetrievedUtc"] == "2026-01-01T00:00:00Z"
+    assert dictRecord["sDigestBecameCurrentUtc"] == "2026-01-01T00:00:00Z"
     assert listEvents == []
 
 

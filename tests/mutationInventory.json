@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 327,
+  "iRowCount": 329,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2347,
+      "iLine": 2492,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2342,
+      "iLine": 2487,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -667,7 +667,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2135,
+      "iLine": 2144,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -4251,32 +4251,6 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineLogger.py",
-      "sFingerprint": "9fca0d7b5d55a6a2",
-      "sFunction": "_fnSaveWorkflowStats",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -4500,6 +4474,32 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "websocket"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pre-dispatch freshness read: one fbaFetchFile of the bound project.json so the dispatch gate can compare the file's bytes against the session record before any command runs. Read-only by construction -- the path comes from the server's own path cache, never the frame -- and the admission gate for the underlying read lives inside the connection primitive.",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "a06e3e23921ae1b4",
+      "sFunction": "_fdictStaleWorkflowRefusal",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "hash project.json bytes for the dispatch freshness gate",
+      "sOperationMetadata": "workflow path from dictCtx['paths']; sha256 compared to _sSourceFingerprint; mismatch reloads and refuses typed",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "passed-callable"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -4578,28 +4578,54 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission. The two reads of this function are one question asked in two parts -- the names, then which of them are directories -- and share this disposition. They replaced a `find -maxdepth 1 -printf` piped to `sort`, which is a GNU extension BSD find refuses: on a macOS host project the command produced nothing, and because it redirected stderr away and discarded the exit code, a failed listing and an empty directory were the same answer.",
       "sFile": "gui/pipelineServer.py",
-      "sFingerprint": "4e8a68f645f43b87",
+      "sFingerprint": "820a4938f20b828d",
       "sFunction": "flistQueryDirectory",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which of those entries are directories rather than files",
+      "sOperationMetadata": "one path per listed entry, composed from the directory just listed and the names it returned",
+      "sPrimitive": "flistContainerDirectoriesExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission. The two reads of this function are one question asked in two parts -- the names, then which of them are directories -- and share this disposition. They replaced a `find -maxdepth 1 -printf` piped to `sort`, which is a GNU extension BSD find refuses: on a macOS host project the command produced nothing, and because it redirected stderr away and discarded the exit code, a failed listing and an empty directory were the same answer.",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "13b3451535fe043c",
+      "sFunction": "flistQueryDirectory",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "list the entries directly inside one directory of the project",
+      "sOperationMetadata": "one directory path, already validated against the resource's project root by the calling route",
+      "sPrimitive": "flistDirectoryEntries",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4626,6 +4652,58 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "flistGetRunningContainers",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineState.py",
+      "sFingerprint": "3e360853fe1bd013",
+      "sFunction": "fbWriteStateAcknowledged",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineState.py",
+      "sFingerprint": "bcece02a6d967e67",
+      "sFunction": "fbWriteStateAcknowledged",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "ftResultExecuteCommand",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4673,58 +4751,6 @@
       "sFile": "gui/pipelineState.py",
       "sFingerprint": "d90a31a95258f9e9",
       "sFunction": "fnClearState",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "6b37e4f5528d7f8d",
-      "sFunction": "fnWriteState",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "c3a480391980bcc4",
-      "sFunction": "fnWriteState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -5640,6 +5666,32 @@
       "sLogicalOperation": "land an uploaded file's bytes at a validated destination inside the project repo",
       "sOperationMetadata": "destination validated within the project repo and refused on the write denylist; expected sha256 is the uploaded content's, prior sha256 is what is on disk now",
       "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "lock-held"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "carrier-supervisor"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission of its own. It runs inside the badge refresh's mode-(b) worker only because it is part of that one coherent snapshot -- the four probes beside it are what hold the drain. It exists because no other input can answer the question: porcelain omits a file it has nothing to say about, and the blob-sha map omits both a file it could not open and every file when the probe that built it failed.",
+      "sFile": "gui/routes/gitRoutes.py",
+      "sFingerprint": "14e2fd8197ba4e9a",
+      "sFunction": "_fsetSelectMissingPaths",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask which of the workflow's tracked files are on disk at all",
+      "sOperationMetadata": "one path per tracked file, joined to the project repo root; a failed probe raises rather than emptying the badge map",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {
@@ -7111,6 +7163,32 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/stateManager.py",
+      "sFingerprint": "275d04e8ccefe6c0",
+      "sFunction": "_fnPersistStateDocument",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -7195,32 +7273,6 @@
       "sFile": "gui/stateManager.py",
       "sFingerprint": "42cc02c412709790",
       "sFunction": "fnEnsureVaibifyGitignore",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/stateManager.py",
-      "sFingerprint": "275d04e8ccefe6c0",
-      "sFunction": "fnSaveStateToContainer",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",

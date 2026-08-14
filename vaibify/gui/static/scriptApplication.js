@@ -595,6 +595,11 @@ const VaibifyApp = (function () {
                 data.iWorkflowEpoch : -1;
         _dictWorkflowState.sWorkflowFingerprint =
             data.sWorkflowFingerprint || "";
+        /* The freshness acknowledgment: what this dashboard has
+           APPLIED, advanced only at apply points and on this
+           client's own save responses — never merely displayed. */
+        _dictWorkflowState.sAcknowledgedSourceFingerprint =
+            (data.dictWorkflow || {})._sSourceFingerprint || "";
         _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
@@ -664,6 +669,9 @@ const VaibifyApp = (function () {
     function fnRefreshWorkflowData(dictData) {
         _dictWorkflowState.dictWorkflow = dictData.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = dictData.sWorkflowPath;
+        _dictWorkflowState.sAcknowledgedSourceFingerprint =
+            (dictData.dictWorkflow || {})._sSourceFingerprint ||
+            _dictWorkflowState.sAcknowledgedSourceFingerprint;
         if (typeof dictData.iWorkflowEpoch === "number") {
             _dictWorkflowState.iWorkflowEpoch =
                 dictData.iWorkflowEpoch;
@@ -697,6 +705,12 @@ const VaibifyApp = (function () {
         _fnRestoreUiSelection(iPriorSelected, iStepCount);
         _fnRestoreExpansionSets(dictPriorExpanded, iStepCount);
         fnRenderStepList();
+        /* Acknowledge only AFTER the replacement rendered: if the
+           apply had thrown above, the next dispatch must stay
+           refused rather than vouch for a workflow nobody saw. */
+        _dictWorkflowState.sAcknowledgedSourceFingerprint =
+            dictWorkflowNew._sSourceFingerprint ||
+            _dictWorkflowState.sAcknowledgedSourceFingerprint;
         fnShowToast(
             "Project definition reloaded from disk", "info");
     }
@@ -4480,6 +4494,16 @@ const VaibifyApp = (function () {
             typeof dictStatus.iWorkflowEpoch === "number") {
             _dictWorkflowState.iWorkflowEpoch =
                 dictStatus.iWorkflowEpoch;
+            /* Not reloaded means this client is on the server's
+               current workflow lineage, so the poll's exact-source
+               fingerprint describes what is already applied here —
+               this is what keeps a self-save made from ANOTHER of
+               this session's panels acknowledged. */
+            if (typeof dictStatus.sExactSourceFingerprint ===
+                "string" && dictStatus.sExactSourceFingerprint) {
+                _dictWorkflowState.sAcknowledgedSourceFingerprint =
+                    dictStatus.sExactSourceFingerprint;
+            }
         }
         if (typeof dictStatus.sWorkflowFingerprint === "string") {
             _dictWorkflowState.sWorkflowFingerprint =
@@ -4936,6 +4960,19 @@ const VaibifyApp = (function () {
         fsGetLeaseForContainer: fsGetLeaseForContainer,
         fnRecordClaimedLease: fnRecordClaimedLease,
         fnForgetLease: fnForgetLease,
+        fnAcknowledgeSourceFingerprint: function (sFingerprint) {
+            if (sFingerprint) {
+                _dictWorkflowState.sAcknowledgedSourceFingerprint =
+                    sFingerprint;
+            }
+        },
+        fsGetAcknowledgedSourceFingerprint: function () {
+            return _dictWorkflowState
+                .sAcknowledgedSourceFingerprint || "";
+        },
+        fsGetWorkflowPath: function () {
+            return _dictWorkflowState.sWorkflowPath || "";
+        },
         fdictGetWorkflow: function () {
             return _dictWorkflowState.dictWorkflow;
         },
@@ -4984,9 +5021,13 @@ const VaibifyApp = (function () {
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
         fnResetQueuedSteps: fnResetQueuedSteps,
-        fnClearAllStepStatuses: function () {
-            _dictWorkflowState.dictStepStatus = {};
-        },
+        /* `fnClearAllStepStatuses` was removed with its only caller.
+           Its whole effect there was the defect -- a stop erasing a
+           completed step's result -- and a "forget every status"
+           helper sitting on the public surface is an invitation to
+           reintroduce it. Clearing across a workflow switch belongs
+           to `_fnResetWorkflowState`, which rebuilds the whole state
+           object rather than reaching into this one. */
         fnStartFileChangePolling: fnStartFileChangePolling,
         fnToggleStepEnabled: fnToggleStepEnabled,
         fnClearFileExistenceCache: function () {
