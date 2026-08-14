@@ -10902,7 +10902,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCancelledRunLeavesItsLog.py::'
-            'testARunStoppedBeforeAnyStepFinishedStillHasALog'
+            'testTheFlushSetCoversRunStart'
         ),
         source='vaibify/gui/pipelineLogger.py',
         # The flush set as it was: the log is written only once a step

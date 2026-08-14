@@ -127,6 +127,31 @@ def _fsDecodeAppendedText(sCommand):
 
 
 @pytest.mark.falsification
+def testTheFlushSetCoversRunStart():
+    """Kills: writing the log only when a step passes or fails.
+
+    The run has announced itself and nothing else has happened, which
+    is exactly the state a Cancel finds during a long first step. The
+    path is already in ``pipeline_state.json`` by now, so if nothing
+    has been written the dashboard is pointing at a file that does not
+    exist. This drives the flushing wrapper directly; the companion
+    production-ordering test below is what proves the wrapper is the
+    one the runner actually speaks through.
+    """
+    connection = ConnectionRecordingLogAppends()
+
+    _fnDriveEvents(connection, [
+        {"sType": "started", "sCommand": "runStep"},
+    ])
+
+    assert connection.listAppendCommands, (
+        "a run that announced itself wrote no log; a Cancel now leaves "
+        "sLogPath naming a file nothing created"
+    )
+    assert S_LOG_PATH in connection.listAppendCommands[0]
+
+
+@pytest.mark.falsification
 def testARunStoppedBeforeAnyStepFinishedStillHasALog():
     """Kills: emitting ``started`` before the flushing wrapper exists.
 
