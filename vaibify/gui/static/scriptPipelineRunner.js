@@ -493,8 +493,15 @@ var VaibifyPipelineRunner = (function () {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
             if (!dictState || !dictState.bRunning) {
+                /* -1 is the initial "never completed" sentinel; a
+                   NEGATIVE exit is a run killed by a signal (a Stop
+                   ends the sleep with -15) and its step results are
+                   as real as any. The old `>= 0` guard skipped them,
+                   so reopening after a stop showed every light as
+                   never-run while state.json knew better. */
                 if (dictState && dictState.sLogPath &&
-                    dictState.iExitCode >= 0) {
+                    typeof dictState.iExitCode === "number" &&
+                    dictState.iExitCode !== -1) {
                     fnApplyCompletedState(dictState);
                 }
                 VaibifyApp.fnStartFileChangePolling();
@@ -1088,6 +1095,17 @@ var VaibifyPipelineRunner = (function () {
                            (Live report, 2026-08-13.) */
                         VaibifyApp.fnClearRunningStatuses();
                         VaibifyApp.fnRenderStepList();
+                        /* Resume file polling HERE, not only on the
+                           run's terminal event: a kill races the
+                           runner, and when cancellation wins the run
+                           emits no terminal event at all — polling
+                           then stayed stopped, so an edit made
+                           mid-run was never announced and the
+                           reload detector sat blind until a tab
+                           reload (live report, 2026-08-14). The
+                           frontend must not depend on which side of
+                           the kill race won. */
+                        VaibifyApp.fnStartFileChangePolling();
                         _fnReportKillOutcome(dictResult);
                     } else {
                         VaibifyApp.fnShowToast(

@@ -453,6 +453,103 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
 
 
 @pytest.mark.falsification
+def testAKillResumesFilePollingItself(pageDashboard, serverHub):
+    """Kills: resuming file polling only on the run's terminal event.
+
+    A kill races the runner: when the task-cancellation side wins, the
+    run emits NO terminal event (live: exit 130, 2026-08-14), and the
+    terminal event was the only thing that restarted file polling. An
+    edit made mid-run was then never announced — the reload detector
+    sat blind until a tab reload. The kill's own success handler must
+    resume polling, whichever side of the race won.
+
+    The run's ``started`` event stops polling for real here, exactly
+    as a live run does; the kill is stubbed because its server route
+    is proven elsewhere.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/pipeline/*/kill",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bSuccess": True,
+                "iProcessesKilled": 1,
+                "bTaskCancelled": True,
+                "listCancellationRefusals": [],
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'started', sCommand: 'runSelected' })",
+    )
+    dictPollCount = {"i": 0}
+    pageDashboard.route(
+        "**/file-status*",
+        lambda routeIntercepted: (
+            dictPollCount.update(i=dictPollCount["i"] + 1),
+            routeIntercepted.continue_(),
+        ),
+    )
+    pageDashboard.wait_for_timeout(4000)
+    iPollsWhileStopped = dictPollCount["i"]
+
+    pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_timeout(7000)
+
+    assert dictPollCount["i"] > iPollsWhileStopped, (
+        "file polling never resumed after the kill; a mid-run edit "
+        "stays unannounced until the researcher reloads the tab"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
+    """Kills: restoring lights only for runs that exited cleanly.
+
+    A Stop ends the in-flight step by signal, so the run's exit code
+    is negative (-15 live). The reconnect recovery guarded its light
+    restoration with ``iExitCode >= 0`` — meant to skip the -1
+    never-completed sentinel — so reopening the dashboard after a
+    stop showed every step as never-run while the durable state knew
+    the first step had passed. Found live in Rory's 2026-08-14
+    walkthrough: a hub restart after a stopped run turned both lights
+    into open circles.
+    """
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bRunning": False,
+                "iExitCode": -15,
+                "sLogPath": "/journey/.vaibify/logs/stopped.log",
+                "iStepCount": 2,
+                "dictStepResults": {
+                    "1": {"sStatus": "passed", "iExitCode": 0},
+                    "2": {"sStatus": "failed", "iExitCode": -15},
+                },
+            }),
+        ),
+    )
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
+        timeout=15000,
+    )
+    assert "fail" in pageDashboard.get_attribute(
+        '.step-item:has-text("Second Stage") .step-status', "class",
+    ), "the killed step's result was not restored"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testARunClickAcknowledgesTheAppliedRevision(
     pageDashboard, serverHub,
 ):
