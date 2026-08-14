@@ -246,6 +246,15 @@ def fnLaunchHub(iExplicitPort):
         uvicorn.run(
             app, host="127.0.0.1", port=iPort,
             log_level="warning", timeout_graceful_shutdown=3,
+            # log_config=None keeps uvicorn from calling
+            # logging.config.dictConfig, whose _clearExistingHandlers
+            # CLOSES every handler in the process — including the
+            # rotating vaibify.log handler main() just attached. File
+            # logging was silently dead in every CLI-launched hub
+            # until a stack trace on the handler's close caught this
+            # (2026-08-14); log_level above still applies to
+            # uvicorn's own loggers.
+            log_config=None,
         )
     finally:
         fnReleaseSessionSlot(fileHandleSession)
@@ -338,6 +347,9 @@ def fnSetupCommand():
     uvicorn.run(
         app, host="127.0.0.1", port=8051,
         log_level="warning", timeout_graceful_shutdown=3,
+        # See fnLaunchHub: uvicorn's dictConfig closes every attached
+        # handler; log_config=None preserves the vaibify.log handler.
+        log_config=None,
     )
 
 
@@ -372,6 +384,9 @@ def fnGuiCommand(sProjectName):
     uvicorn.run(
         app, host="127.0.0.1", port=8050,
         log_level="warning", timeout_graceful_shutdown=3,
+        # See fnLaunchHub: uvicorn's dictConfig closes every attached
+        # handler; log_config=None preserves the vaibify.log handler.
+        log_config=None,
     )
 
 
