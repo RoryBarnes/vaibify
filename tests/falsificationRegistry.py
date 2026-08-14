@@ -11279,4 +11279,23 @@ def _fdictEntry(sRel):
             '                    dictState.iExitCode >= 0) {\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAKillResumesFilePollingItself'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Resume polling only on the run's terminal event: when the
+        # kill's task-cancellation side wins the race there IS no
+        # terminal event, and the reload detector sits blind until a
+        # tab reload.
+        old=(
+            '                        VaibifyApp'
+            '.fnStartFileChangePolling();\n'
+            '                        _fnReportKillOutcome(dictResult);\n'
+        ),
+        new=(
+            '                        _fnReportKillOutcome(dictResult);\n'
+        ),
+    ),
 ]

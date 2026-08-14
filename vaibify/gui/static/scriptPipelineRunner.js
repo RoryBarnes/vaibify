@@ -1095,6 +1095,17 @@ var VaibifyPipelineRunner = (function () {
                            (Live report, 2026-08-13.) */
                         VaibifyApp.fnClearRunningStatuses();
                         VaibifyApp.fnRenderStepList();
+                        /* Resume file polling HERE, not only on the
+                           run's terminal event: a kill races the
+                           runner, and when cancellation wins the run
+                           emits no terminal event at all — polling
+                           then stayed stopped, so an edit made
+                           mid-run was never announced and the
+                           reload detector sat blind until a tab
+                           reload (live report, 2026-08-14). The
+                           frontend must not depend on which side of
+                           the kill race won. */
+                        VaibifyApp.fnStartFileChangePolling();
                         _fnReportKillOutcome(dictResult);
                     } else {
                         VaibifyApp.fnShowToast(
