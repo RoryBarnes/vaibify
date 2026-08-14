@@ -61,8 +61,13 @@ def _fdictAllRegressed():
     return _fdictAllInState("none")
 
 
-def testSchemaVersionBumpedToTwo():
-    assert I_CURRENT_STATE_SCHEMA_VERSION == 2
+def testSchemaVersionBumpedForTheWorkflowNamespace():
+    """v3 namespaces per-workflow state by project-file path.
+
+    v2 held one flat ``dictStepState`` at the document root, so saving
+    one project in a multi-project repo erased the others.
+    """
+    assert I_CURRENT_STATE_SCHEMA_VERSION == 3
 
 
 def testStatefulTuplesCarryHighWaterFields():

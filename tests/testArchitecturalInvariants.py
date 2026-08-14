@@ -2425,9 +2425,19 @@ def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
             return b"state.json\n"
         raise FileNotFoundError(sPath)
 
+    def _fExec(_sContainerId, sCommand):
+        # The pre-namespace state document above carries no owner, so
+        # the migration asks how many projects share the repo and
+        # attributes only to a sole occupant. This is a one-project
+        # fixture; answering "none" would quarantine the state and this
+        # test would fail for a reason unrelated to what it asserts.
+        if sCommand.startswith("find "):
+            return (0, "/workspace/Project/.vaibify/workflows/w.json")
+        return (0, "")
+
     mockDocker.fbaFetchFile.side_effect = _fFetch
     mockDocker.fnWriteFile.side_effect = lambda *a, **k: None
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+    mockDocker.ftResultExecuteCommand.side_effect = _fExec
     dictLoaded = fdictLoadWorkflowFromContainer(
         mockDocker, "cid",
         sWorkflowPath="/workspace/Project/.vaibify/workflows/w.json",
@@ -4386,7 +4396,49 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # was wrong for a host project the same way -- the path guard
     # refuses the write, so the final log flush failed and the pipeline
     # reported exit 1 for a step whose command had succeeded.
-    "workflowManager.py": 2371,
+    # +60 (2026-08-13): the state workflow-namespace. The loader
+    # threads the project file's repo-relative path as the state key,
+    # the pre-namespace document is migrated once (attributed only to
+    # a provable sole occupant, otherwise quarantined), and the repo
+    # scan that answers "sole occupant?" lives here because it is a
+    # general exec that must run ONLY for a legacy document. Same
+    # cohesive responsibility: loading and saving a workflow, which is
+    # what this module is.
+    # +11 (2026-08-13, round 21): the comment recording why the
+    # migrated document is NOT persisted at load. Doing so made LOAD a
+    # writer of a document with no lock and no CAS, and the browser
+    # lane caught it at once -- a finished step reverted to "running"
+    # because a load-time write installed a document derived from
+    # pre-run state. The reason is longer than the code it replaces
+    # because the next reader will otherwise re-add the write.
+    "workflowManager.py": 2442,
+    # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
+    # adding the schema-v3 workflow namespace. state.json is
+    # repo-scoped and a repo may hold several projects, but v2 kept one
+    # flat dictStepState at the document root and every save rebuilt
+    # the document from the ONE workflow being saved -- so saving
+    # project A discarded project B's verification and run statistics,
+    # with no run involved and no directory overlap needed. The added
+    # surface is the namespace itself: key derivation, section
+    # read/install, the migration with its attribution rule, and the
+    # read-modify-write save. All of it is this module's single
+    # responsibility -- it IS the state file's schema and access -- so
+    # there is no seam here to split along.
+    # +21 (2026-08-13, round 21): the writer now QUARANTINES legacy
+    # roots instead of dropping them. Dropping looked safe because the
+    # load path migrates first -- but migration transformed only the
+    # in-memory dict, so the next ordinary save re-read the v2 document
+    # and deleted the very data the ambiguous-attribution branch exists
+    # to preserve. The writer has to be safe without a loader having
+    # run.
+    # +32 (2026-08-13, round 22): quarantine became a LIST of stamped
+    # records with its own append helper. A single slot could not be
+    # made correct -- keyed on a non-empty step map it dropped
+    # workflow-level fields, and refusing to overwrite an existing
+    # rescue discarded the new payload it had already popped. Merging
+    # instead would silently pick a winner between two directory-keyed
+    # bodies of state nobody can attribute.
+    "stateManager.py": 855,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with

@@ -518,7 +518,18 @@ def _fnBuildLoadSaveMock(dictWorkflowOnDisk, dictStateOnDisk=None):
         listWrites.append((sPath, baPayload))
 
     mockDocker.fnWriteFile.side_effect = _fWrite
-    mockDocker.ftResultExecuteCommand.return_value = (0, "")
+
+    def _fExec(_sContainerId, sCommand):
+        # Legacy state carries no owner, so the migration asks how many
+        # projects share the repo and attributes only to a sole
+        # occupant. This fixture is a one-project repo; a double that
+        # answered "none" would quarantine, which is correct for an
+        # unknown repo and wrong here.
+        if sCommand.startswith("find "):
+            return (0, "/workspace/Project/.vaibify/workflows/w.json")
+        return (0, "")
+
+    mockDocker.ftResultExecuteCommand.side_effect = _fExec
     return mockDocker, listWrites
 
 
@@ -632,10 +643,20 @@ def test_save_split_workflow_json_carries_no_stateful_fields():
         assert "dictVerification" not in dictStep
         assert "dictRunStats" not in dictStep
         assert "sLabel" not in dictStep
-    assert dictStateWritten["bArchiveTrackingMigrated"] is True
+    # Schema v3: state lands under this project's namespace, keyed by
+    # the project file's repo-relative path, so a sibling project's
+    # section in the same repo-scoped document is untouched.
+    dictSection = dictStateWritten["dictWorkflowState"][
+        ".vaibify/workflows/w.json"
+    ]
+    assert dictSection["bArchiveTrackingMigrated"] is True
     assert (
-        dictStateWritten["dictStepState"]["A"]
+        dictSection["dictStepState"]["A"]
         ["dictVerification"]["sUser"] == "passed"
+    )
+    assert "dictStepState" not in dictStateWritten, (
+        "a root-level dictStepState is the pre-namespace shape that "
+        "erased sibling projects"
     )
 
 
