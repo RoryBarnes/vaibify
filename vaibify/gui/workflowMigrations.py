@@ -27,6 +27,7 @@ from .pipelineUtils import fbStepIsInteractive
 
 __all__ = [
     "I_CURRENT_WORKFLOW_VERSION",
+    "S_DIGEST_TIMESTAMP_KEY",
     "S_VERSION_KEY",
     "T_MIGRATORS",
     "fbWorkflowNeedsMigration",
@@ -46,8 +47,17 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 11
+I_CURRENT_WORKFLOW_VERSION = 12
 S_VERSION_KEY = "iWorkflowSchemaVersion"
+
+# The remote-data timestamp, named for what the code actually observes.
+# It is stamped while hashing, after every command in the step has run,
+# and ONLY when the digest differs from the recorded one — so it marks
+# when this digest became current, not when anything was retrieved and
+# not when the file was last hashed. Named off the guard, not the
+# intent: the previous spelling (``sRetrievedUtc``) asserted a
+# retrieval vaibify never observes.
+S_DIGEST_TIMESTAMP_KEY = "sDigestBecameCurrentUtc"
 
 
 def fiGetSchemaVersion(dictWorkflow):
@@ -679,6 +689,36 @@ def _fnMigrateV10ToV11(dictWorkflow, sProjectRepoPath):
     dictWorkflow.pop("iAICSLevel", None)
 
 
+def _fnMigrateV11ToV12(dictWorkflow, sProjectRepoPath):
+    """Rename ``sRetrievedUtc`` to ``sDigestBecameCurrentUtc``.
+
+    The old name asserted something vaibify never observed. Nothing
+    watches the download: the stamp is written while hashing a file
+    AFTER every command in the step has finished, and only when the
+    digest differs from the recorded one. So it is neither a retrieval
+    time (commands may have run for hours in between, and the file may
+    not have been downloaded at all) nor a last-hashed time (an
+    unchanged file is re-hashed every run and keeps its old stamp).
+    What it actually marks is the moment this digest became the
+    current one, which is what the new name says.
+
+    The value carries over unchanged: it was always that instant, only
+    mislabelled. A record already carrying the new key is left alone,
+    and a record carrying both keeps the new one.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                continue
+            sLegacy = dictRemote.pop("sRetrievedUtc", None)
+            if sLegacy is not None and not dictRemote.get(
+                S_DIGEST_TIMESTAMP_KEY,
+            ):
+                dictRemote[S_DIGEST_TIMESTAMP_KEY] = sLegacy
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -691,4 +731,5 @@ T_MIGRATORS = (
     (8, _fnMigrateV8ToV9),
     (9, _fnMigrateV9ToV10),
     (10, _fnMigrateV10ToV11),
+    (11, _fnMigrateV11ToV12),
 )

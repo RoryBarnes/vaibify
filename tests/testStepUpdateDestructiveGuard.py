@@ -108,7 +108,7 @@ def test_step_update_request_accepts_input_declaration_fields():
         listRemoteData=[{
             "sPath": "data/raw.csv",
             "sSourceUrl": "https://archive.example/query",
-            "sRetrievedUtc": "",
+            "sDigestBecameCurrentUtc": "",
             "sSha256": "",
         }],
     )

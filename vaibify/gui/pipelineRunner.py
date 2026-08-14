@@ -36,6 +36,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 # Re-exports from pipelineUtils (true leaf — breaks circular imports).
 # ---------------------------------------------------------------------------
 
+from .workflowMigrations import S_DIGEST_TIMESTAMP_KEY
 from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
@@ -1055,11 +1056,13 @@ async def _fnRecordRemoteDataProvenance(
     """Refresh listRemoteData provenance after a successful pull.
 
     One docker exec hashes every declared remote-pulled file; each
-    record's ``sSha256`` updates and ``sRetrievedUtc`` is stamped
-    when the content changed or was hashed for the first time. An
-    unchanged file keeps its original retrieval stamp, a failed or
+    record's ``sSha256`` updates and ``sDigestBecameCurrentUtc`` is
+    stamped when the content changed or was hashed for the first
+    time. An unchanged file keeps its existing stamp, a failed or
     missing hash leaves the record untouched — provenance never
-    guesses. Persistence rides the end-of-run workflow save. The
+    guesses. ``sSourceUrl`` is user-DECLARED metadata throughout:
+    vaibify does not observe the download and cannot attest that the
+    bytes came from it. Persistence rides the end-of-run workflow save. The
     fresh data is NOT auto-committed: it flows through the normal
     badges / commit-canonical review so the researcher decides when
     the new pull becomes canonical.
@@ -1113,7 +1116,17 @@ def _fdictHashRemoteDataFiles(
 
 
 def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
-    """Update sSha256/sRetrievedUtc in place; True when anything moved."""
+    """Update the digest and its timestamp; True when anything moved.
+
+    The timestamp records when this digest BECAME CURRENT, which is
+    the only thing the surrounding code observes. It is not a
+    retrieval time — nothing here watches a download, arbitrary
+    commands may have run between any fetch and this hash, and the
+    file may never have been downloaded at all. It is not a
+    last-hashed time either: an unchanged file is re-hashed on every
+    run and deliberately keeps its existing stamp, because the digest
+    did not become current again.
+    """
     from datetime import datetime, timezone
     sNowUtc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     bChanged = False
@@ -1125,7 +1138,7 @@ def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
             continue
         if dictRemote.get("sSha256") != sSha:
             dictRemote["sSha256"] = sSha
-            dictRemote["sRetrievedUtc"] = sNowUtc
+            dictRemote[S_DIGEST_TIMESTAMP_KEY] = sNowUtc
             bChanged = True
     return bChanged
 

@@ -263,7 +263,7 @@ DOI resolver, a survey release) declares each pulled file in
 "listRemoteData": [
   {"sPath": "data/lightcurve.fits",
    "sSourceUrl": "https://archive.example/query?...",
-   "sRetrievedUtc": "", "sSha256": ""}
+   "sDigestBecameCurrentUtc": "", "sSha256": ""}
 ]
 ```
 
@@ -271,7 +271,7 @@ DOI resolver, a survey release) declares each pulled file in
 `saOutputDataFiles` — it is that step's output). `sSourceUrl` is
 inert provenance metadata: vaibify never fetches it. After each
 successful run, vaibify hashes the pulled files and stamps
-`sRetrievedUtc`/`sSha256` when the content changed, so the Project
+`sDigestBecameCurrentUtc`/`sSha256` when the content changed, so the Project
 permanently records what was fetched, from where, and when — even if
 the remote later vanishes or silently changes.
 

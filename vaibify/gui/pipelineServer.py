@@ -146,7 +146,7 @@ class StepUpdateRequest(BaseModel):
     # the third state (undeclared) is inputs empty + flag False.
     bNoInputData: Optional[bool] = None
     # Remote-pull provenance records: {sPath, sSourceUrl,
-    # sRetrievedUtc, sSha256} per pulled file. sSourceUrl is inert
+    # sDigestBecameCurrentUtc, sSha256} per pulled file. sSourceUrl is inert
     # metadata — never fetched, never rendered as a hyperlink.
     listRemoteData: Optional[List[dict]] = None
     saDependencies: Optional[List[str]] = None
