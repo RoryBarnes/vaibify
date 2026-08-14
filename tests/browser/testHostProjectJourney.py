@@ -463,9 +463,10 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
     sat blind until a tab reload. The kill's own success handler must
     resume polling, whichever side of the race won.
 
-    The run's ``started`` event stops polling for real here, exactly
-    as a live run does; the kill is stubbed because its server route
-    is proven elsewhere.
+    Asserted on the poller's OWN state, not on counted network ticks:
+    the counting version was timing-coupled and its mutation SURVIVED
+    on one CI runner, twice, which is how a falsification stops being
+    evidence.
     """
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
@@ -485,32 +486,15 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
         "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'started', sCommand: 'runSelected' })",
     )
-    dictPollCount = {"i": 0}
-    pageDashboard.route(
-        "**/file-status*",
-        lambda routeIntercepted: (
-            dictPollCount.update(i=dictPollCount["i"] + 1),
-            routeIntercepted.continue_(),
-        ),
-    )
-    pageDashboard.wait_for_timeout(4000)
-    iPollsWhileStopped = dictPollCount["i"]
+    assert pageDashboard.evaluate(
+        "() => VaibifyPolling.fbFilePollingActive()",
+    ) is False, "the run's started event did not stop file polling"
 
     pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
     pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
     pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_timeout(9000)
-
-    # STRICTLY more than one new poll: a single straggler tick that
-    # was already scheduled when the stop landed can fire once even
-    # with the resume deleted, and exactly that let the mutation
-    # SURVIVE on one CI shard (2026-08-14). Sustained polling — two or
-    # more ticks across nine seconds — only happens when the resume
-    # actually ran.
-    assert dictPollCount["i"] >= iPollsWhileStopped + 2, (
-        "file polling never resumed after the kill; a mid-run edit "
-        "stays unannounced until the researcher reloads the tab "
-        f"(polls before={iPollsWhileStopped}, after={dictPollCount['i']})"
+    pageDashboard.wait_for_function(
+        "() => VaibifyPolling.fbFilePollingActive()", timeout=7000,
     )
     assert pageDashboard.listPageErrors == []
 
