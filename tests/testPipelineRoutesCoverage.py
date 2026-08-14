@@ -25,7 +25,7 @@ from vaibify.gui.routes.pipelineRoutes import (
     _fbApplyExternalTestResults,
     _fbApplyMarkerCategory,
     _fnEnsureConftestTemplate,
-    _fnMarkPipelineStopped,
+    _fiMarkPipelineStopped,
     _fsetExtractRegisteredTestFiles,
     _fiCountMatchingProcesses,
     _fnKillMatchingProcesses,
@@ -46,7 +46,7 @@ def _frequestBuildStoodDownRequest():
     return SimpleNamespace(app=SimpleNamespace(state=None))
 
 
-# ── Line 73: _fnMarkPipelineStopped when dictState is running ─────
+# ── Line 73: _fiMarkPipelineStopped when dictState is running ─────
 
 class TestFnMarkPipelineStopped:
     """What the stopped-state write DOES; not how it is admitted.
@@ -71,10 +71,49 @@ class TestFnMarkPipelineStopped:
             "vaibify.gui.pipelineState.fdictBuildCompletedState",
             return_value={"bRunning": False},
         ):
-            await _fnMarkPipelineStopped(
+            await _fiMarkPipelineStopped(
                 dictCtx, "cid1", _frequestBuildStoodDownRequest(),
             )
             mockUpdate.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.falsification
+    async def test_the_interrupted_step_is_recorded_stopped(
+        self, monkeypatch,
+    ):
+        """Kills: forgetting which step the stop interrupted.
+
+        When the kill's task-cancellation side wins the race, the run
+        emits no result for its active step, so a step that ran for
+        minutes and was deliberately stopped displayed as never-run
+        (live, twice, 2026-08-14). The stop marker must record the
+        interrupted step as "stopped" in the state it persists AND
+        return its number so the kill response can paint the light.
+        """
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
+        mockDocker = MagicMock()
+        dictCtx = {"docker": mockDocker}
+        dictState = {"bRunning": True, "iActiveStep": 2}
+        with patch(
+            "vaibify.gui.pipelineState.fdictReadReconciledState",
+            new=AsyncMock(return_value=dictState),
+        ), patch(
+            "vaibify.gui.pipelineState.fnUpdateState",
+        ) as mockUpdate, patch(
+            "vaibify.gui.pipelineState.fdictBuildCompletedState",
+            return_value={"bRunning": False},
+        ):
+            iStopped = await _fiMarkPipelineStopped(
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+            )
+        assert iStopped == 2
+        dictPersisted = mockUpdate.call_args[0][2]
+        assert dictPersisted["dictStepResults"]["2"] == {
+            "sStatus": "stopped", "iExitCode": 130,
+        }, (
+            "the interrupted step left no durable record; after a "
+            "reconnect it reads as never-run"
+        )
 
     @pytest.mark.asyncio
     async def test_state_none_returns_early(self, monkeypatch):
@@ -87,7 +126,7 @@ class TestFnMarkPipelineStopped:
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            await _fnMarkPipelineStopped(
+            await _fiMarkPipelineStopped(
                 dictCtx, "cid1", _frequestBuildStoodDownRequest(),
             )
             mockUpdate.assert_not_called()
@@ -103,7 +142,7 @@ class TestFnMarkPipelineStopped:
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            await _fnMarkPipelineStopped(
+            await _fiMarkPipelineStopped(
                 dictCtx, "cid1", _frequestBuildStoodDownRequest(),
             )
             mockUpdate.assert_not_called()
@@ -223,8 +262,11 @@ class TestPipelineKillRoute:
             "vaibify.gui.routes.pipelineRoutes.fdictRequireWorkflow",
             return_value=dictWorkflow,
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped",
-            new=AsyncMock(),
+            "vaibify.gui.routes.pipelineRoutes._fiMarkPipelineStopped",
+            # return_value matters: the route serializes the stopped
+            # step number into its JSON response, and a bare
+            # AsyncMock's MagicMock return recurses the encoder.
+            new=AsyncMock(return_value=0),
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterPipelineKill,

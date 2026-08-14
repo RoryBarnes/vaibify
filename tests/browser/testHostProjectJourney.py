@@ -533,7 +533,7 @@ def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
                 "iStepCount": 2,
                 "dictStepResults": {
                     "1": {"sStatus": "passed", "iExitCode": 0},
-                    "2": {"sStatus": "failed", "iExitCode": -15},
+                    "2": {"sStatus": "stopped", "iExitCode": 130},
                 },
             }),
         ),
@@ -543,9 +543,66 @@ def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
         f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
         timeout=15000,
     )
-    assert "fail" in pageDashboard.get_attribute(
+    assert "stopped" in pageDashboard.get_attribute(
         '.step-item:has-text("Second Stage") .step-status', "class",
-    ), "the killed step's result was not restored"
+    ), "the stopped step's purple light was not restored"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAKillPaintsTheStoppedLight(pageDashboard, serverHub):
+    """Kills: leaving the interrupted step as a hollow never-ran circle.
+
+    When the kill's task-cancellation side wins, the run emits no
+    result for the step it interrupted, so a step that ran for
+    minutes and was deliberately stopped displayed identically to one
+    that never started (live, twice, 2026-08-14). The kill response
+    now names the interrupted step and the dashboard paints it
+    PURPLE 'stopped' — never failure-red (the researcher's stop is
+    not the step failing), never hollow (it did run).
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/pipeline/*/kill",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bSuccess": True,
+                "iProcessesKilled": 1,
+                "bTaskCancelled": True,
+                "iStoppedStepNumber": 2,
+                "listCancellationRefusals": [],
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => {"
+        " VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "   { sType: 'started', sCommand: 'runSelected' });"
+        " VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "   { sType: 'stepStarted', iStepNumber: 2,"
+        "     fWallClockBudgetSeconds: 0.0 }); }",
+    )
+    pageDashboard.wait_for_selector(".step-status.running", timeout=5000)
+
+    pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-status.stopped',
+        timeout=7000,
+    )
+    sClasses = pageDashboard.get_attribute(
+        '.step-item:has-text("Second Stage") .step-status', "class",
+    )
+    assert "fail" not in sClasses, (
+        "the researcher's stop was painted as a failure"
+    )
+    assert pageDashboard.evaluate(
+        "() => !Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+    ), "the running light survived the stop"
     assert pageDashboard.listPageErrors == []
 
 

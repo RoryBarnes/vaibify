@@ -11292,10 +11292,51 @@ def _fdictEntry(sRel):
         old=(
             '                        VaibifyApp'
             '.fnStartFileChangePolling();\n'
-            '                        _fnReportKillOutcome(dictResult);\n'
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
         ),
         new=(
-            '                        _fnReportKillOutcome(dictResult);\n'
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesCoverage.py::'
+            'TestFnMarkPipelineStopped::'
+            'test_the_interrupted_step_is_recorded_stopped'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Forget which step the stop interrupted: no durable record,
+        # so after a reconnect the stopped step reads as never-run.
+        old=(
+            '    iStoppedStepNumber = '
+            'int(dictState.get("iActiveStep") or 0)\n'
+            '    if iStoppedStepNumber >= 1:\n'
+            '        dictState.setdefault("dictStepResults", {})[\n'
+            '            str(iStoppedStepNumber)\n'
+            '        ] = {"sStatus": "stopped", "iExitCode": 130}\n'
+        ),
+        new=(
+            '    iStoppedStepNumber = '
+            'int(dictState.get("iActiveStep") or 0)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAKillPaintsTheStoppedLight'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Ignore the kill response's interrupted step: the researcher
+        # watches their stopped step fall back to a hollow never-ran
+        # circle in the live tab.
+        old=(
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
+        ),
+        new=(
+            '                        if (false) {\n'
         ),
     ),
 ]
