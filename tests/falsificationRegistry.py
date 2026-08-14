@@ -11241,4 +11241,21 @@ def _fdictEntry(sRel):
             '            void dictAction;\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerSweepSparesHostProjects.py::'
+            'testTheSweepSparesAHostProjectAndStillEvictsTheGone'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # Sweep host projects on Docker's running list: a host project
+        # is never a Docker container, so every host session's caches
+        # are evicted ~60 s after it opens, and Run dies with "Not
+        # connected" while the dashboard still renders the project.
+        old=(
+            '    setRunning |= _fsetRegisteredHostResourceKeys(dictCtx)\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
 ]

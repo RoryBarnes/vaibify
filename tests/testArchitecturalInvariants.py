@@ -4339,7 +4339,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-08-08): the poll's repo-file builder asks
     # fbDockerReachable instead of `is None`, so a leg-less
     # connection router reads as daemon-down (host-mode wave 2).
-    "fileStatusManager.py": 2200,
+    # +12 (2026-08-14): the container sweep exempts registered HOST
+    # projects. The running list is Docker's answer and a host project
+    # is never in it, so the sweep evicted every host session's caches
+    # ~60 s after it opened. The exemption lives inside the sweep
+    # coordinator so every caller is covered.
+    "fileStatusManager.py": 2212,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
