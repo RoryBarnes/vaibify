@@ -83,6 +83,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -413,6 +414,24 @@ def fsCreateDisposableWorktree():
     sWorktree = str(
         pathlib.Path(sParent) / ("tree-" + pathlib.Path(sParent).name[-8:])
     )
+    # Retried, boundedly: unique leaf names remove the NAME collision,
+    # but ``git worktree add`` still validates every existing entry in
+    # ``.git/worktrees/``, and a sibling worker's ``worktree remove``
+    # can delete an entry between the reader's listing and its
+    # ``commondir`` read -- "failed to read .../commondir: Success",
+    # observed on CI shard 3, 2026-08-14, with every replayed entry
+    # KILLED. The window is the removal itself, so one short-delay
+    # retry is enough; the final attempt keeps ``check=True`` so a
+    # genuine failure still dies loudly.
+    for _ in range(2):
+        processAdd = subprocess.run(
+            ["git", "worktree", "add", "--detach", "--quiet", sWorktree,
+             "HEAD"],
+            cwd=REPO, capture_output=True,
+        )
+        if processAdd.returncode == 0:
+            return sWorktree
+        time.sleep(0.5)
     subprocess.run(
         ["git", "worktree", "add", "--detach", "--quiet", sWorktree,
          "HEAD"],
