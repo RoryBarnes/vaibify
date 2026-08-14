@@ -479,22 +479,30 @@ def fnSaveStateToContainer(
     and provide no fallback. If step 3 fails, the prior ``state.json``
     is intact and the next save retries cleanly.
     """
+    from .stateWriteLock import fcontextHoldStateWriteLock
     if not sStatePath:
         return
     if sWorkflowKey:
-        # Read-modify-write, not replace: the document is shared with
-        # every other project in this repo, and rebuilding it from the
-        # workflow being saved is what erased them.
-        dictExisting, _sStatus = ftLoadStateWithStatus(
-            connectionDocker, sContainerId, sStatePath,
-        )
-        dictPersisted = fdictInstallWorkflowSection(
-            dictExisting, sWorkflowKey, dict(dictState),
-        )
-    else:
-        dictPersisted = dict(dictState)
+        # Read-modify-write under the cross-process write lock, not
+        # replace: the document is shared with every other project in
+        # this repo, and rebuilding it from the workflow being saved
+        # is what erased them. The lock is held from the read through
+        # the rename so a concurrent cooperative writer (another save,
+        # a completion merge, the CLI) cannot land between them and
+        # have its section dropped by this writer's stale read.
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictExisting, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            dictPersisted = fdictInstallWorkflowSection(
+                dictExisting, sWorkflowKey, dict(dictState),
+            )
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath, dictPersisted,
+            )
+        return
     _fnPersistStateDocument(
-        connectionDocker, sContainerId, sStatePath, dictPersisted,
+        connectionDocker, sContainerId, sStatePath, dict(dictState),
     )
 
 
@@ -563,33 +571,35 @@ def fdictMergeRunResultsIntoState(
                 "not under its project repo"
             ),
         }
-    dictDocument, _sStatus = ftLoadStateWithStatus(
-        connectionDocker, sContainerId, sStatePath,
-    )
-    dictSection = fdictSectionForWorkflow(dictDocument, sWorkflowKey)
-    if dictSection is None:
-        dictSection = fdictBuildEmptyState()
-    dictStepMap = dictSection.setdefault("dictStepState", {})
-    for sStepId, dictRunStats in dictRunDeltaByStepId.items():
-        dictEntry = dictStepMap.get(sStepId)
-        if dictEntry is None:
-            sDirectoryKey = dictStepIdToDirectory.get(sStepId, "")
-            if sDirectoryKey and sDirectoryKey in dictStepMap:
-                dictEntry = dictStepMap.pop(sDirectoryKey)
-            else:
-                dictEntry = {}
-            dictStepMap[sStepId] = dictEntry
-        dictEntry["dictRunStats"] = dictRunStats
-        dictVerification = dictEntry.get("dictVerification")
-        if isinstance(dictVerification, dict):
-            for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
-                dictVerification.pop(sFlag, None)
-    dictPersisted = fdictInstallWorkflowSection(
-        dictDocument, sWorkflowKey, dictSection,
-    )
-    _fnPersistStateDocument(
-        connectionDocker, sContainerId, sStatePath, dictPersisted,
-    )
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+        dictDocument, _sStatus = ftLoadStateWithStatus(
+            connectionDocker, sContainerId, sStatePath,
+        )
+        dictSection = fdictSectionForWorkflow(dictDocument, sWorkflowKey)
+        if dictSection is None:
+            dictSection = fdictBuildEmptyState()
+        dictStepMap = dictSection.setdefault("dictStepState", {})
+        for sStepId, dictRunStats in dictRunDeltaByStepId.items():
+            dictEntry = dictStepMap.get(sStepId)
+            if dictEntry is None:
+                sDirectoryKey = dictStepIdToDirectory.get(sStepId, "")
+                if sDirectoryKey and sDirectoryKey in dictStepMap:
+                    dictEntry = dictStepMap.pop(sDirectoryKey)
+                else:
+                    dictEntry = {}
+                dictStepMap[sStepId] = dictEntry
+            dictEntry["dictRunStats"] = dictRunStats
+            dictVerification = dictEntry.get("dictVerification")
+            if isinstance(dictVerification, dict):
+                for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
+                    dictVerification.pop(sFlag, None)
+        dictPersisted = fdictInstallWorkflowSection(
+            dictDocument, sWorkflowKey, dictSection,
+        )
+        _fnPersistStateDocument(
+            connectionDocker, sContainerId, sStatePath, dictPersisted,
+        )
     return {"bPersisted": True, "sDetail": ""}
 
 

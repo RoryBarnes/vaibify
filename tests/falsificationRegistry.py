@@ -11011,14 +11011,14 @@ def _fdictEntry(sRel):
         # it: the run's stats land, and the attestation the researcher
         # recorded mid-run is silently erased.
         old=(
-            '        dictEntry["dictRunStats"] = dictRunStats\n'
-            '        dictVerification = '
+            '            dictEntry["dictRunStats"] = dictRunStats\n'
+            '            dictVerification = '
             'dictEntry.get("dictVerification")\n'
         ),
         new=(
-            '        dictEntry = {"dictRunStats": dictRunStats}\n'
-            '        dictStepMap[sStepId] = dictEntry\n'
-            '        dictVerification = '
+            '            dictEntry = {"dictRunStats": dictRunStats}\n'
+            '            dictStepMap[sStepId] = dictEntry\n'
+            '            dictVerification = '
             'dictEntry.get("dictVerification")\n'
         ),
     ),
@@ -11113,6 +11113,49 @@ def _fdictEntry(sRel):
             '            VaibifyApp.fnShowToast(\n'
             '                _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateWriteLock.py::'
+            'testTwoConcurrentSaversBothSurvive'
+        ),
+        source='vaibify/gui/stateWriteLock.py',
+        # A lock that never takes the flock: every writer "holds" it
+        # simultaneously, the second writer's read-modify-write lands
+        # inside the first's read-to-write window, and the first's
+        # install erases the second's section.
+        old=(
+            '        fcntl.flock(fileLock, fcntl.LOCK_EX)\n'
+            '        try:\n'
+            '            yield\n'
+            '        finally:\n'
+            '            fcntl.flock(fileLock, fcntl.LOCK_UN)\n'
+        ),
+        new=(
+            '        yield\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateWriteLock.py::'
+            'testTheCompletionMergeContendsOnTheSameLock'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # The completion merge keyed to a lock of its own: it excludes
+        # nothing against a concurrent save of the same document, and
+        # the lost update returns through the run's own writer.
+        old=(
+            '    from .stateWriteLock import fcontextHoldStateWriteLock\n'
+            '    with fcontextHoldStateWriteLock('
+            'sContainerId, sStatePath):\n'
+            '        dictDocument, _sStatus = ftLoadStateWithStatus(\n'
+        ),
+        new=(
+            '    from .stateWriteLock import fcontextHoldStateWriteLock\n'
+            '    with fcontextHoldStateWriteLock('
+            'sContainerId, ""):\n'
+            '        dictDocument, _sStatus = ftLoadStateWithStatus(\n'
         ),
     ),
 ]

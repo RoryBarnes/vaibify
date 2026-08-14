@@ -4453,7 +4453,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module's single responsibility -- and putting it anywhere else
     # would give the document a second author with its own notion of
     # how sections merge.
-    "stateManager.py": 958,
+    # +10 (2026-08-13, slice 2): both writers hold the cross-process
+    # write lock (stateWriteLock) from the read through the rename, so
+    # a concurrent cooperative writer cannot have its section dropped
+    # by a stale read. The lock itself lives in its own module; these
+    # lines are only the two holds.
+    "stateManager.py": 968,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
