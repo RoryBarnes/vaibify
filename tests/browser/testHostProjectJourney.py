@@ -499,11 +499,18 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
     pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
     pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
     pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_timeout(7000)
+    pageDashboard.wait_for_timeout(9000)
 
-    assert dictPollCount["i"] > iPollsWhileStopped, (
+    # STRICTLY more than one new poll: a single straggler tick that
+    # was already scheduled when the stop landed can fire once even
+    # with the resume deleted, and exactly that let the mutation
+    # SURVIVE on one CI shard (2026-08-14). Sustained polling — two or
+    # more ticks across nine seconds — only happens when the resume
+    # actually ran.
+    assert dictPollCount["i"] >= iPollsWhileStopped + 2, (
         "file polling never resumed after the kill; a mid-run edit "
-        "stays unannounced until the researcher reloads the tab"
+        "stays unannounced until the researcher reloads the tab "
+        f"(polls before={iPollsWhileStopped}, after={dictPollCount['i']})"
     )
     assert pageDashboard.listPageErrors == []
 
