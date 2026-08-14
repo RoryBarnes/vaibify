@@ -27,6 +27,8 @@ __all__ = [
     "fsValidateStepName",
     "fnRequireUniqueStepSlug",
     "fbStepDirectoryConforms",
+    "fsDescribeStepIdConflict",
+    "T_RUN_CLEARED_VERIFICATION_FLAGS",
 ]
 
 
@@ -75,6 +77,51 @@ def fsSlugFromStepName(sName):
     return "".join(
         sWord[0].upper() + sWord[1:] for sWord in listWords if sWord
     )
+
+
+def fsDescribeStepIdConflict(dictWorkflow, bRequirePresent=False):
+    """Return a diagnostic when ``sStepId`` cannot serve as identity.
+
+    ``sStepId`` is the merge authority for run-produced state: results
+    are attached to steps by id, never by list position. That is only
+    sound when every id present is a non-empty string and no two steps
+    share one — ``fnEnsureStepIds`` preserves an existing duplicate,
+    and a duplicate lets the last occurrence silently claim both
+    steps' results. Callers on the load and save paths pass
+    ``bRequirePresent=False`` because a legacy file legitimately omits
+    ids (the loader assigns them); callers about to MERGE BY id pass
+    ``True``, because an absent id there means results with no owner.
+
+    Returns ``""`` when ids are usable as identity.
+    """
+    dictSeenAt = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or [],
+    ):
+        if not isinstance(dictStep, dict):
+            continue
+        sStepId = dictStep.get("sStepId")
+        if sStepId is None or sStepId == "":
+            if bRequirePresent:
+                return (
+                    f"Step{iIndex + 1:02d} has no sStepId; run results "
+                    "cannot be attributed by identity"
+                )
+            continue
+        if not isinstance(sStepId, str):
+            return (
+                f"Step{iIndex + 1:02d} has a non-string sStepId "
+                f"({sStepId!r}); step ids must be strings"
+            )
+        if sStepId in dictSeenAt:
+            return (
+                f"Step{dictSeenAt[sStepId] + 1:02d} and "
+                f"Step{iIndex + 1:02d} share sStepId {sStepId!r}; "
+                "step ids must be unique so results and cross-step "
+                "references cannot attach to the wrong step"
+            )
+        dictSeenAt[sStepId] = iIndex
+    return ""
 
 
 def fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sName):
@@ -396,13 +443,20 @@ def _fdictBuildWorkflowVars(dictWorkflow):
     }
 
 
+# Cleared at run start on every step, and cleared again by the
+# completion merge for the steps that EXECUTED — the two sites must
+# agree on what a run invalidates, which is why the tuple has one home.
+T_RUN_CLEARED_VERIFICATION_FLAGS = (
+    "bOutputModified", "listModifiedFiles", "bUpstreamModified",
+)
+
+
 def fnClearOutputModifiedFlags(dictWorkflow):
     """Clear modification flags on all steps before a pipeline run."""
     for dictStep in dictWorkflow.get("listSteps", []):
         dictVerification = dictStep.get("dictVerification", {})
-        dictVerification.pop("bOutputModified", None)
-        dictVerification.pop("listModifiedFiles", None)
-        dictVerification.pop("bUpstreamModified", None)
+        for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
+            dictVerification.pop(sFlag, None)
         dictStep["dictVerification"] = dictVerification
 
 

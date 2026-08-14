@@ -16,10 +16,12 @@ __all__ = [
     "fdictBuildStepStarted",
     "fdictBuildStepResult",
     "fdictBuildCompletedState",
+    "fdictBuildFinalizingState",
     "fdictBuildInteractivePauseState",
     "fdictBuildHeartbeatUpdate",
     "fbHeartbeatIsStale",
     "fdictActiveStepBudgetStatus",
+    "fbWriteStateAcknowledged",
     "fnWriteState",
     "fnUpdateState",
     "fnRecordStepResult",
@@ -97,7 +99,9 @@ def fsStatePathFor(sResourceId):
     )
 
 
-def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
+def fdictBuildInitialState(
+    sAction, sLogPath, iStepCount, iRunnerPid=0, sWorkflowPath="",
+):
     """Build the initial state dictionary when a pipeline starts.
 
     The ``iRunnerPid``/``sLastHeartbeat``/``sFailureReason`` triple is the
@@ -105,11 +109,18 @@ def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
     updates ``sLastHeartbeat`` from a daemon thread; the poll endpoint
     reconciles ``bRunning`` to ``False`` and stamps ``sFailureReason`` if
     the heartbeat is older than the staleness window.
+
+    ``sWorkflowPath`` is the run's workflow IDENTITY, carried so that a
+    terminal or reconciled state names which workflow it belongs to — a
+    container can host several, and workflow A's failure must not
+    surface on workflow B's dashboard.
     """
     return {
         "bRunning": True,
         "sAction": sAction,
         "sLogPath": sLogPath,
+        "sWorkflowPath": sWorkflowPath,
+        "sPhase": "running",
         "sStartTime": datetime.now(timezone.utc).isoformat(),
         "sEndTime": "",
         "iExitCode": -1,
@@ -152,11 +163,24 @@ def fdictBuildStepResult(iStepNumber, sStatus, iExitCode=0):
     }
 
 
+def fdictBuildFinalizingState():
+    """Return a partial update marking the run's finalizing phase.
+
+    Written BEFORE the completion metadata commit is attempted, so a
+    crash or write failure during finalization leaves a durable state
+    that still says running/finalizing — which the stale-heartbeat
+    reconciliation then reports as a failure, instead of the dashboard
+    reading a clean completion that never durably happened.
+    """
+    return {"sPhase": "finalizing"}
+
+
 def fdictBuildCompletedState(iExitCode):
     """Return a partial update dict for pipeline completion."""
     return {
         "bRunning": False,
         "bInteractivePause": False,
+        "sPhase": "terminal",
         "iActiveStep": -1,
         "iExitCode": iExitCode,
         "sEndTime": datetime.now(timezone.utc).isoformat(),
@@ -200,23 +224,51 @@ def fnWriteState(connectionDocker, sContainerId, dictState):
     thread and inside a carrier worker, where raising would poison a
     journal record over a state file.
     """
+    if not fbWriteStateAcknowledged(
+        connectionDocker, sContainerId, dictState,
+    ):
+        _loggerState.warning(
+            "pipeline state write for %s did not land; the last "
+            "successful write is still on disk", sContainerId,
+        )
+
+
+def fbWriteStateAcknowledged(connectionDocker, sContainerId, dictState):
+    """Write the state atomically; True only when the rename landed.
+
+    The failable path the terminal flush needs: :func:`fnWriteState`
+    reports failure at warning volume because its callers run inside
+    carrier workers where raising poisons a journal record, but the
+    run's FINAL state transition must not be presumed durable — a
+    completion whose write silently vanished leaves the dashboard
+    showing a pipeline running forever, or worse, this run's results
+    attributed to the next poll's reconciliation.
+    """
     sContent = json.dumps(dictState, indent=2)
     sStatePath = fsStatePathFor(sContainerId)
     sTempPath = fsBuildUniqueTemporaryPath(sStatePath)
     sQuotedTempPath = fsShellQuote(sTempPath)
-    connectionDocker.fnWriteFile(
-        sContainerId, sTempPath, sContent.encode("utf-8")
-    )
-    iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        f"mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || "
-        f"{{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}",
-    )
+    try:
+        connectionDocker.fnWriteFile(
+            sContainerId, sTempPath, sContent.encode("utf-8")
+        )
+        iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId,
+            f"mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || "
+            f"{{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}",
+        )
+    except Exception as error:
+        _loggerState.warning(
+            "pipeline state write to %s raised: %s", sStatePath, error,
+        )
+        return False
     if iExit != 0:
         _loggerState.warning(
             "pipeline state rename to %s failed (exit %d): %s",
             sStatePath, iExit, sOutput,
         )
+        return False
+    return True
 
 
 def fnUpdateState(connectionDocker, sContainerId, dictState, dictUpdate):
@@ -589,6 +641,22 @@ async def fdictReadReconciledState(
 
 _SENTINEL_WRITE = object()
 _SENTINEL_SHUTDOWN = object()
+# One acknowledged terminal flush retries the write this many times
+# before answering its waiter with failure.
+_I_ACKNOWLEDGED_FLUSH_ATTEMPTS = 3
+
+
+class _AcknowledgedFlushRequest:
+    """A queue item whose persist is answered, not fire-and-forget.
+
+    Rides the writer thread's own queue so the terminal write keeps
+    the single-writer ordering; the waiter blocks on ``eventDone``
+    and reads ``bLanded`` for the truth.
+    """
+
+    def __init__(self):
+        self.eventDone = threading.Event()
+        self.bLanded = False
 _SENTINEL_FLUSH = object()
 _F_STEP_RESULT_DEBOUNCE = 1.0
 
@@ -659,6 +727,77 @@ class StateWriter:
         with self.lockState:
             fnAppendOutput(self.dictState, sLine)
 
+    def fnEnqueueStepStats(self, iStepNumber, dictRunStats):
+        """Record one executed step's run statistics in the state.
+
+        This is the durable record of WHICH steps this run executed
+        and what they measured: completion reads it back to build the
+        per-step delta it merges into ``.vaibify/state.json``, keyed by
+        the run's own workflow snapshot. It rides the state dict so a
+        crash mid-run leaves the executed prefix inspectable. No
+        immediate persist — the step's own result event flushes
+        moments later.
+        """
+        with self.lockState:
+            self.dictState.setdefault("dictStepStats", {})[
+                str(iStepNumber)
+            ] = dictRunStats
+
+    def fbFlushTerminalStateAcknowledged(
+        self, dictTerminalUpdate, fTimeoutSeconds=120.0,
+    ):
+        """Merge the terminal update and persist it, acknowledged.
+
+        The write itself is performed BY THE WRITER THREAD, through a
+        result-carrying request on the same queue every other persist
+        rides. The first version of this method wrote synchronously
+        from the caller's thread, which broke the single-writer
+        ordering: the writer thread could snapshot a pre-terminal
+        (still-running) state, stall, and land its atomic rename
+        AFTER the terminal write — so the run's FINAL durable state
+        said running, and the next dashboard poll lit a phantom
+        running marker for a finished run. Caught by
+        ``testStoppingTasksDoesNotUnRunAFinishedStep`` under
+        full-suite load, 2026-08-13.
+
+        The writer thread's ordinary persists swallow failures, which
+        is right for a mid-run heartbeat and wrong for the run's final
+        transition: this request is retried bounded and answered
+        honestly. On failure the terminal fields are REVERTED in
+        memory, so the shutdown drain re-persists the prior
+        running/finalizing state — the durable record then still says
+        the run never cleanly ended, and the stale-heartbeat
+        reconciliation reports the failure instead of a clean
+        completion nobody actually recorded. A timed-out wait counts
+        as failure; the timeout exists so a wedged container cannot
+        hang finalization forever.
+        """
+        with self.lockState:
+            dictPriorFields = {
+                sKey: self.dictState.get(sKey)
+                for sKey in dictTerminalUpdate
+            }
+            self.dictState.update(dictTerminalUpdate)
+        self._fnCancelDebounceTimer()
+        requestFlush = _AcknowledgedFlushRequest()
+        if self.threadWriter.is_alive():
+            self.queueWrites.put(requestFlush)
+            bLanded = (
+                requestFlush.eventDone.wait(fTimeoutSeconds)
+                and requestFlush.bLanded
+            )
+        else:
+            # No writer thread means no concurrent writer to order
+            # against — a caller that never started the thread (or
+            # already stopped it) is served inline rather than left
+            # waiting on a queue nobody drains.
+            self._fnPersistSnapshot([requestFlush])
+            bLanded = requestFlush.bLanded
+        if not bLanded:
+            with self.lockState:
+                self.dictState.update(dictPriorFields)
+        return bLanded
+
     def fnStop(self):
         """Signal the writer to drain and exit, then join with no timeout."""
         self.eventStop.set()
@@ -716,42 +855,78 @@ class StateWriter:
             self.bStepResultPending = False
 
     def _fnRunWriter(self):
-        """Consume the queue; coalesce bursts; write each snapshot."""
+        """Consume the queue; coalesce bursts; write each snapshot.
+
+        Acknowledged-flush requests ride the SAME queue as ordinary
+        write sentinels, so every persist — heartbeat, step result,
+        terminal — is ordered by this one thread. A batch that
+        contains an acknowledged request is written through the
+        failable path with bounded retry, and every request in the
+        batch is answered with the outcome; snapshots always reflect
+        the full current state, so one write satisfies the whole
+        coalesced batch.
+        """
         while True:
             item = self.queueWrites.get()
-            if item is _SENTINEL_SHUTDOWN:
+            listBatch = [item] + self._flistDrainPending()
+            listAcknowledged = [
+                requestPending for requestPending in listBatch
+                if isinstance(requestPending, _AcknowledgedFlushRequest)
+            ]
+            bShutdown = _SENTINEL_SHUTDOWN in listBatch
+            if len(listBatch) > (1 if bShutdown else 0):
+                self._fnPersistSnapshot(listAcknowledged)
+            if bShutdown:
+                # A separate FINAL persist, deliberately: a batch whose
+                # (unacknowledged) write failed would otherwise be the
+                # run's last word, and the terminal state would be
+                # whatever the previous successful write happened to
+                # carry.
                 self._fnFlushPendingWrites()
                 return
-            self._fnDrainCoalesced()
-            self._fnPersistSnapshot()
 
-    def _fnDrainCoalesced(self):
-        """Pull any other pending write tokens without blocking."""
+    def _flistDrainPending(self):
+        """Pull every pending queue item without blocking."""
+        listPending = []
         while True:
             try:
-                item = self.queueWrites.get_nowait()
+                listPending.append(self.queueWrites.get_nowait())
             except queue.Empty:
-                return
-            if item is _SENTINEL_SHUTDOWN:
-                self.queueWrites.put(_SENTINEL_SHUTDOWN)
-                return
+                return listPending
 
     def _fnFlushPendingWrites(self):
         """On shutdown, write one final snapshot reflecting all updates."""
-        self._fnPersistSnapshot()
+        self._fnPersistSnapshot([])
 
-    def _fnPersistSnapshot(self):
-        """Snapshot under lock; persist outside it; log on failure."""
+    def _fnPersistSnapshot(self, listAcknowledged=None):
+        """Snapshot under lock; persist outside it.
+
+        Without acknowledged requests, a failure is logged and life
+        goes on — right for a heartbeat, whose next tick retries.
+        With them, the write is retried bounded and each request is
+        answered with the truth before its waiter proceeds.
+        """
         with self.lockState:
             dictSnapshot = _fdictDeepCopyState(self.dictState)
-        try:
-            fnWriteState(
+        if not listAcknowledged:
+            if not fbWriteStateAcknowledged(
                 self.connectionDocker, self.sContainerId, dictSnapshot,
-            )
-        except Exception as error:
-            _loggerState.warning(
-                "pipeline state write failed: %s", error,
-            )
+            ):
+                _loggerState.warning(
+                    "pipeline state write failed; the next update "
+                    "will retry",
+                )
+            return
+        bLanded = False
+        for _ in range(_I_ACKNOWLEDGED_FLUSH_ATTEMPTS):
+            if fbWriteStateAcknowledged(
+                self.connectionDocker, self.sContainerId, dictSnapshot,
+            ):
+                bLanded = True
+                break
+        for requestFlush in listAcknowledged:
+            requestFlush.bLanded = bLanded
+            requestFlush.eventDone.set()
 
 
 def _fdictDeepCopyState(dictState):
@@ -760,6 +935,9 @@ def _fdictDeepCopyState(dictState):
     dictResults = dictState.get("dictStepResults")
     if isinstance(dictResults, dict):
         dictSnapshot["dictStepResults"] = dict(dictResults)
+    dictStats = dictState.get("dictStepStats")
+    if isinstance(dictStats, dict):
+        dictSnapshot["dictStepStats"] = dict(dictStats)
     listOutput = dictState.get("listRecentOutput")
     if isinstance(listOutput, list):
         dictSnapshot["listRecentOutput"] = list(listOutput)

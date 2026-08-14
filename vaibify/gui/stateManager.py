@@ -51,6 +51,7 @@ __all__ = [
     "fnAppendQuarantineRecord",
     "fdictSectionForWorkflow",
     "fdictLoadStateFromContainer",
+    "fdictMergeRunResultsIntoState",
     "fnEnsureVaibifyGitignore",
     "fnMergeStateIntoWorkflow",
     "fnSaveStateToContainer",
@@ -492,6 +493,22 @@ def fnSaveStateToContainer(
         )
     else:
         dictPersisted = dict(dictState)
+    _fnPersistStateDocument(
+        connectionDocker, sContainerId, sStatePath, dictPersisted,
+    )
+
+
+def _fnPersistStateDocument(
+    connectionDocker, sContainerId, sStatePath, dictPersisted,
+):
+    """Write a full state document atomically with a checkpoint.
+
+    The shared write tail of :func:`fnSaveStateToContainer` and
+    :func:`fdictMergeRunResultsIntoState` — the second reads the
+    document itself before merging, and re-reading it inside the save
+    would widen the window in which a concurrent writer's section is
+    read stale.
+    """
     dictPersisted["sLastUpdated"] = _fsCurrentUtcIso()
     sJson = json.dumps(dictPersisted, indent=2) + "\n"
     sTempPath = _fsTmpPathFor(sStatePath)
@@ -505,6 +522,75 @@ def fnSaveStateToContainer(
     _fnAtomicInstallTempFile(
         connectionDocker, sContainerId, sTempPath, sStatePath,
     )
+
+
+def fdictMergeRunResultsIntoState(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey,
+    dictRunDeltaByStepId, dictStepIdToDirectory,
+):
+    """Merge a run's per-step results into a freshly loaded document.
+
+    The completion writer for D2: the run's in-memory workflow is a
+    SNAPSHOT from dispatch time, so nothing from it may be written
+    wholesale — a researcher's mid-run edit or attestation would be
+    destroyed. Instead the run's delta — ``{sStepId: dictRunStats}``
+    for the steps that actually EXECUTED — is applied entry-by-entry
+    into the document read from disk NOW. Within each entry only
+    ``dictRunStats`` is replaced and the run-invalidated modification
+    flags are cleared; a ``dictVerification`` the researcher updated
+    mid-run survives untouched.
+
+    ``dictStepIdToDirectory`` maps each delta id to the run's directory
+    for that step, so an entry persisted under the pre-id directory key
+    is migrated to its id key rather than forked.
+
+    Returns ``{"bPersisted": bool, "sDetail": str}``. Refusals name
+    their reason; the caller surfaces it on the terminal event rather
+    than raising, because this runs inside a carrier worker where an
+    expected failure must not poison the journal record.
+    """
+    from .pipelineUtils import T_RUN_CLEARED_VERIFICATION_FLAGS
+    if not sStatePath:
+        return {
+            "bPersisted": False,
+            "sDetail": "no project repo; run results were not recorded",
+        }
+    if not sWorkflowKey:
+        return {
+            "bPersisted": False,
+            "sDetail": (
+                "cannot attribute run results: the project file is "
+                "not under its project repo"
+            ),
+        }
+    dictDocument, _sStatus = ftLoadStateWithStatus(
+        connectionDocker, sContainerId, sStatePath,
+    )
+    dictSection = fdictSectionForWorkflow(dictDocument, sWorkflowKey)
+    if dictSection is None:
+        dictSection = fdictBuildEmptyState()
+    dictStepMap = dictSection.setdefault("dictStepState", {})
+    for sStepId, dictRunStats in dictRunDeltaByStepId.items():
+        dictEntry = dictStepMap.get(sStepId)
+        if dictEntry is None:
+            sDirectoryKey = dictStepIdToDirectory.get(sStepId, "")
+            if sDirectoryKey and sDirectoryKey in dictStepMap:
+                dictEntry = dictStepMap.pop(sDirectoryKey)
+            else:
+                dictEntry = {}
+            dictStepMap[sStepId] = dictEntry
+        dictEntry["dictRunStats"] = dictRunStats
+        dictVerification = dictEntry.get("dictVerification")
+        if isinstance(dictVerification, dict):
+            for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
+                dictVerification.pop(sFlag, None)
+    dictPersisted = fdictInstallWorkflowSection(
+        dictDocument, sWorkflowKey, dictSection,
+    )
+    _fnPersistStateDocument(
+        connectionDocker, sContainerId, sStatePath, dictPersisted,
+    )
+    return {"bPersisted": True, "sDetail": ""}
 
 
 def _fnCheckpointPriorState(
@@ -594,8 +680,14 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
         dictState = dictSection if dictSection is not None else {}
     dictStepState = dictState.get("dictStepState", {}) or {}
     for dictStep in dictWorkflow.get("listSteps", []):
-        sDirectory = dictStep.get("sDirectory", "")
-        dictForStep = dictStepState.get(sDirectory, {})
+        # Sections are keyed by the stable step id; a directory key is
+        # the pre-id shape, still readable so state written before the
+        # id keying survives a load. The id is tried first because a
+        # rename changes the directory and must not orphan the entry.
+        dictForStep = dictStepState.get(
+            dictStep.get("sStepId", ""),
+            dictStepState.get(dictStep.get("sDirectory", ""), {}),
+        )
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictForStep:
                 dictStep[sKey] = dictForStep[sKey]
@@ -616,14 +708,19 @@ def ftSplitMergedDict(dictWorkflow):
     dictDeclarative.pop("sProjectRepoPath", None)
     dictStepState = {}
     for dictStep in dictDeclarative.get("listSteps", []):
-        sDirectory = dictStep.get("sDirectory", "")
+        # Keyed by the stable step id so a rename mid-run cannot fork
+        # the entry; the directory is the pre-id fallback for a step
+        # that somehow has no id (the save path ensures ids first).
+        sStateKey = dictStep.get("sStepId") or dictStep.get(
+            "sDirectory", "",
+        )
         dictExtracted = {}
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictStep:
                 dictExtracted[sKey] = dictStep.pop(sKey)
         dictStep.pop("sLabel", None)
-        if dictExtracted and sDirectory:
-            dictStepState[sDirectory] = dictExtracted
+        if dictExtracted and sStateKey:
+            dictStepState[sStateKey] = dictExtracted
     dictState = fdictBuildEmptyState()
     dictState["dictStepState"] = dictStepState
     for sKey in T_STATEFUL_TOP_FIELDS:
@@ -742,13 +839,16 @@ def fdictBootstrapStateFromMarkers(
         listAllOutputs, sProjectRepoPath,
     )
     dictStepState = {}
-    for sDirectory, dictMarker in listMarkers:
+    for dictStep, dictMarker in listMarkers:
         if dictMarker is None:
             continue
         dictVerification = _fdictVerificationFromMarker(
             dictMarker, dictOnDiskHashes,
         )
-        dictStepState[sDirectory] = {
+        sStateKey = dictStep.get("sStepId") or dictStep.get(
+            "sDirectory", "",
+        )
+        dictStepState[sStateKey] = {
             "dictVerification": dictVerification,
             "dictRunStats": {},
         }
@@ -761,12 +861,15 @@ def _flistFetchMarkers(
     connectionDocker, sContainerId, sProjectRepoPath,
     sWorkflowSlug, listSteps,
 ):
-    """Return ``[(sDirectory, dictMarker_or_None), ...]`` for every step.
+    """Return ``[(dictStep, dictMarker_or_None), ...]`` for every step.
 
     Marker filenames use the canonical ``fsMarkerNameFromStepDirectory``
     encoding (slashes → underscores) so a nested step directory like
     ``Step01/sub`` resolves to the same ``Step01_sub.json`` the conftest
-    writes — never a literal ``Step01/sub.json``.
+    writes — never a literal ``Step01/sub.json``. The step dict itself
+    rides along because the caller keys the synthesized state by the
+    step's stable id, while the marker file on disk is named by
+    directory.
     """
     from .fileStatusManager import fsMarkerNameFromStepDirectory
     listResult = []
@@ -782,7 +885,7 @@ def _flistFetchMarkers(
         dictMarker = _fdictReadMarker(
             connectionDocker, sContainerId, sMarkerPath,
         )
-        listResult.append((sDirectory, dictMarker))
+        listResult.append((dictStep, dictMarker))
     return listResult
 
 

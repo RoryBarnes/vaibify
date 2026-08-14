@@ -112,7 +112,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 289 -> 288: the Files tab's and the Logs list's directory listing.
 # One `find -printf` exec row went, two typed-read rows arrived, and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 288
+I_UNCLASSIFIED_ROW_BUDGET = 287
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -169,7 +169,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 288
 # on 2026-08-06 when `scan-scripts` shed it -- fixing that instance
 # did not fix the class, and this copy went on silently reporting a
 # populated host project as an empty directory for two more months.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 204
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 203
 
 
 # Every acquisition of a declared capability that still has no reviewed

@@ -121,6 +121,7 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
                 _fsCompletedToast(dictEvent.sCommand), "success");
+            _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             _fnOfferCommitIfRemoteDataPulled();
@@ -131,6 +132,7 @@ var VaibifyPipelineRunner = (function () {
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")",
                 "error"
             );
+            _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             // A later step failing does not un-pull the data: the
@@ -153,6 +155,22 @@ var VaibifyPipelineRunner = (function () {
         } else if (dictEvent.sType === "interactiveTerminalStart") {
             fnRunInteractiveInTerminal(dictEvent);
         }
+    }
+
+    function _fnWarnIfRunMetadataUnrecorded(dictEvent) {
+        /* The run itself finished as reported; what failed is the
+           RECORDING of its results. Silence here would suppress a
+           degraded state the researcher needs to know about — the
+           step lights on screen are live, but a reload would show
+           stale statistics and verification flags. */
+        if (dictEvent.bRunMetadataPersisted !== false) return;
+        VaibifyApp.fnShowToast(
+            "The run finished, but recording its results failed" +
+            (dictEvent.sRunMetadataDetail
+                ? ": " + dictEvent.sRunMetadataDetail
+                : ".") +
+            " Statistics shown after a reload may be stale.",
+            "warning");
     }
 
     function fnSendPipelineAction(dictAction) {

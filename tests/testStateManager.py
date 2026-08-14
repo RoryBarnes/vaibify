@@ -650,8 +650,11 @@ def test_save_split_workflow_json_carries_no_stateful_fields():
         ".vaibify/workflows/w.json"
     ]
     assert dictSection["bArchiveTrackingMigrated"] is True
+    # Step entries are keyed by the stable sStepId (assigned on this
+    # save by fnEnsureStepIds — the slug of the name "A"), never the
+    # directory: a rename must not fork the entry.
     assert (
-        dictSection["dictStepState"]["A"]
+        dictSection["dictStepState"]["a"]
         ["dictVerification"]["sUser"] == "passed"
     )
     assert "dictStepState" not in dictStateWritten, (

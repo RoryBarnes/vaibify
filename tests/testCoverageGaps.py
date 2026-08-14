@@ -950,8 +950,9 @@ def test_flistPreflightValidate_skips_disabled(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bRunEnabled": False},
-            {"sName": "B", "bRunEnabled": True, "sDirectory": "/w"},
+            {"sStepId": "a", "sName": "A", "bRunEnabled": False},
+            {"sStepId": "b", "sName": "B", "bRunEnabled": True,
+             "sDirectory": "/w"},
         ]
     }
     listErrors = _fnRunAsync(_flistPreflightValidate(
@@ -971,8 +972,10 @@ def test_flistPreflightValidate_skips_before_start(
     mockDocker = _fMockDocker()
     dictWorkflow = {
         "listSteps": [
-            {"sName": "A", "bRunEnabled": True, "sDirectory": "/a"},
-            {"sName": "B", "bRunEnabled": True, "sDirectory": "/b"},
+            {"sStepId": "a", "sName": "A", "bRunEnabled": True,
+             "sDirectory": "/a"},
+            {"sStepId": "b", "sName": "B", "bRunEnabled": True,
+             "sDirectory": "/b"},
         ]
     }
     _fnRunAsync(_flistPreflightValidate(

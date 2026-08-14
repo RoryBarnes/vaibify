@@ -235,6 +235,20 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
         serverHub.sHome, S_HOST_PROJECT_READY, ".vaibify", "logs",
     )
     _fnWaitForAnyLog(sLogsDirectory)
+    # Wait for the run to actually END, not merely for its output to
+    # exist. The file appears while the server is still FINALIZING
+    # (state merge, acknowledged terminal flush), and a test that
+    # returns inside that window leaves a bRunning=true state behind
+    # for the NEXT test's recovery poll to find — which is exactly how
+    # the stop test intermittently saw a phantom "running" light under
+    # full-suite load. The terminal event that clears the light is
+    # emitted only after the terminal state is durably flushed, so
+    # this wait is also the proof the run's state settled.
+    pageDashboard.wait_for_function(
+        "() => !Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+        timeout=30000,
+    )
 
 
 def _fnWaitForAnyLog(sLogsDirectory, fTimeoutSeconds=20.0):
@@ -368,8 +382,23 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
     The kill POST is answered here rather than served: what is under
     test is what the dashboard does with a success, and the route that
     produces one is driven against real processes in
-    ``tests/testHostCancel.py``.
+    ``tests/testHostCancel.py``. The state poll is stubbed not-running
+    for the same reason: this test's subject is the KILL handler, and
+    the injected step lights are fixture state no server run backs —
+    a neighbouring test's still-finalizing run once answered the
+    recovery poll with bRunning=true and repainted step 0 "running"
+    mid-test, which failed this test for a reason that had nothing to
+    do with stopping (full-suite runs, 2026-08-13; recovery has its
+    own tests).
     """
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"bRunning": False}),
+        ),
+    )
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
         "**/api/pipeline/*/kill",
@@ -404,4 +433,51 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
         "() => Array.from(document.querySelectorAll('.step-status'))"
         ".some(el => el.classList.contains('running'))",
     ) is False, "the stop left a running light on"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testADegradedCompletionIsNotReportedClean(pageDashboard, serverHub):
+    """Kills: swallowing ``bRunMetadataPersisted: false`` on completion.
+
+    Completion is state-only, and the backend reports honestly when
+    recording the run's results FAILED — the run itself finished, but
+    a reload would show stale statistics. A dashboard that shows only
+    the success toast suppresses a degraded state, which the
+    ground-truth rule forbids. The clean completion is asserted
+    beside it, because a warning that fires on every completion would
+    train the researcher to ignore it.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'completed', iExitCode: 0, sLogPath: '',"
+        " bRunMetadataPersisted: false,"
+        " sRunMetadataDetail: 'no project repo' })",
+    )
+    sToasts = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "recording its results failed" in sToasts, (
+        "the backend said the run's results were not recorded and the "
+        "dashboard reported a clean completion"
+    )
+    pageDashboard.evaluate(
+        "() => document.querySelectorAll('.toast')"
+        ".forEach(el => el.remove())",
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
+        " sType: 'completed', iExitCode: 0, sLogPath: '',"
+        " bRunMetadataPersisted: true })",
+    )
+    sToastsClean = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".map(el => el.textContent).join(' | ')",
+    )
+    assert "recording its results failed" not in sToastsClean, (
+        "a clean completion warned anyway; a warning that always fires "
+        "is one the researcher learns to ignore"
+    )
     assert pageDashboard.listPageErrors == []

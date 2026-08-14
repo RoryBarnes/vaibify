@@ -195,7 +195,10 @@ def test_state_writer_logs_and_continues_on_write_failure(caplog):
         time.sleep(0.1)
         stateWriter.fnEnqueueUpdate({"iActiveStep": 2})
         stateWriter.fnStop()
-    assert any("state write failed" in rec.message
+    # The failure surfaces from the acknowledged-write layer now
+    # ("pipeline state write to ... raised") with the writer adding
+    # that the last successful write is still on disk.
+    assert any("pipeline state write" in rec.message
                for rec in caplog.records)
     dictRead = _fdictLatestState(mockDocker, "ctr1")
     assert dictRead["iActiveStep"] == 2

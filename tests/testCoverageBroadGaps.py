@@ -1416,25 +1416,10 @@ class TestPipelineRunnerHelpers:
         assert dictContext["sResponse"] == "resume"
         assert dictContext["eventResume"].is_set()
 
-    def test_fnSaveWorkflowStats_handles_error(self):
-        from vaibify.gui.pipelineRunner import _fnSaveWorkflowStats
-        mockDocker = MagicMock()
-        mockDocker.fnWriteFile.side_effect = RuntimeError("write error")
-        _fnSaveWorkflowStats(
-            mockDocker, "ctn1", {"listSteps": []}, "/w.yaml"
-        )
-
-    def test_fnSaveWorkflowStats_writes_json(self):
-        from vaibify.gui.pipelineRunner import _fnSaveWorkflowStats
-        mockDocker = MagicMock()
-        dictWorkflow = {"listSteps": [{"sName": "Build"}]}
-        _fnSaveWorkflowStats(
-            mockDocker, "ctn1", dictWorkflow, "/w.yaml"
-        )
-        mockDocker.fnWriteFile.assert_called_once()
-        baWritten = mockDocker.fnWriteFile.call_args[0][2]
-        dictParsed = json.loads(baWritten.decode("utf-8"))
-        assert dictParsed["listSteps"][0]["sName"] == "Build"
+    # ``test_fnSaveWorkflowStats_*`` were retired WITH their mechanism:
+    # the end-of-run whole-workflow write over project.json was the D2
+    # edit-destroying defect, and completion is now state-only. Its
+    # replacement is driven in tests/testCompletionIsStateOnly.py.
 
 
 # ``TestPipelineServerDirectoryParsing`` was retired with its mechanism:

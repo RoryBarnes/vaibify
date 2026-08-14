@@ -40,8 +40,15 @@ def _fdictBuildTestWorkflow(listSteps):
 
 
 def _fdictBuildTestStep(sName, sDirectory, listCommands=None):
-    """Build a minimal step dict."""
+    """Build a minimal step dict.
+
+    ``sStepId`` is present because preflight fails closed without one:
+    the id is the identity completion attaches run results to, and the
+    production dispatch path always arrives through the loader, which
+    ensures ids.
+    """
     return {
+        "sStepId": sName.lower(),
         "sName": sName,
         "sDirectory": sDirectory,
         "bRunEnabled": True,

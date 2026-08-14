@@ -10969,4 +10969,150 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testAnExternalEditToProjectJsonSurvivesCompletion'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # The shipped D2 defect, restored: completion writes the run's
+        # whole in-memory snapshot over project.json, destroying any
+        # edit the reload detector accepted mid-run.
+        old=(
+            '    if sWorkflowPath:\n'
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState,'
+            ' dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+        new=(
+            '    if sWorkflowPath:\n'
+            '        import json as _json\n'
+            '        connectionDocker.fnWriteFile(\n'
+            '            sContainerId, sWorkflowPath,\n'
+            '            _json.dumps(dictWorkflow, indent=2)'
+            '.encode("utf-8"),\n'
+            '        )\n'
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState,'
+            ' dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testTheMergePreservesAMidRunAttestation'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Replace the fresh entry wholesale instead of merging into
+        # it: the run's stats land, and the attestation the researcher
+        # recorded mid-run is silently erased.
+        old=(
+            '        dictEntry["dictRunStats"] = dictRunStats\n'
+            '        dictVerification = '
+            'dictEntry.get("dictVerification")\n'
+        ),
+        new=(
+            '        dictEntry = {"dictRunStats": dictRunStats}\n'
+            '        dictStepMap[sStepId] = dictEntry\n'
+            '        dictVerification = '
+            'dictEntry.get("dictVerification")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testADuplicateStepIdRefusesTheMergeWithoutWriting'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Merge by id without proving ids are identity: with a
+        # duplicate, the delta attaches one step's results to whichever
+        # occurrence wins.
+        old=(
+            '        if sIdConflict:\n'
+            '            return {\n'
+            '                "bPersisted": False,\n'
+            '                "sDetail": f"run results not recorded: '
+            '{sIdConflict}",\n'
+            '            }\n'
+        ),
+        new=(
+            '        if sIdConflict:\n'
+            '            sIdConflict = ""\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testADuplicateStepIdRefusesTheRun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Let a duplicate-id workflow run: the completion merge must
+        # refuse it anyway, so the run computes for hours and its
+        # results cannot be attributed.
+        old=(
+            '    listErrors = []\n'
+            '    sIdConflict = fsDescribeStepIdConflict(\n'
+            '        dictWorkflow, bRequirePresent=True,\n'
+            '    )\n'
+            '    if sIdConflict:\n'
+        ),
+        new=(
+            '    listErrors = []\n'
+            '    sIdConflict = ""\n'
+            '    if sIdConflict:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCompletionIsStateOnly.py::'
+            'testAFailedTerminalFlushIsReported'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Presume the terminal write landed: the acknowledged flush
+        # answers its waiter with success it never verified, the
+        # terminal fields stay merged, and a later drain can install a
+        # terminal state nobody proved durable.
+        old=(
+            '        bLanded = False\n'
+            '        for _ in range(_I_ACKNOWLEDGED_FLUSH_ATTEMPTS):\n'
+            '            if fbWriteStateAcknowledged(\n'
+            '                self.connectionDocker, self.sContainerId,'
+            ' dictSnapshot,\n'
+            '            ):\n'
+            '                bLanded = True\n'
+            '                break\n'
+        ),
+        new=(
+            '        bLanded = True\n'
+            '        fbWriteStateAcknowledged(\n'
+            '            self.connectionDocker, self.sContainerId,'
+            ' dictSnapshot,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testADegradedCompletionIsNotReportedClean'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Drop the degraded-persistence warning from the completed
+        # branch: the backend says the run's results were not
+        # recorded, and the dashboard shows only the success toast.
+        old=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                _fsCompletedToast(dictEvent.sCommand),'
+            ' "success");\n'
+            '            _fnWarnIfRunMetadataUnrecorded(dictEvent);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                _fsCompletedToast(dictEvent.sCommand),'
+            ' "success");\n'
+        ),
+    ),
 ]

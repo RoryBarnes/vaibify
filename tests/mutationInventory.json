@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 329,
+  "iRowCount": 328,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -4251,32 +4251,6 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineLogger.py",
-      "sFingerprint": "9fca0d7b5d55a6a2",
-      "sFunction": "_fnSaveWorkflowStats",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -4656,6 +4630,58 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineState.py",
+      "sFingerprint": "3e360853fe1bd013",
+      "sFunction": "fbWriteStateAcknowledged",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineState.py",
+      "sFingerprint": "bcece02a6d967e67",
+      "sFunction": "fbWriteStateAcknowledged",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -4699,58 +4725,6 @@
       "sFile": "gui/pipelineState.py",
       "sFingerprint": "d90a31a95258f9e9",
       "sFunction": "fnClearState",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "6b37e4f5528d7f8d",
-      "sFunction": "fnWriteState",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "c3a480391980bcc4",
-      "sFunction": "fnWriteState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -7163,6 +7137,32 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/stateManager.py",
+      "sFingerprint": "275d04e8ccefe6c0",
+      "sFunction": "_fnPersistStateDocument",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -7247,32 +7247,6 @@
       "sFile": "gui/stateManager.py",
       "sFingerprint": "42cc02c412709790",
       "sFunction": "fnEnsureVaibifyGitignore",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/stateManager.py",
-      "sFingerprint": "275d04e8ccefe6c0",
-      "sFunction": "fnSaveStateToContainer",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",

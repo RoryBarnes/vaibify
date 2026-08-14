@@ -52,6 +52,8 @@ from .pipelineUtils import (  # noqa: F401
     fsValidateStepName,
     fnRequireUniqueStepSlug,
     fbStepDirectoryConforms,
+    fsDescribeStepIdConflict,
+    T_RUN_CLEARED_VERIFICATION_FLAGS,
     _fnRecordRunStats,
     _fdictBuildWorkflowVars,
     fnClearOutputModifiedFlags,
@@ -86,7 +88,6 @@ from .pipelineLogger import (  # noqa: F401
     I_LOG_RETENTION_COUNT,
     _ffBuildFlushingCallback,
     _fnUpdatePipelineState,
-    _fnSaveWorkflowStats,
     _fnFinalizeRun,
 )
 
@@ -125,6 +126,14 @@ async def _flistPreflightValidate(
 ):
     """Return preflight errors (hard-blocks). Soft warnings flow separately."""
     listErrors = []
+    sIdConflict = fsDescribeStepIdConflict(
+        dictWorkflow, bRequirePresent=True,
+    )
+    if sIdConflict:
+        # Refused BEFORE any step runs: sStepId is the identity the
+        # completion merge attaches results to, and running with a
+        # duplicate would attribute one step's results to another.
+        return [sIdConflict]
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbStepIncludedInRun(
@@ -1186,7 +1195,7 @@ async def _fiRunStepList(
 
 def _ftInitializeRunState(
     connectionDocker, sContainerId, dictWorkflow,
-    sAction, sLogPath,
+    sAction, sLogPath, sWorkflowPath="",
 ):
     """Build initial run state and start the single-writer thread.
 
@@ -1197,7 +1206,8 @@ def _ftInitializeRunState(
     """
     iStepCount = len(dictWorkflow.get("listSteps", []))
     dictState = pipelineState.fdictBuildInitialState(
-        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid()
+        sAction, sLogPath, iStepCount, iRunnerPid=os.getpid(),
+        sWorkflowPath=sWorkflowPath,
     )
     stateWriter = pipelineState.StateWriter(
         connectionDocker, sContainerId, dictState,
@@ -1216,7 +1226,7 @@ async def _fiRunStepsAndLog(
     """Execute steps, write log, and emit final status."""
     dictState, stateWriter = _ftInitializeRunState(
         connectionDocker, sContainerId, dictWorkflow,
-        sAction, sLogPath,
+        sAction, sLogPath, sWorkflowPath=sWorkflowPath,
     )
     eventStopHeartbeat = threading.Event()
     threadHeartbeat = _fthreadStartHeartbeat(

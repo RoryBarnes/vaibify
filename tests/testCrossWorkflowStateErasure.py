@@ -72,9 +72,9 @@ def testSplittingOneWorkflowCarriesOnlyItsOwnSteps():
     _sJsonIgnored, dictStateB = ftSplitMergedDict(
         _fdictWorkflow("Beta", "passed"),
     )
-    assert list(dictStateA["dictStepState"]) == ["Alpha"]
-    assert list(dictStateB["dictStepState"]) == ["Beta"]
-    assert "Alpha" not in dictStateB["dictStepState"], (
+    assert list(dictStateA["dictStepState"]) == ["alpha"]
+    assert list(dictStateB["dictStepState"]) == ["beta"]
+    assert "alpha" not in dictStateB["dictStepState"], (
         "workflow B's state document has no room for workflow A's "
         "entry, so writing it over the shared file drops A"
     )
@@ -243,7 +243,7 @@ def testTheSAVEPreservesASiblingProjectsSection():
         "defect, still present at the writer even if the helper is "
         "namespaced"
     )
-    assert dictSections[_S_KEY_B]["dictStepState"]["Beta"][
+    assert dictSections[_S_KEY_B]["dictStepState"]["beta"][
         "dictVerification"
     ]["sIntegrity"] == "passed"
 

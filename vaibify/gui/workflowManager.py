@@ -326,12 +326,16 @@ def fdictLoadWorkflowFromContainer(
         raise ValueError(
             f"Invalid project.json at {sWorkflowPath}: {sFailure}"
         )
+    # Ids are ensured BEFORE the state merge: state.json sections are
+    # keyed by sStepId, so the merge needs every step to carry one.
+    # Validation ran first, so a duplicate already present in the file
+    # fails closed above rather than being quietly carried through.
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     _fnLoadAndMergeState(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
         sWorkflowPath,
     )
     fbDeriveUnnecessaryVerification(dictWorkflow)
-    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
     _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
@@ -595,6 +599,10 @@ def fsDescribeValidationFailure(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return f"{sLabel} is missing required field '{sField}'"
+    from .pipelineUtils import fsDescribeStepIdConflict
+    sIdConflict = fsDescribeStepIdConflict(dictWorkflow)
+    if sIdConflict:
+        return sIdConflict
     listOutWarnings = flistValidateOutputFilePaths(dictWorkflow)
     if listOutWarnings:
         return listOutWarnings[0]
@@ -1230,10 +1238,20 @@ def fnSaveWorkflowToContainer(
     before writing. Callers continue to mutate one merged dict; the
     split is invisible upstream.
     """
-    from .pipelineUtils import fnAttachStepLabels
+    from .pipelineUtils import fnAttachStepLabels, fsDescribeStepIdConflict
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    # Fail closed BEFORE either file is written: sStepId is the merge
+    # authority for run-produced state, and persisting a duplicate
+    # would let one step's results silently claim another's.
+    sIdConflict = fsDescribeStepIdConflict(
+        dictWorkflow, bRequirePresent=True,
+    )
+    if sIdConflict:
+        raise ValueError(
+            f"Refusing to save {sWorkflowPath}: {sIdConflict}"
+        )
     workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnMigrateLegacyRemotes(dictWorkflow)

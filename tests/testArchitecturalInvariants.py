@@ -4411,7 +4411,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # because a load-time write installed a document derived from
     # pre-run state. The reason is longer than the code it replaces
     # because the next reader will otherwise re-add the write.
-    "workflowManager.py": 2442,
+    # +18 (2026-08-13, slice 1): the duplicate-step-id fail-closed
+    # checks on the load and save paths. sStepId became the merge
+    # authority for run-produced state; fnEnsureStepIds preserves an
+    # existing duplicate, so validation refuses one before ids are
+    # trusted -- at load (before the state merge reads them) and at
+    # save (before either file is written).
+    "workflowManager.py": 2460,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4438,7 +4444,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rescue discarded the new payload it had already popped. Merging
     # instead would silently pick a winner between two directory-keyed
     # bodies of state nobody can attribute.
-    "stateManager.py": 855,
+    # +103 (2026-08-13, slice 1): the completion merge
+    # (fdictMergeRunResultsIntoState) and the shared persist tail it
+    # required. Completion is now state-only (spec D2): the run's
+    # per-step delta is applied entry-by-entry into a freshly loaded
+    # document, by stable step id, migrating pre-id directory keys.
+    # This is the state file's own read-modify-write discipline -- the
+    # module's single responsibility -- and putting it anywhere else
+    # would give the document a second author with its own notion of
+    # how sections merge.
+    "stateManager.py": 958,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4801,6 +4816,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single interactive-flag classifier the runner now uses to pick
     # the interactive lane. No new responsibility.
     "pipelineRunner.py": 1500,
+    # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
+    # default cap gaining the acknowledged-write path
+    # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
+    # with revert-on-failure, plus the executed-step stats record the
+    # completion merge reads back. All of it is this module's one
+    # responsibility -- the pipeline state file's schema and its
+    # writers -- and the terminal flush must live beside the writer
+    # thread whose in-memory state it merges into and reverts.
+    # +68 (2026-08-13, slice 1 round 2): the terminal flush now rides
+    # the writer thread's OWN queue as a result-carrying request. The
+    # first version wrote synchronously from the caller's thread,
+    # which broke single-writer ordering -- the writer thread could
+    # land a pre-terminal snapshot AFTER the terminal write, so the
+    # run's final durable state said running and the next poll lit a
+    # phantom running marker (caught by the stop-test under full-suite
+    # load). Ordering machinery belongs beside the thread it orders.
+    "pipelineState.py": 944,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
