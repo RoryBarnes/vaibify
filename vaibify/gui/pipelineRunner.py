@@ -1000,6 +1000,7 @@ async def _fiRunOneStep(
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
     fdictCommitProvenance=None, dictMarkerContext=None,
+    dictTaintState=None,
 ):
     """Run a single automatic step with timing and result.
 
@@ -1029,6 +1030,7 @@ async def _fiRunOneStep(
         sRunMode=sRunMode,
         fdictCommitProvenance=fdictCommitProvenance,
         dictMarkerContext=dictMarkerContext,
+        dictTaintState=dictTaintState,
     )
 
 
@@ -1036,6 +1038,7 @@ async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sRunMode="full", fdictCommitProvenance=None, dictMarkerContext=None,
+    dictTaintState=None,
 ):
     """Execute step commands, record timing, emit results.
 
@@ -1047,8 +1050,16 @@ async def _fiExecuteAndRecord(
     other ending leaves the marker set on disk for reconciliation.
     ``dictMarkerContext`` is None for direct library callers, the
     same stated remainder as the commit lane.
+
+    ``dictTaintState`` is the run's shared taint record (ruling R6).
+    Whether THIS step wears the downstream mark is decided by the
+    state at entry — a step's own degradation marks its successors,
+    never itself, whose own events already say what happened.
     """
     import time
+    bDownstreamOfDegraded = bool(
+        dictTaintState and dictTaintState.get("bDegradedUpstream"),
+    )
     listRemotePaths = workflowManager.flistStepRemoteDataPaths(dictStep)
     bMarkerLane = bool(listRemotePaths) and dictMarkerContext is not None
     if bMarkerLane:
@@ -1065,7 +1076,11 @@ async def _fiExecuteAndRecord(
                 "iStepNumber": iStepNumber,
                 "sDetail": dictPublish["sDetail"],
             })
-            await _fnEmitStepResult(fnStatusCallback, iStepNumber, 1)
+            _fnMarkProvenanceTaint(dictTaintState)
+            await _fnEmitStepResult(
+                fnStatusCallback, iStepNumber, 1,
+                bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,
+            )
             return 1
     fStartTime = time.time()
     sStepDir = workflowManager.fsResolveStepWorkdir(
@@ -1096,24 +1111,29 @@ async def _fiExecuteAndRecord(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
         fdictCommitProvenance=fdictCommitProvenance,
+        dictTaintState=dictTaintState,
     )
     if bMarkerLane:
         await _fnSettleRemoteDataMarker(
             connectionDocker, sContainerId, dictMarkerContext,
             dictStep, iStepNumber, iExitCode, dictProvenance,
-            fnStatusCallback,
+            fnStatusCallback, dictTaintState=dictTaintState,
         )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
     )
-    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
+    await _fnEmitStepResult(
+        fnStatusCallback, iStepNumber, iExitCode,
+        bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,
+    )
     return iExitCode
 
 
 async def _fdictRecordRemoteDataProvenance(
     connectionDocker, sContainerId, dictStep, dictVariables,
     iStepNumber, fnStatusCallback, fdictCommitProvenance=None,
+    dictTaintState=None,
 ):
     """Refresh listRemoteData provenance and commit it durably.
 
@@ -1168,6 +1188,7 @@ async def _fdictRecordRemoteDataProvenance(
         if dictCommitOutcome.get("listRefusals") or (
             not dictCommitOutcome.get("bCommitted")
         ):
+            _fnMarkProvenanceTaint(dictTaintState)
             await fnStatusCallback({
                 "sType": "provenanceDegraded",
                 "iStepNumber": iStepNumber,
@@ -1187,6 +1208,7 @@ async def _fdictRecordRemoteDataProvenance(
 async def _fnSettleRemoteDataMarker(
     connectionDocker, sContainerId, dictMarkerContext, dictStep,
     iStepNumber, iExitCode, dictProvenance, fnStatusCallback,
+    dictTaintState=None,
 ):
     """Clear the pull marker only when its guarantee was earned.
 
@@ -1236,11 +1258,23 @@ async def _fnSettleRemoteDataMarker(
         if dictClear["bCleared"]:
             return
         sRetainReason = dictClear["sDetail"]
+    _fnMarkProvenanceTaint(dictTaintState)
     await fnStatusCallback({
         "sType": "remoteDataMarkerRetained",
         "iStepNumber": iStepNumber,
         "sReason": sRetainReason,
     })
+
+
+def _fnMarkProvenanceTaint(dictTaintState):
+    """Record a degradation so later executed steps wear the mark.
+
+    Set beside each degradation EVENT emit — the event is the
+    authority on what counts as degraded, and this record is only its
+    shadow for the steps that run afterwards (ruling R6).
+    """
+    if dictTaintState is not None:
+        dictTaintState["bDegradedUpstream"] = True
 
 
 def _fdictHashRemoteDataFiles(
@@ -1315,6 +1349,13 @@ async def _fiRunStepList(
     from .interactiveSteps import _fiHandleInteractiveStep
 
     iFinalExitCode = 0
+    # One taint record for the whole run (ruling R6): the moment any
+    # step's remote-data documentation degrades — marker refused,
+    # records refused, marker retained — every LATER executed step
+    # wears the downstream mark on its result event. The record is
+    # mutable and shared so the degradation emitters deep in the step
+    # machinery can set it without threading a return value back up.
+    dictTaintState = {"bDegradedUpstream": False}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbShouldRunStep(
@@ -1338,6 +1379,7 @@ async def _fiRunStepList(
                 sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
                 fdictCommitProvenance=fdictCommitProvenance,
                 dictMarkerContext=dictMarkerContext,
+                dictTaintState=dictTaintState,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode

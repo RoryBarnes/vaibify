@@ -154,13 +154,25 @@ def fdictBuildStepStarted(iStepNumber, fWallClockBudgetSeconds=0.0):
     }
 
 
-def fdictBuildStepResult(iStepNumber, sStatus, iExitCode=0):
-    """Return a result entry for a completed step."""
-    return {
+def fdictBuildStepResult(
+    iStepNumber, sStatus, iExitCode=0,
+    bDownstreamOfDegradedProvenance=False,
+):
+    """Return a result entry for a completed step.
+
+    The taint flag persists with the result so a reconnecting
+    dashboard re-renders the downstream-of-degraded-provenance mark
+    (ruling R6) instead of silently forgetting it; the key travels
+    only when True, keeping untainted records byte-identical.
+    """
+    dictResult = {
         "iStepNumber": iStepNumber,
         "sStatus": sStatus,
         "iExitCode": iExitCode,
     }
+    if bDownstreamOfDegradedProvenance:
+        dictResult["bDownstreamOfDegradedProvenance"] = True
+    return dictResult
 
 
 def fdictBuildFinalizingState():

@@ -1057,16 +1057,30 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiExecuteAndRecord_failed_step_emits_stepFail_not_stepPass',
         source='vaibify/gui/pipelineRunner.py',
-        old='await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)',
-        new='await _fnEmitStepResult(fnStatusCallback, iStepNumber, 0)',
+        # RE-ANCHORED 2026-08-15: the emit went multi-line when it
+        # gained the downstream-taint argument; same mutant (report 0
+        # instead of the real exit code).
+        old='        fnStatusCallback, iStepNumber, iExitCode,\n',
+        new='        fnStatusCallback, iStepNumber, 0,\n',
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiExecuteAndRecord_returns_real_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old="""    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
-    return iExitCode""",
-        new="""    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
-    return 0""",
+        # RE-ANCHORED 2026-08-15 for the same multi-line emit; the
+        # 8-space indent pins the FINAL emit (the marker-refusal twin
+        # sits deeper and returns 1).
+        old=(
+            '        bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '    )\n'
+            '    return iExitCode\n'
+        ),
+        new=(
+            '        bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '    )\n'
+            '    return 0\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
@@ -11446,6 +11460,7 @@ def _fdictEntry(sRel):
             '        connectionDocker, sContainerId, dictStep,\n'
             '        dictVariables, iStepNumber, fnStatusCallback,\n'
             '        fdictCommitProvenance=fdictCommitProvenance,\n'
+            '        dictTaintState=dictTaintState,\n'
             '    )\n'
         ),
         new=(
@@ -11456,6 +11471,7 @@ def _fdictEntry(sRel):
             '            connectionDocker, sContainerId, dictStep,\n'
             '            dictVariables, iStepNumber, fnStatusCallback,\n'
             '            fdictCommitProvenance=fdictCommitProvenance,\n'
+            '            dictTaintState=dictTaintState,\n'
             '        )\n'
         ),
     ),
@@ -11574,8 +11590,12 @@ def _fdictEntry(sRel):
             '                "iStepNumber": iStepNumber,\n'
             '                "sDetail": dictPublish["sDetail"],\n'
             '            })\n'
-            '            await _fnEmitStepResult(fnStatusCallback,'
-            ' iStepNumber, 1)\n'
+            '            _fnMarkProvenanceTaint(dictTaintState)\n'
+            '            await _fnEmitStepResult(\n'
+            '                fnStatusCallback, iStepNumber, 1,\n'
+            '                bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '            )\n'
             '            return 1\n'
         ),
         new=(
@@ -12001,5 +12021,141 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
         new='    sConfigDirectory = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testAStepAfterADegradedOneWearsTheDownstreamMark'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Never set the taint record beside the degradation events:
+        # later steps run with no visible connection to the
+        # undocumented data they may have consumed (ruling R6).
+        old=(
+            '    if dictTaintState is not None:\n'
+            '        dictTaintState["bDegradedUpstream"] = True\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictTaintState["bDegradedUpstream"] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testTheDegradingStepItselfWearsNoMark'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Read the taint state at emit time instead of step entry: the
+        # degrading step marks ITSELF, and the glyph's tooltip ("ran
+        # downstream of...") becomes a false statement about it.
+        old=(
+            '    await _fnEmitStepResult(\n'
+            '        fnStatusCallback, iStepNumber, iExitCode,\n'
+            '        bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,\n'
+            '    )\n'
+        ),
+        new=(
+            '    await _fnEmitStepResult(\n'
+            '        fnStatusCallback, iStepNumber, iExitCode,\n'
+            '        bDownstreamOfDegradedProvenance=bool(\n'
+            '            dictTaintState'
+            ' and dictTaintState.get("bDegradedUpstream"),\n'
+            '        ),\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testABuiltResultCarriesTheFlagOnlyWhenTrue'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Drop the flag from the durable record: the mark exists only
+        # as a live WebSocket event and any reconnect silently forgets
+        # which results ran downstream of undocumented data.
+        old=(
+            '    if bDownstreamOfDegradedProvenance:\n'
+            '        dictResult["bDownstreamOfDegradedProvenance"]'
+            ' = True\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictResult["bDownstreamOfDegradedProvenance"]'
+            ' = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testAFlaggedEventReachesTheDurableRecordOnBothWritePaths'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Both persistence dispatches forget the event's flag; the
+        # reconnect render then depends on which lane served the run.
+        # Two copies by construction (inline + StateWriter), so both
+        # are mutated — disabling one alone changes nothing the
+        # inline-lane half of the test observes.
+        old=(
+            'bDownstreamOfDegradedProvenance=dictEvent.get(\n'
+            '                    "bDownstreamOfDegradedProvenance",'
+            ' False)'
+        ),
+        new=(
+            'bDownstreamOfDegradedProvenance=(False and dictEvent.get(\n'
+            '                    "bDownstreamOfDegradedProvenance",'
+            ' False))'
+        ),
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAStepDownstreamOfDegradedProvenanceWearsTheGlyph'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # The live stepPass event's taint never reaches the store: the
+        # tab that watched the run shows two ordinary lights.
+        old=(
+            '            VaibifyApp.fnSetStepTaint(\n'
+            '                iPassIdx,'
+            ' !!dictEvent.bDownstreamOfDegradedProvenance);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnSetStepTaint(\n'
+            '                iPassIdx, false);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testACleanRunsResultsWearNoTaintGlyph'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        # Render the glyph unconditionally: a mark on every step says
+        # nothing, and the researcher learns to ignore exactly the
+        # warning ruling R6 exists to make visible.
+        old='        if (bDownstreamOfDegraded) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testATaintMarkSurvivesAReconnect'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Both recovery lanes drop the persisted flag: the mark exists
+        # only for the tab that watched the run live, and reopening
+        # the dashboard silently launders the tainted results. Two
+        # copies by construction (running + completed appliers).
+        old=(
+            '            VaibifyApp.fnSetStepTaint(iStep,'
+            ' !!dictResults[sKey]\n'
+            '                .bDownstreamOfDegradedProvenance);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnSetStepTaint(iStep, false);\n'
+        ),
+        iExpectedOccurrences=2,
     ),
 ]

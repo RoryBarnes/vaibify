@@ -621,6 +621,97 @@ def testADegradedRunNeverToastsACleanCompletion(
 
 
 @pytest.mark.falsification
+def testAStepDownstreamOfDegradedProvenanceWearsTheGlyph(
+    pageDashboard, serverHub,
+):
+    """Kills: the live result event's taint never reaching the store —
+    the run degrades, dependents execute, and the researcher's tab
+    shows two ordinary lights with no visible connection to the
+    undocumented data the second step may have consumed (ruling R6).
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
+        "VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 2, iExitCode: 0,"
+        " bDownstreamOfDegradedProvenance: true }); }",
+    )
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-taint-glyph',
+        timeout=5000,
+    )
+    assert pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}")',
+    ).count() == 1
+    iFirstStepGlyphs = pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-taint-glyph',
+    ).count()
+    assert iFirstStepGlyphs == 0, (
+        "the degrading step marked itself; the glyph's tooltip is a "
+        "false statement about that step"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testACleanRunsResultsWearNoTaintGlyph(pageDashboard, serverHub):
+    """Kills: the glyph rendering unconditionally — a mark that
+    appears on every step says nothing, and a researcher learns to
+    ignore exactly the warning ruling R6 exists to make visible."""
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
+        "VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 2, iExitCode: 0 }); }",
+    )
+    pageDashboard.wait_for_selector(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
+        timeout=5000,
+    )
+    assert pageDashboard.locator(".step-taint-glyph").count() == 0, (
+        "a clean run's results wear the downstream-of-degraded mark"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testATaintMarkSurvivesAReconnect(pageDashboard, serverHub):
+    """Kills: the recovery lanes dropping the persisted flag — the
+    mark then exists only for the tab that watched the run live, and
+    reopening the dashboard silently launders the tainted results."""
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bRunning": False,
+                "iExitCode": 0,
+                "sLogPath": "/journey/.vaibify/logs/tainted.log",
+                "iStepCount": 2,
+                "dictStepResults": {
+                    "1": {"sStatus": "passed", "iExitCode": 0},
+                    "2": {"sStatus": "passed", "iExitCode": 0,
+                          "bDownstreamOfDegradedProvenance": True},
+                },
+            }),
+        ),
+    )
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-taint-glyph',
+        timeout=10000,
+    )
+    iFirstStepGlyphs = pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-taint-glyph',
+    ).count()
+    assert iFirstStepGlyphs == 0
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
     """Kills: restoring lights only for runs that exited cleanly.
 

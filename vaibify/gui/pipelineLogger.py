@@ -289,7 +289,9 @@ def _fnApplyStepResultEvent(
             pipelineState.fdictBuildStepResult(
                 dictEvent["iStepNumber"],
                 _DICT_STEP_RESULT_STATUS[sEventType],
-                dictEvent.get("iExitCode", 0)))
+                dictEvent.get("iExitCode", 0),
+                bDownstreamOfDegradedProvenance=dictEvent.get(
+                    "bDownstreamOfDegradedProvenance", False)))
 
 
 def _fnUpdatePipelineState(
@@ -357,6 +359,8 @@ def _fnDispatchEventToWriter(stateWriter, dictEvent):
                 dictEvent["iStepNumber"],
                 _DICT_STEP_RESULT_STATUS[sEventType],
                 dictEvent.get("iExitCode", 0),
+                bDownstreamOfDegradedProvenance=dictEvent.get(
+                    "bDownstreamOfDegradedProvenance", False),
             )
         )
 

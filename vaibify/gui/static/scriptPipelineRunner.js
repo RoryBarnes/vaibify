@@ -107,6 +107,8 @@ var VaibifyPipelineRunner = (function () {
         } else if (dictEvent.sType === "stepPass") {
             var iPassIdx = dictEvent.iStepNumber - 1;
             VaibifyApp.fnSetStepStatus(iPassIdx, "pass");
+            VaibifyApp.fnSetStepTaint(
+                iPassIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             VaibifyApp.fnClearOutputModified(iPassIdx);
             fnResetUserVerification(iPassIdx);
             fnAcknowledgeStepCompletion(iPassIdx);
@@ -122,12 +124,17 @@ var VaibifyPipelineRunner = (function () {
                 iFailIdx,
                 (_bStopRequested && dictEvent.iExitCode < 0)
                     ? "stopped" : "fail");
+            VaibifyApp.fnSetStepTaint(
+                iFailIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             fnResetUserVerification(iFailIdx);
             VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             _bStopRequested = false;
             _bRunLive = true;
+            /* A new run's taint is its own: the marks re-arrive on
+               this run's result events if its provenance degrades. */
+            VaibifyApp.fnClearStepTaints();
             VaibifyPolling.fnStopPipelinePolling();
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
@@ -609,6 +616,8 @@ var VaibifyPipelineRunner = (function () {
             } else if (sStatus === "skipped") {
                 VaibifyApp.fnSetStepStatus(iStep, "");
             }
+            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
+                .bDownstreamOfDegradedProvenance);
         }
         if (dictState.iActiveStep > 0) {
             VaibifyApp.fnSetStepStatus(
@@ -658,6 +667,8 @@ var VaibifyPipelineRunner = (function () {
             } else if (sStatus === "stopped") {
                 VaibifyApp.fnSetStepStatus(iStep, "stopped");
             }
+            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
+                .bDownstreamOfDegradedProvenance);
         }
         VaibifyApp.fnRenderStepList();
     }

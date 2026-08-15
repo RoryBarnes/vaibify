@@ -106,7 +106,7 @@ var VaibifyStepRenderer = (function () {
         "skipped": "skipped in the last run",
     };
 
-    function _fsBuildStepStatusCell(sRunStatus) {
+    function _fsBuildStepStatusCell(sRunStatus, bDownstreamOfDegraded) {
         // Vocabulary: hollow grey = never run this session, filled
         // grey = queued, blinking orange = running, red = failed,
         // blinking red = over budget, quiet pale-blue dot = last
@@ -116,12 +116,26 @@ var VaibifyStepRenderer = (function () {
         // beside hollow never-run circles read as a rendering bug
         // when a restart restored the last run's results
         // (live report 2026-07-18).
+        //
+        // The taint glyph (ruling R6) sits INSIDE this cell, beside
+        // the light: the light honestly reports the step's own
+        // command, and the glyph says the step ran downstream of a
+        // step whose remote data went undocumented. It is run truth
+        // (like the light), not a step-definition warning, so it
+        // does not join the consolidated ⚠ column in the level
+        // strip.
         var sTitle = "Run status: " +
             (_DICT_STEP_STATUS_TITLES[sRunStatus] || sRunStatus);
+        var sTaintHtml = "";
+        if (bDownstreamOfDegraded) {
+            sTaintHtml = '<span class="step-taint-glyph" title="' +
+                'ran downstream of a step whose remote data is ' +
+                'undocumented">&#9888;</span>';
+        }
         return '<span class="step-status-cell" title="' +
             fnEscapeHtml(sTitle) + '">' +
             '<span class="step-status ' + sRunStatus +
-            '"></span></span>';
+            '"></span>' + sTaintHtml + '</span>';
     }
 
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
@@ -441,7 +455,8 @@ var VaibifyStepRenderer = (function () {
             '<input type="checkbox" class="step-checkbox" ' +
             'title="Include this step when running the project"' +
             (bRunEnabled ? " checked" : "") + ">" +
-            _fsBuildStepStatusCell(sRunStatus) +
+            _fsBuildStepStatusCell(
+                sRunStatus, !!dictContext.dictStepTaint[iIndex]) +
             '<span class="step-number">' +
             sStepNumber + "</span>" +
             '<span class="step-name" title="' +
