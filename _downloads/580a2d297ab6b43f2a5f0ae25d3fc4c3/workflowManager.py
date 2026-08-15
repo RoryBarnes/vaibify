@@ -53,6 +53,8 @@ __all__ = [
     "fbValidateWorkflow",
     "fsDescribeValidationFailure",
     "fsComputeWorkflowFingerprint",
+    "fsComputeSemanticWorkflowFingerprint",
+    "fnStampFieldProducer",
     "fsDeriveProjectRepoPathFromWorkflow",
     "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
@@ -486,13 +488,25 @@ def _fnLoadAndMergeState(
     dictNotice = _fdictBuildStateLoadNotice(sStatus)
     if dictNotice:
         dictWorkflow["dictStateLoadNotice"] = dictNotice
+    # The computed marker list rides the workflow dict so the level
+    # gate needs no second state read; split strips it on save.
+    dictWorkflow["listUnresolvedRemoteDataMarkers"] = (
+        stateManager.flistUnresolvedRemoteDataStepIds(
+            dictState, sWorkflowKey,
+        )
+    )
+    sCurrentSemanticFingerprint = fsComputeSemanticWorkflowFingerprint(
+        dictWorkflow,
+    )
     if dictBootstrappedSection is not None:
         stateManager.fnMergeStateIntoWorkflow(
             dictWorkflow, dictBootstrappedSection,
+            sCurrentSemanticFingerprint=sCurrentSemanticFingerprint,
         )
     else:
         stateManager.fnMergeStateIntoWorkflow(
             dictWorkflow, dictState, sWorkflowKey,
+            sCurrentSemanticFingerprint=sCurrentSemanticFingerprint,
         )
     stateManager.fnEnsureVaibifyGitignore(
         connectionDocker, sContainerId, sRepoPath,
@@ -599,10 +613,15 @@ def fsDescribeValidationFailure(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return f"{sLabel} is missing required field '{sField}'"
-    from .pipelineUtils import fsDescribeStepIdConflict
+    from .pipelineUtils import (
+        fsDescribeRemoteDataPathConflict, fsDescribeStepIdConflict,
+    )
     sIdConflict = fsDescribeStepIdConflict(dictWorkflow)
     if sIdConflict:
         return sIdConflict
+    sRemoteConflict = fsDescribeRemoteDataPathConflict(dictWorkflow)
+    if sRemoteConflict:
+        return sRemoteConflict
     listOutWarnings = flistValidateOutputFilePaths(dictWorkflow)
     if listOutWarnings:
         return listOutWarnings[0]
@@ -1107,6 +1126,26 @@ def fnUpdateStep(dictWorkflow, iStepIndex, dictUpdates):
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     for sKey, value in dictUpdates.items():
         dictStep[sKey] = value
+    if "dictVerification" in dictUpdates:
+        # The researcher's approval is a human act made while looking
+        # at THIS definition — the producer stamp records which one,
+        # so a later definition edit marks it superseded instead of
+        # letting it silently vouch for commands it never saw.
+        fnStampFieldProducer(dictWorkflow, dictStep, "dictVerification")
+
+
+def fnStampFieldProducer(dictWorkflow, dictStep, sFieldKey):
+    """Record which definition this field's producer acted under (R8).
+
+    Called at the producer's own seam — the run's completion merge,
+    the test runner's outcome write, the researcher's approval — and
+    nowhere generic: a blanket stamp at save time would BACKFILL
+    legacy state with the current fingerprint, which R8 forbids
+    because attribution proves an owner, never a definition.
+    """
+    dictStep.setdefault("dictDefinitionProducers", {})[sFieldKey] = (
+        fsComputeSemanticWorkflowFingerprint(dictWorkflow)
+    )
 
 
 def fnDeleteStep(dictWorkflow, iStepIndex):
@@ -1206,6 +1245,7 @@ def _fdictStripComputedFields(dictWorkflow):
     dictClean = dict(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
     dictClean.pop("_sSourceFingerprint", None)
+    dictClean.pop("listUnresolvedRemoteDataMarkers", None)
     dictClean["listSteps"] = [
         _fdictStripStepTransientKeys(dictStep)
         for dictStep in dictWorkflow.get("listSteps", [])
@@ -1238,19 +1278,29 @@ def fnSaveWorkflowToContainer(
     before writing. Callers continue to mutate one merged dict; the
     split is invisible upstream.
     """
-    from .pipelineUtils import fnAttachStepLabels, fsDescribeStepIdConflict
+    from .pipelineUtils import (
+        fnAttachStepLabels, fsDescribeRemoteDataPathConflict,
+        fsDescribeStepIdConflict,
+    )
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
     workflowMigrations.fnEnsureStepIds(dictWorkflow)
     # Fail closed BEFORE either file is written: sStepId is the merge
     # authority for run-produced state, and persisting a duplicate
-    # would let one step's results silently claim another's.
+    # would let one step's results silently claim another's. A step's
+    # remote-data record paths are the same kind of identity one level
+    # down — the digest refresh attaches hashes to records by path.
     sIdConflict = fsDescribeStepIdConflict(
         dictWorkflow, bRequirePresent=True,
     )
     if sIdConflict:
         raise ValueError(
             f"Refusing to save {sWorkflowPath}: {sIdConflict}"
+        )
+    sRemoteConflict = fsDescribeRemoteDataPathConflict(dictWorkflow)
+    if sRemoteConflict:
+        raise ValueError(
+            f"Refusing to save {sWorkflowPath}: {sRemoteConflict}"
         )
     workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
@@ -1305,6 +1355,42 @@ def fsComputeWorkflowFingerprint(dictWorkflow):
     any agent edit landing in the same second as a backend save.
     """
     sJson, _dictState = _ftSplitAndSerializeWorkflow(dictWorkflow)
+    return hashlib.sha256(sJson.encode("utf-8")).hexdigest()
+
+
+T_REMOTE_DATA_RUN_PRODUCED_FIELDS = (
+    "sSha256", workflowMigrations.S_DIGEST_TIMESTAMP_KEY,
+)
+
+
+def fsComputeSemanticWorkflowFingerprint(dictWorkflow):
+    """Return the sha256 hex digest of the workflow's DEFINITION.
+
+    The attestation fingerprint (spec §4.4): it names *which
+    definition* a run's results were produced under, so it must move
+    when any resolved contract input moves — commands, variables,
+    step order, directories, ids, declared outputs, globals — and
+    must NOT move when the run itself updates a remote-data record's
+    digest or timestamp, or the provenance commit would change the
+    value being compared and the run would conflict with itself.
+    Serialized with sorted keys, so a byte-level reordering that
+    changes nothing semantic does not move it — unlike
+    :func:`fsComputeWorkflowFingerprint`, which deliberately names
+    exact bytes.
+    """
+    dictClean = _fdictStripComputedFields(dictWorkflow)
+    dictDeclarative, _dictState = stateManager.ftSplitMergedDict(
+        dictClean,
+    )
+    for dictStep in dictDeclarative.get("listSteps", []) or []:
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                continue
+            for sField in T_REMOTE_DATA_RUN_PRODUCED_FIELDS:
+                dictRemote.pop(sField, None)
+    sJson = json.dumps(
+        dictDeclarative, sort_keys=True, separators=(",", ":"),
+    )
     return hashlib.sha256(sJson.encode("utf-8")).hexdigest()
 
 
