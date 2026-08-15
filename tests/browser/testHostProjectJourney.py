@@ -249,6 +249,59 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
         ".some(el => el.classList.contains('running'))",
         timeout=30000,
     )
+    # The host run measures CPU at the ``os.wait4`` reap and the
+    # recorded stats carry the reading. PRESENCE is the claim — a
+    # fast step legitimately rounds to 0.0 — because before the reap
+    # existed the key was omitted for every host run. Registered as a
+    # falsification: restoring the CPU-less host branch kills this.
+    #
+    # The wait is load-bearing, not politeness: the running-lights
+    # check above clears at stepPass, which PRECEDES the finalize
+    # (log flush → state merge → acknowledged terminal flush), so a
+    # test that read state.json immediately raced the merge — and the
+    # module's claim-release teardown then cleared the owner map
+    # while the merge was still in flight, so its commit-time
+    # revalidation refused the write and the stats never landed.
+    sStatePath = os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY, ".vaibify", "state.json",
+    )
+    listRunStats = _flistWaitForRunStats(sStatePath)
+    assert listRunStats, "the settled run left no dictRunStats behind"
+    assert any(
+        "fCpuTime" in dictRunStats for dictRunStats in listRunStats
+    ), f"no recorded host run carries fCpuTime: {listRunStats}"
+
+
+def _flistWaitForRunStats(sStatePath, fTimeoutSeconds=20.0):
+    """Poll state.json until the run's dictRunStats merge lands."""
+    import time
+    fDeadline = time.time() + fTimeoutSeconds
+    listRunStats = []
+    while time.time() < fDeadline:
+        try:
+            with open(sStatePath) as fileState:
+                listRunStats = _flistCollectRunStats(json.load(fileState))
+        except (OSError, ValueError):
+            listRunStats = []
+        if listRunStats:
+            return listRunStats
+        time.sleep(0.2)
+    return listRunStats
+
+
+def _flistCollectRunStats(jsonNode):
+    """Return every dictRunStats value anywhere in the state document."""
+    listFound = []
+    if isinstance(jsonNode, dict):
+        for sKey, jsonValue in jsonNode.items():
+            if sKey == "dictRunStats" and isinstance(jsonValue, dict):
+                listFound.append(jsonValue)
+            else:
+                listFound.extend(_flistCollectRunStats(jsonValue))
+    elif isinstance(jsonNode, list):
+        for jsonItem in jsonNode:
+            listFound.extend(_flistCollectRunStats(jsonItem))
+    return listFound
 
 
 def _fnWaitForAnyLog(sLogsDirectory, fTimeoutSeconds=20.0):
