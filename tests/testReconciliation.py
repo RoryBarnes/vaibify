@@ -223,6 +223,125 @@ def test_prove_refuses_an_indeterminate_docker_probe_and_stays_quarantined():
     )
 
 
+class _StubApiError(Exception):
+    """Mimic the Docker SDK error surface the probe classifies by code.
+
+    A gone exec instance raises ``NotFound`` (``status_code == 404``);
+    an unreachable daemon raises other ``APIError``\\s. The probe reads
+    the code by attribute, so this bare stand-in is enough.
+    """
+
+    def __init__(self, iStatusCode, sMessage):
+        super().__init__(sMessage)
+        self.status_code = iStatusCode
+
+
+class _FakeConnectionExecGoneContainerStopped:
+    """A stopped container: its exec instance is gone, its group empty.
+
+    Docker discards a container's exec instances when it stops, so
+    ``fdictInspectExec`` 404s; the group probe answers as a stopped or
+    absent container does — conclusive, with ``iMemberCount`` members
+    (zero unless a test wants a surviving descendant).
+    """
+
+    def __init__(self, iMemberCount=0):
+        self.iMemberCount = iMemberCount
+
+    def fdictInspectExec(self, sDockerExecId):
+        del sDockerExecId
+        raise _StubApiError(404, "No such exec instance: deadbeef")
+
+    def fdictProbeProcessGroupMembers(self, sContainerId, iProcessGroup):
+        del sContainerId, iProcessGroup
+        return {
+            "bConclusive": True, "iMemberCount": self.iMemberCount,
+            "sDetail": f"{self.iMemberCount} live member(s)",
+        }
+
+
+def _fsJournalReconciliationTerminalRecord():
+    """Journal a NEEDS_RECONCILIATION terminal record; return its id.
+
+    Mirrors the real wedge: a terminal whose containment could not be
+    proven at session end is poisoned, then a machine restart kills the
+    container out from under the record.
+    """
+    sOperationId = fsPrepareOperation(S_PROJECT, "terminal", "cid-stopped")
+    fnPromoteOperationToInFlight(
+        S_PROJECT, sOperationId, {
+            "sDockerExecId": "deadbeef",
+            "sDockerContainerId": "cid-stopped",
+            "iHolderProcessGroup": 2126,
+        },
+    )
+    fnMarkOperationNeedsReconciliation(
+        S_PROJECT, sOperationId, "containment unproven at session end",
+    )
+    return sOperationId
+
+
+def test_prove_settles_a_terminal_over_a_stopped_container():
+    """The restart wedge: a gone exec must not refuse the whole record.
+
+    Before the fix the exec-inspect 404 read as indeterminate and
+    refused before the group-emptiness probe ran, so a container the
+    machine restart had killed stayed quarantined forever. A stopped
+    container hosts no live process, so its terminal record must prove
+    settled through the group probe — the authority for a detached
+    descendant.
+    """
+    sOperationId = _fsJournalReconciliationTerminalRecord()
+    dictProven = fdictProveJournalRecordsSettled(
+        S_PROJECT, _FakeConnectionExecGoneContainerStopped(), {sOperationId},
+    )
+    assert dictProven["bProven"] is True
+    assert dictProven["listClearableOperationIds"] == [sOperationId]
+
+
+def test_prove_still_refuses_a_terminal_whose_group_outlived_the_exec():
+    """A gone exec never bypasses the group-emptiness authority.
+
+    The exec being gone proves only that the exec-root shell ended; a
+    detached descendant surviving in the recorded group must still
+    refuse, so the fix cannot degrade into a blanket "404 means
+    settled".
+    """
+    sOperationId = _fsJournalReconciliationTerminalRecord()
+    dictProven = fdictProveJournalRecordsSettled(
+        S_PROJECT,
+        _FakeConnectionExecGoneContainerStopped(iMemberCount=1),
+        {sOperationId},
+    )
+    assert dictProven["bProven"] is False
+    assert fdictReadJournalOutcome(S_PROJECT)["dictOperations"], (
+        "a surviving descendant keeps the container quarantined"
+    )
+
+
+class _FakeConnectionExecInspectErrors(_FakeConnectionExecGoneContainerStopped):
+    """A daemon that errors non-404 on inspect: proves nothing settled."""
+
+    def fdictInspectExec(self, sDockerExecId):
+        del sDockerExecId
+        raise _StubApiError(500, "server error")
+
+
+def test_prove_keeps_a_non_404_exec_inspect_error_indeterminate():
+    """Only a gone exec (404) settles; any other error must still refuse.
+
+    A daemon that errors 500 on inspect has proven nothing about the
+    exec, so the record must stay quarantined — the fix discriminates
+    on the status code, not on the mere presence of an exception.
+    """
+    sOperationId = _fsJournalReconciliationTerminalRecord()
+    dictProven = fdictProveJournalRecordsSettled(
+        S_PROJECT, _FakeConnectionExecInspectErrors(), {sOperationId},
+    )
+    assert dictProven["bProven"] is False
+    assert "cannot be proven settled" in dictProven["sRefusalReason"]
+
+
 def test_prove_accepts_a_torn_file_write_whose_writer_is_proven_dead(
     tmp_path,
 ):

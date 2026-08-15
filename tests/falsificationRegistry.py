@@ -4424,14 +4424,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testTheJournalDirectoryIsIsolatedForTheseTests',
         source='tests/conftest.py',
-        old="""    monkeypatch.setattr(
-        operationJournal, "_S_JOURNAL_DIRECTORY",
-        str(tmp_path / "operationJournalIsolated"),
-    )""",
-        new="""    monkeypatch.setattr(
-        operationJournal, "_S_JOURNAL_DIRECTORY",
-        operationJournal._S_JOURNAL_DIRECTORY,
-    )""",
+        old='    fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")',
+        new='    monkeypatch.setattr(operationJournal, "_S_JOURNAL_DIRECTORY", os.path.expanduser("~/.vaibify/journal"))',
     ),
     Falsification(
         nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningStart',

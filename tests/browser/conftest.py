@@ -202,6 +202,18 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
         )
 
 
+# A gitignored scratch root INSIDE the checkout. The project-creation
+# path guard permits only directories beneath the user's home, and the
+# checkout is beneath it — but a bare temp dir in the repo ROOT gets
+# git-added by a later bulk commit when a killed run leaves it behind
+# (that is how tmpu2uv9b_9/ shipped into history). Confining the temp
+# dirs to a gitignored directory keeps that litter uncommittable while
+# still exercising the real path guard.
+PATH_BROWSER_LANE_TMP_ROOT = (
+    pathlib.Path(__file__).resolve().parents[2] / ".browserLaneTmp"
+)
+
+
 @contextlib.contextmanager
 def _fnIsolateProjectRegistry():
     """Point the global registry at a throwaway directory.
@@ -220,10 +232,13 @@ def _fnIsolateProjectRegistry():
     (nothing on disk), which are the two host states the picker has.
     """
     from vaibify.config import registryManager
-    # Project creation correctly permits directories beneath the user's
-    # home. Put this disposable root inside the isolated worktree, which
-    # is beneath that home, so the wizard exercises the real path guard.
-    with tempfile.TemporaryDirectory(dir=os.getcwd()) as sHome:
+    # Beneath the user's home (so the wizard exercises the real path
+    # guard) but inside a gitignored subdir (so a killed run's leftover
+    # can never be committed) — see PATH_BROWSER_LANE_TMP_ROOT.
+    PATH_BROWSER_LANE_TMP_ROOT.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        dir=str(PATH_BROWSER_LANE_TMP_ROOT),
+    ) as sHome:
         sRegistry = os.path.join(sHome, "registry.json")
         sReadyDirectory = os.path.join(sHome, S_HOST_PROJECT_READY)
         os.makedirs(sReadyDirectory, exist_ok=True)
