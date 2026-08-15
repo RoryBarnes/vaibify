@@ -52,6 +52,7 @@ from .pipelineUtils import (  # noqa: F401
     fsValidateStepName,
     fnRequireUniqueStepSlug,
     fbStepDirectoryConforms,
+    fsDescribeRemoteDataPathConflict,
     fsDescribeStepIdConflict,
     T_RUN_CLEARED_VERIFICATION_FLAGS,
     _fnRecordRunStats,
@@ -983,6 +984,7 @@ async def _fiRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
+    fdictCommitProvenance=None,
 ):
     """Run a single automatic step with timing and result.
 
@@ -1010,13 +1012,14 @@ async def _fiRunOneStep(
         connectionDocker, sContainerId, dictStep,
         iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
         sRunMode=sRunMode,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
 async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-    sRunMode="full",
+    sRunMode="full", fdictCommitProvenance=None,
 ):
     """Execute step commands, record timing, emit results."""
     import time
@@ -1045,11 +1048,11 @@ async def _fiExecuteAndRecord(
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
-    if iExitCode == 0:
-        await _fnRecordRemoteDataProvenance(
-            connectionDocker, sContainerId, dictStep,
-            dictVariables, iStepNumber, fnStatusCallback,
-        )
+    await _fdictRecordRemoteDataProvenance(
+        connectionDocker, sContainerId, dictStep,
+        dictVariables, iStepNumber, fnStatusCallback,
+        fdictCommitProvenance=fdictCommitProvenance,
+    )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
@@ -1058,11 +1061,17 @@ async def _fiExecuteAndRecord(
     return iExitCode
 
 
-async def _fnRecordRemoteDataProvenance(
+async def _fdictRecordRemoteDataProvenance(
     connectionDocker, sContainerId, dictStep, dictVariables,
-    iStepNumber, fnStatusCallback,
+    iStepNumber, fnStatusCallback, fdictCommitProvenance=None,
 ):
-    """Refresh listRemoteData provenance after a successful pull.
+    """Refresh listRemoteData provenance and commit it durably.
+
+    Runs on EVERY exit of a step declaring remote data, not only exit
+    0: a step whose download succeeds and whose later command fails
+    used to record nothing, which is the "no pull boundary" hole of
+    spec §4.5 — the files are on disk either way, and provenance
+    describes the files.
 
     One docker exec hashes every declared remote-pulled file; each
     record's ``sSha256`` updates and ``sDigestBecameCurrentUtc`` is
@@ -1071,28 +1080,58 @@ async def _fnRecordRemoteDataProvenance(
     missing hash leaves the record untouched — provenance never
     guesses. ``sSourceUrl`` is user-DECLARED metadata throughout:
     vaibify does not observe the download and cannot attest that the
-    bytes came from it. Persistence rides the end-of-run workflow save. The
-    fresh data is NOT auto-committed: it flows through the normal
-    badges / commit-canonical review so the researcher decides when
-    the new pull becomes canonical.
+    bytes came from it.
+
+    ``fdictCommitProvenance`` is the server-built record-unit
+    committer (``provenanceCommitter``): the refreshed records are
+    committed to the CURRENT project.json now, during the run, so a
+    later crash cannot leave pulled data with no record of its
+    origin. ``None`` — direct library callers and tests with no live
+    session cache — refreshes in memory only, as before. Returns the
+    outcome for the marker protocol: ``{"dictCommitOutcome",
+    "listUnexaminedPaths"}``, or ``None`` when the step declares no
+    remote data. The fresh data is NOT auto-committed to git: it
+    flows through the normal badges / commit-canonical review.
     """
     listPaths = workflowManager.flistStepRemoteDataPaths(dictStep)
     if not listPaths:
-        return
+        return None
     sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
     if not sRepoRoot:
-        return
+        return None
     dictShaByPath = await asyncio.to_thread(
         _fdictHashRemoteDataFiles,
         connectionDocker, sContainerId, sRepoRoot, listPaths,
     )
-    if not _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
-        return
-    await fnStatusCallback({
-        "sType": "remoteDataRecorded",
-        "iStepNumber": iStepNumber,
-        "listRemoteData": dictStep.get("listRemoteData", []),
-    })
+    if _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+        await fnStatusCallback({
+            "sType": "remoteDataRecorded",
+            "iStepNumber": iStepNumber,
+            "listRemoteData": dictStep.get("listRemoteData", []),
+        })
+    dictCommitOutcome = None
+    if fdictCommitProvenance is not None:
+        dictCommitOutcome = fdictCommitProvenance(
+            dictStep.get("sStepId", ""),
+            dictStep.get("listRemoteData", []) or [],
+        )
+        if dictCommitOutcome.get("listRefusals") or (
+            not dictCommitOutcome.get("bCommitted")
+        ):
+            await fnStatusCallback({
+                "sType": "provenanceDegraded",
+                "iStepNumber": iStepNumber,
+                "sDetail": dictCommitOutcome.get("sDetail", ""),
+                "listRefusals": dictCommitOutcome.get(
+                    "listRefusals", [],
+                ),
+            })
+    return {
+        "dictCommitOutcome": dictCommitOutcome,
+        "listUnexaminedPaths": [
+            sPath for sPath in listPaths if sPath not in dictShaByPath
+        ],
+    }
 
 
 def _fdictHashRemoteDataFiles(
@@ -1160,7 +1199,7 @@ async def _fiRunStepList(
     connectionDocker, sContainerId,
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1, dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+    setRunStepIndices=None, fdictCommitProvenance=None,
 ):
     """Iterate steps, pausing at interactive ones."""
     from .interactiveSteps import _fiHandleInteractiveStep
@@ -1187,6 +1226,7 @@ async def _fiRunStepList(
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
                 sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
+                fdictCommitProvenance=fdictCommitProvenance,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
@@ -1221,7 +1261,7 @@ async def _fiRunStepsAndLog(
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+    setRunStepIndices=None, fdictCommitProvenance=None,
 ):
     """Execute steps, write log, and emit final status."""
     dictState, stateWriter = _ftInitializeRunState(
@@ -1254,6 +1294,7 @@ async def _fiRunStepsAndLog(
             dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
             iStartStep=iStartStep, dictInteractive=dictInteractive,
             sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
+            fdictCommitProvenance=fdictCommitProvenance,
         )
         await _fnFinalizeRun(
             connectionDocker, sContainerId, dictState, iResult,
@@ -1356,6 +1397,7 @@ async def _fiRunWithLogging(
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
     setRunStepIndices=None, iSourceDateEpochOverride=0,
+    fdictCommitProvenance=None,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sLogPath, listLogLines, fnLogging, dictVariables = (
@@ -1391,6 +1433,7 @@ async def _fiRunWithLogging(
         dictInteractive=dictInteractive,
         sRunMode=sRunMode,
         setRunStepIndices=setRunStepIndices,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1406,6 +1449,7 @@ async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
+    fdictCommitProvenance=None,
 ):
     """Run all enabled steps with logging.
 
@@ -1424,6 +1468,7 @@ async def fiRunAllSteps(
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1431,6 +1476,7 @@ async def fiRunFromStep(
     connectionDocker, sContainerId, iStartStep,
     dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback, dictInteractive=None,
+    fdictCommitProvenance=None,
 ):
     """Run steps starting from iStartStep (1-based) with logging."""
     return await _fiRunWithLogging(
@@ -1439,6 +1485,7 @@ async def fiRunFromStep(
         f"runFrom:{iStartStep}", iStartStep=iStartStep,
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1467,7 +1514,7 @@ async def fiVerifyOnly(
 async def fiRunSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
-    sRunMode="full",
+    sRunMode="full", fdictCommitProvenance=None,
 ):
     """Run only the listed step indices for this run.
 
@@ -1488,4 +1535,5 @@ async def fiRunSelectedSteps(
         sWorkflowPath=sWorkflowPath,
         sRunMode=sRunMode,
         setRunStepIndices=setRunStepIndices,
+        fdictCommitProvenance=fdictCommitProvenance,
     )

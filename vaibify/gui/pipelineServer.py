@@ -644,7 +644,7 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
     dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
-    dictInteractive=None,
+    dictInteractive=None, fdictCommitProvenance=None,
 ):
     """Dispatch runFrom with the start step from the request."""
     iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
@@ -653,6 +653,7 @@ async def _fnDispatchRunFrom(
         dictWorkflow, sWorkflowPath,
         sWorkflowDirectory, fnCallback,
         dictInteractive=dictInteractive,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -697,6 +698,7 @@ async def fnDispatchAction(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive=None,
+    fdictCommitProvenance=None,
 ):
     """Route a WebSocket pipeline action to the correct runner."""
     sWorkflowPath = dictWorkflowPathCache.get(sContainerId, "")
@@ -708,17 +710,20 @@ async def fnDispatchAction(
         await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "forceRunAll":
         await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback, bForceRun=True,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
             dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "verify":
         await fiVerifyOnly(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
@@ -731,13 +736,14 @@ async def fnDispatchAction(
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,
             dictWorkflow, dictWorkflowPathCache,
-            sWorkflowDirectory, fnCallback)
+            sWorkflowDirectory, fnCallback,
+            fdictCommitProvenance=fdictCommitProvenance)
 
 
 async def _fnDispatchSelected(
     connectionDocker, sContainerId, dictRequest,
     dictWorkflow, dictWorkflowPathCache,
-    sWorkflowDirectory, fnCallback,
+    sWorkflowDirectory, fnCallback, fdictCommitProvenance=None,
 ):
     """Dispatch the runSelected action."""
     from .pipelineRunner import SET_VALID_RUN_MODES
@@ -756,6 +762,7 @@ async def _fnDispatchSelected(
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
         sWorkflowDirectory, fnCallback,
         sRunMode=sRunMode,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -869,6 +876,17 @@ async def fnPipelineMessageLoop(
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
     _fnPublishInteractiveContext(sContainerId, dictInteractive)
+    # The record-unit provenance committer (spec §4.5): built here
+    # because it needs the live session context — the current cache,
+    # the reload detector, and the save seam that moves the self-write
+    # baseline with the file. Absent a context (direct library and
+    # test callers), the runner refreshes provenance in memory only.
+    fdictCommitProvenance = None
+    if dictCtx is not None:
+        from .provenanceCommitter import ffnBuildProvenanceCommitter
+        fdictCommitProvenance = ffnBuildProvenanceCommitter(
+            dictCtx, sContainerId,
+        )
 
     try:
         while True:
@@ -946,6 +964,7 @@ async def fnPipelineMessageLoop(
                         sContainerId, dictWorkflowFrame,
                         dictWorkflowPathCache, sWorkflowDirectory,
                         fnCallback, dictInteractive,
+                        fdictCommitProvenance=fdictCommitProvenance,
                     )
                 )
 
@@ -1028,6 +1047,7 @@ async def _fnSafeDispatch(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive,
+    fdictCommitProvenance=None,
 ):
     """Wrap fnDispatchAction with error handling.
 
@@ -1049,6 +1069,7 @@ async def _fnSafeDispatch(
             sContainerId, dictWorkflow,
             dictWorkflowPathCache, sWorkflowDirectory,
             fnCallback, dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance,
         )
     except Exception as errorCaught:
         logger.error(

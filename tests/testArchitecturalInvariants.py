@@ -4436,7 +4436,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing duplicate, so validation refuses one before ids are
     # trusted -- at load (before the state merge reads them) and at
     # save (before either file is written).
-    "workflowManager.py": 2460,
+    # +52 (2026-08-15, slice 4): remote-data record identity enforced
+    # at validation and save (unique sPath per step), plus the
+    # SEMANTIC workflow fingerprint — the attestation identity that
+    # names the definition and is blind to the run's own digest
+    # updates. Both are workflow-definition authority, which is this
+    # module's one responsibility.
+    "workflowManager.py": 2512,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4644,7 +4650,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the pipeline socket's not-connected refusal log too — a project
     # that was never cached is indistinguishable from one torn down
     # unless both ends of the cache's life are on the record.
-    "pipelineServer.py": 2816,
+    # +21 (2026-08-15, slice 4): the WS loop builds the record-unit
+    # provenance committer (provenanceCommitter) per session and
+    # threads it through dispatch to the runner — the committer needs
+    # the live cache, the reload detector, and the save seam, all of
+    # which live only here.
+    "pipelineServer.py": 2837,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4853,7 +4864,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-07-25): the same shim carries fbStepIsInteractive, the
     # single interactive-flag classifier the runner now uses to pick
     # the interactive lane. No new responsibility.
-    "pipelineRunner.py": 1500,
+    # +38 (2026-08-15, slice 4): remote-data provenance now refreshes
+    # on EVERY step exit (closing the §4.5 pull-succeeds-later-
+    # command-fails hole) and hands the records to the threaded
+    # committer; the commit outcome and unexamined paths return for
+    # the marker protocol.
+    "pipelineRunner.py": 1539,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

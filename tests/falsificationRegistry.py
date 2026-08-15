@@ -11351,4 +11351,149 @@ def _fdictEntry(sRel):
             '                        if (false) {\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testDuplicateRecordPathsAreNamedAtValidation'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # Let two records share a path: the digest refresh writes the
+        # same hash into both and the record-unit merge cannot tell
+        # which assertion the researcher meant.
+        old=(
+            '            if sNormalized in dictSeenAt:\n'
+            '                return (\n'
+            '                    f"Step{iIndex + 1:02d} declares two'
+            ' listRemoteData "\n'
+            '                    f"records for {sNormalized!r};'
+            ' record paths must be "\n'
+            '                    "unique within a step so a digest'
+            ' cannot attach to "\n'
+            '                    "the wrong record"\n'
+            '                )\n'
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+        new=(
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testTheSaveRefusesADuplicateBeforeTouchingTheContainer'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Save without record identity: a workflow whose records
+        # collide persists, and every later digest refresh attaches
+        # hashes to whichever record happens to come last.
+        old=(
+            '    sRemoteConflict = '
+            'fsDescribeRemoteDataPathConflict(dictWorkflow)\n'
+            '    if sRemoteConflict:\n'
+            '        raise ValueError(\n'
+            '            f"Refusing to save {sWorkflowPath}:'
+            ' {sRemoteConflict}"\n'
+            '        )\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSemanticWorkflowFingerprint.py::'
+            'testTheRunsOwnDigestUpdateDoesNotMoveTheFingerprint'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Fingerprint the digests along with the definition: the
+        # provenance commit then moves the value the completion merge
+        # compares, and every remote-data run invalidates its own
+        # attestation.
+        old=(
+            '    for dictStep in dictDeclarative.get("listSteps", [])'
+            ' or []:\n'
+            '        for dictRemote in dictStep.get("listRemoteData",'
+            ' []) or []:\n'
+            '            if not isinstance(dictRemote, dict):\n'
+            '                continue\n'
+            '            for sField in'
+            ' T_REMOTE_DATA_RUN_PRODUCED_FIELDS:\n'
+            '                dictRemote.pop(sField, None)\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAFailingStepStillRecordsItsPull'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Restore the exit-0 guard: a step whose download succeeds and
+        # whose later command fails records nothing — the "no pull
+        # boundary" hole of spec §4.5, re-opened.
+        old=(
+            '    await _fdictRecordRemoteDataProvenance(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+            '        dictVariables, iStepNumber, fnStatusCallback,\n'
+            '        fdictCommitProvenance=fdictCommitProvenance,\n'
+            '    )\n'
+        ),
+        new=(
+            '    if iExitCode == 0:\n'
+            '        await _fdictRecordRemoteDataProvenance(\n'
+            '            connectionDocker, sContainerId, dictStep,\n'
+            '            dictVariables, iStepNumber, fnStatusCallback,\n'
+            '            fdictCommitProvenance=fdictCommitProvenance,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testDigestAndTimestampInstallTogether'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the digest without its timestamp: the record stops
+        # being one assertion, and a leafwise merge is how a false
+        # record gets manufactured piecemeal.
+        old=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+            '        dictDiskRecord[S_DIGEST_TIMESTAMP_KEY] = '
+            'sTimestamp\n'
+        ),
+        new=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAMidRunDeclarationEditRefusesTheRecord'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the run's digest under a declaration edited mid-run:
+        # the researcher's new sSourceUrl now carries the old pull's
+        # hash — internally consistent, wrong, and symptomless.
+        old=(
+            '        if _fbDeclarationsDiffer(dictRunRecord,'
+            ' dictDiskRecord):\n'
+            '            listRefusals.append({\n'
+            '                "sPath": sPath,\n'
+            '                "sReason": (\n'
+            '                    "the record\'s declaration changed'
+            ' while the step "\n'
+            '                    "ran; installing the pulled digest'
+            ' under the new "\n'
+            '                    "declaration would manufacture a'
+            ' false record"\n'
+            '                ),\n'
+            '            })\n'
+            '            continue\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
 ]
