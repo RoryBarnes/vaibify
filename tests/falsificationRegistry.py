@@ -11769,4 +11769,63 @@ def _fdictEntry(sRel):
             '            if (false) {\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'testARestartWaitsOutALingeringSocketWithNoHubSlot'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Re-gate the port-release wait on finding a live hub session
+        # slot (the pre-fix behavior): the dying hub releases its slot
+        # before its sockets clear, so the restart the wait exists for
+        # finds no slot and hops immediately (the live 2026-08-14
+        # 8051->8050 hop).
+        old=(
+            '    if not bLiveForeignHolder and '
+            '_fbWaitForHubPortRelease(iPersisted):\n'
+        ),
+        new=(
+            '    if _fdictReadHubSlot(iPersisted) and '
+            '_fbWaitForHubPortRelease(iPersisted):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'testAHoppedPortIsNotPersistedOverAnUnprovableHolder'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Persist the hopped port unconditionally (the pre-fix
+        # behavior): a socket lingering from the previous hub then
+        # permanently moves the persisted port and the researcher's
+        # bookmarked URL dies even though the old port clears seconds
+        # later.
+        old=(
+            '    if bHolderIsLiveListener:\n'
+        ),
+        new=(
+            '    if True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'test_fiResolveHubPort_scans_and_warns_on_foreign_holder'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Blind the live-listener probe: a live foreign holder is then
+        # misread as a lingering socket, the hopped port is never
+        # persisted, and every future restart re-announces a
+        # "temporary" conflict that is in fact permanent.
+        old=(
+            '    finally:\n'
+            '        socketProbe.close()\n'
+            '    return True\n'
+        ),
+        new=(
+            '    finally:\n'
+            '        socketProbe.close()\n'
+            '    return False\n'
+        ),
+    ),
 ]
