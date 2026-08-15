@@ -296,6 +296,14 @@ def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     ``filesRepo`` is a project-repo path string (host clone) or a
     ``repoFiles`` adapter (container or poll snapshot).
     """
+    # Unresolved pull markers gate the whole ladder (spec §4.5
+    # condition 2, ruling R2, approved 2026-08-15): a set marker means
+    # remote data may sit on disk with no committed record of its
+    # origin, and a workflow that cannot account for its inputs is not
+    # Self-Consistent. Reconciliation — the next successful run of the
+    # marked step — clears it; nothing else may.
+    if dictWorkflow.get("listUnresolvedRemoteDataMarkers"):
+        return 0
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     with fcontextLevelComputation():
         if not fbAtLeastLevel1(

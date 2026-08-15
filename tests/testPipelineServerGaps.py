@@ -54,6 +54,7 @@ class TestDispatchRunFrom:
                 mockDocker, sContainerId, 3,
                 dictWorkflow, "/wf.json",
                 "/workspace", fnCallback, dictInteractive=None,
+                fdictCommitProvenance=None,
             )
 
     @pytest.mark.asyncio

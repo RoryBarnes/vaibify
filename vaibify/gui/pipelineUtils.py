@@ -27,6 +27,7 @@ __all__ = [
     "fsValidateStepName",
     "fnRequireUniqueStepSlug",
     "fbStepDirectoryConforms",
+    "fsDescribeRemoteDataPathConflict",
     "fsDescribeStepIdConflict",
     "T_RUN_CLEARED_VERIFICATION_FLAGS",
 ]
@@ -121,6 +122,44 @@ def fsDescribeStepIdConflict(dictWorkflow, bRequirePresent=False):
                 "references cannot attach to the wrong step"
             )
         dictSeenAt[sStepId] = iIndex
+    return ""
+
+
+def fsDescribeRemoteDataPathConflict(dictWorkflow):
+    """Return a diagnostic when a step's remote-data records collide.
+
+    ``sPath`` is a provenance record's identity within its step: the
+    hash refresh and the record-unit merge both attach a digest to a
+    record by path, and two records sharing one would let the last
+    occurrence silently claim the other's digest — the same
+    wrong-owner failure ``fsDescribeStepIdConflict`` guards one level
+    up. Paths are compared normalized, so ``data/a.csv`` and
+    ``./data/a.csv`` collide. Template-bearing and non-string entries
+    are skipped here; shape validation owns those.
+
+    Returns ``""`` when every step's record paths are unique.
+    """
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or [],
+    ):
+        if not isinstance(dictStep, dict):
+            continue
+        dictSeenAt = {}
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                continue
+            sPath = dictRemote.get("sPath", "")
+            if not isinstance(sPath, str) or not sPath or "{" in sPath:
+                continue
+            sNormalized = posixpath.normpath(sPath)
+            if sNormalized in dictSeenAt:
+                return (
+                    f"Step{iIndex + 1:02d} declares two listRemoteData "
+                    f"records for {sNormalized!r}; record paths must be "
+                    "unique within a step so a digest cannot attach to "
+                    "the wrong record"
+                )
+            dictSeenAt[sNormalized] = True
     return ""
 
 

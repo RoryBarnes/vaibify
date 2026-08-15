@@ -539,6 +539,35 @@ def testAStaleRecoveryAnswerDoesNotResumePollingMidRun(
 
 
 @pytest.mark.falsification
+def testADegradedRunNeverToastsACleanCompletion(
+        pageDashboard, serverHub):
+    """Kills: the §4.6 terminal report in the researcher's own tab.
+
+    A run whose pull records did not all commit must say "with
+    degraded provenance", never plain "completed" — the clean toast
+    claims documentation the disk does not have.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'completed', sCommand: 'runSelected', iExitCode: 0,"
+        " bProvenanceDegraded: true, bRunMetadataPersisted: true,"
+        " sLogPath: '/journey/.vaibify/logs/degraded.log' })",
+    )
+    pageDashboard.wait_for_selector(
+        "text=degraded provenance", timeout=5000,
+    )
+    assert pageDashboard.evaluate(
+        "() => Array.from("
+        "document.querySelectorAll('.toast.success'))"
+        ".some(el => el.textContent.includes('Step completed'))",
+    ) is False, (
+        "a degraded run also painted the clean success toast"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
     """Kills: restoring lights only for runs that exited cleanly.
 

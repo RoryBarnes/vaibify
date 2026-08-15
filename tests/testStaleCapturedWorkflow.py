@@ -116,7 +116,7 @@ async def _flistCaptureDispatchedCommands(websocketFake, dictCtx):
     async def fnRecordingDispatch(
         sAction, dictRequest, connectionDocker, sContainerId,
         dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
-        fnCallback, dictInteractive=None,
+        fnCallback, dictInteractive=None, fdictCommitProvenance=None,
     ):
         for dictStep in dictWorkflow.get("listSteps", []):
             listCommands.extend(dictStep.get("saDataCommands", []))

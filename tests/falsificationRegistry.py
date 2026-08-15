@@ -11006,14 +11006,12 @@ def _fdictEntry(sRel):
         # recorded mid-run is silently erased.
         old=(
             '            dictEntry["dictRunStats"] = dictRunStats\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
         new=(
             '            dictEntry = {"dictRunStats": dictRunStats}\n'
             '            dictStepMap[sStepId] = dictEntry\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
     ),
     Falsification(
@@ -11098,15 +11096,17 @@ def _fdictEntry(sRel):
         # branch: the backend says the run's results were not
         # recorded, and the dashboard shows only the success toast.
         old=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
             '            _fnWarnIfRunMetadataUnrecorded(dictEvent);\n'
         ),
         new=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
         ),
     ),
     Falsification(
@@ -11349,6 +11349,424 @@ def _fdictEntry(sRel):
         ),
         new=(
             '                        if (false) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testDuplicateRecordPathsAreNamedAtValidation'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # Let two records share a path: the digest refresh writes the
+        # same hash into both and the record-unit merge cannot tell
+        # which assertion the researcher meant.
+        old=(
+            '            if sNormalized in dictSeenAt:\n'
+            '                return (\n'
+            '                    f"Step{iIndex + 1:02d} declares two'
+            ' listRemoteData "\n'
+            '                    f"records for {sNormalized!r};'
+            ' record paths must be "\n'
+            '                    "unique within a step so a digest'
+            ' cannot attach to "\n'
+            '                    "the wrong record"\n'
+            '                )\n'
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+        new=(
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testTheSaveRefusesADuplicateBeforeTouchingTheContainer'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Save without record identity: a workflow whose records
+        # collide persists, and every later digest refresh attaches
+        # hashes to whichever record happens to come last.
+        old=(
+            '    sRemoteConflict = '
+            'fsDescribeRemoteDataPathConflict(dictWorkflow)\n'
+            '    if sRemoteConflict:\n'
+            '        raise ValueError(\n'
+            '            f"Refusing to save {sWorkflowPath}:'
+            ' {sRemoteConflict}"\n'
+            '        )\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSemanticWorkflowFingerprint.py::'
+            'testTheRunsOwnDigestUpdateDoesNotMoveTheFingerprint'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Fingerprint the digests along with the definition: the
+        # provenance commit then moves the value the completion merge
+        # compares, and every remote-data run invalidates its own
+        # attestation.
+        old=(
+            '    for dictStep in dictDeclarative.get("listSteps", [])'
+            ' or []:\n'
+            '        for dictRemote in dictStep.get("listRemoteData",'
+            ' []) or []:\n'
+            '            if not isinstance(dictRemote, dict):\n'
+            '                continue\n'
+            '            for sField in'
+            ' T_REMOTE_DATA_RUN_PRODUCED_FIELDS:\n'
+            '                dictRemote.pop(sField, None)\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAFailingStepStillRecordsItsPull'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Restore the exit-0 guard: a step whose download succeeds and
+        # whose later command fails records nothing — the "no pull
+        # boundary" hole of spec §4.5, re-opened.
+        old=(
+            '    dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+            '        dictVariables, iStepNumber, fnStatusCallback,\n'
+            '        fdictCommitProvenance=fdictCommitProvenance,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictProvenance = None\n'
+            '    if iExitCode == 0:\n'
+            '        dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
+            '            connectionDocker, sContainerId, dictStep,\n'
+            '            dictVariables, iStepNumber, fnStatusCallback,\n'
+            '            fdictCommitProvenance=fdictCommitProvenance,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testDigestAndTimestampInstallTogether'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the digest without its timestamp: the record stops
+        # being one assertion, and a leafwise merge is how a false
+        # record gets manufactured piecemeal.
+        old=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+            '        dictDiskRecord[S_DIGEST_TIMESTAMP_KEY] = '
+            'sTimestamp\n'
+        ),
+        new=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAMidRunDeclarationEditRefusesTheRecord'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the run's digest under a declaration edited mid-run:
+        # the researcher's new sSourceUrl now carries the old pull's
+        # hash — internally consistent, wrong, and symptomless.
+        old=(
+            '        if _fbDeclarationsDiffer(dictRunRecord,'
+            ' dictDiskRecord):\n'
+            '            listRefusals.append({\n'
+            '                "sPath": sPath,\n'
+            '                "sReason": (\n'
+            '                    "the record\'s declaration changed'
+            ' while the step "\n'
+            '                    "ran; installing the pulled digest'
+            ' under the new "\n'
+            '                    "declaration would manufacture a'
+            ' false record"\n'
+            '                ),\n'
+            '            })\n'
+            '            continue\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAPublishThatCannotBeReadBackRefuses'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Trust the write without reading it back: a full disk or a
+        # dying daemon reports success, the step runs on a marker
+        # that never became durable, and a crash leaves its pull
+        # undocumented while the protocol claims otherwise.
+        old=(
+            '            dictReread, _sRereadStatus = '
+            'ftLoadStateWithStatus(\n'
+            '                connectionDocker, sContainerId,'
+            ' sStatePath,\n'
+            '            )\n'
+            '            if fdictReadRemoteDataMarker(\n'
+            '                dictReread, sWorkflowKey, sStepId,\n'
+            '            ) is None:\n'
+            '                return {\n'
+            '                    "bPublished": False,\n'
+            '                    "sDetail": (\n'
+            '                        "the pull marker was written but'
+            ' could not "\n'
+            '                        "be read back; the step is'
+            ' refused because "\n'
+            '                        "its guarantee never became'
+            ' durable"\n'
+            '                    ),\n'
+            '                }\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAMarkerSurvivesTheOwningProjectsOwnSave'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Rebuild the document from the section being saved — the v2
+        # defect. The marker (and every sibling's section) survives
+        # only because the installer copies the document it read.
+        old=(
+            '    dictResult = copy.deepcopy(dictDocument)'
+            ' if dictDocument else {}\n'
+        ),
+        new=(
+            '    dictResult = {}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAFailedPublishMeansTheStepDoesNotRun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Run the step without a durable marker: the §4.5 crash
+        # window re-opened — the pull happens, the crash lands, and
+        # nothing on disk says remote data was ever in flight.
+        old=(
+            '        if not dictPublish["bPublished"]:\n'
+            '            await fnStatusCallback({\n'
+            '                "sType": "stepMarkerRefused",\n'
+            '                "iStepNumber": iStepNumber,\n'
+            '                "sDetail": dictPublish["sDetail"],\n'
+            '            })\n'
+            '            await _fnEmitStepResult(fnStatusCallback,'
+            ' iStepNumber, 1)\n'
+            '            return 1\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testACommandFailureLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker for a failed step: "possibly undocumented
+        # data" becomes a positive claim of full documentation.
+        old=(
+            '    if iExitCode != 0:\n'
+            '        sRetainReason = (\n'
+            '            f"the step exited {iExitCode}; its pulled'
+            ' files may not "\n'
+            '            "all be the ones examined"\n'
+            '        )\n'
+            '    elif listUnexamined:\n'
+        ),
+        new=(
+            '    if listUnexamined:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAnUnexaminedFileLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker over a file the hash never saw: the
+        # missing file is exactly the record the marker exists to
+        # flag.
+        old=(
+            '    elif listUnexamined:\n'
+            '        sRetainReason = (\n'
+            '            "declared files were never examined: "\n'
+            '            + ", ".join(listUnexamined)\n'
+            '        )\n'
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
+        ),
+        new=(
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testARunStampsItsDispatchTimeDefinition'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Merge the run's stats with no producer record: every result
+        # is permanently unattested, and a definition edit can never
+        # be told apart from the definition the run executed.
+        old=(
+            '            if sRunDefinitionFingerprint:\n'
+            '                # The producer stamp (\u00a74.4): these'
+            ' stats were made\n'
+            '                # under the run\'s DISPATCH-TIME'
+            ' definition. A mid-run\n'
+            '                # definition edit makes this differ from'
+            ' the current\n'
+            '                # fingerprint, and the next merge marks'
+            ' the stats\n'
+            '                # superseded instead of silently'
+            ' reattaching them \u2014\n'
+            '                # the cross-file race becomes'
+            ' conservative\n'
+            '                # invalidation.\n'
+            '                dictEntry.setdefault(\n'
+            '                    "dictDefinitionProducers", {},\n'
+            '                )["dictRunStats"] ='
+            ' sRunDefinitionFingerprint\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAnEditedDefinitionMarksTheRunStatsSuperseded'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Skip the revalidation: the next reload reattaches the old
+        # run's results to the edited definition as if current \u2014 the
+        # \u00a74.4 headline failure.
+        old=(
+            '        elif sProducerFingerprint !='
+            ' sCurrentSemanticFingerprint:\n'
+            '            dictStale[sAttestedKey] = "superseded"\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testTheProducerSurvivesTheSaveRoundtrip'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Drop the producer record from the stateful roundtrip: the
+        # first ordinary save after a run erases it, and every result
+        # quietly degrades to unattested.
+        old=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            '    "dictDefinitionProducers",\n'
+            ')\n'
+        ),
+        new=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            ')\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAUserApprovalStampsTheDefinitionItSaw'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Skip the human act's stamp: an approval given while looking
+        # at one definition silently vouches for every later edit.
+        old=(
+            '    if "dictVerification" in dictUpdates:\n'
+            '        # The researcher\'s approval is a human act made'
+            ' while looking\n'
+            '        # at THIS definition \u2014 the producer stamp'
+            ' records which one,\n'
+            '        # so a later definition edit marks it superseded'
+            ' instead of\n'
+            '        # letting it silently vouch for commands it never'
+            ' saw.\n'
+            '        fnStampFieldProducer(dictWorkflow, dictStep,'
+            ' "dictVerification")\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testAnUnresolvedMarkerCapsTheLevelAtZero'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Print the level beside the problem instead of gating on it:
+        # a workflow whose pulled data has no committed record still
+        # reports Self-Consistent (ruling R2, condition 2).
+        old=(
+            '    if dictWorkflow.get('
+            '"listUnresolvedRemoteDataMarkers"):\n'
+            '        return 0\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testTheTerminalEventCarriesTheDegradedVerdict'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Drop the verdict from the terminal event: the dashboard
+        # toasts a clean completion over undocumented pulled data.
+        old=(
+            '        "bProvenanceDegraded": bool(\n'
+            '            dictState.get("bProvenanceDegraded"),\n'
+            '        ),\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testADegradedRunNeverToastsACleanCompletion'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Paint the clean success toast for a degraded run: the tab
+        # claims documentation the disk does not have (\u00a74.6 says
+        # "completed with degraded provenance", never "completed").
+        old=(
+            '            if (dictEvent.bProvenanceDegraded) {\n'
+        ),
+        new=(
+            '            if (false) {\n'
         ),
     ),
 ]
