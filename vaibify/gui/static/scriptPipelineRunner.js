@@ -17,6 +17,11 @@ var VaibifyPipelineRunner = (function () {
     /* True from the researcher confirming Stop until the next run
        starts; classifies a signal-killed step as stopped-by-you. */
     var _bStopRequested = false;
+    /* True from the run's started event until a terminal event or a
+       confirmed kill: marks every state fetched BEFORE the run as
+       stale, so a slow recovery response cannot resume file polling
+       (or repaint lights) in the middle of a live run. */
+    var _bRunLive = false;
 
     function _fnOfferCommitIfRemoteDataPulled() {
         if (!_bRemoteDataPulledThisRun) return;
@@ -122,12 +127,14 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             _bStopRequested = false;
+            _bRunLive = true;
             VaibifyPolling.fnStopPipelinePolling();
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
             VaibifyApp.fnShowToast(
                 _fsStartedToast(dictEvent.sCommand), "success");
         } else if (dictEvent.sType === "completed") {
+            _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
@@ -137,6 +144,7 @@ var VaibifyPipelineRunner = (function () {
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "failed") {
+            _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
@@ -503,6 +511,14 @@ var VaibifyPipelineRunner = (function () {
         try {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
+            /* Recovery is fired-and-forgotten at workflow activation.
+               A run that started while its response was in flight
+               outdates the answer: acting on a stale "not running"
+               resumed file polling mid-run and could repaint live
+               lights with pre-run results (CI survival, 2026-08-14 —
+               the late landing satisfied the kill test's polling wait
+               with the kill handler mutated away). */
+            if (_bRunLive) return;
             if (!dictState || !dictState.bRunning) {
                 /* -1 is the initial "never completed" sentinel; a
                    NEGATIVE exit is a run killed by a signal (a Stop
@@ -521,6 +537,7 @@ var VaibifyPipelineRunner = (function () {
             fnApplyRunningState(dictState, true);
             VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
+            if (_bRunLive) return;
             VaibifyApp.fnStartFileChangePolling();
         }
     }
@@ -1100,6 +1117,7 @@ var VaibifyPipelineRunner = (function () {
                         "/api/pipeline/" + sContainerId + "/kill"
                     );
                     if (dictResult.bSuccess) {
+                        _bRunLive = false;
                         /* Only the lights a stop actually
                            invalidates: running, queued, over-budget.
                            This cleared EVERY status, so stopping took
