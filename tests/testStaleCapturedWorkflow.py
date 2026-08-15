@@ -88,8 +88,15 @@ class _FakeRebindingWebSocket:
         self._bDelivered = True
         # Exactly what workflowReloadDetector does: REBIND the key.
         self._dictCtx["workflows"][S_CONTAINER_ID] = self._dictReplacement
+        # The client has APPLIED the replacement and says so. Run
+        # frames without an acknowledgment are refused outright since
+        # the 2026-08-15 clean-break ruling; the ack-less direction
+        # has its own test below.
         return json.dumps({
             "sAction": "runSelected", "listStepIndices": [0],
+            "sAcknowledgedSourceFingerprint": self._dictReplacement.get(
+                "_sSourceFingerprint", ""),
+            "sAcknowledgedWorkflowPath": S_WORKFLOW_PATH,
         })
 
     async def send_json(self, dictEvent):
@@ -146,9 +153,9 @@ async def test_dispatch_after_an_external_edit_runs_the_new_command():
 
     A run dispatched after an edit must execute the EDITED command.
     The cache was rebound to the researcher's new revision, the disk
-    holds the new bytes, and the frame is a legacy one with no
-    acknowledgment fields — the two-way record==disk check agrees, so
-    the dispatch must run the replacement, not the captured snapshot.
+    holds the new bytes, and the frame acknowledges the applied
+    revision — three-way agreement — so the dispatch must run the
+    replacement, not the captured snapshot.
     """
     connection = _ConnectionServingProjectBytes(BA_NEW_PROJECT_BYTES)
     dictCtx = _fdictBuildContext(
@@ -222,6 +229,48 @@ def _ffnSendStaleAcknowledgment(websocketFake):
             "sAcknowledgedWorkflowPath": S_WORKFLOW_PATH,
         })
     return fnReceiveOnce
+
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def test_an_unacknowledged_run_frame_is_refused():
+    """Kills: re-admitting ack-less run frames (the retired
+    grandfathering). Nothing has shipped, so a frame with no
+    acknowledgment fields is an out-of-date ``vaibify-do`` — running
+    it would act on a copy nobody vouched for, and the refusal must
+    name the rebuild as the fix rather than claiming the project was
+    superseded.
+    """
+    connection = _ConnectionServingProjectBytes(BA_NEW_PROJECT_BYTES)
+    dictCurrent = _fdictWorkflowWithCommand(
+        S_NEW_COMMAND, BA_NEW_PROJECT_BYTES,
+    )
+    dictCtx = _fdictBuildContext(dictCurrent, connection)
+    websocketFake = _FakeRebindingWebSocket(dictCtx, dictCurrent)
+
+    async def fnReceiveAckLess():
+        if websocketFake._bDelivered:
+            raise WebSocketDisconnect(code=1000)
+        websocketFake._bDelivered = True
+        return json.dumps({
+            "sAction": "runSelected", "listStepIndices": [0],
+        })
+
+    websocketFake.receive_text = fnReceiveAckLess
+    listCommands = await _flistCaptureDispatchedCommands(
+        websocketFake, dictCtx,
+    )
+    assert listCommands == [], "an unacknowledged frame was dispatched"
+    listRefusals = [
+        dictEvent for dictEvent in websocketFake.listSent
+        if dictEvent.get("sType") == "runRefused"
+    ]
+    assert listRefusals, "no refusal event reached the client"
+    assert listRefusals[0]["sReason"] == "workflowSuperseded"
+    assert "rebuild the container image" in listRefusals[0]["sMessage"], (
+        "the refusal does not name the fix; an agent with an old CLI "
+        "would read it as a transient supersession and retry forever"
+    )
 
 
 @pytest.mark.asyncio

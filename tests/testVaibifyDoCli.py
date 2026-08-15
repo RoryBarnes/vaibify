@@ -1291,9 +1291,15 @@ def test_main_dispatch_http_invokes_urlopen(
 def test_main_dispatch_ws_invokes_websocket(
     modCli, tmp_path, dictSampleCatalog, dictValidEnv,
 ):
+    # The hub's first frame after accept is always workflowBound; the
+    # CLI adopts it before sending its action (the acknowledgment
+    # contract), so the scripted socket must model it.
+    dataBound = (b'{"sType":"workflowBound","sWorkflowPath":"/w/p.json",'
+                 b'"sExactSourceFingerprint":"fp"}')
     dataComplete = b'{"sType":"completed","iExitCode":0}'
     sock = _MockSocket([
         b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
+        bytes([0x81, len(dataBound)]) + dataBound,
         bytes([0x81, len(dataComplete)]) + dataComplete,
     ])
     argv = ["vaibify-do", "run-all"]
@@ -1338,3 +1344,93 @@ def test_runpy_entrypoint_invokes_main(tmp_path, dictSampleCatalog):
         sys.argv = sys_argv_saved
         if bCreated:
             sDefault.unlink()
+
+
+# -----------------------------------------------------------------------
+# The acknowledgment contract: run frames carry the bound fingerprint
+# -----------------------------------------------------------------------
+
+
+def _baTextFrame(dictEvent):
+    """Encode one short unmasked server text frame."""
+    baPayload = json.dumps(dictEvent).encode("utf-8")
+    assert len(baPayload) < 126, "test frame must stay short-form"
+    return bytes([0x81, len(baPayload)]) + baPayload
+
+
+def _dictDecodeMaskedClientFrame(baFrame):
+    """Decode a masked client text frame (short or 126 form) to JSON."""
+    assert baFrame[0] == 0x81
+    assert baFrame[1] & 0x80, "client frames must be masked"
+    iLengthByte = baFrame[1] & 0x7F
+    if iLengthByte == 126:
+        iLength = int.from_bytes(baFrame[2:4], "big")
+        iOffset = 4
+    else:
+        iLength = iLengthByte
+        iOffset = 2
+    baMask = baFrame[iOffset:iOffset + 4]
+    baMasked = baFrame[iOffset + 4:iOffset + 4 + iLength]
+    baPayload = bytes(
+        bByte ^ baMask[iIndex % 4]
+        for iIndex, bByte in enumerate(baMasked)
+    )
+    return json.loads(baPayload.decode("utf-8"))
+
+
+def test_await_workflow_bound_returns_the_event(modCli):
+    sock = _MockSocket([_baTextFrame({
+        "sType": "workflowBound",
+        "sWorkflowPath": "/w/repo/.vaibify/projects/p.json",
+        "sExactSourceFingerprint": "fp-current",
+    })])
+    dictBound = modCli._fdictAwaitWorkflowBound(sock)
+    assert dictBound["sExactSourceFingerprint"] == "fp-current"
+
+
+def test_await_workflow_bound_foreign_first_frame_returns_none(modCli):
+    sock = _MockSocket([_baTextFrame({"sType": "somethingElse"})])
+    assert modCli._fdictAwaitWorkflowBound(sock) is None
+
+
+def test_await_workflow_bound_close_returns_none(modCli):
+    sock = _MockSocket([bytes([0x88, 0x00])])
+    assert modCli._fdictAwaitWorkflowBound(sock) is None
+
+
+@pytest.mark.falsification
+def test_run_frame_carries_the_bound_acknowledgment(
+    modCli, dictValidEnv,
+):
+    """Kills: sending the action without adopting ``workflowBound``.
+
+    The hub refuses unacknowledged run frames outright (the 2026-08-15
+    clean-break ruling retired the two-way grandfathering), so a CLI
+    that skips the adoption cannot run anything — and worse, an
+    adoption that silently sends stale fields would act on a copy
+    nobody vouched for. The frame on the wire is decoded and checked,
+    not the payload dict in memory.
+    """
+    sock = _MockSocket([
+        b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
+        _baTextFrame({
+            "sType": "workflowBound",
+            "sWorkflowPath": "/w/repo/.vaibify/projects/p.json",
+            "sExactSourceFingerprint": "fp-current",
+        }),
+        _baTextFrame({"sType": "completed", "iExitCode": 0}),
+    ])
+    with patch.object(
+        socket, "create_connection", return_value=sock,
+    ):
+        iExitCode = modCli.fiRunWebsocket(
+            dictValidEnv,
+            {"sAction": "runSelected", "listStepIndices": [0]},
+            bJsonMode=True,
+        )
+    assert iExitCode == 0
+    dictFrame = _dictDecodeMaskedClientFrame(sock.listSent[1])
+    assert dictFrame["sAcknowledgedSourceFingerprint"] == "fp-current"
+    assert dictFrame["sAcknowledgedWorkflowPath"] == (
+        "/w/repo/.vaibify/projects/p.json"
+    )
