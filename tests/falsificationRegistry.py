@@ -11434,15 +11434,18 @@ def _fdictEntry(sRel):
         # whose later command fails records nothing — the "no pull
         # boundary" hole of spec §4.5, re-opened.
         old=(
-            '    await _fdictRecordRemoteDataProvenance(\n'
+            '    dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
             '        connectionDocker, sContainerId, dictStep,\n'
             '        dictVariables, iStepNumber, fnStatusCallback,\n'
             '        fdictCommitProvenance=fdictCommitProvenance,\n'
             '    )\n'
         ),
         new=(
+            '    dictProvenance = None\n'
             '    if iExitCode == 0:\n'
-            '        await _fdictRecordRemoteDataProvenance(\n'
+            '        dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
             '            connectionDocker, sContainerId, dictStep,\n'
             '            dictVariables, iStepNumber, fnStatusCallback,\n'
             '            fdictCommitProvenance=fdictCommitProvenance,\n'
@@ -11494,6 +11497,126 @@ def _fdictEntry(sRel):
         ),
         new=(
             '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAPublishThatCannotBeReadBackRefuses'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Trust the write without reading it back: a full disk or a
+        # dying daemon reports success, the step runs on a marker
+        # that never became durable, and a crash leaves its pull
+        # undocumented while the protocol claims otherwise.
+        old=(
+            '            dictReread, _sRereadStatus = '
+            'ftLoadStateWithStatus(\n'
+            '                connectionDocker, sContainerId,'
+            ' sStatePath,\n'
+            '            )\n'
+            '            if fdictReadRemoteDataMarker(\n'
+            '                dictReread, sWorkflowKey, sStepId,\n'
+            '            ) is None:\n'
+            '                return {\n'
+            '                    "bPublished": False,\n'
+            '                    "sDetail": (\n'
+            '                        "the pull marker was written but'
+            ' could not "\n'
+            '                        "be read back; the step is'
+            ' refused because "\n'
+            '                        "its guarantee never became'
+            ' durable"\n'
+            '                    ),\n'
+            '                }\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAMarkerSurvivesTheOwningProjectsOwnSave'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Rebuild the document from the section being saved — the v2
+        # defect. The marker (and every sibling's section) survives
+        # only because the installer copies the document it read.
+        old=(
+            '    dictResult = copy.deepcopy(dictDocument)'
+            ' if dictDocument else {}\n'
+        ),
+        new=(
+            '    dictResult = {}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAFailedPublishMeansTheStepDoesNotRun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Run the step without a durable marker: the §4.5 crash
+        # window re-opened — the pull happens, the crash lands, and
+        # nothing on disk says remote data was ever in flight.
+        old=(
+            '        if not dictPublish["bPublished"]:\n'
+            '            await fnStatusCallback({\n'
+            '                "sType": "stepMarkerRefused",\n'
+            '                "iStepNumber": iStepNumber,\n'
+            '                "sDetail": dictPublish["sDetail"],\n'
+            '            })\n'
+            '            await _fnEmitStepResult(fnStatusCallback,'
+            ' iStepNumber, 1)\n'
+            '            return 1\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testACommandFailureLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker for a failed step: "possibly undocumented
+        # data" becomes a positive claim of full documentation.
+        old=(
+            '    if iExitCode != 0:\n'
+            '        sRetainReason = (\n'
+            '            f"the step exited {iExitCode}; its pulled'
+            ' files may not "\n'
+            '            "all be the ones examined"\n'
+            '        )\n'
+            '    elif listUnexamined:\n'
+        ),
+        new=(
+            '    if listUnexamined:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAnUnexaminedFileLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker over a file the hash never saw: the
+        # missing file is exactly the record the marker exists to
+        # flag.
+        old=(
+            '    elif listUnexamined:\n'
+            '        sRetainReason = (\n'
+            '            "declared files were never examined: "\n'
+            '            + ", ".join(listUnexamined)\n'
+            '        )\n'
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
+        ),
+        new=(
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
         ),
     ),
 ]

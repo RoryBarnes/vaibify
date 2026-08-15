@@ -4483,7 +4483,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a concurrent cooperative writer cannot have its section dropped
     # by a stale read. The lock itself lives in its own module; these
     # lines are only the two holds.
-    "stateManager.py": 968,
+    # +149 (2026-08-15, slice 4): the durable pre-execution pull
+    # marker (§4.5 condition 1) — publish with read-back
+    # acknowledgment, conditional clear, and the accessors the level
+    # gate and dashboard read. Document-level protocol, so it lives
+    # with the document's one owner.
+    "stateManager.py": 1117,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4864,12 +4869,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-07-25): the same shim carries fbStepIsInteractive, the
     # single interactive-flag classifier the runner now uses to pick
     # the interactive lane. No new responsibility.
-    # +38 (2026-08-15, slice 4): remote-data provenance now refreshes
+    # +158 (2026-08-15, slice 4): remote-data provenance now refreshes
     # on EVERY step exit (closing the §4.5 pull-succeeds-later-
-    # command-fails hole) and hands the records to the threaded
-    # committer; the commit outcome and unexamined paths return for
-    # the marker protocol.
-    "pipelineRunner.py": 1539,
+    # command-fails hole), hands the records to the threaded
+    # committer, and runs inside the pull-marker bracket — publish
+    # fail-closed before execution, conditional clear after the
+    # records reconcile. One execution path, deliberately in one
+    # place.
+    "pipelineRunner.py": 1658,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

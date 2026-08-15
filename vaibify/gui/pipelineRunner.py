@@ -10,6 +10,7 @@ import time
 
 from vaibify.config.registryManager import fbIsHostProject
 from . import pipelineState
+from . import stateManager
 from . import workflowManager
 
 __all__ = [
@@ -984,7 +985,7 @@ async def _fiRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
-    fdictCommitProvenance=None,
+    fdictCommitProvenance=None, dictMarkerContext=None,
 ):
     """Run a single automatic step with timing and result.
 
@@ -1013,16 +1014,45 @@ async def _fiRunOneStep(
         iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
         sRunMode=sRunMode,
         fdictCommitProvenance=fdictCommitProvenance,
+        dictMarkerContext=dictMarkerContext,
     )
 
 
 async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-    sRunMode="full", fdictCommitProvenance=None,
+    sRunMode="full", fdictCommitProvenance=None, dictMarkerContext=None,
 ):
-    """Execute step commands, record timing, emit results."""
+    """Execute step commands, record timing, emit results.
+
+    A step declaring remote data runs inside the marker bracket (spec
+    §4.6): publish → execute → provenance commit → clear. The publish
+    fails CLOSED — no durable marker, no execution — and the clear
+    happens only when the step exited 0, every declared file was
+    examined, and the record merge committed without refusals; any
+    other ending leaves the marker set on disk for reconciliation.
+    ``dictMarkerContext`` is None for direct library callers, the
+    same stated remainder as the commit lane.
+    """
     import time
+    listRemotePaths = workflowManager.flistStepRemoteDataPaths(dictStep)
+    bMarkerLane = bool(listRemotePaths) and dictMarkerContext is not None
+    if bMarkerLane:
+        dictPublish = await asyncio.to_thread(
+            stateManager.fdictPublishRemoteDataMarker,
+            connectionDocker, sContainerId,
+            dictMarkerContext["sStatePath"],
+            dictMarkerContext["sWorkflowKey"],
+            dictStep.get("sStepId", ""), listRemotePaths,
+        )
+        if not dictPublish["bPublished"]:
+            await fnStatusCallback({
+                "sType": "stepMarkerRefused",
+                "iStepNumber": iStepNumber,
+                "sDetail": dictPublish["sDetail"],
+            })
+            await _fnEmitStepResult(fnStatusCallback, iStepNumber, 1)
+            return 1
     fStartTime = time.time()
     sStepDir = workflowManager.fsResolveStepWorkdir(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
@@ -1048,11 +1078,17 @@ async def _fiExecuteAndRecord(
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
-    await _fdictRecordRemoteDataProvenance(
+    dictProvenance = await _fdictRecordRemoteDataProvenance(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
         fdictCommitProvenance=fdictCommitProvenance,
     )
+    if bMarkerLane:
+        await _fnSettleRemoteDataMarker(
+            connectionDocker, sContainerId, dictMarkerContext,
+            dictStep, iStepNumber, iExitCode, dictProvenance,
+            fnStatusCallback,
+        )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
@@ -1134,6 +1170,65 @@ async def _fdictRecordRemoteDataProvenance(
     }
 
 
+async def _fnSettleRemoteDataMarker(
+    connectionDocker, sContainerId, dictMarkerContext, dictStep,
+    iStepNumber, iExitCode, dictProvenance, fnStatusCallback,
+):
+    """Clear the pull marker only when its guarantee was earned.
+
+    The clear conditions are the spec's, verbatim (§4.5): the step
+    exited 0, every declared file was examined (a missing hash is an
+    unexamined file), and the record merge committed with no
+    refusals. Everything else — command failure, unexamined files, a
+    refused or failed commit, a failed clear — leaves the marker set
+    ON DISK and says so, because a cleared marker is a claim that the
+    pulled data is fully documented.
+    """
+    dictCommitOutcome = (dictProvenance or {}).get(
+        "dictCommitOutcome",
+    ) or {}
+    listUnexamined = (dictProvenance or {}).get(
+        "listUnexaminedPaths",
+        workflowManager.flistStepRemoteDataPaths(dictStep),
+    )
+    sRetainReason = ""
+    if iExitCode != 0:
+        sRetainReason = (
+            f"the step exited {iExitCode}; its pulled files may not "
+            "all be the ones examined"
+        )
+    elif listUnexamined:
+        sRetainReason = (
+            "declared files were never examined: "
+            + ", ".join(listUnexamined)
+        )
+    elif dictCommitOutcome.get("bCommitted") is not True:
+        sRetainReason = dictCommitOutcome.get(
+            "sDetail", "",
+        ) or "the record merge never committed"
+    elif dictCommitOutcome.get("listRefusals"):
+        sRetainReason = "records were refused: " + "; ".join(
+            dictRefusal.get("sReason", "")
+            for dictRefusal in dictCommitOutcome["listRefusals"]
+        )
+    if not sRetainReason:
+        dictClear = await asyncio.to_thread(
+            stateManager.fdictClearRemoteDataMarker,
+            connectionDocker, sContainerId,
+            dictMarkerContext["sStatePath"],
+            dictMarkerContext["sWorkflowKey"],
+            dictStep.get("sStepId", ""),
+        )
+        if dictClear["bCleared"]:
+            return
+        sRetainReason = dictClear["sDetail"]
+    await fnStatusCallback({
+        "sType": "remoteDataMarkerRetained",
+        "iStepNumber": iStepNumber,
+        "sReason": sRetainReason,
+    })
+
+
 def _fdictHashRemoteDataFiles(
     connectionDocker, sContainerId, sRepoRoot, listRelPaths,
 ):
@@ -1200,6 +1295,7 @@ async def _fiRunStepList(
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1, dictInteractive=None, sRunMode="full",
     setRunStepIndices=None, fdictCommitProvenance=None,
+    dictMarkerContext=None,
 ):
     """Iterate steps, pausing at interactive ones."""
     from .interactiveSteps import _fiHandleInteractiveStep
@@ -1227,10 +1323,32 @@ async def _fiRunStepList(
                 fnStatusCallback, sStepLabel=sStepLabel,
                 sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
                 fdictCommitProvenance=fdictCommitProvenance,
+                dictMarkerContext=dictMarkerContext,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
     return iFinalExitCode
+
+
+def _fdictBuildMarkerContext(sWorkflowPath):
+    """Return the pull marker's durable home, or None with no path.
+
+    None means "no marker lane" — the direct-library remainder. A
+    real path that resolves to no repo or no key still returns a
+    context, whose EMPTY fields make the publish refuse: a production
+    run must fail closed, never silently skip the marker.
+    """
+    if not sWorkflowPath:
+        return None
+    sRepoPath = workflowManager.fsDeriveProjectRepoPathFromWorkflow(
+        sWorkflowPath,
+    )
+    return {
+        "sStatePath": stateManager.fsStatePathFromRepo(sRepoPath),
+        "sWorkflowKey": stateManager.fsWorkflowKeyFromPath(
+            sWorkflowPath, sRepoPath,
+        ),
+    }
 
 
 def _ftInitializeRunState(
@@ -1295,6 +1413,7 @@ async def _fiRunStepsAndLog(
             iStartStep=iStartStep, dictInteractive=dictInteractive,
             sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
             fdictCommitProvenance=fdictCommitProvenance,
+            dictMarkerContext=_fdictBuildMarkerContext(sWorkflowPath),
         )
         await _fnFinalizeRun(
             connectionDocker, sContainerId, dictState, iResult,

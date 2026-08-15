@@ -663,6 +663,155 @@ def _fnAtomicInstallTempFile(
         )
 
 
+S_REMOTE_MARKER_ROOT_KEY = "dictRemoteDataMarkers"
+
+
+def fdictPublishRemoteDataMarker(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey,
+    sStepId, listExpectedPaths,
+):
+    """Publish the durable pre-execution marker for one step's pull.
+
+    Spec §4.5 condition 1: before a step declaring ``listRemoteData``
+    runs, this marker says "remote data may arrive that is not yet
+    documented" — durably, so a crash mid-step cannot leave pulled
+    bytes on disk with no trace that a pull was even in flight.
+
+    Stored at the DOCUMENT ROOT, workflow-namespaced, and that level
+    is a constraint, not a preference: a sibling project's sequential
+    save carries unknown root keys through
+    (:func:`fdictInstallWorkflowSection` copies the document), while a
+    field inside the saving project's own section is REBUILT from the
+    in-memory workflow on every ordinary save and silently vanishes.
+
+    Fails closed: a marker that cannot be written — or cannot be READ
+    BACK after writing, which is what "durably acknowledged" means —
+    refuses the step. A missing state.json bootstraps one; a marker
+    with no attributable home (no repo, no key) refuses.
+    """
+    if not sStatePath or not sWorkflowKey or not sStepId:
+        return {
+            "bPublished": False,
+            "sDetail": (
+                "the pull marker has no durable home (project repo, "
+                "workflow key and step id are all required); the "
+                "step is refused rather than pulling undocumented "
+                "data"
+            ),
+        }
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    try:
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictDocument, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if not isinstance(dictDocument, dict):
+                dictDocument = {}
+            dictDocument.setdefault(
+                "iStateSchemaVersion", I_CURRENT_STATE_SCHEMA_VERSION,
+            )
+            dictDocument.setdefault(
+                S_REMOTE_MARKER_ROOT_KEY, {},
+            ).setdefault(sWorkflowKey, {})[sStepId] = {
+                "sStepId": sStepId,
+                "listExpectedPaths": sorted(listExpectedPaths or []),
+                "sPublishedUtc": _fsCurrentUtcIso(),
+            }
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath,
+                dictDocument,
+            )
+            dictReread, _sRereadStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if fdictReadRemoteDataMarker(
+                dictReread, sWorkflowKey, sStepId,
+            ) is None:
+                return {
+                    "bPublished": False,
+                    "sDetail": (
+                        "the pull marker was written but could not "
+                        "be read back; the step is refused because "
+                        "its guarantee never became durable"
+                    ),
+                }
+        return {"bPublished": True, "sDetail": ""}
+    except Exception as errorPublish:
+        return {
+            "bPublished": False,
+            "sDetail": f"pull marker publish failed: {errorPublish}",
+        }
+
+
+def fdictClearRemoteDataMarker(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey, sStepId,
+):
+    """Clear one step's pull marker after its records reconciled.
+
+    Callers may only clear when every declared file was examined and
+    the record merge committed — that judgement lives at the call
+    site, next to the evidence. Clearing an absent marker is True
+    (idempotent recovery); a failed clear reports False and the
+    marker stays, which is the correct failure direction.
+    """
+    if not sStatePath or not sWorkflowKey or not sStepId:
+        return {"bCleared": False, "sDetail": "marker home incomplete"}
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    try:
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictDocument, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if fdictReadRemoteDataMarker(
+                dictDocument, sWorkflowKey, sStepId,
+            ) is None:
+                return {"bCleared": True, "sDetail": ""}
+            dictAllMarkers = dictDocument[S_REMOTE_MARKER_ROOT_KEY]
+            del dictAllMarkers[sWorkflowKey][sStepId]
+            if not dictAllMarkers[sWorkflowKey]:
+                del dictAllMarkers[sWorkflowKey]
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath,
+                dictDocument,
+            )
+        return {"bCleared": True, "sDetail": ""}
+    except Exception as errorClear:
+        return {
+            "bCleared": False,
+            "sDetail": f"pull marker clear failed: {errorClear}",
+        }
+
+
+def fdictReadRemoteDataMarker(dictDocument, sWorkflowKey, sStepId):
+    """Return one step's pull marker, or None."""
+    if not isinstance(dictDocument, dict):
+        return None
+    dictForWorkflow = (
+        dictDocument.get(S_REMOTE_MARKER_ROOT_KEY) or {}
+    ).get(sWorkflowKey)
+    if not isinstance(dictForWorkflow, dict):
+        return None
+    dictMarker = dictForWorkflow.get(sStepId)
+    return dictMarker if isinstance(dictMarker, dict) else None
+
+
+def flistUnresolvedRemoteDataStepIds(dictDocument, sWorkflowKey):
+    """Return the step ids whose pull markers are still set.
+
+    A non-empty answer means remote data may sit on disk without a
+    committed record — the reproducibility level gates on it (§4.5
+    condition 2), and the dashboard names the steps.
+    """
+    if not isinstance(dictDocument, dict) or not sWorkflowKey:
+        return []
+    dictForWorkflow = (
+        dictDocument.get(S_REMOTE_MARKER_ROOT_KEY) or {}
+    ).get(sWorkflowKey)
+    if not isinstance(dictForWorkflow, dict):
+        return []
+    return sorted(dictForWorkflow)
+
+
 def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
     """Copy this workflow's state fields back into the workflow dict.
 
