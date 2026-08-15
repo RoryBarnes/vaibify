@@ -102,7 +102,17 @@ S_VAIBIFY_GITIGNORE_BODY = (
 
 T_STATEFUL_STEP_FIELDS = (
     "dictVerification", "dictRunStats", "dictLevelHighWater",
+    "dictDefinitionProducers",
 )
+# The definition-sensitive results (spec §4.4): each carries, in
+# dictDefinitionProducers, the semantic fingerprint its producer acted
+# under, and is revalidated on every state->workflow merge. Absent
+# producer = unattested (R8) — never backfilled with the current
+# fingerprint, because attribution proves an owner, never a
+# definition. dictLevelHighWater is deliberately NOT here: the
+# high-water history is an add-only ratchet recording what was
+# attained when, and invalidating history is falsifying it.
+T_ATTESTED_STEP_FIELDS = ("dictVerification", "dictRunStats")
 T_STATEFUL_TOP_FIELDS = (
     "bArchiveTrackingMigrated", "iProofLevel",
     "dictWorkflowLevelHighWater", "bWarnedHundredSteps",
@@ -535,6 +545,7 @@ def _fnPersistStateDocument(
 def fdictMergeRunResultsIntoState(
     connectionDocker, sContainerId, sStatePath, sWorkflowKey,
     dictRunDeltaByStepId, dictStepIdToDirectory,
+    sRunDefinitionFingerprint="",
 ):
     """Merge a run's per-step results into a freshly loaded document.
 
@@ -590,6 +601,17 @@ def fdictMergeRunResultsIntoState(
                     dictEntry = {}
                 dictStepMap[sStepId] = dictEntry
             dictEntry["dictRunStats"] = dictRunStats
+            if sRunDefinitionFingerprint:
+                # The producer stamp (§4.4): these stats were made
+                # under the run's DISPATCH-TIME definition. A mid-run
+                # definition edit makes this differ from the current
+                # fingerprint, and the next merge marks the stats
+                # superseded instead of silently reattaching them —
+                # the cross-file race becomes conservative
+                # invalidation.
+                dictEntry.setdefault(
+                    "dictDefinitionProducers", {},
+                )["dictRunStats"] = sRunDefinitionFingerprint
             dictVerification = dictEntry.get("dictVerification")
             if isinstance(dictVerification, dict):
                 for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
@@ -812,7 +834,10 @@ def flistUnresolvedRemoteDataStepIds(dictDocument, sWorkflowKey):
     return sorted(dictForWorkflow)
 
 
-def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
+def fnMergeStateIntoWorkflow(
+    dictWorkflow, dictState, sWorkflowKey="",
+    sCurrentSemanticFingerprint="",
+):
     """Copy this workflow's state fields back into the workflow dict.
 
     No-op when ``dictState`` is None. Steps without a matching
@@ -831,6 +856,14 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
     The keyless call is the pre-namespace shape and reads the document
     root. It survives for the bootstrap path, which builds a section
     from markers and merges it before any key exists.
+
+    ``sCurrentSemanticFingerprint`` is the CURRENT definition's
+    attestation identity; when given, every attested field is
+    revalidated as it merges (spec §4.4: a check made only at
+    completion protects one write — the next reload would reattach
+    old results to a new definition). The verdicts land in the
+    computed ``dictStaleResultFields`` (``"superseded"`` /
+    ``"unattested"``), which never persists.
     """
     if dictState is None:
         return
@@ -850,9 +883,40 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictForStep:
                 dictStep[sKey] = dictForStep[sKey]
+        if sCurrentSemanticFingerprint:
+            _fnMarkStaleResultFields(
+                dictStep, dictForStep, sCurrentSemanticFingerprint,
+            )
     for sKey in T_STATEFUL_TOP_FIELDS:
         if sKey in dictState:
             dictWorkflow[sKey] = dictState[sKey]
+
+
+def _fnMarkStaleResultFields(
+    dictStep, dictForStep, sCurrentSemanticFingerprint,
+):
+    """Revalidate one step's attested fields against the definition.
+
+    A field whose recorded producer fingerprint differs from the
+    current definition is ``"superseded"``; a non-empty field with no
+    recorded producer is ``"unattested"`` (R8's legacy answer, never
+    upgraded). An empty or absent field claims nothing and is not
+    marked. The verdict is computed, per load, and stripped on save.
+    """
+    dictProducers = dictForStep.get("dictDefinitionProducers") or {}
+    dictStale = {}
+    for sAttestedKey in T_ATTESTED_STEP_FIELDS:
+        if not dictForStep.get(sAttestedKey):
+            continue
+        sProducerFingerprint = dictProducers.get(sAttestedKey, "")
+        if not sProducerFingerprint:
+            dictStale[sAttestedKey] = "unattested"
+        elif sProducerFingerprint != sCurrentSemanticFingerprint:
+            dictStale[sAttestedKey] = "superseded"
+    if dictStale:
+        dictStep["dictStaleResultFields"] = dictStale
+    else:
+        dictStep.pop("dictStaleResultFields", None)
 
 
 def ftSplitMergedDict(dictWorkflow):
@@ -878,6 +942,9 @@ def ftSplitMergedDict(dictWorkflow):
             if sKey in dictStep:
                 dictExtracted[sKey] = dictStep.pop(sKey)
         dictStep.pop("sLabel", None)
+        # Computed per load by the merge's revalidation; persisting it
+        # would freeze a verdict the next definition edit must change.
+        dictStep.pop("dictStaleResultFields", None)
         if dictExtracted and sStateKey:
             dictStepState[sStateKey] = dictExtracted
     dictState = fdictBuildEmptyState()

@@ -427,6 +427,11 @@ def _fdictPersistRunResultsToState(
             stateManager.fsStatePathFromRepo(sRepoPath),
             stateManager.fsWorkflowKeyFromPath(sWorkflowPath, sRepoPath),
             dictDelta, dictIdToDirectory,
+            sRunDefinitionFingerprint=(
+                workflowManager.fsComputeSemanticWorkflowFingerprint(
+                    dictWorkflow,
+                )
+            ),
         )
     except Exception as error:
         logging.getLogger("vaibify").error(

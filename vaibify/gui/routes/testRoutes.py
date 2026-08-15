@@ -34,6 +34,7 @@ from ..workflowManager import (
     fsResolveStepWorkdir,
 )
 from .. import projectRoots
+from .. import workflowManager
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
@@ -228,6 +229,11 @@ def _fdictRunAllTestCategories(
         if sCatOutput and sCategory in dictTests:
             dictTests[sCategory]["sLastOutput"] = sCatOutput
         dictCategoryResults[sCategory] = dictResult
+    dictWorkflowLive = dictCtx["workflows"].get(sContainerId)
+    if dictCategoryResults and dictWorkflowLive is not None:
+        workflowManager.fnStampFieldProducer(
+            dictWorkflowLive, dictStep, "dictVerification",
+        )
     return dictCategoryResults
 
 
@@ -789,6 +795,9 @@ def _fnRegisterTestRun(app, dictCtx):
         tExecResult, bPassed, sOutput = tRun
         _fnRecordCategoryOutcome(
             dictStep, dictCat, sVerifKey, bPassed, sOutput,
+        )
+        workflowManager.fnStampFieldProducer(
+            dictWorkflow, dictStep, "dictVerification",
         )
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, request,

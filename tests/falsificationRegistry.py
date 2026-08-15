@@ -11006,14 +11006,12 @@ def _fdictEntry(sRel):
         # recorded mid-run is silently erased.
         old=(
             '            dictEntry["dictRunStats"] = dictRunStats\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
         new=(
             '            dictEntry = {"dictRunStats": dictRunStats}\n'
             '            dictStepMap[sStepId] = dictEntry\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
     ),
     Falsification(
@@ -11617,6 +11615,105 @@ def _fdictEntry(sRel):
         new=(
             '    elif dictCommitOutcome.get("bCommitted") is not'
             ' True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testARunStampsItsDispatchTimeDefinition'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Merge the run's stats with no producer record: every result
+        # is permanently unattested, and a definition edit can never
+        # be told apart from the definition the run executed.
+        old=(
+            '            if sRunDefinitionFingerprint:\n'
+            '                # The producer stamp (\u00a74.4): these'
+            ' stats were made\n'
+            '                # under the run\'s DISPATCH-TIME'
+            ' definition. A mid-run\n'
+            '                # definition edit makes this differ from'
+            ' the current\n'
+            '                # fingerprint, and the next merge marks'
+            ' the stats\n'
+            '                # superseded instead of silently'
+            ' reattaching them \u2014\n'
+            '                # the cross-file race becomes'
+            ' conservative\n'
+            '                # invalidation.\n'
+            '                dictEntry.setdefault(\n'
+            '                    "dictDefinitionProducers", {},\n'
+            '                )["dictRunStats"] ='
+            ' sRunDefinitionFingerprint\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAnEditedDefinitionMarksTheRunStatsSuperseded'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Skip the revalidation: the next reload reattaches the old
+        # run's results to the edited definition as if current \u2014 the
+        # \u00a74.4 headline failure.
+        old=(
+            '        elif sProducerFingerprint !='
+            ' sCurrentSemanticFingerprint:\n'
+            '            dictStale[sAttestedKey] = "superseded"\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testTheProducerSurvivesTheSaveRoundtrip'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Drop the producer record from the stateful roundtrip: the
+        # first ordinary save after a run erases it, and every result
+        # quietly degrades to unattested.
+        old=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            '    "dictDefinitionProducers",\n'
+            ')\n'
+        ),
+        new=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            ')\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAUserApprovalStampsTheDefinitionItSaw'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Skip the human act's stamp: an approval given while looking
+        # at one definition silently vouches for every later edit.
+        old=(
+            '    if "dictVerification" in dictUpdates:\n'
+            '        # The researcher\'s approval is a human act made'
+            ' while looking\n'
+            '        # at THIS definition \u2014 the producer stamp'
+            ' records which one,\n'
+            '        # so a later definition edit marks it superseded'
+            ' instead of\n'
+            '        # letting it silently vouch for commands it never'
+            ' saw.\n'
+            '        fnStampFieldProducer(dictWorkflow, dictStep,'
+            ' "dictVerification")\n'
+        ),
+        new=(
+            '\n'
         ),
     ),
 ]

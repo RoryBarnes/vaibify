@@ -54,6 +54,7 @@ __all__ = [
     "fsDescribeValidationFailure",
     "fsComputeWorkflowFingerprint",
     "fsComputeSemanticWorkflowFingerprint",
+    "fnStampFieldProducer",
     "fsDeriveProjectRepoPathFromWorkflow",
     "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
@@ -487,13 +488,18 @@ def _fnLoadAndMergeState(
     dictNotice = _fdictBuildStateLoadNotice(sStatus)
     if dictNotice:
         dictWorkflow["dictStateLoadNotice"] = dictNotice
+    sCurrentSemanticFingerprint = fsComputeSemanticWorkflowFingerprint(
+        dictWorkflow,
+    )
     if dictBootstrappedSection is not None:
         stateManager.fnMergeStateIntoWorkflow(
             dictWorkflow, dictBootstrappedSection,
+            sCurrentSemanticFingerprint=sCurrentSemanticFingerprint,
         )
     else:
         stateManager.fnMergeStateIntoWorkflow(
             dictWorkflow, dictState, sWorkflowKey,
+            sCurrentSemanticFingerprint=sCurrentSemanticFingerprint,
         )
     stateManager.fnEnsureVaibifyGitignore(
         connectionDocker, sContainerId, sRepoPath,
@@ -1113,6 +1119,26 @@ def fnUpdateStep(dictWorkflow, iStepIndex, dictUpdates):
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     for sKey, value in dictUpdates.items():
         dictStep[sKey] = value
+    if "dictVerification" in dictUpdates:
+        # The researcher's approval is a human act made while looking
+        # at THIS definition — the producer stamp records which one,
+        # so a later definition edit marks it superseded instead of
+        # letting it silently vouch for commands it never saw.
+        fnStampFieldProducer(dictWorkflow, dictStep, "dictVerification")
+
+
+def fnStampFieldProducer(dictWorkflow, dictStep, sFieldKey):
+    """Record which definition this field's producer acted under (R8).
+
+    Called at the producer's own seam — the run's completion merge,
+    the test runner's outcome write, the researcher's approval — and
+    nowhere generic: a blanket stamp at save time would BACKFILL
+    legacy state with the current fingerprint, which R8 forbids
+    because attribution proves an owner, never a definition.
+    """
+    dictStep.setdefault("dictDefinitionProducers", {})[sFieldKey] = (
+        fsComputeSemanticWorkflowFingerprint(dictWorkflow)
+    )
 
 
 def fnDeleteStep(dictWorkflow, iStepIndex):

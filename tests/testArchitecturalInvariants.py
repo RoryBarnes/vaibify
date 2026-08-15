@@ -4230,7 +4230,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # resource's own root instead of the module constant, so a host
     # project's repo-relative test file resolves under its own
     # directory (host-mode wave 4).
-    "routes/testRoutes.py": 808,
+    # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
+    # the definition producer (R8) — the stamp lives at the
+    # producer's own seam, never at save time.
+    "routes/testRoutes.py": 817,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4442,7 +4445,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # names the definition and is blind to the run's own digest
     # updates. Both are workflow-definition authority, which is this
     # module's one responsibility.
-    "workflowManager.py": 2512,
+    # +26 (2026-08-15, slice 4e): fnStampFieldProducer (the R8
+    # producer stamp, called at each producer's own seam) and the
+    # load path passing the current semantic fingerprint into the
+    # revalidating merge.
+    "workflowManager.py": 2538,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4488,7 +4495,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # acknowledgment, conditional clear, and the accessors the level
     # gate and dashboard read. Document-level protocol, so it lives
     # with the document's one owner.
-    "stateManager.py": 1117,
+    # +67 (2026-08-15, slice 4e): the attestation producer roundtrip
+    # (dictDefinitionProducers in the stateful fields), the run's
+    # producer stamp at the completion merge, and the per-load
+    # revalidation that marks superseded/unattested results.
+    "stateManager.py": 1184,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
