@@ -5013,7 +5013,7 @@ def testTheKillStoppedStateWriteRunsUnderItsOwnDrain():
     because ``fnWriteState`` is a temp-file write followed by a
     rename and the write is the irreversible half.
 
-    Kills: passing ``_fnMarkPipelineStopped``'s stopped-state worker to
+    Kills: passing ``_fiMarkPipelineStopped``'s stopped-state worker to
     ``asyncio.to_thread`` instead of ``fgenericRunWorkerUnderTheDrain``.
     """
     client, connectionDocker = _tConnectGatedKillClient(
@@ -5055,7 +5055,7 @@ def testTheKillReconcileWriteKeepsTheRunnersRealCauseOfDeath():
     sweep does not either — so this isolates the reconcile carrier.
 
     Kills: dropping the ``fnPersistReconciled`` argument in
-    ``_fnMarkPipelineStopped`` so the reconcile write falls back to the
+    ``_fiMarkPipelineStopped`` so the reconcile write falls back to the
     uncarried background lane.
     """
     client, connectionDocker = _tConnectGatedKillClient(

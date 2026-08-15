@@ -1656,6 +1656,16 @@ def fsetSweepAllContainerCaches(dictCtx, listRunningContainers):
     setEvicted |= _fsetSweepStateLocks(dictCtx, setRunning)
     setEvicted |= _fsetSweepInteractiveContexts(setRunning)
     _fnFanOutToSiblingModules(dictCtx, setRunning)
+    if setEvicted:
+        # Logged BY NAME: an eviction of a project somebody has open
+        # surfaces later as an unexplained "no project is open"
+        # refusal, and a silent eviction cost a full afternoon of
+        # remote diagnosis (2026-08-14) because nothing recorded the
+        # moment the cache changed.
+        logging.getLogger("vaibify").info(
+            "Container sweep evicted cached sessions: %s",
+            sorted(setEvicted),
+        )
     return setEvicted
 
 

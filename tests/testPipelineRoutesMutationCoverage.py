@@ -58,8 +58,8 @@ class TestKillRouteAuthGate:
             "vaibify.gui.routes.pipelineRoutes.fdictRequireWorkflow",
             return_value=dictWorkflow,
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped",
-            new=AsyncMock(),
+            "vaibify.gui.routes.pipelineRoutes._fiMarkPipelineStopped",
+            new=AsyncMock(return_value=0),
         ):
             pipelineRoutes._fnRegisterPipelineKill(app, dictCtx)
             client = TestClient(app, raise_server_exceptions=False)
@@ -117,8 +117,8 @@ class TestKillRouteActuallyKills:
             "vaibify.gui.routes.pipelineRoutes.fdictRequireWorkflow",
             return_value=dictWorkflow,
         ), patch(
-            "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped",
-            new=AsyncMock(),
+            "vaibify.gui.routes.pipelineRoutes._fiMarkPipelineStopped",
+            new=AsyncMock(return_value=0),
         ):
             pipelineRoutes._fnRegisterPipelineKill(app, dictCtx)
             client = TestClient(app)

@@ -4208,7 +4208,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # distinct -- the exact-source value is the dispatch freshness
     # authority, the canonical serves the edit CAS, and they differ
     # for any hand-edited or migrated project.
-    "routes/pipelineRoutes.py": 3175,
+    # +19 (2026-08-14, stopped light): the stop marker records the
+    # interrupted step as "stopped" in the state it persists and the
+    # kill response names it, so a deliberately stopped step no longer
+    # displays as never-run (researcher ruling: stopped is its own
+    # purple state, never conflated with failed).
+    "routes/pipelineRoutes.py": 3194,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4344,7 +4349,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is never in it, so the sweep evicted every host session's caches
     # ~60 s after it opened. The exemption lives inside the sweep
     # coordinator so every caller is covered.
-    "fileStatusManager.py": 2212,
+    # +10 (2026-08-14): the sweep logs every eviction by name — a
+    # silent eviction of an open project surfaces later as an
+    # unexplained no-project-open refusal, and cost an afternoon of
+    # remote diagnosis.
+    "fileStatusManager.py": 2222,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -4629,7 +4638,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # loop it guards, with the loop now consulting the LIVE cache per
     # frame (the captured-object defect, spec D1). The self-write
     # atomicity note in fnSave is part of the same contract.
-    "pipelineServer.py": 2788,
+    # +11 (2026-08-14): the no-project-open refusal logs what the
+    # cache DID hold at that instant, for the same diagnosis reason.
+    # +17 (2026-08-14, round 2): the cache's POPULATION at connect and
+    # the pipeline socket's not-connected refusal log too — a project
+    # that was never cached is indistinguishable from one torn down
+    # unless both ends of the cache's life are on the record.
+    "pipelineServer.py": 2816,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

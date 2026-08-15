@@ -11252,4 +11252,85 @@ def _fdictEntry(sRel):
             '\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAStoppedRunsLightsSurviveAReconnect'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Restore lights only for clean exits: a stopped run ends by
+        # signal with a negative code, so reopening after a stop shows
+        # every step as never-run while the durable state knows the
+        # finished steps passed.
+        old=(
+            '                if (dictState && dictState.sLogPath &&\n'
+            '                    typeof dictState.iExitCode === '
+            '"number" &&\n'
+            '                    dictState.iExitCode !== -1) {\n'
+        ),
+        new=(
+            '                if (dictState && dictState.sLogPath &&\n'
+            '                    dictState.iExitCode >= 0) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAKillResumesFilePollingItself'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Resume polling only on the run's terminal event: when the
+        # kill's task-cancellation side wins the race there IS no
+        # terminal event, and the reload detector sits blind until a
+        # tab reload.
+        old=(
+            '                        VaibifyApp'
+            '.fnStartFileChangePolling();\n'
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
+        ),
+        new=(
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesCoverage.py::'
+            'TestFnMarkPipelineStopped::'
+            'test_the_interrupted_step_is_recorded_stopped'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Forget which step the stop interrupted: no durable record,
+        # so after a reconnect the stopped step reads as never-run.
+        old=(
+            '    iStoppedStepNumber = '
+            'int(dictState.get("iActiveStep") or 0)\n'
+            '    if iStoppedStepNumber >= 1:\n'
+            '        dictState.setdefault("dictStepResults", {})[\n'
+            '            str(iStoppedStepNumber)\n'
+            '        ] = {"sStatus": "stopped", "iExitCode": 130}\n'
+        ),
+        new=(
+            '    iStoppedStepNumber = '
+            'int(dictState.get("iActiveStep") or 0)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAKillPaintsTheStoppedLight'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Ignore the kill response's interrupted step: the researcher
+        # watches their stopped step fall back to a hollow never-ran
+        # circle in the live tab.
+        old=(
+            '                        if '
+            '(dictResult.iStoppedStepNumber >= 1) {\n'
+        ),
+        new=(
+            '                        if (false) {\n'
+        ),
+    ),
 ]

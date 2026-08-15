@@ -142,6 +142,14 @@ var VaibifyPolling = (function () {
         }
     }
 
+    function fbFilePollingActive() {
+        /* The deterministic observable for "is the dashboard watching
+           files": tests that counted network ticks instead were
+           timing-coupled and flaked by environment (a falsification
+           SURVIVED on one CI runner, twice, 2026-08-14). */
+        return _iFileChangePollTimer !== null;
+    }
+
     async function _fnPollFileChangesBody(sContainerId) {
         /* Badge refresh is owned by the sync-epoch-bump path in
            _fnMaybeRefreshBadgesOnSyncEpoch; the file-status tick used
@@ -447,6 +455,7 @@ var VaibifyPolling = (function () {
         fnStartPipelinePolling: fnStartPipelinePolling,
         fnStopPipelinePolling: fnStopPipelinePolling,
         fnStartFilePolling: fnStartFilePolling,
+        fbFilePollingActive: fbFilePollingActive,
         fnStopFilePolling: fnStopFilePolling,
         fnSetReposHandler: fnSetReposHandler,
         fnStartReposPolling: fnStartReposPolling,
