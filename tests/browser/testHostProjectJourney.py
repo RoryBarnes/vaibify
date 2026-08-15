@@ -463,9 +463,10 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
     sat blind until a tab reload. The kill's own success handler must
     resume polling, whichever side of the race won.
 
-    The run's ``started`` event stops polling for real here, exactly
-    as a live run does; the kill is stubbed because its server route
-    is proven elsewhere.
+    Asserted on the poller's OWN state, not on counted network ticks:
+    the counting version was timing-coupled and its mutation SURVIVED
+    on one CI runner, twice, which is how a falsification stops being
+    evidence.
     """
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
@@ -485,25 +486,15 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
         "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'started', sCommand: 'runSelected' })",
     )
-    dictPollCount = {"i": 0}
-    pageDashboard.route(
-        "**/file-status*",
-        lambda routeIntercepted: (
-            dictPollCount.update(i=dictPollCount["i"] + 1),
-            routeIntercepted.continue_(),
-        ),
-    )
-    pageDashboard.wait_for_timeout(4000)
-    iPollsWhileStopped = dictPollCount["i"]
+    assert pageDashboard.evaluate(
+        "() => VaibifyPolling.fbFilePollingActive()",
+    ) is False, "the run's started event did not stop file polling"
 
     pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
     pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
     pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_timeout(7000)
-
-    assert dictPollCount["i"] > iPollsWhileStopped, (
-        "file polling never resumed after the kill; a mid-run edit "
-        "stays unannounced until the researcher reloads the tab"
+    pageDashboard.wait_for_function(
+        "() => VaibifyPolling.fbFilePollingActive()", timeout=7000,
     )
     assert pageDashboard.listPageErrors == []
 
@@ -533,7 +524,7 @@ def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
                 "iStepCount": 2,
                 "dictStepResults": {
                     "1": {"sStatus": "passed", "iExitCode": 0},
-                    "2": {"sStatus": "failed", "iExitCode": -15},
+                    "2": {"sStatus": "stopped", "iExitCode": 130},
                 },
             }),
         ),
@@ -543,9 +534,66 @@ def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
         f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
         timeout=15000,
     )
-    assert "fail" in pageDashboard.get_attribute(
+    assert "stopped" in pageDashboard.get_attribute(
         '.step-item:has-text("Second Stage") .step-status', "class",
-    ), "the killed step's result was not restored"
+    ), "the stopped step's purple light was not restored"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAKillPaintsTheStoppedLight(pageDashboard, serverHub):
+    """Kills: leaving the interrupted step as a hollow never-ran circle.
+
+    When the kill's task-cancellation side wins, the run emits no
+    result for the step it interrupted, so a step that ran for
+    minutes and was deliberately stopped displayed identically to one
+    that never started (live, twice, 2026-08-14). The kill response
+    now names the interrupted step and the dashboard paints it
+    PURPLE 'stopped' — never failure-red (the researcher's stop is
+    not the step failing), never hollow (it did run).
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/pipeline/*/kill",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bSuccess": True,
+                "iProcessesKilled": 1,
+                "bTaskCancelled": True,
+                "iStoppedStepNumber": 2,
+                "listCancellationRefusals": [],
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => {"
+        " VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "   { sType: 'started', sCommand: 'runSelected' });"
+        " VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "   { sType: 'stepStarted', iStepNumber: 2,"
+        "     fWallClockBudgetSeconds: 0.0 }); }",
+    )
+    pageDashboard.wait_for_selector(".step-status.running", timeout=5000)
+
+    pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-status.stopped',
+        timeout=7000,
+    )
+    sClasses = pageDashboard.get_attribute(
+        '.step-item:has-text("Second Stage") .step-status', "class",
+    )
+    assert "fail" not in sClasses, (
+        "the researcher's stop was painted as a failure"
+    )
+    assert pageDashboard.evaluate(
+        "() => !Array.from(document.querySelectorAll('.step-status'))"
+        ".some(el => el.classList.contains('running'))",
+    ), "the running light survived the stop"
     assert pageDashboard.listPageErrors == []
 
 

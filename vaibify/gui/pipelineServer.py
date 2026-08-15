@@ -2470,7 +2470,7 @@ _DICT_ROUTE_RE_EXPORTS = {
     "_fbApplyAllMarkerCategories": "routes.pipelineRoutes",
     "_fbApplyExternalTestResults": "routes.pipelineRoutes",
     "_fbApplyMarkerCategory": "routes.pipelineRoutes",
-    "_fnMarkPipelineStopped": "routes.pipelineRoutes",
+    "_fiMarkPipelineStopped": "routes.pipelineRoutes",
     "_fsetExtractRegisteredTestFiles": "routes.pipelineRoutes",
     # syncRoutes
     "_fdictBuildOverleafArgs": "routes.syncRoutes",

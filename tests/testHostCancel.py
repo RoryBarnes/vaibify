@@ -390,8 +390,8 @@ def _ftPostKillFor(sProjectName, monkeypatch):
         "vaibify.gui.routes.pipelineRoutes.fdictRequireWorkflow",
         return_value=DICT_WORKFLOW_WITH_A_KILLABLE_STEP,
     ), patch(
-        "vaibify.gui.routes.pipelineRoutes._fnMarkPipelineStopped",
-        new=AsyncMock(),
+        "vaibify.gui.routes.pipelineRoutes._fiMarkPipelineStopped",
+        new=AsyncMock(return_value=0),
     ):
         pipelineRoutes._fnRegisterPipelineKill(app, dictCtx)
         client = TestClient(app)

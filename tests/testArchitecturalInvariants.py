@@ -4208,7 +4208,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # distinct -- the exact-source value is the dispatch freshness
     # authority, the canonical serves the edit CAS, and they differ
     # for any hand-edited or migrated project.
-    "routes/pipelineRoutes.py": 3175,
+    # +19 (2026-08-14, stopped light): the stop marker records the
+    # interrupted step as "stopped" in the state it persists and the
+    # kill response names it, so a deliberately stopped step no longer
+    # displays as never-run (researcher ruling: stopped is its own
+    # purple state, never conflated with failed).
+    "routes/pipelineRoutes.py": 3194,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

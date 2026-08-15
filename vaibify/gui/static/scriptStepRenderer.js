@@ -98,6 +98,7 @@ var VaibifyStepRenderer = (function () {
         "pass": "last run succeeded — details in the expanded "
             + "step's Last run line",
         "fail": "last run failed",
+        "stopped": "stopped by you before it finished",
         "queued": "queued in the current run",
         "running": "running now",
         "overBudget": "running longer than its wall-clock budget — "
