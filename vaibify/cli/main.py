@@ -231,7 +231,10 @@ def fnLaunchHub(iExplicitPort):
     the same port across Ctrl-C/restart cycles whenever possible, so
     any dashboard tab opened from the prior run keeps working without
     a reload. Falls back to a free-port scan (and warns on stderr)
-    when the persisted port is held by another process.
+    when the persisted port is held by another process; the persisted
+    port is only overwritten when that holder is a live listener, so
+    a socket lingering from the previous hub cannot permanently move
+    the researcher's bookmarked URL.
     """
     import uvicorn
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot

@@ -232,56 +232,117 @@ def fiResolveHubPort(iExplicitPort):
 
     1. ``--port`` (``iExplicitPort``) wins unconditionally.
     2. If a port is persisted and free → bind it.
-    3. If a port is persisted but held by *our own* hub zombie
-       (detected via ``sessionRegistry`` slot scan) → wait briefly.
-    4. If held by anything else, or nothing is persisted → scan
-       upward via the existing allocator, persist the winning port,
-       and warn the user on stderr.
+    3. If a port is persisted but held by a *live foreign listener*
+       (something accepts TCP connections there and no vaibify hub
+       slot claims the port) → scan upward, persist the new port,
+       and warn that the old URL is dead.
+    4. Any other conflict — a dying hub still draining, or a socket
+       lingering after the previous hub exited — gets a brief wait
+       for the port to clear. If it clears, the persisted port is
+       kept. If not, the hub binds a scanned port for THIS session
+       only and the persisted port is left alone, so the researcher's
+       bookmarked URL resolves again on the next restart.
     """
     if iExplicitPort is not None:
         return iExplicitPort
     iPersisted = _fiReadPersistedHubPort()
-    if iPersisted > 0:
-        iResolved = _fiTryPersistedHubPort(iPersisted)
-        if iResolved > 0:
-            return iResolved
-    return _fiAssignAndPersistHubPort(iPersisted)
-
-
-def _fiTryPersistedHubPort(iPersisted):
-    """Return iPersisted if bindable now (possibly after a brief wait)."""
+    if iPersisted <= 0:
+        return _fiAssignFirstHubPort()
     if fbIsPortFree(iPersisted):
         return iPersisted
-    if _fbWaitForHubZombieRelease(iPersisted):
-        return iPersisted
-    return 0
+    return _fiResolveContestedHubPort(iPersisted)
 
 
-def _fiAssignAndPersistHubPort(iPersistedHint):
-    """Pick a free port for the hub, persist it, warn on shift."""
+def _fiAssignFirstHubPort():
+    """First launch: pick a free port and persist it for restarts."""
     iPort = fiPickFreePort()
     _fnPersistHubPortSafely(iPort)
-    if iPersistedHint > 0 and iPort != iPersistedHint:
+    print(
+        f"Assigned hub port {iPort} (persisted for future "
+        f"restarts).",
+        file=sys.stderr,
+    )
+    return iPort
+
+
+def _fiResolveContestedHubPort(iPersisted):
+    """Resolve a persisted-but-busy hub port: wait, keep, or hop.
+
+    The holder is classified ONCE, and both decisions — whether the
+    brief wait is worth taking, and whether a hopped port may
+    overwrite the persisted one — read that single answer, so they
+    can never disagree about who held the port.
+    """
+    bLiveListener = _fbPortHasLiveListener(iPersisted)
+    bLiveForeignHolder = bLiveListener and not _fdictReadHubSlot(iPersisted)
+    if not bLiveForeignHolder and _fbWaitForHubPortRelease(iPersisted):
+        return iPersisted
+    return _fiHopFromContestedPort(iPersisted, bLiveListener)
+
+
+def _fiHopFromContestedPort(iPersisted, bHolderIsLiveListener):
+    """Scan a fresh port; persist it only when the old one is truly lost.
+
+    A hopped port is persisted only when the persisted port is
+    confirmed held by a live listener — a process that ACCEPTS
+    connections will not release the port, so the bookmark it broke
+    is gone for good and the file should follow reality. An
+    unprovable holder (nothing accepts; the socket is lingering from
+    a dying predecessor) keeps the persisted port on disk so the
+    next restart returns to the researcher's bookmarked URL.
+    """
+    iPort = fiPickFreePort()
+    if iPort == iPersisted:
+        return iPort
+    if bHolderIsLiveListener:
+        _fnPersistHubPortSafely(iPort)
         print(
-            f"Hub port {iPersistedHint} is held by another process; "
+            f"Hub port {iPersisted} is held by another process; "
             f"binding {iPort} instead. Existing dashboard tabs at "
             f"the old URL will need to be reopened.",
             file=sys.stderr,
         )
-    elif iPersistedHint == 0:
-        print(
-            f"Assigned hub port {iPort} (persisted for future "
-            f"restarts).",
-            file=sys.stderr,
-        )
+        return iPort
+    print(
+        f"Hub port {iPersisted} has not cleared yet (a socket "
+        f"from a previous run is lingering); binding {iPort} for "
+        f"this session only. The next restart will return to port "
+        f"{iPersisted}.",
+        file=sys.stderr,
+    )
     return iPort
 
 
-def _fbWaitForHubZombieRelease(iPort):
-    """Poll for the hub's own dying instance to release iPort."""
-    dictHolder = _fdictReadHubSlot(iPort)
-    if not dictHolder:
+def _fbPortHasLiveListener(iPort):
+    """Return True when something ACCEPTS TCP connections on iPort now.
+
+    A socket lingering from a dead or dying process refuses the bind
+    but cannot accept; only a live server answers a connect. This is
+    the discriminator between "the persisted port is genuinely owned
+    by a live foreign process" (hop and persist the new port) and
+    "the previous hub's socket has not cleared" (hop for this session
+    but keep the persisted port).
+    """
+    socketProbe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    socketProbe.settimeout(0.25)
+    try:
+        socketProbe.connect(("127.0.0.1", iPort))
+    except OSError:
         return False
+    finally:
+        socketProbe.close()
+    return True
+
+
+def _fbWaitForHubPortRelease(iPort):
+    """Poll briefly for the persisted hub port to become bindable.
+
+    Deliberately NOT gated on finding a live hub session slot: the
+    dying hub releases its slot (``fnLaunchHub``'s finally) before
+    its sockets fully clear, so exactly the restart this wait exists
+    for — reproduced live 2026-08-14 as the 8051→8050 hop — found no
+    slot and got no wait.
+    """
     fDeadline = time.monotonic() + _F_SELF_ZOMBIE_WAIT_SECONDS
     while time.monotonic() < fDeadline:
         if fbIsPortFree(iPort):
