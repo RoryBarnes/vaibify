@@ -4888,7 +4888,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fail-closed before execution, conditional clear after the
     # records reconcile. One execution path, deliberately in one
     # place.
-    "pipelineRunner.py": 1658,
+    # RAISED to 1661 (2026-08-15, host CPU): the host branch of
+    # _ftRunSingleCommand now threads the wait4 reap's reading
+    # (ExecResult.fCpuSeconds) instead of a hardcoded None, and the
+    # comment beside it says where host CPU comes from. Three lines
+    # of the same single purpose, not a new responsibility.
+    "pipelineRunner.py": 1661,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
