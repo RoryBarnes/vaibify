@@ -4445,11 +4445,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # names the definition and is blind to the run's own digest
     # updates. Both are workflow-definition authority, which is this
     # module's one responsibility.
-    # +26 (2026-08-15, slice 4e): fnStampFieldProducer (the R8
-    # producer stamp, called at each producer's own seam) and the
-    # load path passing the current semantic fingerprint into the
-    # revalidating merge.
-    "workflowManager.py": 2538,
+    # +34 (2026-08-15, slice 4e/4f): fnStampFieldProducer (the R8
+    # producer stamp, called at each producer's own seam), the load
+    # path passing the current semantic fingerprint into the
+    # revalidating merge, and the computed unresolved-marker list the
+    # level gate reads.
+    "workflowManager.py": 2546,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

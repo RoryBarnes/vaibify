@@ -11096,15 +11096,17 @@ def _fdictEntry(sRel):
         # branch: the backend says the run's results were not
         # recorded, and the dashboard shows only the success toast.
         old=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
             '            _fnWarnIfRunMetadataUnrecorded(dictEvent);\n'
         ),
         new=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
         ),
     ),
     Falsification(
@@ -11714,6 +11716,57 @@ def _fdictEntry(sRel):
         ),
         new=(
             '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testAnUnresolvedMarkerCapsTheLevelAtZero'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Print the level beside the problem instead of gating on it:
+        # a workflow whose pulled data has no committed record still
+        # reports Self-Consistent (ruling R2, condition 2).
+        old=(
+            '    if dictWorkflow.get('
+            '"listUnresolvedRemoteDataMarkers"):\n'
+            '        return 0\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testTheTerminalEventCarriesTheDegradedVerdict'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Drop the verdict from the terminal event: the dashboard
+        # toasts a clean completion over undocumented pulled data.
+        old=(
+            '        "bProvenanceDegraded": bool(\n'
+            '            dictState.get("bProvenanceDegraded"),\n'
+            '        ),\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testADegradedRunNeverToastsACleanCompletion'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Paint the clean success toast for a degraded run: the tab
+        # claims documentation the disk does not have (\u00a74.6 says
+        # "completed with degraded provenance", never "completed").
+        old=(
+            '            if (dictEvent.bProvenanceDegraded) {\n'
+        ),
+        new=(
+            '            if (false) {\n'
         ),
     ),
 ]

@@ -137,8 +137,20 @@ var VaibifyPipelineRunner = (function () {
             _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
-            VaibifyApp.fnShowToast(
-                _fsCompletedToast(dictEvent.sCommand), "success");
+            /* §4.6: a run whose pull records did not all commit says
+               "with degraded provenance", never plain "completed" —
+               the clean toast would claim documentation the disk
+               does not have. */
+            if (dictEvent.bProvenanceDegraded) {
+                VaibifyApp.fnShowToast(
+                    _fsCompletedToast(dictEvent.sCommand) +
+                    " — with degraded provenance: pulled data may " +
+                    "be missing records; see the run log",
+                    "warning");
+            } else {
+                VaibifyApp.fnShowToast(
+                    _fsCompletedToast(dictEvent.sCommand), "success");
+            }
             _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
@@ -158,6 +170,21 @@ var VaibifyPipelineRunner = (function () {
             // successful pull still left fresh files that need review
             // and commit, so the offer fires here too.
             _fnOfferCommitIfRemoteDataPulled();
+        } else if (dictEvent.sType === "stepMarkerRefused") {
+            /* Fail-closed pull marker: the step did NOT run. */
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + " refused: " +
+                dictEvent.sDetail, "error");
+        } else if (dictEvent.sType === "remoteDataMarkerRetained") {
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + "'s remote data " +
+                "is not fully documented: " + dictEvent.sReason,
+                "warning");
+        } else if (dictEvent.sType === "provenanceDegraded") {
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + " provenance: " +
+                (dictEvent.sDetail || "records were refused"),
+                "warning");
         } else if (dictEvent.sType === "runRefused") {
             VaibifyApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);

@@ -488,6 +488,13 @@ def _fnLoadAndMergeState(
     dictNotice = _fdictBuildStateLoadNotice(sStatus)
     if dictNotice:
         dictWorkflow["dictStateLoadNotice"] = dictNotice
+    # The computed marker list rides the workflow dict so the level
+    # gate needs no second state read; split strips it on save.
+    dictWorkflow["listUnresolvedRemoteDataMarkers"] = (
+        stateManager.flistUnresolvedRemoteDataStepIds(
+            dictState, sWorkflowKey,
+        )
+    )
     sCurrentSemanticFingerprint = fsComputeSemanticWorkflowFingerprint(
         dictWorkflow,
     )
@@ -1238,6 +1245,7 @@ def _fdictStripComputedFields(dictWorkflow):
     dictClean = dict(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
     dictClean.pop("_sSourceFingerprint", None)
+    dictClean.pop("listUnresolvedRemoteDataMarkers", None)
     dictClean["listSteps"] = [
         _fdictStripStepTransientKeys(dictStep)
         for dictStep in dictWorkflow.get("listSteps", [])
