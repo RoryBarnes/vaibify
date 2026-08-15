@@ -500,6 +500,45 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
 
 
 @pytest.mark.falsification
+def testAStaleRecoveryAnswerDoesNotResumePollingMidRun(
+        pageDashboard, serverHub):
+    """Kills: ignoring a recovery answer that a live run has outdated.
+
+    Pipeline-state recovery is fired-and-forgotten at workflow
+    activation. When its response lands AFTER a run has started, the
+    server's "not running" answer predates the run — acting on it
+    restarted file polling in the middle of a live run. That late
+    landing is how the kill falsification above SURVIVED on a loaded
+    CI runner (2026-08-14): the stale response satisfied its polling
+    wait with the kill handler's resume mutated away.
+
+    Deterministic by construction: the recovery call is awaited
+    directly, so the "response arrives after the run started"
+    ordering is forced, not raced.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'started', sCommand: 'runSelected' })",
+    )
+    assert pageDashboard.evaluate(
+        "() => VaibifyPolling.fbFilePollingActive()",
+    ) is False, "the run's started event did not stop file polling"
+
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnRecoverPipelineState("
+        "VaibifyApp.fsGetContainerId())",
+    )
+    assert pageDashboard.evaluate(
+        "() => VaibifyPolling.fbFilePollingActive()",
+    ) is False, (
+        "a recovery answer fetched before the run started resumed "
+        "file polling mid-run"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
 def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
     """Kills: restoring lights only for runs that exited cleanly.
 
