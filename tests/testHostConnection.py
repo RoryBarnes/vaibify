@@ -310,6 +310,52 @@ class TestGatedExec:
                 S_PROJECT_NAME, "id", sUser="root",
             )
 
+    @pytest.mark.falsification
+    def test_environment_overlay_reaches_the_child(
+        self, tProjectAndConnection,
+    ):
+        """The overlay's entries are visible to the launched command.
+
+        Kills: dropping the overlay at the launch (``env=None``
+        regardless), which silently stops the host lane's determinism
+        guarantees from ever reaching the step's process while the
+        run still records them as applied.
+        """
+        _, connection = tProjectAndConnection
+        tExecResult = connection.ftRunInContainerStreamedWithChunks(
+            S_PROJECT_NAME,
+            'printf "%s" "$VAIBIFY_PROBE_VALUE"', None,
+            dictEnvironmentOverlay={
+                "VAIBIFY_PROBE_VALUE": "determinism-42",
+            },
+        )
+        assert tExecResult.iExitCode == 0
+        assert tExecResult.sStdout == "determinism-42"
+
+    @pytest.mark.falsification
+    def test_environment_overlay_inherits_the_base_environment(
+        self, tProjectAndConnection, monkeypatch,
+    ):
+        """An overlaid launch still carries the hub's own environment.
+
+        Kills: replacing the environment wholesale with the overlay —
+        the plan's ruling is inherited env PLUS overlay, because a
+        child stripped of the hub's environment is not the process
+        the researcher's own shell would have started. The probe is a
+        canary planted in the hub's environment, not PATH or HOME,
+        because bash synthesizes defaults for those when they are
+        missing and the mutation would go unobserved.
+        """
+        monkeypatch.setenv("VAIBIFY_INHERITED_CANARY", "present")
+        _, connection = tProjectAndConnection
+        tExecResult = connection.ftRunInContainerStreamedWithChunks(
+            S_PROJECT_NAME,
+            'printf "%s" "$VAIBIFY_INHERITED_CANARY"', None,
+            dictEnvironmentOverlay={"VAIBIFY_PROBE_VALUE": "x"},
+        )
+        assert tExecResult.iExitCode == 0
+        assert tExecResult.sStdout == "present"
+
     def test_chunk_callback_receives_ordered_lines(
         self, tProjectAndConnection,
     ):

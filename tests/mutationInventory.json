@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 330,
+  "iRowCount": 331,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -3747,25 +3747,51 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "durable"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "carrier-supervisor"
       ],
       "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
       "sFile": "gui/determinismEnvironment.py",
       "sFingerprint": "483d7ccb276e69f1",
       "sFunction": "_fiQueryHeadCommitEpoch",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "exec",
+      "sLifetime": "request",
+      "sLogicalOperation": "read the project repo's HEAD commit epoch for the determinism guarantees at run start",
+      "sOperationMetadata": "command is a git log composed here with the repo path fsShellQuote'd; runs inside the run/runAllTests durable carriers; bound into asyncio.to_thread so the row is structurally unattributable to a carrier observation -- part of the passed-callable migration set",
       "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "passed-callable"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "durable"
+      ],
+      "listExecutionLanes": [
+        "background"
+      ],
+      "listLockOwners": [
+        "carrier-supervisor"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
+      "sFile": "gui/determinismEnvironment.py",
+      "sFingerprint": "e3c1947767754721",
+      "sFunction": "_fsWriteHostMatplotlibSalt",
+      "sJournalKind": "file-write",
+      "sLifetime": "request",
+      "sLogicalOperation": "write the matplotlibrc pinning svg.hashsalt into the host project's guarded scratch subtree at run start",
+      "sOperationMetadata": "path from projectRoots.fsResolveScratchDirectory (host branch only; the caller runs solely for host projects), content is the derived epoch; bound into asyncio.to_thread so the row is structurally unattributable to a carrier observation -- part of the passed-callable migration set",
+      "sPrimitive": "fnWriteFile",
       "sReferenceKind": "passed-callable"
     },
     {
@@ -9045,14 +9071,14 @@
       ],
       "sAccess": "unknown-command",
       "sCarrierDisposition": "excluded",
-      "sExclusionRationale": "This row IS the enforcement point, not a caller of it: admission is asserted at its two public entry points (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) before it runs, and every launch is write-ahead journaled as host-exec with the child suspended behind a gate until its identity is persisted. A carrier admits callers; this is the gate they hit.",
+      "sExclusionRationale": "This row IS the enforcement point, not a caller of it: admission is asserted at its two public entry points (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) before it runs, and every launch is write-ahead journaled as host-exec with the child suspended behind a gate until its identity is persisted. A carrier admits callers; this is the gate they hit. Re-reviewed 2026-08-15 when the fingerprint moved: the launch gained an environment argument composed by _fdictComposeLaunchEnvironment (inherited os.environ plus an optional caller overlay -- adds or shadows entries, never replaces the environment), which changes what the child SEES, not what may launch one.",
       "sFile": "host/hostConnection.py",
-      "sFingerprint": "001a2030acc0bc3e",
+      "sFingerprint": "ef5e603d20f2ab66",
       "sFunction": "_ftLaunchGatedAndStream",
       "sJournalKind": "host-exec",
       "sLifetime": "outlives-request",
       "sLogicalOperation": "the single gated launch every host-project subprocess goes through",
-      "sOperationMetadata": "command text in via parameter (the declared opaque-subprocess-command blind-spot row); bounded lane kills its recorded group on timeout; durable lane relies on the journaled group identity for Cancel and quiescence",
+      "sOperationMetadata": "command text in via parameter (the declared opaque-subprocess-command blind-spot row); environment is inherited plus an optional overlay (determinism data); bounded lane kills its recorded group on timeout; durable lane relies on the journaled group identity for Cancel and quiescence",
       "sPrimitive": "process UNKNOWN",
       "sReferenceKind": "unknown-command"
     },
@@ -9748,13 +9774,13 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 518,
+      "iLine": 526,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",
-      "sFingerprint": "001a2030acc0bc3e",
+      "sFingerprint": "ef5e603d20f2ab66",
       "sFunction": "_ftLaunchGatedAndStream",
-      "sScopeFingerprint": "5ec90a7b943837ab"
+      "sScopeFingerprint": "7310e94658a2118e"
     },
     {
       "iLine": 192,

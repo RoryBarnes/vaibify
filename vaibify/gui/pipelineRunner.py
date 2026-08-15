@@ -109,6 +109,7 @@ from .interactiveSteps import (  # noqa: F401
 
 from .determinismEnvironment import (  # noqa: F401
     S_ENV_PREFIX_KEY,
+    S_ENV_OVERLAY_KEY,
     S_DETERMINISM_APPLIED_KEY,
     S_MATPLOTLIB_CONFIG_DIR,
     _fiQueryHeadCommitEpoch,
@@ -214,8 +215,10 @@ async def _ftRunCommandList(
     """
     fTotalCpu = 0.0
     sEnvPrefix = ""
+    dictEnvironmentOverlay = None
     if dictVariables:
         sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
+        dictEnvironmentOverlay = dictVariables.get(S_ENV_OVERLAY_KEY)
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
@@ -224,6 +227,7 @@ async def _ftRunCommandList(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
             sEnvPrefix=sEnvPrefix,
+            dictEnvironmentOverlay=dictEnvironmentOverlay,
         )
         fTotalCpu = _ffTotalCpuTime(fTotalCpu, fCpu)
         if iExitCode != 0:
@@ -234,7 +238,7 @@ async def _ftRunCommandList(
 async def _ftRunSingleCommand(
     connectionDocker, sContainerId,
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
-    sEnvPrefix="",
+    sEnvPrefix="", dictEnvironmentOverlay=None,
 ):
     """Execute one command, return (iExitCode, fCpuSeconds).
 
@@ -270,12 +274,19 @@ async def _ftRunSingleCommand(
     fnEmitChunk, fnDrainPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
+    # The overlay kwarg travels only when an overlay exists (host lane
+    # with determinism data); the container call stays byte-identical,
+    # and connection doubles modelling the container signature never
+    # see an argument the Docker leg does not take.
+    dictExecKeywords = {"sWorkdir": sWorkdir}
+    if dictEnvironmentOverlay:
+        dictExecKeywords["dictEnvironmentOverlay"] = dictEnvironmentOverlay
     async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
             tExecResult = await asyncio.to_thread(
                 connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
-                sWorkdir=sWorkdir,
+                **dictExecKeywords,
             )
         finally:
             await fnDrainPending()

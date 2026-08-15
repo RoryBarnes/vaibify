@@ -112,7 +112,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 289 -> 288: the Files tab's and the Logs list's directory listing.
 # One `find -printf` exec row went, two typed-read rows arrived, and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 287
+# 287 -> 286 (2026-08-15, structured determinism env): two rows
+# ARRIVED classified (the host salt write, and the gated launch
+# re-fingerprinted by its new environment argument — prior review
+# re-recorded), and the legacy epoch-query row beside them was
+# reviewed and classified while there.
+I_UNCLASSIFIED_ROW_BUDGET = 286
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -169,7 +174,16 @@ I_UNCLASSIFIED_ROW_BUDGET = 287
 # on 2026-08-06 when `scan-scripts` shed it -- fixing that instance
 # did not fix the class, and this copy went on silently reporting a
 # populated host project as an empty directory for two more months.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 203
+# 203 -> 204 (2026-08-15, HONEST INCREASE): the host determinism salt
+# file is a real new write — matplotlibrc into the guarded scratch
+# subtree, through the gateway write primitive, inside the run's own
+# durable carrier, classified on arrival. Structured env data
+# REPLACED vaibify-authored shell text that had the step's own shell
+# writing to a world-shared /tmp; the mutation-capable site moved
+# from inside the researcher's command text (where no scanner sees
+# it) to a countable caller, which is the direction this ratchet
+# exists to encourage.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 204
 
 
 # Every acquisition of a declared capability that still has no reviewed
