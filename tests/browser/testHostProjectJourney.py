@@ -378,31 +378,47 @@ def _fnWaitForFile(sPath, fTimeoutSeconds=60.0):
 
 
 @pytest.mark.falsification
-def testTheTerminalNoticeSpeaksAboutTheRightThing(
+def testAHostTerminalOpensWithTheBannerAndEchoes(
     pageDashboard, serverHub,
 ):
-    """A host project has no container to talk about.
+    """A real shell, on this machine, in the researcher's tab.
 
-    The withdrawn-terminal notice is container copy: it said releasing
-    "this container" could not report it quiet, and then offered a
-    `docker exec -it <container-name> bash` line naming a container
-    that does not exist for this project. A researcher who followed it
-    would be told no such container is running, about work that is
-    running fine on their own machine.
+    Until 2026-08-15 this test pinned the opposite: the pane showed a
+    notice pointing at the researcher's own shell and never dialed.
+    The ruling that replaced it — the terminal is how people will
+    first try vaibify, so host mode must have it — comes with two
+    honesty devices this test asserts: the per-session BANNER saying
+    the shell runs on their own machine and that processes can
+    outlive the tab, and (elsewhere) the quiescence-unproven journal
+    record. The echo proves the PTY is real: a marker computed by
+    bash on this machine comes back through the hub's WebSocket into
+    xterm.
 
-    Kills: one notice for both modes.
+    Kills: the banner never reaching the host session's first bytes.
     """
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
-    sNotice = _fsTerminalNoticeText(pageDashboard)
-    assert "docker exec" not in sNotice, sNotice
-    assert "this container" not in sNotice, sNotice
-    assert "your own machine" in sNotice, sNotice
-    assert serverHub.sHome.split(os.sep)[-1] in sNotice or (
-        S_HOST_PROJECT_READY in sNotice
-    ), (
-        "the notice does not name the directory the researcher should "
-        f"open a shell in: {sNotice}"
-    )
+    sPane = _fsTerminalNoticeText(pageDashboard)
+    fDeadline = 20.0
+    import time as moduleTime
+    fStarted = moduleTime.monotonic()
+    while "YOUR OWN machine" not in sPane:
+        assert moduleTime.monotonic() - fStarted < fDeadline, (
+            f"the host banner never rendered: {sPane[:400]}"
+        )
+        pageDashboard.wait_for_timeout(250)
+        sPane = _fsTerminalNoticeText(pageDashboard)
+    assert "keep running" in sPane, sPane
+    pageDashboard.click(".xterm")
+    pageDashboard.keyboard.type("echo BROWSER-$((6*7))")
+    pageDashboard.keyboard.press("Enter")
+    fStarted = moduleTime.monotonic()
+    while "BROWSER-42" not in sPane:
+        assert moduleTime.monotonic() - fStarted < fDeadline, (
+            f"the shell never echoed through the PTY: {sPane[:400]}"
+        )
+        pageDashboard.wait_for_timeout(250)
+        sPane = _fsTerminalNoticeText(pageDashboard)
+    assert pageDashboard.listPageErrors == []
 
 
 def _fsTerminalNoticeText(page):

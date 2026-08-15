@@ -610,46 +610,55 @@ drain — waiting spends the capability's window on an operation of
 unknown length — and there is no DRAINING phase: a transfer refuses over
 any terminal execution nobody has proven dead.
 
-## The terminal serves containers, and costs the quiescence claim
+## The terminal serves both modes, and costs the quiescence claim
 
-**`/ws/terminal` serves container projects; host projects are refused.**
+**`/ws/terminal` serves container projects AND host projects
+(2026-08-15 ruling).** A host project's shell is a real PTY on the
+researcher's own machine, launched by the host gateway's suspended-gate
+primitive and journaled with the `terminal` kind before its first
+instruction.
 
 Containment of a terminal is **not proven and cannot be assumed**. A
-shell can `setsid` out of the process group the containment record
-tracks, so "the terminal stopped" is not provable. Vaibify therefore
-does not claim it: **a container in which a terminal has run reports
-quiescence UNPROVEN and routes to `vaibify reconcile`, never quiet.**
-Do not weaken that back — a release that reports quiet after a terminal
-is a false statement, and the feature is only defensible because the
-statement is true. The cost is real and intended: using a terminal
-means that container cannot afterwards be certified quiet, and a
-release may leave it quarantined until reconcile settles it.
+shell can `setsid` out of the session the containment record tracks,
+so "the terminal stopped" is not provable. Vaibify therefore does not
+claim it: **a project in which a terminal has run reports quiescence
+UNPROVEN and routes to `vaibify reconcile`, never quiet.** Do not
+weaken that back — a release that reports quiet after a terminal is a
+false statement, and the feature is only defensible because the
+statement is true. The cost is real and intended, in both modes, and
+the host lane adds a second honesty device: every host session's first
+output is a banner saying the shell runs on the researcher's own
+machine and that processes can outlive the tab (the host-mode modal is
+the standing consent; the banner is the per-session reminder).
 
 `terminalContainment` and the `terminal` journal kind are what make the
 weaker claim honest — the record is the difference between a detached
 process being *unproven* and being *invisible*. Deleting either removes
 the honesty, not the risk.
 
-**Ordering in the handler is the contract**: gate, then refuse a host
-project, then `require` the daemon, then build the session. The gate is
-the shared `fiContainerSessionRejectionCode` guard the pipeline lane
+**Ordering in the handler is the contract**: gate, then branch on the
+host mode, then `require` the daemon, then build the session. The gate
+is the shared `fiContainerSessionRejectionCode` guard the pipeline lane
 uses — never an inlined membership check, or the two lanes drift about
-who owns a container. A `TerminalSession` built before the gate would
-put a quarantine-bearing operation on a container for a caller with no
-standing in it; `require` before the host refusal would answer "install
-Docker" about a project that never wanted one.
+who owns a container. A session built before the gate would put a
+quarantine-bearing operation on a project for a caller with no
+standing in it; `require` before the host branch would answer "install
+Docker" about a project that never wanted one; and the branch decides
+WHICH session class carries the record — `HostTerminalSession`, never
+the Docker class, for a host project.
 `testTheTerminalRouteGatesBeforeItBuildsAnything` pins it.
 
-**A host project needs a PTY on the researcher's own machine, journaled
-through the gated host-exec primitive.** Until that exists the route
-refuses with `I_REJECT_TERMINAL_NOT_ON_HOST`, distinct from
-`I_REJECT_TERMINAL_DISABLED` and from every authorization code: "not
-built for this kind of project", "the feature is gone" and "your
-credential is bad" send a researcher to three different places. The
-frontend does not dial for a host project at all — a socket left to be
-refused reports a deliberate refusal as a connection failure — and the
-pane says the true thing, which is that their own shell has the same
-authority in the same directory.
+**Host containment is SESSION-wide, on both halves.** A shell's job
+control moves children to new process groups within its session
+(verified live: a backgrounded `disown`ed job wears its own pgid), so
+the probe enumerates by session id, and the drain delivers per-member
+(`hostCancellation.fnSignalSessionMembers`) — a `killpg`-only probe or
+delivery would miss exactly the stray this machinery exists to find.
+The reconcile-time prover for a crashed hub's host terminal record
+does the same sweep (`_fdictProbeHostTerminalOperation`); killpg-empty
+is treated as necessary, never sufficient.
+`I_REJECT_TERMINAL_NOT_ON_HOST` is RESERVED, no longer emitted: hubs
+between 2026-08-11 and 2026-08-15 refused host terminals with it.
 
 **The handler resolves the container name before the gate**, so a
 caller that can reach the socket can distinguish a real id from a
@@ -938,16 +947,17 @@ without discussion:
   `AttributeError` would poison the journal and quarantine a working
   container over a broken button. Writing the function is a feature
   decision.
-- `terminalContainment.py` and the `terminal` journal kind survive the
-  terminal being disabled, and must. They are what reconciles a record
-  written by an earlier version — release, the safe reaper and shutdown
-  all settle terminal records through
+- `terminalContainment.py` and the `terminal` journal kind also
+  reconcile records written by EARLIER hub versions — release, the
+  safe reaper and shutdown all settle terminal records through
   `fdictTerminateAndProveRecord` — and
-  `tests/testTerminalContainmentLive.py` keeps the process-group prover
-  as the standing demonstration that it cannot see a `setsid`
-  descendant. Deleting the module would delete the reason the feature
-  is off. Its in-memory registry is, in production, permanently empty:
-  only `terminalSession` registers, and nothing constructs one.
+  `tests/testTerminalContainmentLive.py` keeps the container
+  process-group prover as the standing demonstration that it cannot
+  see a `setsid` descendant (`tests/testHostTerminal.py` carries the
+  host leg's twin demonstration). This bullet used to say the
+  in-memory registry was permanently empty; the terminal came back
+  for containers on 2026-08-11 and for host projects on 2026-08-15,
+  so live sessions register in production again.
 - `commitCarrier.fdictRequestDurableTaskCancel` has no caller and
   refuses everything. Kept deliberately: Python cannot interrupt a
   worker in `asyncio.to_thread`, so there is no honest generic cancel,

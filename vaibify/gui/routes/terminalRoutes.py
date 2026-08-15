@@ -26,11 +26,14 @@ and a release may leave it quarantined until reconcile settles it. The
 reasoning is that a tool which treats the command line as ground truth
 must not delete the command line to keep a status line tidy.
 
-HOST projects are not served here yet. A host terminal needs a PTY on
-the researcher's own machine, journaled through the gated host-exec
-primitive; until that exists this route refuses a host resource with
-its own code, so the refusal never poses as the withdrawn feature or
-as an authorization failure.
+HOST projects are served here too (2026-08-15 ruling): the same gate,
+the same seam, a real PTY on the researcher's own machine journaled
+with the ``terminal`` kind before the shell's first instruction — and
+the same honest cost, quiescence unproven until reconcile. What a host
+session adds is the banner: the first bytes the researcher sees say
+this shell runs on THEIR machine and that processes can outlive the
+tab, because the host-mode modal was acknowledged once at claim time
+and this reminder recurs per session.
 """
 
 __all__ = ["fnRegisterAll"]
@@ -51,13 +54,27 @@ from ..pipelineServer import (
     fsContainerNameForId,
 )
 from ..webSocketAuthorization import (
-    I_REJECT_TERMINAL_NOT_ON_HOST,
     ffnBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
 )
-from ..terminalSession import TerminalSession
+from ..terminalSession import HostTerminalSession, TerminalSession
+
+# The per-session reminder Rory ruled on (2026-08-15): the host-mode
+# modal is the standing consent, and this banner recurs at every shell
+# start so the researcher never mistakes the pane for a contained one.
+# Sent as the session's first output bytes, before any shell output.
+S_HOST_TERMINAL_BANNER = (
+    "\r\n"
+    "\x1b[33m[vaibify]\x1b[0m This shell runs on YOUR OWN machine, in "
+    "the project directory.\r\n"
+    "\x1b[33m[vaibify]\x1b[0m Processes you start here can keep running "
+    "after you close this session;\r\n"
+    "\x1b[33m[vaibify]\x1b[0m vaibify will report this project's "
+    "quiescence as unproven until reconciled.\r\n"
+    "\r\n"
+)
 
 
 def _fnRegisterTerminalWs(app, dictCtx):
@@ -79,11 +96,15 @@ def _fnRegisterTerminalWs(app, dictCtx):
         # AFTER the ownership gate, deliberately. A caller with no
         # standing must not be able to learn which resources are host
         # projects; the mode is answered only to a session that already
-        # owns the thing it is asking about.
+        # owns the thing it is asking about. The host branch skips the
+        # daemon requirement — a host-only machine has no daemon, and
+        # asking first would answer "install Docker" about a project
+        # that never wanted one.
         from vaibify.config.registryManager import fbIsHostProject
         if fbIsHostProject(sName):
-            await fnCloseWithCode(
-                websocket, I_REJECT_TERMINAL_NOT_ON_HOST,
+            await _fnTrackAndServeTerminal(
+                app, websocket, dictCtx, sContainerId, sName,
+                bHostProject=True,
             )
             return
         dictCtx["require"](sContainerId)
@@ -93,7 +114,7 @@ def _fnRegisterTerminalWs(app, dictCtx):
 
 
 async def _fnTrackAndServeTerminal(
-    app, websocket, dictCtx, sContainerId, sName,
+    app, websocket, dictCtx, sContainerId, sName, bHostProject=False,
 ):
     """Accept and serve a terminal session under the live-connection counters.
 
@@ -112,6 +133,7 @@ async def _fnTrackAndServeTerminal(
         await websocket.accept()
         await _fnStartAndRunTerminal(
             app, websocket, dictCtx, sContainerId, sName,
+            bHostProject=bHostProject,
         )
 
     await fnServeUnderLiveConnectionCounters(
@@ -123,7 +145,9 @@ async def _fnTrackAndServeTerminal(
     )
 
 
-async def _fnStartAndRunTerminal(app, websocket, dictCtx, sContainerId, sName):
+async def _fnStartAndRunTerminal(
+    app, websocket, dictCtx, sContainerId, sName, bHostProject=False,
+):
     """Start the terminal session and run it to completion.
 
     The session start is the journaled create → journal → start split,
@@ -134,22 +158,32 @@ async def _fnStartAndRunTerminal(app, websocket, dictCtx, sContainerId, sName):
     of merely unproven. The start runs in a worker thread — group
     discovery polls the container — so the hub event loop is never
     blocked behind a slow probe.
+
+    The host leg builds the PTY twin instead of a Docker exec, and its
+    first output is the per-session banner: the researcher is on THEIR
+    OWN machine and processes can outlive the tab.
     """
     recordOwner = (dictCtx.get("dictContainerOwners") or {}).get(sName)
-    session = TerminalSession(
-        dictCtx["docker"], sContainerId,
-        sUser=dictCtx["containerUsers"].get(
-            sContainerId, dictCtx.get("sTerminalUser")
+    dictContainment = {
+        "appState": app.state,
+        "sContainerName": sName,
+        "iOwnerGeneration": (
+            recordOwner.iOwnerGeneration if recordOwner is not None
+            else 0
         ),
-        dictContainment={
-            "appState": app.state,
-            "sContainerName": sName,
-            "iOwnerGeneration": (
-                recordOwner.iOwnerGeneration if recordOwner is not None
-                else 0
+    }
+    if bHostProject:
+        session = HostTerminalSession(
+            dictCtx["docker"], sName, dictContainment,
+        )
+    else:
+        session = TerminalSession(
+            dictCtx["docker"], sContainerId,
+            sUser=dictCtx["containerUsers"].get(
+                sContainerId, dictCtx.get("sTerminalUser")
             ),
-        },
-    )
+            dictContainment=dictContainment,
+        )
     try:
         await asyncio.to_thread(session.fnStart)
     except Exception as error:
@@ -169,6 +203,9 @@ async def _fnStartAndRunTerminal(app, websocket, dictCtx, sContainerId, sName):
                 ffnBuildPerFrameCredentialCheck(
                     websocket, dictCtx.get("dictBrowserSessions"),
                 )
+            ),
+            sIntroductionBanner=(
+                S_HOST_TERMINAL_BANNER if bHostProject else ""
             ),
         )
     finally:

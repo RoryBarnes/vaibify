@@ -138,6 +138,20 @@ DICT_NAMED_AUTHORITIES = {
             "disclosure, and the path guard bounds every direct path "
             "argument to the project and scratch roots.",
         ),
+    "host/hostConnection.py|<module>|process-launch|pty|import|0":
+        _fdictAuthority(
+            ["websocket"],
+            "The host terminal's PTY pair (2026-08-15 ruling: the "
+            "terminal serves host projects). Opened only inside "
+            "fdictLaunchTerminalShellSuspended, whose shell spawns "
+            "suspended behind a dedicated gate pipe and is journaled "
+            "with the terminal kind by the seam BEFORE the gate "
+            "opens; only the ownership-gated /ws/terminal route "
+            "constructs the session, the drain terminates-and-proves "
+            "the recorded SESSION (not just the group), and the "
+            "per-session banner plus the host-mode modal own the "
+            "runs-on-your-machine disclosure.",
+        ),
     # -- host CLI and configuration -------------------------------------
     "cli/commandBuild.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(

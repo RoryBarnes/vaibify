@@ -18,9 +18,9 @@ the contract. What is pinned now:
 
 * the ownership gate decides — an unauthorized caller gets an
   AUTHORIZATION code and is never served;
-* a HOST project gets its own code, because the shell it would need
-  does not exist yet and must not be reported as the withdrawn feature
-  or as a bad credential;
+* a HOST project is SERVED (2026-08-15 ruling) — by the PTY twin,
+  never the Docker session class, and without the daemon requirement a
+  host-only machine cannot meet;
 * every refusal still accepts before closing, so a browser reads the
   deliberate code rather than an opaque 1006.
 
@@ -115,39 +115,62 @@ class TestTerminalWsIsGatedNotWithdrawn:
         assert listBuilt == []
 
     @pytest.mark.asyncio
-    async def test_a_host_project_gets_its_own_code(self):
-        """A host project has no container to exec into.
+    @pytest.mark.falsification
+    async def test_a_host_project_is_served_by_the_pty_twin(self):
+        """A host project gets the host session, never the Docker one.
 
-        Its refusal must be neither the withdrawal code nor an
-        authorization code: the feature is not gone and the caller's
-        credential is fine -- the shell would have to run on the
-        researcher's own machine, which is not built yet.
+        This test refused with its own code until 2026-08-15, when the
+        ruling landed that the host terminal exists: a real PTY on the
+        researcher's own machine, same gate, same seam, same
+        quiescence cost.
+
+        Kills: the host branch never firing — a host project falls
+        through to the daemon requirement and the Docker session
+        class, and the researcher is told to install Docker for a
+        project that never wanted one.
         """
-        mockWs = _fmockWebSocket()
+        listServed = []
+
+        async def fnRecordServe(
+            app, websocket, dictCtx, sContainerId, sName,
+            bHostProject=False,
+        ):
+            listServed.append(bHostProject)
+
         with patch.object(
             terminalRoutes, "fiContainerSessionRejectionCode",
             lambda *tArgs, **dictKeywords: 0,
         ), patch(
             "vaibify.config.registryManager.fbIsHostProject",
             lambda sName: True,
+        ), patch.object(
+            terminalRoutes, "_fnTrackAndServeTerminal", fnRecordServe,
         ):
             await _flistRegisterAndCaptureHandlers({})[0](
-                mockWs, "a-host-project",
+                _fmockWebSocket(), "a-host-project",
             )
-
-        mockWs.accept.assert_awaited_once()
-        assert mockWs.close.await_args.kwargs["code"] == (
-            webSocketAuthorization.I_REJECT_TERMINAL_NOT_ON_HOST
+        assert listServed == [True], (
+            "a host project must be served through the host branch"
         )
 
     @pytest.mark.asyncio
-    async def test_the_host_refusal_precedes_the_daemon_requirement(self):
-        """A host-only machine has no daemon to require.
+    @pytest.mark.falsification
+    async def test_a_container_project_is_served_by_the_docker_leg(self):
+        """The symmetric direction: containers keep the exec session.
 
-        Asking ``require`` first would answer "install Docker" about a
-        project that never wanted one -- the same ordering the
-        container-only HTTP routes fixed.
+        Kills: branching every project onto the host PTY — a container
+        project's shell would then fork on the HUB's machine instead
+        of exec-ing into the container, which is a sandbox escape
+        wearing a terminal's face.
         """
+        listServed = []
+
+        async def fnRecordServe(
+            app, websocket, dictCtx, sContainerId, sName,
+            bHostProject=False,
+        ):
+            listServed.append(bHostProject)
+
         listRequired = []
         dictCtx = {"require": lambda *aArgs: listRequired.append(aArgs)}
         with patch.object(
@@ -155,7 +178,44 @@ class TestTerminalWsIsGatedNotWithdrawn:
             lambda *tArgs, **dictKeywords: 0,
         ), patch(
             "vaibify.config.registryManager.fbIsHostProject",
+            lambda sName: False,
+        ), patch.object(
+            terminalRoutes, "_fnTrackAndServeTerminal", fnRecordServe,
+        ):
+            await _flistRegisterAndCaptureHandlers(dictCtx)[0](
+                _fmockWebSocket(), "container-1",
+            )
+        assert listServed == [False], (
+            "a container project must be served through the Docker "
+            "branch"
+        )
+        assert len(listRequired) == 1, (
+            "the container branch must still require the daemon"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_host_branch_precedes_the_daemon_requirement(self):
+        """A host-only machine has no daemon to require.
+
+        Asking ``require`` first would answer "install Docker" about a
+        project that never wanted one -- the same ordering the
+        container-only HTTP routes fixed. The branch now SERVES
+        instead of refusing, and the daemon skip is unchanged.
+        """
+        listRequired = []
+        dictCtx = {"require": lambda *aArgs: listRequired.append(aArgs)}
+
+        async def fnSwallowServe(*tArgs, **dictKeywords):
+            return None
+
+        with patch.object(
+            terminalRoutes, "fiContainerSessionRejectionCode",
+            lambda *tArgs, **dictKeywords: 0,
+        ), patch(
+            "vaibify.config.registryManager.fbIsHostProject",
             lambda sName: True,
+        ), patch.object(
+            terminalRoutes, "_fnTrackAndServeTerminal", fnSwallowServe,
         ):
             await _flistRegisterAndCaptureHandlers(dictCtx)[0](
                 _fmockWebSocket(), "a-host-project",

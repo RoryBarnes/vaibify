@@ -19,11 +19,14 @@ gates, and a call that reaches a missing Docker leg raises the typed
 with the predicate, and anything unguarded fails loudly with the
 reason in its name.
 
-Docker-only surface (container discovery, the exec-id PTY cluster, the
-process-group probes) is delegated verbatim through ``__getattr__``:
-those calls have no host meaning, and the capability inventory's
-dispositions — not this router — are what refuse container-only
-operations for host resources at the route layer.
+Docker-only surface (container discovery, the exec-id PTY cluster) is
+delegated verbatim through ``__getattr__``: those calls have no host
+meaning, and the capability inventory's dispositions — not this
+router — are what refuse container-only operations for host resources
+at the route layer. The process-group signal/probe pair LEFT that
+surface on 2026-08-15: the host terminal gave both a host meaning, so
+they are resource-routed like every other duck call the drain
+machinery makes.
 """
 
 __all__ = [
@@ -51,6 +54,9 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "flistReadGitRepoStatuses",
     "fsHashContainerFileSha256",
     "fiterStreamFile",
+    "fdictProbeProcessGroupMembers",
+    "fnSignalProcessGroupMembers",
+    "fdictLaunchTerminalShellSuspended",
 )
 
 
@@ -188,6 +194,42 @@ class ConnectionRouter:
     def fiterStreamFile(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         return self.fconnectionForResource(sResourceId).fiterStreamFile(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fdictProbeProcessGroupMembers(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictProbeProcessGroupMembers(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fnSignalProcessGroupMembers(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        self.fconnectionForResource(
+            sResourceId,
+        ).fnSignalProcessGroupMembers(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fdictLaunchTerminalShellSuspended(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names.
+
+        Host-only in practice — the Docker leg has no such method and
+        a misrouted call fails loudly with ``AttributeError`` — but
+        routed explicitly so the terminal seam can hold the ROUTER,
+        never a leg, exactly like every other caller.
+        """
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictLaunchTerminalShellSuspended(
             sResourceId, *tArguments, **dictKeywords,
         )
 

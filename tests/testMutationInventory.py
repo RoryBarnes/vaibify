@@ -183,7 +183,14 @@ I_UNCLASSIFIED_ROW_BUDGET = 286
 # from inside the researcher's command text (where no scanner sees
 # it) to a countable caller, which is the direction this ratchet
 # exists to encourage.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 204
+# 204 -> 206 (2026-08-15, HONEST INCREASE, host terminal, re-measured
+# after the chain rebase): the two router delegations for the session
+# signal/probe pair — pure mode dispatch, the same shape as the
+# twelve existing router rows — and the host-terminal drain delivery,
+# whose enumeration is the in-process processLiveness probe primitive
+# (a journaled sweep deadlocks the resolver that needs it). All
+# classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 206
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -398,8 +405,16 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # increase above: the record honestly admits one more site it cannot
 # read, rather than a scanner exemption that would silently shrink the
 # declared blind spot for the Docker gateways too.
+# 19 -> 20 (2026-08-15, HONEST INCREASE): the host terminal's launch
+# (hostConnection.fdictLaunchTerminalShellSuspended). Its argv is a
+# fixed stub plus the gate pipe's fd number — no caller-supplied
+# command text exists on the path — but the fd is computed, so the
+# scan cannot read the command and the record admits it. The site is
+# admission-gated, journaled with the terminal kind by the seam
+# before the gate opens, and covered by
+# testOnlyTheGatedRouteConstructsATerminalSession.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 19,
+    "opaque-subprocess-command": 20,
     "untraceable-docker-sdk-root": 12,
 }
 
