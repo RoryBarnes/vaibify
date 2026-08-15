@@ -4893,7 +4893,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (ExecResult.fCpuSeconds) instead of a hardcoded None, and the
     # comment beside it says where host CPU comes from. Three lines
     # of the same single purpose, not a new responsibility.
-    "pipelineRunner.py": 1661,
+    # RAISED to 1672 (2026-08-15, structured determinism env, measured
+    # after the chain rebase onto the wait4 change): the command list
+    # now threads the host lane's environment overlay to the exec
+    # primitive, passed only when present so the container call stays
+    # byte-identical. Same single purpose — delivering a step's
+    # command with its run environment — not a new responsibility.
+    "pipelineRunner.py": 1672,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

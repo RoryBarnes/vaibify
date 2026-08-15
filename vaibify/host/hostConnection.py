@@ -393,7 +393,7 @@ class HostConnection:
     def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
         sWorkdir=None, sUser=None, sOperationLabel="pipeline-exec",
-        fnPhaseCallback=None,
+        fnPhaseCallback=None, dictEnvironmentOverlay=None,
     ):
         """Run a durable command, invoking ``fnEmitChunk`` per line.
 
@@ -402,6 +402,12 @@ class HostConnection:
         must not do. The bound on this lane is the durable-task
         machinery — the journaled group identity makes Cancel and the
         quiescence probes possible instead.
+
+        ``dictEnvironmentOverlay`` lays run-scoped variables (the
+        determinism guarantees) over the inherited environment as
+        DATA. Only this leg takes it: the container lane necessarily
+        carries its environment as shell text, and the runner passes
+        the argument on the host branch alone.
         """
         mutationAdmission.fnAssertDurableExecAdmitted(
             sContainerId, "ftRunInContainerStreamedWithChunks",
@@ -409,6 +415,7 @@ class HostConnection:
         return self._ftLaunchGatedAndStream(
             sContainerId, sCommand, sWorkdir, sUser, fnEmitChunk,
             None, sOperationLabel, fnPhaseCallback=fnPhaseCallback,
+            dictEnvironmentOverlay=dictEnvironmentOverlay,
         )
 
     # -----------------------------------------------------------------
@@ -496,6 +503,7 @@ class HostConnection:
     def _ftLaunchGatedAndStream(
         self, sResourceId, sCommand, sWorkdir, sUser, fnEmitChunk,
         fTimeoutSeconds, sOperationLabel, fnPhaseCallback=None,
+        dictEnvironmentOverlay=None,
     ):
         """The single gated launch every host subprocess goes through.
 
@@ -520,6 +528,7 @@ class HostConnection:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, cwd=sEffectiveWorkdir,
             start_new_session=True,
+            env=_fdictComposeLaunchEnvironment(dictEnvironmentOverlay),
         )
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "spawned")
         mutationAdmission.fnPromoteJournaledHostExec(
@@ -569,6 +578,22 @@ def _fnInvokeLaunchPhaseCallback(fnPhaseCallback, sPhase):
     """Invoke the test-only phase hook when one was provided."""
     if fnPhaseCallback is not None:
         fnPhaseCallback(sPhase)
+
+
+def _fdictComposeLaunchEnvironment(dictEnvironmentOverlay):
+    """Return inherited env + overlay, or None to inherit untouched.
+
+    The base is ALWAYS the hub's own environment (the plan's
+    inherited-env-only ruling): the overlay may add or shadow entries,
+    never replace the environment wholesale — a child stripped of PATH
+    and HOME is not the process the researcher's own shell would have
+    started.
+    """
+    if not dictEnvironmentOverlay:
+        return None
+    dictEnvironment = dict(os.environ)
+    dictEnvironment.update(dictEnvironmentOverlay)
+    return dictEnvironment
 
 
 class _StreamLineCollector:

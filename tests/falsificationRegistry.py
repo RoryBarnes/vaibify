@@ -1410,14 +1410,16 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_override_bypasses_the_head_derivation',
         source='vaibify/gui/determinismEnvironment.py',
-        old="""    iEpoch = iSourceDateEpochOverride
-    if iEpoch <= 0:
-        iEpoch = await _fiQueryHeadCommitEpoch(
-            connectionDocker, sContainerId, sProjectRepoPath,
-        )""",
-        new="""    iEpoch = await _fiQueryHeadCommitEpoch(
-        connectionDocker, sContainerId, sProjectRepoPath,
-    )""",
+        # RE-ANCHORED 2026-08-15: the override pattern briefly existed
+        # in two copies when the host overlay lane arrived, so the
+        # resolution moved into the shared _fiResolveRunEpoch — one
+        # guard both lanes read. The mutant deletes the override
+        # branch: every rerun re-derives from a HEAD the manifest
+        # commit already moved.
+        old="""    if iSourceDateEpochOverride > 0:
+        return iSourceDateEpochOverride
+    return await _fiQueryHeadCommitEpoch(""",
+        new="""    return await _fiQueryHeadCommitEpoch(""",
     ),
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_rerun_lane_passes_the_recorded_epoch_to_the_runner',
@@ -11910,5 +11912,94 @@ def _fdictEntry(sRel):
             '        socketProbe.close()\n'
             '    return False\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_environment_overlay_reaches_the_child'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Drop the overlay at the launch: every child inherits the bare
+        # hub environment and the host lane's determinism guarantees
+        # never reach the step's process.
+        old='    if not dictEnvironmentOverlay:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_environment_overlay_inherits_the_base_environment'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Replace the environment wholesale with the overlay: a child
+        # stripped of PATH and HOME is not the process the researcher's
+        # own shell would have started (the inherited-env-only ruling).
+        old='    dictEnvironment = dict(os.environ)\n',
+        new='    dictEnvironment = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testAHostRunsDeterminismTravelsAsEnvironmentData'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # The host branch never fires: host runs silently fall back to
+        # vaibify-authored shell text prepended to the researcher's
+        # command, with the salt directory back on a world-shared /tmp.
+        old='    if fbIsHostProject(sContainerId):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testAContainerRunKeepsItsShellTextPrefix'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # The container lane routed through the overlay path: the
+        # Docker leg takes no environment argument, so its determinism
+        # guarantees would exist only as silently dropped data.
+        old='    if fbIsHostProject(sContainerId):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testTheRunnerHandsTheOverlayToTheExecPrimitive'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The runner never passes the overlay onward: the injection
+        # computes guarantees nobody delivers, and the run records
+        # determinism as applied while the step's process saw nothing.
+        old='    if dictEnvironmentOverlay:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_runs_plot_when_setup_succeeds'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The container direction of the only-when-present guard: pass
+        # the (None) overlay kwarg unconditionally and the Docker leg —
+        # whose signature does not take it — refuses every container
+        # step at dispatch.
+        old='    if dictEnvironmentOverlay:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testARealHostStepSeesSourceDateEpoch'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # Skip the salt-file write: the file the salt lives in never
+        # exists, so matplotlib draws unsalted ids while the run
+        # records determinism as applied.
+        old=(
+            '    sConfigDirectory = await _fsWriteHostMatplotlibSalt(\n'
+            '        connectionDocker, sContainerId, iEpoch,\n'
+            '    )\n'
+        ),
+        new='    sConfigDirectory = ""\n',
     ),
 ]
