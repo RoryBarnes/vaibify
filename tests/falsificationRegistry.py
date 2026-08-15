@@ -11296,6 +11296,24 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAStaleRecoveryAnswerDoesNotResumePollingMidRun'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Act on a recovery answer a live run has outdated: the stale
+        # "not running" response resumes file polling mid-run and can
+        # repaint live lights with pre-run results. Both copies of the
+        # gate (success path and fetch-error path) are removed.
+        old=(
+            '            if (_bRunLive) return;\n'
+        ),
+        new=(
+            '\n'
+        ),
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
             'tests/testPipelineRoutesCoverage.py::'
             'TestFnMarkPipelineStopped::'
             'test_the_interrupted_step_is_recorded_stopped'
