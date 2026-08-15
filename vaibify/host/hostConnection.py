@@ -61,6 +61,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 from vaibify.config import mutationAdmission
 from vaibify.docker.dockerConnection import (
@@ -530,9 +531,10 @@ class HostConnection:
         processChild.stdin.close()
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "released")
         tStreams = _ftDrainProcessStreams(processChild, fnEmitChunk)
-        bTimedOut = not _fbAwaitProcessWithinBound(
+        bCompleted, fCpuSeconds = _ftAwaitProcessWithinBound(
             processChild, fTimeoutSeconds,
         )
+        bTimedOut = not bCompleted
         if bTimedOut:
             fnTerminateProcessGroup(processChild.pid)
             processChild.wait()
@@ -551,6 +553,7 @@ class HostConnection:
                 124 if bTimedOut else int(processChild.returncode or 0)
             ),
             sStdout=sStdout, sStderr=sStderr,
+            fCpuSeconds=fCpuSeconds,
         )
 
     def _fsResolveWorkdir(self, sResourceId, sWorkdir):
@@ -664,8 +667,53 @@ def _fbJoinBothStreamsWithin(tStreams, fTimeoutSeconds):
     ])
 
 
-def _fbAwaitProcessWithinBound(processChild, fTimeoutSeconds):
-    """Wait for exit; False when the bound expired with it still live."""
+_F_REAP_POLL_INTERVAL_SECONDS = 0.05
+
+
+def _ftAwaitProcessWithinBound(processChild, fTimeoutSeconds):
+    """Reap the child via ``os.wait4``; return (bCompleted, fCpuSeconds).
+
+    The reap is claimed here rather than left to ``Popen.wait``
+    because ``wait4`` is the only call that surfaces the child's
+    rusage, and a pid can be collected exactly once. ``Popen`` is
+    handed the returncode afterwards so its own bookkeeping (the
+    timeout-kill path's ``wait()``, ``__del__``) never double-reaps.
+    Nothing else in this module waits on the pid: the group prover
+    and Cancel only signal, and the stream collectors read pipes.
+
+    Scope of the measurement, stated honestly: on macOS and Linux the
+    rusage covers the reaped process plus any children IT already
+    waited for — a step that backgrounds a survivor does not
+    accumulate it. There is no fabricated group total.
+
+    ``fCpuSeconds`` is ``None`` (absent), never 0.0, when the bound
+    expired with the child still live or when the reap was lost to
+    another collector (``ChildProcessError``); the durable lane
+    (``fTimeoutSeconds is None``) blocks in ``wait4`` with no
+    polling.
+    """
+    fDeadline = (
+        None if fTimeoutSeconds is None
+        else time.monotonic() + fTimeoutSeconds
+    )
+    while True:
+        try:
+            tReaped = os.wait4(
+                processChild.pid,
+                0 if fDeadline is None else os.WNOHANG,
+            )
+        except ChildProcessError:
+            return _fbAwaitReapedElsewhere(processChild, fTimeoutSeconds), None
+        if tReaped[0] == processChild.pid:
+            processChild.returncode = os.waitstatus_to_exitcode(tReaped[1])
+            return True, tReaped[2].ru_utime + tReaped[2].ru_stime
+        if fDeadline is not None and time.monotonic() >= fDeadline:
+            return False, None
+        time.sleep(_F_REAP_POLL_INTERVAL_SECONDS)
+
+
+def _fbAwaitReapedElsewhere(processChild, fTimeoutSeconds):
+    """Fall back to Popen's own wait after wait4 lost the reap race."""
     try:
         processChild.wait(timeout=fTimeoutSeconds)
         return True

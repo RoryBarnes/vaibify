@@ -10581,13 +10581,18 @@ def _fdictEntry(sRel):
             'testRunningAStepWritesARealFileAndTheDashboardSeesIt'
         ),
         source='vaibify/gui/pipelineRunner.py',
-        # The shipped defect, restored: add two CPU readings blindly.
-        # Host runs record none, so every host step reaching the plot
-        # phase raised TypeError AFTER its command had succeeded --
-        # "Pipeline Failed" for completed work, and no log, because the
-        # finalizer never ran.
-        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
-        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+        # Restore the pre-wait4 host branch: every host run records no
+        # CPU again. RE-ANCHORED 2026-08-15: this entry's original
+        # mutation (the blind add at the plot join) became unobservable
+        # on a healthy run the day host readings became real floats --
+        # the journey now asserts the settled state carries fCpuTime,
+        # and the blind-add guard lives on in
+        # testAnAbsentReadingMakesTheStepTotalAbsentNotACrash.
+        old=(
+            '        return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
+        ),
+        new='        return (tExecResult.iExitCode, None)\n',
     ),
     Falsification(
         nodeid=(
@@ -11767,6 +11772,84 @@ def _fdictEntry(sRel):
         ),
         new=(
             '            if (false) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_reap_surfaces_real_cpu_seconds'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Drop the rusage at the wait4 reap: a completed child answers
+        # with no CPU reading, re-opening the Phase B gap where every
+        # host step recorded CPU as absent.
+        old=(
+            '            return True, '
+            'tReaped[2].ru_utime + tReaped[2].ru_stime\n'
+        ),
+        new='            return True, None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_killed_command_records_absent_cpu_never_zero'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Fabricate 0.0 for the expired bound: a killed step then
+        # wears a measurement nobody took instead of an absent one.
+        old='            return False, None\n',
+        new='            return False, 0.0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCpuAccounting.py::'
+            'testAHostCommandsCpuReadingReachesTheRunner'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shortcut a developer would write: answer every lane from
+        # the marker-line accumulator. No host command emits the
+        # marker, so the reap's real reading is discarded for a
+        # fabricated 0.0.
+        old=(
+            '        return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
+        ),
+        new=(
+            '        return (tExecResult.iExitCode, '
+            'dictAccum["fCpu"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCpuAccounting.py::'
+            'testAnAbsentReadingMakesTheStepTotalAbsentNotACrash'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shipped defect, restored: add two CPU readings blindly.
+        # An absent reading then raised TypeError AFTER the step's
+        # command had succeeded -- "Pipeline Failed" for completed
+        # work, and no log, because the finalizer never ran. (Moved
+        # here from the browser journey entry when host readings
+        # became real floats on the healthy path.)
+        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
+        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunSingleCommand_cpu_line_not_emitted_as_output'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The container direction of the wait4 pair: swap the container
+        # branch onto the reap field, which the Docker leg never fills,
+        # and every container step's parsed CPU reading is discarded.
+        old=(
+            '    return (tExecResult.iExitCode, '
+            'dictAccum["fCpu"])\n'
+        ),
+        new=(
+            '    return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
         ),
     ),
     Falsification(

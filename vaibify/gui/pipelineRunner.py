@@ -205,12 +205,14 @@ async def _ftRunCommandList(
 ):
     """Execute commands, return ``(iExitCode, fTotalCpuSeconds)``.
 
-    The CPU total is ``None`` when the commands ran on the HOST: the
-    measurement comes from a GNU ``/usr/bin/time`` wrapper that host
-    mode does not use, and reporting 0.0 would put a measurement on the
-    dashboard that nobody took.
+    Each lane measures CPU its own way — the container via the GNU
+    ``/usr/bin/time`` wrapper's in-band marker line, the host via the
+    ``os.wait4`` reap in ``HostConnection``. Either way the total is
+    honest: one command whose reading is ABSENT (``None``) makes the
+    total absent, because a partial sum wearing the total's name is a
+    measurement nobody took (see ``_ffTotalCpuTime``).
     """
-    fTotalCpu = None if fbIsHostProject(sContainerId) else 0.0
+    fTotalCpu = 0.0
     sEnvPrefix = ""
     if dictVariables:
         sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
@@ -223,8 +225,7 @@ async def _ftRunCommandList(
             sCommand, sResolved, sWorkdir, fnStatusCallback,
             sEnvPrefix=sEnvPrefix,
         )
-        if fTotalCpu is not None and fCpu is not None:
-            fTotalCpu += fCpu
+        fTotalCpu = _ffTotalCpuTime(fTotalCpu, fCpu)
         if iExitCode != 0:
             return (iExitCode, fTotalCpu)
     return (0, fTotalCpu)
@@ -258,7 +259,8 @@ async def _ftRunSingleCommand(
     # and is the BSD one, which has no ``-f``: the wrapper would exit
     # non-zero before the researcher's command ever ran, so every host
     # step would fail. The container branch keeps it, guarded by its
-    # own ``-x`` test for the same reason in reverse.
+    # own ``-x`` test for the same reason in reverse. Host CPU comes
+    # from the ``os.wait4`` reap instead (ExecResult.fCpuSeconds).
     sTimedCmd = sEnvPrefix + (
         sResolved if fbIsHostProject(sContainerId)
         else _fsWrapWithTime(sResolved)
@@ -285,7 +287,7 @@ async def _ftRunSingleCommand(
             "iExitCode": tExecResult.iExitCode,
         })
     if fbIsHostProject(sContainerId):
-        return (tExecResult.iExitCode, None)
+        return (tExecResult.iExitCode, tExecResult.fCpuSeconds)
     return (tExecResult.iExitCode, dictAccum["fCpu"])
 
 
@@ -632,9 +634,10 @@ async def ftRunStepCommands(
 def _ffTotalCpuTime(fFirst, fSecond):
     """Add two CPU readings, either of which may be ABSENT (None).
 
-    Host runs record no CPU time at all: ``/usr/bin/time -f`` is a GNU
-    spelling that BSD ``time`` rejects, so rather than report a
-    fabricated 0.0 the reading is omitted. Adding the two readings
+    A reading can be absent: host runs measured nothing at all before
+    the ``os.wait4`` reap existed (``/usr/bin/time -f`` is a GNU
+    spelling that BSD ``time`` rejects), and still record ``None``
+    when a step is killed or the reap is lost. Adding two readings
     blindly therefore raised ``TypeError: unsupported operand type(s)
     for +: 'NoneType' and 'NoneType'`` on every host step that reached
     the plot phase — which aborted the run AFTER the step's command had

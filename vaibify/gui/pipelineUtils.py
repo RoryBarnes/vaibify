@@ -459,11 +459,11 @@ def _fnRecordRunStats(
             "%Y-%m-%dT%H:%M:%SZ",
         ),
     }
-    # ``None`` means nobody measured it -- a host run takes no CPU
-    # reading, because the measurement came from a GNU time wrapper
-    # host mode does not use. The key is OMITTED rather than zeroed,
-    # on the same terms as bDeterminismApplied below: an absent key is
-    # unknown, and 0.0 would be a measurement.
+    # ``None`` means nobody measured it -- a killed host step, or a
+    # reap lost to another collector, yields no rusage reading. The
+    # key is OMITTED rather than zeroed, on the same terms as
+    # bDeterminismApplied below: an absent key is unknown, and 0.0
+    # would be a measurement.
     if fCpuTime is not None:
         dictRunStats["fCpuTime"] = round(fCpuTime, 1)
     if iExitCode is not None:
