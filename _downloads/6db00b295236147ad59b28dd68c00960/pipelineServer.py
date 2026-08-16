@@ -1612,7 +1612,7 @@ async def fnRejectNotConnected(websocket):
 
 async def fnRunTerminalSession(
     session, websocket, dictTerminalSessions, dictInteractive=None,
-    fbFrameCredentialStillActive=None,
+    fbFrameCredentialStillActive=None, sIntroductionBanner="",
 ):
     """Manage terminal session lifecycle after successful start.
 
@@ -1620,6 +1620,11 @@ async def fnRunTerminalSession(
     provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
     on abnormal exit so a runner paused at ``interactiveComplete`` does
     not deadlock when the terminal-WS dies (audit HIGH #9).
+
+    ``sIntroductionBanner`` is sent as the session's FIRST output
+    bytes, before any shell output reaches the pane — the host lane's
+    per-session reminder that the shell runs on the researcher's own
+    machine. Empty (the container lane) sends nothing.
 
     The close path drains the session's containment record BEFORE the
     socket close (design §7: a socket closing is not a terminal dying):
@@ -1634,6 +1639,10 @@ async def fnRunTerminalSession(
     await websocket.send_json(
         {"sType": "connected", "sSessionId": sSessionId}
     )
+    if sIntroductionBanner:
+        await websocket.send_bytes(
+            sIntroductionBanner.encode("utf-8"),
+        )
     taskReader = asyncio.create_task(
         fnTerminalReadLoop(session, websocket, dictInteractive)
     )
