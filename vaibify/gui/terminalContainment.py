@@ -50,6 +50,7 @@ __all__ = [
     "fsBuildGroupReportingCommand",
     "fsPrepareTerminalOperation",
     "fnPromoteTerminalOperation",
+    "fnPromoteHostTerminalOperation",
     "fiDiscoverTerminalProcessGroup",
     "fnRecordTerminalProcessGroup",
     "fnRegisterTerminalRecord",
@@ -130,6 +131,10 @@ class TerminalExecutionRecord:
     dictRegistry: Optional[dict]
     session: Optional["TerminalSession"] = None
     iProcessGroup: int = 0
+    # A HOST record carries the shell's pid instead of a Docker exec
+    # id (its ``sDockerExecId`` stays empty); the undiscovered-record
+    # resolution branches on which identity is present.
+    iHolderPid: int = 0
     sState: str = S_RECORD_STATE_LIVE
 
 
@@ -243,6 +248,32 @@ def fnPromoteTerminalOperation(
     )
     fnAssertOperationAdmittedByIdentity(
         sContainerName, sOperationId, dictIdentity,
+    )
+
+
+def fnPromoteHostTerminalOperation(
+    sResourceName, sOperationId, iPid, iOwnerGeneration,
+):
+    """Journal the suspended shell's pid BEFORE its gate opens.
+
+    The host twin of :func:`fnPromoteTerminalOperation`. The identity
+    is the recycle-proof pid-plus-group shape every host launch
+    journals — the launch stub calls ``setsid`` after the gate, so the
+    pid IS the session id the containment probes sweep — and a
+    ``terminal`` record wearing it routes the journal's probe to the
+    host-native provers instead of the Docker exec inspection.
+    """
+    dictIdentity = {
+        "iHolderPid": iPid,
+        "iHolderProcessGroup": iPid,
+    }
+    if iOwnerGeneration > 0:
+        dictIdentity["iOwnerGeneration"] = iOwnerGeneration
+    operationJournal.fnPromoteOperationToInFlight(
+        sResourceName, sOperationId, dictIdentity,
+    )
+    fnAssertOperationAdmittedByIdentity(
+        sResourceName, sOperationId, dictIdentity,
     )
 
 
@@ -440,7 +471,46 @@ def _fdictResolveUndiscoveredRecord(recordTerminal):
     session socket, which is handed out after discovery succeeds), so
     a dead exec here provably never spawned anything: settle. A LIVE
     exec whose group is unknown is uncontainable: quarantine.
+
+    A HOST record has no exec instance anywhere; its identity is the
+    shell's pid, and the same reasoning applies pid-natively: the
+    stub execs the shell only after its gate byte, no input can have
+    reached it before leadership was verified, so a dead pid provably
+    never ran anything — and a live one is uncontainable.
     """
+    if not recordTerminal.sDockerExecId and recordTerminal.iHolderPid:
+        from vaibify.config.processLiveness import fbIsUsablePid
+        bAlive = False
+        if fbIsUsablePid(recordTerminal.iHolderPid):
+            import os as moduleOs
+            try:
+                moduleOs.kill(recordTerminal.iHolderPid, 0)
+                bAlive = True
+            except ProcessLookupError:
+                bAlive = False
+            except PermissionError:
+                bAlive = True
+        if bAlive:
+            return _fdictQuarantineRecord(
+                recordTerminal,
+                "a live host terminal shell never proved session "
+                "leadership and cannot be contained",
+            )
+        try:
+            operationJournal.fnSettleOperation(
+                recordTerminal.sContainerName, recordTerminal.sOperationId,
+            )
+        except operationJournal.OperationJournalError as error:
+            return _fdictQuarantineRecord(
+                recordTerminal, f"could not settle the record: {error}",
+            )
+        recordTerminal.sState = S_RECORD_STATE_SETTLED
+        _fnDeregisterTerminalRecord(recordTerminal)
+        return {
+            "bProvenEmpty": True,
+            "sDetail": "the suspended shell died before its gate "
+                       "opened; nothing was ever spawned",
+        }
     try:
         dictInspect = recordTerminal.connectionDocker.fdictInspectExec(
             recordTerminal.sDockerExecId,

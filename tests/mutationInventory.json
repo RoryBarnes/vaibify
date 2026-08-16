@@ -1,7 +1,7 @@
 {
-  "iAcquisitionCount": 69,
-  "iRowCount": 331,
-  "iUnresolvedSiteCount": 31,
+  "iAcquisitionCount": 73,
+  "iRowCount": 335,
+  "iUnresolvedSiteCount": 32,
   "listAcquisitions": [
     {
       "iLine": 10,
@@ -186,7 +186,7 @@
       "sScopeFingerprint": "bedf6a6448c7954f"
     },
     {
-      "iLine": 736,
+      "iLine": 737,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
@@ -199,7 +199,7 @@
       "sScopeFingerprint": "8ca5c8812a6e96ae"
     },
     {
-      "iLine": 32,
+      "iLine": 33,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -212,7 +212,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 48,
+      "iLine": 49,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
@@ -459,7 +459,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 203,
+      "iLine": 245,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2550,
+      "iLine": 2559,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2545,
+      "iLine": 2554,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -732,6 +732,19 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 487,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0 only \u2014 a liveness PROBE, never a delivery: resolves an undiscovered HOST terminal record fail-closed (a live unproven shell quarantines; a provably dead stub settles). The pid is the record's own journaled identity.",
+      "sFile": "gui/terminalContainment.py",
+      "sFingerprint": "290ec36fdd7f5ece",
+      "sScope": "_fdictResolveUndiscoveredRecord",
+      "sScopeFingerprint": "6dffde66aa40b05f"
+    },
+    {
       "iLine": 16,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -745,7 +758,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 159,
+      "iLine": 161,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
@@ -758,7 +771,33 @@
       "sScopeFingerprint": "d3cfba689c5c565b"
     },
     {
-      "iLine": 139,
+      "iLine": 199,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The leader-group sweep beside the per-member delivery in fnSignalSessionMembers, for anything that joined the group between the enumeration and the signal. Usable-pid guarded (killpg(0) would signal the hub's own group), TERM/KILL allowlisted, quiet on refusal.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "fnSignalSessionMembers",
+      "sScopeFingerprint": "9c67fd19ea3ba856"
+    },
+    {
+      "iLine": 194,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Per-member delivery for the terminal drain (fnSignalSessionMembers): signals ONLY pids the host leg's session-wide sweep enumerated, TERM/KILL allowlisted, quiet on refusal \u2014 the terminate-and-prove caller decides on the PROOF. Needed because killpg cannot reach a job the shell's job control moved to its own group; this module is the single host signal-judgement seam.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "fnSignalSessionMembers",
+      "sScopeFingerprint": "9c67fd19ea3ba856"
+    },
+    {
+      "iLine": 141,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
@@ -771,7 +810,20 @@
       "sScopeFingerprint": "a8f23b567a894524"
     },
     {
-      "iLine": 60,
+      "iLine": 61,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "pty",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The host terminal's PTY pair. Opened only inside fdictLaunchTerminalShellSuspended \u2014 the gateway's own suspended-gate launch, which asserts command admission and spawns the shell blocked behind a dedicated gate pipe; the terminal seam (terminalSession.py, the only module that prepares terminal execution records) journals the pid with the terminal kind BEFORE the gate opens, and the drain machinery terminates-and-proves the recorded session. Supporting symbols: _S_TERMINAL_LAUNCH_STUB, fnPromoteHostTerminalOperation, fdictTerminateAndProveRecord.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "665490df25e838de",
+      "sScope": "<module>",
+      "sScopeFingerprint": "665490df25e838de"
+    },
+    {
+      "iLine": 63,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -2912,6 +2964,34 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: forwards one duck-typed call to the leg the registry mode names, adding no command, path, or authority of its own. The admission gate for this operation lives inside the leg's primitive.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "c5303389eb2238ac",
+      "sFunction": "fdictProbeProcessGroupMembers",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fdictProbeProcessGroupMembers",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -3104,6 +3184,34 @@
       "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
       "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
       "sPrimitive": "flistReadGitRepoStatuses",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "signal",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: forwards one duck-typed call to the leg the registry mode names, adding no command, path, or authority of its own. The admission gate for this operation lives inside the leg's primitive.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "ff50f041f2435ebd",
+      "sFunction": "fnSignalProcessGroupMembers",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fnSignalProcessGroupMembers",
       "sReferenceKind": "direct-call"
     },
     {
@@ -9090,6 +9198,58 @@
         "none"
       ],
       "listExecutionLanes": [
+        "websocket"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "The host terminal's launch primitive \u2014 a separate authority, the same shape as the Docker exec-id PTY cluster: its gates are the WebSocket ownership gate at the route and the terminal journal record the seam writes before the gate pipe opens, not a carrier. Command admission is still asserted, so an enforced lane reaching it without a carrier refuses. Supporting symbols: fnAssertContainerCommandAdmitted, _S_TERMINAL_LAUNCH_STUB, fnPromoteHostTerminalOperation, testOnlyTheGatedRouteConstructsATerminalSession.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "2142485801cabf45",
+      "sFunction": "fdictLaunchTerminalShellSuspended",
+      "sJournalKind": "terminal",
+      "sLifetime": "outlives-request",
+      "sLogicalOperation": "spawn the host terminal shell suspended behind its gate pipe",
+      "sOperationMetadata": "fixed argv (the stub plus the gate fd); the shell is always /bin/bash -i on a fresh PTY in its own session; no caller-supplied command text exists on this path",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Drain delivery: enumerates through the gated session sweep (the typed-read grant point) and delegates the signalling judgement to hostCancellation. Called by terminate-and-prove under the per-container drain lock, never from a request lane.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "37628645a6362054",
+      "sFunction": "fnSignalProcessGroupMembers",
+      "sJournalKind": "host-exec",
+      "sLifetime": "request",
+      "sLogicalOperation": "enumerate a terminal session's members before signalling them",
+      "sOperationMetadata": "operation name from the fixed typed-read table; the argument is the recorded leader id validated as an integer",
+      "sPrimitive": "fdictProbeProcessGroupMembers",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
         "http",
         "websocket",
         "background"
@@ -9774,13 +9934,22 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 526,
+      "iLine": 662,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",
       "sFingerprint": "ef5e603d20f2ab66",
       "sFunction": "_ftLaunchGatedAndStream",
       "sScopeFingerprint": "7310e94658a2118e"
+    },
+    {
+      "iLine": 473,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "2142485801cabf45",
+      "sFunction": "fdictLaunchTerminalShellSuspended",
+      "sScopeFingerprint": "7905e715a4ae8fca"
     },
     {
       "iLine": 192,

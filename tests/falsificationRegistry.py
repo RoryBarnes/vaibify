@@ -8000,12 +8000,16 @@ def _fdictEntry(sRel):
         source='vaibify/host/hostCancellation.py',
         # Narrowing the group kill to a single PID leaves a backgrounded
         # sibling alive -- the unrelated-process-safety cuts both ways.
+        # TWO copies since 2026-08-15: the terminal drain's
+        # session-member signaller spells its leader-group sweep
+        # identically, so the honest mutation narrows both.
         old=(
             '            os.killpg(iProcessGroup, iSignalNumber)\n'
         ),
         new=(
             '            os.kill(iProcessGroup, iSignalNumber)\n'
         ),
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -10416,21 +10420,6 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testHostProjectJourney.py::'
-            'testTheTerminalNoticeSpeaksAboutTheRightThing'
-        ),
-        source='vaibify/gui/static/scriptTerminal.js',
-        # Treat a host project as terminal-capable: the pane dials a
-        # socket the server will refuse, and the researcher is shown a
-        # connection failure instead of being pointed at their own
-        # shell. (Before the terminal came back this same mutation
-        # produced the container notice, with its docker exec line, on
-        # a project that has no container.)
-        old='        return VaibifyApp.fsGetProjectMode() !== "host";\n',
-        new='        return true;\n',
-    ),
-    Falsification(
-        nodeid=(
             'tests/testRegistryContainerRecognition.py::'
             'testRecognitionSurvivesTheMutationGate'
         ),
@@ -12192,5 +12181,149 @@ def _fdictEntry(sRel):
         # agent lane cannot run anything at all.
         old='    if dictBound is not None:\n',
         new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAHostTerminalOpensWithTheBannerAndEchoes'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # RE-ANCHORED 2026-08-15: the old entry's mutation ("treat a
+        # host project as terminal-capable") IS the production
+        # behavior now — the ruling made the host terminal real. What
+        # this entry guards instead is the ruling's honesty device:
+        # drop the per-session banner and the researcher's first
+        # host shell looks exactly like a contained one.
+        old=(
+            '            sIntroductionBanner=(\n'
+            '                S_HOST_TERMINAL_BANNER if bHostProject'
+            ' else ""\n'
+            '            ),\n'
+        ),
+        new=(
+            '            sIntroductionBanner="",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_real_shell_round_trips_and_the_drain_proves_it_gone'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # Never open the gate: the "shell" stays a suspended stub and
+        # the researcher's terminal is a pane nothing ever answers.
+        old=(
+            '        dictLaunch["fnReleaseGate"]()\n'
+            '        self._bRunning = True\n'
+        ),
+        new=(
+            '        self._bRunning = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_record_is_in_flight_before_the_shell_can_run'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # Open the gate before the promote: the shell's first
+        # instructions run with no durable identity on disk — the
+        # crash window ruling 12 exists to close.
+        old=(
+            '        terminalContainment.fnPromoteHostTerminalOperation(\n'
+            '            self._sResourceName, sOperationId, iPid,\n'
+            '            self._dictContainment["iOwnerGeneration"],\n'
+            '        )\n'
+            '        dictLaunch["fnReleaseGate"]()\n'
+        ),
+        new=(
+            '        dictLaunch["fnReleaseGate"]()\n'
+            '        terminalContainment.fnPromoteHostTerminalOperation(\n'
+            '            self._sResourceName, sOperationId, iPid,\n'
+            '            self._dictContainment["iOwnerGeneration"],\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_backgrounded_job_in_its_own_group_is_seen'
+        ),
+        source='vaibify/config/processLiveness.py',
+        # Narrow the session sweep to the process group: a disowned
+        # background job in its own group becomes invisible — the
+        # container terminal's codex-round-12 hole, re-opened on the
+        # host.
+        old=(
+            '        if iSessionId == iSessionLeader or '
+            'iProcessGroup == iSessionLeader:\n'
+        ),
+        new=(
+            '        if iProcessGroup == iSessionLeader:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_drain_kills_the_stray_group_job_and_proves_it'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # Drop the per-member delivery: killpg alone cannot reach a
+        # job the shell moved to its own group, so the drain can
+        # never prove the session empty and every terminal close
+        # quarantines over a survivor it refused to signal.
+        old=(
+            '        try:\n'
+            '            os.kill(iMemberPid, iSignalNumber)\n'
+            '        except (ProcessLookupError, PermissionError):\n'
+            '            continue\n'
+        ),
+        new=(
+            '        continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_dead_host_terminal_record_settles_at_reconcile_time'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Route host terminal records through the Docker exec probe:
+        # "missing exec id" forever, so every crashed host hub with a
+        # terminal open quarantines permanently.
+        old=(
+            '    if not sDockerExecId and'
+            ' fbIsUsablePid(dictRecord.get("iHolderPid")):\n'
+        ),
+        new=(
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalRoutesCoverage.py::'
+            'TestTerminalWsIsGatedNotWithdrawn::'
+            'test_a_host_project_is_served_by_the_pty_twin'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # The host branch never fires: a host project falls through to
+        # the daemon requirement and the Docker session class, and the
+        # researcher is told to install Docker for a project that
+        # never wanted one.
+        old='        if fbIsHostProject(sName):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalRoutesCoverage.py::'
+            'TestTerminalWsIsGatedNotWithdrawn::'
+            'test_a_container_project_is_served_by_the_docker_leg'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # The host branch always fires: a container project's shell
+        # forks on the HUB's machine instead of exec-ing into the
+        # container — a sandbox escape wearing a terminal's face.
+        old='        if fbIsHostProject(sName):\n',
+        new='        if True:\n',
     ),
 ]

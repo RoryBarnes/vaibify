@@ -413,35 +413,22 @@ const VaibifyTerminal = (function () {
     }
 
     function fbTerminalIsAvailableHere() {
-        /* Containers only, for now. A host project's shell would have
-           to be a PTY on the researcher's own machine, journaled
-           through the gated host-exec primitive, and that is not
-           built. The pane must not dial a socket it knows will be
-           refused: a deliberate refusal arriving as a close event
-           reads to the researcher as a connection failure, which is a
-           different and more alarming thing. */
-        return VaibifyApp.fsGetProjectMode() !== "host";
+        /* Both modes now (2026-08-15 ruling): a host project's shell
+           is a real PTY on the researcher's own machine, journaled
+           through the gated launch, and the server's per-session
+           banner reminds them that processes can outlive the tab.
+           The helper survives as the single gate a future
+           unavailable mode would flip. */
+        return true;
     }
 
     function flistTerminalUnavailableNotice() {
-        /* Host wording only. The container notice this replaced was a
-           statement ABOUT a container -- it told a researcher their
-           project could not be "reported quiet" and then handed them a
-           `docker exec` line naming a container that does not exist.
-           What is true here is simpler: the shell they want is the
-           ordinary one on their own machine, in a directory vaibify
-           can name for them. */
-        var sRoot = VaibifyApp.fsGetWorkspaceRoot() || "your project";
+        /* Kept for the gate above: whatever mode flips it off next
+           gets a pane that says something true instead of dialing a
+           socket it knows will be refused. */
         return [
             "",
-            "  This project runs on your own machine, so vaibify does",
-            "  not open a terminal for it — yours is the same shell,",
-            "  with the same authority, in:",
-            "",
-            "      cd " + sRoot,
-            "",
-            "  A terminal inside the dashboard is available for",
-            "  containerized projects.",
+            "  A terminal is not available for this project.",
             "",
         ];
     }

@@ -41,9 +41,11 @@ Three properties are the contract, in priority order:
    never what is skipped.
 
 What this class deliberately does NOT implement: container discovery
-(the connection router answers it from the registry), the terminal PTY
-cluster (the terminal is disabled product-wide), and the root shell
-probe (nothing host-mode needs root — the host user IS the user).
+(the connection router answers it from the registry) and the root
+shell probe (nothing host-mode needs root — the host user IS the
+user). The terminal PTY cluster IS here (2026-08-15): the suspended
+shell launch, and the session-wide signal/probe pair the drain
+machinery is duck-typed over.
 """
 
 __all__ = [
@@ -56,6 +58,7 @@ __all__ = [
 import hashlib
 import json
 import os
+import pty
 import shlex
 import subprocess
 import sys
@@ -64,6 +67,7 @@ import threading
 import time
 
 from vaibify.config import mutationAdmission
+from vaibify.config import processLiveness
 from vaibify.docker.dockerConnection import (
     ExecResult,
     S_TYPED_READ_GIT_REPO_STATUS,
@@ -71,6 +75,7 @@ from vaibify.docker.dockerConnection import (
 )
 from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
+    fnSignalSessionMembers,
     fnTerminateProcessGroup,
 )
 from vaibify.host.hostScratch import fsHostScratchRootForProject
@@ -93,6 +98,25 @@ _S_GATED_LAUNCH_STUB = (
     "import os,sys\n"
     "sys.stdin.readline()\n"
     "os.execv('/bin/bash', ['/bin/bash', '-c', sys.argv[1]])\n"
+)
+
+# The terminal's launch stub. The gate rides a dedicated pipe (its fd
+# number arrives in argv — ``pass_fds`` preserves numbers, it does not
+# renumber) because the child's stdin IS the PTY, and a gate byte
+# through the PTY would echo into the researcher's terminal. After the
+# gate: ``setsid`` makes the journaled pid the session id, and
+# re-opening the tty as the fresh session's leader acquires it as the
+# CONTROLLING terminal — which is what gives bash working job control,
+# and job control is why the containment probe must match the SESSION,
+# not the group (verified live: a backgrounded job wears its own
+# pgid).
+_S_TERMINAL_LAUNCH_STUB = (
+    "import os,sys\n"
+    "os.read(int(sys.argv[1]),1)\n"
+    "os.setsid()\n"
+    "iTty = os.open(os.ttyname(0), os.O_RDWR)\n"
+    "os.close(iTty)\n"
+    "os.execv('/bin/bash', ['/bin/bash', '-i'])\n"
 )
 
 
@@ -416,6 +440,118 @@ class HostConnection:
             sContainerId, sCommand, sWorkdir, sUser, fnEmitChunk,
             None, sOperationLabel, fnPhaseCallback=fnPhaseCallback,
             dictEnvironmentOverlay=dictEnvironmentOverlay,
+        )
+
+    # -----------------------------------------------------------------
+    # The terminal PTY cluster (host leg).
+    # -----------------------------------------------------------------
+
+    def fdictLaunchTerminalShellSuspended(self, sResourceId):
+        """Spawn the terminal shell SUSPENDED; return its live handle.
+
+        The host terminal's half of the journal-before-first-
+        instruction split (ruling 12): the caller — the terminal seam,
+        which alone prepares execution records — journals the pid this
+        returns and only then calls ``fnReleaseGate``. Until the gate
+        byte arrives the child is a stub blocked on a pipe read; a
+        crash in between leaves an identified, probeable record, never
+        a shell nobody can name.
+
+        The handle is ``{"processChild", "iMasterFd", "fnReleaseGate"}``.
+        The caller owns the master fd's lifetime.
+        """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sResourceId, "fdictLaunchTerminalShellSuspended",
+        )
+        sWorkdir = os.path.realpath(
+            self._fnResolveProjectRoot(sResourceId),
+        )
+        iMasterFd, iSlaveFd = pty.openpty()
+        iGateRead, iGateWrite = os.pipe()
+        os.set_inheritable(iGateRead, True)
+        try:
+            processChild = subprocess.Popen(
+                [sys.executable, "-c", _S_TERMINAL_LAUNCH_STUB,
+                 str(iGateRead)],
+                stdin=iSlaveFd, stdout=iSlaveFd, stderr=iSlaveFd,
+                cwd=sWorkdir, pass_fds=(iGateRead,), close_fds=True,
+            )
+        except Exception:
+            os.close(iMasterFd)
+            os.close(iGateWrite)
+            raise
+        finally:
+            os.close(iSlaveFd)
+            os.close(iGateRead)
+
+        def fnReleaseGate():
+            os.write(iGateWrite, b"G")
+            os.close(iGateWrite)
+
+        return {
+            "processChild": processChild,
+            "iMasterFd": iMasterFd,
+            "fnReleaseGate": fnReleaseGate,
+        }
+
+    def fdictProbeProcessGroupMembers(self, sContainerId, iProcessGroup):
+        """Count host processes in the recorded session or group.
+
+        The host twin of the Docker leg's probe, with the same answer
+        shape and the same SESSION-wide match. The enumeration is
+        ``processLiveness.ftEnumerateSessionMembers`` — the in-process
+        probe primitive beside the recycle-proof start-clock read —
+        rather than a journaled launch, because the journal's own
+        resolver runs this probe while holding the journal write
+        lock, and a journaled sweep deadlocks by construction (found
+        the hard way: every hub hung at startup over one crashed
+        terminal record). ``listMemberPids`` rides the answer so the
+        signaller can deliver to members ``killpg`` cannot see.
+        """
+        del sContainerId
+        if not isinstance(iProcessGroup, int) or iProcessGroup <= 0:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": f"unusable process group {iProcessGroup!r}",
+            }
+        bConclusive, listMemberPids = (
+            processLiveness.ftEnumerateSessionMembers(iProcessGroup)
+        )
+        if not bConclusive:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": "the session enumeration could not run",
+            }
+        return {
+            "bConclusive": True, "iMemberCount": len(listMemberPids),
+            "listMemberPids": listMemberPids,
+            "sDetail": f"{len(listMemberPids)} live member(s)",
+        }
+
+    def fnSignalProcessGroupMembers(
+        self, sContainerId, iProcessGroup, sSignalName,
+    ):
+        """Signal every host process of the recorded session or group.
+
+        Enumeration through the session-wide probe, delivery through
+        ``hostCancellation``'s judged signaller (per-member ``os.kill``
+        plus ``killpg`` on the leader group for anything that joined
+        between the enumeration and now). Quiet failures — the
+        terminate-and-prove caller decides on the PROOF, never on the
+        delivery — exactly the Docker leg's contract.
+        """
+        if sSignalName not in ("TERM", "KILL"):
+            raise ValueError(
+                f"Unsupported process-group signal {sSignalName!r}; "
+                "only TERM and KILL are allowlisted"
+            )
+        dictProbe = self.fdictProbeProcessGroupMembers(
+            sContainerId, iProcessGroup,
+        )
+        fnSignalSessionMembers(
+            iProcessGroup,
+            dictProbe.get("listMemberPids") or [],
+            sSignalName,
         )
 
     # -----------------------------------------------------------------

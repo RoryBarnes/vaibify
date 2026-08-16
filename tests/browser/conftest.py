@@ -279,7 +279,15 @@ def _fnIsolateProjectRegistry():
         # Without this the lane records acknowledgements against the
         # researcher's own preferences file, for temp directories that
         # stop existing the moment the run ends.
+        #
+        # The JOURNAL and lock directories are redirected for the same
+        # reason, found the hard way (2026-08-15): the host journeys
+        # write real host-exec and terminal records, and a journey
+        # that dies mid-run left IN-FLIGHT records in the
+        # researcher's real ~/.vaibify/journal — which then wedged
+        # every later hub whose startup resolution met them.
         from vaibify.config import preferencesStore
+        from vaibify.config import containerLock, operationJournal
         with patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
@@ -295,6 +303,12 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             preferencesStore, "_S_LOCK_PATH",
             os.path.join(sHome, "preferences.lock"),
+        ), patch.object(
+            operationJournal, "_S_JOURNAL_DIRECTORY",
+            os.path.join(sHome, "journal"),
+        ), patch.object(
+            containerLock, "_S_LOCK_DIRECTORY",
+            os.path.join(sHome, "locks"),
         ):
             yield sHome
 

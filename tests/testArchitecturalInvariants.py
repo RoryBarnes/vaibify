@@ -3497,30 +3497,34 @@ def testTheTerminalRouteGatesBeforeItBuildsAnything():
     caller with no standing in it, and a refused dial-in would leave
     the record behind.
 
-    The host refusal is checked in the same order for a different
-    reason: it must precede ``require``, because a host-only machine
-    has no daemon and answering "install Docker" about a project that
-    never wanted one is the ordering bug the container-only HTTP
-    routes already fixed.
+    The host BRANCH (2026-08-15: it serves a PTY now, it no longer
+    refuses) is checked in the same order for the same daemon reason:
+    it must precede ``require``, because a host-only machine has no
+    daemon and answering "install Docker" about a project that never
+    wanted one is the ordering bug the container-only HTTP routes
+    already fixed — and it must precede the container session build,
+    because the mode decides WHICH session class carries the
+    quarantine-bearing record.
     """
     sSource = fsReadSource(ROUTES_DIR / _S_TERMINAL_ROUTE_MODULE.split("/")[-1])
     iGate = sSource.index("fiContainerSessionRejectionCode(")
-    iHostRefusal = sSource.index("fbIsHostProject(")
+    iHostBranch = sSource.index("fbIsHostProject(")
     iRequire = sSource.index('dictCtx["require"](')
     iSession = sSource.index("TerminalSession(")
-    assert iGate < iHostRefusal < iRequire < iSession, (
-        "the terminal route must gate, then refuse a host project, "
+    assert iGate < iHostBranch < iRequire < iSession, (
+        "the terminal route must gate, then branch on the host mode, "
         "then require the daemon, then build the session; found order "
-        f"gate={iGate} host={iHostRefusal} require={iRequire} "
+        f"gate={iGate} host={iHostBranch} require={iRequire} "
         f"session={iSession}"
     )
     assert "fnCloseWithCode(" in sSource, (
         "every refusal must accept then close (fnCloseWithCode) so the "
         "browser observes the real code instead of an opaque 1006"
     )
-    assert "I_REJECT_TERMINAL_NOT_ON_HOST" in sSource, (
-        "a host project's refusal needs its own code: it is neither a "
-        "withdrawn feature nor a rejected credential"
+    assert "HostTerminalSession(" in sSource, (
+        "the host branch must build the PTY twin; a host project "
+        "reaching the Docker session class would exec into a "
+        "container that does not exist"
     )
 
 
@@ -4676,7 +4680,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # ack-less grandfather branch became a typed refusal that names
     # the rebuild as the fix, plus the docstring recording the ruling.
     # Same freshness-gate purpose, not a new responsibility.
-    "pipelineServer.py": 2846,
+    # RAISED to 2855 (2026-08-15, host terminal, measured after the
+    # chain rebase onto the ack change): the relay gained the
+    # per-session introduction banner — the host lane's reminder that
+    # the shell runs on the researcher's own machine — sent as the
+    # session's first output bytes. Same relay purpose, not a new
+    # responsibility.
+    "pipelineServer.py": 2855,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
