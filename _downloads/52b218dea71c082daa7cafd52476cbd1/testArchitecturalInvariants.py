@@ -4672,7 +4672,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # threads it through dispatch to the runner — the committer needs
     # the live cache, the reload detector, and the save seam, all of
     # which live only here.
-    "pipelineServer.py": 2837,
+    # RAISED to 2846 (2026-08-15, vaibify-do ack clean break): the
+    # ack-less grandfather branch became a typed refusal that names
+    # the rebuild as the fix, plus the docstring recording the ruling.
+    # Same freshness-gate purpose, not a new responsibility.
+    "pipelineServer.py": 2846,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
