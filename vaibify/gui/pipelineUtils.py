@@ -510,13 +510,25 @@ async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
         )
 
 
-async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
-    """Send a stepPass or stepFail event based on exit code."""
+async def _fnEmitStepResult(
+    fnStatusCallback, iStepNumber, iExitCode,
+    bDownstreamOfDegradedProvenance=False,
+):
+    """Send a stepPass or stepFail event based on exit code.
+
+    ``bDownstreamOfDegradedProvenance`` marks a step that EXECUTED
+    after an earlier step's remote-data documentation degraded (ruling
+    R6: dependents run, visibly marked). The key travels only when
+    True, so untainted runs' events are byte-identical to before.
+    """
     sType = "stepPass" if iExitCode == 0 else "stepFail"
-    await fnStatusCallback({
+    dictEvent = {
         "sType": sType, "iStepNumber": iStepNumber,
         "iExitCode": iExitCode,
-    })
+    }
+    if bDownstreamOfDegradedProvenance:
+        dictEvent["bDownstreamOfDegradedProvenance"] = True
+    await fnStatusCallback(dictEvent)
 
 
 async def _fnEmitCompletion(fnStatusCallback, iExitCode):

@@ -4899,7 +4899,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # primitive, passed only when present so the container call stays
     # byte-identical. Same single purpose — delivering a step's
     # command with its run environment — not a new responsibility.
-    "pipelineRunner.py": 1672,
+    # RAISED to 1714 (2026-08-15, ruling R6 taint, measured after the
+    # chain rebase): the run's shared taint record is created in
+    # _fiRunStepList, set beside the three degradation event emits,
+    # and read at step entry so a degrading step marks its
+    # successors, never itself. The threading rides the existing
+    # step-execution spine — the same single purpose, not a new
+    # responsibility.
+    "pipelineRunner.py": 1714,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -4916,7 +4923,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # run's final durable state said running and the next poll lit a
     # phantom running marker (caught by the stop-test under full-suite
     # load). Ordering machinery belongs beside the thread it orders.
-    "pipelineState.py": 944,
+    # RAISED to 956 (2026-08-15, ruling R6 taint): the step-result
+    # record carries the downstream-of-degraded-provenance flag so a
+    # reconnect re-renders the mark; the growth is the flag's
+    # only-when-True install and the docstring saying why.
+    "pipelineState.py": 956,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer

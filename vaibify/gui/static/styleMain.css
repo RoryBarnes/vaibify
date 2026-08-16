@@ -5839,11 +5839,26 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
+    /* min-width, not width: the cell grows only when it carries the
+       taint glyph beside the light. */
+    min-width: 18px;
     height: 16px;
     font-size: 11px;
     cursor: help;
     white-space: nowrap;
+}
+
+/* Ruling R6: a step that EXECUTED after an earlier step's remote
+   data went undocumented wears a compact warning glyph beside its
+   light. It is run truth, like the light itself — not a
+   step-definition warning — so it stays out of the level strip's
+   consolidated ⚠ column. */
+.step-taint-glyph {
+    color: var(--color-orange);
+    font-size: 10px;
+    line-height: 1;
+    margin-left: 2px;
+    cursor: help;
 }
 
 .level-cell-circle {
