@@ -376,6 +376,15 @@ def _fnRegisterPipelineState(app, dictCtx):
     in-container Claude can read the same post-reconciliation view the
     dashboard sees without re-implementing the stale-heartbeat
     reconciliation against the raw pipeline_state.json file.
+
+    Deliberately answers 200 with no workflow loaded, where sibling
+    routes 404 through ``fdictRequireWorkflow``. Pipeline state is
+    container-scoped, not workflow-scoped — ``fsStatePathFor`` names a
+    file at the resource root, and a run dispatched by the agent lane
+    is live whether or not this hub has a workflow cached. Requiring a
+    workflow here would hide that run from the dashboard, which the
+    ground-truth rule forbids. Examined 2026-08-15; the 200 is the
+    correct answer, not a missed guard.
     """
 
     # mode-b, and the carrier is opened on a branch this route usually
@@ -894,6 +903,20 @@ def _fnRegisterFileStatus(app, dictCtx):
     JavaScript never sees the 304 and cannot tell. Belt and braces:
     the stamp is the correctness fix, no-store keeps a cache from
     participating at all.
+
+    Carrier status (examined 2026-08-15): this route is UNDECLARED and
+    its call tree holds six conditional ``dictCtx["save"]`` container
+    writes riding the ambient admission — the randomness-lint flag and
+    the hash reconcile in ``_fdictFetchOutputStatus``, the
+    stale-verification reset and the upstream reconcile in
+    ``_flistRunPollSideEffects``, and the digest ratchet and flag
+    append in ``_fnRunSupervisionWatchdog``. Each fires only when
+    state actually changed, so the migration shape is the one the
+    state route demonstrates: declare mode-b, thread a carried
+    persister to each site, hold no drain on the ordinary path. That
+    is a migration group of its own — it needs its
+    ``testCarrierMigratedRoutes`` entry asserting the live mode at
+    every site — and is recorded here rather than half-done.
     """
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
