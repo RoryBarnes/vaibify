@@ -11201,21 +11201,17 @@ def _fdictEntry(sRel):
         source='vaibify/gui/pipelineServer.py',
         # Ignore the caller's acknowledgment: a client rendering a
         # superseded copy dispatches code the researcher never saw.
+        # RE-ANCHORED 2026-08-15: the grandfather branch this mutant
+        # used to neutralize became a refusal (clean-break ruling), so
+        # the equivalent break is now blinding the comparison itself.
         old=(
-            '    sAckFingerprint = '
-            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
-            '    sAckPath = '
-            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
-            '    if sAckFingerprint is None and sAckPath is None:\n'
-            '        return None\n'
+            '    if sAckFingerprint != sRecordFingerprint or (\n'
+            '        sAckPath is not None and sAckPath !='
+            ' sWorkflowPath\n'
+            '    ):\n'
         ),
         new=(
-            '    sAckFingerprint = '
-            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
-            '    sAckPath = '
-            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
-            '    if True:\n'
-            '        return None\n'
+            '    if False:\n'
         ),
     ),
     Falsification(
@@ -12157,5 +12153,44 @@ def _fdictEntry(sRel):
             '            VaibifyApp.fnSetStepTaint(iStep, false);\n'
         ),
         iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_an_unacknowledged_run_frame_is_refused'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Restore the retired grandfathering: an ack-less frame rides
+        # the two-way check only, so an out-of-date vaibify-do runs a
+        # copy nobody vouched for instead of being told to rebuild.
+        old=(
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return _fdictSupersededRefusalEvent(\n'
+            '            sAction, dictRequest, sRecordFingerprint,\n'
+            '            "the run frame carried no acknowledged'
+            ' workflow "\n'
+            '            "fingerprint; this caller predates the'
+            ' acknowledgment "\n'
+            '            "contract — rebuild the container image to'
+            ' update its "\n'
+            '            "vaibify-do",\n'
+            '        )\n'
+        ),
+        new=(
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_run_frame_carries_the_bound_acknowledgment'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        # Skip the workflowBound adoption: every run action from the
+        # in-container CLI is then refused as unacknowledged, and the
+        # agent lane cannot run anything at all.
+        old='    if dictBound is not None:\n',
+        new='    if False:\n',
     ),
 ]

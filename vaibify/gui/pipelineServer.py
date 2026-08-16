@@ -1113,9 +1113,12 @@ async def _fdictStaleWorkflowRefusal(
     hand-edited or migrated project. On a disk mismatch the refusal
     RELOADS the cache and publishes through the workflow epoch in the
     same operation, so the researcher is never stranded clicking Run
-    against a cache nothing will refresh. A frame with no
-    acknowledgment fields (a legacy ``vaibify-do``) gets the two-way
-    record==disk check only — grandfathered, stated here.
+    against a cache nothing will refresh. A frame with NO
+    acknowledgment fields is refused outright (2026-08-15 ruling —
+    nothing shipped, so the legacy two-way grandfathering was
+    retired): every run caller, browser and ``vaibify-do`` alike,
+    must acknowledge the copy it is acting on, and the refusal names
+    the rebuild as the fix for an old in-container CLI.
     """
     if dictCtx is None or dictWorkflowBound is None:
         return None
@@ -1153,7 +1156,13 @@ async def _fdictStaleWorkflowRefusal(
     sAckFingerprint = dictRequest.get("sAcknowledgedSourceFingerprint")
     sAckPath = dictRequest.get("sAcknowledgedWorkflowPath")
     if sAckFingerprint is None and sAckPath is None:
-        return None
+        return _fdictSupersededRefusalEvent(
+            sAction, dictRequest, sRecordFingerprint,
+            "the run frame carried no acknowledged workflow "
+            "fingerprint; this caller predates the acknowledgment "
+            "contract — rebuild the container image to update its "
+            "vaibify-do",
+        )
     if sAckFingerprint != sRecordFingerprint or (
         sAckPath is not None and sAckPath != sWorkflowPath
     ):
