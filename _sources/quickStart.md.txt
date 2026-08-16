@@ -77,6 +77,31 @@ is the intended mode inside the sandbox.)
 
 You have your first Vaibify container.
 
+## 2b. In a hurry? Try host mode first
+
+If you want to see vaibify working **before** committing to a
+container build, you can point it at a directory on your own machine
+instead: in the add dialog, choose the option that runs **on this
+machine** rather than in a container. There is no image to build —
+the dashboard opens in seconds, and the pipeline steps, git badges,
+test markers, and terminal all work against your real files with your
+own installed tools.
+
+Two things to understand before you use it:
+
+- **Nothing is contained.** Commands run with your user's full
+  authority on your real filesystem, which is why vaibify shows a
+  warning when you enter a host project and a reminder at the top of
+  every host terminal session. Treat it the way you treat your own
+  shell, because it is one.
+- **It tops out early on the reproducibility ladder.** The higher
+  PROOF levels certify properties only a container can carry
+  (a pinned environment, supervised attribution), so host projects
+  cannot reach them. Host mode is for experimentation and first
+  contact; when the work becomes real, create a container project
+  and bring your repository with you — the workflow file is the
+  same in both modes.
+
 ## 3. Where to next
 
 The dashboard is the everyday workspace; the rest of the docs go

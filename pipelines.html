@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev1028 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev1033 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=6d62ebe0"></script>
+      <script src="_static/documentation_options.js?v=1dc682c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -62,6 +62,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-output">Pipeline Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#integration-with-github-actions">Integration with GitHub Actions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#multi-container-projects">Multi-Container Projects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#host-projects">Host projects</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
@@ -75,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -318,6 +320,32 @@ vaibify<span class="w"> </span>stop<span class="w"> </span>-p<span class="w"> </
 only one project is registered, the <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag can be omitted.
 When you are inside a project directory (one containing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>),
 the flag defaults to that project.</p>
+</section>
+<section id="host-projects">
+<h2>Host projects<a class="headerlink" href="#host-projects" title="Link to this heading"></a></h2>
+<p>A pipeline can also run <strong>directly on your machine</strong> (a <em>host
+project</em>, chosen when the project is added). The workflow file, the
+step contract, the tokens, and the dashboard are identical — the
+project file is portable between the two modes — but three
+differences matter:</p>
+<ul class="simple">
+<li><p><strong>Your environment is the environment.</strong> Steps run with your own
+user and whatever tools your machine has; there is no image build
+and no isolation. Vaibify shows a warning when you enter a host
+project, and every host terminal session opens with a reminder
+that processes you start can outlive the session.</p></li>
+<li><p><strong>Release proves less.</strong> Stopping a container proves everything in
+it stopped. A host project’s release proves the weaker claim that
+<em>every process vaibify started has exited</em> — and when a terminal
+was used, vaibify reports quiescence as unproven and routes you to
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code> rather than claiming quiet it cannot prove.</p></li>
+<li><p><strong>The PROOF ladder tops out early.</strong> Level 3 and Supervised mode
+certify properties only a container carries; a host project shows
+the containerization step as its remediation.</p></li>
+</ul>
+<p>Host mode is for experimentation and first contact. When the analysis
+becomes real, create a container project and open the same repository
+there.</p>
 </section>
 </section>
 

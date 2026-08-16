@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vaibify Documentation &mdash; Vaibify 0.0.1.dev1033 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.1.dev1033 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -19,7 +19,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Code of Conduct" href="conduct.html" /> 
+    <link rel="prev" title="Skill Testing" href="skillTesting.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -30,7 +30,7 @@
 
           
           
-          <a href="#" class="icon icon-home">
+          <a href="index.html" class="icon icon-home">
             Vaibify
           </a>
 <div role="search">
@@ -41,7 +41,7 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
+              <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
@@ -61,7 +61,15 @@
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#host-mode">Host mode</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-terminal-serves-host-projects">The terminal serves host projects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#doctor-knows-about-host-projects">Doctor knows about host projects</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -72,17 +80,17 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="#">Vaibify</a>
+          <a href="index.html">Vaibify</a>
       </nav>
 
       <div class="wy-nav-content">
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Vaibify Documentation</li>
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Release Notes</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/releaseNotes.md.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -90,49 +98,62 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="vaibify-documentation">
-<h1>Vaibify Documentation<a class="headerlink" href="#vaibify-documentation" title="Link to this heading"></a></h1>
-<p><strong>Vibe boldly. Verify everything.</strong></p>
-<p>Vaibify is a secure, containerized environment for AI-assisted data science.
-It decomposes projects into pipeline steps, executes them inside isolated
-Docker containers, verifies the outputs, and publishes the results – all
-with minimal IDE interaction.</p>
-<p>Vaibify grew out of efforts to make scientific computing workflows
-reproducible and generalizes that approach so that any data science
-pipeline can benefit from containerized reproducibility.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
-<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
-</ul>
-</div>
+  <section id="release-notes">
+<h1>Release Notes<a class="headerlink" href="#release-notes" title="Link to this heading"></a></h1>
+<p>Notable changes, newest first. Entries describe what a researcher
+observes, not internal mechanics; the architecture document carries
+the reasoning.</p>
+<section id="unreleased">
+<h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="host-mode">
+<h3>Host mode<a class="headerlink" href="#host-mode" title="Link to this heading"></a></h3>
+<p>Vaibify can now run a project <strong>directly on your own machine</strong>, with
+no Docker container — point it at a local directory and the same
+dashboard, pipeline steps, git badges, test markers, and terminal
+work against your own filesystem. Host mode is intended for
+experimentation and first contact: the container remains the
+recommended path for real work, because only a container can carry
+the isolation that the higher reproducibility levels certify
+(Level 3 and Supervised mode are deliberately unavailable to host
+projects).</p>
+<p><strong>A weaker — and honest — quiescence claim.</strong> For a container,
+“released” means the container was stopped: nothing survives it. A
+host project has no such boundary, so vaibify’s claim on release is
+deliberately weaker: <strong>“every process vaibify started has exited.”</strong>
+Processes vaibify can <em>see</em> are journaled at launch and proven dead
+on release; a process that detached from its recorded session (for
+example with <code class="docutils literal notranslate"><span class="pre">setsid</span></code>) cannot be seen, and vaibify reports the
+project’s quiescence as <strong>unproven</strong> and routes you to
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code> rather than claiming quiet it cannot prove. The
+dashboard’s terminal says this out loud: every host terminal session
+opens with a reminder that the shell runs on your own machine and
+that processes you start can keep running after the session closes.</p>
+</section>
+<section id="the-terminal-serves-host-projects">
+<h3>The terminal serves host projects<a class="headerlink" href="#the-terminal-serves-host-projects" title="Link to this heading"></a></h3>
+<p>The dashboard terminal now opens a real shell on your machine for a
+host project, in the project directory, with working job control.
+Using it costs the same thing it costs in a container: a project in
+which a terminal has run reports quiescence unproven until
+reconciliation settles it.</p>
+</section>
+<section id="doctor-knows-about-host-projects">
+<h3>Doctor knows about host projects<a class="headerlink" href="#doctor-knows-about-host-projects" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span> <span class="pre">--project</span> <span class="pre">&lt;name&gt;</span></code> on a host project checks what
+actually matters there — the registered directory still exists, and
+<code class="docutils literal notranslate"><span class="pre">git</span></code>/<code class="docutils literal notranslate"><span class="pre">python3</span></code> are on <code class="docutils literal notranslate"><span class="pre">PATH</span></code> — and skips the Docker battery
+entirely. Every doctor report now also names <strong>which checkout’s
+code</strong> answered the command, because an editable install binds the
+<code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command to one working tree permanently.</p>
+</section>
+</section>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="conduct.html" class="btn btn-neutral float-right" title="Code of Conduct" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="skillTesting.html" class="btn btn-neutral float-left" title="Skill Testing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
     </div>
 
   <hr/>

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.1.dev1028 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.1.dev1033 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=6d62ebe0"></script>
+      <script src="_static/documentation_options.js?v=1dc682c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -49,6 +49,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">QuickStart</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#install">1. Install</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#create-your-first-container">2. Create your first container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#b-in-a-hurry-try-host-mode-first">2b. In a hurry? Try host mode first</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#where-to-next">3. Where to next</a></li>
 </ul>
 </li>
@@ -67,6 +68,7 @@
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -194,6 +196,31 @@ of your filesystem are not visible to anything in there. (The Help
 panel’s <strong>Using AI</strong> section explains why skipping permission prompts
 is the intended mode inside the sandbox.)</p>
 <p>You have your first Vaibify container.</p>
+</section>
+<section id="b-in-a-hurry-try-host-mode-first">
+<h2>2b. In a hurry? Try host mode first<a class="headerlink" href="#b-in-a-hurry-try-host-mode-first" title="Link to this heading"></a></h2>
+<p>If you want to see vaibify working <strong>before</strong> committing to a
+container build, you can point it at a directory on your own machine
+instead: in the add dialog, choose the option that runs <strong>on this
+machine</strong> rather than in a container. There is no image to build —
+the dashboard opens in seconds, and the pipeline steps, git badges,
+test markers, and terminal all work against your real files with your
+own installed tools.</p>
+<p>Two things to understand before you use it:</p>
+<ul class="simple">
+<li><p><strong>Nothing is contained.</strong> Commands run with your user’s full
+authority on your real filesystem, which is why vaibify shows a
+warning when you enter a host project and a reminder at the top of
+every host terminal session. Treat it the way you treat your own
+shell, because it is one.</p></li>
+<li><p><strong>It tops out early on the reproducibility ladder.</strong> The higher
+PROOF levels certify properties only a container can carry
+(a pinned environment, supervised attribution), so host projects
+cannot reach them. Host mode is for experimentation and first
+contact; when the work becomes real, create a container project
+and bring your repository with you — the workflow file is the
+same in both modes.</p></li>
+</ul>
 </section>
 <section id="where-to-next">
 <h2>3. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>

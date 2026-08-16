@@ -151,3 +151,29 @@ Projects are registered automatically when you run `vaibify init`. When
 only one project is registered, the `--project` flag can be omitted.
 When you are inside a project directory (one containing `vaibify.yml`),
 the flag defaults to that project.
+
+## Host projects
+
+A pipeline can also run **directly on your machine** (a *host
+project*, chosen when the project is added). The workflow file, the
+step contract, the tokens, and the dashboard are identical — the
+project file is portable between the two modes — but three
+differences matter:
+
+- **Your environment is the environment.** Steps run with your own
+  user and whatever tools your machine has; there is no image build
+  and no isolation. Vaibify shows a warning when you enter a host
+  project, and every host terminal session opens with a reminder
+  that processes you start can outlive the session.
+- **Release proves less.** Stopping a container proves everything in
+  it stopped. A host project's release proves the weaker claim that
+  *every process vaibify started has exited* — and when a terminal
+  was used, vaibify reports quiescence as unproven and routes you to
+  `vaibify reconcile` rather than claiming quiet it cannot prove.
+- **The PROOF ladder tops out early.** Level 3 and Supervised mode
+  certify properties only a container carries; a host project shows
+  the containerization step as its remediation.
+
+Host mode is for experimentation and first contact. When the analysis
+becomes real, create a container project and open the same repository
+there.

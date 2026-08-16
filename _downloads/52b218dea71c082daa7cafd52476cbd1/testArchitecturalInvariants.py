@@ -4217,7 +4217,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # kill response names it, so a deliberately stopped step no longer
     # displays as never-run (researcher ruling: stopped is its own
     # purple state, never conflated with failed).
-    "routes/pipelineRoutes.py": 3194,
+    # +23 (2026-08-15, Phase D examinations): two docstring
+    # dispositions, no code — the state route's no-workflow 200 is
+    # recorded as deliberate (pipeline state is container-scoped),
+    # and the file-status route's six ambient-admission save sites
+    # are enumerated with their migration shape so the future
+    # carrier migration starts from the examination, not from zero.
+    "routes/pipelineRoutes.py": 3217,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
