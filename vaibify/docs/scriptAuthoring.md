@@ -283,3 +283,27 @@ files already exist is refused with a confirmation question — in the
 browser as a modal, for the in-container agent as a `runRefused`
 event it must relay to the researcher (`--confirm-remote-overwrite`
 after an explicit yes). A first-ever pull never prompts.
+
+## Host projects: the same contract, a different substrate
+
+Everything above applies unchanged to a host project (one that runs
+on your own machine instead of in a container). Paths in
+`project.json` — step directories, `saOutputDataFiles`, `saPlotFiles`,
+`{step:...}` tokens — are **repo-relative in both modes**; nothing in
+a well-formed project file names `/workspace`, so nothing changes
+when the project root is a directory in your home instead of a
+container volume.
+
+What DOES differ is the substrate your commands run on:
+
+- Commands execute with **your own user, environment, and installed
+  tools**. There is no image, so there is no pinned toolchain — a
+  script that runs for you may not run for a collaborator whose
+  machine differs, which is one reason the higher PROOF levels
+  require a container.
+- The determinism guarantees (`SOURCE_DATE_EPOCH`, the matplotlib
+  salt) still apply; they are delivered to your process as ordinary
+  environment variables rather than shell text.
+- Absolute paths and `..`-escapes in the project file are rejected in
+  both modes; on the host this is also the path guard that keeps
+  vaibify's own file operations inside your project directory.

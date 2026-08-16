@@ -463,3 +463,104 @@ def test_doctor_explicit_project_lookup_still_fails_loudly():
         result = CliRunner().invoke(fnDoctorCommand, ["--project", "ghost"])
     assert result.exit_code == 1
     mockResolve.assert_called_once_with("ghost")
+
+
+# -----------------------------------------------------------------------
+# Host projects: the host check set, never the Docker battery
+# -----------------------------------------------------------------------
+
+
+def _fdictSeedHostRegistry(tmp_path, monkeypatch, bDirectoryExists=True):
+    """Register one host project in a real registry file."""
+    import json
+    from vaibify.config import registryManager
+    sDirectory = str(tmp_path / "hostProject")
+    if bDirectoryExists:
+        import os
+        os.makedirs(sDirectory, exist_ok=True)
+    pathRegistry = tmp_path / "registry.json"
+    pathRegistry.write_text(json.dumps({"listProjects": [{
+        "sName": "hostDoctorProject",
+        "sMode": "host",
+        "sDirectory": sDirectory,
+    }]}))
+    monkeypatch.setattr(
+        registryManager, "_S_REGISTRY_PATH", str(pathRegistry),
+    )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH", str(tmp_path / "registry.lock"),
+    )
+    return sDirectory
+
+
+def test_doctor_host_project_skips_the_docker_battery(
+    tmp_path, monkeypatch,
+):
+    """A host project must not be told to install Docker.
+
+    The Docker battery in front of the three checks that matter is
+    how a report stops being read — the same ordering the
+    container-only routes fixed server-side.
+    """
+    _fdictSeedHostRegistry(tmp_path, monkeypatch)
+    listResults = flistRunDoctorChecks(
+        _fconfigForDoctor("hostDoctorProject"), False, False,
+    )
+    setNames = {r.sName for r in listResults}
+    assert "host-mode" in setNames
+    assert "host-directory" in setNames
+    assert "host-git" in setNames
+    assert "host-python3" in setNames
+    assert "docker-daemon" not in setNames, (
+        "a host project was handed the Docker battery"
+    )
+    assert not any(r.sLevel == "fail" for r in listResults)
+
+
+def test_doctor_host_project_missing_directory_fails(
+    tmp_path, monkeypatch,
+):
+    """A registered directory that is gone is a fail, with the way out."""
+    _fdictSeedHostRegistry(tmp_path, monkeypatch, bDirectoryExists=False)
+    listResults = flistRunDoctorChecks(
+        _fconfigForDoctor("hostDoctorProject"), False, False,
+    )
+    listDirectory = [
+        r for r in listResults if r.sName == "host-directory"
+    ]
+    assert listDirectory and listDirectory[0].sLevel == "fail"
+    assert "re-register" in listDirectory[0].sRemediation
+
+
+def test_doctor_always_reports_the_installed_checkout(
+    tmp_path, monkeypatch,
+):
+    """The editable-install trap: say WHICH checkout answers.
+
+    A hub launched from a worktree ran the MAIN checkout's code for a
+    walkthrough day (2026-08-14) because nothing ever said which tree
+    the command resolved to. Both the host and the container scopes
+    carry the report.
+    """
+    import vaibify
+    import os
+    sExpected = os.path.dirname(os.path.dirname(
+        os.path.abspath(vaibify.__file__),
+    ))
+    _fdictSeedHostRegistry(tmp_path, monkeypatch)
+    listHost = flistRunDoctorChecks(
+        _fconfigForDoctor("hostDoctorProject"), False, False,
+    )
+    listCheckout = [
+        r for r in listHost if r.sName == "installed-checkout"
+    ]
+    assert listCheckout and sExpected in listCheckout[0].sMessage
+    with patch(
+        "vaibify.cli.commandDoctor._flistSharedChecks",
+        return_value=[_fresultOk("docker-daemon")],
+    ):
+        listContainer = flistRunDoctorChecks(None, False, False)
+    assert any(
+        r.sName == "installed-checkout" and sExpected in r.sMessage
+        for r in listContainer
+    )
