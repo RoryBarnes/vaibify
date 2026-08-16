@@ -12326,4 +12326,35 @@ def _fdictEntry(sRel):
         old='        if fbIsHostProject(sName):\n',
         new='        if True:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliSession.py::'
+            'test_do_drives_a_host_project_with_no_docker_leg'
+        ),
+        source='vaibify/cli/hubSession.py',
+        # Drop the resolver's host branch: the researcher-lane CLI
+        # tells a host project's owner to `vaibify start --detach` a
+        # container that never existed — Phase D's found defect,
+        # restored.
+        old=(
+            '        if dictContainer.get("sMode") == "host":\n'
+            '            return sContainerName\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliSession.py::'
+            'test_resolve_id_container_still_requires_a_running_id'
+        ),
+        source='vaibify/cli/hubSession.py',
+        # Invert the mode rule: every container project is addressed
+        # by NAME, and each later route gets an id that is not a
+        # Docker id, failing somewhere less legible than the start
+        # hint this resolver owns.
+        old='        if dictContainer.get("sMode") == "host":\n',
+        new='        if dictContainer.get("sMode") != "host":\n',
+    ),
 ]

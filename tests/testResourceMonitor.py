@@ -362,7 +362,12 @@ def test_the_deadline_bounds_the_caller_and_not_the_worker():
         )
         fElapsed = time.monotonic() - fStarted
     assert tResult[1] == "timeout"
-    assert fElapsed < 1.0, (
+    # The discriminator is "returned well before the 3s worker sleep":
+    # a re-joining executor costs the full 3s, so any ceiling below
+    # that keeps the test's power. 2.0s tolerates a capacity-bound
+    # macOS runner (1.23s observed on CI, 2026-08-16) without
+    # admitting the failure this test exists to catch.
+    assert fElapsed < 2.0, (
         f"the deadline waited {fElapsed:.2f}s for a 3s operation it was "
         f"supposed to bound at 0.05s"
     )

@@ -34,5 +34,6 @@ pipeline can benefit from containerized reproducibility.
    developers
    testing
    skillTesting
+   releaseNotes
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>
