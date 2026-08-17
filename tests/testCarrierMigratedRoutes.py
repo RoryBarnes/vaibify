@@ -104,6 +104,12 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         super().__init__()
         self.listAdmittedPrimitives = []
         self.listTypedPathProbes = []
+        # Paths the existence batch answers True for. Default absent
+        # stays the harsher direction for the badge tests; push tests
+        # seed the file their route selects, because the push route's
+        # pre-flight (2026-08-17) refuses a selection that does not
+        # exist before any git subprocess runs.
+        self.setExistingPaths = set()
 
     def _fnRecordLiveAdmission(
         self, sContainerId, sPrimitiveName, sCommand="", sPath="",
@@ -285,10 +291,11 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         """Answer the existence batch the way the real adapter does.
 
         The badge refresh asks it so a file that is not on disk cannot
-        be badged "in sync with remote". Every path answers absent
-        here, which is the harsher direction: a route that stopped
-        threading the answer through would still be reported by its
-        own tests, not by this one.
+        be badged "in sync with remote". A path answers absent unless
+        a fixture seeded it into ``setExistingPaths`` — absent is the
+        harsher direction: a route that stopped threading the answer
+        through would still be reported by its own tests, not by this
+        one.
         """
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
@@ -298,7 +305,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
         self.listTypedPathProbes.extend(listPaths)
-        return [False] * len(listPaths)
+        return [sPath in self.setExistingPaths for sPath in listPaths]
 
     def fbContainerPathIsDirectory(self, sContainerId, sPath):
         """Probe a directory the way the real typed-read adapter does.
@@ -2034,6 +2041,12 @@ class DockerDoubleServingATokenedTrackedRepo(
     at all — a fixture that would let the assertions below pass having
     exercised the refusal rather than the push.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.setExistingPaths.add(
+            posixpath.join(S_PROJECT_REPO, "results.json"),
+        )
 
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         """Answer the sidecar read, which is a TYPED read now.
@@ -5283,6 +5296,10 @@ class DockerDoubleServingASyncBoundWorkflow(
     DockerDoubleThatCallsTheRealGates,
 ):
     """The gate-faithful double over a workflow bound to Overleaf."""
+
+    def __init__(self):
+        super().__init__()
+        self.setExistingPaths.add(S_SYNC_PUSHABLE_FILE)
 
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath == S_WORKFLOW_PATH:

@@ -12486,4 +12486,62 @@ def _fdictEntry(sRel):
             '{fsShellQuote(sCommitMessage)} && "\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_github_push_refuses_when_a_selected_file_is_missing'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # Drop the existence pre-flight: a selected file the step
+        # never wrote reaches git and dies as "pathspec did not match
+        # any files", one cryptic line deep in a modal (live,
+        # 2026-08-17), on every lane.
+        old=(
+            '        await asyncio.to_thread(\n'
+            '            _fnRefuseMissingPushFiles,\n'
+            '            dictCtx["docker"], sContainerId,\n'
+            '            request.listFilePaths, sWorkdir,\n'
+            '        )\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testErrorRedaction.py::'
+            'testAnOrdinaryFilePathSurvivesRedaction'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        # Restore "/" to the bearer-token class: any absolute path 40+
+        # characters — every host project path — is eaten whole and
+        # the raw-error pane shows [redacted-token] where the
+        # diagnostic detail should be.
+        old=(
+            '    var _RE_BEARER_TOKEN =\n'
+            '        /(^|[^A-Za-z0-9+=_-])([A-Za-z0-9+=_-]{40,})'
+            '(?=[^A-Za-z0-9+=_-]|$)/g;\n'
+        ),
+        new=(
+            '    var _RE_BEARER_TOKEN =\n'
+            '        /(^|[^A-Za-z0-9+\\/=_-])([A-Za-z0-9+\\/=_-]{40,})'
+            '(?=[^A-Za-z0-9+\\/=_-]|$)/g;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testErrorRedaction.py::'
+            'testRealTokenShapesAreStillRedacted'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        # Delete the bearer replacement entirely: a 40+ character
+        # slash-free secret reaches the raw-error pane verbatim.
+        old=(
+            '            .replace(_RE_BEARER_TOKEN, '
+            '"$1[redacted-token]");\n'
+        ),
+        new=(
+            ';\n'
+        ),
+    ),
 ]

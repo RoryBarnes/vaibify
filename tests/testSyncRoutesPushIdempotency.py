@@ -20,6 +20,14 @@ from vaibify.gui import containerGit
 from vaibify.gui.routes import syncRoutes
 
 
+class _ConnectionAllFilesExist:
+    """Push pre-flight probe double: every selected file exists."""
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [True] * len(listPaths)
+
+
+
 @pytest.fixture
 def fixtureCarrierStoodDown(monkeypatch):
     """Stand the carrier down for the push, driven here bare.
@@ -53,7 +61,7 @@ def _fdictBuildPushContext():
         },
         "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
-        "docker": object(),
+        "docker": _ConnectionAllFilesExist(),
     }
 
 

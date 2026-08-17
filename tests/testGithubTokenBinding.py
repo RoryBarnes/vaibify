@@ -43,6 +43,19 @@ def fixtureClearLoginCache():
     githubAuth.fnClearTokenLoginCache()
 
 
+class _ConnectionAllFilesExist:
+    """Push-route Docker double: every probed path exists.
+
+    The existence pre-flight (2026-08-17) probes the selected files
+    with the batched typed read before any git subprocess runs; these
+    tests exercise token binding, so the modeled world is "all files
+    present".
+    """
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [True] * len(listPaths)
+
+
 def _fdictBuildPushContext():
     """Build the per-request dictCtx the push route reads from."""
     dictWorkflow = {
@@ -55,7 +68,7 @@ def _fdictBuildPushContext():
         "paths": {"cid": "/workspace/myrepo/.vaibify/workflows/demo.json"},
         "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
-        "docker": object(),
+        "docker": _ConnectionAllFilesExist(),
     }
 
 

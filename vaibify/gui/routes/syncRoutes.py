@@ -193,6 +193,57 @@ def _fnValidateGithubPushPaths(listFilePaths, sWorkdir, sContainerId):
         )
 
 
+def _fnRefuseMissingPushFiles(
+    connectionDocker, sContainerId, listFilePaths, sWorkdir,
+):
+    """Refuse the push while any selected file does not exist.
+
+    git's own answer is "pathspec ... did not match any files" — a
+    declared output the step never wrote surfaced exactly that way
+    during the 2026-08-17 walkthrough, one cryptic line deep in the
+    error modal. The batched existence probe (a typed read, no
+    admission needed) turns it into a refusal that names the files,
+    before any git subprocess runs, on every lane — browser, CLI,
+    and agent alike.
+
+    A probe failure skips the check rather than blocking the push:
+    the push itself is the ground truth, and a daemon hiccup in a
+    pre-flight must not veto it.
+    """
+    if not listFilePaths:
+        return
+    listAbsolutePaths = [
+        sPath if sPath.startswith("/")
+        else posixpath.join(sWorkdir, sPath)
+        for sPath in listFilePaths
+    ]
+    try:
+        listExists = connectionDocker.flistContainerPathsExist(
+            sContainerId, listAbsolutePaths,
+        )
+    except OSError as error:
+        logger.warning(
+            "push existence pre-flight skipped for %s: %s",
+            sContainerId, error,
+        )
+        return
+    listMissing = [
+        sPath for sPath, bExists in zip(listFilePaths, listExists)
+        if not bExists
+    ]
+    if listMissing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "These selected files do not exist in the project: "
+                + ", ".join(listMissing)
+                + ". A declared output the step never wrote is the "
+                "usual cause — fix the step's declared file names or "
+                "re-run the step, then push again."
+            ),
+        )
+
+
 def _fnRefuseUnusablePathText(sFilePath):
     """Refuse a path that is not usable text at all."""
     if not isinstance(sFilePath, str) or sFilePath == "":
@@ -1087,11 +1138,37 @@ def _fdictProbeAfterRaisedPushExec(
     return _fdictResolveInterruptedPush(dictCtx, sContainerId, sWorkdir)
 
 
+_I_PUSH_LOG_SNIPPET_LENGTH = 300
+
+_RE_URL_USERINFO_SERVER = re.compile(r"(https?://)[^/\s@]+@")
+
+
+def _fsPushOutputSnippet(sOutput):
+    """Return a single-line, bounded, userinfo-redacted output excerpt.
+
+    ``sErrorType=unknown`` alone made the 2026-08-17 stranded-push
+    failures undiagnosable from the log — the actual git text existed
+    only in a browser modal the researcher had already dismissed. The
+    only credential shape git error output can carry is a token
+    embedded in a remote URL's userinfo, which is redacted before the
+    excerpt is logged.
+    """
+    sFlat = " ".join((sOutput or "").split())
+    sRedacted = _RE_URL_USERINFO_SERVER.sub(r"\1[redacted]@", sFlat)
+    if len(sRedacted) > _I_PUSH_LOG_SNIPPET_LENGTH:
+        return sRedacted[:_I_PUSH_LOG_SNIPPET_LENGTH] + "…"
+    return sRedacted
+
+
 def _fdictLogIncompletePush(sContainerId, dictResult):
     """Log a non-success push result and pass it through unchanged."""
     logger.info(
-        "GitHub push did not complete: container=%s sErrorType=%s",
+        "GitHub push did not complete: container=%s sErrorType=%s "
+        "sOutput=%r",
         sContainerId, dictResult.get("sErrorType", ""),
+        _fsPushOutputSnippet(
+            dictResult.get("sMessage") or dictResult.get("sOutput") or "",
+        ),
     )
     return dictResult
 
@@ -1358,6 +1435,11 @@ def _fnRegisterGithubPush(app, dictCtx):
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(
             request.listFilePaths, sWorkdir, sContainerId,
+        )
+        await asyncio.to_thread(
+            _fnRefuseMissingPushFiles,
+            dictCtx["docker"], sContainerId,
+            request.listFilePaths, sWorkdir,
         )
         fNow = time.monotonic()
         dictPushed = await _fdictPushToGithubUnderTheDrain(
