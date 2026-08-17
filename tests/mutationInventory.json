@@ -667,7 +667,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2144,
+      "iLine": 2158,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -7613,7 +7613,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/syncDispatcher.py",
-      "sFingerprint": "1d08c1704181c5f1",
+      "sFingerprint": "03cdebd443ac1804",
       "sFunction": "_fdictCheckGithub",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -7665,7 +7665,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/syncDispatcher.py",
-      "sFingerprint": "94daae10f1a34bb1",
+      "sFingerprint": "867d0d47d5e38855",
       "sFunction": "_fsReadGithubRemoteUrl",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -9925,7 +9925,7 @@
       "sScopeFingerprint": "4820c8f27ce656a2"
     },
     {
-      "iLine": 1275,
+      "iLine": 1308,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/syncDispatcher.py",

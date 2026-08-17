@@ -842,12 +842,21 @@ def ftResultGenerateLatex(
 
 
 def fdictCheckConnectivity(
-    connectionDocker, sContainerId, sService,
+    connectionDocker, sContainerId, sService, sProjectRepoPath="",
 ):
-    """Check if credentials are available for a service."""
+    """Check if credentials are available for a service.
+
+    ``sProjectRepoPath`` is the workflow's project repo — the exact
+    directory the push will run in — and only the GitHub check uses
+    it: probing any other directory lets the check and the push
+    disagree, which is how a host project was told to run
+    ``gh auth login`` while ``gh auth status`` was green.
+    """
     fnValidateServiceName(sService)
     if sService == "github":
-        return _fdictCheckGithub(connectionDocker, sContainerId)
+        return _fdictCheckGithub(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        )
     if sService == "overleaf":
         return _fdictCheckHostKeyring("overleaf_token")
     if sService == "zenodo":
@@ -887,57 +896,81 @@ def _fdictCheckHostKeyring(sTokenName):
     return {"bConnected": False, "sMessage": "Token not found"}
 
 
-_S_GITHUB_REACHABILITY_COMMAND = (
-    "for sDir in /workspace/*/; do "
-    "  if [ -d \"$sDir/.git\" ]; then "
-    "    cd \"$sDir\" && "
-    "    git ls-remote --exit-code origin HEAD "
-    "    >/dev/null 2>&1 && exit 0; "
-    "  fi; "
-    "done; exit 1"
-)
-
-_S_GITHUB_REMOTE_URL_COMMAND = (
-    "for sDir in /workspace/*/; do "
-    "  if [ -d \"$sDir/.git\" ]; then "
-    "    cd \"$sDir\" && git remote get-url origin && exit 0; "
-    "  fi; "
-    "done; exit 1"
-)
-
 _S_HOST_CREDENTIAL_MISSING_MESSAGE = (
-    "Container reaches GitHub, but this host cannot resolve a GitHub "
-    "credential, so a push from the dashboard will be refused. Run "
-    "'gh auth login' or store a per-repository token in Settings."
+    "The project repository reaches GitHub, but this host cannot "
+    "resolve a GitHub credential, so a push from the dashboard will "
+    "be refused. Run 'gh auth login' or store a per-repository token "
+    "in Settings."
+)
+
+_S_NO_PROJECT_REPO_MESSAGE = (
+    "No workflow project is open, so there is no repository to check "
+    "against GitHub."
 )
 
 
-def _fdictCheckGithub(connectionDocker, sContainerId):
+def _fsComposeGithubReachabilityCommand(sProjectRepoPath):
+    """Return the command probing the project repo's origin remote."""
+    return (
+        f"cd {fsShellQuote(sProjectRepoPath)} && "
+        "git ls-remote --exit-code origin HEAD >/dev/null 2>&1"
+    )
+
+
+def _fsComposeGithubRemoteUrlCommand(sProjectRepoPath):
+    """Return the command reading the project repo's origin URL."""
+    return (
+        f"cd {fsShellQuote(sProjectRepoPath)} && "
+        "git remote get-url origin"
+    )
+
+
+def _fdictCheckGithub(connectionDocker, sContainerId, sProjectRepoPath):
     """Report GitHub readiness for both lanes a dashboard push depends on.
 
-    The container lane answers "can the container reach the remote".
+    The repo lane answers "can the project repo reach its remote".
     The host lane answers "can this process resolve the credential the
     dashboard's own push will use" — the push runs on the host, not in
     the container. The two fail independently, so probing only the
-    container reports Connected while every UI push is refused. Both
-    are probed and both are reported.
+    repo reports Connected while every UI push is refused. Both are
+    probed and both are reported.
+
+    Every probe runs in ``sProjectRepoPath`` — the same directory the
+    push route passes as its workdir — never a hardcoded root. The
+    predecessor scanned ``/workspace/*/`` for the first repo it
+    found, which probed the wrong repo in a multi-repo container
+    and, for a host project, probed a directory that does not exist
+    on the researcher's machine — so every host push was refused
+    with a credential hint while ``gh auth status`` was green. An
+    empty path refuses before any command runs.
     """
+    if not sProjectRepoPath:
+        return {
+            "bConnected": False,
+            "bContainerReachesGithub": False,
+            "bHostCredentialAvailable": False,
+            "sMessage": _S_NO_PROJECT_REPO_MESSAGE,
+        }
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, _S_GITHUB_REACHABILITY_COMMAND,
+        sContainerId,
+        _fsComposeGithubReachabilityCommand(sProjectRepoPath),
     )
     bContainerReaches = iExitCode == 0
     bHostCredential = _fbHostGithubCredentialAvailable(
-        _fsReadGithubRemoteUrl(connectionDocker, sContainerId),
+        _fsReadGithubRemoteUrl(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        ),
     )
     return _fdictDescribeGithubConnectivity(
         bContainerReaches, bHostCredential,
     )
 
 
-def _fsReadGithubRemoteUrl(connectionDocker, sContainerId):
-    """Return the origin URL of the first git repo under /workspace."""
+def _fsReadGithubRemoteUrl(connectionDocker, sContainerId, sProjectRepoPath):
+    """Return the origin URL of the project repo, '' when unreadable."""
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, _S_GITHUB_REMOTE_URL_COMMAND,
+        sContainerId,
+        _fsComposeGithubRemoteUrlCommand(sProjectRepoPath),
     )
     if iExitCode != 0:
         return ""
@@ -965,7 +998,7 @@ def _fbHostGithubCredentialAvailable(sRemoteUrl):
 def _fdictDescribeGithubConnectivity(bContainerReaches, bHostCredential):
     """Build the connectivity payload naming whichever lane failed."""
     if not bContainerReaches:
-        sMessage = "Cannot reach GitHub from container"
+        sMessage = "Cannot reach GitHub from the project repository"
     elif not bHostCredential:
         sMessage = _S_HOST_CREDENTIAL_MISSING_MESSAGE
     else:
