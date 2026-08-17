@@ -981,6 +981,17 @@ def _fsRequireProjectRepoForGit(dictWorkflow):
     return sPath
 
 
+def _fsProjectRepoPathOrEmpty(dictCtx, sContainerId):
+    """Return the cached workflow's project repo path, '' when absent.
+
+    The connectivity check must probe the repo the push will run in;
+    with no workflow open there is nothing to probe and the dispatcher
+    answers with an honest refusal instead of scanning some root.
+    """
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId) or {}
+    return dictWorkflow.get("sProjectRepoPath") or ""
+
+
 def _fnAssertGithubTokenBoundToRemote(
     connectionDocker, sContainerId, sProjectRepoPath,
 ):
@@ -1908,7 +1919,8 @@ def _fdictValidateStoredCredential(
     """Validate an already-stored credential without deleting it on failure."""
     from .. import syncDispatcher
     dictResult = syncDispatcher.fdictCheckConnectivity(
-        dictCtx["docker"], sContainerId, sService)
+        dictCtx["docker"], sContainerId, sService,
+        _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))
     if not dictResult["bConnected"]:
         return dictResult
     bValid, sDetail = _ftRunServiceValidation(
@@ -2014,7 +2026,8 @@ def _fnRegisterSyncRoutes(app, dictCtx):
                 sZenodoInstance,
             )
         return syncDispatcher.fdictCheckConnectivity(
-            dictCtx["docker"], sContainerId, request.sService)
+            dictCtx["docker"], sContainerId, request.sService,
+            _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))
 
     def _fnPersistServiceSettings(
         dictCtx, sContainerId, request, requestHttp,
@@ -2040,7 +2053,8 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         dictCtx["require"](sContainerId)
         syncDispatcher.fnValidateServiceName(sService)
         dictResult = syncDispatcher.fdictCheckConnectivity(
-            dictCtx["docker"], sContainerId, sService)
+            dictCtx["docker"], sContainerId, sService,
+            _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))
         if dictResult["bConnected"] and sService == "overleaf":
             dictResult = _fdictRequireOverleafProjectId(
                 dictCtx, sContainerId, dictResult,

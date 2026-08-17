@@ -4332,7 +4332,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rather than written out twice.
     # +9 (2026-08-12): the isolation gate returns for a host project
     # instead of asking Docker about a container that does not exist.
-    "routes/syncRoutes.py": 3081,
+    # +14 (2026-08-17, host GitHub check): the connectivity check
+    # threads the workflow's project repo path at all three call
+    # sites plus the small helper that reads it, replacing the
+    # hardcoded /workspace scan that refused every host push.
+    "routes/syncRoutes.py": 3095,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4886,7 +4890,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that has them and the directory where this resource keeps
     # zenodoClient. Cohesive with the command building already
     # here.
-    "syncDispatcher.py": 1915,
+    # +33 (2026-08-17, host GitHub check): the two probe commands
+    # become composers of the project repo path (mode-correct for
+    # host projects), plus the empty-path refusal and the recorded
+    # rationale for why no root may be hardcoded here.
+    "syncDispatcher.py": 1948,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

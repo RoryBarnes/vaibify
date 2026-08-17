@@ -12357,4 +12357,101 @@ def _fdictEntry(sRel):
         old='        if dictContainer.get("sMode") == "host":\n',
         new='        if dictContainer.get("sMode") != "host":\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_reachability_probe_runs_in_the_project_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the reachability probe to the /workspace first-repo
+        # scan: a host project probes a directory that does not exist
+        # on the researcher's machine, so every push is refused with a
+        # credential hint while `gh auth status` is green (found live,
+        # 2026-08-17).
+        old=(
+            '    return (\n'
+            '        f"cd {fsShellQuote(sProjectRepoPath)} && "\n'
+            '        "git ls-remote --exit-code origin HEAD '
+            '>/dev/null 2>&1"\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "for sDir in /workspace/*/; do "\n'
+            '        "  if [ -d \\"$sDir/.git\\" ]; then "\n'
+            '        "    cd \\"$sDir\\" && "\n'
+            '        "    git ls-remote --exit-code origin HEAD "\n'
+            '        "    >/dev/null 2>&1 && exit 0; "\n'
+            '        "  fi; "\n'
+            '        "done; exit 1"\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_remote_url_probe_runs_in_the_project_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the remote-url probe to the /workspace scan: the
+        # credential slot is resolved for whichever repo sorts first
+        # in a multi-repo container, and for no repo at all on a host.
+        old=(
+            '    return (\n'
+            '        f"cd {fsShellQuote(sProjectRepoPath)} && "\n'
+            '        "git remote get-url origin"\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "for sDir in /workspace/*/; do "\n'
+            '        "  if [ -d \\"$sDir/.git\\" ]; then "\n'
+            '        "    cd \\"$sDir\\" && git remote get-url origin '
+            '&& exit 0; "\n'
+            '        "  fi; "\n'
+            '        "done; exit 1"\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_check_refuses_before_probing_without_a_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Drop the empty-path guard: the probe runs `cd '' && ...`,
+        # which succeeds in the shell's current directory, reporting
+        # connectivity for a repository that was never named.
+        old=(
+            '    if not sProjectRepoPath:\n'
+            '        return {\n'
+            '            "bConnected": False,\n'
+            '            "bContainerReachesGithub": False,\n'
+            '            "bHostCredentialAvailable": False,\n'
+            '            "sMessage": _S_NO_PROJECT_REPO_MESSAGE,\n'
+            '        }\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_every_route_connectivity_check_threads_the_repo_path'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # Drop the repo path from the check route: every host
+        # project's GitHub check answers the no-repository refusal,
+        # and only a github request down that path would notice.
+        old=(
+            '        dictResult = syncDispatcher.fdictCheckConnectivity(\n'
+            '            dictCtx["docker"], sContainerId, sService,\n'
+            '            _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))\n'
+        ),
+        new=(
+            '        dictResult = syncDispatcher.fdictCheckConnectivity(\n'
+            '            dictCtx["docker"], sContainerId, sService)\n'
+        ),
+    ),
 ]
