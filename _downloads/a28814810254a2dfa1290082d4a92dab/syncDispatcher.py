@@ -616,13 +616,23 @@ def ftResultPushToGithub(
     Hardened in Phase 6: every git invocation carries the shared
     protocol/symlink/submodule guards so a malicious .gitmodules or
     hostile symlink target cannot hijack the push.
+
+    The commit is guarded exactly as in ``ftResultPushStagedToGithub``:
+    when a previous attempt committed but its push failed, a retry
+    stages nothing, an unconditional ``git commit`` exits "nothing to
+    commit", and the chain dies before the push leg — so the repo can
+    never be pushed by the dashboard again AND the original push
+    error is unreachable behind the commit refusal (found live,
+    2026-08-17, two stranded commits in a host project). Skipping the
+    empty commit lets the retry publish what is already committed.
     """
     sQuotedPaths = " ".join(fsShellQuote(s) for s in listFilePaths)
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
         f"git {sHardening} add {sQuotedPaths} && "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"(git diff --cached --quiet || "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
         f"git {sHardening} push && "
         f"git {sHardening} rev-parse --short HEAD"
     )
