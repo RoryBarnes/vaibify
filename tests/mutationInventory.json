@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 73,
-  "iRowCount": 335,
+  "iRowCount": 336,
   "iUnresolvedSiteCount": 32,
   "listAcquisitions": [
     {
@@ -277,7 +277,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 553,
+      "iLine": 561,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -290,7 +290,7 @@
       "sScopeFingerprint": "7703f8aa2db92b73"
     },
     {
-      "iLine": 513,
+      "iLine": 521,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -303,7 +303,7 @@
       "sScopeFingerprint": "1f9c5573f767e559"
     },
     {
-      "iLine": 515,
+      "iLine": 523,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -355,7 +355,7 @@
       "sScopeFingerprint": "2b0dfd1fe935b926"
     },
     {
-      "iLine": 1485,
+      "iLine": 1515,
       "iOrdinal": 0,
       "sAcquisitionKind": "import-from",
       "sCapability": "docker-client",
@@ -511,7 +511,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 824,
+      "iLine": 855,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "unix-socket",
@@ -550,7 +550,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 785,
+      "iLine": 867,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +563,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 780,
+      "iLine": 862,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -576,7 +576,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 1277,
+      "iLine": 1359,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -589,7 +589,7 @@
       "sScopeFingerprint": "8af36da422b672dd"
     },
     {
-      "iLine": 1314,
+      "iLine": 1396,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -602,7 +602,7 @@
       "sScopeFingerprint": "d012680a30c7b6d4"
     },
     {
-      "iLine": 721,
+      "iLine": 803,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -615,7 +615,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 718,
+      "iLine": 800,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -628,7 +628,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 751,
+      "iLine": 833,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -2207,24 +2207,26 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "websocket",
+        "shutdown",
+        "host-cli"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "sAccess": "arbitrary-root-shell",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "The containment authority's own signal leg, not a route-reachable mutation: it fires only inside terminalContainment.fdictTerminateAndProveRecord (session close, safe reaper, shutdown, reconcile), against a process group recorded in the terminal journal record it is settling. The signal is allowlisted to TERM/KILL, the group id is integer-validated before substitution, and delivery is advisory by design -- the verdict rides on the group-emptiness probe. Runs once as root and once as the container user because the container drops CAP_KILL, so root's kill EPERMs on the unprivileged terminal shell (2026-08-15 incident). Supporting symbols: _fsBuildProcessGroupScript, ftRunRootShellProbe, _I_CONTAINER_DEFAULT_UID, terminalContainment._fdictSignalAndAwaitEmpty.",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "6a8cdd308112a564",
+      "sFingerprint": "2e09cd0559c2890b",
       "sFunction": "fnSignalProcessGroupMembers",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "terminal",
+      "sLifetime": "request",
+      "sLogicalOperation": "deliver TERM/KILL to a journaled terminal process group during terminate-and-prove settlement",
+      "sOperationMetadata": "signal allowlisted to TERM/KILL; group id integer-validated; two passes (root, container uid 1000); each pass swallowed -- the probe decides",
       "sPrimitive": "ftRunRootShellProbe",
       "sReferenceKind": "direct-call"
     },
@@ -8742,6 +8744,34 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "lock-held",
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "carrier-supervisor",
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A typed read of one fixed path: fbaFetchFile names the declared readFileBase64 operation and the adapter's _ftRunTypedRead builds the command, so no caller text can reach the exec primitive; the path is the module constant S_CONTAINER_CONF_PATH, never caller input. Reached from the status GET (no admission needed on a read) and from the sidecar mutations, which already run inside their lock-held carrier. Supporting symbols: S_CONTAINER_CONF_PATH, flistReadConfiguredRepoNames, DockerConnection.fbaFetchFile, DockerConnection._ftRunTypedRead.",
+      "sFile": "gui/trackedReposManager.py",
+      "sFingerprint": "c6e7129da1a49dc3",
+      "sFunction": "_flistFetchConfiguredRepoNames",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "read the image's build-time repository list so configured repos union into the tracked sidecar",
+      "sOperationMetadata": "fixed path /etc/vaibify/container.conf; successful parse cached per resource id; host projects return before the read is attempted",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -9925,7 +9955,7 @@
       "sScopeFingerprint": "4820c8f27ce656a2"
     },
     {
-      "iLine": 1308,
+      "iLine": 1318,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/syncDispatcher.py",

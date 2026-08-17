@@ -208,6 +208,11 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/registry/{sName}/release"): S_SCOPE_BROWSER_HUB,
+    # Reconcile is the recovery path for a container nobody can claim,
+    # so like stop it must stay answerable for an UNOWNED container —
+    # container-lifecycle, never a lease-enforced scope.
+    ("POST", "/api/registry/{sName}/reconcile"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }

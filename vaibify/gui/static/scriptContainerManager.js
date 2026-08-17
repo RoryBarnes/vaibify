@@ -352,6 +352,8 @@ var VaibifyContainerManager = (function () {
             VaibifyModals.fnShowInfoModal(
                 "Container '" + sName + "' is blocked (quarantined)",
                 _fsRenderQuarantineExplanation(dictDetail));
+            _fnBindQuarantineRemedyCopy(dictDetail.sRemedy || "");
+            _fnBindQuarantineReconcile(sName, dictDetail);
         } catch (error) {
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
@@ -374,15 +376,143 @@ var VaibifyContainerManager = (function () {
                "(state: " +
                VaibifyUtilities.fnEscapeHtml(dictDetail.sReadState || "") +
                ").</p>");
+        var sActions = dictDetail.bReconcilableHere
+            ? ('<p><strong>To clear it,</strong> reconcile: vaibify ' +
+               "re-checks every operation above and unblocks the " +
+               "container once all of them are proven finished.</p>" +
+               '<button class="btn btn-primary ' +
+               'quarantine-reconcile-button" type="button">' +
+               "Reconcile now</button>" +
+               '<p class="quarantine-reconcile-outcome" ' +
+               'style="display:none"></p>')
+            : ("<p>This journal cannot be cleared from the dashboard " +
+               "— run the command below on the host machine, which " +
+               "can inspect it and offer the recovery options.</p>");
         var sRemedy =
-            "<p><strong>To clear it,</strong> run this on the host " +
-            "machine (not inside the container):</p>" +
+            "<p>The command-line equivalent, on the host machine (not " +
+            "inside the container):</p>" +
             '<pre class="quarantine-remedy">' +
             VaibifyUtilities.fnEscapeHtml(dictDetail.sRemedy || "") +
-            "</pre><p>If it reports that a process is still alive, that " +
-            "leftover process must be stopped first; then reconcile " +
-            "again.</p>";
-        return sIntro + sBody + sRemedy;
+            "</pre>" +
+            '<button class="btn quarantine-copy-button" type="button">' +
+            "Copy command</button>";
+        return sIntro + sBody + sActions + sRemedy;
+    }
+
+    function _fnBindQuarantineReconcile(sName, dictDetail) {
+        var elButton = document.querySelector(
+            "#modalInfo .quarantine-reconcile-button");
+        if (!elButton) return;
+        var listExpectedIds = (dictDetail.listRecords || []).map(
+            function (dictRecord) { return dictRecord.sOperationId; });
+        elButton.addEventListener("click", function () {
+            _fnReconcileQuarantine(sName, listExpectedIds, dictDetail);
+        });
+    }
+
+    async function _fnReconcileQuarantine(sName, listExpectedIds, dictDetail) {
+        /* The same proving transaction the CLI runs: it clears the
+           quarantine only when every shown record proves settled, and
+           otherwise reports the refusal verbatim. On a refusal a
+           container project is offered the kernel-proven escalation —
+           stop the container (nothing survives that), reconcile again. */
+        var elButton = document.querySelector(
+            "#modalInfo .quarantine-reconcile-button");
+        if (elButton) {
+            elButton.disabled = true;
+            elButton.textContent = "Reconciling…";
+        }
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/reconcile",
+                { listExpectedOperationIds: listExpectedIds });
+        } catch (error) {
+            _fnOfferQuarantineEscalation(
+                sName, listExpectedIds, dictDetail, error);
+            return;
+        }
+        _fnFinishQuarantineReconcile(sName);
+    }
+
+    function _fnFinishQuarantineReconcile(sName) {
+        var elModal = document.getElementById("modalInfo");
+        if (elModal) elModal.remove();
+        VaibifyApp.fnShowToast(
+            "Container '" + sName + "' reconciled — it is claimable " +
+            "again.", "success");
+        fnLoadContainers();
+    }
+
+    function _fnOfferQuarantineEscalation(
+        sName, listExpectedIds, dictDetail, error
+    ) {
+        var elOutcome = document.querySelector(
+            "#modalInfo .quarantine-reconcile-outcome");
+        var elButton = document.querySelector(
+            "#modalInfo .quarantine-reconcile-button");
+        if (elButton) {
+            elButton.disabled = false;
+            elButton.textContent = "Reconcile now";
+        }
+        if (!elOutcome) return;
+        elOutcome.style.display = "";
+        elOutcome.textContent = "Refused: " +
+            VaibifyUtilities.fsSanitizeErrorForUser(error.message);
+        if (dictDetail.bHostProject) return;
+        if (elOutcome.dataset.bEscalationOffered === "1") return;
+        elOutcome.dataset.bEscalationOffered = "1";
+        var elStop = document.createElement("button");
+        elStop.className = "btn quarantine-stop-certify-button";
+        elStop.type = "button";
+        elStop.textContent = "Stop container & certify";
+        elStop.title = "Stops the container — nothing survives a " +
+            "stop, so the check can then prove it settled — and " +
+            "reconciles again. Start the container afterwards as usual.";
+        elOutcome.insertAdjacentElement("afterend", elStop);
+        elStop.addEventListener("click", function () {
+            _fnStopAndCertifyQuarantine(sName, listExpectedIds, elStop);
+        });
+    }
+
+    async function _fnStopAndCertifyQuarantine(sName, listExpectedIds, elStop) {
+        elStop.disabled = true;
+        elStop.textContent = "Stopping…";
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/containers/" + encodeURIComponent(sName) + "/stop");
+            elStop.textContent = "Certifying…";
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/reconcile",
+                { listExpectedOperationIds: listExpectedIds });
+        } catch (error) {
+            elStop.disabled = false;
+            elStop.textContent = "Stop container & certify";
+            var elOutcome = document.querySelector(
+                "#modalInfo .quarantine-reconcile-outcome");
+            if (elOutcome) {
+                elOutcome.textContent = "Refused: " +
+                    VaibifyUtilities.fsSanitizeErrorForUser(error.message);
+            }
+            return;
+        }
+        _fnFinishQuarantineReconcile(sName);
+    }
+
+    function _fnBindQuarantineRemedyCopy(sRemedy) {
+        /* The info modal renders plain HTML, so the button is wired
+           here, after it exists in the DOM. */
+        var elButton = document.querySelector(
+            "#modalInfo .quarantine-copy-button");
+        if (!elButton || !sRemedy) return;
+        elButton.addEventListener("click", function () {
+            VaibifyFileOps.fnCopyToClipboard(sRemedy);
+            elButton.textContent = "Copied";
+            window.setTimeout(function () {
+                elButton.textContent = "Copy command";
+            }, 1500);
+        });
     }
 
     function _fsRenderQuarantineRecords(listRecords) {

@@ -12,6 +12,7 @@ var VaibifyReposPanel = (function () {
         listUndecided: [],
     };
     var _setPromptedNames = null;
+    var _listPromptQueue = [];
 
     function _felGetContainer() {
         return document.getElementById("reposPanelContainer");
@@ -517,14 +518,6 @@ var VaibifyReposPanel = (function () {
         }
     }
 
-    function _fnHandleTrackChoice(sName) {
-        _fnPostTrackOrIgnore(sName, "track");
-    }
-
-    function _fnHandleIgnoreChoice(sName) {
-        _fnPostTrackOrIgnore(sName, "ignore");
-    }
-
     async function _fnPostTrackOrIgnore(sName, sAction) {
         try {
             await VaibifyApi.fdictPost(
@@ -539,26 +532,35 @@ var VaibifyReposPanel = (function () {
         }
     }
 
+    function _fdictBuildDecisionChoice(sLabel, sAction, sName) {
+        return {
+            sLabel: sLabel,
+            sStyleClass: sAction === "track" ? "btn-primary" : undefined,
+            fnCallback: function () {
+                _fnPostTrackOrIgnore(sName, sAction);
+                _fnShowNextPrompt();
+            },
+        };
+    }
+
     function _flistBuildPromptChoices(sName) {
+        /* Every choice, including Later, advances the prompt queue:
+           fnShowChoiceModal keeps a single #modalChoice, so showing
+           the next repo before the current one is answered would
+           destroy the open modal. */
         return [
-            {
-                sLabel: "Track",
-                sStyleClass: "btn-primary",
-                fnCallback: function () {
-                    _fnHandleTrackChoice(sName);
-                },
-            },
-            {
-                sLabel: "Ignore",
-                fnCallback: function () {
-                    _fnHandleIgnoreChoice(sName);
-                },
-            },
-            {sLabel: "Later", fnCallback: function () { }},
+            _fdictBuildDecisionChoice("Track", "track", sName),
+            _fdictBuildDecisionChoice("Ignore", "ignore", sName),
+            {sLabel: "Later", fnCallback: _fnShowNextPrompt},
         ];
     }
 
-    function _fnPromptOne(sName) {
+    function _fnShowNextPrompt() {
+        /* An open #modalChoice may belong to another panel; leave it
+           alone and let the next status poll resume the queue. */
+        if (document.getElementById("modalChoice")) return;
+        var sName = _listPromptQueue.shift();
+        if (!sName) return;
         VaibifyModals.fnShowChoiceModal(
             "New repository detected",
             "Track or ignore '" + sName + "'?",
@@ -572,8 +574,9 @@ var VaibifyReposPanel = (function () {
             var sName = dictRepo.sName;
             if (_setPromptedNames.has(sName)) return;
             _setPromptedNames.add(sName);
-            _fnPromptOne(sName);
+            _listPromptQueue.push(sName);
         });
+        _fnShowNextPrompt();
     }
 
     function fnHandleStatusUpdate(dictStatus) {
@@ -617,6 +620,7 @@ var VaibifyReposPanel = (function () {
     async function fnInit(sContainerId) {
         _sContainerId = sContainerId;
         _setPromptedNames = new Set();
+        _listPromptQueue = [];
         _dictCachedStatus = {
             listTracked: [], listIgnored: [], listUndecided: [],
         };
@@ -651,6 +655,7 @@ var VaibifyReposPanel = (function () {
         VaibifyPolling.fnSetReposHandler(null);
         _sContainerId = null;
         _setPromptedNames = null;
+        _listPromptQueue = [];
         _dictCachedStatus = {
             listTracked: [], listIgnored: [], listUndecided: [],
         };

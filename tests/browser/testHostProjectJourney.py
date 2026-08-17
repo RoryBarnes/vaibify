@@ -397,6 +397,13 @@ def testAHostTerminalOpensWithTheBannerAndEchoes(
     Kills: the banner never reaching the host session's first bytes.
     """
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    # The shell dials on the researcher's first gesture, never on
+    # entry (the lazy dial, 2026-08-17) — and a HOST shell is the
+    # highest-stakes case of the quarantine-bearing operation that
+    # rule exists for. The click that used to precede typing is the
+    # opt-in now, so it comes before the banner is expected.
+    pageDashboard.wait_for_selector(".xterm", timeout=20000)
+    pageDashboard.click(".xterm")
     sPane = _fsTerminalNoticeText(pageDashboard)
     fDeadline = 20.0
     import time as moduleTime
@@ -408,7 +415,6 @@ def testAHostTerminalOpensWithTheBannerAndEchoes(
         pageDashboard.wait_for_timeout(250)
         sPane = _fsTerminalNoticeText(pageDashboard)
     assert "keep running" in sPane, sPane
-    pageDashboard.click(".xterm")
     pageDashboard.keyboard.type("echo BROWSER-$((6*7))")
     pageDashboard.keyboard.press("Enter")
     fStarted = moduleTime.monotonic()

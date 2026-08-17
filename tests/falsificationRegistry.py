@@ -3687,6 +3687,21 @@ def _fdictEntry(sRel):
             "sDetail": f"{iMemberCount} live member(s)",
         }''',
     ),
+    # The zombie exemption (2026-08-14). The mutant restores the
+    # pre-fix walk that counted Z-state entries, which is exactly the
+    # unclearable-quarantine bug: a defunct child reparented to a
+    # non-reaping PID 1 held the count forever and reconcile refused
+    # until the container was restarted. Live-gated like its
+    # neighbours: needs a daemon, kill-confirmed by hand.
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_a_zombie_does_not_hold_the_group_count',
+        source='vaibify/docker/dockerConnection.py',
+        old='''  [ "$3" = "IGROUPTARGET" ] || [ "$4" = "IGROUPTARGET" ] || continue
+  [ "$1" = "Z" ] && continue
+''',
+        new='''  [ "$3" = "IGROUPTARGET" ] || [ "$4" = "IGROUPTARGET" ] || continue
+''',
+    ),
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_release_kills_the_detached_descendant_or_quarantines',
         source='vaibify/gui/sessionLifecycle.py',
@@ -6212,12 +6227,13 @@ def _fdictEntry(sRel):
         source='vaibify/gui/trackedReposManager.py',
         old=(
             '    if dictSidecar is None:\n'
-            '        return _fdictSeedSidecarInMemory('
-            'connectionDocker, sContainerId)\n'
+            '        dictSidecar = _fdictSeedSidecarInMemory(\n'
+            '            connectionDocker, sContainerId,\n'
+            '        )\n'
         ),
         new=(
             '    if dictSidecar is None:\n'
-            '        return fdictBuildInitialState([])\n'
+            '        dictSidecar = fdictBuildInitialState([])\n'
         ),
     ),
     # --- The poll's write, deleted (host mode wave 3) ---

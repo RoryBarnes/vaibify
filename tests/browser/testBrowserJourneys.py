@@ -659,12 +659,15 @@ def testTheTerminalDialsItsSocketAndTheServerGatesIt(
     caller has no standing in the container.
 
     The frontend half asserts the page DOES dial the lane for a
-    container project. While the terminal was withdrawn this asserted
-    the opposite, and the reason it did is worth keeping in view: a
-    socket left to be refused surfaces a deliberate refusal as a
-    connection failure. That is why the pane now names the deliberate
-    close codes rather than printing "[Connection closed]" for all of
-    them.
+    container project when a command is sent into it — since the lazy
+    dial (2026-08-17) the shell spawns on the researcher's first
+    gesture or an explicit send, never on entry; the entry half of
+    that contract is testTheShellDialsOnlyOnTheResearchersGesture.
+    While the terminal was withdrawn this asserted the opposite, and
+    the reason it did is worth keeping in view: a socket left to be
+    refused surfaces a deliberate refusal as a connection failure.
+    That is why the pane now names the deliberate close codes rather
+    than printing "[Connection closed]" for all of them.
 
     Run in a real browser because a string search of the source cannot
     tell whether a module actually reaches for the socket at runtime.
@@ -777,6 +780,82 @@ def testTheTerminalDialsItsSocketAndTheServerGatesIt(
         if "Failed to load resource" not in sError
     ]
     assert listScriptErrors == [], listScriptErrors
+
+
+def testTheShellDialsOnlyOnTheResearchersGesture(
+    pageDashboard, serverHub,
+):
+    """Entering a workflow spawns no shell; the first gesture does.
+
+    A shell is a quarantine-bearing operation: once one has run, the
+    container's quiescence can only be proven, never assumed, and an
+    unclean exit quarantines the container until ``vaibify
+    reconcile``. The eager dial meant every workflow entry ran a
+    shell nobody asked for — the 2026-08-14 quarantine was exactly
+    that shell — so entry must leave the pane armed but silent, and
+    the researcher's first mousedown into it is what dials.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    try:
+        dictOutcome = pageDashboard.evaluate(
+            """async ([sContainerId, sName]) => {
+                const listUrls = [];
+                const wsReal = window.WebSocket;
+                function WebSocketFake(sUrl) {
+                    listUrls.push(sUrl);
+                    this.readyState = 0;
+                    this.close = () => {};
+                    this.send = () => {};
+                    this.addEventListener = () => {};
+                }
+                WebSocketFake.CONNECTING = 0;
+                WebSocketFake.OPEN = 1;
+                WebSocketFake.CLOSING = 2;
+                WebSocketFake.CLOSED = 3;
+                window.WebSocket = WebSocketFake;
+                function fiTerminalDials() {
+                    return listUrls.filter(
+                        (sUrl) => sUrl.includes('/ws/terminal')).length;
+                }
+                try {
+                    const dictClaim = await VaibifyApi.fdictPost(
+                        '/api/registry/' + encodeURIComponent(sName)
+                        + '/claim', {});
+                    VaibifyApp.fnRecordClaimedLease(
+                        sName, dictClaim.sLeaseId);
+                    await VaibifyApp.fnEnterNoWorkflow(sContainerId);
+                    const iDialsAfterEntry = fiTerminalDials();
+                    const elContainer = document.querySelector(
+                        '#terminalStrip .terminal-pane-container');
+                    elContainer.dispatchEvent(new MouseEvent(
+                        'mousedown', {bubbles: true}));
+                    const iDialsAfterClick = fiTerminalDials();
+                    elContainer.dispatchEvent(new MouseEvent(
+                        'mousedown', {bubbles: true}));
+                    return {
+                        iDialsAfterEntry: iDialsAfterEntry,
+                        iDialsAfterClick: iDialsAfterClick,
+                        iDialsAfterSecondClick: fiTerminalDials(),
+                    };
+                } finally {
+                    window.WebSocket = wsReal;
+                }
+            }""",
+            [S_CONTAINER_ID, S_CONTAINER_NAME],
+        )
+    finally:
+        _fnReleaseBrowserLaneOwnership(serverHub.app.state)
+    assert dictOutcome["iDialsAfterEntry"] == 0, (
+        "entering the workflow dialled a terminal socket, which spawns "
+        "a shell nobody asked for and stakes the quiescence claim"
+    )
+    assert dictOutcome["iDialsAfterClick"] == 1, (
+        "the researcher's first gesture into the pane did not dial"
+    )
+    assert dictOutcome["iDialsAfterSecondClick"] == 1, (
+        "a second gesture re-dialled an already-connected tab"
+    )
+    assert pageDashboard.listPageErrors == []
 
 
 # ---------------------------------------------------------------------
