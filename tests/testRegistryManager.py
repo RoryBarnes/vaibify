@@ -473,6 +473,101 @@ def testHostEntryStatusIsMissingWhenTheConfigIsGone(
     assert listResult[0]["sStatus"] == "missing"
 
 
+# -----------------------------------------------------------------------
+# fnConvertProjectToContainer — the host->container re-registration
+# -----------------------------------------------------------------------
+
+
+def testConvertRewritesModeNameAndContainerNameInPlace(tmp_path):
+    """A host entry becomes a container entry under the new name.
+
+    The keys distinct on purpose (basename 'ai greenhouse' != the new
+    Docker-safe name 'aiGreenhouse'), so the writer cannot pass by
+    reading one field where it should read another: the lock/lease/
+    journal key changes to the new name, and the directory must NOT.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "ai greenhouse",
+        "sDirectory": "/home/researcher/ai greenhouse",
+        "sConfigPath": "/home/researcher/ai greenhouse/vaibify.yml",
+        "sContainerName": "ai greenhouse",
+        "sMode": "host",
+    }]})
+    registryManager.fnConvertProjectToContainer(
+        "ai greenhouse", "aiGreenhouse",
+    )
+    assert registryManager.fdictGetProject("ai greenhouse") is None
+    dictConverted = registryManager.fdictGetProject("aiGreenhouse")
+    assert dictConverted is not None
+    assert dictConverted["sMode"] == "container"
+    assert dictConverted["sName"] == "aiGreenhouse"
+    assert dictConverted["sContainerName"] == "aiGreenhouse"
+    assert dictConverted["sDirectory"] == (
+        "/home/researcher/ai greenhouse"
+    )
+    assert dictConverted["sConfigPath"] == (
+        "/home/researcher/ai greenhouse/vaibify.yml"
+    )
+    assert not registryManager.fbIsHostProject("aiGreenhouse")
+
+
+def testConvertRaisesKeyErrorWhenProjectAbsent():
+    with pytest.raises(KeyError, match="not found"):
+        registryManager.fnConvertProjectToContainer("ghost", "ghostBox")
+
+
+def testConvertRefusesANonHostProject():
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "already-container",
+        "sDirectory": "/x",
+        "sConfigPath": "/x/vaibify.yml",
+        "sContainerName": "already-container",
+        "sMode": "container",
+    }]})
+    with pytest.raises(ValueError, match="not a host project"):
+        registryManager.fnConvertProjectToContainer(
+            "already-container", "somethingElse",
+        )
+    dictUnchanged = registryManager.fdictGetProject("already-container")
+    assert dictUnchanged["sMode"] == "container"
+
+
+def testConvertRefusesANameThatCollidesWithAnotherEntry():
+    """The new name must be free among the OTHER entries."""
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "greenhouse", "sDirectory": "/a",
+         "sConfigPath": "/a/vaibify.yml",
+         "sContainerName": "greenhouse", "sMode": "host"},
+        {"sName": "occupied", "sDirectory": "/b",
+         "sConfigPath": "/b/vaibify.yml",
+         "sContainerName": "occupied", "sMode": "container"},
+    ]})
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnConvertProjectToContainer(
+            "greenhouse", "occupied",
+        )
+    assert registryManager.fdictGetProject("greenhouse")["sMode"] == "host"
+
+
+def testConvertToItsOwnNameIsPermittedAndDoesNotSelfCollide():
+    """Skipping self by identity means the same name is not a collision.
+
+    A host name that is already Docker-safe may be kept; the writer must
+    not read the entry's own name as a duplicate of itself.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "greenhouse",
+        "sDirectory": "/a",
+        "sConfigPath": "/a/vaibify.yml",
+        "sContainerName": "greenhouse",
+        "sMode": "host",
+    }]})
+    registryManager.fnConvertProjectToContainer("greenhouse", "greenhouse")
+    dictConverted = registryManager.fdictGetProject("greenhouse")
+    assert dictConverted["sMode"] == "container"
+    assert dictConverted["sContainerName"] == "greenhouse"
+
+
 def testContainerEntryStatusStillConsultsDocker(tmp_path, monkeypatch):
     """The symmetric direction: a container entry keeps its Docker truth.
 
