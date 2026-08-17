@@ -2114,17 +2114,24 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
+    # 2026-08-17: the commit guard gained a second copy when
+    # ftResultPushToGithub adopted it, so both entries below mutate
+    # BOTH copies (iExpectedOccurrences=2) — the staged real-git tests
+    # still kill via the staged copy, and the add-variant copy has its
+    # own scoped entry further down.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
+        iExpectedOccurrences=2,
     ),
 
     # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
@@ -12452,6 +12459,31 @@ def _fdictEntry(sRel):
         new=(
             '        dictResult = syncDispatcher.fdictCheckConnectivity(\n'
             '            dictCtx["docker"], sContainerId, sService)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncDispatcherCoverage.py::'
+            'TestFtResultPushToGithubCommitGuard::'
+            'test_commit_skipped_when_add_stages_nothing'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the add-variant commit guard: after one failed push
+        # leg, every retry dies at "nothing to commit" before the push
+        # can run — the repo is stranded ahead of origin and the real
+        # push error is unreachable (found live, 2026-08-17; the
+        # staged variant's identical 2026-07-02 fix never reached this
+        # sibling).
+        old=(
+            '        f"git {sHardening} add {sQuotedPaths} && "\n'
+            '        f"(git diff --cached --quiet || "\n'
+            '        f"git {sHardening} commit -m '
+            '{fsShellQuote(sCommitMessage)}) && "\n'
+        ),
+        new=(
+            '        f"git {sHardening} add {sQuotedPaths} && "\n'
+            '        f"git {sHardening} commit -m '
+            '{fsShellQuote(sCommitMessage)} && "\n'
         ),
     ),
 ]
