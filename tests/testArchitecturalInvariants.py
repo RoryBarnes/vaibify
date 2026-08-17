@@ -5064,7 +5064,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # flock, crash-time transaction otherwise). Cohesive with the
     # quarantine-detail route beside it: the detail shows the records,
     # this clears them. Destructive exits stay CLI-only.
-    "registryRoutes.py": 1487,
+    # +33 (2026-08-17): _fnRequireValidProjectName on the create route —
+    # a host sandbox may be named "AI Greenhouse" but a container may
+    # not (the name becomes a Docker object). Cohesive with the sibling
+    # create-time validators (_fnValidateCreateDirectory,
+    # _fnRejectDuplicateProjectName) already in this module.
+    "registryRoutes.py": 1520,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

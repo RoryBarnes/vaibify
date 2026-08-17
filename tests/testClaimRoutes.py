@@ -243,5 +243,8 @@ def testReleaseRejectsLeadingDotName(fixtureClient):
 
 
 def testClaimRejectsNamesWithSpecialCharacters(fixtureClient):
-    response = fixtureClient.post("/api/registry/name%20with%20space/claim")
+    # A space is now a valid host-sandbox name (it becomes a filename,
+    # not a Docker object); the record delimiters and shell
+    # metacharacters are what stay unsafe. `%7C` is a pipe.
+    response = fixtureClient.post("/api/registry/bad%7Cname/claim")
     assert response.status_code == 400

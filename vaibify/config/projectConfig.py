@@ -552,22 +552,63 @@ def _fnMergeReproducibility(dictMerged, dictReproUser):
             dictMerged["reproducibility"][sKey] = value
 
 
-_RE_PROJECT_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+# The DOCKER-identifier rule: a name that is also a valid Docker object
+# name, because a container project interpolates it into ``docker run
+# --name``/``--hostname``, image tags and volume names, none of which
+# admit a space. Container projects must satisfy it; it is enforced at
+# container creation (registryRoutes), not here, because only a
+# container turns the name into a Docker object.
+_RE_DOCKER_SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+
+# The STORAGE rule every mode must satisfy: safe to persist in
+# vaibify.yml, to use as a host lock/keep-alive filename
+# (containerLock.fsLockPathFor, keepAliveManager), as the host lease
+# key, and to pass as a subprocess argv element. It ADMITS an internal
+# space so a host sandbox can be named "AI Greenhouse", and still
+# forbids the path separators, the container.conf record delimiters
+# (``|`` and newlines), control characters and NUL that the Docker rule
+# forbade. Every subprocess call in the package is argv-list, never
+# ``shell=True``, so a space is never a command-injection vector; it is
+# the path separators, record delimiters, control characters and NUL
+# that an argv element must not carry into a filename or a delimited
+# record.
+_RE_STORAGE_SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,62}$")
+
+
+def fbIsDockerSafeName(sName):
+    """Return True iff the name is a valid Docker identifier."""
+    return (
+        isinstance(sName, str)
+        and _RE_DOCKER_SAFE_NAME.match(sName) is not None
+    )
+
+
+def fbIsStorageSafeName(sName):
+    """Return True iff the name is safe to store, lock on, and pass as argv.
+
+    Admits an internal space (a host sandbox may be "AI Greenhouse") and
+    forbids leading or trailing whitespace, path separators, the
+    container.conf record delimiters, control characters and NUL. This
+    is the rule for every mode; container mode additionally requires
+    ``fbIsDockerSafeName``.
+    """
+    if not isinstance(sName, str) or not sName.strip():
+        return False
+    if sName != sName.strip():
+        return False
+    return _RE_STORAGE_SAFE_NAME.match(sName) is not None
 
 
 def _fbValidateProjectName(dictConfig):
-    """Check that projectName is a safe identifier.
+    """Check that projectName is safe to store, lock on, and pass as argv.
 
-    The name is interpolated into Docker container names, image
-    tags, volume names, and subprocess argv on the host. Restrict
-    to ``^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`` so a malicious
-    vaibify.yml can't smuggle shell metacharacters or path
-    components into those contexts.
+    A space is admitted so a host sandbox can be named "AI Greenhouse".
+    The stricter Docker-identifier rule is not applied here: only a
+    container turns the name into a Docker object, so container mode
+    enforces ``fbIsDockerSafeName`` at creation instead. See
+    ``fbIsStorageSafeName``.
     """
-    sProjectName = dictConfig.get("projectName", "")
-    if not isinstance(sProjectName, str) or not sProjectName.strip():
-        return False
-    return _RE_PROJECT_NAME.match(sProjectName) is not None
+    return fbIsStorageSafeName(dictConfig.get("projectName", ""))
 
 
 def _fbValidatePackageManager(dictConfig):
