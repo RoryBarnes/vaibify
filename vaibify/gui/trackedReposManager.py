@@ -12,8 +12,15 @@ clones on container start, authoritative across rebuilds).
 tracked_repos.json:listTracked is the RUNTIME list (what the GUI
 surfaces right now, persists across container restarts but not
 rebuilds since /workspace is volume-persistent). They are kept
-consistent at well-defined moments: (1) on container start every
-entry in vaibify.yml:repositories is auto-tracked idempotently;
+consistent at well-defined moments: (1) on EVERY sidecar load the
+build-time list, read from the /etc/vaibify/container.conf baked
+into the image, is unioned into listTracked idempotently — a
+configured repository can never be "undecided", so the New
+Repository prompt is reserved for repositories the researcher put
+in the workspace by hand (an explicit Ignore of a configured repo
+still wins; moment (1) used to be prose only, and a sidecar
+snapshotted while the entrypoint was still cloning left every
+later-arriving configured repo prompting on each visit);
 (2) on user "Track" action, the entry is added to listTracked only
 and NOT written back to vaibify.yml; (3) on rebuild, vaibify.yml is
 the authoritative seed and previously-tracked repos that are no
@@ -32,8 +39,8 @@ repos are freshly cloned and installed by the container entrypoint.
 Paths that are deliberately NOT filtered (because changes to them are
 meaningful): Manifest.toml, *.dvc, *.pdf, man/*.Rd, .coverage, htmlcov/.
 
-This is a leaf module: no intra-package imports, standard library
-only, following the pipelineUtils.py pattern.
+Intra-package imports stay lazy (function-level) so this module can
+be imported from anywhere in the package graph without a cycle.
 """
 
 __all__ = [
@@ -47,6 +54,9 @@ __all__ = [
     "fdictBuildInitialState",
     "flistBuildSeedEntries",
     "fdictReadOrSeedSidecar",
+    "S_CONTAINER_CONF_PATH",
+    "flistReadConfiguredRepoNames",
+    "fnMergeConfiguredIntoTracked",
     "flistDiscoverGitDirs",
     "flistDiscoverNonGitDirs",
     "fdictComputeRepoStatus",
@@ -78,6 +88,12 @@ S_WORKSPACE_ROOT = "/workspace"
 S_TRACKED_REPOS_DIR = "/workspace/.vaibify"
 S_TRACKED_REPOS_PATH = "/workspace/.vaibify/tracked_repos.json"
 _S_SIDECAR_RELATIVE = ".vaibify/tracked_repos.json"
+
+# The build-time repository list, baked into the image by the build
+# stage. Immutable for a container's lifetime, so a successful read is
+# cached per resource id below.
+S_CONTAINER_CONF_PATH = "/etc/vaibify/container.conf"
+_dictConfiguredNamesCache = {}
 
 
 def fsRepositoryRootFor(sResourceId):
@@ -499,13 +515,27 @@ def _fdictLoadOrInit(connectionDocker, sContainerId):
     loaded a full document. With the write gone, an empty fallback
     would make the first Track action persist a sidecar containing that
     one repository and silently untrack every other one.
+
+    The configured union runs on BOTH branches, because an EXISTING
+    sidecar is exactly where a configured repository goes missing: one
+    persisted while the entrypoint was still cloning, or before a
+    repository was added to vaibify.yml, lists neither — and without
+    the union every such repository prompts as "undecided" on every
+    visit. The seed branch needs it too: a seed taken mid-clone has
+    only discovered what already reached the disk.
     """
     dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
     if dictSidecar is None:
-        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
+        dictSidecar = _fdictSeedSidecarInMemory(
+            connectionDocker, sContainerId,
+        )
     dictSidecar.setdefault("iSchemaVersion", I_SCHEMA_VERSION)
     dictSidecar.setdefault("listTracked", [])
     dictSidecar.setdefault("listIgnored", [])
+    fnMergeConfiguredIntoTracked(
+        dictSidecar,
+        flistReadConfiguredRepoNames(connectionDocker, sContainerId),
+    )
     return dictSidecar
 
 
@@ -547,13 +577,81 @@ def _fdictSeedSidecarInMemory(connectionDocker, sContainerId):
     )
 
 
+def flistReadConfiguredRepoNames(connectionDocker, sResourceId):
+    """Return the build-time repo basenames for a container resource.
+
+    A host project has no image and no build-time list, so the answer
+    is empty before any read is attempted — the conf path would only
+    be refused by the host path guard. A missing or unreadable conf
+    answers empty too, uncached, so a transient exec failure cannot
+    stick; a successful parse is cached, because the document is baked
+    into the image and cannot change for this resource id.
+    """
+    if fsRepositoryRootFor(sResourceId) != S_WORKSPACE_ROOT:
+        return []
+    if sResourceId in _dictConfiguredNamesCache:
+        return _dictConfiguredNamesCache[sResourceId]
+    try:
+        listNames = _flistFetchConfiguredRepoNames(
+            connectionDocker, sResourceId,
+        )
+    except (OSError, UnicodeDecodeError, ValueError):
+        return []
+    _dictConfiguredNamesCache[sResourceId] = listNames
+    return listNames
+
+
+def _flistFetchConfiguredRepoNames(connectionDocker, sResourceId):
+    """Fetch and parse the container.conf baked into the image."""
+    from vaibify.config.containerConfig import flistParseContainerConfText
+    baContent = connectionDocker.fbaFetchFile(
+        sResourceId, S_CONTAINER_CONF_PATH,
+    )
+    return _flistSelectDiscoverableNames(
+        flistParseContainerConfText(
+            baContent.decode("utf-8"), S_CONTAINER_CONF_PATH,
+        ),
+    )
+
+
+def _flistSelectDiscoverableNames(listConfiguredRepos):
+    """Return the effective workspace basenames discovery can surface.
+
+    A relocated repository lives at its destination, so that is its
+    workspace name. Hidden and nested destinations (a ``.claude``
+    overlay, a path with a slash) are skipped: discovery filters
+    dot-directories and only looks one level deep, and unioning an
+    undiscoverable name would render it as a permanently missing
+    tracked repository.
+    """
+    listNames = []
+    for dictRepo in listConfiguredRepos:
+        sName = dictRepo.get("sDestination") or dictRepo.get("sName")
+        if not sName or sName.startswith(".") or "/" in sName:
+            continue
+        listNames.append(sName)
+    return listNames
+
+
+def fnMergeConfiguredIntoTracked(dictSidecar, listConfiguredNames):
+    """Union configured repos absent from both lists into listTracked.
+
+    An explicit Ignore wins: the union exists so a configured repo can
+    never be "undecided", not to resurrect one the researcher chose to
+    ignore. The URL is left to the status batch, as with seed entries.
+    """
+    for sName in listConfiguredNames:
+        if _fbContainsName(dictSidecar["listTracked"], sName):
+            continue
+        if _fbContainsName(dictSidecar["listIgnored"], sName):
+            continue
+        dictSidecar["listTracked"].append({"sName": sName, "sUrl": None})
+
+
 def fdictReadOrSeedSidecar(connectionDocker, sContainerId):
     """Return the sidecar, seeding it IN MEMORY when absent."""
     with _flockGetLock(sContainerId):
-        dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
-        if dictSidecar is not None:
-            return dictSidecar
-        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
+        return _fdictLoadOrInit(connectionDocker, sContainerId)
 
 
 def _fnRemoveByName(listEntries, sRepoName):

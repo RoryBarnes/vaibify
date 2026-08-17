@@ -527,3 +527,176 @@ def test_fdictComputeRepoStatus_ignores_artifacts():
     assert dictStatus["bDirty"] is False
     assert dictStatus["sBranch"] == "main"
     assert dictStatus["bMissing"] is False
+
+
+# ── The build-time list is authoritative ─────────────────────────
+#
+# /etc/vaibify/container.conf is baked into the image, so a repository
+# it names must never reach the "undecided" state that raises the New
+# Repository prompt — a sidecar snapshotted while the entrypoint was
+# still cloning used to leave every later-arriving configured repo
+# prompting on every visit.
+
+from vaibify.gui import trackedReposManager
+from vaibify.gui.trackedReposManager import (
+    S_CONTAINER_CONF_PATH,
+    flistReadConfiguredRepoNames,
+    fnMergeConfiguredIntoTracked,
+)
+
+
+def fnResetConfiguredCache():
+    trackedReposManager._dictConfiguredNamesCache.clear()
+
+
+def fnStoreContainerConf(mockDocker, sContainerId, sText):
+    mockDocker.dictFiles[(sContainerId, S_CONTAINER_CONF_PATH)] = (
+        sText.encode("utf-8")
+    )
+
+
+def test_configured_repo_missing_from_sidecar_reads_as_tracked():
+    """A sidecar predating a configured repo still reports it tracked.
+
+    This is the incomplete-snapshot case: the sidecar was persisted
+    before toolkitBeta reached the workspace, so it lists only
+    toolkitAlpha. The union must repair the read.
+    """
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    mockDocker.fnSetWorkspace(["toolkitAlpha", "toolkitBeta"])
+    dictSidecar = {
+        "iSchemaVersion": I_SCHEMA_VERSION,
+        "listTracked": [{"sName": "toolkitAlpha", "sUrl": "u"}],
+        "listIgnored": [],
+    }
+    mockDocker.dictFiles[("ctr-conf-1", S_TRACKED_REPOS_PATH)] = (
+        json.dumps(dictSidecar).encode("utf-8")
+    )
+    fnStoreContainerConf(
+        mockDocker, "ctr-conf-1",
+        "toolkitAlpha|https://x/a.git|main|reference\n"
+        "toolkitBeta|https://x/b.git|main|reference\n",
+    )
+    dictRead = fdictReadOrSeedSidecar(mockDocker, "ctr-conf-1")
+    assert sorted(flistGetTrackedNames(dictRead)) == [
+        "toolkitAlpha", "toolkitBeta",
+    ]
+    fnResetConfiguredCache()
+
+
+def test_ignored_configured_repo_stays_ignored():
+    """An explicit Ignore wins over the configured union."""
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    dictSidecar = {
+        "iSchemaVersion": I_SCHEMA_VERSION,
+        "listTracked": [],
+        "listIgnored": [{"sName": "toolkitBeta"}],
+    }
+    mockDocker.dictFiles[("ctr-conf-2", S_TRACKED_REPOS_PATH)] = (
+        json.dumps(dictSidecar).encode("utf-8")
+    )
+    fnStoreContainerConf(
+        mockDocker, "ctr-conf-2",
+        "toolkitBeta|https://x/b.git|main|reference\n",
+    )
+    dictRead = fdictReadOrSeedSidecar(mockDocker, "ctr-conf-2")
+    assert flistGetTrackedNames(dictRead) == []
+    assert fbIsIgnored(dictRead, "toolkitBeta")
+    fnResetConfiguredCache()
+
+
+def test_missing_or_malformed_conf_unions_nothing():
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    assert flistReadConfiguredRepoNames(mockDocker, "ctr-conf-3") == []
+    fnStoreContainerConf(mockDocker, "ctr-conf-3", "only|two\n")
+    assert flistReadConfiguredRepoNames(mockDocker, "ctr-conf-3") == []
+    fnResetConfiguredCache()
+
+
+def test_hidden_and_nested_destinations_are_not_unioned():
+    """Discovery cannot surface them, so the union must not track them.
+
+    A dot-destination overlay or a nested path would otherwise render
+    as a permanently missing tracked repository.
+    """
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    fnStoreContainerConf(
+        mockDocker, "ctr-conf-4",
+        "agentOverlay|https://x/o.git|main|reference|.claude\n"
+        "toolkitNested|https://x/n.git|main|reference|sub/dir\n"
+        "toolkitMoved|https://x/m.git|main|reference|renamed\n",
+    )
+    assert flistReadConfiguredRepoNames(mockDocker, "ctr-conf-4") == [
+        "renamed",
+    ]
+    fnResetConfiguredCache()
+
+
+def test_host_project_never_reads_the_conf(monkeypatch):
+    """A host project has no image; the conf path must not be touched."""
+
+    class RefusingConnection:
+        def fbaFetchFile(self, *tArgs, **dictKwargs):
+            raise AssertionError(
+                "a host project must never read container.conf"
+            )
+
+    fnResetConfiguredCache()
+    monkeypatch.setattr(
+        trackedReposManager, "fsRepositoryRootFor",
+        lambda sResourceId: "/home/researcher/project",
+    )
+    assert flistReadConfiguredRepoNames(
+        RefusingConnection(), "hostProject",
+    ) == []
+
+
+def test_configured_union_persists_on_first_mutation():
+    """A mutation writes the unioned list, repairing the sidecar on disk."""
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    dictSidecar = {
+        "iSchemaVersion": I_SCHEMA_VERSION,
+        "listTracked": [],
+        "listIgnored": [],
+    }
+    mockDocker.dictFiles[("ctr-conf-5", S_TRACKED_REPOS_PATH)] = (
+        json.dumps(dictSidecar).encode("utf-8")
+    )
+    fnStoreContainerConf(
+        mockDocker, "ctr-conf-5",
+        "toolkitBeta|https://x/b.git|main|reference\n",
+    )
+    fnAddIgnored(mockDocker, "ctr-conf-5", "handMade")
+    dictWritten = json.loads(
+        mockDocker.dictFiles[("ctr-conf-5", S_TRACKED_REPOS_PATH)]
+    )
+    assert flistGetTrackedNames(dictWritten) == ["toolkitBeta"]
+    assert fbIsIgnored(dictWritten, "handMade")
+    fnResetConfiguredCache()
+
+
+def test_configured_read_is_cached_per_resource():
+    """The conf is immutable per image, so one successful read suffices."""
+    fnResetConfiguredCache()
+    mockDocker = MockDockerConnection()
+    listFetchedPaths = []
+    fnOriginalFetch = mockDocker.fbaFetchFile
+
+    def fbaCountingFetch(sContainerId, sPath, iMaxBytes=None):
+        listFetchedPaths.append(sPath)
+        return fnOriginalFetch(sContainerId, sPath, iMaxBytes)
+
+    mockDocker.fbaFetchFile = fbaCountingFetch
+    fnStoreContainerConf(
+        mockDocker, "ctr-conf-6",
+        "toolkitBeta|https://x/b.git|main|reference\n",
+    )
+    flistReadConfiguredRepoNames(mockDocker, "ctr-conf-6")
+    flistReadConfiguredRepoNames(mockDocker, "ctr-conf-6")
+    assert listFetchedPaths.count(S_CONTAINER_CONF_PATH) == 1
+    fnResetConfiguredCache()

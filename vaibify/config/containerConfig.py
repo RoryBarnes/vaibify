@@ -45,18 +45,42 @@ def flistParseContainerConf(sFilePath):
         raise FileNotFoundError(
             f"Container config not found: '{sFilePath}'"
         )
-    listLines = _flistReadNonCommentLines(pathFile)
-    return _flistParsePipeLines(listLines, sFilePath)
+    return flistParseContainerConfText(
+        pathFile.read_text(), sFilePath
+    )
 
 
-def _flistReadNonCommentLines(pathFile):
-    """Read file and return non-blank, non-comment lines."""
+def flistParseContainerConfText(sText, sSourceName="container.conf"):
+    """Parse container.conf text into a list of repo dicts.
+
+    The file-path reader above and the tracked-repos manager, which
+    fetches the same document from inside a running container, share
+    this one implementation of the pipe format.
+
+    Parameters
+    ----------
+    sText : str
+        The full container.conf document.
+    sSourceName : str
+        Where the text came from, named in parse errors.
+
+    Returns
+    -------
+    list of dict
+        Each dict has keys: sName, sUrl, sBranch, sInstallMethod,
+        sDestination.
+    """
+    listLines = _flistSelectNonCommentLines(sText)
+    return _flistParsePipeLines(listLines, sSourceName)
+
+
+def _flistSelectNonCommentLines(sText):
+    """Return non-blank, non-comment lines of a conf document."""
     listResult = []
-    with open(pathFile, "r") as fileHandle:
-        for sLine in fileHandle:
-            sStripped = sLine.strip()
-            if sStripped and not sStripped.startswith("#"):
-                listResult.append(sStripped)
+    for sLine in sText.splitlines():
+        sStripped = sLine.strip()
+        if sStripped and not sStripped.startswith("#"):
+            listResult.append(sStripped)
     return listResult
 
 
