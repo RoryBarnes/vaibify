@@ -76,6 +76,13 @@ def _fnPatchAddFileToGithub(fixtureCapturedAddFileArgs):
     )
 
 
+class _ConnectionAllFilesExist:
+    """Route Docker double: every path probed by a pre-flight exists."""
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [True] * len(listPaths)
+
+
 def _fdictBuildContextWithRepoAt(sProjectRepoPath, sWorkflowPath):
     """Mimic the per-request dictCtx the route reads from."""
     dictWorkflow = {
@@ -89,7 +96,7 @@ def _fdictBuildContextWithRepoAt(sProjectRepoPath, sWorkflowPath):
         "paths": {"cid": sWorkflowPath},
         "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
-        "docker": object(),
+        "docker": _ConnectionAllFilesExist(),
     }
 
 

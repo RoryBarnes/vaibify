@@ -64,6 +64,12 @@ class MockDockerSync:
         self._dictFiles = {}
         self._iSyncExitCode = 0
         self._sSyncOutput = "ok"
+        self._setMissingPaths = set()
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [
+            sPath not in self._setMissingPaths for sPath in listPaths
+        ]
 
     def flistGetRunningContainers(self):
         return [
@@ -305,6 +311,102 @@ def test_github_push_failure_returns_error(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is False
+
+
+@pytest.mark.falsification
+def test_github_push_refuses_when_a_selected_file_is_missing(clientHttp):
+    """A nonexistent selected file 400s with its name, before any git.
+
+    The live 2026-08-17 shape: a step declared ``number.json`` while
+    its command wrote ``numbers.json``, and the only diagnosis was
+    git's "pathspec did not match" a modal deep. The pre-flight names
+    the file in a plain sentence and never launches git.
+
+    Kills: dropping the ``_fnRefuseMissingPushFiles`` call from the
+    push route — the cryptic pathspec error returns for every lane.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._setMissingPaths = {"/workspace/ghost.json"}
+    listGitCommands = []
+
+    def _ftRecordGit(sContainerId, sCommand):
+        if "git" in sCommand:
+            listGitCommands.append(sCommand)
+        return (0, "")
+
+    try:
+        with patch.object(
+            _mockDockerInstance, "ftResultExecuteCommand", _ftRecordGit,
+        ):
+            responseHttp = clientHttp.post(
+                f"/api/github/{S_CONTAINER_ID}/push",
+                json={
+                    "listFilePaths": ["/workspace/ghost.json"],
+                    "sCommitMessage": "push code",
+                },
+            )
+    finally:
+        _mockDockerInstance._setMissingPaths = set()
+    assert responseHttp.status_code == 400
+    sDetail = responseHttp.json()["detail"]
+    assert "/workspace/ghost.json" in sDetail
+    assert "do not exist" in sDetail
+    assert listGitCommands == [], (
+        "the refusal must precede any git subprocess"
+    )
+
+
+def test_github_push_proceeds_when_the_existence_probe_fails(clientHttp):
+    """A probe hiccup must not veto the push — the push is the truth."""
+    _fnConnectToContainer(clientHttp)
+
+    def _flistRaise(sContainerId, listPaths):
+        raise OSError("daemon hiccup")
+
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "abc1234"
+    with patch.object(
+        _mockDockerInstance, "flistContainerPathsExist", _flistRaise,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/github/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": ["/workspace/run.py"],
+                "sCommitMessage": "push code",
+            },
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+
+
+def test_incomplete_push_log_carries_a_bounded_output_snippet(caplog):
+    """The log names WHY, not only that: sErrorType=unknown alone made
+    the 2026-08-17 stranded-push failures undiagnosable — the git text
+    existed only in a dismissed browser modal."""
+    import logging
+    from vaibify.gui.routes.syncRoutes import _fdictLogIncompletePush
+    with caplog.at_level(logging.INFO, logger="vaibify"):
+        _fdictLogIncompletePush("cid", {
+            "bSuccess": False,
+            "sErrorType": "unknown",
+            "sMessage": "fatal: could not read\nUsername for "
+                        "'https://github.com'",
+        })
+    sLogged = caplog.text
+    assert "fatal: could not read Username" in sLogged
+
+
+def test_push_snippet_flattens_bounds_and_redacts():
+    from vaibify.gui.routes.syncRoutes import _fsPushOutputSnippet
+    sFlat = _fsPushOutputSnippet("a\nb\n\n  c")
+    assert sFlat == "a b c"
+    sBounded = _fsPushOutputSnippet("x" * 500)
+    assert len(sBounded) == 301 and sBounded.endswith("…")
+    sRedacted = _fsPushOutputSnippet(
+        "push https://x:ghp_secret@github.com/o/r.git failed",
+    )
+    assert "ghp_secret" not in sRedacted
+    assert "https://[redacted]@github.com/o/r.git" in sRedacted
 
 
 def test_github_push_success_includes_commit_hash(clientHttp):

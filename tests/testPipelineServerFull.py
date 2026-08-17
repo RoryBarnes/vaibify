@@ -54,6 +54,17 @@ class MockDockerFull:
     def __init__(self):
         self._dictFiles = {}
 
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """The push pre-flight's batched probe: every path exists.
+
+        ``_dictFiles`` is a content store for reads and writes, not a
+        complete filesystem listing, so it cannot answer existence;
+        these tests model a world where the selected files are
+        present. The refusal direction is pinned by
+        ``test_github_push_refuses_when_a_selected_file_is_missing``.
+        """
+        return [True] * len(listPaths)
+
     def flistGetRunningContainers(self):
         return [{
             "sContainerId": S_CONTAINER_ID,

@@ -27,6 +27,14 @@ from tests.carrierStandDown import fnStandCarrierDown
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
+class _ConnectionAllFilesExist:
+    """Push pre-flight probe double: every selected file exists."""
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [True] * len(listPaths)
+
+
+
 @pytest.fixture
 def fixtureCarrierStoodDown(monkeypatch):
     """Stand the carrier down for the pushes, driven here bare.
@@ -61,7 +69,7 @@ def _fdictBuildPushContext():
         "paths": {S_CONTAINER_ID: S_REPO + "/.vaibify/workflows/d.json"},
         "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
-        "docker": object(),
+        "docker": _ConnectionAllFilesExist(),
     }
 
 

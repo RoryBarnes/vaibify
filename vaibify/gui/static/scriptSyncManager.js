@@ -1363,8 +1363,14 @@ var VaibifySyncManager = (function () {
     var _RE_GH_FINEGRAINED_TOKEN = /github_pat_[A-Za-z0-9_]{20,}/g;
     var _RE_GLPAT_TOKEN = /glpat-[A-Za-z0-9_-]{20,}/g;
     var _RE_URL_USERINFO = /(https?:\/\/)[^\/\s@]+@/gi;
+    /* No "/" in the token class: with it, any absolute path 40+
+       characters long matched as one giant token — a host project's
+       own file path rendered as [redacted-token] in the raw-error
+       pane, hiding exactly the detail that pane exists to show
+       (live, 2026-08-17). A slash now delimits candidates, so only
+       slash-free 40+ runs (real token shapes) are redacted. */
     var _RE_BEARER_TOKEN =
-        /(^|[^A-Za-z0-9+\/=_-])([A-Za-z0-9+\/=_-]{40,})(?=[^A-Za-z0-9+\/=_-]|$)/g;
+        /(^|[^A-Za-z0-9+=_-])([A-Za-z0-9+=_-]{40,})(?=[^A-Za-z0-9+=_-]|$)/g;
     var _I_RAW_ERROR_MAX_LENGTH = 1000;
 
     function _fsSanitizeRawError(sRaw) {
@@ -2878,5 +2884,9 @@ var VaibifySyncManager = (function () {
         fnOpenGitIdentityModal: fnOpenGitIdentityModal,
         fnCloseGitIdentityModal: fnCloseGitIdentityModal,
         fnSaveGitIdentity: fnSaveGitIdentity,
+        /* Exported for the browser lane: the redaction rules have a
+           false-positive history (a file path eaten as a token) and
+           an unexported sanitizer is one no test can drive. */
+        fsSanitizeRawError: _fsSanitizeRawError,
     };
 })();

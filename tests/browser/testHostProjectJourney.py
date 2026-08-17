@@ -542,7 +542,30 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
     the counting version was timing-coupled and its mutation SURVIVED
     on one CI runner, twice, which is how a falsification stops being
     evidence.
+
+    The kill handler must be the SOLE thing that resumes file polling
+    here, or the mutation has a second way to be masked. Recovery is
+    fired-and-forgotten at workflow open, and on a loaded runner its
+    response lands AFTER the kill has set the run not-live: a "not
+    running" answer then resumes file polling on its own (line 568 of
+    scriptPipelineRunner.js), satisfying the wait with the kill
+    handler's resume mutated away — the exact 2026-08-17 CI survival on
+    the python-3.9 exclusive leg while its 3.14 twin passed, a split no
+    real coverage gap can produce for a pure-JS mutation. Routing the
+    state poll to a RUNNING answer sends recovery down the
+    reconnect branch, which starts pipeline polling and never touches
+    FILE polling, whatever moment the response lands. The route must be
+    installed BEFORE the workflow opens, because that open is what fires
+    the recovery this isolates.
     """
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"bRunning": True}),
+        ),
+    )
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
         "**/api/pipeline/*/kill",

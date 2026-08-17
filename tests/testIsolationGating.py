@@ -70,6 +70,10 @@ class _MockDockerIsolation:
     def __init__(self):
         self._dictFiles = {}
 
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """Push pre-flight probe: this double models all files present."""
+        return [True] * len(listPaths)
+
     def flistGetRunningContainers(self):
         return [
             {

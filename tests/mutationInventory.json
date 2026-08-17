@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 73,
-  "iRowCount": 336,
+  "iRowCount": 337,
   "iUnresolvedSiteCount": 32,
   "listAcquisitions": [
     {
@@ -667,7 +667,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2158,
+      "iLine": 2240,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -6530,6 +6530,32 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission of its own. It runs on the push route's thread BEFORE the dedupe probe and the drain, deliberately: its whole purpose is to refuse a doomed push before any carrier opens or any git subprocess runs, naming the selected files that do not exist instead of letting git answer 'pathspec did not match' (live, 2026-08-17). A probe failure skips the check and is logged; the push itself remains the ground truth.",
+      "sFile": "gui/routes/syncRoutes.py",
+      "sFingerprint": "5521a75e44fee4e1",
+      "sFunction": "_fnRefuseMissingPushFiles",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask whether every file selected for a GitHub push exists before launching git",
+      "sOperationMetadata": "one path per selected file, resolved against the push workdir; missing files 400 with their names; a raised OSError skips the pre-flight rather than vetoing the push",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {

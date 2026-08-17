@@ -16,6 +16,14 @@ from vaibify.gui import containerGit, pipelineServer
 from vaibify.gui.routes import gitRoutes, pipelineRoutes, syncRoutes
 
 
+class _ConnectionAllFilesExist:
+    """Push pre-flight probe double: every selected file exists."""
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [True] * len(listPaths)
+
+
+
 @pytest.fixture
 def fixtureCarrierStoodDown(monkeypatch):
     """Stand the carrier down for the migrated routes driven bare here.
@@ -57,7 +65,7 @@ def _fdictBuildEpochContext():
         # took no argument would make the caller look wrong.
         "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
-        "docker": object(),
+        "docker": _ConnectionAllFilesExist(),
         "dictSyncEpochs": {},
     }
 

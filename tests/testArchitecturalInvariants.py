@@ -4336,7 +4336,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # threads the workflow's project repo path at all three call
     # sites plus the small helper that reads it, replacing the
     # hardcoded /workspace scan that refused every host push.
-    "routes/syncRoutes.py": 3095,
+    # +82 (2026-08-17, push diagnostics): the existence pre-flight
+    # that names missing selected files before any git subprocess,
+    # and the bounded, userinfo-redacted output snippet on the
+    # failed-push log line — both answers to walkthrough failures
+    # that were diagnosable only from a dismissed browser modal.
+    "routes/syncRoutes.py": 3177,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
