@@ -908,6 +908,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("DELETE", "/api/registry/{sName}"),
     ("POST", "/api/registry/{sName}/claim"),
     ("POST", "/api/registry/{sName}/release"),
+    # Clearing a quarantine asserts the container is safe to use again;
+    # a compromised agent asserting that about its own container is the
+    # exact inversion of what the journal exists for.
+    ("POST", "/api/registry/{sName}/reconcile"),
     ("POST", "/api/host-directories/create"),
     ("POST", "/api/projects/create"),
     # Host-global browser preference (per-directory host-warning
