@@ -112,7 +112,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 289 -> 288: the Files tab's and the Logs list's directory listing.
 # One `find -printf` exec row went, two typed-read rows arrived, and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 287
+I_UNCLASSIFIED_ROW_BUDGET = 286
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

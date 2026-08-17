@@ -331,6 +331,14 @@ def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
     removed itself would defeat the whole point of recording its id.
     """
     saRunArgs = _flistBuildProcessModeArgs(bDetached, bCreateOnly)
+    # --init puts Docker's tini in front of the sleep-infinity
+    # keepalive as a reaping PID 1. Without it every orphaned child
+    # that dies — a terminal shell's agent, a detached script — stays
+    # a zombie forever, and one permanent zombie in a journaled
+    # process group made a terminal quarantine unclearable short of a
+    # container restart (2026-08-14). Reaping is the only thing tini
+    # adds; it grants no capability and changes no isolation.
+    saRunArgs.append("--init")
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddEntrypointUser(saRunArgs)

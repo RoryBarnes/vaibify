@@ -676,3 +676,75 @@ def test_the_process_group_prover_cannot_see_a_setsid_descendant(
         "did not demonstrate anything; check that setsid exists in the "
         "throwaway image"
     )
+
+
+def test_a_zombie_does_not_hold_the_group_count(tLiveContainer):
+    """A dead-but-unreaped member must not keep a record unclearable.
+
+    The 2026-08-14 incident, reproduced end to end: an agent died
+    inside a terminal's session, its parent never reaped it, and after
+    the parent was killed the zombie was reparented to a non-reaping
+    ``sleep`` PID 1 — permanent, unkillable, and counted by the prover,
+    so reconcile refused forever and only a container restart could
+    clear the quarantine. A zombie is an exit record, not a process:
+    it cannot execute, write, or hold a socket, so the quiescence
+    claim is true in its presence and the prover must not count it.
+
+    Three acts against a real container: a live member beside a
+    zombie counts as one; killing the live member leaves the zombie
+    reparented to the non-reaping init; the prover then reports the
+    group EMPTY even though ``/proc`` still shows the defunct entry.
+    """
+    sName, sContainerId, connectionDocker = tLiveContainer
+    # Setup goes through the /bin/sh probe primitive: the ordinary
+    # exec path assumes bash, which the throwaway alpine image lacks.
+    iExitCode, sGroupOutput = connectionDocker.ftRunRootShellProbe(
+        sContainerId,
+        "setsid sh -c 'echo $$ > /tmp/zombieGroup; true & exec sleep 60' "
+        "& sleep 1; cat /tmp/zombieGroup",
+    )
+    assert iExitCode == 0, sGroupOutput
+    iProcessGroup = int(sGroupOutput.strip())
+
+    def fdictProbeNow():
+        dictProbe = connectionDocker.fdictProbeProcessGroupMembers(
+            sContainerId, iProcessGroup,
+        )
+        assert dictProbe["bConclusive"], dictProbe
+        return dictProbe
+
+    def fsGroupStatesNow():
+        _, sStateOutput = connectionDocker.ftRunRootShellProbe(
+            sContainerId,
+            "cat /proc/[0-9]*/stat 2>/dev/null | "
+            "awk -v g=" + str(iProcessGroup) +
+            " '{sub(/^[^)]*\\) /, \"\"); if ($3 == g) print $1}'",
+        )
+        return sStateOutput
+
+    fDeadline = time.monotonic() + 10.0
+    sStates = ""
+    while time.monotonic() < fDeadline:
+        sStates = fsGroupStatesNow()
+        if "Z" in sStates:
+            break
+        time.sleep(0.2)
+    assert "Z" in sStates, "no zombie formed in the scenario group"
+
+    assert fdictProbeNow()["iMemberCount"] == 1, (
+        "the live sleep must count; only the zombie is exempt"
+    )
+
+    connectionDocker.ftRunRootShellProbe(
+        sContainerId, f"kill -9 -{iProcessGroup}",
+    )
+    time.sleep(1.0)
+    sStatesAfter = fsGroupStatesNow()
+    assert all(sState == "Z" for sState in sStatesAfter.split()), (
+        "after the group kill only reparented zombies may remain; "
+        f"saw states {sStatesAfter.split()}"
+    )
+    assert fdictProbeNow()["iMemberCount"] == 0, (
+        "a permanent zombie under a non-reaping init held the count — "
+        "this is the unclearable-quarantine bug"
+    )
