@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from vaibify.gui.syncDispatcher import (
     _fbSafeDirectoryName,
     _fdictParsePorcelainLine,
@@ -415,6 +417,71 @@ class TestFtResultPushStagedToGithub:
             fake, "cid", "msg", "/work space/proj")
         sCommand = fake.listCommands[0][1]
         assert "'/work space/proj'" in sCommand
+
+
+class TestFtResultPushToGithubCommitGuard:
+    """The add-variant push must carry the SAME commit guard.
+
+    The 2026-07-02 fix guarded ``ftResultPushStagedToGithub`` and left
+    this sibling unconditional — the class, not the instance. On
+    2026-08-17 a host project's push leg failed after committing; every
+    dashboard retry then died at ``git commit`` ("nothing to commit")
+    before the push leg could run, stranding two commits AND hiding
+    the original push error behind the commit refusal.
+    """
+
+    @pytest.mark.falsification
+    def test_commit_skipped_when_add_stages_nothing(self):
+        """Kills: reverting the guard to an unconditional commit —
+        a committed-but-unpushed repo can then never be pushed from
+        the dashboard, and the push leg's real error is unreachable."""
+        from vaibify.gui.syncDispatcher import ftResultPushToGithub
+        fake = _FakeDockerConnection((0, ""))
+        ftResultPushToGithub(
+            fake, "cid", ["Step/out.json"], "msg", "/workspace/proj")
+        sCommand = fake.listCommands[0][1]
+        assert "git diff --cached --quiet || " in sCommand
+        iAdd = sCommand.index("add ")
+        iGuard = sCommand.index("git diff --cached --quiet")
+        iCommit = sCommand.index("commit -m")
+        iPush = sCommand.index(" push ")
+        assert iAdd < iGuard < iCommit < iPush, (
+            "the guard must sit between add and commit, before push"
+        )
+
+    def test_guard_semantics_against_real_git(self, tmp_path):
+        """The guarded fragment exits 0 in the stranded state; the old
+        unconditional fragment exits 1. Real git, real repo — the
+        stranded state is a tracked, unchanged file re-added."""
+        import subprocess
+        sRepo = str(tmp_path / "stranded")
+        for listCommand in (
+            ["git", "init", "-q", sRepo],
+            ["git", "-C", sRepo, "config", "user.email", "t@example.invalid"],
+            ["git", "-C", sRepo, "config", "user.name", "T"],
+        ):
+            subprocess.run(listCommand, check=True)
+        (tmp_path / "stranded" / "out.json").write_text("{}\n")
+        subprocess.run(["git", "-C", sRepo, "add", "out.json"], check=True)
+        subprocess.run(
+            ["git", "-C", sRepo, "-c", "commit.gpgsign=false",
+             "commit", "-qm", "stranded"], check=True,
+        )
+        iGuarded = subprocess.run(
+            ["bash", "-c",
+             f"cd {sRepo} && git add out.json && "
+             "(git diff --cached --quiet || git commit -m retry)"],
+        ).returncode
+        iUnconditional = subprocess.run(
+            ["bash", "-c",
+             f"cd {sRepo} && git add out.json && git commit -m retry"],
+            capture_output=True,
+        ).returncode
+        assert iGuarded == 0, "the guarded chain must survive a retry"
+        assert iUnconditional != 0, (
+            "the stranded state no longer reproduces; this test's "
+            "premise is gone — investigate before touching the guard"
+        )
 
 
 class TestFdictParsePorcelainLine:

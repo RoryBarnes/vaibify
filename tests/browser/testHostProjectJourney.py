@@ -249,6 +249,59 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
         ".some(el => el.classList.contains('running'))",
         timeout=30000,
     )
+    # The host run measures CPU at the ``os.wait4`` reap and the
+    # recorded stats carry the reading. PRESENCE is the claim — a
+    # fast step legitimately rounds to 0.0 — because before the reap
+    # existed the key was omitted for every host run. Registered as a
+    # falsification: restoring the CPU-less host branch kills this.
+    #
+    # The wait is load-bearing, not politeness: the running-lights
+    # check above clears at stepPass, which PRECEDES the finalize
+    # (log flush → state merge → acknowledged terminal flush), so a
+    # test that read state.json immediately raced the merge — and the
+    # module's claim-release teardown then cleared the owner map
+    # while the merge was still in flight, so its commit-time
+    # revalidation refused the write and the stats never landed.
+    sStatePath = os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY, ".vaibify", "state.json",
+    )
+    listRunStats = _flistWaitForRunStats(sStatePath)
+    assert listRunStats, "the settled run left no dictRunStats behind"
+    assert any(
+        "fCpuTime" in dictRunStats for dictRunStats in listRunStats
+    ), f"no recorded host run carries fCpuTime: {listRunStats}"
+
+
+def _flistWaitForRunStats(sStatePath, fTimeoutSeconds=20.0):
+    """Poll state.json until the run's dictRunStats merge lands."""
+    import time
+    fDeadline = time.time() + fTimeoutSeconds
+    listRunStats = []
+    while time.time() < fDeadline:
+        try:
+            with open(sStatePath) as fileState:
+                listRunStats = _flistCollectRunStats(json.load(fileState))
+        except (OSError, ValueError):
+            listRunStats = []
+        if listRunStats:
+            return listRunStats
+        time.sleep(0.2)
+    return listRunStats
+
+
+def _flistCollectRunStats(jsonNode):
+    """Return every dictRunStats value anywhere in the state document."""
+    listFound = []
+    if isinstance(jsonNode, dict):
+        for sKey, jsonValue in jsonNode.items():
+            if sKey == "dictRunStats" and isinstance(jsonValue, dict):
+                listFound.append(jsonValue)
+            else:
+                listFound.extend(_flistCollectRunStats(jsonValue))
+    elif isinstance(jsonNode, list):
+        for jsonItem in jsonNode:
+            listFound.extend(_flistCollectRunStats(jsonItem))
+    return listFound
 
 
 def _fnWaitForAnyLog(sLogsDirectory, fTimeoutSeconds=20.0):
@@ -325,31 +378,47 @@ def _fnWaitForFile(sPath, fTimeoutSeconds=60.0):
 
 
 @pytest.mark.falsification
-def testTheTerminalNoticeSpeaksAboutTheRightThing(
+def testAHostTerminalOpensWithTheBannerAndEchoes(
     pageDashboard, serverHub,
 ):
-    """A host project has no container to talk about.
+    """A real shell, on this machine, in the researcher's tab.
 
-    The withdrawn-terminal notice is container copy: it said releasing
-    "this container" could not report it quiet, and then offered a
-    `docker exec -it <container-name> bash` line naming a container
-    that does not exist for this project. A researcher who followed it
-    would be told no such container is running, about work that is
-    running fine on their own machine.
+    Until 2026-08-15 this test pinned the opposite: the pane showed a
+    notice pointing at the researcher's own shell and never dialed.
+    The ruling that replaced it — the terminal is how people will
+    first try vaibify, so host mode must have it — comes with two
+    honesty devices this test asserts: the per-session BANNER saying
+    the shell runs on their own machine and that processes can
+    outlive the tab, and (elsewhere) the quiescence-unproven journal
+    record. The echo proves the PTY is real: a marker computed by
+    bash on this machine comes back through the hub's WebSocket into
+    xterm.
 
-    Kills: one notice for both modes.
+    Kills: the banner never reaching the host session's first bytes.
     """
     _fnOpenTheHostWorkflow(pageDashboard, serverHub)
-    sNotice = _fsTerminalNoticeText(pageDashboard)
-    assert "docker exec" not in sNotice, sNotice
-    assert "this container" not in sNotice, sNotice
-    assert "your own machine" in sNotice, sNotice
-    assert serverHub.sHome.split(os.sep)[-1] in sNotice or (
-        S_HOST_PROJECT_READY in sNotice
-    ), (
-        "the notice does not name the directory the researcher should "
-        f"open a shell in: {sNotice}"
-    )
+    sPane = _fsTerminalNoticeText(pageDashboard)
+    fDeadline = 20.0
+    import time as moduleTime
+    fStarted = moduleTime.monotonic()
+    while "YOUR OWN machine" not in sPane:
+        assert moduleTime.monotonic() - fStarted < fDeadline, (
+            f"the host banner never rendered: {sPane[:400]}"
+        )
+        pageDashboard.wait_for_timeout(250)
+        sPane = _fsTerminalNoticeText(pageDashboard)
+    assert "keep running" in sPane, sPane
+    pageDashboard.click(".xterm")
+    pageDashboard.keyboard.type("echo BROWSER-$((6*7))")
+    pageDashboard.keyboard.press("Enter")
+    fStarted = moduleTime.monotonic()
+    while "BROWSER-42" not in sPane:
+        assert moduleTime.monotonic() - fStarted < fDeadline, (
+            f"the shell never echoed through the PTY: {sPane[:400]}"
+        )
+        pageDashboard.wait_for_timeout(250)
+        sPane = _fsTerminalNoticeText(pageDashboard)
+    assert pageDashboard.listPageErrors == []
 
 
 def _fsTerminalNoticeText(page):
@@ -535,6 +604,126 @@ def testAStaleRecoveryAnswerDoesNotResumePollingMidRun(
         "a recovery answer fetched before the run started resumed "
         "file polling mid-run"
     )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testADegradedRunNeverToastsACleanCompletion(
+        pageDashboard, serverHub):
+    """Kills: the §4.6 terminal report in the researcher's own tab.
+
+    A run whose pull records did not all commit must say "with
+    degraded provenance", never plain "completed" — the clean toast
+    claims documentation the disk does not have.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'completed', sCommand: 'runSelected', iExitCode: 0,"
+        " bProvenanceDegraded: true, bRunMetadataPersisted: true,"
+        " sLogPath: '/journey/.vaibify/logs/degraded.log' })",
+    )
+    pageDashboard.wait_for_selector(
+        "text=degraded provenance", timeout=5000,
+    )
+    assert pageDashboard.evaluate(
+        "() => Array.from("
+        "document.querySelectorAll('.toast.success'))"
+        ".some(el => el.textContent.includes('Step completed'))",
+    ) is False, (
+        "a degraded run also painted the clean success toast"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAStepDownstreamOfDegradedProvenanceWearsTheGlyph(
+    pageDashboard, serverHub,
+):
+    """Kills: the live result event's taint never reaching the store —
+    the run degrades, dependents execute, and the researcher's tab
+    shows two ordinary lights with no visible connection to the
+    undocumented data the second step may have consumed (ruling R6).
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
+        "VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 2, iExitCode: 0,"
+        " bDownstreamOfDegradedProvenance: true }); }",
+    )
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-taint-glyph',
+        timeout=5000,
+    )
+    assert pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}")',
+    ).count() == 1
+    iFirstStepGlyphs = pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-taint-glyph',
+    ).count()
+    assert iFirstStepGlyphs == 0, (
+        "the degrading step marked itself; the glyph's tooltip is a "
+        "false statement about that step"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testACleanRunsResultsWearNoTaintGlyph(pageDashboard, serverHub):
+    """Kills: the glyph rendering unconditionally — a mark that
+    appears on every step says nothing, and a researcher learns to
+    ignore exactly the warning ruling R6 exists to make visible."""
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
+        "VaibifyPipelineRunner.fnHandlePipelineEvent("
+        "{ sType: 'stepPass', iStepNumber: 2, iExitCode: 0 }); }",
+    )
+    pageDashboard.wait_for_selector(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
+        timeout=5000,
+    )
+    assert pageDashboard.locator(".step-taint-glyph").count() == 0, (
+        "a clean run's results wear the downstream-of-degraded mark"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testATaintMarkSurvivesAReconnect(pageDashboard, serverHub):
+    """Kills: the recovery lanes dropping the persisted flag — the
+    mark then exists only for the tab that watched the run live, and
+    reopening the dashboard silently launders the tainted results."""
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "bRunning": False,
+                "iExitCode": 0,
+                "sLogPath": "/journey/.vaibify/logs/tainted.log",
+                "iStepCount": 2,
+                "dictStepResults": {
+                    "1": {"sStatus": "passed", "iExitCode": 0},
+                    "2": {"sStatus": "passed", "iExitCode": 0,
+                          "bDownstreamOfDegradedProvenance": True},
+                },
+            }),
+        ),
+    )
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        '.step-item:has-text("Second Stage") .step-taint-glyph',
+        timeout=10000,
+    )
+    iFirstStepGlyphs = pageDashboard.locator(
+        f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-taint-glyph',
+    ).count()
+    assert iFirstStepGlyphs == 0
     assert pageDashboard.listPageErrors == []
 
 

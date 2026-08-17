@@ -3497,30 +3497,34 @@ def testTheTerminalRouteGatesBeforeItBuildsAnything():
     caller with no standing in it, and a refused dial-in would leave
     the record behind.
 
-    The host refusal is checked in the same order for a different
-    reason: it must precede ``require``, because a host-only machine
-    has no daemon and answering "install Docker" about a project that
-    never wanted one is the ordering bug the container-only HTTP
-    routes already fixed.
+    The host BRANCH (2026-08-15: it serves a PTY now, it no longer
+    refuses) is checked in the same order for the same daemon reason:
+    it must precede ``require``, because a host-only machine has no
+    daemon and answering "install Docker" about a project that never
+    wanted one is the ordering bug the container-only HTTP routes
+    already fixed — and it must precede the container session build,
+    because the mode decides WHICH session class carries the
+    quarantine-bearing record.
     """
     sSource = fsReadSource(ROUTES_DIR / _S_TERMINAL_ROUTE_MODULE.split("/")[-1])
     iGate = sSource.index("fiContainerSessionRejectionCode(")
-    iHostRefusal = sSource.index("fbIsHostProject(")
+    iHostBranch = sSource.index("fbIsHostProject(")
     iRequire = sSource.index('dictCtx["require"](')
     iSession = sSource.index("TerminalSession(")
-    assert iGate < iHostRefusal < iRequire < iSession, (
-        "the terminal route must gate, then refuse a host project, "
+    assert iGate < iHostBranch < iRequire < iSession, (
+        "the terminal route must gate, then branch on the host mode, "
         "then require the daemon, then build the session; found order "
-        f"gate={iGate} host={iHostRefusal} require={iRequire} "
+        f"gate={iGate} host={iHostBranch} require={iRequire} "
         f"session={iSession}"
     )
     assert "fnCloseWithCode(" in sSource, (
         "every refusal must accept then close (fnCloseWithCode) so the "
         "browser observes the real code instead of an opaque 1006"
     )
-    assert "I_REJECT_TERMINAL_NOT_ON_HOST" in sSource, (
-        "a host project's refusal needs its own code: it is neither a "
-        "withdrawn feature nor a rejected credential"
+    assert "HostTerminalSession(" in sSource, (
+        "the host branch must build the PTY twin; a host project "
+        "reaching the Docker session class would exec into a "
+        "container that does not exist"
     )
 
 
@@ -4213,7 +4217,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # kill response names it, so a deliberately stopped step no longer
     # displays as never-run (researcher ruling: stopped is its own
     # purple state, never conflated with failed).
-    "routes/pipelineRoutes.py": 3194,
+    # +23 (2026-08-15, Phase D examinations): two docstring
+    # dispositions, no code — the state route's no-workflow 200 is
+    # recorded as deliberate (pipeline state is container-scoped),
+    # and the file-status route's six ambient-admission save sites
+    # are enumerated with their migration shape so the future
+    # carrier migration starts from the examination, not from zero.
+    "routes/pipelineRoutes.py": 3217,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4230,7 +4240,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # resource's own root instead of the module constant, so a host
     # project's repo-relative test file resolves under its own
     # directory (host-mode wave 4).
-    "routes/testRoutes.py": 808,
+    # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
+    # the definition producer (R8) — the stamp lives at the
+    # producer's own seam, never at save time.
+    "routes/testRoutes.py": 817,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4319,7 +4332,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rather than written out twice.
     # +9 (2026-08-12): the isolation gate returns for a host project
     # instead of asking Docker about a container that does not exist.
-    "routes/syncRoutes.py": 3081,
+    # +14 (2026-08-17, host GitHub check): the connectivity check
+    # threads the workflow's project repo path at all three call
+    # sites plus the small helper that reads it, replacing the
+    # hardcoded /workspace scan that refused every host push.
+    "routes/syncRoutes.py": 3095,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4436,7 +4453,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing duplicate, so validation refuses one before ids are
     # trusted -- at load (before the state merge reads them) and at
     # save (before either file is written).
-    "workflowManager.py": 2460,
+    # +52 (2026-08-15, slice 4): remote-data record identity enforced
+    # at validation and save (unique sPath per step), plus the
+    # SEMANTIC workflow fingerprint — the attestation identity that
+    # names the definition and is blind to the run's own digest
+    # updates. Both are workflow-definition authority, which is this
+    # module's one responsibility.
+    # +34 (2026-08-15, slice 4e/4f): fnStampFieldProducer (the R8
+    # producer stamp, called at each producer's own seam), the load
+    # path passing the current semantic fingerprint into the
+    # revalidating merge, and the computed unresolved-marker list the
+    # level gate reads.
+    "workflowManager.py": 2546,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4477,7 +4505,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a concurrent cooperative writer cannot have its section dropped
     # by a stale read. The lock itself lives in its own module; these
     # lines are only the two holds.
-    "stateManager.py": 968,
+    # +149 (2026-08-15, slice 4): the durable pre-execution pull
+    # marker (§4.5 condition 1) — publish with read-back
+    # acknowledgment, conditional clear, and the accessors the level
+    # gate and dashboard read. Document-level protocol, so it lives
+    # with the document's one owner.
+    # +67 (2026-08-15, slice 4e): the attestation producer roundtrip
+    # (dictDefinitionProducers in the stateful fields), the run's
+    # producer stamp at the completion merge, and the per-load
+    # revalidation that marks superseded/unattested results.
+    "stateManager.py": 1184,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4644,7 +4681,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the pipeline socket's not-connected refusal log too — a project
     # that was never cached is indistinguishable from one torn down
     # unless both ends of the cache's life are on the record.
-    "pipelineServer.py": 2816,
+    # +21 (2026-08-15, slice 4): the WS loop builds the record-unit
+    # provenance committer (provenanceCommitter) per session and
+    # threads it through dispatch to the runner — the committer needs
+    # the live cache, the reload detector, and the save seam, all of
+    # which live only here.
+    # RAISED to 2846 (2026-08-15, vaibify-do ack clean break): the
+    # ack-less grandfather branch became a typed refusal that names
+    # the rebuild as the fix, plus the docstring recording the ruling.
+    # Same freshness-gate purpose, not a new responsibility.
+    # RAISED to 2855 (2026-08-15, host terminal, measured after the
+    # chain rebase onto the ack change): the relay gained the
+    # per-session introduction banner — the host lane's reminder that
+    # the shell runs on the researcher's own machine — sent as the
+    # session's first output bytes. Same relay purpose, not a new
+    # responsibility.
+    "pipelineServer.py": 2855,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4844,7 +4896,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that has them and the directory where this resource keeps
     # zenodoClient. Cohesive with the command building already
     # here.
-    "syncDispatcher.py": 1915,
+    # +33 (2026-08-17, host GitHub check): the two probe commands
+    # become composers of the project repo path (mode-correct for
+    # host projects), plus the empty-path refusal and the recorded
+    # rationale for why no root may be hardcoded here.
+    # +10 (2026-08-17, push retry): the add-variant push adopts the
+    # staged variant's commit guard, with the docstring recording the
+    # stranded-commits failure it closes.
+    "syncDispatcher.py": 1958,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -4859,7 +4918,32 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-07-25): the same shim carries fbStepIsInteractive, the
     # single interactive-flag classifier the runner now uses to pick
     # the interactive lane. No new responsibility.
-    "pipelineRunner.py": 1500,
+    # +158 (2026-08-15, slice 4): remote-data provenance now refreshes
+    # on EVERY step exit (closing the §4.5 pull-succeeds-later-
+    # command-fails hole), hands the records to the threaded
+    # committer, and runs inside the pull-marker bracket — publish
+    # fail-closed before execution, conditional clear after the
+    # records reconcile. One execution path, deliberately in one
+    # place.
+    # RAISED to 1661 (2026-08-15, host CPU): the host branch of
+    # _ftRunSingleCommand now threads the wait4 reap's reading
+    # (ExecResult.fCpuSeconds) instead of a hardcoded None, and the
+    # comment beside it says where host CPU comes from. Three lines
+    # of the same single purpose, not a new responsibility.
+    # RAISED to 1672 (2026-08-15, structured determinism env, measured
+    # after the chain rebase onto the wait4 change): the command list
+    # now threads the host lane's environment overlay to the exec
+    # primitive, passed only when present so the container call stays
+    # byte-identical. Same single purpose — delivering a step's
+    # command with its run environment — not a new responsibility.
+    # RAISED to 1714 (2026-08-15, ruling R6 taint, measured after the
+    # chain rebase): the run's shared taint record is created in
+    # _fiRunStepList, set beside the three degradation event emits,
+    # and read at step entry so a degrading step marks its
+    # successors, never itself. The threading rides the existing
+    # step-execution spine — the same single purpose, not a new
+    # responsibility.
+    "pipelineRunner.py": 1714,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -4876,7 +4960,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # run's final durable state said running and the next poll lit a
     # phantom running marker (caught by the stop-test under full-suite
     # load). Ordering machinery belongs beside the thread it orders.
-    "pipelineState.py": 944,
+    # RAISED to 956 (2026-08-15, ruling R6 taint): the step-result
+    # record carries the downstream-of-degraded-provenance flag so a
+    # reconnect re-renders the mark; the growth is the flag's
+    # only-when-True install and the docstring saying why.
+    "pipelineState.py": 956,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer

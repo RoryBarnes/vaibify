@@ -41,9 +41,11 @@ Three properties are the contract, in priority order:
    never what is skipped.
 
 What this class deliberately does NOT implement: container discovery
-(the connection router answers it from the registry), the terminal PTY
-cluster (the terminal is disabled product-wide), and the root shell
-probe (nothing host-mode needs root — the host user IS the user).
+(the connection router answers it from the registry) and the root
+shell probe (nothing host-mode needs root — the host user IS the
+user). The terminal PTY cluster IS here (2026-08-15): the suspended
+shell launch, and the session-wide signal/probe pair the drain
+machinery is duck-typed over.
 """
 
 __all__ = [
@@ -56,13 +58,16 @@ __all__ = [
 import hashlib
 import json
 import os
+import pty
 import shlex
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 from vaibify.config import mutationAdmission
+from vaibify.config import processLiveness
 from vaibify.docker.dockerConnection import (
     ExecResult,
     S_TYPED_READ_GIT_REPO_STATUS,
@@ -70,6 +75,7 @@ from vaibify.docker.dockerConnection import (
 )
 from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
+    fnSignalSessionMembers,
     fnTerminateProcessGroup,
 )
 from vaibify.host.hostScratch import fsHostScratchRootForProject
@@ -92,6 +98,25 @@ _S_GATED_LAUNCH_STUB = (
     "import os,sys\n"
     "sys.stdin.readline()\n"
     "os.execv('/bin/bash', ['/bin/bash', '-c', sys.argv[1]])\n"
+)
+
+# The terminal's launch stub. The gate rides a dedicated pipe (its fd
+# number arrives in argv — ``pass_fds`` preserves numbers, it does not
+# renumber) because the child's stdin IS the PTY, and a gate byte
+# through the PTY would echo into the researcher's terminal. After the
+# gate: ``setsid`` makes the journaled pid the session id, and
+# re-opening the tty as the fresh session's leader acquires it as the
+# CONTROLLING terminal — which is what gives bash working job control,
+# and job control is why the containment probe must match the SESSION,
+# not the group (verified live: a backgrounded job wears its own
+# pgid).
+_S_TERMINAL_LAUNCH_STUB = (
+    "import os,sys\n"
+    "os.read(int(sys.argv[1]),1)\n"
+    "os.setsid()\n"
+    "iTty = os.open(os.ttyname(0), os.O_RDWR)\n"
+    "os.close(iTty)\n"
+    "os.execv('/bin/bash', ['/bin/bash', '-i'])\n"
 )
 
 
@@ -392,7 +417,7 @@ class HostConnection:
     def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
         sWorkdir=None, sUser=None, sOperationLabel="pipeline-exec",
-        fnPhaseCallback=None,
+        fnPhaseCallback=None, dictEnvironmentOverlay=None,
     ):
         """Run a durable command, invoking ``fnEmitChunk`` per line.
 
@@ -401,6 +426,12 @@ class HostConnection:
         must not do. The bound on this lane is the durable-task
         machinery — the journaled group identity makes Cancel and the
         quiescence probes possible instead.
+
+        ``dictEnvironmentOverlay`` lays run-scoped variables (the
+        determinism guarantees) over the inherited environment as
+        DATA. Only this leg takes it: the container lane necessarily
+        carries its environment as shell text, and the runner passes
+        the argument on the host branch alone.
         """
         mutationAdmission.fnAssertDurableExecAdmitted(
             sContainerId, "ftRunInContainerStreamedWithChunks",
@@ -408,6 +439,119 @@ class HostConnection:
         return self._ftLaunchGatedAndStream(
             sContainerId, sCommand, sWorkdir, sUser, fnEmitChunk,
             None, sOperationLabel, fnPhaseCallback=fnPhaseCallback,
+            dictEnvironmentOverlay=dictEnvironmentOverlay,
+        )
+
+    # -----------------------------------------------------------------
+    # The terminal PTY cluster (host leg).
+    # -----------------------------------------------------------------
+
+    def fdictLaunchTerminalShellSuspended(self, sResourceId):
+        """Spawn the terminal shell SUSPENDED; return its live handle.
+
+        The host terminal's half of the journal-before-first-
+        instruction split (ruling 12): the caller — the terminal seam,
+        which alone prepares execution records — journals the pid this
+        returns and only then calls ``fnReleaseGate``. Until the gate
+        byte arrives the child is a stub blocked on a pipe read; a
+        crash in between leaves an identified, probeable record, never
+        a shell nobody can name.
+
+        The handle is ``{"processChild", "iMasterFd", "fnReleaseGate"}``.
+        The caller owns the master fd's lifetime.
+        """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sResourceId, "fdictLaunchTerminalShellSuspended",
+        )
+        sWorkdir = os.path.realpath(
+            self._fnResolveProjectRoot(sResourceId),
+        )
+        iMasterFd, iSlaveFd = pty.openpty()
+        iGateRead, iGateWrite = os.pipe()
+        os.set_inheritable(iGateRead, True)
+        try:
+            processChild = subprocess.Popen(
+                [sys.executable, "-c", _S_TERMINAL_LAUNCH_STUB,
+                 str(iGateRead)],
+                stdin=iSlaveFd, stdout=iSlaveFd, stderr=iSlaveFd,
+                cwd=sWorkdir, pass_fds=(iGateRead,), close_fds=True,
+            )
+        except Exception:
+            os.close(iMasterFd)
+            os.close(iGateWrite)
+            raise
+        finally:
+            os.close(iSlaveFd)
+            os.close(iGateRead)
+
+        def fnReleaseGate():
+            os.write(iGateWrite, b"G")
+            os.close(iGateWrite)
+
+        return {
+            "processChild": processChild,
+            "iMasterFd": iMasterFd,
+            "fnReleaseGate": fnReleaseGate,
+        }
+
+    def fdictProbeProcessGroupMembers(self, sContainerId, iProcessGroup):
+        """Count host processes in the recorded session or group.
+
+        The host twin of the Docker leg's probe, with the same answer
+        shape and the same SESSION-wide match. The enumeration is
+        ``processLiveness.ftEnumerateSessionMembers`` — the in-process
+        probe primitive beside the recycle-proof start-clock read —
+        rather than a journaled launch, because the journal's own
+        resolver runs this probe while holding the journal write
+        lock, and a journaled sweep deadlocks by construction (found
+        the hard way: every hub hung at startup over one crashed
+        terminal record). ``listMemberPids`` rides the answer so the
+        signaller can deliver to members ``killpg`` cannot see.
+        """
+        del sContainerId
+        if not isinstance(iProcessGroup, int) or iProcessGroup <= 0:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": f"unusable process group {iProcessGroup!r}",
+            }
+        bConclusive, listMemberPids = (
+            processLiveness.ftEnumerateSessionMembers(iProcessGroup)
+        )
+        if not bConclusive:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": "the session enumeration could not run",
+            }
+        return {
+            "bConclusive": True, "iMemberCount": len(listMemberPids),
+            "listMemberPids": listMemberPids,
+            "sDetail": f"{len(listMemberPids)} live member(s)",
+        }
+
+    def fnSignalProcessGroupMembers(
+        self, sContainerId, iProcessGroup, sSignalName,
+    ):
+        """Signal every host process of the recorded session or group.
+
+        Enumeration through the session-wide probe, delivery through
+        ``hostCancellation``'s judged signaller (per-member ``os.kill``
+        plus ``killpg`` on the leader group for anything that joined
+        between the enumeration and now). Quiet failures — the
+        terminate-and-prove caller decides on the PROOF, never on the
+        delivery — exactly the Docker leg's contract.
+        """
+        if sSignalName not in ("TERM", "KILL"):
+            raise ValueError(
+                f"Unsupported process-group signal {sSignalName!r}; "
+                "only TERM and KILL are allowlisted"
+            )
+        dictProbe = self.fdictProbeProcessGroupMembers(
+            sContainerId, iProcessGroup,
+        )
+        fnSignalSessionMembers(
+            iProcessGroup,
+            dictProbe.get("listMemberPids") or [],
+            sSignalName,
         )
 
     # -----------------------------------------------------------------
@@ -495,6 +639,7 @@ class HostConnection:
     def _ftLaunchGatedAndStream(
         self, sResourceId, sCommand, sWorkdir, sUser, fnEmitChunk,
         fTimeoutSeconds, sOperationLabel, fnPhaseCallback=None,
+        dictEnvironmentOverlay=None,
     ):
         """The single gated launch every host subprocess goes through.
 
@@ -519,6 +664,7 @@ class HostConnection:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, cwd=sEffectiveWorkdir,
             start_new_session=True,
+            env=_fdictComposeLaunchEnvironment(dictEnvironmentOverlay),
         )
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "spawned")
         mutationAdmission.fnPromoteJournaledHostExec(
@@ -530,9 +676,10 @@ class HostConnection:
         processChild.stdin.close()
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "released")
         tStreams = _ftDrainProcessStreams(processChild, fnEmitChunk)
-        bTimedOut = not _fbAwaitProcessWithinBound(
+        bCompleted, fCpuSeconds = _ftAwaitProcessWithinBound(
             processChild, fTimeoutSeconds,
         )
+        bTimedOut = not bCompleted
         if bTimedOut:
             fnTerminateProcessGroup(processChild.pid)
             processChild.wait()
@@ -551,6 +698,7 @@ class HostConnection:
                 124 if bTimedOut else int(processChild.returncode or 0)
             ),
             sStdout=sStdout, sStderr=sStderr,
+            fCpuSeconds=fCpuSeconds,
         )
 
     def _fsResolveWorkdir(self, sResourceId, sWorkdir):
@@ -566,6 +714,22 @@ def _fnInvokeLaunchPhaseCallback(fnPhaseCallback, sPhase):
     """Invoke the test-only phase hook when one was provided."""
     if fnPhaseCallback is not None:
         fnPhaseCallback(sPhase)
+
+
+def _fdictComposeLaunchEnvironment(dictEnvironmentOverlay):
+    """Return inherited env + overlay, or None to inherit untouched.
+
+    The base is ALWAYS the hub's own environment (the plan's
+    inherited-env-only ruling): the overlay may add or shadow entries,
+    never replace the environment wholesale — a child stripped of PATH
+    and HOME is not the process the researcher's own shell would have
+    started.
+    """
+    if not dictEnvironmentOverlay:
+        return None
+    dictEnvironment = dict(os.environ)
+    dictEnvironment.update(dictEnvironmentOverlay)
+    return dictEnvironment
 
 
 class _StreamLineCollector:
@@ -664,8 +828,53 @@ def _fbJoinBothStreamsWithin(tStreams, fTimeoutSeconds):
     ])
 
 
-def _fbAwaitProcessWithinBound(processChild, fTimeoutSeconds):
-    """Wait for exit; False when the bound expired with it still live."""
+_F_REAP_POLL_INTERVAL_SECONDS = 0.05
+
+
+def _ftAwaitProcessWithinBound(processChild, fTimeoutSeconds):
+    """Reap the child via ``os.wait4``; return (bCompleted, fCpuSeconds).
+
+    The reap is claimed here rather than left to ``Popen.wait``
+    because ``wait4`` is the only call that surfaces the child's
+    rusage, and a pid can be collected exactly once. ``Popen`` is
+    handed the returncode afterwards so its own bookkeeping (the
+    timeout-kill path's ``wait()``, ``__del__``) never double-reaps.
+    Nothing else in this module waits on the pid: the group prover
+    and Cancel only signal, and the stream collectors read pipes.
+
+    Scope of the measurement, stated honestly: on macOS and Linux the
+    rusage covers the reaped process plus any children IT already
+    waited for — a step that backgrounds a survivor does not
+    accumulate it. There is no fabricated group total.
+
+    ``fCpuSeconds`` is ``None`` (absent), never 0.0, when the bound
+    expired with the child still live or when the reap was lost to
+    another collector (``ChildProcessError``); the durable lane
+    (``fTimeoutSeconds is None``) blocks in ``wait4`` with no
+    polling.
+    """
+    fDeadline = (
+        None if fTimeoutSeconds is None
+        else time.monotonic() + fTimeoutSeconds
+    )
+    while True:
+        try:
+            tReaped = os.wait4(
+                processChild.pid,
+                0 if fDeadline is None else os.WNOHANG,
+            )
+        except ChildProcessError:
+            return _fbAwaitReapedElsewhere(processChild, fTimeoutSeconds), None
+        if tReaped[0] == processChild.pid:
+            processChild.returncode = os.waitstatus_to_exitcode(tReaped[1])
+            return True, tReaped[2].ru_utime + tReaped[2].ru_stime
+        if fDeadline is not None and time.monotonic() >= fDeadline:
+            return False, None
+        time.sleep(_F_REAP_POLL_INTERVAL_SECONDS)
+
+
+def _fbAwaitReapedElsewhere(processChild, fTimeoutSeconds):
+    """Fall back to Popen's own wait after wait4 lost the reap race."""
     try:
         processChild.wait(timeout=fTimeoutSeconds)
         return True

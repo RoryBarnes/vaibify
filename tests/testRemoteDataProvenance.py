@@ -12,7 +12,7 @@ import asyncio
 from vaibify.gui.pipelineRunner import (
     _fbApplyRemoteDataHashes,
     _fdictHashRemoteDataFiles,
-    _fnRecordRemoteDataProvenance,
+    _fdictRecordRemoteDataProvenance,
 )
 
 
@@ -53,7 +53,7 @@ def _flistRunRecorder(connectionDocker, dictStep):
         listEvents.append(dictEvent)
 
     asyncio.run(
-        _fnRecordRemoteDataProvenance(
+        _fdictRecordRemoteDataProvenance(
             connectionDocker, "cid", dictStep,
             {"sRepoRoot": "/workspace/repo"}, 3, fnCallback,
         )

@@ -644,7 +644,7 @@ def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
 async def _fnDispatchRunFrom(
     connectionDocker, sContainerId, dictRequest,
     dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
-    dictInteractive=None,
+    dictInteractive=None, fdictCommitProvenance=None,
 ):
     """Dispatch runFrom with the start step from the request."""
     iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
@@ -653,6 +653,7 @@ async def _fnDispatchRunFrom(
         dictWorkflow, sWorkflowPath,
         sWorkflowDirectory, fnCallback,
         dictInteractive=dictInteractive,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -697,6 +698,7 @@ async def fnDispatchAction(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive=None,
+    fdictCommitProvenance=None,
 ):
     """Route a WebSocket pipeline action to the correct runner."""
     sWorkflowPath = dictWorkflowPathCache.get(sContainerId, "")
@@ -708,17 +710,20 @@ async def fnDispatchAction(
         await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "forceRunAll":
         await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback, bForceRun=True,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "runFrom":
         await _fnDispatchRunFrom(
             connectionDocker, sContainerId, dictRequest,
             dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
-            dictInteractive=dictInteractive)
+            dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance)
     elif sAction == "verify":
         await fiVerifyOnly(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
@@ -731,13 +736,14 @@ async def fnDispatchAction(
         await _fnDispatchSelected(
             connectionDocker, sContainerId, dictRequest,
             dictWorkflow, dictWorkflowPathCache,
-            sWorkflowDirectory, fnCallback)
+            sWorkflowDirectory, fnCallback,
+            fdictCommitProvenance=fdictCommitProvenance)
 
 
 async def _fnDispatchSelected(
     connectionDocker, sContainerId, dictRequest,
     dictWorkflow, dictWorkflowPathCache,
-    sWorkflowDirectory, fnCallback,
+    sWorkflowDirectory, fnCallback, fdictCommitProvenance=None,
 ):
     """Dispatch the runSelected action."""
     from .pipelineRunner import SET_VALID_RUN_MODES
@@ -756,6 +762,7 @@ async def _fnDispatchSelected(
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
         sWorkflowDirectory, fnCallback,
         sRunMode=sRunMode,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -869,6 +876,17 @@ async def fnPipelineMessageLoop(
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
     _fnPublishInteractiveContext(sContainerId, dictInteractive)
+    # The record-unit provenance committer (spec §4.5): built here
+    # because it needs the live session context — the current cache,
+    # the reload detector, and the save seam that moves the self-write
+    # baseline with the file. Absent a context (direct library and
+    # test callers), the runner refreshes provenance in memory only.
+    fdictCommitProvenance = None
+    if dictCtx is not None:
+        from .provenanceCommitter import ffnBuildProvenanceCommitter
+        fdictCommitProvenance = ffnBuildProvenanceCommitter(
+            dictCtx, sContainerId,
+        )
 
     try:
         while True:
@@ -946,6 +964,7 @@ async def fnPipelineMessageLoop(
                         sContainerId, dictWorkflowFrame,
                         dictWorkflowPathCache, sWorkflowDirectory,
                         fnCallback, dictInteractive,
+                        fdictCommitProvenance=fdictCommitProvenance,
                     )
                 )
 
@@ -1028,6 +1047,7 @@ async def _fnSafeDispatch(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive,
+    fdictCommitProvenance=None,
 ):
     """Wrap fnDispatchAction with error handling.
 
@@ -1049,6 +1069,7 @@ async def _fnSafeDispatch(
             sContainerId, dictWorkflow,
             dictWorkflowPathCache, sWorkflowDirectory,
             fnCallback, dictInteractive=dictInteractive,
+            fdictCommitProvenance=fdictCommitProvenance,
         )
     except Exception as errorCaught:
         logger.error(
@@ -1092,9 +1113,12 @@ async def _fdictStaleWorkflowRefusal(
     hand-edited or migrated project. On a disk mismatch the refusal
     RELOADS the cache and publishes through the workflow epoch in the
     same operation, so the researcher is never stranded clicking Run
-    against a cache nothing will refresh. A frame with no
-    acknowledgment fields (a legacy ``vaibify-do``) gets the two-way
-    record==disk check only — grandfathered, stated here.
+    against a cache nothing will refresh. A frame with NO
+    acknowledgment fields is refused outright (2026-08-15 ruling —
+    nothing shipped, so the legacy two-way grandfathering was
+    retired): every run caller, browser and ``vaibify-do`` alike,
+    must acknowledge the copy it is acting on, and the refusal names
+    the rebuild as the fix for an old in-container CLI.
     """
     if dictCtx is None or dictWorkflowBound is None:
         return None
@@ -1132,7 +1156,13 @@ async def _fdictStaleWorkflowRefusal(
     sAckFingerprint = dictRequest.get("sAcknowledgedSourceFingerprint")
     sAckPath = dictRequest.get("sAcknowledgedWorkflowPath")
     if sAckFingerprint is None and sAckPath is None:
-        return None
+        return _fdictSupersededRefusalEvent(
+            sAction, dictRequest, sRecordFingerprint,
+            "the run frame carried no acknowledged workflow "
+            "fingerprint; this caller predates the acknowledgment "
+            "contract — rebuild the container image to update its "
+            "vaibify-do",
+        )
     if sAckFingerprint != sRecordFingerprint or (
         sAckPath is not None and sAckPath != sWorkflowPath
     ):
@@ -1582,7 +1612,7 @@ async def fnRejectNotConnected(websocket):
 
 async def fnRunTerminalSession(
     session, websocket, dictTerminalSessions, dictInteractive=None,
-    fbFrameCredentialStillActive=None,
+    fbFrameCredentialStillActive=None, sIntroductionBanner="",
 ):
     """Manage terminal session lifecycle after successful start.
 
@@ -1590,6 +1620,11 @@ async def fnRunTerminalSession(
     provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
     on abnormal exit so a runner paused at ``interactiveComplete`` does
     not deadlock when the terminal-WS dies (audit HIGH #9).
+
+    ``sIntroductionBanner`` is sent as the session's FIRST output
+    bytes, before any shell output reaches the pane — the host lane's
+    per-session reminder that the shell runs on the researcher's own
+    machine. Empty (the container lane) sends nothing.
 
     The close path drains the session's containment record BEFORE the
     socket close (design §7: a socket closing is not a terminal dying):
@@ -1604,6 +1639,10 @@ async def fnRunTerminalSession(
     await websocket.send_json(
         {"sType": "connected", "sSessionId": sSessionId}
     )
+    if sIntroductionBanner:
+        await websocket.send_bytes(
+            sIntroductionBanner.encode("utf-8"),
+        )
     taskReader = asyncio.create_task(
         fnTerminalReadLoop(session, websocket, dictInteractive)
     )

@@ -121,7 +121,7 @@ def _ftRunStepWithVariables(dictVariables):
         "vaibify.gui.pipelineRunner._fnEmitDiscoveredOutputs",
         new=AsyncMock(),
     ), patch(
-        "vaibify.gui.pipelineRunner._fnRecordRemoteDataProvenance",
+        "vaibify.gui.pipelineRunner._fdictRecordRemoteDataProvenance",
         new=AsyncMock(),
     ), patch(
         "vaibify.gui.workflowManager.flistCleanStepScratchDirs",

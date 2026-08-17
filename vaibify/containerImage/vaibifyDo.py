@@ -524,7 +524,15 @@ def ftRecvWsFrame(socketConnection):
 
 
 def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
-    """Open the pipeline socket, send one action, stream events."""
+    """Open the pipeline socket, send one action, stream events.
+
+    The action frame is sent only AFTER adopting the server's
+    ``workflowBound`` announcement: the hub refuses run frames that do
+    not acknowledge the exact-source fingerprint of the workflow they
+    are acting on, so the acknowledgment pins THIS socket's view of
+    the file — an edit landing between the announcement and the
+    dispatch's own disk read is refused rather than silently run.
+    """
     sHost, iPort, sPath, bTls = ftWsEndpoint(dictEnv)
     if bTls:
         fnFail("vaibify-do does not support TLS in the in-container "
@@ -538,8 +546,42 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     socketConnection.settimeout(F_READ_TIMEOUT)
     fnEnableTcpKeepalive(socketConnection)
     fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
+    dictBound = _fdictAwaitWorkflowBound(socketConnection)
+    if dictBound is not None:
+        dictPayload["sAcknowledgedSourceFingerprint"] = dictBound.get(
+            "sExactSourceFingerprint", "")
+        dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
+            "sWorkflowPath", "")
     fnSendWsText(socketConnection, json.dumps(dictPayload))
     return _fiStreamWsEvents(socketConnection, bJsonMode)
+
+
+def _fdictAwaitWorkflowBound(socketConnection):
+    """Return the socket's first ``workflowBound`` event, or None.
+
+    The hub sends it as the very first frame after accept. Anything
+    else (a close for a not-connected project, a foreign first frame)
+    returns None and the action proceeds unacknowledged — the hub
+    then refuses run actions with a message naming the missing
+    acknowledgment, which is the honest failure.
+    """
+    while True:
+        tFrame = ftRecvWsFrame(socketConnection)
+        sKind = tFrame[0]
+        if sKind == "close":
+            return None
+        if sKind == "ping":
+            fnSendWsPong(socketConnection, tFrame[1])
+            continue
+        if sKind == "skip":
+            continue
+        try:
+            dictEvent = json.loads(tFrame[1])
+        except ValueError:
+            return None
+        if dictEvent.get("sType") == "workflowBound":
+            return dictEvent
+        return None
 
 
 def fnEnableTcpKeepalive(socketConnection):

@@ -243,14 +243,14 @@ def _fpatchHostGithubCredential(bAvailable):
 def test_fdictCheckGithub_success():
     mockDocker = _fMockDocker(0, "")
     with _fpatchHostGithubCredential(True):
-        dictResult = _fdictCheckGithub(mockDocker, "cid")
+        dictResult = _fdictCheckGithub(mockDocker, "cid", "/workspace/exampleRepo")
     assert dictResult["bConnected"] is True
 
 
 def test_fdictCheckGithub_failure():
     mockDocker = _fMockDocker(1, "")
     with _fpatchHostGithubCredential(True):
-        dictResult = _fdictCheckGithub(mockDocker, "cid")
+        dictResult = _fdictCheckGithub(mockDocker, "cid", "/workspace/exampleRepo")
     assert dictResult["bConnected"] is False
 
 

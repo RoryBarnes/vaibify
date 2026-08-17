@@ -59,13 +59,11 @@ I_REJECT_DUPLICATE_SESSION = 4409
 # the product sends it today; it is what a future withdrawal would send.
 I_REJECT_TERMINAL_DISABLED = 4503
 
-# A terminal asked for on a HOST project. That shell would have to be a
-# PTY on the researcher's own machine, journaled through the gated
-# host-exec primitive, and it is not built yet. Distinct from the
-# withdrawal code above and from every authorization code: the feature
-# is neither gone nor refused to this caller — it is not built for this
-# KIND of project, and the researcher's own terminal is the answer
-# until it is.
+# RESERVED, no longer emitted (2026-08-15): hubs between 2026-08-11
+# and 2026-08-15 refused a host project's terminal with this code,
+# before the host PTY existed. The route serves both modes now; the
+# constant stays so the code-space reservation is documented and an
+# old hub's refusal still decodes in a newer client.
 I_REJECT_TERMINAL_NOT_ON_HOST = 4504
 
 # A container whose owner record is POISONED: a guarded worker was

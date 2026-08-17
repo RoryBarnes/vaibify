@@ -23,6 +23,8 @@ Three specific traps this lane is here to catch:
   that vaibify is broken rather than that the action does not apply.
 """
 
+import time
+
 import pytest
 
 from tests.browser.conftest import (
@@ -289,7 +291,18 @@ def testGoingBackReleasesTheProjectItJustClaimed(
         """() => document.getElementById('modalConfirm') === null""",
         timeout=5000,
     )
-    pageDashboard.wait_for_timeout(500)
+    # The release is an HTTP round-trip the cancel callback fires; the
+    # modal closing does not mean it has landed. Poll with a deadline
+    # instead of a fixed sleep — a dropped callback (the mutation this
+    # test kills) still fails here, because no wait makes a request
+    # that was never sent arrive.
+    fDeadline = time.monotonic() + 5.0
+    while time.monotonic() < fDeadline:
+        if serverHub.app.state.dictContainerOwners.get(
+            S_HOST_PROJECT_READY,
+        ) is None:
+            break
+        pageDashboard.wait_for_timeout(100)
     assert serverHub.app.state.dictContainerOwners.get(
         S_HOST_PROJECT_READY,
     ) is None, "going back left the project claimed"

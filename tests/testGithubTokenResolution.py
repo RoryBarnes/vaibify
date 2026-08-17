@@ -187,7 +187,7 @@ def test_github_check_is_not_connected_without_a_host_credential():
     ):
         dictResult = syncDispatcher._fdictCheckGithub(
             _fmockDocker(0, "https://github.com/exampleOwner/exampleRepo"),
-            "cid",
+            "cid", "/workspace/exampleRepo",
         )
     assert dictResult["bConnected"] is False
     assert dictResult["bContainerReachesGithub"] is True
@@ -203,7 +203,7 @@ def test_github_check_reports_both_lanes_when_connected():
     ):
         dictResult = syncDispatcher._fdictCheckGithub(
             _fmockDocker(0, "https://github.com/exampleOwner/exampleRepo"),
-            "cid",
+            "cid", "/workspace/exampleRepo",
         )
     assert dictResult["bConnected"] is True
     assert dictResult["sMessage"] == "Connected"
@@ -248,7 +248,134 @@ def test_read_github_remote_url_returns_empty_on_a_failed_probe():
     """A container with no git repository yields no remote URL."""
     assert syncDispatcher._fsReadGithubRemoteUrl(
         _fmockDocker(1, "fatal: not a git repository"), "cid",
+        "/workspace/exampleRepo",
     ) == ""
+
+
+# ---------------------------------------------------------------------
+# 1.5 — the probes run in the project repo, never a hardcoded root
+# ---------------------------------------------------------------------
+
+
+def _fmockRecordingDocker(iExitCode, sOutput, listCommands):
+    """Return a Docker double that records every command it is handed."""
+    class _MockConnection:
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            listCommands.append(sCommand)
+            return (iExitCode, sOutput)
+    return _MockConnection()
+
+
+S_HOST_STYLE_REPO = "/Users/researcher/hostProject"
+
+
+@pytest.mark.falsification
+def test_github_reachability_probe_runs_in_the_project_repo():
+    """The reachability command cds into the repo the push will use.
+
+    Kills: ``_fsComposeGithubReachabilityCommand`` reverted to the
+    ``/workspace/*/`` first-repo scan — on a host project that
+    directory does not exist, so the check refused every push with a
+    credential hint while ``gh auth status`` was green (found live,
+    2026-08-17).
+    """
+    listCommands = []
+    with _fpatchHostCredentialLane(True):
+        syncDispatcher._fdictCheckGithub(
+            _fmockRecordingDocker(0, "", listCommands),
+            "hostProject", S_HOST_STYLE_REPO,
+        )
+    sReachability = listCommands[0]
+    assert sReachability.startswith(f"cd '{S_HOST_STYLE_REPO}' && ")
+    for sCommand in listCommands:
+        assert "/workspace" not in sCommand, (
+            f"a probe still hardcodes the container root: {sCommand!r}"
+        )
+
+
+@pytest.mark.falsification
+def test_github_remote_url_probe_runs_in_the_project_repo():
+    """The credential slot comes from THIS repo's remote, not the first.
+
+    Kills: ``_fsComposeGithubRemoteUrlCommand`` reverted to the
+    ``/workspace/*/`` scan — in a multi-repo container the credential
+    is then resolved for whichever repo sorts first, and on a host
+    project for no repo at all.
+    """
+    listCommands = []
+    syncDispatcher._fsReadGithubRemoteUrl(
+        _fmockRecordingDocker(
+            0, "https://github.com/exampleOwner/exampleRepo",
+            listCommands,
+        ),
+        "hostProject", S_HOST_STYLE_REPO,
+    )
+    assert listCommands == [
+        f"cd '{S_HOST_STYLE_REPO}' && git remote get-url origin"
+    ]
+
+
+@pytest.mark.falsification
+def test_github_check_refuses_before_probing_without_a_repo():
+    """No workflow repo means an honest refusal, not a probe of a guess.
+
+    Kills: dropping the empty-path guard — the probe then runs
+    ``cd '' && ...``, which succeeds in whatever directory the shell
+    happens to hold, reporting connectivity for a repository that was
+    never named.
+    """
+    class _RaisingConnection:
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            raise AssertionError(
+                f"probed with no repo path: {sCommand!r}"
+            )
+
+    dictResult = syncDispatcher._fdictCheckGithub(
+        _RaisingConnection(), "hostProject", "",
+    )
+    assert dictResult["bConnected"] is False
+    assert "No workflow project" in dictResult["sMessage"]
+
+
+def _fpatchHostCredentialLane(bAvailable):
+    """Pin the host-credential lane; these tests assert command text."""
+    return patch.object(
+        syncDispatcher, "_fbHostGithubCredentialAvailable",
+        return_value=bAvailable,
+    )
+
+
+@pytest.mark.falsification
+def test_every_route_connectivity_check_threads_the_repo_path():
+    """Every ``fdictCheckConnectivity`` call site passes the repo path.
+
+    Structural, like the gitRoutes project-repo invariant: a call
+    site that omits the fourth argument silently reverts the GitHub
+    branch to "no repository named", and only a github request down
+    that specific path would notice.
+
+    Kills: dropping ``_fsProjectRepoPathOrEmpty`` from the check
+    route — the route then answers every host project's GitHub check
+    with the no-repository refusal.
+    """
+    sSource = (
+        _S_REPOSITORY_ROOT / "vaibify/gui/routes/syncRoutes.py"
+    ).read_text()
+    listCalls = [
+        nodeCall
+        for nodeCall in ast.walk(ast.parse(sSource))
+        if isinstance(nodeCall, ast.Call)
+        and isinstance(nodeCall.func, ast.Attribute)
+        and nodeCall.func.attr == "fdictCheckConnectivity"
+    ]
+    assert listCalls, "the routes no longer call fdictCheckConnectivity"
+    for nodeCall in listCalls:
+        iArgumentCount = len(nodeCall.args) + len(nodeCall.keywords)
+        assert iArgumentCount >= 4, (
+            f"line {nodeCall.lineno}: fdictCheckConnectivity called "
+            "without the project repo path — the GitHub branch will "
+            "refuse with 'no repository' for every project"
+        )
 
 
 # ---------------------------------------------------------------------

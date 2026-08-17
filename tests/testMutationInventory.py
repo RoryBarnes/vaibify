@@ -112,7 +112,18 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 289 -> 288: the Files tab's and the Logs list's directory listing.
 # One `find -printf` exec row went, two typed-read rows arrived, and
 # both were classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 286
+# 287 -> 286 (2026-08-15, structured determinism env): two rows
+# ARRIVED classified (the host salt write, and the gated launch
+# re-fingerprinted by its new environment argument — prior review
+# re-recorded), and the legacy epoch-query row beside them was
+# reviewed and classified while there.
+# 286 -> 285 (2026-08-17 merge): the two lanes each classified one row
+# against the same 287 baseline — the containment signal walk (its
+# CAP_KILL review) on one side, the three host-determinism rows on the
+# other — so the union of the two review sets lands one lower than
+# either lane's own count. The tracked-repos conf fetch row rode the
+# same branch already classified.
+I_UNCLASSIFIED_ROW_BUDGET = 285
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -169,7 +180,23 @@ I_UNCLASSIFIED_ROW_BUDGET = 286
 # on 2026-08-06 when `scan-scripts` shed it -- fixing that instance
 # did not fix the class, and this copy went on silently reporting a
 # populated host project as an empty directory for two more months.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 203
+# 203 -> 204 (2026-08-15, HONEST INCREASE): the host determinism salt
+# file is a real new write — matplotlibrc into the guarded scratch
+# subtree, through the gateway write primitive, inside the run's own
+# durable carrier, classified on arrival. Structured env data
+# REPLACED vaibify-authored shell text that had the step's own shell
+# writing to a world-shared /tmp; the mutation-capable site moved
+# from inside the researcher's command text (where no scanner sees
+# it) to a countable caller, which is the direction this ratchet
+# exists to encourage.
+# 204 -> 206 (2026-08-15, HONEST INCREASE, host terminal, re-measured
+# after the chain rebase): the two router delegations for the session
+# signal/probe pair — pure mode dispatch, the same shape as the
+# twelve existing router rows — and the host-terminal drain delivery,
+# whose enumeration is the in-process processLiveness probe primitive
+# (a journaled sweep deadlocks the resolver that needs it). All
+# classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 206
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -384,8 +411,16 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # increase above: the record honestly admits one more site it cannot
 # read, rather than a scanner exemption that would silently shrink the
 # declared blind spot for the Docker gateways too.
+# 19 -> 20 (2026-08-15, HONEST INCREASE): the host terminal's launch
+# (hostConnection.fdictLaunchTerminalShellSuspended). Its argv is a
+# fixed stub plus the gate pipe's fd number — no caller-supplied
+# command text exists on the path — but the fd is computed, so the
+# scan cannot read the command and the record admits it. The site is
+# admission-gated, journaled with the terminal kind by the seam
+# before the gate opens, and covered by
+# testOnlyTheGatedRouteConstructsATerminalSession.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 19,
+    "opaque-subprocess-command": 20,
     "untraceable-docker-sdk-root": 12,
 }
 

@@ -29,6 +29,18 @@ def _ftReservedPort():
     return sock.getsockname()[1], sock
 
 
+def _ftListeningPort():
+    """Return (iPort, sockHolder) with the socket ACCEPTING connections.
+
+    A bound-but-not-listening socket models a lingering leftover (it
+    refuses the bind but cannot accept); a listening one models a live
+    foreign server. The hub allocator treats the two differently.
+    """
+    iPort, sockHolder = _ftReservedPort()
+    sockHolder.listen(1)
+    return iPort, sockHolder
+
+
 def test_fbIsPortFree_true_when_unbound():
     from vaibify.cli.portAllocator import fbIsPortFree
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -377,10 +389,18 @@ def test_fiResolveHubPort_first_run_assigns_and_persists():
     assert listPersisted == [iResolved]
 
 
+@pytest.mark.falsification
 def test_fiResolveHubPort_scans_and_warns_on_foreign_holder(capsys):
-    """When the persisted port is held by something else, shift + warn."""
+    """A live foreign LISTENER on the persisted port → shift + persist + warn.
+
+    Kills: misreading a live foreign holder as a lingering socket
+    (``_fbPortHasLiveListener`` stuck at False), which would leave the
+    persisted port pointing at an address a foreign server owns —
+    every future restart would re-announce a "temporary" conflict that
+    is in fact permanent.
+    """
     from vaibify.cli.portAllocator import fiResolveHubPort
-    iHeld, sockHolder = _ftReservedPort()
+    iHeld, sockHolder = _ftListeningPort()
     listPersisted = []
     try:
         with patch(
@@ -399,6 +419,80 @@ def test_fiResolveHubPort_scans_and_warns_on_foreign_holder(capsys):
         sErr = capsys.readouterr().err
         assert f"{iHeld} is held by another process" in sErr
         assert "old URL will need to be reopened" in sErr
+    finally:
+        sockHolder.close()
+
+
+@pytest.mark.falsification
+def testARestartWaitsOutALingeringSocketWithNoHubSlot():
+    """The port-release wait must not require a live hub session slot.
+
+    Kills: re-gating the wait on ``_fdictReadHubSlot`` — the dying hub
+    releases its session slot before its sockets clear, so the exact
+    restart the wait exists for (reproduced live 2026-08-14 as the
+    8051→8050 hop) finds no slot and, under the mutation, hops
+    immediately instead of waiting for its predecessor's socket.
+    """
+    from vaibify.cli import portAllocator
+    iPort, sockHolder = _ftReservedPort()
+    listSocks = [sockHolder]
+
+    def _fbStubIsFree(iPortArg):
+        if iPortArg != iPort:
+            return True
+        return not listSocks
+
+    def _fnReleaseOnFirstSleep(_fSeconds):
+        if listSocks:
+            listSocks.pop().close()
+
+    with patch.object(
+        portAllocator, "fbIsPortFree", side_effect=_fbStubIsFree,
+    ), patch.object(
+        portAllocator, "_fiReadPersistedHubPort", return_value=iPort,
+    ), patch.object(
+        portAllocator, "_fdictReadHubSlot", return_value={},
+    ), patch.object(
+        portAllocator.time, "sleep", side_effect=_fnReleaseOnFirstSleep,
+    ):
+        assert portAllocator.fiResolveHubPort(iExplicitPort=None) == iPort
+
+    for sockExtra in listSocks:
+        sockExtra.close()
+
+
+@pytest.mark.falsification
+def testAHoppedPortIsNotPersistedOverAnUnprovableHolder(capsys):
+    """An unprovable holder never overwrites the persisted hub port.
+
+    Kills: persisting unconditionally on the hop — the reproduced
+    2026-08-14 defect, where a socket lingering from the previous hub
+    moved the persisted port 8051→8050 and permanently broke the
+    researcher's bookmarked URL even though the old port cleared
+    seconds later.
+    """
+    from vaibify.cli import portAllocator
+    iPort, sockHolder = _ftReservedPort()
+    listPersisted = []
+    try:
+        with patch.object(
+            portAllocator, "_fiReadPersistedHubPort", return_value=iPort,
+        ), patch.object(
+            portAllocator, "_fdictReadHubSlot", return_value={},
+        ), patch.object(
+            portAllocator, "_fnPersistHubPortSafely",
+            side_effect=listPersisted.append,
+        ), patch.object(
+            portAllocator.time, "sleep",
+        ), patch.object(
+            portAllocator.time, "monotonic", side_effect=[0.0, 100.0],
+        ):
+            iResolved = portAllocator.fiResolveHubPort(iExplicitPort=None)
+        assert iResolved != iPort
+        assert listPersisted == []
+        sErr = capsys.readouterr().err
+        assert "for this session only" in sErr
+        assert f"return to port {iPort}" in sErr
     finally:
         sockHolder.close()
 

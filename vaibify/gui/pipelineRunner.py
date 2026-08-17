@@ -10,6 +10,7 @@ import time
 
 from vaibify.config.registryManager import fbIsHostProject
 from . import pipelineState
+from . import stateManager
 from . import workflowManager
 
 __all__ = [
@@ -52,6 +53,7 @@ from .pipelineUtils import (  # noqa: F401
     fsValidateStepName,
     fnRequireUniqueStepSlug,
     fbStepDirectoryConforms,
+    fsDescribeRemoteDataPathConflict,
     fsDescribeStepIdConflict,
     T_RUN_CLEARED_VERIFICATION_FLAGS,
     _fnRecordRunStats,
@@ -107,6 +109,7 @@ from .interactiveSteps import (  # noqa: F401
 
 from .determinismEnvironment import (  # noqa: F401
     S_ENV_PREFIX_KEY,
+    S_ENV_OVERLAY_KEY,
     S_DETERMINISM_APPLIED_KEY,
     S_MATPLOTLIB_CONFIG_DIR,
     _fiQueryHeadCommitEpoch,
@@ -203,15 +206,19 @@ async def _ftRunCommandList(
 ):
     """Execute commands, return ``(iExitCode, fTotalCpuSeconds)``.
 
-    The CPU total is ``None`` when the commands ran on the HOST: the
-    measurement comes from a GNU ``/usr/bin/time`` wrapper that host
-    mode does not use, and reporting 0.0 would put a measurement on the
-    dashboard that nobody took.
+    Each lane measures CPU its own way — the container via the GNU
+    ``/usr/bin/time`` wrapper's in-band marker line, the host via the
+    ``os.wait4`` reap in ``HostConnection``. Either way the total is
+    honest: one command whose reading is ABSENT (``None``) makes the
+    total absent, because a partial sum wearing the total's name is a
+    measurement nobody took (see ``_ffTotalCpuTime``).
     """
-    fTotalCpu = None if fbIsHostProject(sContainerId) else 0.0
+    fTotalCpu = 0.0
     sEnvPrefix = ""
+    dictEnvironmentOverlay = None
     if dictVariables:
         sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
+        dictEnvironmentOverlay = dictVariables.get(S_ENV_OVERLAY_KEY)
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
@@ -220,9 +227,9 @@ async def _ftRunCommandList(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
             sEnvPrefix=sEnvPrefix,
+            dictEnvironmentOverlay=dictEnvironmentOverlay,
         )
-        if fTotalCpu is not None and fCpu is not None:
-            fTotalCpu += fCpu
+        fTotalCpu = _ffTotalCpuTime(fTotalCpu, fCpu)
         if iExitCode != 0:
             return (iExitCode, fTotalCpu)
     return (0, fTotalCpu)
@@ -231,7 +238,7 @@ async def _ftRunCommandList(
 async def _ftRunSingleCommand(
     connectionDocker, sContainerId,
     sOriginal, sResolved, sWorkdir, fnStatusCallback,
-    sEnvPrefix="",
+    sEnvPrefix="", dictEnvironmentOverlay=None,
 ):
     """Execute one command, return (iExitCode, fCpuSeconds).
 
@@ -256,7 +263,8 @@ async def _ftRunSingleCommand(
     # and is the BSD one, which has no ``-f``: the wrapper would exit
     # non-zero before the researcher's command ever ran, so every host
     # step would fail. The container branch keeps it, guarded by its
-    # own ``-x`` test for the same reason in reverse.
+    # own ``-x`` test for the same reason in reverse. Host CPU comes
+    # from the ``os.wait4`` reap instead (ExecResult.fCpuSeconds).
     sTimedCmd = sEnvPrefix + (
         sResolved if fbIsHostProject(sContainerId)
         else _fsWrapWithTime(sResolved)
@@ -266,12 +274,19 @@ async def _ftRunSingleCommand(
     fnEmitChunk, fnDrainPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
+    # The overlay kwarg travels only when an overlay exists (host lane
+    # with determinism data); the container call stays byte-identical,
+    # and connection doubles modelling the container signature never
+    # see an argument the Docker leg does not take.
+    dictExecKeywords = {"sWorkdir": sWorkdir}
+    if dictEnvironmentOverlay:
+        dictExecKeywords["dictEnvironmentOverlay"] = dictEnvironmentOverlay
     async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
             tExecResult = await asyncio.to_thread(
                 connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
-                sWorkdir=sWorkdir,
+                **dictExecKeywords,
             )
         finally:
             await fnDrainPending()
@@ -283,7 +298,7 @@ async def _ftRunSingleCommand(
             "iExitCode": tExecResult.iExitCode,
         })
     if fbIsHostProject(sContainerId):
-        return (tExecResult.iExitCode, None)
+        return (tExecResult.iExitCode, tExecResult.fCpuSeconds)
     return (tExecResult.iExitCode, dictAccum["fCpu"])
 
 
@@ -630,9 +645,10 @@ async def ftRunStepCommands(
 def _ffTotalCpuTime(fFirst, fSecond):
     """Add two CPU readings, either of which may be ABSENT (None).
 
-    Host runs record no CPU time at all: ``/usr/bin/time -f`` is a GNU
-    spelling that BSD ``time`` rejects, so rather than report a
-    fabricated 0.0 the reading is omitted. Adding the two readings
+    A reading can be absent: host runs measured nothing at all before
+    the ``os.wait4`` reap existed (``/usr/bin/time -f`` is a GNU
+    spelling that BSD ``time`` rejects), and still record ``None``
+    when a step is killed or the reap is lost. Adding two readings
     blindly therefore raised ``TypeError: unsupported operand type(s)
     for +: 'NoneType' and 'NoneType'`` on every host step that reached
     the plot phase — which aborted the run AFTER the step's command had
@@ -983,6 +999,8 @@ async def _fiRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
+    fdictCommitProvenance=None, dictMarkerContext=None,
+    dictTaintState=None,
 ):
     """Run a single automatic step with timing and result.
 
@@ -1010,16 +1028,60 @@ async def _fiRunOneStep(
         connectionDocker, sContainerId, dictStep,
         iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
         sRunMode=sRunMode,
+        fdictCommitProvenance=fdictCommitProvenance,
+        dictMarkerContext=dictMarkerContext,
+        dictTaintState=dictTaintState,
     )
 
 
 async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-    sRunMode="full",
+    sRunMode="full", fdictCommitProvenance=None, dictMarkerContext=None,
+    dictTaintState=None,
 ):
-    """Execute step commands, record timing, emit results."""
+    """Execute step commands, record timing, emit results.
+
+    A step declaring remote data runs inside the marker bracket (spec
+    §4.6): publish → execute → provenance commit → clear. The publish
+    fails CLOSED — no durable marker, no execution — and the clear
+    happens only when the step exited 0, every declared file was
+    examined, and the record merge committed without refusals; any
+    other ending leaves the marker set on disk for reconciliation.
+    ``dictMarkerContext`` is None for direct library callers, the
+    same stated remainder as the commit lane.
+
+    ``dictTaintState`` is the run's shared taint record (ruling R6).
+    Whether THIS step wears the downstream mark is decided by the
+    state at entry — a step's own degradation marks its successors,
+    never itself, whose own events already say what happened.
+    """
     import time
+    bDownstreamOfDegraded = bool(
+        dictTaintState and dictTaintState.get("bDegradedUpstream"),
+    )
+    listRemotePaths = workflowManager.flistStepRemoteDataPaths(dictStep)
+    bMarkerLane = bool(listRemotePaths) and dictMarkerContext is not None
+    if bMarkerLane:
+        dictPublish = await asyncio.to_thread(
+            stateManager.fdictPublishRemoteDataMarker,
+            connectionDocker, sContainerId,
+            dictMarkerContext["sStatePath"],
+            dictMarkerContext["sWorkflowKey"],
+            dictStep.get("sStepId", ""), listRemotePaths,
+        )
+        if not dictPublish["bPublished"]:
+            await fnStatusCallback({
+                "sType": "stepMarkerRefused",
+                "iStepNumber": iStepNumber,
+                "sDetail": dictPublish["sDetail"],
+            })
+            _fnMarkProvenanceTaint(dictTaintState)
+            await _fnEmitStepResult(
+                fnStatusCallback, iStepNumber, 1,
+                bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,
+            )
+            return 1
     fStartTime = time.time()
     sStepDir = workflowManager.fsResolveStepWorkdir(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
@@ -1045,24 +1107,41 @@ async def _fiExecuteAndRecord(
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
-    if iExitCode == 0:
-        await _fnRecordRemoteDataProvenance(
-            connectionDocker, sContainerId, dictStep,
-            dictVariables, iStepNumber, fnStatusCallback,
+    dictProvenance = await _fdictRecordRemoteDataProvenance(
+        connectionDocker, sContainerId, dictStep,
+        dictVariables, iStepNumber, fnStatusCallback,
+        fdictCommitProvenance=fdictCommitProvenance,
+        dictTaintState=dictTaintState,
+    )
+    if bMarkerLane:
+        await _fnSettleRemoteDataMarker(
+            connectionDocker, sContainerId, dictMarkerContext,
+            dictStep, iStepNumber, iExitCode, dictProvenance,
+            fnStatusCallback, dictTaintState=dictTaintState,
         )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
     )
-    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
+    await _fnEmitStepResult(
+        fnStatusCallback, iStepNumber, iExitCode,
+        bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,
+    )
     return iExitCode
 
 
-async def _fnRecordRemoteDataProvenance(
+async def _fdictRecordRemoteDataProvenance(
     connectionDocker, sContainerId, dictStep, dictVariables,
-    iStepNumber, fnStatusCallback,
+    iStepNumber, fnStatusCallback, fdictCommitProvenance=None,
+    dictTaintState=None,
 ):
-    """Refresh listRemoteData provenance after a successful pull.
+    """Refresh listRemoteData provenance and commit it durably.
+
+    Runs on EVERY exit of a step declaring remote data, not only exit
+    0: a step whose download succeeds and whose later command fails
+    used to record nothing, which is the "no pull boundary" hole of
+    spec §4.5 — the files are on disk either way, and provenance
+    describes the files.
 
     One docker exec hashes every declared remote-pulled file; each
     record's ``sSha256`` updates and ``sDigestBecameCurrentUtc`` is
@@ -1071,28 +1150,131 @@ async def _fnRecordRemoteDataProvenance(
     missing hash leaves the record untouched — provenance never
     guesses. ``sSourceUrl`` is user-DECLARED metadata throughout:
     vaibify does not observe the download and cannot attest that the
-    bytes came from it. Persistence rides the end-of-run workflow save. The
-    fresh data is NOT auto-committed: it flows through the normal
-    badges / commit-canonical review so the researcher decides when
-    the new pull becomes canonical.
+    bytes came from it.
+
+    ``fdictCommitProvenance`` is the server-built record-unit
+    committer (``provenanceCommitter``): the refreshed records are
+    committed to the CURRENT project.json now, during the run, so a
+    later crash cannot leave pulled data with no record of its
+    origin. ``None`` — direct library callers and tests with no live
+    session cache — refreshes in memory only, as before. Returns the
+    outcome for the marker protocol: ``{"dictCommitOutcome",
+    "listUnexaminedPaths"}``, or ``None`` when the step declares no
+    remote data. The fresh data is NOT auto-committed to git: it
+    flows through the normal badges / commit-canonical review.
     """
     listPaths = workflowManager.flistStepRemoteDataPaths(dictStep)
     if not listPaths:
-        return
+        return None
     sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
     if not sRepoRoot:
-        return
+        return None
     dictShaByPath = await asyncio.to_thread(
         _fdictHashRemoteDataFiles,
         connectionDocker, sContainerId, sRepoRoot, listPaths,
     )
-    if not _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
-        return
+    if _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+        await fnStatusCallback({
+            "sType": "remoteDataRecorded",
+            "iStepNumber": iStepNumber,
+            "listRemoteData": dictStep.get("listRemoteData", []),
+        })
+    dictCommitOutcome = None
+    if fdictCommitProvenance is not None:
+        dictCommitOutcome = fdictCommitProvenance(
+            dictStep.get("sStepId", ""),
+            dictStep.get("listRemoteData", []) or [],
+        )
+        if dictCommitOutcome.get("listRefusals") or (
+            not dictCommitOutcome.get("bCommitted")
+        ):
+            _fnMarkProvenanceTaint(dictTaintState)
+            await fnStatusCallback({
+                "sType": "provenanceDegraded",
+                "iStepNumber": iStepNumber,
+                "sDetail": dictCommitOutcome.get("sDetail", ""),
+                "listRefusals": dictCommitOutcome.get(
+                    "listRefusals", [],
+                ),
+            })
+    return {
+        "dictCommitOutcome": dictCommitOutcome,
+        "listUnexaminedPaths": [
+            sPath for sPath in listPaths if sPath not in dictShaByPath
+        ],
+    }
+
+
+async def _fnSettleRemoteDataMarker(
+    connectionDocker, sContainerId, dictMarkerContext, dictStep,
+    iStepNumber, iExitCode, dictProvenance, fnStatusCallback,
+    dictTaintState=None,
+):
+    """Clear the pull marker only when its guarantee was earned.
+
+    The clear conditions are the spec's, verbatim (§4.5): the step
+    exited 0, every declared file was examined (a missing hash is an
+    unexamined file), and the record merge committed with no
+    refusals. Everything else — command failure, unexamined files, a
+    refused or failed commit, a failed clear — leaves the marker set
+    ON DISK and says so, because a cleared marker is a claim that the
+    pulled data is fully documented.
+    """
+    dictCommitOutcome = (dictProvenance or {}).get(
+        "dictCommitOutcome",
+    ) or {}
+    listUnexamined = (dictProvenance or {}).get(
+        "listUnexaminedPaths",
+        workflowManager.flistStepRemoteDataPaths(dictStep),
+    )
+    sRetainReason = ""
+    if iExitCode != 0:
+        sRetainReason = (
+            f"the step exited {iExitCode}; its pulled files may not "
+            "all be the ones examined"
+        )
+    elif listUnexamined:
+        sRetainReason = (
+            "declared files were never examined: "
+            + ", ".join(listUnexamined)
+        )
+    elif dictCommitOutcome.get("bCommitted") is not True:
+        sRetainReason = dictCommitOutcome.get(
+            "sDetail", "",
+        ) or "the record merge never committed"
+    elif dictCommitOutcome.get("listRefusals"):
+        sRetainReason = "records were refused: " + "; ".join(
+            dictRefusal.get("sReason", "")
+            for dictRefusal in dictCommitOutcome["listRefusals"]
+        )
+    if not sRetainReason:
+        dictClear = await asyncio.to_thread(
+            stateManager.fdictClearRemoteDataMarker,
+            connectionDocker, sContainerId,
+            dictMarkerContext["sStatePath"],
+            dictMarkerContext["sWorkflowKey"],
+            dictStep.get("sStepId", ""),
+        )
+        if dictClear["bCleared"]:
+            return
+        sRetainReason = dictClear["sDetail"]
+    _fnMarkProvenanceTaint(dictTaintState)
     await fnStatusCallback({
-        "sType": "remoteDataRecorded",
+        "sType": "remoteDataMarkerRetained",
         "iStepNumber": iStepNumber,
-        "listRemoteData": dictStep.get("listRemoteData", []),
+        "sReason": sRetainReason,
     })
+
+
+def _fnMarkProvenanceTaint(dictTaintState):
+    """Record a degradation so later executed steps wear the mark.
+
+    Set beside each degradation EVENT emit — the event is the
+    authority on what counts as degraded, and this record is only its
+    shadow for the steps that run afterwards (ruling R6).
+    """
+    if dictTaintState is not None:
+        dictTaintState["bDegradedUpstream"] = True
 
 
 def _fdictHashRemoteDataFiles(
@@ -1160,12 +1342,20 @@ async def _fiRunStepList(
     connectionDocker, sContainerId,
     dictWorkflow, sWorkdir, dictVariables, fnStatusCallback,
     iStartStep=1, dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+    setRunStepIndices=None, fdictCommitProvenance=None,
+    dictMarkerContext=None,
 ):
     """Iterate steps, pausing at interactive ones."""
     from .interactiveSteps import _fiHandleInteractiveStep
 
     iFinalExitCode = 0
+    # One taint record for the whole run (ruling R6): the moment any
+    # step's remote-data documentation degrades — marker refused,
+    # records refused, marker retained — every LATER executed step
+    # wears the downstream mark on its result event. The record is
+    # mutable and shared so the degradation emitters deep in the step
+    # machinery can set it without threading a return value back up.
+    dictTaintState = {"bDegradedUpstream": False}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbShouldRunStep(
@@ -1187,10 +1377,34 @@ async def _fiRunStepList(
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
                 sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
+                fdictCommitProvenance=fdictCommitProvenance,
+                dictMarkerContext=dictMarkerContext,
+                dictTaintState=dictTaintState,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode
     return iFinalExitCode
+
+
+def _fdictBuildMarkerContext(sWorkflowPath):
+    """Return the pull marker's durable home, or None with no path.
+
+    None means "no marker lane" — the direct-library remainder. A
+    real path that resolves to no repo or no key still returns a
+    context, whose EMPTY fields make the publish refuse: a production
+    run must fail closed, never silently skip the marker.
+    """
+    if not sWorkflowPath:
+        return None
+    sRepoPath = workflowManager.fsDeriveProjectRepoPathFromWorkflow(
+        sWorkflowPath,
+    )
+    return {
+        "sStatePath": stateManager.fsStatePathFromRepo(sRepoPath),
+        "sWorkflowKey": stateManager.fsWorkflowKeyFromPath(
+            sWorkflowPath, sRepoPath,
+        ),
+    }
 
 
 def _ftInitializeRunState(
@@ -1221,7 +1435,7 @@ async def _fiRunStepsAndLog(
     dictVariables, fnLogging, fnStatusCallback,
     sLogPath, listLogLines, sAction, iStartStep,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+    setRunStepIndices=None, fdictCommitProvenance=None,
 ):
     """Execute steps, write log, and emit final status."""
     dictState, stateWriter = _ftInitializeRunState(
@@ -1254,6 +1468,8 @@ async def _fiRunStepsAndLog(
             dictWorkflow, sWorkdir, dictVariables, fnLoggingWithFlush,
             iStartStep=iStartStep, dictInteractive=dictInteractive,
             sRunMode=sRunMode, setRunStepIndices=setRunStepIndices,
+            fdictCommitProvenance=fdictCommitProvenance,
+            dictMarkerContext=_fdictBuildMarkerContext(sWorkflowPath),
         )
         await _fnFinalizeRun(
             connectionDocker, sContainerId, dictState, iResult,
@@ -1356,6 +1572,7 @@ async def _fiRunWithLogging(
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
     setRunStepIndices=None, iSourceDateEpochOverride=0,
+    fdictCommitProvenance=None,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sLogPath, listLogLines, fnLogging, dictVariables = (
@@ -1391,6 +1608,7 @@ async def _fiRunWithLogging(
         dictInteractive=dictInteractive,
         sRunMode=sRunMode,
         setRunStepIndices=setRunStepIndices,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1406,6 +1624,7 @@ async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
+    fdictCommitProvenance=None,
 ):
     """Run all enabled steps with logging.
 
@@ -1424,6 +1643,7 @@ async def fiRunAllSteps(
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1431,6 +1651,7 @@ async def fiRunFromStep(
     connectionDocker, sContainerId, iStartStep,
     dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback, dictInteractive=None,
+    fdictCommitProvenance=None,
 ):
     """Run steps starting from iStartStep (1-based) with logging."""
     return await _fiRunWithLogging(
@@ -1439,6 +1660,7 @@ async def fiRunFromStep(
         f"runFrom:{iStartStep}", iStartStep=iStartStep,
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
+        fdictCommitProvenance=fdictCommitProvenance,
     )
 
 
@@ -1467,7 +1689,7 @@ async def fiVerifyOnly(
 async def fiRunSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
-    sRunMode="full",
+    sRunMode="full", fdictCommitProvenance=None,
 ):
     """Run only the listed step indices for this run.
 
@@ -1488,4 +1710,5 @@ async def fiRunSelectedSteps(
         sWorkflowPath=sWorkflowPath,
         sRunMode=sRunMode,
         setRunStepIndices=setRunStepIndices,
+        fdictCommitProvenance=fdictCommitProvenance,
     )

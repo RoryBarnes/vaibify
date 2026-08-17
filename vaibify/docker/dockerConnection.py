@@ -21,6 +21,7 @@ import json
 import shlex
 import warnings
 from dataclasses import dataclass
+from typing import Optional
 
 from vaibify.config import mutationAdmission
 
@@ -187,11 +188,19 @@ class ExecResult:
     sStderr : str
         UTF-8-decoded standard error. Empty string if nothing was
         written to stderr.
+    fCpuSeconds : Optional[float]
+        User+system CPU seconds of the reaped child, measured by the
+        HOST leg's ``os.wait4`` reap. ``None`` means nobody measured
+        it — the Docker leg always leaves it ``None`` (its CPU
+        reading arrives in-band via the ``/usr/bin/time`` wrapper),
+        and the host leg leaves it ``None`` when the reap was lost or
+        the process was killed. Absent is never spelled 0.0.
     """
 
     iExitCode: int
     sStdout: str
     sStderr: str
+    fCpuSeconds: Optional[float] = None
 
 
 def _fmoduleGetDocker():

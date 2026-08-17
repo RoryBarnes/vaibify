@@ -20,16 +20,20 @@ resolve.
 """
 
 import asyncio
+import logging
+import os
 
 from .pipelineUtils import fsShellQuote
 
 __all__ = [
     "S_ENV_PREFIX_KEY",
+    "S_ENV_OVERLAY_KEY",
     "S_DETERMINISM_APPLIED_KEY",
     "S_MATPLOTLIB_CONFIG_DIR",
 ]
 
 S_ENV_PREFIX_KEY = "__sEnvPrefix"
+S_ENV_OVERLAY_KEY = "__dictEnvOverlay"
 S_DETERMINISM_APPLIED_KEY = "__bDeterminismApplied"
 
 # matplotlib reads ``matplotlibrc`` from ``MPLCONFIGDIR`` only after a
@@ -92,20 +96,16 @@ async def _fsBuildDeterminismEnvPrefix(
     across machines.
 
     ``iSourceDateEpochOverride`` replaces the HEAD derivation when
-    positive. The tier 5 rerun lane passes the epoch recorded in the
-    envelope, because the commit that published the manifest moved
-    HEAD: re-deriving would salt the rerun's figures differently from
-    the pinned ones and every timestamped artefact would diverge.
+    positive (see :func:`_fiResolveRunEpoch`).
 
     Returns empty string if the epoch cannot be determined; callers
     must not block step execution on the result, but they MUST record
     the skip — see :func:`_fnInjectDeterminismEnvPrefix`.
     """
-    iEpoch = iSourceDateEpochOverride
-    if iEpoch <= 0:
-        iEpoch = await _fiQueryHeadCommitEpoch(
-            connectionDocker, sContainerId, sProjectRepoPath,
-        )
+    iEpoch = await _fiResolveRunEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        iSourceDateEpochOverride,
+    )
     if iEpoch <= 0:
         return ""
     return (
@@ -114,32 +114,131 @@ async def _fsBuildDeterminismEnvPrefix(
     )
 
 
+async def _fiResolveRunEpoch(
+    connectionDocker, sContainerId, sProjectRepoPath,
+    iSourceDateEpochOverride,
+):
+    """Return the run's epoch: the recorded override, else HEAD's.
+
+    Shared by both lanes so the override contract cannot drift between
+    them. The tier 5 rerun lane passes the epoch recorded in the
+    envelope, because the commit that published the manifest moved
+    HEAD: re-deriving would salt the rerun's figures differently from
+    the pinned ones and every timestamped artefact would diverge.
+    """
+    if iSourceDateEpochOverride > 0:
+        return iSourceDateEpochOverride
+    return await _fiQueryHeadCommitEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+
+
+async def _fdictBuildHostDeterminismOverlay(
+    connectionDocker, sContainerId, sProjectRepoPath,
+    iSourceDateEpochOverride=0,
+):
+    """Return the determinism variables as an environment overlay dict.
+
+    The host-exec primitive can pass real environment entries, so the
+    host lane carries its guarantees as DATA — shell text is a
+    container-lane necessity, not a host one, and vaibify-authored
+    text prepended to a researcher's command is exactly the thing to
+    minimize on their own machine. Empty dict when the epoch cannot
+    be determined (same best-effort contract as the shell prefix).
+    """
+    iEpoch = await _fiResolveRunEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        iSourceDateEpochOverride,
+    )
+    if iEpoch <= 0:
+        return {}
+    dictOverlay = {"SOURCE_DATE_EPOCH": str(iEpoch)}
+    sConfigDirectory = await _fsWriteHostMatplotlibSalt(
+        connectionDocker, sContainerId, iEpoch,
+    )
+    if sConfigDirectory:
+        dictOverlay["MPLCONFIGDIR"] = sConfigDirectory
+    return dictOverlay
+
+
+async def _fsWriteHostMatplotlibSalt(connectionDocker, sContainerId, iEpoch):
+    """Write a matplotlibrc pinning ``svg.hashsalt``; return its directory.
+
+    The host twin of :func:`_fsBuildMatplotlibSaltPrefix`: the rcParam
+    has no environment variable, so the salt needs a file, and on the
+    host that file belongs in the project's guarded scratch subtree —
+    never a world-shared ``/tmp`` directory on the researcher's own
+    machine. Written through the connection's gated write primitive so
+    the path guard vets it like every other vaibify write.
+
+    Best-effort on real I/O trouble (the step must still run when its
+    determinism cannot be guaranteed; the skip is recorded), but a
+    control-plane refusal propagates — a refusal is not an I/O error.
+    """
+    from . import projectRoots
+    sConfigDirectory = projectRoots.fsResolveScratchDirectory(
+        sContainerId, "matplotlib-determinism", "/tmp",
+    )
+    sConfigPath = os.path.join(sConfigDirectory, "matplotlibrc")
+    try:
+        await asyncio.to_thread(
+            connectionDocker.fnWriteFile, sContainerId, sConfigPath,
+            f"svg.hashsalt: {iEpoch}\n".encode("utf-8"),
+        )
+    except OSError as errorWrite:
+        logging.getLogger("vaibify").warning(
+            "matplotlib svg.hashsalt not pinned for '%s': %s",
+            sContainerId, errorWrite,
+        )
+        return ""
+    return sConfigDirectory
+
+
 async def _fnInjectDeterminismEnvPrefix(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
     iSourceDateEpochOverride=0,
 ):
-    """Compute the env prefix once and stash it in dictVariables.
+    """Compute the determinism guarantees once and stash them.
 
-    Bundles the determinism prefix with a
-    ``VAIBIFY_ACTIVE_WORKFLOW_SLUG`` export so the marker conftest
-    namespaces writes under the active workflow when commands flow
-    through ``_ftRunCommandList`` (e.g. the runAllTests path).
+    Container lane: a shell-text prefix under ``S_ENV_PREFIX_KEY``,
+    exactly as always. Host lane: a real environment overlay under
+    ``S_ENV_OVERLAY_KEY`` (inherited env + overlay at the primitive),
+    and an empty prefix — the two lanes' path/text handling stays
+    deliberately un-unified (the withdrawn ``director`` lesson).
 
-    Also stashes whether the determinism prefix was actually built.
-    The slug export is appended unconditionally, so a non-empty
-    ``S_ENV_PREFIX_KEY`` is NOT evidence the epoch was exported —
-    callers must read the boolean, never sniff the string.
+    Bundles a ``VAIBIFY_ACTIVE_WORKFLOW_SLUG`` entry either way so the
+    marker conftest namespaces writes under the active workflow when
+    commands flow through ``_ftRunCommandList`` (e.g. runAllTests).
+
+    Also stashes whether the determinism guarantee was actually built.
+    The slug travels unconditionally, so a non-empty prefix or overlay
+    is NOT evidence the epoch was exported — callers must read the
+    boolean, never sniff the carrier.
     """
     from .fileStatusManager import fsWorkflowSlugFromPath
+    from vaibify.config.registryManager import fbIsHostProject
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sWorkflowSlug = fsWorkflowSlugFromPath(
+        dictWorkflow.get("sPath", ""),
+    )
+    if fbIsHostProject(sContainerId):
+        dictOverlay = await _fdictBuildHostDeterminismOverlay(
+            connectionDocker, sContainerId, sProjectRepoPath,
+            iSourceDateEpochOverride=iSourceDateEpochOverride,
+        )
+        dictVariables[S_DETERMINISM_APPLIED_KEY] = (
+            "SOURCE_DATE_EPOCH" in dictOverlay
+        )
+        if sWorkflowSlug:
+            dictOverlay["VAIBIFY_ACTIVE_WORKFLOW_SLUG"] = sWorkflowSlug
+        dictVariables[S_ENV_OVERLAY_KEY] = dictOverlay
+        dictVariables[S_ENV_PREFIX_KEY] = ""
+        return
     sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
         connectionDocker, sContainerId, sProjectRepoPath,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
     dictVariables[S_DETERMINISM_APPLIED_KEY] = bool(sEnvPrefix)
-    sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
-    )
     if sWorkflowSlug:
         sEnvPrefix += (
             "export VAIBIFY_ACTIVE_WORKFLOW_SLUG="

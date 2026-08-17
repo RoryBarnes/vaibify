@@ -40,6 +40,7 @@ const VaibifyApp = (function () {
             dictWorkflow: null,
             sWorkflowPath: null,
             dictStepStatus: {},
+            dictStepTaint: {},
             dictScriptModified: {},
             dictStaleArtifacts: {},
             dictDiscoveredOutputs: {},
@@ -1091,6 +1092,7 @@ const VaibifyApp = (function () {
         VaibifyTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
+        _dictWorkflowState.dictStepTaint = {};
         document.body.classList.remove(
             "proof-level-1", "proof-level-2", "proof-level-3",
         );
@@ -1586,6 +1588,7 @@ const VaibifyApp = (function () {
     function fdictBuildRenderContext() {
         return {
             dictStepStatus: _dictWorkflowState.dictStepStatus,
+            dictStepTaint: _dictWorkflowState.dictStepTaint,
             iSelectedStepIndex: _dictUiState.iSelectedStepIndex,
             setExpandedSteps: _dictUiState.setExpandedSteps,
             setExpandedDeps: _dictUiState.setExpandedDeps,
@@ -1830,6 +1833,7 @@ const VaibifyApp = (function () {
         // card's hash).
         return JSON.stringify(step)
             + "\x01" + (dictContext.dictStepStatus[iIndex] || "")
+            + "\x01" + (dictContext.dictStepTaint[iIndex] ? "t" : "")
             + "\x01" + _fsExpansionSliceForStep(iIndex, dictContext)
             + "\x01" + _fsContextSliceForStep(iIndex, dictContext)
             + "\x01" + _fsDeclarationBadgeSlice(step)
@@ -5018,6 +5022,22 @@ const VaibifyApp = (function () {
         fnInvalidateStepFileCache: fnInvalidateStepFileCache,
         fnSetStepStatus: function (iIndex, sStatus) {
             _dictWorkflowState.dictStepStatus[iIndex] = sStatus;
+        },
+        /* Ruling R6: a step that executed after an earlier step's
+           remote-data documentation degraded wears a warning glyph
+           beside its light. The mark is per-run truth from the
+           server's result events/records — never inferred here. */
+        fnSetStepTaint: function (iIndex, bTainted) {
+            if (bTainted) {
+                _dictWorkflowState.dictStepTaint[iIndex] = true;
+            } else {
+                delete _dictWorkflowState.dictStepTaint[iIndex];
+            }
+        },
+        fnClearStepTaints: function () {
+            for (var sKey in _dictWorkflowState.dictStepTaint) {
+                delete _dictWorkflowState.dictStepTaint[sKey];
+            }
         },
         fnClearRunningStatuses: fnClearRunningStatuses,
         fnResetQueuedSteps: fnResetQueuedSteps,

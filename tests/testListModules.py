@@ -62,6 +62,7 @@ def testExtractsDunderAll():
         "fsValidateStepName",
         "fnRequireUniqueStepSlug",
         "fbStepDirectoryConforms",
+        "fsDescribeRemoteDataPathConflict",
         "fsDescribeStepIdConflict",
         "T_RUN_CLEARED_VERIFICATION_FLAGS",
     ]

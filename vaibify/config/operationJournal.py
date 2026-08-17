@@ -99,6 +99,7 @@ from vaibify.config.pidFileRegistry import (
 from vaibify.config.processLiveness import (
     fbIsProcessAliveSince,
     fbIsUsablePid,
+    ftEnumerateSessionMembers,
 )
 
 logger = logging.getLogger("vaibify")
@@ -741,6 +742,44 @@ def _fbProcessGroupIsEmpty(iProcessGroup):
     return False
 
 
+def _fdictProbeHostTerminalOperation(dictRecord):
+    """Probe a HOST terminal record: dead holder AND an empty SESSION.
+
+    The helper prover's ``killpg`` check is necessary but NOT
+    sufficient here — the container terminal's codex-round-12 hole,
+    transposed to the host: a shell's job control moves children to
+    new process groups within its session, so an empty leader group
+    proves nothing about a backgrounded survivor. When the cheap
+    checks pass, the SESSION is swept with
+    ``processLiveness.ftEnumerateSessionMembers`` — the in-process
+    probe primitive, deliberately not a journaled launch, because
+    THIS function runs while the resolver holds the journal write
+    lock and a journaled sweep deadlocks by construction. A sweep
+    that cannot run is a transient quarantine, never a settle.
+    """
+    dictHelper = _fdictProbeHelperOperation(dictRecord, None)
+    if dictHelper["bHolderAlive"] or not dictHelper["bSettled"]:
+        return dictHelper
+    bConclusive, listMemberPids = ftEnumerateSessionMembers(
+        dictRecord.get("iHolderProcessGroup"),
+    )
+    if not bConclusive:
+        return _fdictProbeOutcome(
+            False, False, True,
+            "the session-wide terminal sweep could not run",
+        )
+    if not listMemberPids:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "holder is dead and its session has no surviving members",
+        )
+    return _fdictProbeOutcome(
+        False, False, False,
+        f"the terminal session still has {len(listMemberPids)} live "
+        "member(s)",
+    )
+
+
 def _fdictProbeHelperOperation(dictRecord, connectionDocker):
     """Probe a helper record: recycle-proof PID plus empty process group."""
     del connectionDocker
@@ -948,6 +987,8 @@ def _fdictProbeTerminalOperation(dictRecord, connectionDocker):
     """
     sDockerExecId = dictRecord.get("sDockerExecId")
     sDockerContainerId = dictRecord.get("sDockerContainerId")
+    if not sDockerExecId and fbIsUsablePid(dictRecord.get("iHolderPid")):
+        return _fdictProbeHostTerminalOperation(dictRecord)
     if not sDockerExecId or not sDockerContainerId:
         return _fdictProbeOutcome(
             False, False, False,

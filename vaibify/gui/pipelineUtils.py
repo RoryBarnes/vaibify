@@ -27,6 +27,7 @@ __all__ = [
     "fsValidateStepName",
     "fnRequireUniqueStepSlug",
     "fbStepDirectoryConforms",
+    "fsDescribeRemoteDataPathConflict",
     "fsDescribeStepIdConflict",
     "T_RUN_CLEARED_VERIFICATION_FLAGS",
 ]
@@ -121,6 +122,44 @@ def fsDescribeStepIdConflict(dictWorkflow, bRequirePresent=False):
                 "references cannot attach to the wrong step"
             )
         dictSeenAt[sStepId] = iIndex
+    return ""
+
+
+def fsDescribeRemoteDataPathConflict(dictWorkflow):
+    """Return a diagnostic when a step's remote-data records collide.
+
+    ``sPath`` is a provenance record's identity within its step: the
+    hash refresh and the record-unit merge both attach a digest to a
+    record by path, and two records sharing one would let the last
+    occurrence silently claim the other's digest — the same
+    wrong-owner failure ``fsDescribeStepIdConflict`` guards one level
+    up. Paths are compared normalized, so ``data/a.csv`` and
+    ``./data/a.csv`` collide. Template-bearing and non-string entries
+    are skipped here; shape validation owns those.
+
+    Returns ``""`` when every step's record paths are unique.
+    """
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or [],
+    ):
+        if not isinstance(dictStep, dict):
+            continue
+        dictSeenAt = {}
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                continue
+            sPath = dictRemote.get("sPath", "")
+            if not isinstance(sPath, str) or not sPath or "{" in sPath:
+                continue
+            sNormalized = posixpath.normpath(sPath)
+            if sNormalized in dictSeenAt:
+                return (
+                    f"Step{iIndex + 1:02d} declares two listRemoteData "
+                    f"records for {sNormalized!r}; record paths must be "
+                    "unique within a step so a digest cannot attach to "
+                    "the wrong record"
+                )
+            dictSeenAt[sNormalized] = True
     return ""
 
 
@@ -420,11 +459,11 @@ def _fnRecordRunStats(
             "%Y-%m-%dT%H:%M:%SZ",
         ),
     }
-    # ``None`` means nobody measured it -- a host run takes no CPU
-    # reading, because the measurement came from a GNU time wrapper
-    # host mode does not use. The key is OMITTED rather than zeroed,
-    # on the same terms as bDeterminismApplied below: an absent key is
-    # unknown, and 0.0 would be a measurement.
+    # ``None`` means nobody measured it -- a killed host step, or a
+    # reap lost to another collector, yields no rusage reading. The
+    # key is OMITTED rather than zeroed, on the same terms as
+    # bDeterminismApplied below: an absent key is unknown, and 0.0
+    # would be a measurement.
     if fCpuTime is not None:
         dictRunStats["fCpuTime"] = round(fCpuTime, 1)
     if iExitCode is not None:
@@ -471,13 +510,25 @@ async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
         )
 
 
-async def _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode):
-    """Send a stepPass or stepFail event based on exit code."""
+async def _fnEmitStepResult(
+    fnStatusCallback, iStepNumber, iExitCode,
+    bDownstreamOfDegradedProvenance=False,
+):
+    """Send a stepPass or stepFail event based on exit code.
+
+    ``bDownstreamOfDegradedProvenance`` marks a step that EXECUTED
+    after an earlier step's remote-data documentation degraded (ruling
+    R6: dependents run, visibly marked). The key travels only when
+    True, so untainted runs' events are byte-identical to before.
+    """
     sType = "stepPass" if iExitCode == 0 else "stepFail"
-    await fnStatusCallback({
+    dictEvent = {
         "sType": sType, "iStepNumber": iStepNumber,
         "iExitCode": iExitCode,
-    })
+    }
+    if bDownstreamOfDegradedProvenance:
+        dictEvent["bDownstreamOfDegradedProvenance"] = True
+    await fnStatusCallback(dictEvent)
 
 
 async def _fnEmitCompletion(fnStatusCallback, iExitCode):

@@ -102,7 +102,17 @@ S_VAIBIFY_GITIGNORE_BODY = (
 
 T_STATEFUL_STEP_FIELDS = (
     "dictVerification", "dictRunStats", "dictLevelHighWater",
+    "dictDefinitionProducers",
 )
+# The definition-sensitive results (spec §4.4): each carries, in
+# dictDefinitionProducers, the semantic fingerprint its producer acted
+# under, and is revalidated on every state->workflow merge. Absent
+# producer = unattested (R8) — never backfilled with the current
+# fingerprint, because attribution proves an owner, never a
+# definition. dictLevelHighWater is deliberately NOT here: the
+# high-water history is an add-only ratchet recording what was
+# attained when, and invalidating history is falsifying it.
+T_ATTESTED_STEP_FIELDS = ("dictVerification", "dictRunStats")
 T_STATEFUL_TOP_FIELDS = (
     "bArchiveTrackingMigrated", "iProofLevel",
     "dictWorkflowLevelHighWater", "bWarnedHundredSteps",
@@ -535,6 +545,7 @@ def _fnPersistStateDocument(
 def fdictMergeRunResultsIntoState(
     connectionDocker, sContainerId, sStatePath, sWorkflowKey,
     dictRunDeltaByStepId, dictStepIdToDirectory,
+    sRunDefinitionFingerprint="",
 ):
     """Merge a run's per-step results into a freshly loaded document.
 
@@ -590,6 +601,17 @@ def fdictMergeRunResultsIntoState(
                     dictEntry = {}
                 dictStepMap[sStepId] = dictEntry
             dictEntry["dictRunStats"] = dictRunStats
+            if sRunDefinitionFingerprint:
+                # The producer stamp (§4.4): these stats were made
+                # under the run's DISPATCH-TIME definition. A mid-run
+                # definition edit makes this differ from the current
+                # fingerprint, and the next merge marks the stats
+                # superseded instead of silently reattaching them —
+                # the cross-file race becomes conservative
+                # invalidation.
+                dictEntry.setdefault(
+                    "dictDefinitionProducers", {},
+                )["dictRunStats"] = sRunDefinitionFingerprint
             dictVerification = dictEntry.get("dictVerification")
             if isinstance(dictVerification, dict):
                 for sFlag in T_RUN_CLEARED_VERIFICATION_FLAGS:
@@ -663,7 +685,159 @@ def _fnAtomicInstallTempFile(
         )
 
 
-def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
+S_REMOTE_MARKER_ROOT_KEY = "dictRemoteDataMarkers"
+
+
+def fdictPublishRemoteDataMarker(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey,
+    sStepId, listExpectedPaths,
+):
+    """Publish the durable pre-execution marker for one step's pull.
+
+    Spec §4.5 condition 1: before a step declaring ``listRemoteData``
+    runs, this marker says "remote data may arrive that is not yet
+    documented" — durably, so a crash mid-step cannot leave pulled
+    bytes on disk with no trace that a pull was even in flight.
+
+    Stored at the DOCUMENT ROOT, workflow-namespaced, and that level
+    is a constraint, not a preference: a sibling project's sequential
+    save carries unknown root keys through
+    (:func:`fdictInstallWorkflowSection` copies the document), while a
+    field inside the saving project's own section is REBUILT from the
+    in-memory workflow on every ordinary save and silently vanishes.
+
+    Fails closed: a marker that cannot be written — or cannot be READ
+    BACK after writing, which is what "durably acknowledged" means —
+    refuses the step. A missing state.json bootstraps one; a marker
+    with no attributable home (no repo, no key) refuses.
+    """
+    if not sStatePath or not sWorkflowKey or not sStepId:
+        return {
+            "bPublished": False,
+            "sDetail": (
+                "the pull marker has no durable home (project repo, "
+                "workflow key and step id are all required); the "
+                "step is refused rather than pulling undocumented "
+                "data"
+            ),
+        }
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    try:
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictDocument, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if not isinstance(dictDocument, dict):
+                dictDocument = {}
+            dictDocument.setdefault(
+                "iStateSchemaVersion", I_CURRENT_STATE_SCHEMA_VERSION,
+            )
+            dictDocument.setdefault(
+                S_REMOTE_MARKER_ROOT_KEY, {},
+            ).setdefault(sWorkflowKey, {})[sStepId] = {
+                "sStepId": sStepId,
+                "listExpectedPaths": sorted(listExpectedPaths or []),
+                "sPublishedUtc": _fsCurrentUtcIso(),
+            }
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath,
+                dictDocument,
+            )
+            dictReread, _sRereadStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if fdictReadRemoteDataMarker(
+                dictReread, sWorkflowKey, sStepId,
+            ) is None:
+                return {
+                    "bPublished": False,
+                    "sDetail": (
+                        "the pull marker was written but could not "
+                        "be read back; the step is refused because "
+                        "its guarantee never became durable"
+                    ),
+                }
+        return {"bPublished": True, "sDetail": ""}
+    except Exception as errorPublish:
+        return {
+            "bPublished": False,
+            "sDetail": f"pull marker publish failed: {errorPublish}",
+        }
+
+
+def fdictClearRemoteDataMarker(
+    connectionDocker, sContainerId, sStatePath, sWorkflowKey, sStepId,
+):
+    """Clear one step's pull marker after its records reconciled.
+
+    Callers may only clear when every declared file was examined and
+    the record merge committed — that judgement lives at the call
+    site, next to the evidence. Clearing an absent marker is True
+    (idempotent recovery); a failed clear reports False and the
+    marker stays, which is the correct failure direction.
+    """
+    if not sStatePath or not sWorkflowKey or not sStepId:
+        return {"bCleared": False, "sDetail": "marker home incomplete"}
+    from .stateWriteLock import fcontextHoldStateWriteLock
+    try:
+        with fcontextHoldStateWriteLock(sContainerId, sStatePath):
+            dictDocument, _sStatus = ftLoadStateWithStatus(
+                connectionDocker, sContainerId, sStatePath,
+            )
+            if fdictReadRemoteDataMarker(
+                dictDocument, sWorkflowKey, sStepId,
+            ) is None:
+                return {"bCleared": True, "sDetail": ""}
+            dictAllMarkers = dictDocument[S_REMOTE_MARKER_ROOT_KEY]
+            del dictAllMarkers[sWorkflowKey][sStepId]
+            if not dictAllMarkers[sWorkflowKey]:
+                del dictAllMarkers[sWorkflowKey]
+            _fnPersistStateDocument(
+                connectionDocker, sContainerId, sStatePath,
+                dictDocument,
+            )
+        return {"bCleared": True, "sDetail": ""}
+    except Exception as errorClear:
+        return {
+            "bCleared": False,
+            "sDetail": f"pull marker clear failed: {errorClear}",
+        }
+
+
+def fdictReadRemoteDataMarker(dictDocument, sWorkflowKey, sStepId):
+    """Return one step's pull marker, or None."""
+    if not isinstance(dictDocument, dict):
+        return None
+    dictForWorkflow = (
+        dictDocument.get(S_REMOTE_MARKER_ROOT_KEY) or {}
+    ).get(sWorkflowKey)
+    if not isinstance(dictForWorkflow, dict):
+        return None
+    dictMarker = dictForWorkflow.get(sStepId)
+    return dictMarker if isinstance(dictMarker, dict) else None
+
+
+def flistUnresolvedRemoteDataStepIds(dictDocument, sWorkflowKey):
+    """Return the step ids whose pull markers are still set.
+
+    A non-empty answer means remote data may sit on disk without a
+    committed record — the reproducibility level gates on it (§4.5
+    condition 2), and the dashboard names the steps.
+    """
+    if not isinstance(dictDocument, dict) or not sWorkflowKey:
+        return []
+    dictForWorkflow = (
+        dictDocument.get(S_REMOTE_MARKER_ROOT_KEY) or {}
+    ).get(sWorkflowKey)
+    if not isinstance(dictForWorkflow, dict):
+        return []
+    return sorted(dictForWorkflow)
+
+
+def fnMergeStateIntoWorkflow(
+    dictWorkflow, dictState, sWorkflowKey="",
+    sCurrentSemanticFingerprint="",
+):
     """Copy this workflow's state fields back into the workflow dict.
 
     No-op when ``dictState`` is None. Steps without a matching
@@ -682,6 +856,14 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
     The keyless call is the pre-namespace shape and reads the document
     root. It survives for the bootstrap path, which builds a section
     from markers and merges it before any key exists.
+
+    ``sCurrentSemanticFingerprint`` is the CURRENT definition's
+    attestation identity; when given, every attested field is
+    revalidated as it merges (spec §4.4: a check made only at
+    completion protects one write — the next reload would reattach
+    old results to a new definition). The verdicts land in the
+    computed ``dictStaleResultFields`` (``"superseded"`` /
+    ``"unattested"``), which never persists.
     """
     if dictState is None:
         return
@@ -701,9 +883,40 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState, sWorkflowKey=""):
         for sKey in T_STATEFUL_STEP_FIELDS:
             if sKey in dictForStep:
                 dictStep[sKey] = dictForStep[sKey]
+        if sCurrentSemanticFingerprint:
+            _fnMarkStaleResultFields(
+                dictStep, dictForStep, sCurrentSemanticFingerprint,
+            )
     for sKey in T_STATEFUL_TOP_FIELDS:
         if sKey in dictState:
             dictWorkflow[sKey] = dictState[sKey]
+
+
+def _fnMarkStaleResultFields(
+    dictStep, dictForStep, sCurrentSemanticFingerprint,
+):
+    """Revalidate one step's attested fields against the definition.
+
+    A field whose recorded producer fingerprint differs from the
+    current definition is ``"superseded"``; a non-empty field with no
+    recorded producer is ``"unattested"`` (R8's legacy answer, never
+    upgraded). An empty or absent field claims nothing and is not
+    marked. The verdict is computed, per load, and stripped on save.
+    """
+    dictProducers = dictForStep.get("dictDefinitionProducers") or {}
+    dictStale = {}
+    for sAttestedKey in T_ATTESTED_STEP_FIELDS:
+        if not dictForStep.get(sAttestedKey):
+            continue
+        sProducerFingerprint = dictProducers.get(sAttestedKey, "")
+        if not sProducerFingerprint:
+            dictStale[sAttestedKey] = "unattested"
+        elif sProducerFingerprint != sCurrentSemanticFingerprint:
+            dictStale[sAttestedKey] = "superseded"
+    if dictStale:
+        dictStep["dictStaleResultFields"] = dictStale
+    else:
+        dictStep.pop("dictStaleResultFields", None)
 
 
 def ftSplitMergedDict(dictWorkflow):
@@ -729,6 +942,9 @@ def ftSplitMergedDict(dictWorkflow):
             if sKey in dictStep:
                 dictExtracted[sKey] = dictStep.pop(sKey)
         dictStep.pop("sLabel", None)
+        # Computed per load by the merge's revalidation; persisting it
+        # would freeze a verdict the next definition edit must change.
+        dictStep.pop("dictStaleResultFields", None)
         if dictExtracted and sStateKey:
             dictStepState[sStateKey] = dictExtracted
     dictState = fdictBuildEmptyState()

@@ -50,11 +50,6 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "fdictComputeContainerDigests, sCommand"
     },
-    "43a2d448d2a9ea2ae75290299c4851f71d41ca91fc5334456c99b5b5073e1219": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_fsReadGithubRemoteUrl, _S_GITHUB_REMOTE_URL_COMMAND"
-    },
     "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47": {
       "sDisposition": "portable",
       "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify itself.",
@@ -164,6 +159,16 @@
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "ftResultAddFileToGithub, sCommand"
+    },
+    "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29": {
+      "sDisposition": "portable",
+      "sRationale": "The reachability probe cds into the caller-supplied project repo path, which the routes read from the workflow whose sProjectRepoPath is already resolved per mode; one command text serves both legs and no root is hardcoded (the /workspace/*/ scan this replaced answered wrongly for every host project).",
+      "sSupportingSymbols": "_fsComposeGithubReachabilityCommand, _fsProjectRepoPathOrEmpty"
+    },
+    "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa": {
+      "sDisposition": "portable",
+      "sRationale": "The remote-url probe cds into the caller-supplied project repo path, mode-resolved upstream like the reachability probe; the credential slot is therefore derived from THIS project's remote in both modes.",
+      "sSupportingSymbols": "_fsComposeGithubRemoteUrlCommand, _fsProjectRepoPathOrEmpty"
     },
     "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154": {
       "sDisposition": "host-variant",
@@ -289,11 +294,6 @@
       "sDisposition": "host-variant",
       "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
       "sSupportingSymbols": "fbWriteConftestMarkersBatch, sCommand"
-    },
-    "e57b818fb0773e067c4c751728fbf95aa3b8b6af86486f8c3282ddb971d6cd9d": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_fdictCheckGithub, _S_GITHUB_REACHABILITY_COMMAND"
     },
     "ea5c1d8aec9300957fb86dda9c76e0ac8c564c2c4b9d06e686b46373d90fed2e": {
       "sDisposition": "host-variant",
@@ -961,9 +961,9 @@
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "_S_GITHUB_REACHABILITY_COMMAND",
+      "sCommandExpression": "_fsComposeGithubReachabilityCommand(sProjectRepoPath)",
       "sEnclosingFunction": "_fdictCheckGithub",
-      "sFingerprint": "e57b818fb0773e067c4c751728fbf95aa3b8b6af86486f8c3282ddb971d6cd9d",
+      "sFingerprint": "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
@@ -975,9 +975,9 @@
       "sModule": "vaibify/gui/syncDispatcher.py"
     },
     {
-      "sCommandExpression": "_S_GITHUB_REMOTE_URL_COMMAND",
+      "sCommandExpression": "_fsComposeGithubRemoteUrlCommand(sProjectRepoPath)",
       "sEnclosingFunction": "_fsReadGithubRemoteUrl",
-      "sFingerprint": "43a2d448d2a9ea2ae75290299c4851f71d41ca91fc5334456c99b5b5073e1219",
+      "sFingerprint": "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/syncDispatcher.py"
     },

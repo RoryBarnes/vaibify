@@ -289,7 +289,9 @@ def _fnApplyStepResultEvent(
             pipelineState.fdictBuildStepResult(
                 dictEvent["iStepNumber"],
                 _DICT_STEP_RESULT_STATUS[sEventType],
-                dictEvent.get("iExitCode", 0)))
+                dictEvent.get("iExitCode", 0),
+                bDownstreamOfDegradedProvenance=dictEvent.get(
+                    "bDownstreamOfDegradedProvenance", False)))
 
 
 def _fnUpdatePipelineState(
@@ -316,9 +318,23 @@ def _fnUpdatePipelineState(
     )
 
 
+# Any of these means the run's remote-data provenance is no longer
+# fully accounted for; the flag rides pipeline_state.json so the
+# terminal report can say "degraded" even after a reconnect (R3), and
+# taint needs no side channel (R7 — the terminal verdict covers every
+# later step, because degradation never un-happens within a run).
+_T_PROVENANCE_DEGRADATION_EVENTS = (
+    "stepMarkerRefused", "remoteDataMarkerRetained",
+    "provenanceDegraded",
+)
+
+
 def _fnDispatchEventToWriter(stateWriter, dictEvent):
     """Route a callback event through the single-writer queue."""
     sEventType = dictEvent.get("sType", "")
+    if sEventType in _T_PROVENANCE_DEGRADATION_EVENTS:
+        stateWriter.fnEnqueueUpdate({"bProvenanceDegraded": True})
+        return
     if sEventType == "output":
         stateWriter.fnEnqueueOutputLine(dictEvent.get("sLine", ""))
     elif sEventType == "outputBatch":
@@ -343,6 +359,8 @@ def _fnDispatchEventToWriter(stateWriter, dictEvent):
                 dictEvent["iStepNumber"],
                 _DICT_STEP_RESULT_STATUS[sEventType],
                 dictEvent.get("iExitCode", 0),
+                bDownstreamOfDegradedProvenance=dictEvent.get(
+                    "bDownstreamOfDegradedProvenance", False),
             )
         )
 
@@ -352,6 +370,13 @@ def _fnDispatchEventInline(
 ):
     """Legacy in-line write path used when no StateWriter is supplied."""
     sEventType = dictEvent.get("sType", "")
+    if sEventType in _T_PROVENANCE_DEGRADATION_EVENTS:
+        with lockState:
+            pipelineState.fnUpdateState(
+                connectionDocker, sContainerId, dictState,
+                {"bProvenanceDegraded": True},
+            )
+        return
     if sEventType == "output":
         with lockState:
             pipelineState.fnAppendOutput(
@@ -427,6 +452,11 @@ def _fdictPersistRunResultsToState(
             stateManager.fsStatePathFromRepo(sRepoPath),
             stateManager.fsWorkflowKeyFromPath(sWorkflowPath, sRepoPath),
             dictDelta, dictIdToDirectory,
+            sRunDefinitionFingerprint=(
+                workflowManager.fsComputeSemanticWorkflowFingerprint(
+                    dictWorkflow,
+                )
+            ),
         )
     except Exception as error:
         logging.getLogger("vaibify").error(
@@ -527,6 +557,13 @@ async def _fnFinalizeRun(
         "iExitCode": iResult, "sLogPath": sLogPath,
         "bRunMetadataPersisted": (
             dictOutcome["bPersisted"] and bTerminalFlushed
+        ),
+        # §4.6: a run whose pull records did not all commit reports
+        # "completed with degraded provenance", never plain
+        # "completed" — the flag is read from the durable state the
+        # degradation events already wrote.
+        "bProvenanceDegraded": bool(
+            dictState.get("bProvenanceDegraded"),
         ),
     }
     if not dictEvent["bRunMetadataPersisted"]:

@@ -1057,16 +1057,30 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiExecuteAndRecord_failed_step_emits_stepFail_not_stepPass',
         source='vaibify/gui/pipelineRunner.py',
-        old='await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)',
-        new='await _fnEmitStepResult(fnStatusCallback, iStepNumber, 0)',
+        # RE-ANCHORED 2026-08-15: the emit went multi-line when it
+        # gained the downstream-taint argument; same mutant (report 0
+        # instead of the real exit code).
+        old='        fnStatusCallback, iStepNumber, iExitCode,\n',
+        new='        fnStatusCallback, iStepNumber, 0,\n',
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiExecuteAndRecord_returns_real_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old="""    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
-    return iExitCode""",
-        new="""    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
-    return 0""",
+        # RE-ANCHORED 2026-08-15 for the same multi-line emit; the
+        # 8-space indent pins the FINAL emit (the marker-refusal twin
+        # sits deeper and returns 1).
+        old=(
+            '        bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '    )\n'
+            '    return iExitCode\n'
+        ),
+        new=(
+            '        bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '    )\n'
+            '    return 0\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
@@ -1410,14 +1424,16 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_override_bypasses_the_head_derivation',
         source='vaibify/gui/determinismEnvironment.py',
-        old="""    iEpoch = iSourceDateEpochOverride
-    if iEpoch <= 0:
-        iEpoch = await _fiQueryHeadCommitEpoch(
-            connectionDocker, sContainerId, sProjectRepoPath,
-        )""",
-        new="""    iEpoch = await _fiQueryHeadCommitEpoch(
-        connectionDocker, sContainerId, sProjectRepoPath,
-    )""",
+        # RE-ANCHORED 2026-08-15: the override pattern briefly existed
+        # in two copies when the host overlay lane arrived, so the
+        # resolution moved into the shared _fiResolveRunEpoch — one
+        # guard both lanes read. The mutant deletes the override
+        # branch: every rerun re-derives from a HEAD the manifest
+        # commit already moved.
+        old="""    if iSourceDateEpochOverride > 0:
+        return iSourceDateEpochOverride
+    return await _fiQueryHeadCommitEpoch(""",
+        new="""    return await _fiQueryHeadCommitEpoch(""",
     ),
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_rerun_lane_passes_the_recorded_epoch_to_the_runner',
@@ -2098,17 +2114,24 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
+    # 2026-08-17: the commit guard gained a second copy when
+    # ftResultPushToGithub adopted it, so both entries below mutate
+    # BOTH copies (iExpectedOccurrences=2) — the staged real-git tests
+    # still kill via the staged copy, and the add-variant copy has its
+    # own scoped entry further down.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
+        iExpectedOccurrences=2,
     ),
 
     # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
@@ -8000,12 +8023,16 @@ def _fdictEntry(sRel):
         source='vaibify/host/hostCancellation.py',
         # Narrowing the group kill to a single PID leaves a backgrounded
         # sibling alive -- the unrelated-process-safety cuts both ways.
+        # TWO copies since 2026-08-15: the terminal drain's
+        # session-member signaller spells its leader-group sweep
+        # identically, so the honest mutation narrows both.
         old=(
             '            os.killpg(iProcessGroup, iSignalNumber)\n'
         ),
         new=(
             '            os.kill(iProcessGroup, iSignalNumber)\n'
         ),
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -10416,21 +10443,6 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testHostProjectJourney.py::'
-            'testTheTerminalNoticeSpeaksAboutTheRightThing'
-        ),
-        source='vaibify/gui/static/scriptTerminal.js',
-        # Treat a host project as terminal-capable: the pane dials a
-        # socket the server will refuse, and the researcher is shown a
-        # connection failure instead of being pointed at their own
-        # shell. (Before the terminal came back this same mutation
-        # produced the container notice, with its docker exec line, on
-        # a project that has no container.)
-        old='        return VaibifyApp.fsGetProjectMode() !== "host";\n',
-        new='        return true;\n',
-    ),
-    Falsification(
-        nodeid=(
             'tests/testRegistryContainerRecognition.py::'
             'testRecognitionSurvivesTheMutationGate'
         ),
@@ -10597,13 +10609,18 @@ def _fdictEntry(sRel):
             'testRunningAStepWritesARealFileAndTheDashboardSeesIt'
         ),
         source='vaibify/gui/pipelineRunner.py',
-        # The shipped defect, restored: add two CPU readings blindly.
-        # Host runs record none, so every host step reaching the plot
-        # phase raised TypeError AFTER its command had succeeded --
-        # "Pipeline Failed" for completed work, and no log, because the
-        # finalizer never ran.
-        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
-        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+        # Restore the pre-wait4 host branch: every host run records no
+        # CPU again. RE-ANCHORED 2026-08-15: this entry's original
+        # mutation (the blind add at the plot join) became unobservable
+        # on a healthy run the day host readings became real floats --
+        # the journey now asserts the settled state carries fCpuTime,
+        # and the blind-add guard lives on in
+        # testAnAbsentReadingMakesTheStepTotalAbsentNotACrash.
+        old=(
+            '        return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
+        ),
+        new='        return (tExecResult.iExitCode, None)\n',
     ),
     Falsification(
         nodeid=(
@@ -11022,14 +11039,12 @@ def _fdictEntry(sRel):
         # recorded mid-run is silently erased.
         old=(
             '            dictEntry["dictRunStats"] = dictRunStats\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
         new=(
             '            dictEntry = {"dictRunStats": dictRunStats}\n'
             '            dictStepMap[sStepId] = dictEntry\n'
-            '            dictVerification = '
-            'dictEntry.get("dictVerification")\n'
+            '            if sRunDefinitionFingerprint:\n'
         ),
     ),
     Falsification(
@@ -11114,15 +11129,17 @@ def _fdictEntry(sRel):
         # branch: the backend says the run's results were not
         # recorded, and the dashboard shows only the success toast.
         old=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
             '            _fnWarnIfRunMetadataUnrecorded(dictEvent);\n'
         ),
         new=(
-            '            VaibifyApp.fnShowToast(\n'
-            '                _fsCompletedToast(dictEvent.sCommand),'
+            '                VaibifyApp.fnShowToast(\n'
+            '                    _fsCompletedToast(dictEvent.sCommand),'
             ' "success");\n'
+            '            }\n'
         ),
     ),
     Falsification(
@@ -11196,21 +11213,17 @@ def _fdictEntry(sRel):
         source='vaibify/gui/pipelineServer.py',
         # Ignore the caller's acknowledgment: a client rendering a
         # superseded copy dispatches code the researcher never saw.
+        # RE-ANCHORED 2026-08-15: the grandfather branch this mutant
+        # used to neutralize became a refusal (clean-break ruling), so
+        # the equivalent break is now blinding the comparison itself.
         old=(
-            '    sAckFingerprint = '
-            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
-            '    sAckPath = '
-            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
-            '    if sAckFingerprint is None and sAckPath is None:\n'
-            '        return None\n'
+            '    if sAckFingerprint != sRecordFingerprint or (\n'
+            '        sAckPath is not None and sAckPath !='
+            ' sWorkflowPath\n'
+            '    ):\n'
         ),
         new=(
-            '    sAckFingerprint = '
-            'dictRequest.get("sAcknowledgedSourceFingerprint")\n'
-            '    sAckPath = '
-            'dictRequest.get("sAcknowledgedWorkflowPath")\n'
-            '    if True:\n'
-            '        return None\n'
+            '    if False:\n'
         ),
     ),
     Falsification(
@@ -11365,6 +11378,1128 @@ def _fdictEntry(sRel):
         ),
         new=(
             '                        if (false) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testDuplicateRecordPathsAreNamedAtValidation'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        # Let two records share a path: the digest refresh writes the
+        # same hash into both and the record-unit merge cannot tell
+        # which assertion the researcher meant.
+        old=(
+            '            if sNormalized in dictSeenAt:\n'
+            '                return (\n'
+            '                    f"Step{iIndex + 1:02d} declares two'
+            ' listRemoteData "\n'
+            '                    f"records for {sNormalized!r};'
+            ' record paths must be "\n'
+            '                    "unique within a step so a digest'
+            ' cannot attach to "\n'
+            '                    "the wrong record"\n'
+            '                )\n'
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+        new=(
+            '            dictSeenAt[sNormalized] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataRecordIdentity.py::'
+            'testTheSaveRefusesADuplicateBeforeTouchingTheContainer'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Save without record identity: a workflow whose records
+        # collide persists, and every later digest refresh attaches
+        # hashes to whichever record happens to come last.
+        old=(
+            '    sRemoteConflict = '
+            'fsDescribeRemoteDataPathConflict(dictWorkflow)\n'
+            '    if sRemoteConflict:\n'
+            '        raise ValueError(\n'
+            '            f"Refusing to save {sWorkflowPath}:'
+            ' {sRemoteConflict}"\n'
+            '        )\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSemanticWorkflowFingerprint.py::'
+            'testTheRunsOwnDigestUpdateDoesNotMoveTheFingerprint'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Fingerprint the digests along with the definition: the
+        # provenance commit then moves the value the completion merge
+        # compares, and every remote-data run invalidates its own
+        # attestation.
+        old=(
+            '    for dictStep in dictDeclarative.get("listSteps", [])'
+            ' or []:\n'
+            '        for dictRemote in dictStep.get("listRemoteData",'
+            ' []) or []:\n'
+            '            if not isinstance(dictRemote, dict):\n'
+            '                continue\n'
+            '            for sField in'
+            ' T_REMOTE_DATA_RUN_PRODUCED_FIELDS:\n'
+            '                dictRemote.pop(sField, None)\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAFailingStepStillRecordsItsPull'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Restore the exit-0 guard: a step whose download succeeds and
+        # whose later command fails records nothing — the "no pull
+        # boundary" hole of spec §4.5, re-opened.
+        old=(
+            '    dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+            '        dictVariables, iStepNumber, fnStatusCallback,\n'
+            '        fdictCommitProvenance=fdictCommitProvenance,\n'
+            '        dictTaintState=dictTaintState,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictProvenance = None\n'
+            '    if iExitCode == 0:\n'
+            '        dictProvenance = await'
+            ' _fdictRecordRemoteDataProvenance(\n'
+            '            connectionDocker, sContainerId, dictStep,\n'
+            '            dictVariables, iStepNumber, fnStatusCallback,\n'
+            '            fdictCommitProvenance=fdictCommitProvenance,\n'
+            '            dictTaintState=dictTaintState,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testDigestAndTimestampInstallTogether'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the digest without its timestamp: the record stops
+        # being one assertion, and a leafwise merge is how a false
+        # record gets manufactured piecemeal.
+        old=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+            '        dictDiskRecord[S_DIGEST_TIMESTAMP_KEY] = '
+            'sTimestamp\n'
+        ),
+        new=(
+            '        dictDiskRecord["sSha256"] = sSha256\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceCommitDuringRun.py::'
+            'testAMidRunDeclarationEditRefusesTheRecord'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        # Install the run's digest under a declaration edited mid-run:
+        # the researcher's new sSourceUrl now carries the old pull's
+        # hash — internally consistent, wrong, and symptomless.
+        old=(
+            '        if _fbDeclarationsDiffer(dictRunRecord,'
+            ' dictDiskRecord):\n'
+            '            listRefusals.append({\n'
+            '                "sPath": sPath,\n'
+            '                "sReason": (\n'
+            '                    "the record\'s declaration changed'
+            ' while the step "\n'
+            '                    "ran; installing the pulled digest'
+            ' under the new "\n'
+            '                    "declaration would manufacture a'
+            ' false record"\n'
+            '                ),\n'
+            '            })\n'
+            '            continue\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAPublishThatCannotBeReadBackRefuses'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Trust the write without reading it back: a full disk or a
+        # dying daemon reports success, the step runs on a marker
+        # that never became durable, and a crash leaves its pull
+        # undocumented while the protocol claims otherwise.
+        old=(
+            '            dictReread, _sRereadStatus = '
+            'ftLoadStateWithStatus(\n'
+            '                connectionDocker, sContainerId,'
+            ' sStatePath,\n'
+            '            )\n'
+            '            if fdictReadRemoteDataMarker(\n'
+            '                dictReread, sWorkflowKey, sStepId,\n'
+            '            ) is None:\n'
+            '                return {\n'
+            '                    "bPublished": False,\n'
+            '                    "sDetail": (\n'
+            '                        "the pull marker was written but'
+            ' could not "\n'
+            '                        "be read back; the step is'
+            ' refused because "\n'
+            '                        "its guarantee never became'
+            ' durable"\n'
+            '                    ),\n'
+            '                }\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAMarkerSurvivesTheOwningProjectsOwnSave'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Rebuild the document from the section being saved — the v2
+        # defect. The marker (and every sibling's section) survives
+        # only because the installer copies the document it read.
+        old=(
+            '    dictResult = copy.deepcopy(dictDocument)'
+            ' if dictDocument else {}\n'
+        ),
+        new=(
+            '    dictResult = {}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAFailedPublishMeansTheStepDoesNotRun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Run the step without a durable marker: the §4.5 crash
+        # window re-opened — the pull happens, the crash lands, and
+        # nothing on disk says remote data was ever in flight.
+        old=(
+            '        if not dictPublish["bPublished"]:\n'
+            '            await fnStatusCallback({\n'
+            '                "sType": "stepMarkerRefused",\n'
+            '                "iStepNumber": iStepNumber,\n'
+            '                "sDetail": dictPublish["sDetail"],\n'
+            '            })\n'
+            '            _fnMarkProvenanceTaint(dictTaintState)\n'
+            '            await _fnEmitStepResult(\n'
+            '                fnStatusCallback, iStepNumber, 1,\n'
+            '                bDownstreamOfDegradedProvenance='
+            'bDownstreamOfDegraded,\n'
+            '            )\n'
+            '            return 1\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testACommandFailureLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker for a failed step: "possibly undocumented
+        # data" becomes a positive claim of full documentation.
+        old=(
+            '    if iExitCode != 0:\n'
+            '        sRetainReason = (\n'
+            '            f"the step exited {iExitCode}; its pulled'
+            ' files may not "\n'
+            '            "all be the ones examined"\n'
+            '        )\n'
+            '    elif listUnexamined:\n'
+        ),
+        new=(
+            '    if listUnexamined:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteDataMarker.py::'
+            'testAnUnexaminedFileLeavesTheMarkerSet'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Clear the marker over a file the hash never saw: the
+        # missing file is exactly the record the marker exists to
+        # flag.
+        old=(
+            '    elif listUnexamined:\n'
+            '        sRetainReason = (\n'
+            '            "declared files were never examined: "\n'
+            '            + ", ".join(listUnexamined)\n'
+            '        )\n'
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
+        ),
+        new=(
+            '    elif dictCommitOutcome.get("bCommitted") is not'
+            ' True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testARunStampsItsDispatchTimeDefinition'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Merge the run's stats with no producer record: every result
+        # is permanently unattested, and a definition edit can never
+        # be told apart from the definition the run executed.
+        old=(
+            '            if sRunDefinitionFingerprint:\n'
+            '                # The producer stamp (\u00a74.4): these'
+            ' stats were made\n'
+            '                # under the run\'s DISPATCH-TIME'
+            ' definition. A mid-run\n'
+            '                # definition edit makes this differ from'
+            ' the current\n'
+            '                # fingerprint, and the next merge marks'
+            ' the stats\n'
+            '                # superseded instead of silently'
+            ' reattaching them \u2014\n'
+            '                # the cross-file race becomes'
+            ' conservative\n'
+            '                # invalidation.\n'
+            '                dictEntry.setdefault(\n'
+            '                    "dictDefinitionProducers", {},\n'
+            '                )["dictRunStats"] ='
+            ' sRunDefinitionFingerprint\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAnEditedDefinitionMarksTheRunStatsSuperseded'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Skip the revalidation: the next reload reattaches the old
+        # run's results to the edited definition as if current \u2014 the
+        # \u00a74.4 headline failure.
+        old=(
+            '        elif sProducerFingerprint !='
+            ' sCurrentSemanticFingerprint:\n'
+            '            dictStale[sAttestedKey] = "superseded"\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testTheProducerSurvivesTheSaveRoundtrip'
+        ),
+        source='vaibify/gui/stateManager.py',
+        # Drop the producer record from the stateful roundtrip: the
+        # first ordinary save after a run erases it, and every result
+        # quietly degrades to unattested.
+        old=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            '    "dictDefinitionProducers",\n'
+            ')\n'
+        ),
+        new=(
+            'T_STATEFUL_STEP_FIELDS = (\n'
+            '    "dictVerification", "dictRunStats",'
+            ' "dictLevelHighWater",\n'
+            ')\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttestationRevalidation.py::'
+            'testAUserApprovalStampsTheDefinitionItSaw'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Skip the human act's stamp: an approval given while looking
+        # at one definition silently vouches for every later edit.
+        old=(
+            '    if "dictVerification" in dictUpdates:\n'
+            '        # The researcher\'s approval is a human act made'
+            ' while looking\n'
+            '        # at THIS definition \u2014 the producer stamp'
+            ' records which one,\n'
+            '        # so a later definition edit marks it superseded'
+            ' instead of\n'
+            '        # letting it silently vouch for commands it never'
+            ' saw.\n'
+            '        fnStampFieldProducer(dictWorkflow, dictStep,'
+            ' "dictVerification")\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testAnUnresolvedMarkerCapsTheLevelAtZero'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Print the level beside the problem instead of gating on it:
+        # a workflow whose pulled data has no committed record still
+        # reports Self-Consistent (ruling R2, condition 2).
+        old=(
+            '    if dictWorkflow.get('
+            '"listUnresolvedRemoteDataMarkers"):\n'
+            '        return 0\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerLevelGate.py::'
+            'testTheTerminalEventCarriesTheDegradedVerdict'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Drop the verdict from the terminal event: the dashboard
+        # toasts a clean completion over undocumented pulled data.
+        old=(
+            '        "bProvenanceDegraded": bool(\n'
+            '            dictState.get("bProvenanceDegraded"),\n'
+            '        ),\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testADegradedRunNeverToastsACleanCompletion'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Paint the clean success toast for a degraded run: the tab
+        # claims documentation the disk does not have (\u00a74.6 says
+        # "completed with degraded provenance", never "completed").
+        old=(
+            '            if (dictEvent.bProvenanceDegraded) {\n'
+        ),
+        new=(
+            '            if (false) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_reap_surfaces_real_cpu_seconds'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Drop the rusage at the wait4 reap: a completed child answers
+        # with no CPU reading, re-opening the Phase B gap where every
+        # host step recorded CPU as absent.
+        old=(
+            '            return True, '
+            'tReaped[2].ru_utime + tReaped[2].ru_stime\n'
+        ),
+        new='            return True, None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_killed_command_records_absent_cpu_never_zero'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Fabricate 0.0 for the expired bound: a killed step then
+        # wears a measurement nobody took instead of an absent one.
+        old='            return False, None\n',
+        new='            return False, 0.0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCpuAccounting.py::'
+            'testAHostCommandsCpuReadingReachesTheRunner'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shortcut a developer would write: answer every lane from
+        # the marker-line accumulator. No host command emits the
+        # marker, so the reap's real reading is discarded for a
+        # fabricated 0.0.
+        old=(
+            '        return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
+        ),
+        new=(
+            '        return (tExecResult.iExitCode, '
+            'dictAccum["fCpu"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCpuAccounting.py::'
+            'testAnAbsentReadingMakesTheStepTotalAbsentNotACrash'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The shipped defect, restored: add two CPU readings blindly.
+        # An absent reading then raised TypeError AFTER the step's
+        # command had succeeded -- "Pipeline Failed" for completed
+        # work, and no log, because the finalizer never ran. (Moved
+        # here from the browser journey entry when host readings
+        # became real floats on the healthy path.)
+        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
+        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunSingleCommand_cpu_line_not_emitted_as_output'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The container direction of the wait4 pair: swap the container
+        # branch onto the reap field, which the Docker leg never fills,
+        # and every container step's parsed CPU reading is discarded.
+        old=(
+            '    return (tExecResult.iExitCode, '
+            'dictAccum["fCpu"])\n'
+        ),
+        new=(
+            '    return (tExecResult.iExitCode, '
+            'tExecResult.fCpuSeconds)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'testARestartWaitsOutALingeringSocketWithNoHubSlot'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Re-gate the port-release wait on finding a live hub session
+        # slot (the pre-fix behavior): the dying hub releases its slot
+        # before its sockets clear, so the restart the wait exists for
+        # finds no slot and hops immediately (the live 2026-08-14
+        # 8051->8050 hop).
+        old=(
+            '    if not bLiveForeignHolder and '
+            '_fbWaitForHubPortRelease(iPersisted):\n'
+        ),
+        new=(
+            '    if _fdictReadHubSlot(iPersisted) and '
+            '_fbWaitForHubPortRelease(iPersisted):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'testAHoppedPortIsNotPersistedOverAnUnprovableHolder'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Persist the hopped port unconditionally (the pre-fix
+        # behavior): a socket lingering from the previous hub then
+        # permanently moves the persisted port and the researcher's
+        # bookmarked URL dies even though the old port clears seconds
+        # later.
+        old=(
+            '    if bHolderIsLiveListener:\n'
+        ),
+        new=(
+            '    if True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'test_fiResolveHubPort_scans_and_warns_on_foreign_holder'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Blind the live-listener probe: a live foreign holder is then
+        # misread as a lingering socket, the hopped port is never
+        # persisted, and every future restart re-announces a
+        # "temporary" conflict that is in fact permanent.
+        old=(
+            '    finally:\n'
+            '        socketProbe.close()\n'
+            '    return True\n'
+        ),
+        new=(
+            '    finally:\n'
+            '        socketProbe.close()\n'
+            '    return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_environment_overlay_reaches_the_child'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Drop the overlay at the launch: every child inherits the bare
+        # hub environment and the host lane's determinism guarantees
+        # never reach the step's process.
+        old='    if not dictEnvironmentOverlay:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_environment_overlay_inherits_the_base_environment'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Replace the environment wholesale with the overlay: a child
+        # stripped of PATH and HOME is not the process the researcher's
+        # own shell would have started (the inherited-env-only ruling).
+        old='    dictEnvironment = dict(os.environ)\n',
+        new='    dictEnvironment = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testAHostRunsDeterminismTravelsAsEnvironmentData'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # The host branch never fires: host runs silently fall back to
+        # vaibify-authored shell text prepended to the researcher's
+        # command, with the salt directory back on a world-shared /tmp.
+        old='    if fbIsHostProject(sContainerId):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testAContainerRunKeepsItsShellTextPrefix'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # The container lane routed through the overlay path: the
+        # Docker leg takes no environment argument, so its determinism
+        # guarantees would exist only as silently dropped data.
+        old='    if fbIsHostProject(sContainerId):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testTheRunnerHandsTheOverlayToTheExecPrimitive'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The runner never passes the overlay onward: the injection
+        # computes guarantees nobody delivers, and the run records
+        # determinism as applied while the step's process saw nothing.
+        old='    if dictEnvironmentOverlay:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_runs_plot_when_setup_succeeds'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The container direction of the only-when-present guard: pass
+        # the (None) overlay kwarg unconditionally and the Docker leg —
+        # whose signature does not take it — refuses every container
+        # step at dispatch.
+        old='    if dictEnvironmentOverlay:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostDeterminismEnvironment.py::'
+            'testARealHostStepSeesSourceDateEpoch'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # Skip the salt-file write: the file the salt lives in never
+        # exists, so matplotlib draws unsalted ids while the run
+        # records determinism as applied.
+        old=(
+            '    sConfigDirectory = await _fsWriteHostMatplotlibSalt(\n'
+            '        connectionDocker, sContainerId, iEpoch,\n'
+            '    )\n'
+        ),
+        new='    sConfigDirectory = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testAStepAfterADegradedOneWearsTheDownstreamMark'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Never set the taint record beside the degradation events:
+        # later steps run with no visible connection to the
+        # undocumented data they may have consumed (ruling R6).
+        old=(
+            '    if dictTaintState is not None:\n'
+            '        dictTaintState["bDegradedUpstream"] = True\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictTaintState["bDegradedUpstream"] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testTheDegradingStepItselfWearsNoMark'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # Read the taint state at emit time instead of step entry: the
+        # degrading step marks ITSELF, and the glyph's tooltip ("ran
+        # downstream of...") becomes a false statement about it.
+        old=(
+            '    await _fnEmitStepResult(\n'
+            '        fnStatusCallback, iStepNumber, iExitCode,\n'
+            '        bDownstreamOfDegradedProvenance=bDownstreamOfDegraded,\n'
+            '    )\n'
+        ),
+        new=(
+            '    await _fnEmitStepResult(\n'
+            '        fnStatusCallback, iStepNumber, iExitCode,\n'
+            '        bDownstreamOfDegradedProvenance=bool(\n'
+            '            dictTaintState'
+            ' and dictTaintState.get("bDegradedUpstream"),\n'
+            '        ),\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testABuiltResultCarriesTheFlagOnlyWhenTrue'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Drop the flag from the durable record: the mark exists only
+        # as a live WebSocket event and any reconnect silently forgets
+        # which results ran downstream of undocumented data.
+        old=(
+            '    if bDownstreamOfDegradedProvenance:\n'
+            '        dictResult["bDownstreamOfDegradedProvenance"]'
+            ' = True\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictResult["bDownstreamOfDegradedProvenance"]'
+            ' = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProvenanceTaint.py::'
+            'testAFlaggedEventReachesTheDurableRecordOnBothWritePaths'
+        ),
+        source='vaibify/gui/pipelineLogger.py',
+        # Both persistence dispatches forget the event's flag; the
+        # reconnect render then depends on which lane served the run.
+        # Two copies by construction (inline + StateWriter), so both
+        # are mutated — disabling one alone changes nothing the
+        # inline-lane half of the test observes.
+        old=(
+            'bDownstreamOfDegradedProvenance=dictEvent.get(\n'
+            '                    "bDownstreamOfDegradedProvenance",'
+            ' False)'
+        ),
+        new=(
+            'bDownstreamOfDegradedProvenance=(False and dictEvent.get(\n'
+            '                    "bDownstreamOfDegradedProvenance",'
+            ' False))'
+        ),
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAStepDownstreamOfDegradedProvenanceWearsTheGlyph'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # The live stepPass event's taint never reaches the store: the
+        # tab that watched the run shows two ordinary lights.
+        old=(
+            '            VaibifyApp.fnSetStepTaint(\n'
+            '                iPassIdx,'
+            ' !!dictEvent.bDownstreamOfDegradedProvenance);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnSetStepTaint(\n'
+            '                iPassIdx, false);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testACleanRunsResultsWearNoTaintGlyph'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        # Render the glyph unconditionally: a mark on every step says
+        # nothing, and the researcher learns to ignore exactly the
+        # warning ruling R6 exists to make visible.
+        old='        if (bDownstreamOfDegraded) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testATaintMarkSurvivesAReconnect'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # Both recovery lanes drop the persisted flag: the mark exists
+        # only for the tab that watched the run live, and reopening
+        # the dashboard silently launders the tainted results. Two
+        # copies by construction (running + completed appliers).
+        old=(
+            '            VaibifyApp.fnSetStepTaint(iStep,'
+            ' !!dictResults[sKey]\n'
+            '                .bDownstreamOfDegradedProvenance);\n'
+        ),
+        new=(
+            '            VaibifyApp.fnSetStepTaint(iStep, false);\n'
+        ),
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleCapturedWorkflow.py::'
+            'test_an_unacknowledged_run_frame_is_refused'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Restore the retired grandfathering: an ack-less frame rides
+        # the two-way check only, so an out-of-date vaibify-do runs a
+        # copy nobody vouched for instead of being told to rebuild.
+        old=(
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return _fdictSupersededRefusalEvent(\n'
+            '            sAction, dictRequest, sRecordFingerprint,\n'
+            '            "the run frame carried no acknowledged'
+            ' workflow "\n'
+            '            "fingerprint; this caller predates the'
+            ' acknowledgment "\n'
+            '            "contract — rebuild the container image to'
+            ' update its "\n'
+            '            "vaibify-do",\n'
+            '        )\n'
+        ),
+        new=(
+            '    if sAckFingerprint is None and sAckPath is None:\n'
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_run_frame_carries_the_bound_acknowledgment'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        # Skip the workflowBound adoption: every run action from the
+        # in-container CLI is then refused as unacknowledged, and the
+        # agent lane cannot run anything at all.
+        old='    if dictBound is not None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testAHostTerminalOpensWithTheBannerAndEchoes'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # RE-ANCHORED 2026-08-15: the old entry's mutation ("treat a
+        # host project as terminal-capable") IS the production
+        # behavior now — the ruling made the host terminal real. What
+        # this entry guards instead is the ruling's honesty device:
+        # drop the per-session banner and the researcher's first
+        # host shell looks exactly like a contained one.
+        old=(
+            '            sIntroductionBanner=(\n'
+            '                S_HOST_TERMINAL_BANNER if bHostProject'
+            ' else ""\n'
+            '            ),\n'
+        ),
+        new=(
+            '            sIntroductionBanner="",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_real_shell_round_trips_and_the_drain_proves_it_gone'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # Never open the gate: the "shell" stays a suspended stub and
+        # the researcher's terminal is a pane nothing ever answers.
+        old=(
+            '        dictLaunch["fnReleaseGate"]()\n'
+            '        self._bRunning = True\n'
+        ),
+        new=(
+            '        self._bRunning = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_record_is_in_flight_before_the_shell_can_run'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # Open the gate before the promote: the shell's first
+        # instructions run with no durable identity on disk — the
+        # crash window ruling 12 exists to close.
+        old=(
+            '        terminalContainment.fnPromoteHostTerminalOperation(\n'
+            '            self._sResourceName, sOperationId, iPid,\n'
+            '            self._dictContainment["iOwnerGeneration"],\n'
+            '        )\n'
+            '        dictLaunch["fnReleaseGate"]()\n'
+        ),
+        new=(
+            '        dictLaunch["fnReleaseGate"]()\n'
+            '        terminalContainment.fnPromoteHostTerminalOperation(\n'
+            '            self._sResourceName, sOperationId, iPid,\n'
+            '            self._dictContainment["iOwnerGeneration"],\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_backgrounded_job_in_its_own_group_is_seen'
+        ),
+        source='vaibify/config/processLiveness.py',
+        # Narrow the session sweep to the process group: a disowned
+        # background job in its own group becomes invisible — the
+        # container terminal's codex-round-12 hole, re-opened on the
+        # host.
+        old=(
+            '        if iSessionId == iSessionLeader or '
+            'iProcessGroup == iSessionLeader:\n'
+        ),
+        new=(
+            '        if iProcessGroup == iSessionLeader:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_drain_kills_the_stray_group_job_and_proves_it'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # Drop the per-member delivery: killpg alone cannot reach a
+        # job the shell moved to its own group, so the drain can
+        # never prove the session empty and every terminal close
+        # quarantines over a survivor it refused to signal.
+        old=(
+            '        try:\n'
+            '            os.kill(iMemberPid, iSignalNumber)\n'
+            '        except (ProcessLookupError, PermissionError):\n'
+            '            continue\n'
+        ),
+        new=(
+            '        continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_a_dead_host_terminal_record_settles_at_reconcile_time'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Route host terminal records through the Docker exec probe:
+        # "missing exec id" forever, so every crashed host hub with a
+        # terminal open quarantines permanently.
+        old=(
+            '    if not sDockerExecId and'
+            ' fbIsUsablePid(dictRecord.get("iHolderPid")):\n'
+        ),
+        new=(
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalRoutesCoverage.py::'
+            'TestTerminalWsIsGatedNotWithdrawn::'
+            'test_a_host_project_is_served_by_the_pty_twin'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # The host branch never fires: a host project falls through to
+        # the daemon requirement and the Docker session class, and the
+        # researcher is told to install Docker for a project that
+        # never wanted one.
+        old='        if fbIsHostProject(sName):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalRoutesCoverage.py::'
+            'TestTerminalWsIsGatedNotWithdrawn::'
+            'test_a_container_project_is_served_by_the_docker_leg'
+        ),
+        source='vaibify/gui/routes/terminalRoutes.py',
+        # The host branch always fires: a container project's shell
+        # forks on the HUB's machine instead of exec-ing into the
+        # container — a sandbox escape wearing a terminal's face.
+        old='        if fbIsHostProject(sName):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliSession.py::'
+            'test_do_drives_a_host_project_with_no_docker_leg'
+        ),
+        source='vaibify/cli/hubSession.py',
+        # Drop the resolver's host branch: the researcher-lane CLI
+        # tells a host project's owner to `vaibify start --detach` a
+        # container that never existed — Phase D's found defect,
+        # restored.
+        old=(
+            '        if dictContainer.get("sMode") == "host":\n'
+            '            return sContainerName\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliSession.py::'
+            'test_resolve_id_container_still_requires_a_running_id'
+        ),
+        source='vaibify/cli/hubSession.py',
+        # Invert the mode rule: every container project is addressed
+        # by NAME, and each later route gets an id that is not a
+        # Docker id, failing somewhere less legible than the start
+        # hint this resolver owns.
+        old='        if dictContainer.get("sMode") == "host":\n',
+        new='        if dictContainer.get("sMode") != "host":\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_reachability_probe_runs_in_the_project_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the reachability probe to the /workspace first-repo
+        # scan: a host project probes a directory that does not exist
+        # on the researcher's machine, so every push is refused with a
+        # credential hint while `gh auth status` is green (found live,
+        # 2026-08-17).
+        old=(
+            '    return (\n'
+            '        f"cd {fsShellQuote(sProjectRepoPath)} && "\n'
+            '        "git ls-remote --exit-code origin HEAD '
+            '>/dev/null 2>&1"\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "for sDir in /workspace/*/; do "\n'
+            '        "  if [ -d \\"$sDir/.git\\" ]; then "\n'
+            '        "    cd \\"$sDir\\" && "\n'
+            '        "    git ls-remote --exit-code origin HEAD "\n'
+            '        "    >/dev/null 2>&1 && exit 0; "\n'
+            '        "  fi; "\n'
+            '        "done; exit 1"\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_remote_url_probe_runs_in_the_project_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the remote-url probe to the /workspace scan: the
+        # credential slot is resolved for whichever repo sorts first
+        # in a multi-repo container, and for no repo at all on a host.
+        old=(
+            '    return (\n'
+            '        f"cd {fsShellQuote(sProjectRepoPath)} && "\n'
+            '        "git remote get-url origin"\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "for sDir in /workspace/*/; do "\n'
+            '        "  if [ -d \\"$sDir/.git\\" ]; then "\n'
+            '        "    cd \\"$sDir\\" && git remote get-url origin '
+            '&& exit 0; "\n'
+            '        "  fi; "\n'
+            '        "done; exit 1"\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_github_check_refuses_before_probing_without_a_repo'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Drop the empty-path guard: the probe runs `cd '' && ...`,
+        # which succeeds in the shell's current directory, reporting
+        # connectivity for a repository that was never named.
+        old=(
+            '    if not sProjectRepoPath:\n'
+            '        return {\n'
+            '            "bConnected": False,\n'
+            '            "bContainerReachesGithub": False,\n'
+            '            "bHostCredentialAvailable": False,\n'
+            '            "sMessage": _S_NO_PROJECT_REPO_MESSAGE,\n'
+            '        }\n'
+        ),
+        new=(
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubTokenResolution.py::'
+            'test_every_route_connectivity_check_threads_the_repo_path'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # Drop the repo path from the check route: every host
+        # project's GitHub check answers the no-repository refusal,
+        # and only a github request down that path would notice.
+        old=(
+            '        dictResult = syncDispatcher.fdictCheckConnectivity(\n'
+            '            dictCtx["docker"], sContainerId, sService,\n'
+            '            _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))\n'
+        ),
+        new=(
+            '        dictResult = syncDispatcher.fdictCheckConnectivity(\n'
+            '            dictCtx["docker"], sContainerId, sService)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncDispatcherCoverage.py::'
+            'TestFtResultPushToGithubCommitGuard::'
+            'test_commit_skipped_when_add_stages_nothing'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Revert the add-variant commit guard: after one failed push
+        # leg, every retry dies at "nothing to commit" before the push
+        # can run — the repo is stranded ahead of origin and the real
+        # push error is unreachable (found live, 2026-08-17; the
+        # staged variant's identical 2026-07-02 fix never reached this
+        # sibling).
+        old=(
+            '        f"git {sHardening} add {sQuotedPaths} && "\n'
+            '        f"(git diff --cached --quiet || "\n'
+            '        f"git {sHardening} commit -m '
+            '{fsShellQuote(sCommitMessage)}) && "\n'
+        ),
+        new=(
+            '        f"git {sHardening} add {sQuotedPaths} && "\n'
+            '        f"git {sHardening} commit -m '
+            '{fsShellQuote(sCommitMessage)} && "\n'
         ),
     ),
 ]

@@ -247,7 +247,15 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
 
 
 def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
-    """Return the running Docker id the hub knows for a container name."""
+    """Return the resource id the hub addresses this project by.
+
+    A container project's id is its running Docker id, and asking for
+    one that is not running earns the start hint. A HOST project's
+    resource id IS its registry name (host-mode plan §9): nothing
+    needs to be "running" first — there is no container, no readiness
+    wait, and telling a researcher to ``vaibify start --detach`` a
+    project that never wanted Docker was Phase D's found defect.
+    """
     jsonBody = _fjsonRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, sCredential, "GET", "/api/registry", None,
@@ -258,6 +266,8 @@ def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
     for dictContainer in (jsonBody or {}).get("listContainers", []):
         if dictContainer.get("sName") != sContainerName:
             continue
+        if dictContainer.get("sMode") == "host":
+            return sContainerName
         sContainerId = dictContainer.get("sContainerId") or ""
         if not sContainerId:
             raise HubSessionError(

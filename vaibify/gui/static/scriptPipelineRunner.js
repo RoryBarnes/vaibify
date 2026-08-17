@@ -107,6 +107,8 @@ var VaibifyPipelineRunner = (function () {
         } else if (dictEvent.sType === "stepPass") {
             var iPassIdx = dictEvent.iStepNumber - 1;
             VaibifyApp.fnSetStepStatus(iPassIdx, "pass");
+            VaibifyApp.fnSetStepTaint(
+                iPassIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             VaibifyApp.fnClearOutputModified(iPassIdx);
             fnResetUserVerification(iPassIdx);
             fnAcknowledgeStepCompletion(iPassIdx);
@@ -122,12 +124,17 @@ var VaibifyPipelineRunner = (function () {
                 iFailIdx,
                 (_bStopRequested && dictEvent.iExitCode < 0)
                     ? "stopped" : "fail");
+            VaibifyApp.fnSetStepTaint(
+                iFailIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             fnResetUserVerification(iFailIdx);
             VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             _bStopRequested = false;
             _bRunLive = true;
+            /* A new run's taint is its own: the marks re-arrive on
+               this run's result events if its provenance degrades. */
+            VaibifyApp.fnClearStepTaints();
             VaibifyPolling.fnStopPipelinePolling();
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
@@ -137,8 +144,20 @@ var VaibifyPipelineRunner = (function () {
             _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
-            VaibifyApp.fnShowToast(
-                _fsCompletedToast(dictEvent.sCommand), "success");
+            /* §4.6: a run whose pull records did not all commit says
+               "with degraded provenance", never plain "completed" —
+               the clean toast would claim documentation the disk
+               does not have. */
+            if (dictEvent.bProvenanceDegraded) {
+                VaibifyApp.fnShowToast(
+                    _fsCompletedToast(dictEvent.sCommand) +
+                    " — with degraded provenance: pulled data may " +
+                    "be missing records; see the run log",
+                    "warning");
+            } else {
+                VaibifyApp.fnShowToast(
+                    _fsCompletedToast(dictEvent.sCommand), "success");
+            }
             _fnWarnIfRunMetadataUnrecorded(dictEvent);
             VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
@@ -158,6 +177,21 @@ var VaibifyPipelineRunner = (function () {
             // successful pull still left fresh files that need review
             // and commit, so the offer fires here too.
             _fnOfferCommitIfRemoteDataPulled();
+        } else if (dictEvent.sType === "stepMarkerRefused") {
+            /* Fail-closed pull marker: the step did NOT run. */
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + " refused: " +
+                dictEvent.sDetail, "error");
+        } else if (dictEvent.sType === "remoteDataMarkerRetained") {
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + "'s remote data " +
+                "is not fully documented: " + dictEvent.sReason,
+                "warning");
+        } else if (dictEvent.sType === "provenanceDegraded") {
+            VaibifyApp.fnShowToast(
+                "Step " + dictEvent.iStepNumber + " provenance: " +
+                (dictEvent.sDetail || "records were refused"),
+                "warning");
         } else if (dictEvent.sType === "runRefused") {
             VaibifyApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);
@@ -582,6 +616,8 @@ var VaibifyPipelineRunner = (function () {
             } else if (sStatus === "skipped") {
                 VaibifyApp.fnSetStepStatus(iStep, "");
             }
+            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
+                .bDownstreamOfDegradedProvenance);
         }
         if (dictState.iActiveStep > 0) {
             VaibifyApp.fnSetStepStatus(
@@ -631,6 +667,8 @@ var VaibifyPipelineRunner = (function () {
             } else if (sStatus === "stopped") {
                 VaibifyApp.fnSetStepStatus(iStep, "stopped");
             }
+            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
+                .bDownstreamOfDegradedProvenance);
         }
         VaibifyApp.fnRenderStepList();
     }

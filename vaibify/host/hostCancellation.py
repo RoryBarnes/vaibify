@@ -37,6 +37,8 @@ __all__ = [
     "fdictCancelJournaledHostRun",
     "fnTerminateProcessGroup",
     "fbProcessGroupProvedEmpty",
+    "fnSignalSessionMembers",
+    "fbAwaitSessionLeadership",
     "S_CANCEL_OUTCOME_TERMINATED",
     "S_CANCEL_OUTCOME_ALREADY_EXITED",
     "S_CANCEL_OUTCOME_REFUSED",
@@ -162,3 +164,65 @@ def fbProcessGroupProvedEmpty(iProcessGroup):
     except PermissionError:
         return False
     return False
+
+
+def fnSignalSessionMembers(iProcessGroup, listMemberPids, sSignalName):
+    """Best-effort signal of an ENUMERATED terminal session's members.
+
+    The terminal drain's delivery half: the members were enumerated by
+    the host leg's session-wide probe (a shell's job control moves
+    children to groups ``killpg`` alone cannot see), each is signalled
+    individually, and the recorded leader group gets ``killpg`` as
+    well for anything that joined between the enumeration and now.
+    Quiet on refusal — a vanished pid needs nothing, a pid this user
+    may not signal is not vaibify's to touch — because the
+    terminate-and-prove caller decides on the PROOF, never on the
+    delivery, exactly as the Docker leg's signaller does.
+    """
+    if sSignalName not in ("TERM", "KILL"):
+        raise ValueError(
+            f"Unsupported process-group signal {sSignalName!r}; "
+            "only TERM and KILL are allowlisted"
+        )
+    iSignalNumber = (
+        signal.SIGTERM if sSignalName == "TERM" else signal.SIGKILL
+    )
+    for iMemberPid in listMemberPids:
+        if not fbIsUsablePid(iMemberPid):
+            continue
+        try:
+            os.kill(iMemberPid, iSignalNumber)
+        except (ProcessLookupError, PermissionError):
+            continue
+    if fbIsUsablePid(iProcessGroup):
+        try:
+            os.killpg(iProcessGroup, iSignalNumber)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def fbAwaitSessionLeadership(iPid, fTimeoutSeconds=15.0):
+    """Return True once ``iPid`` leads its own session.
+
+    The host terminal's discovery step: the launch stub calls
+    ``setsid`` after its gate opens, so the journaled pid IS the
+    future session id — but the record may only bind a group the
+    stub provably made its own. A child that dies before leading
+    (or never setsids) answers False, and the caller fails closed.
+    The bound is generous because a saturated CI runner can take
+    seconds to schedule the stub at all; a timeout here refuses a
+    healthy terminal, so it errs long — the fail-closed answer for a
+    genuinely dead child arrives immediately either way.
+    """
+    if not fbIsUsablePid(iPid):
+        return False
+    fDeadline = time.monotonic() + fTimeoutSeconds
+    while True:
+        try:
+            if os.getsid(iPid) == iPid:
+                return True
+        except (ProcessLookupError, PermissionError):
+            return False
+        if time.monotonic() >= fDeadline:
+            return False
+        time.sleep(0.02)

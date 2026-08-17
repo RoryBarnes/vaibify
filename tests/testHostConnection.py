@@ -7,7 +7,9 @@ ordering and the group-kill tests are registered as falsifications.
 """
 
 import os
+import shlex
 import stat
+import sys
 
 import pytest
 
@@ -308,6 +310,52 @@ class TestGatedExec:
                 S_PROJECT_NAME, "id", sUser="root",
             )
 
+    @pytest.mark.falsification
+    def test_environment_overlay_reaches_the_child(
+        self, tProjectAndConnection,
+    ):
+        """The overlay's entries are visible to the launched command.
+
+        Kills: dropping the overlay at the launch (``env=None``
+        regardless), which silently stops the host lane's determinism
+        guarantees from ever reaching the step's process while the
+        run still records them as applied.
+        """
+        _, connection = tProjectAndConnection
+        tExecResult = connection.ftRunInContainerStreamedWithChunks(
+            S_PROJECT_NAME,
+            'printf "%s" "$VAIBIFY_PROBE_VALUE"', None,
+            dictEnvironmentOverlay={
+                "VAIBIFY_PROBE_VALUE": "determinism-42",
+            },
+        )
+        assert tExecResult.iExitCode == 0
+        assert tExecResult.sStdout == "determinism-42"
+
+    @pytest.mark.falsification
+    def test_environment_overlay_inherits_the_base_environment(
+        self, tProjectAndConnection, monkeypatch,
+    ):
+        """An overlaid launch still carries the hub's own environment.
+
+        Kills: replacing the environment wholesale with the overlay —
+        the plan's ruling is inherited env PLUS overlay, because a
+        child stripped of the hub's environment is not the process
+        the researcher's own shell would have started. The probe is a
+        canary planted in the hub's environment, not PATH or HOME,
+        because bash synthesizes defaults for those when they are
+        missing and the mutation would go unobserved.
+        """
+        monkeypatch.setenv("VAIBIFY_INHERITED_CANARY", "present")
+        _, connection = tProjectAndConnection
+        tExecResult = connection.ftRunInContainerStreamedWithChunks(
+            S_PROJECT_NAME,
+            'printf "%s" "$VAIBIFY_INHERITED_CANARY"', None,
+            dictEnvironmentOverlay={"VAIBIFY_PROBE_VALUE": "x"},
+        )
+        assert tExecResult.iExitCode == 0
+        assert tExecResult.sStdout == "present"
+
     def test_chunk_callback_receives_ordered_lines(
         self, tProjectAndConnection,
     ):
@@ -371,6 +419,51 @@ class TestGatedExec:
             S_PROJECT_NAME,
         )
         assert dictOutcome["dictOperations"] == {}
+
+    @pytest.mark.falsification
+    def test_reap_surfaces_real_cpu_seconds(self, tProjectAndConnection):
+        """A completed host command carries its rusage CPU on the result.
+
+        Kills: dropping the rusage at the ``os.wait4`` reap
+        (``fCpuSeconds`` stuck at ``None`` for a completed child),
+        which re-opens the Phase B gap where every host step recorded
+        no CPU at all. The burn program consumes 0.2s of CPU by its
+        own ``process_time`` clock, so the reaped reading must exceed
+        0.1s on any machine.
+        """
+        _, connection = tProjectAndConnection
+        sBurnProgram = (
+            "import time\n"
+            "fDeadline = time.process_time() + 0.2\n"
+            "while time.process_time() < fDeadline:\n"
+            "    pass\n"
+        )
+        tExecResult = connection.ftRunInContainerStreamed(
+            S_PROJECT_NAME,
+            f"{shlex.quote(sys.executable)} -c "
+            f"{shlex.quote(sBurnProgram)}",
+        )
+        assert tExecResult.iExitCode == 0
+        assert tExecResult.fCpuSeconds is not None
+        assert tExecResult.fCpuSeconds > 0.1
+
+    @pytest.mark.falsification
+    def test_killed_command_records_absent_cpu_never_zero(
+        self, tProjectAndConnection,
+    ):
+        """A timed-out launch reports NO CPU reading, not a zero one.
+
+        Kills: fabricating 0.0 for the expired bound. 0.0 is a
+        measurement nobody took — the stats recorder's honesty idiom
+        (absent key, same terms as ``bDeterminismApplied``) depends
+        on ``None`` surviving from the reap to the dashboard.
+        """
+        _, connection = tProjectAndConnection
+        tExecResult = connection.ftRunInContainerStreamed(
+            S_PROJECT_NAME, "sleep 30", fTimeoutSeconds=1.0,
+        )
+        assert tExecResult.iExitCode == 124
+        assert tExecResult.fCpuSeconds is None
 
     def test_timeout_terminates_the_whole_recorded_group(
         self, tProjectAndConnection,
