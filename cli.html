@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev1033 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev1035 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc682c1"></script>
+      <script src="_static/documentation_options.js?v=72379615"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -453,7 +453,7 @@ one.</p>
 renders, read straight from the container, so no browser and no running
 hub is needed:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;import json,sys; print(json.load(sys.stdin)[&#39;dictProof&#39;][&#39;iProofLevel&#39;])&quot;</span>
+<span class="w">  </span><span class="s2">"import json,sys; print(json.load(sys.stdin)['dictProof']['iProofLevel'])"</span>
 </pre></div>
 </div>
 <p>One criterion is honestly absent. The dashboard polls file modification
@@ -884,10 +884,10 @@ dashboard action is a new CLI command, and an action the CLI could not
 dispatch fails CI
 (<code class="docutils literal notranslate"><span class="pre">testArchitecturalInvariants.py::testEveryCatalogActionHasCliCommand</span></code>).</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                       </span><span class="c1"># list every action, grouped by category</span>
-vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>&lt;action&gt;<span class="w"> </span>--help<span class="w">       </span><span class="c1"># one action&#39;s arguments</span>
-vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">          </span><span class="c1"># run one step through the dashboard&#39;s own path</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>&lt;action&gt;<span class="w"> </span>--help<span class="w">       </span><span class="c1"># one action's arguments</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">          </span><span class="c1"># run one step through the dashboard's own path</span>
 vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>push-to-github<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="nv">listFilePaths</span><span class="o">=</span><span class="s1">&#39;[&quot;Step/out.csv&quot;]&#39;</span>
+<span class="w">    </span><span class="nv">listFilePaths</span><span class="o">=</span><span class="s1">'["Step/out.csv"]'</span>
 vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>check-l2-readiness<span class="w"> </span>--json
 </pre></div>
 </div>
@@ -930,12 +930,12 @@ container’s lease for the duration of one command and releases it
 afterwards — including when the action fails, so a failed command never
 strands the claim. A container currently open in a dashboard tab is
 therefore refused rather than taken over:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Error</span><span class="p">:</span> <span class="n">Container</span> <span class="s1">&#39;myProject&#39;</span> <span class="ow">is</span> <span class="n">held</span> <span class="n">by</span> <span class="n">another</span> <span class="n">vaibify</span> <span class="n">session</span><span class="p">:</span> <span class="n">In</span> <span class="n">use</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Error</span><span class="p">:</span> <span class="n">Container</span> <span class="s1">'myProject'</span> <span class="ow">is</span> <span class="n">held</span> <span class="n">by</span> <span class="n">another</span> <span class="n">vaibify</span> <span class="n">session</span><span class="p">:</span> <span class="n">In</span> <span class="n">use</span>
 <span class="ow">in</span> <span class="n">another</span> <span class="n">browser</span> <span class="n">session</span><span class="o">.</span> <span class="n">Vaibify</span> <span class="n">allows</span> <span class="n">one</span> <span class="n">session</span> <span class="n">per</span> <span class="n">container</span><span class="p">,</span> <span class="n">so</span>
 <span class="n">this</span> <span class="n">command</span> <span class="n">cannot</span> <span class="n">take</span> <span class="n">it</span> <span class="kn">from</span><span class="w"> </span><span class="nn">a</span> <span class="n">live</span> <span class="n">dashboard</span><span class="o">.</span> <span class="n">Either</span> <span class="n">close</span> <span class="n">the</span>
 <span class="n">dashboard</span> <span class="n">tab</span> <span class="n">holding</span> <span class="n">it</span> <span class="p">(</span><span class="ow">or</span> <span class="n">release</span> <span class="n">the</span> <span class="n">container</span> <span class="kn">from</span><span class="w"> </span><span class="nn">the</span> <span class="n">picker</span><span class="p">)</span> <span class="ow">and</span>
 <span class="n">run</span> <span class="n">this</span> <span class="n">again</span><span class="p">,</span> <span class="ow">or</span> <span class="n">run</span> <span class="n">the</span> <span class="n">same</span> <span class="n">action</span> <span class="kn">from</span><span class="w"> </span><span class="nn">inside</span> <span class="n">the</span> <span class="n">container</span> <span class="k">with</span>
-<span class="s1">&#39;vaibify-do&#39;</span><span class="p">,</span> <span class="n">the</span> <span class="ow">in</span><span class="o">-</span><span class="n">container</span> <span class="n">agent</span> <span class="n">lane</span><span class="p">,</span> <span class="n">which</span> <span class="n">acts</span> <span class="n">within</span> <span class="n">the</span> <span class="n">session</span>
+<span class="s1">'vaibify-do'</span><span class="p">,</span> <span class="n">the</span> <span class="ow">in</span><span class="o">-</span><span class="n">container</span> <span class="n">agent</span> <span class="n">lane</span><span class="p">,</span> <span class="n">which</span> <span class="n">acts</span> <span class="n">within</span> <span class="n">the</span> <span class="n">session</span>
 <span class="n">that</span> <span class="ow">is</span> <span class="n">already</span> <span class="nb">open</span><span class="o">.</span>
 </pre></div>
 </div>

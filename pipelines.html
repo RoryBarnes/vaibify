@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev1033 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev1035 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc682c1"></script>
+      <script src="_static/documentation_options.js?v=72379615"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -237,33 +237,33 @@ multiple projects per container.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading"></a></h2>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;sPlotDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Plot&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;sFigureType&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pdf&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;iNumberOfCores&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-1</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;listSteps&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">"sPlotDirectory"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Plot"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sFigureType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pdf"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"iNumberOfCores"</span><span class="p">:</span><span class="w"> </span><span class="mi">-1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"listSteps"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RunSimulation&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;examples/EarthWater&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bRunEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                </span><span class="s2">&quot;python runAnalysis.py&quot;</span>
+<span class="w">            </span><span class="nt">"sName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"RunSimulation"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"sDirectory"</span><span class="p">:</span><span class="w"> </span><span class="s2">"examples/EarthWater"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"bRunEnabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"bPlotOnly"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"saDataCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="s2">"python runAnalysis.py"</span>
 <span class="w">            </span><span class="p">],</span>
-<span class="w">            </span><span class="nt">&quot;saPlotCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                </span><span class="s2">&quot;python makePlot.py&quot;</span>
+<span class="w">            </span><span class="nt">"saPlotCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="s2">"python makePlot.py"</span>
 <span class="w">            </span><span class="p">],</span>
-<span class="w">            </span><span class="nt">&quot;saPlotFiles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">            </span><span class="nt">"saPlotFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="w">        </span><span class="p">},</span>
 <span class="w">        </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PlotResults&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;examples/EarthWater&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bRunEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">            </span><span class="nt">&quot;saPlotCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">                </span><span class="s2">&quot;python makePlot.py&quot;</span>
+<span class="w">            </span><span class="nt">"sName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PlotResults"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"sDirectory"</span><span class="p">:</span><span class="w"> </span><span class="s2">"examples/EarthWater"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"bRunEnabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"bPlotOnly"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"saDataCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"saPlotCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="s2">"python makePlot.py"</span>
 <span class="w">            </span><span class="p">],</span>
-<span class="w">            </span><span class="nt">&quot;saPlotFiles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">            </span><span class="nt">"saPlotFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="p">}</span>

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev1033 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev1035 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc682c1"></script>
+      <script src="_static/documentation_options.js?v=72379615"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -271,9 +271,9 @@ step, including its verification badges.</p></li>
 event. The next file-status poll (below) detects any new or modified
 output files and degrades stale verifications.</p></li>
 </ol>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">User</span> <span class="n">clicks</span> <span class="s2">&quot;Run All&quot;</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">User</span> <span class="n">clicks</span> <span class="s2">"Run All"</span>
   <span class="o">-&gt;</span> <span class="n">VaibifyPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">&quot;runAll&quot;</span><span class="p">})</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">"runAll"</span><span class="p">})</span>
   <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineServer</span> <span class="n">WebSocket</span> <span class="n">handler</span>
   <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fiRunAllSteps</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">For</span> <span class="n">each</span> <span class="n">step</span><span class="p">:</span> <span class="n">backend</span> <span class="n">emits</span> <span class="n">stepStarted</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">stepPass</span> <span class="ow">or</span>
@@ -297,7 +297,7 @@ a long analysis off-dashboard. Every five seconds the frontend polls
 the backend for the current state of every file the project cares
 about.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Every</span> <span class="mi">5</span> <span class="n">seconds</span> <span class="p">(</span><span class="n">VaibifyPolling</span><span class="p">):</span>
-  <span class="o">-&gt;</span> <span class="n">VaibifyApi</span><span class="o">.</span><span class="n">fdictGet</span><span class="p">(</span><span class="s2">&quot;/api/pipeline/</span><span class="si">{id}</span><span class="s2">/file-status&quot;</span><span class="p">)</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyApi</span><span class="o">.</span><span class="n">fdictGet</span><span class="p">(</span><span class="s2">"/api/pipeline/</span><span class="si">{id}</span><span class="s2">/file-status"</span><span class="p">)</span>
   <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineRoutes</span><span class="o">.</span><span class="n">_fnRegisterFileStatus</span> <span class="n">handler</span>
   <span class="o">-&gt;</span> <span class="n">fileStatusManager</span><span class="p">:</span> <span class="n">compute</span> <span class="n">mtimes</span><span class="p">,</span> <span class="n">detect</span> <span class="n">changes</span><span class="p">,</span> <span class="n">check</span> <span class="n">stale</span>
      <span class="n">verifications</span>

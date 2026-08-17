@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev1033 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev1035 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc682c1"></script>
+      <script src="_static/documentation_options.js?v=72379615"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -141,9 +141,9 @@ number passed 290, which is the same prose-drifts-from-code failure the
 falsification tests themselves exist to catch. The live numbers are on
 the README badges, refreshed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> on every push to <code class="docutils literal notranslate"><span class="pre">main</span></code>.
 To count them yourself:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not docker and not docker_live&quot;</span><span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
-python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
-python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>falsification<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not docker and not docker_live"</span><span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>falsification<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
 </pre></div>
 </div>
 <p>The first two are conventional. The third is the one that needs
@@ -323,10 +323,10 @@ the mutation gate flags new code that arrived without a guarantee.</p>
 </section>
 <section id="running-the-suites-locally">
 <h2>Running the suites locally<a class="headerlink" href="#running-the-suites-locally" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 
 <span class="c1"># everything (unit + invariants + falsification tests):</span>
-pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not docker and not docker_live&quot;</span>
+pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not docker and not docker_live"</span>
 
 <span class="c1"># just the falsification tests:</span>
 pytest<span class="w"> </span>-m<span class="w"> </span>falsification
@@ -334,11 +334,11 @@ pytest<span class="w"> </span>-m<span class="w"> </span>falsification
 <span class="c1"># just the architectural invariants:</span>
 pytest<span class="w"> </span>tests/testArchitecturalInvariants.py
 
-<span class="c1"># the standing negative control (re-break each guard, confirm it&#39;s caught):</span>
+<span class="c1"># the standing negative control (re-break each guard, confirm it's caught):</span>
 python<span class="w"> </span>tools/reconfirmFalsification.py
 
 <span class="c1"># the mutation gate on a module, for the curious (heavier; separate extra):</span>
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[mutation]&quot;</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[mutation]"</span>
 cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cosmic-ray<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cr-rate<span class="w"> </span>session.sqlite
 </pre></div>
 </div>
