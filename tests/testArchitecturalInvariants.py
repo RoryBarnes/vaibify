@@ -4894,7 +4894,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # become composers of the project repo path (mode-correct for
     # host projects), plus the empty-path refusal and the recorded
     # rationale for why no root may be hardcoded here.
-    "syncDispatcher.py": 1948,
+    # +10 (2026-08-17, push retry): the add-variant push adopts the
+    # staged variant's commit guard, with the docstring recording the
+    # stranded-commits failure it closes.
+    "syncDispatcher.py": 1958,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
