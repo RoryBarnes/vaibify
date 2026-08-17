@@ -54,6 +54,8 @@ __all__ = [
     "fnUnlinkStaleControlSockets",
     "fnRegisterHostControlChannel",
     "fdictSendHostControlRequest",
+    "fdictReconcileHeldContainer",
+    "fbHubHoldsContainerFlockForName",
 ]
 
 import asyncio
@@ -397,12 +399,10 @@ def _fsNotHeldHereRefusal(sName):
 async def _fdictHandleReconcile(app, dictCtx, dictRequest):
     """Reconcile a container this live hub holds (design §8).
 
-    Takes the container-mutation lock with a bounded wait — a wedged
-    mode-(b) supervisor holds that lock for its worker's whole life, so
-    an unbounded wait would hang the control plane on the very worker
-    reconciliation exists to recover from. The proving core runs off
-    the loop; the in-memory ``PoisonRecord`` is cleared after the proof
-    and the durable marker is cleared LAST.
+    Validation only; the transaction itself is
+    :func:`fdictReconcileHeldContainer`, shared with the dashboard's
+    quarantine route so the two entry points cannot diverge about what
+    a reconcile proves.
     """
     sName = _fsValidatedContainerName(dictRequest)
     if not sName:
@@ -414,6 +414,27 @@ async def _fdictHandleReconcile(app, dictCtx, dictRequest):
             "journal operation id(s), so a stale request cannot act on "
             "a successor operation"
         )
+    return await fdictReconcileHeldContainer(
+        app, dictCtx, sName, listExpectedIds,
+    )
+
+
+async def fdictReconcileHeldContainer(app, dictCtx, sName, listExpectedIds):
+    """Reconcile a container whose flock this live hub holds.
+
+    Takes the container-mutation lock with a bounded wait — a wedged
+    mode-(b) supervisor holds that lock for its worker's whole life, so
+    an unbounded wait would hang the control plane on the very worker
+    reconciliation exists to recover from. The proving core runs off
+    the loop; the in-memory ``PoisonRecord`` is cleared after the proof
+    and the durable marker is cleared LAST.
+
+    Two callers, one transaction: the host-control socket (the
+    ``vaibify reconcile`` CLI routed to a live hub) and the dashboard's
+    quarantine route. Refusals come back as ``{"bAccepted": False,
+    "sError": ...}`` values, never exceptions, so each caller renders
+    them in its own lane's vocabulary.
+    """
     if not _fbHubHoldsContainerFlock(app.state, sName):
         return _fdictRefusal(_fsNotHeldHereRefusal(sName))
     lockMutation = sessionLifecycle.flockContainerMutationForAppState(
@@ -435,6 +456,16 @@ async def _fdictHandleReconcile(app, dictCtx, dictRequest):
         )
     finally:
         lockMutation.release()
+
+
+def fbHubHoldsContainerFlockForName(appState, sName):
+    """Public face of the flock question, for the dashboard route.
+
+    The route needs it to choose between the held-hub transaction and
+    the crash-time one; exposing the answer keeps that choice out of
+    this module while keeping the flock reading in it.
+    """
+    return _fbHubHoldsContainerFlock(appState, sName)
 
 
 async def _fdictProveAndClearOnHub(app, dictCtx, sName, listExpectedIds):

@@ -377,6 +377,85 @@ def testStatusIgnoredAppearsInList(
     assert dictBody["listUndecided"] == []
 
 
+def testStatusActiveProjectRepoIsNeverUndecided(fixtureDocker):
+    """The workflow's own repo reads as tracked without any conf entry.
+
+    A project repo is usually hand-cloned or wizard-born, so it is in
+    neither the sidecar nor the build-time list — and it prompted as
+    "undecided" on every project entry. The active workflow is what
+    names it, so the fixture threads one through dictCtx the way the
+    hub does.
+    """
+    from vaibify.gui import trackedReposManager
+    trackedReposManager._dictConfiguredNamesCache.clear()
+    fixtureDocker.fnAddRepo("projectRepo")
+    fixtureDocker.dictFiles[
+        "/workspace/.vaibify/tracked_repos.json"
+    ] = json.dumps({
+        "iSchemaVersion": 1,
+        "listTracked": [],
+        "listIgnored": [],
+    })
+    app = FastAPI()
+    dictCtx = {
+        "docker": fixtureDocker,
+        "require": lambda *aArgs: None,
+        "workflows": {
+            "cid-project": {
+                "sProjectRepoPath": "/workspace/projectRepo",
+            },
+        },
+    }
+    fnRegisterAll(app, dictCtx)
+    clientProject = TestClient(app)
+    dictBody = clientProject.get(
+        "/api/repos/cid-project/status"
+    ).json()
+    listTrackedNames = [d["sName"] for d in dictBody["listTracked"]]
+    assert listTrackedNames == ["projectRepo"]
+    assert dictBody["listUndecided"] == []
+    trackedReposManager._dictConfiguredNamesCache.clear()
+
+
+def testStatusConfiguredRepoIsNeverUndecided(
+    fixtureDocker, fixtureClient
+):
+    """A build-time repo missing from an old sidecar reads as tracked.
+
+    The sidecar here predates beta and gamma: it was persisted while
+    the entrypoint was still cloning. Beta has since landed on disk;
+    gamma has not. Neither may prompt as "undecided" — beta joins the
+    tracked list as present, gamma as missing-until-cloned.
+    """
+    from vaibify.gui import trackedReposManager
+    trackedReposManager._dictConfiguredNamesCache.clear()
+    fixtureDocker.fnAddRepo("alpha")
+    fixtureDocker.fnAddRepo("beta")
+    fixtureDocker.dictFiles[
+        "/workspace/.vaibify/tracked_repos.json"
+    ] = json.dumps({
+        "iSchemaVersion": 1,
+        "listTracked": [{"sName": "alpha", "sUrl": "https://x/y.git"}],
+        "listIgnored": [],
+    })
+    fixtureDocker.dictFiles["/etc/vaibify/container.conf"] = (
+        "alpha|https://x/y.git|main|reference\n"
+        "beta|https://x/beta.git|main|reference\n"
+        "gamma|https://x/gamma.git|main|reference\n"
+    )
+    response = fixtureClient.get("/api/repos/cid-conf/status")
+    assert response.status_code == 200
+    dictBody = response.json()
+    dictEntries = {
+        d["sName"]: d for d in dictBody["listTracked"]
+    }
+    assert sorted(dictEntries) == ["alpha", "beta", "gamma"]
+    assert dictEntries["beta"]["bMissing"] is False
+    assert dictEntries["gamma"]["bMissing"] is True
+    assert dictBody["listUndecided"] == []
+    trackedReposManager._dictConfiguredNamesCache.clear()
+
+
 # ------- listNonRepoDirs in /status -------
 
 def testStatusListNonRepoDirsEmptyByDefault(

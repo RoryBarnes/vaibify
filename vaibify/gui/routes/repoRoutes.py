@@ -229,11 +229,42 @@ def _fdictAssembleStatusPayload(
     }
 
 
-def _fdictBuildStatusResponse(connectionDocker, sContainerId):
-    """Assemble the full GET /status response payload."""
+def _fsActiveProjectRepoName(dictCtx, sContainerId):
+    """Return the active workflow's top-level repo basename, or ``''``.
+
+    Only a repository sitting directly under the resource root is
+    discoverable by the panel, so only that shape is worth unioning; a
+    nested project repo is never surfaced and therefore never prompts.
+    """
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if not dictWorkflow:
+        return ""
+    sRepoPath = (dictWorkflow.get("sProjectRepoPath") or "").rstrip("/")
+    sRoot = fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT).rstrip("/")
+    if not sRepoPath or posixpath.dirname(sRepoPath) != sRoot:
+        return ""
+    sRepoName = posixpath.basename(sRepoPath)
+    return "" if sRepoName.startswith(".") else sRepoName
+
+
+def _fdictBuildStatusResponse(connectionDocker, sContainerId, sProjectRepoName):
+    """Assemble the full GET /status response payload.
+
+    The active workflow's own repository merges into the tracked list
+    exactly as the build-time repos do: a researcher plainly tracks
+    the repo their project lives in, yet it is usually cloned by hand
+    or born from the wizard, so no build-time list covers it — and the
+    panel greeted it as a stranger with the track-or-ignore prompt
+    (reported 2026-08-14). The shared merge keeps an explicit Ignore
+    effective here too.
+    """
     dictSidecar = trackedReposManager.fdictReadOrSeedSidecar(
         connectionDocker, sContainerId
     )
+    if sProjectRepoName:
+        trackedReposManager.fnMergeConfiguredIntoTracked(
+            dictSidecar, [sProjectRepoName],
+        )
     listDiscovered = trackedReposManager.flistDiscoverGitDirs(
         connectionDocker, sContainerId
     )
@@ -261,6 +292,7 @@ def _fnRegisterStatus(app, dictCtx):
         return await asyncio.to_thread(
             _fdictBuildStatusResponse,
             dictCtx["docker"], sContainerId,
+            _fsActiveProjectRepoName(dictCtx, sContainerId),
         )
 
 

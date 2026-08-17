@@ -137,6 +137,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterClaimContainer(app, dictCtx)
     _fnRegisterReleaseContainer(app, dictCtx)
     _fnRegisterQuarantineDetail(app, dictCtx)
+    _fnRegisterReconcileQuarantine(app, dictCtx)
 
 
 def _fnRegisterGetRegistry(app, dictCtx):
@@ -283,6 +284,7 @@ def _fnRegisterQuarantineDetail(app, dictCtx):
 
     @app.get("/api/registry/{sName}/quarantine")
     async def fdictExplainQuarantine(sName: str):
+        from vaibify.config.registryManager import fbIsHostProject
         _fnRejectInvalidProjectName(sName)
         dictResolution = operationJournal.fdictResolveContainerJournal(
             sName, dictCtx.get("docker"), bPersistResolution=False,
@@ -303,6 +305,86 @@ def _fnRegisterQuarantineDetail(app, dictCtx):
             "sReadState": sReadState,
             "listRecords": listRecords,
             "sRemedy": f"vaibify reconcile {sName}",
+            # A VALID journal with records can be reconciled from the
+            # modal; a malformed one cannot — its exits (break-glass,
+            # abandon) are destructive judgements that stay on the
+            # host CLI. The host flag decides whether the modal may
+            # offer the container-only stop-and-certify escalation.
+            "bReconcilableHere": (
+                sReadState == "valid" and bool(listRecords)
+            ),
+            "bHostProject": fbIsHostProject(sName),
+        }
+
+
+class ReconcileQuarantineRequest(BaseModel):
+    """Body for ``POST /api/registry/{sName}/reconcile``.
+
+    The expected ids are the concurrency guard the CLI carries too: the
+    modal reconciles the records it SHOWED, so a record that appeared
+    after the researcher read the explanation is never cleared blind.
+    """
+
+    listExpectedOperationIds: List[str]
+
+
+def _fnRegisterReconcileQuarantine(app, dictCtx):
+    """Register POST /api/registry/{sName}/reconcile.
+
+    The dashboard face of ``vaibify reconcile``, restricted to what a
+    reconcile can do NON-destructively: prove every shown record
+    settled and clear the quarantine, or refuse with the reason. The
+    proving transaction is the same one the CLI reaches — the held-hub
+    core when this hub holds the container's flock, the crash-time
+    transaction when nothing does — so the two lanes cannot diverge.
+    The destructive exits (break-glass on a malformed journal,
+    force-abandon, abandon-host-journal) deliberately stay on the host
+    CLI: those are trust judgements about possibly-corrupt state, and
+    design §8's reason for keeping them a deliberate host-side act is
+    untouched by making the PROVE reachable from the modal.
+    """
+    from vaibify.config import reconciliation
+    from vaibify.gui import hostControlChannel
+
+    @app.post("/api/registry/{sName}/reconcile")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictReconcileQuarantine(
+        sName: str, request: ReconcileQuarantineRequest,
+    ):
+        _fnRejectInvalidProjectName(sName)
+        listExpectedIds = [
+            sId for sId in request.listExpectedOperationIds
+            if isinstance(sId, str) and sId
+        ]
+        if not listExpectedIds:
+            raise HTTPException(
+                400, "listExpectedOperationIds must name the journal "
+                "record(s) being reconciled",
+            )
+        if hostControlChannel.fbHubHoldsContainerFlockForName(
+            app.state, sName,
+        ):
+            dictOutcome = await hostControlChannel.fdictReconcileHeldContainer(
+                app, dictCtx, sName, listExpectedIds,
+            )
+            if not dictOutcome.get("bAccepted"):
+                raise HTTPException(
+                    409, dictOutcome.get("sError", "reconciliation refused"),
+                )
+            return {
+                "bReconciled": True,
+                "listRecordNotes": dictOutcome.get("listRecordNotes", []),
+            }
+        try:
+            dictProven = await asyncio.to_thread(
+                reconciliation.fdictReconcileCrashTimeJournal,
+                sName, dictCtx.get("docker"), set(listExpectedIds),
+            )
+        except reconciliation.ReconciliationRefusedError as errorRefused:
+            raise HTTPException(409, str(errorRefused))
+        return {
+            "bReconciled": True,
+            "listRecordNotes": dictProven["listRecordNotes"],
         }
 
 

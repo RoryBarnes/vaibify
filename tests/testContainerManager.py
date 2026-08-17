@@ -430,6 +430,26 @@ def test_fnAddAgentHostBridge_no_op_when_agent_disabled():
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
+def test_flistBuildRunArgs_requests_a_reaping_init(mockX11):
+    """--init is the default for every launch mode.
+
+    The keepalive command is ``sleep infinity``, which reaps nothing:
+    without tini as PID 1 every orphaned child that dies stays a
+    zombie forever, and one permanent zombie in a journaled process
+    group made a terminal quarantine unclearable short of a container
+    restart (2026-08-14).
+    """
+    for dictMode in (
+        {}, {"bDetached": True}, {"bCreateOnly": True},
+    ):
+        saArgs = flistBuildRunArgs(_fConfigMinimal(), **dictMode)
+        assert "--init" in saArgs, f"--init missing for mode {dictMode}"
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
 def test_flistBuildRunArgs_drops_all_capabilities(mockX11):
     """Audit M3: --cap-drop=ALL is the default for every workflow."""
     config = _fConfigMinimal()

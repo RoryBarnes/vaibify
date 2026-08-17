@@ -331,7 +331,7 @@ const VaibifyTerminal = (function () {
 
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
         if (fbTerminalIsAvailableHere()) {
-            fnConnectTerminalWebSocket(dictTab, terminal);
+            fnArmLazyShellDial(dictPane, dictTab, terminal, elContainer);
         } else {
             fnRenderTerminalUnavailableNotice(terminal);
         }
@@ -438,6 +438,56 @@ const VaibifyTerminal = (function () {
             terminal.write(sLine + "\r\n");
         });
         terminal.options.cursorBlink = false;
+    }
+
+    /* --- Lazy shell dial ---
+       A shell is a quarantine-bearing operation: once one has run,
+       the container's quiescence can only be PROVEN settled, never
+       assumed, and an unclean exit leaves a journal record that
+       blocks the container until `vaibify reconcile`. Spawning the
+       shell on workflow entry meant every visit staked that claim
+       whether or not the researcher ever touched the pane — so the
+       pane now renders armed but silent, and the socket dials (and
+       the shell spawns) only on the researcher's first gesture into
+       it, or when a caller explicitly sends a command. */
+
+    function fnArmLazyShellDial(dictPane, dictTab, terminal, elContainer) {
+        terminal.write(
+            "\x1b[2m  A shell starts here on your first click or " +
+            "keystroke.\x1b[0m\r\n");
+        dictTab.disposableOnLazyData = terminal.onData(function () {
+            fnDialTabShell(dictTab);
+        });
+        dictTab.fnLazyMousedown = function () {
+            /* The container element is shared by every tab in the
+               pane; only the visible tab's gesture may dial. */
+            if (dictPane.listTabs[dictPane.iActiveTabIndex] === dictTab) {
+                fnDialTabShell(dictTab);
+            }
+        };
+        elContainer.addEventListener("mousedown", dictTab.fnLazyMousedown);
+        dictTab.elLazyContainer = elContainer;
+    }
+
+    function fnDisarmLazyShellDial(dictTab) {
+        if (dictTab.disposableOnLazyData) {
+            dictTab.disposableOnLazyData.dispose();
+        }
+        dictTab.disposableOnLazyData = null;
+        if (dictTab.elLazyContainer && dictTab.fnLazyMousedown) {
+            dictTab.elLazyContainer.removeEventListener(
+                "mousedown", dictTab.fnLazyMousedown);
+        }
+        dictTab.elLazyContainer = null;
+        dictTab.fnLazyMousedown = null;
+    }
+
+    function fnDialTabShell(dictTab) {
+        if (dictTab.websocket || !dictTab.terminal) return;
+        if (!fbTerminalIsAvailableHere()) return;
+        fnDisarmLazyShellDial(dictTab);
+        dictTab.terminal.reset();
+        fnConnectTerminalWebSocket(dictTab, dictTab.terminal);
     }
 
     function fnConnectTerminalWebSocket(dictTab, terminal) {
@@ -620,6 +670,7 @@ const VaibifyTerminal = (function () {
     }
 
     function fnDisposeTab(dictTab) {
+        fnDisarmLazyShellDial(dictTab);
         if (dictTab.websocket) dictTab.websocket.close();
         dictTab.websocket = null;
         if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();
@@ -916,7 +967,13 @@ const VaibifyTerminal = (function () {
             } else {
                 fnCreateTab(0);
             }
-            return _fbSendWhenReady(listPanes[0], sCommand);
+            /* An explicit command is as deliberate as a keystroke:
+               the fresh tab is armed lazy, so dial it before asking
+               whether the command will reach a shell. */
+            var dictPane = listPanes[0];
+            var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+            if (dictTab) fnDialTabShell(dictTab);
+            return _fbSendWhenReady(dictPane, sCommand);
         },
     };
 })();

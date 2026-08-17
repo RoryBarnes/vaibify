@@ -1309,20 +1309,27 @@ class DockerConnection:
         """
         return self._clientDocker.api.exec_inspect(sExecId)
 
-    def ftRunRootShellProbe(self, sContainerId, sScript):
-        """Run a ``/bin/sh`` script as root; return (iExitCode, sOutput).
+    def ftRunRootShellProbe(self, sContainerId, sScript, sUser="root"):
+        """Run a ``/bin/sh`` script as ``sUser``; return (iExitCode, sOutput).
 
         The containment-probe primitive (design v13 §6.1): group
         discovery, group signalling, and group-emptiness proof all run
         through it. It deliberately uses ``/bin/sh`` — not the bash the
         ordinary exec paths assume — so the probes work in minimal
-        images, and root so they can signal the unprivileged terminal
-        user's processes. Probes are part of the authority machinery,
-        not route-reachable mutations, so they carry no journal record.
+        images. Root is the default for the READ probes, which walk
+        ``/proc`` and need no capability. The SIGNAL leg cannot rely on
+        root: vaibify's containers run with every capability dropped
+        except a named few, and without ``CAP_KILL`` in-container root
+        gets EPERM signalling the unprivileged terminal user's
+        processes — silently, so the group survived every TERM/KILL and
+        the record quarantined. A signal caller therefore passes the
+        target's OWN user, whose same-uid signals need no capability.
+        Probes are part of the authority machinery, not route-reachable
+        mutations, so they carry no journal record.
         """
         container = self.fcontainerGetById(sContainerId)
         iExitCode, baOutput = container.exec_run(
-            ["/bin/sh", "-c", sScript], user="root", demux=False,
+            ["/bin/sh", "-c", sScript], user=sUser, demux=False,
         )
         sOutput = (baOutput or b"").decode("utf-8", errors="replace")
         return (-1 if iExitCode is None else int(iExitCode), sOutput)
@@ -1388,25 +1395,48 @@ class DockerConnection:
         sScript = _fsBuildProcessGroupScript(
             iProcessGroup, f'kill -{sSignalName} "$iMemberPid" 2>/dev/null',
         )
-        try:
-            self.ftRunRootShellProbe(sContainerId, sScript)
-        except Exception:
-            pass
+        # Two passes, one per process owner the container can hold. The
+        # container drops CAP_KILL, so root's kill reaches only
+        # root-owned members and EPERMs on the terminal user's shell --
+        # which is every terminal, since sessions spawn unprivileged.
+        # The container-user pass reaches those with same-uid signals,
+        # which need no capability. Each pass is swallowed
+        # independently: the terminate-and-prove caller decides on the
+        # PROOF, never on delivery.
+        for sExecUser in ("root", str(_I_CONTAINER_DEFAULT_UID)):
+            try:
+                self.ftRunRootShellProbe(
+                    sContainerId, sScript, sUser=sExecUser,
+                )
+            except Exception:
+                pass
 
 
 # POSIX-sh walk of /proc/*/stat matching a target session/process
 # group. The comm field can contain spaces and parentheses, so the
 # fields after it are recovered by stripping through the LAST ')'
-# (``${sStatContent##*) }``); positional field 3 is then pgrp and 4 is
-# session. The probe excludes its own shell by pid, and IGROUPTARGET
-# is substituted only after integer validation, so no caller-supplied
-# text can reach the script.
+# (``${sStatContent##*) }``); positional field 1 is then the state,
+# 3 is pgrp and 4 is session. The probe excludes its own shell by pid,
+# and IGROUPTARGET is substituted only after integer validation, so no
+# caller-supplied text can reach the script.
+#
+# A Z-state entry is skipped: a zombie is an exit record awaiting a
+# parent that may never collect it, not a process — it cannot execute,
+# write a file, or hold a socket, so every risk the quiescence claim
+# guards against is provably false for it. Counting zombies made a
+# quarantine unclearable short of a container restart whenever PID 1
+# does not reap (observed 2026-08-14: a defunct agent under a
+# sleep-infinity init refused reconcile forever). A stat line that
+# cannot be read still falls out of the walk, and an unparseable COUNT
+# is still inconclusive at the caller — the fail-closed shape is
+# unchanged.
 _S_PROCESS_GROUP_SCRIPT_TEMPLATE = """iCount=0
 for sStatPath in /proc/[0-9]*/stat; do
   sStatContent=$(cat "$sStatPath" 2>/dev/null) || continue
   sStatTail="${sStatContent##*) }"
   set -- $sStatTail
   [ "$3" = "IGROUPTARGET" ] || [ "$4" = "IGROUPTARGET" ] || continue
+  [ "$1" = "Z" ] && continue
   iMemberPid="${sStatPath#/proc/}"
   iMemberPid="${iMemberPid%/stat}"
   [ "$iMemberPid" = "$$" ] && continue

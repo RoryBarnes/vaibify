@@ -1,8 +1,13 @@
 """``vaibify reconcile`` — the proving exit from a journal quarantine.
 
-Host-lane only (design §8): reconciliation is a trust judgement about
-possibly-corrupt state, so it never rides the browser or agent lanes
-and needs no capability. Discovery decides the path: when a LIVE hub
+The destructive exits — break-glass, force-abandon,
+abandon-host-journal — are trust judgements about possibly-corrupt
+state, so they ride ONLY this host lane (design §8) and never the
+browser or agent lanes. The non-destructive PROVE is additionally
+reachable from the dashboard's quarantine modal (2026-08-17), which
+runs the same shared transaction and can therefore never clear what
+this command would refuse; the agent lane stays refused for all of it.
+Discovery decides the path: when a LIVE hub
 holds the container's flock, the request is routed to that hub over its
 peer-authenticated host control socket; when no live hub holds it, the
 crash-time transaction runs directly under a freshly-taken

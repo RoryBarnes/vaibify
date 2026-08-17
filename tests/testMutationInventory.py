@@ -117,7 +117,13 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # re-fingerprinted by its new environment argument — prior review
 # re-recorded), and the legacy epoch-query row beside them was
 # reviewed and classified while there.
-I_UNCLASSIFIED_ROW_BUDGET = 286
+# 286 -> 285 (2026-08-17 merge): the two lanes each classified one row
+# against the same 287 baseline — the containment signal walk (its
+# CAP_KILL review) on one side, the three host-determinism rows on the
+# other — so the union of the two review sets lands one lower than
+# either lane's own count. The tracked-repos conf fetch row rode the
+# same branch already classified.
+I_UNCLASSIFIED_ROW_BUDGET = 285
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

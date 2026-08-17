@@ -885,3 +885,170 @@ def test_the_sha256_program_matches_hashlib_and_empties_on_absent(tmp_path):
         "reload detector reads as 'cannot compare'; anything else is a "
         f"fingerprint it would trust: {sAbsentDigest!r}"
     )
+
+
+# -----------------------------------------------------------------------
+# fnSignalProcessGroupMembers — the CAP_KILL reality
+# -----------------------------------------------------------------------
+#
+# Vaibify's containers run with every capability dropped except a named
+# few, and CAP_KILL is not among them: in-container root gets EPERM
+# signalling the unprivileged terminal user's shell, silently, so the
+# group survived every TERM/KILL and the record quarantined. The signal
+# walk must therefore also run as the container user, whose same-uid
+# signals need no capability. The probe stays root: /proc walks need no
+# capability and root sees every process.
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_signal_walk_runs_as_root_and_as_container_user(mockGetDocker):
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockContainer.exec_run.return_value = (0, b"")
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.fnSignalProcessGroupMembers("abc123", 4242, "KILL")
+    listUsers = [
+        dictCall.kwargs["user"]
+        for dictCall in mockContainer.exec_run.call_args_list
+    ]
+    assert listUsers == ["root", "1000"], (
+        "the signal walk must run once as root and once as the "
+        f"container user; it ran as {listUsers}"
+    )
+    for dictCall in mockContainer.exec_run.call_args_list:
+        sScript = dictCall.args[0][2]
+        assert "kill -KILL" in sScript
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_signal_walk_swallows_each_pass_independently(mockGetDocker):
+    """A root pass that raises must not cost the container-user pass.
+
+    The unprivileged pass is the only one that can reach the terminal
+    shell, so an exception on the root leg (daemon hiccup, race with a
+    stopping container) must not short-circuit it. The verdict rides
+    on the probe either way.
+    """
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockContainer.exec_run.side_effect = [RuntimeError("boom"), (0, b"")]
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.fnSignalProcessGroupMembers("abc123", 4242, "TERM")
+    assert mockContainer.exec_run.call_count == 2
+
+
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_group_probes_still_run_as_root(mockGetDocker):
+    """The READ probes keep root: /proc walks see every process."""
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockContainer = _fMockContainer()
+    mockContainer.exec_run.return_value = (0, b"0\n")
+    mockClient.containers.get.return_value = mockContainer
+    conn = DockerConnection()
+    conn.fdictProbeProcessGroupMembers("abc123", 4242)
+    listUsers = [
+        dictCall.kwargs["user"]
+        for dictCall in mockContainer.exec_run.call_args_list
+    ]
+    assert listUsers == ["root"]
+
+
+# -----------------------------------------------------------------------
+# The process-group walk — zombies are not members
+# -----------------------------------------------------------------------
+#
+# A zombie is an exit record awaiting a parent that may never collect
+# it, not a process: it cannot execute, write, or hold a socket, so
+# the quiescence claim is true in its presence. Counting zombies made
+# a quarantine unclearable short of a container restart whenever PID 1
+# does not reap (a defunct agent under a sleep-infinity init refused
+# reconcile forever, 2026-08-14). These tests run the REAL walk script
+# in a real shell against a real group — Linux only, since the walk
+# reads /proc.
+
+
+def _fsRunGroupWalkScript(iProcessGroup):
+    """Run the built walk with a count-only action; return its stdout."""
+    import subprocess
+    from vaibify.docker.dockerConnection import (
+        _fsBuildProcessGroupScript,
+    )
+    tCompleted = subprocess.run(
+        ["/bin/sh", "-c", _fsBuildProcessGroupScript(iProcessGroup, ":")],
+        capture_output=True, text=True, timeout=30,
+    )
+    return tCompleted.stdout
+
+
+def _fnAwaitZombieInGroup(iProcessGroup):
+    """Poll /proc until the group holds a Z-state entry, or fail."""
+    import time
+    for _ in range(100):
+        if "Z" in _fsetGroupStates(iProcessGroup):
+            return
+        time.sleep(0.05)
+    raise AssertionError(
+        f"no zombie appeared in process group {iProcessGroup}"
+    )
+
+
+def _fsetGroupStates(iProcessGroup):
+    """Return the /proc stat states of every process in the group."""
+    import os
+    setStates = set()
+    for sPid in os.listdir("/proc"):
+        if not sPid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{sPid}/stat") as fileStat:
+                sTail = fileStat.read().rsplit(") ", 1)[-1]
+        except OSError:
+            continue
+        listFields = sTail.split()
+        if len(listFields) >= 4 and listFields[2] == str(iProcessGroup):
+            setStates.add(listFields[0])
+    return setStates
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="the walk reads /proc; Linux only",
+)
+def test_group_walk_counts_live_members_but_not_zombies():
+    import os
+    import subprocess
+    processGroupLeader = subprocess.Popen(
+        ["/bin/sh", "-c", "true & exec sleep 30"],
+        preexec_fn=os.setpgrp,
+    )
+    try:
+        iProcessGroup = processGroupLeader.pid
+        _fnAwaitZombieInGroup(iProcessGroup)
+        sOutput = _fsRunGroupWalkScript(iProcessGroup)
+        assert "iMembers=1" in sOutput, (
+            "expected exactly the live sleep counted (the true-zombie "
+            f"skipped); walk printed {sOutput!r}, group states "
+            f"{_fsetGroupStates(iProcessGroup)}"
+        )
+    finally:
+        processGroupLeader.kill()
+        processGroupLeader.wait()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="the walk reads /proc; Linux only",
+)
+def test_group_walk_reports_zero_for_an_emptied_group():
+    import os
+    import subprocess
+    processGroupLeader = subprocess.Popen(
+        ["/bin/sh", "-c", "exec sleep 30"], preexec_fn=os.setpgrp,
+    )
+    iProcessGroup = processGroupLeader.pid
+    processGroupLeader.kill()
+    processGroupLeader.wait()
+    assert "iMembers=0" in _fsRunGroupWalkScript(iProcessGroup)
