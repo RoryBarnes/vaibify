@@ -400,6 +400,8 @@ const VaibifyApp = (function () {
             fnProcessWorkflowDiscovery);
         VaibifyPolling.fnSetSessionLifetimeHandler(
             _fnHandleSessionLifetime);
+        VaibifyPolling.fnSetFileTreeHandler(
+            VaibifyFiles.fnRefreshCurrentDirectory);
     }
 
     function _fnHandleSessionLifetime(dictLifetime) {
@@ -526,6 +528,7 @@ const VaibifyApp = (function () {
         VaibifySyncManager.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopFileTreePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();
@@ -655,6 +658,7 @@ const VaibifyApp = (function () {
         fnUpdateHighlightState();
         fnPollAllStepFiles();
         fnStartFileChangePolling();
+        VaibifyPolling.fnStartFileTreePolling();
         try {
             VaibifyTerminal.fnEnsureTab();
         } catch (errorTerminal) {
@@ -836,6 +840,7 @@ const VaibifyApp = (function () {
             await VaibifyReposPanel.fnInit(sId);
             VaibifyProofTab.fnSetContainerId(sId);
             VaibifyPolling.fnStartDiscoveryPolling(sId);
+            VaibifyPolling.fnStartFileTreePolling();
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
@@ -1089,6 +1094,7 @@ const VaibifyApp = (function () {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopFileTreePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();

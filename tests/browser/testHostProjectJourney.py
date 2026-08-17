@@ -197,6 +197,43 @@ def testTheToolbarNamesTheDirectoryNotASandboxName(
     assert pageDashboard.listPageErrors == []
 
 
+def testTheFilePanelRefreshesWhenTheDirectoryChangesOnDisk(
+    pageDashboard, serverHub,
+):
+    """A file written after the panel loads appears without navigating.
+
+    The sandbox's file browser had no auto-refresh: a file an agent or
+    a pipeline step wrote never showed until the researcher re-entered
+    the directory, and the sandbox's no-workflow landing ran no file
+    poller at all. The panel now polls its current directory while
+    visible and re-renders on change.
+
+    Driven on the host leg against REAL disk in the no-workflow view —
+    the exact sandbox scenario. The new file is a real write and the
+    assertion is that it appears with no click.
+    """
+    _fnEnterTheHostProjectWithoutAWorkflow(pageDashboard, serverHub)
+    pageDashboard.click('.left-tab[data-panel="files"]')
+    pageDashboard.wait_for_selector(
+        "#panelFiles.active", state="visible", timeout=10000,
+    )
+    pageDashboard.wait_for_selector(
+        '#listFiles .file-item', timeout=10000,
+    )
+    sNewFile = "appearedByPolling.txt"
+    with open(
+        os.path.join(serverHub.sHome, S_HOST_PROJECT_READY, sNewFile),
+        "w",
+    ) as fileHandle:
+        fileHandle.write("written after the panel loaded\n")
+    # No navigation: the file poll (5s) must surface it on its own.
+    pageDashboard.wait_for_selector(
+        f'#listFiles .file-name:text-is("{sNewFile}")',
+        timeout=15000,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheRepositoriesTabAnswersForAHostProject(
     pageDashboard, serverHub,
 ):

@@ -205,6 +205,34 @@ var VaibifyPolling = (function () {
         }
     }
 
+    var _fnOnFileTreeTick = null;
+    var _iFileTreePollTimer = null;
+
+    function fnSetFileTreeHandler(fnHandler) {
+        _fnOnFileTreeTick = fnHandler;
+    }
+
+    function fnStartFileTreePolling() {
+        /* No endpoint of its own: the file browser owns its current
+           path, so the tick just wakes it and it decides what to fetch
+           and whether the listing changed. Paired with the project
+           view, not a workflow, so the sandbox's no-workflow landing
+           refreshes its directory too. */
+        fnStopFileTreePolling();
+        _iFileTreePollTimer = setInterval(function () {
+            if (_fnOnFileTreeTick) {
+                _fnOnFileTreeTick();
+            }
+        }, _iPollIntervalMs);
+    }
+
+    function fnStopFileTreePolling() {
+        if (_iFileTreePollTimer) {
+            clearInterval(_iFileTreePollTimer);
+            _iFileTreePollTimer = null;
+        }
+    }
+
     async function _fnPollReposStatus(sContainerId) {
         if (_bReposInFlight) return;
         _bReposInFlight = true;
@@ -460,6 +488,9 @@ var VaibifyPolling = (function () {
         fnSetReposHandler: fnSetReposHandler,
         fnStartReposPolling: fnStartReposPolling,
         fnStopReposPolling: fnStopReposPolling,
+        fnSetFileTreeHandler: fnSetFileTreeHandler,
+        fnStartFileTreePolling: fnStartFileTreePolling,
+        fnStopFileTreePolling: fnStopFileTreePolling,
         fnSetWorkflowDiscoveryHandler: fnSetWorkflowDiscoveryHandler,
         fnStartDiscoveryPolling: fnStartDiscoveryPolling,
         fnStopDiscoveryPolling: fnStopDiscoveryPolling,
