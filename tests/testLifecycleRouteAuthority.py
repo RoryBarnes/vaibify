@@ -109,6 +109,27 @@ DICT_LIFECYCLE_AUDIT = {
             "mutation lock would not address either."
         ),
     },
+    ("POST", "/api/registry/{sName}/reconcile"): {
+        "sHandler": "fdictReconcileQuarantine",
+        "bHoldsMutationLock": True,
+        "bWritesJournalRecord": True,
+        "sTransfer": "refused",
+        "sFinding": (
+            "The dashboard face of `vaibify reconcile`, and both flags "
+            "need their finding. The lock is held on the HELD-HUB path "
+            "only: fdictReconcileHeldContainer takes the container-"
+            "mutation lock with a bounded wait for the whole prove-and-"
+            "clear; the crash-time path runs precisely when this hub "
+            "holds no flock for the name, so there is no in-process "
+            "owner to race and the exclusive RECONCILIATION flock is "
+            "the arbitration instead. The journal flag is mechanical "
+            "reachability: the route CLEARS records (guarded by the "
+            "expected ids the modal showed) and never writes one. A "
+            "transfer cannot land mid-reconcile: a quarantined "
+            "container refuses claims and transfers outright, and on "
+            "the held path the mutation lock is additionally held."
+        ),
+    },
 }
 
 
@@ -149,7 +170,8 @@ def _fsReachableSource(fnEndpoint, listExtraCallables):
 
 def _flistCallablesBehind(tRoute):
     """Return the functions each audited handler delegates its work to."""
-    from vaibify.gui import registryRoutes, startReservation
+    from vaibify.config import reconciliation
+    from vaibify.gui import hostControlChannel, registryRoutes, startReservation
     dictBehind = {
         ("POST", "/api/containers/{sName}/stop"): [
             registryRoutes._fnExecuteStop,
@@ -161,6 +183,11 @@ def _flistCallablesBehind(tRoute):
         ("POST", "/api/containers/{sName}/settings"): [
             registryRoutes._fbApplyAgentAutoUpdate,
             registryRoutes._fnUpdateYamlScalarField,
+        ],
+        ("POST", "/api/registry/{sName}/reconcile"): [
+            hostControlChannel.fdictReconcileHeldContainer,
+            reconciliation.fdictReconcileCrashTimeJournal,
+            reconciliation.fnCleanupAndClearProvenRecords,
         ],
     }
     return dictBehind[tRoute]

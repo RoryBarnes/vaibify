@@ -4693,7 +4693,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # nobody could, and a single opcode choosing between them on a
     # registry lookup would make the unproven path reachable by
     # accident. The duplication is the point.
-    "hostControlChannel.py": 884,
+    # +31 (2026-08-17): the held-hub reconcile transaction was
+    # factored out of the socket handler into
+    # fdictReconcileHeldContainer so the dashboard's quarantine route
+    # runs the IDENTICAL prove-and-clear — two entry points, one
+    # transaction, which is the whole reason the route lives on this
+    # module's core rather than reimplementing it.
+    "hostControlChannel.py": 915,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -4949,7 +4955,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container-scoped registry route, cohesive with claim/release
     # beside it; splitting it into its own module would be the premature
     # abstraction the "When to modularize" guide warns against.
-    "registryRoutes.py": 1405,
+    # +82 (2026-08-17): POST /api/registry/{sName}/reconcile — the
+    # dashboard face of `vaibify reconcile`, restricted to the
+    # non-destructive prove (held-hub core when this hub holds the
+    # flock, crash-time transaction otherwise). Cohesive with the
+    # quarantine-detail route beside it: the detail shows the records,
+    # this clears them. Destructive exits stay CLI-only.
+    "registryRoutes.py": 1487,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -4989,7 +5001,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # excluded from the agent lane. Same governance responsibility.
     # +4 (2026-08-08): the host exit from Supervised mode joins its
     # sibling in the exclusion list, with the reason they share.
-    "actionCatalog.py": 972,
+    # +4 (2026-08-17): the reconcile route joins the control-plane
+    # exclusion block with its rationale.
+    "actionCatalog.py": 976,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5055,7 +5069,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "/workspace/" + name in five places, so Init answered 500
     # "mkdir: /workspace: Read-only file system" on a host project
     # and the 500 quarantined it.
-    "routes/repoRoutes.py": 817,
+    # +32 (2026-08-14): the active workflow's project repo unions into
+    # the tracked list at status assembly, alongside the build-time
+    # union the manager already does — a hand-cloned or wizard-born
+    # project repo is in neither the sidecar nor container.conf, so
+    # the panel greeted the one repository the workflow lives in with
+    # the track-or-ignore prompt. Same cohesive responsibility; the
+    # only new code is naming the repo and reusing the shared merge.
+    "routes/repoRoutes.py": 849,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:
