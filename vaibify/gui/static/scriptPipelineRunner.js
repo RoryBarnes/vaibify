@@ -14,6 +14,14 @@ var VaibifyPipelineRunner = (function () {
     // freshly pulled remote data is offered for commit immediately
     // instead of sitting silently uncommitted.
     var _bRemoteDataPulledThisRun = false;
+    /* True from the researcher confirming Stop until the next run
+       starts; classifies a signal-killed step as stopped-by-you. */
+    var _bStopRequested = false;
+    /* True from the run's started event until a terminal event or a
+       confirmed kill: marks every state fetched BEFORE the run as
+       stale, so a slow recovery response cannot resume file polling
+       (or repaint lights) in the middle of a live run. */
+    var _bRunLive = false;
 
     function _fnOfferCommitIfRemoteDataPulled() {
         if (!_bRemoteDataPulledThisRun) return;
@@ -106,17 +114,27 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
             var iFailIdx = dictEvent.iStepNumber - 1;
-            VaibifyApp.fnSetStepStatus(iFailIdx, "fail");
+            /* A negative exit while OUR stop is in flight is the stop
+               landing, not the step failing on its own. The flag is
+               required: an external SIGKILL (an OOM kill) with no
+               stop clicked stays honest red. */
+            VaibifyApp.fnSetStepStatus(
+                iFailIdx,
+                (_bStopRequested && dictEvent.iExitCode < 0)
+                    ? "stopped" : "fail");
             fnResetUserVerification(iFailIdx);
             VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
+            _bStopRequested = false;
+            _bRunLive = true;
             VaibifyPolling.fnStopPipelinePolling();
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
             VaibifyApp.fnShowToast(
                 _fsStartedToast(dictEvent.sCommand), "success");
         } else if (dictEvent.sType === "completed") {
+            _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
@@ -126,6 +144,7 @@ var VaibifyPipelineRunner = (function () {
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "failed") {
+            _bRunLive = false;
             VaibifyApp.fnClearRunningStatuses();
             VaibifyApp.fnStartFileChangePolling();
             VaibifyApp.fnShowToast(
@@ -492,9 +511,24 @@ var VaibifyPipelineRunner = (function () {
         try {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
+            /* Recovery is fired-and-forgotten at workflow activation.
+               A run that started while its response was in flight
+               outdates the answer: acting on a stale "not running"
+               resumed file polling mid-run and could repaint live
+               lights with pre-run results (CI survival, 2026-08-14 —
+               the late landing satisfied the kill test's polling wait
+               with the kill handler mutated away). */
+            if (_bRunLive) return;
             if (!dictState || !dictState.bRunning) {
+                /* -1 is the initial "never completed" sentinel; a
+                   NEGATIVE exit is a run killed by a signal (a Stop
+                   ends the sleep with -15) and its step results are
+                   as real as any. The old `>= 0` guard skipped them,
+                   so reopening after a stop showed every light as
+                   never-run while state.json knew better. */
                 if (dictState && dictState.sLogPath &&
-                    dictState.iExitCode >= 0) {
+                    typeof dictState.iExitCode === "number" &&
+                    dictState.iExitCode !== -1) {
                     fnApplyCompletedState(dictState);
                 }
                 VaibifyApp.fnStartFileChangePolling();
@@ -503,6 +537,7 @@ var VaibifyPipelineRunner = (function () {
             fnApplyRunningState(dictState, true);
             VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
+            if (_bRunLive) return;
             VaibifyApp.fnStartFileChangePolling();
         }
     }
@@ -542,6 +577,8 @@ var VaibifyPipelineRunner = (function () {
                 VaibifyApp.fnSetStepStatus(iStep, "pass");
             } else if (sStatus === "failed") {
                 VaibifyApp.fnSetStepStatus(iStep, "fail");
+            } else if (sStatus === "stopped") {
+                VaibifyApp.fnSetStepStatus(iStep, "stopped");
             } else if (sStatus === "skipped") {
                 VaibifyApp.fnSetStepStatus(iStep, "");
             }
@@ -591,6 +628,8 @@ var VaibifyPipelineRunner = (function () {
                 VaibifyApp.fnSetStepStatus(iStep, "pass");
             } else if (sStatus === "failed") {
                 VaibifyApp.fnSetStepStatus(iStep, "fail");
+            } else if (sStatus === "stopped") {
+                VaibifyApp.fnSetStepStatus(iStep, "stopped");
             }
         }
         VaibifyApp.fnRenderStepList();
@@ -1073,10 +1112,12 @@ var VaibifyPipelineRunner = (function () {
             _fsKillConfirmationBody(),
             async function () {
                 try {
+                    _bStopRequested = true;
                     var dictResult = await VaibifyApi.fdictPostRaw(
                         "/api/pipeline/" + sContainerId + "/kill"
                     );
                     if (dictResult.bSuccess) {
+                        _bRunLive = false;
                         /* Only the lights a stop actually
                            invalidates: running, queued, over-budget.
                            This cleared EVERY status, so stopping took
@@ -1088,6 +1129,29 @@ var VaibifyPipelineRunner = (function () {
                            (Live report, 2026-08-13.) */
                         VaibifyApp.fnClearRunningStatuses();
                         VaibifyApp.fnRenderStepList();
+                        /* Resume file polling HERE, not only on the
+                           run's terminal event: a kill races the
+                           runner, and when cancellation wins the run
+                           emits no terminal event at all — polling
+                           then stayed stopped, so an edit made
+                           mid-run was never announced and the
+                           reload detector sat blind until a tab
+                           reload (live report, 2026-08-14). The
+                           frontend must not depend on which side of
+                           the kill race won. */
+                        VaibifyApp.fnStartFileChangePolling();
+                        if (dictResult.iStoppedStepNumber >= 1) {
+                            /* The step this stop interrupted: purple
+                               "stopped", never failure-red — a step
+                               the researcher chose to stop did not
+                               fail — and never the hollow never-ran
+                               circle, because it DID run (ruling,
+                               2026-08-14). */
+                            VaibifyApp.fnSetStepStatus(
+                                dictResult.iStoppedStepNumber - 1,
+                                "stopped");
+                            VaibifyApp.fnRenderStepList();
+                        }
                         _fnReportKillOutcome(dictResult);
                     } else {
                         VaibifyApp.fnShowToast(

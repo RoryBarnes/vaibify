@@ -154,7 +154,7 @@ def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
     return fnPersistReconciledUnderTheDrain
 
 
-async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
+async def _fiMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
     """Write a stopped state file so the UI shows not running.
 
     Reads through the reconciling reader so a kill issued against a
@@ -171,7 +171,20 @@ async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
         ),
     )
     if dictState is None or not dictState.get("bRunning"):
-        return
+        return 0
+    # The step the stop interrupted, recorded DURABLY as "stopped":
+    # when the kill's task-cancellation side wins the race, the run is
+    # torn down before it can emit any result, and a step that ran for
+    # minutes then displayed the same hollow circle as one that never
+    # started — the dashboard lying by omission (live ruling,
+    # 2026-08-14: stopped is its own state, never conflated with
+    # failed). The number is returned so the kill response can paint
+    # the light without waiting for a poll.
+    iStoppedStepNumber = int(dictState.get("iActiveStep") or 0)
+    if iStoppedStepNumber >= 1:
+        dictState.setdefault("dictStepResults", {})[
+            str(iStoppedStepNumber)
+        ] = {"sStatus": "stopped", "iExitCode": 130}
 
     def fdictWriteTheStoppedState(supervisor=None):
         del supervisor
@@ -185,6 +198,7 @@ async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
         sContainerId, fdictWriteTheStoppedState,
         "pipeline-state-kill", requestHttp,
     )
+    return iStoppedStepNumber
 
 
 def _flistBuildCleanCommands(dictWorkflow):
@@ -547,13 +561,18 @@ def _fnRegisterPipelineKill(app, dictCtx):
             iCountBefore = await _fiSweepContainerProcesses(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
             )
-        await _fnMarkPipelineStopped(
+        iStoppedStepNumber = await _fiMarkPipelineStopped(
             dictCtx, sContainerId, requestHttp,
         )
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
             "bTaskCancelled": bTaskCancelled,
+            # The step this stop interrupted (0 = none was mid-flight,
+            # or the runner had already finalized). The dashboard
+            # paints its purple "stopped" light from this, without
+            # waiting for a poll.
+            "iStoppedStepNumber": iStoppedStepNumber or 0,
             # A refusal to signal is reported, never folded into the
             # count: "0 processes" for a run vaibify declined to touch
             # would tell the researcher their machine is quiet when it
