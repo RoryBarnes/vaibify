@@ -168,6 +168,35 @@ def testAHostProjectOpensItsWorkflowWithoutAFailedRequest(
     )
 
 
+def testTheToolbarNamesTheDirectoryNotASandboxName(
+    pageDashboard, serverHub,
+):
+    """A host toolbar identifies the DIRECTORY it works in.
+
+    The bug: the field was relabelled "Directory:" for host mode but
+    still showed the sandbox name, so a project in
+    ``.../hostLaneReady`` could have read "Directory: <some other
+    name>". The value is now the directory's basename and its hover
+    title is the full path.
+
+    The discriminator is the TITLE. This fixture's name happens to
+    equal its directory basename, so the visible text alone cannot tell
+    "shows the name" from "shows the basename"; the full absolute path
+    in the title can only come from the directory, and the pre-fix
+    toolbar never set a title at all.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    assert pageDashboard.text_content(
+        "#activeResourceLabel",
+    ).strip() == "Directory:"
+    elValue = pageDashboard.locator("#activeContainerName")
+    assert elValue.text_content().strip() == S_HOST_PROJECT_READY
+    assert elValue.get_attribute("title") == os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheRepositoriesTabAnswersForAHostProject(
     pageDashboard, serverHub,
 ):
