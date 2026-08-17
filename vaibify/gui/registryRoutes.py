@@ -1469,6 +1469,27 @@ def _fnAttachOptionalPackages(dictYaml, request):
         dictYaml["pipInstallFlags"] = request.sPipInstallFlags
 
 
+def _fdictOverlayContainerFieldsOntoHostConfig(sConfigPath, request):
+    """Return a host vaibify.yml overlaid with a request's container fields.
+
+    Conversion rewrites an EXISTING config rather than scaffolding a new
+    one, so it loads what the researcher's host project already carried
+    and overlays the same container-field translation the create flow
+    uses (``_fdictBuildYamlFromRequest``) onto it. Fields that
+    translation does not manage — ``reproducibility``, ``bindMounts``,
+    ``ports``, ``binaries`` and anything else the host config held — are
+    absent from the overlay, so the loaded copy preserves them. The
+    result is a plain camelCase YAML dict, ready for
+    ``fconfigFromYamlDict`` / ``fbValidateConfig``.
+    """
+    import yaml
+    with open(sConfigPath, "r") as fileHandle:
+        dictExisting = yaml.safe_load(fileHandle) or {}
+    dictMerged = dict(dictExisting)
+    dictMerged.update(_fdictBuildYamlFromRequest(request))
+    return dictMerged
+
+
 _LIST_FEATURE_NAMES = [
     "jupyter", "rLanguage", "julia", "database",
     "dvc", "latex", "claude", "codex", "gemini", "opencode",
