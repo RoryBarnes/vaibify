@@ -497,12 +497,13 @@ def testTheContainerKindTakesTheSameSecondStageWithoutTheDisclosure(
 def testTheHostCreateWizardSkipsEveryContainerPage(
     pageDashboard, serverHub,
 ):
-    """Directory, template, name, summary -- and nothing about an image.
+    """Directory, template, summary -- and nothing about an image.
 
     Walked end to end through the real wizard, choosing a real
     directory and a real template, because the page list is only
     observable by advancing: a researcher discovers the Python-version
-    page by arriving at it.
+    page by arriving at it. There is no name page -- a host sandbox is
+    named by its directory.
 
     Kills: the host wizard walking the container page list, which asks
     for a Python version, repositories to clone, image features and
@@ -538,13 +539,10 @@ def testTheHostCreateWizardSkipsEveryContainerPage(
     pageDashboard.wait_for_timeout(300)
     listTitles.append(pageDashboard.text_content("#wizardStepTitle").strip())
 
-    pageDashboard.fill("#inputWizardProjectName", "hostWizardProject")
-    pageDashboard.click("#btnWizardNext")
-    pageDashboard.wait_for_timeout(300)
-    listTitles.append(pageDashboard.text_content("#wizardStepTitle").strip())
-
+    # No Project Name page: a host sandbox is named by its directory, so
+    # Template advances straight to Summary.
     assert listTitles == [
-        "Project Directory", "Template", "Project Name", "Summary",
+        "Project Directory", "Template", "Summary",
     ], listTitles
     assert pageDashboard.text_content(
         "#btnWizardNext",
@@ -553,6 +551,10 @@ def testTheHostCreateWizardSkipsEveryContainerPage(
     assert "Host" in sSummary
     assert "Python" not in sSummary, (
         "the host summary states a setting nothing reads: " + sSummary
+    )
+    assert "Project Name" not in sSummary, (
+        "the host summary names a sandbox identity nobody chose: "
+        + sSummary
     )
 
 
@@ -577,7 +579,7 @@ def testTheContainerCreateWizardStillWalksEveryPage(
 def testTheHostWizardShowsOnlyItsOwnProgressDots(
     pageDashboard, serverHub,
 ):
-    """Four pages, four dots -- not four of eight that never arrive."""
+    """Three pages, three dots -- not three of eight that never arrive."""
     _fnOpenTheAddDialog(pageDashboard, serverHub)
     pageDashboard.click("#btnChoiceKindHost")
     pageDashboard.click("#btnChoiceCreateNew")
@@ -587,7 +589,7 @@ def testTheHostWizardShowsOnlyItsOwnProgressDots(
             document.querySelectorAll('.wizard-progress-step')
         ).filter((el) => el.style.display !== 'none').length"""
     )
-    assert iVisibleDots == 4
+    assert iVisibleDots == 3
 
 
 # ── Grouping by machine, and saying what each tile is ────────────────

@@ -152,6 +152,9 @@ def test_fbIsValidProjectName_accepts_safe_names():
     assert fbIsValidProjectName("demo") is True
     assert fbIsValidProjectName("gj1132-xuv") is True
     assert fbIsValidProjectName("proj_1.2") is True
+    # A host sandbox may carry an internal space; it becomes a lock and
+    # journal FILENAME, where a space is valid, never a Docker object.
+    assert fbIsValidProjectName("AI Greenhouse") is True
     assert fbIsValidProjectName("a" * 64) is True
 
 
@@ -160,6 +163,9 @@ def test_fbIsValidProjectName_rejects_path_traversal():
     assert fbIsValidProjectName("..") is False
     assert fbIsValidProjectName("../etc") is False
     assert fbIsValidProjectName("a/b") is False
+    # A space does not rescue a separator, a leading space, or NUL.
+    assert fbIsValidProjectName("a b/c") is False
+    assert fbIsValidProjectName(" leadingspace") is False
     assert fbIsValidProjectName("") is False
     assert fbIsValidProjectName(".") is False
     assert fbIsValidProjectName(".hidden") is False

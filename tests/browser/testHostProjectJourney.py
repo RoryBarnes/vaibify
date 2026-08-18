@@ -168,6 +168,72 @@ def testAHostProjectOpensItsWorkflowWithoutAFailedRequest(
     )
 
 
+def testTheToolbarNamesTheDirectoryNotASandboxName(
+    pageDashboard, serverHub,
+):
+    """A host toolbar identifies the DIRECTORY it works in.
+
+    The bug: the field was relabelled "Directory:" for host mode but
+    still showed the sandbox name, so a project in
+    ``.../hostLaneReady`` could have read "Directory: <some other
+    name>". The value is now the directory's basename and its hover
+    title is the full path.
+
+    The discriminator is the TITLE. This fixture's name happens to
+    equal its directory basename, so the visible text alone cannot tell
+    "shows the name" from "shows the basename"; the full absolute path
+    in the title can only come from the directory, and the pre-fix
+    toolbar never set a title at all.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    assert pageDashboard.text_content(
+        "#activeResourceLabel",
+    ).strip() == "Directory:"
+    elValue = pageDashboard.locator("#activeContainerName")
+    assert elValue.text_content().strip() == S_HOST_PROJECT_READY
+    assert elValue.get_attribute("title") == os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+def testTheFilePanelRefreshesWhenTheDirectoryChangesOnDisk(
+    pageDashboard, serverHub,
+):
+    """A file written after the panel loads appears without navigating.
+
+    The sandbox's file browser had no auto-refresh: a file an agent or
+    a pipeline step wrote never showed until the researcher re-entered
+    the directory, and the sandbox's no-workflow landing ran no file
+    poller at all. The panel now polls its current directory while
+    visible and re-renders on change.
+
+    Driven on the host leg against REAL disk in the no-workflow view —
+    the exact sandbox scenario. The new file is a real write and the
+    assertion is that it appears with no click.
+    """
+    _fnEnterTheHostProjectWithoutAWorkflow(pageDashboard, serverHub)
+    pageDashboard.click('.left-tab[data-panel="files"]')
+    pageDashboard.wait_for_selector(
+        "#panelFiles.active", state="visible", timeout=10000,
+    )
+    pageDashboard.wait_for_selector(
+        '#listFiles .file-item', timeout=10000,
+    )
+    sNewFile = "appearedByPolling.txt"
+    with open(
+        os.path.join(serverHub.sHome, S_HOST_PROJECT_READY, sNewFile),
+        "w",
+    ) as fileHandle:
+        fileHandle.write("written after the panel loaded\n")
+    # No navigation: the file poll (5s) must surface it on its own.
+    pageDashboard.wait_for_selector(
+        f'#listFiles .file-name:text-is("{sNewFile}")',
+        timeout=15000,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheRepositoriesTabAnswersForAHostProject(
     pageDashboard, serverHub,
 ):

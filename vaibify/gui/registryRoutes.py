@@ -1295,6 +1295,7 @@ def _fnRegisterCreateProject(app, dictCtx):
     @app.post("/api/projects/create")
     async def fdictCreateProject(request: CreateProjectRequest):
         _fnValidateCreateDirectory(request.sDirectory)
+        _fnRequireValidProjectName(request.sProjectName, request.sMode)
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,
         )
@@ -1314,6 +1315,38 @@ def _fnValidateCreateDirectory(sDirectory):
     sResolved = os.path.realpath(sDirectory)
     if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
         raise HTTPException(403, "Path is outside allowed root")
+
+
+def _fnRequireValidProjectName(sProjectName, sMode):
+    """Reject a project name the config loader would later refuse.
+
+    The create route used to persist vaibify.yml without checking the
+    name, so a name the loader rejects stranded a file that could never
+    be opened — the researcher saw only the generic "Configuration
+    validation failed" on the next load, with no field named. Validate
+    here, before anything is written, naming the rule. A host sandbox
+    may carry spaces; a container project may not, because the name
+    becomes its Docker container, image and volume name.
+    """
+    from vaibify.config.projectConfig import (
+        fbIsDockerSafeName,
+        fbIsStorageSafeName,
+    )
+    if not fbIsStorageSafeName(sProjectName):
+        raise HTTPException(
+            400,
+            f"Project name '{sProjectName}' is not allowed. Use letters, "
+            "digits, spaces, '.', '_' or '-', starting with a letter or "
+            "digit, no leading or trailing space, at most 63 characters.",
+        )
+    if sMode != "host" and not fbIsDockerSafeName(sProjectName):
+        raise HTTPException(
+            400,
+            f"Project name '{sProjectName}' cannot contain spaces in "
+            "container mode: it becomes the Docker container, image and "
+            "volume name. Remove the spaces, or create a host-mode "
+            "sandbox, which allows them.",
+        )
 
 
 def _fnRejectUninstallablePackages(listCondaPackages):

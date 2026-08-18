@@ -133,6 +133,100 @@ def testCreateProjectSuccess(
     assert os.path.isfile(os.path.join(sProjectDir, "vaibify.yml"))
 
 
+def _fnStageSandboxTemplate(tmp_path, monkeypatch):
+    """Stage an empty sandbox template and root creation at tmp_path."""
+    sTemplateDir = str(tmp_path / "templates" / "sandbox")
+    os.makedirs(sTemplateDir)
+    sConfPath = os.path.join(sTemplateDir, "container.conf")
+    with open(sConfPath, "w") as fileHandle:
+        fileHandle.write("")
+    monkeypatch.setattr(
+        "vaibify.config.templateManager._PATH_TEMPLATES",
+        tmp_path / "templates",
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes.os.path.expanduser",
+        lambda _: str(tmp_path),
+    )
+
+
+def testCreateHostProjectAcceptsSpacedName(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A host sandbox may be named with spaces, and it must round-trip.
+
+    The create route used to persist vaibify.yml without validating the
+    name, and the config loader rejected an internal space — so a host
+    sandbox named "AI Greenhouse" was written and then could never be
+    opened ("Configuration validation failed"). Create must accept it
+    AND the written file must load, which is the whole bug.
+    """
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    _fnStageSandboxTemplate(tmp_path, monkeypatch)
+    sProjectDir = str(tmp_path / "aigreenhouse")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sMode": "host",
+            "sDirectory": sProjectDir,
+            "sProjectName": "AI Greenhouse",
+            "sTemplateName": "sandbox",
+        },
+    )
+    assert response.status_code == 200, response.text
+    configProject = fconfigLoadFromFile(
+        os.path.join(sProjectDir, "vaibify.yml"),
+    )
+    assert configProject.sProjectName == "AI Greenhouse"
+
+
+def testCreateContainerProjectRejectsSpacedName(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A container name becomes a Docker object, so a space is refused.
+
+    The refusal names the Docker constraint and points at host mode,
+    before anything is written, rather than letting docker run fail
+    later on an unbuildable --name.
+    """
+    _fnStageSandboxTemplate(tmp_path, monkeypatch)
+    sProjectDir = str(tmp_path / "spaced-container")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sMode": "container",
+            "sDirectory": sProjectDir,
+            "sProjectName": "AI Greenhouse",
+            "sTemplateName": "sandbox",
+        },
+    )
+    assert response.status_code == 400
+    assert "container mode" in response.json()["detail"]
+    assert not os.path.exists(os.path.join(sProjectDir, "vaibify.yml"))
+
+
+def testCreateProjectRejectsUnsafeNameInEveryMode(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A path separator or record delimiter is refused in both modes."""
+    _fnStageSandboxTemplate(tmp_path, monkeypatch)
+    for iIndex, sMode in enumerate(("host", "container")):
+        sProjectDir = str(tmp_path / f"unsafe-{iIndex}")
+        response = fixtureClient.post(
+            "/api/projects/create",
+            json={
+                "sMode": sMode,
+                "sDirectory": sProjectDir,
+                "sProjectName": "bad/name",
+                "sTemplateName": "sandbox",
+            },
+        )
+        assert response.status_code == 400, sMode
+        assert not os.path.exists(
+            os.path.join(sProjectDir, "vaibify.yml")
+        )
+
+
 def testCreateProjectWithRepositories(
     fixtureClient, tmp_path, monkeypatch,
 ):

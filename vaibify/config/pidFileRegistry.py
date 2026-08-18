@@ -33,7 +33,15 @@ import os
 import re
 
 
-_RE_SAFE_REGISTRY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# An internal space is admitted so a host sandbox may be named
+# "AI Greenhouse": both callers embed the name in a FILENAME (space is
+# valid on macOS/Linux) or a JSON payload value (spaces are inert), and
+# neither uses a space-delimited record. The leading character stays
+# alphanumeric — no leading space, dot or dash — and path separators,
+# control characters and NUL remain excluded, so the traversal guard is
+# unchanged. A trailing space still matches here; the config layer
+# (projectConfig.fbIsStorageSafeName) is what refuses one at the source.
+_RE_SAFE_REGISTRY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
 
 
 def fbIsSafeRegistryName(sName):
@@ -41,7 +49,8 @@ def fbIsSafeRegistryName(sName):
 
     Shared by ``containerLock`` and ``operationJournal`` so both derive
     per-container file paths from exactly one character policy: no path
-    separators, no leading dot, bounded length.
+    separators, no leading dot, an admitted internal space, bounded
+    length.
     """
     if not isinstance(sName, str):
         return False

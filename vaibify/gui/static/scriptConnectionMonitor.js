@@ -85,6 +85,7 @@ var VaibifyConnectionMonitor = (function () {
         if (typeof VaibifyPolling === "undefined") return;
         try { VaibifyPolling.fnStopPipelinePolling(); } catch (e) {}
         try { VaibifyPolling.fnStopFilePolling(); } catch (e) {}
+        try { VaibifyPolling.fnStopFileTreePolling(); } catch (e) {}
         try { VaibifyPolling.fnStopReposPolling(); } catch (e) {}
         try { VaibifyPolling.fnStopDiscoveryPolling(); } catch (e) {}
         try { VaibifyPolling.fnStopContainerHubPolling(); } catch (e) {}

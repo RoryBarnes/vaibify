@@ -7,6 +7,10 @@ var VaibifyFiles = (function () {
        handshake, because a host project's files live in the directory
        the researcher registered rather than in a container. */
     var sCurrentPath = "/workspace";
+    /* What the list currently shows, so a background refresh can leave
+       an unchanged directory untouched -- see fnRefreshCurrentDirectory. */
+    var _sRenderedFingerprint = "";
+    var _bRefreshInFlight = false;
 
     async function fnLoadDirectory(sPath) {
         sCurrentPath = sPath || VaibifyApp.fsGetWorkspaceRoot();
@@ -20,10 +24,58 @@ var VaibifyFiles = (function () {
                 "/api/files/" + sContainerId + sCurrentPath
             );
             fnRenderFileList(listEntries);
+            _sRenderedFingerprint = _fsListingFingerprint(listEntries);
         } catch (error) {
             document.getElementById("listFiles").innerHTML =
                 '<p style="padding:14px;color:var(--text-muted)">Error loading directory</p>';
+            _sRenderedFingerprint = "";
         }
+    }
+
+    async function fnRefreshCurrentDirectory() {
+        /* The poll tick: re-fetch the CURRENT directory and re-render
+           ONLY when its contents changed, so a file an agent or a
+           pipeline step writes appears without the researcher
+           navigating, while a tick that changed nothing never disturbs
+           scroll position or a hover. Runs only while the Files panel
+           is the visible one -- a hidden panel is reloaded from its
+           root when its tab is next opened, so polling it would fetch
+           for no one. This is the sandbox's file refresh: host mode
+           lands in a no-workflow view whose only other pollers watch
+           git and the container, never the directory. */
+        if (_bRefreshInFlight) return;
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var elPanel = document.getElementById("panelFiles");
+        if (!sContainerId || !elPanel ||
+            !elPanel.classList.contains("active")) {
+            return;
+        }
+        _bRefreshInFlight = true;
+        try {
+            var listEntries = await VaibifyApi.fdictGet(
+                "/api/files/" + sContainerId + sCurrentPath
+            );
+            var sFingerprint = _fsListingFingerprint(listEntries);
+            if (sFingerprint !== _sRenderedFingerprint) {
+                fnRenderFileList(listEntries);
+                _sRenderedFingerprint = sFingerprint;
+            }
+        } catch (error) {
+            /* A transient poll failure keeps the last good listing --
+               navigation (fnLoadDirectory) still surfaces a hard error. */
+        } finally {
+            _bRefreshInFlight = false;
+        }
+    }
+
+    function _fsListingFingerprint(listEntries) {
+        /* Name plus kind, order-independent: the list renders exactly
+           those, so this changes iff the rendered output would. A file
+           whose bytes change but whose name does not is invisible here,
+           correctly -- the browser shows names, not sizes. */
+        return listEntries.map(function (entry) {
+            return (entry.bIsDirectory ? "d:" : "f:") + entry.sName;
+        }).sort().join("\n");
     }
 
     function fnRenderBreadcrumb(sPath) {
@@ -200,5 +252,6 @@ var VaibifyFiles = (function () {
 
     return {
         fnLoadDirectory: fnLoadDirectory,
+        fnRefreshCurrentDirectory: fnRefreshCurrentDirectory,
     };
 })();

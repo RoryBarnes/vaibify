@@ -5,6 +5,7 @@ var VaibifyContainerManager = (function () {
 
     var _sSelectedContainerId = null;
     var _sSelectedContainerName = null;
+    var _sSelectedContainerDirectory = "";
 
     async function fnLoadContainers() {
         try {
@@ -1605,12 +1606,24 @@ var VaibifyContainerManager = (function () {
         return (el && el.dataset.mode) || "container";
     }
 
+    function _fsContainerDirectoryById(sId) {
+        /* The host tile carries its directory in data-directory; the
+           toolbar shows it because a host sandbox IS its directory. A
+           container tile has none, and the empty string is correct
+           there -- its toolbar shows the container name instead. */
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]'
+        );
+        return (el && el.dataset.directory) || "";
+    }
+
     async function fnConnectToContainer(sId) {
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
                 "/api/workflows/" + sId);
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
+            _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);
             VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
@@ -1818,6 +1831,10 @@ var VaibifyContainerManager = (function () {
         return _sSelectedContainerName;
     }
 
+    function fsGetSelectedContainerDirectory() {
+        return _sSelectedContainerDirectory;
+    }
+
     return {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
@@ -1829,6 +1846,7 @@ var VaibifyContainerManager = (function () {
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
+        fsGetSelectedContainerDirectory: fsGetSelectedContainerDirectory,
         fnReleaseClaim: fnReleaseClaim,
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,

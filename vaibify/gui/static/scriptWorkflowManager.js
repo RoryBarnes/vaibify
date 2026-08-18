@@ -480,8 +480,10 @@ var VaibifyWorkflowManager = (function () {
        build, so a Python version, cloned repositories, image
        features and package lists are all questions about a container
        it will never have -- asking them would collect answers
-       nothing reads. Directory, template and name are the whole
-       decision. */
+       nothing reads. It also has no NAME page: a host sandbox IS its
+       directory, so its name is the directory's basename, derived when
+       the directory is chosen rather than typed. Directory and
+       template are the whole decision. */
     var _DICT_WIZARD_PAGE = {
         DIRECTORY: 0, TEMPLATE: 1, NAME: 2, PYTHON: 3,
         REPOSITORIES: 4, FEATURES: 5, PACKAGES: 6, SUMMARY: 7,
@@ -494,7 +496,7 @@ var VaibifyWorkflowManager = (function () {
     ];
     var _T_HOST_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
-        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.SUMMARY,
+        _DICT_WIZARD_PAGE.SUMMARY,
     ];
     var _LIST_WIZARD_HELP = [
         '<p>The folder on your host machine where vaibify writes ' +
@@ -855,6 +857,13 @@ var VaibifyWorkflowManager = (function () {
 
     function _fnApplyChosenDirectory(sChosenPath) {
         _dictWizardData.sDirectory = sChosenPath;
+        /* A host sandbox has no name page, so its name follows the
+           directory it was just given -- re-derived on every change so
+           the two can never diverge. A container project keeps the name
+           the researcher types on its own page. */
+        if (_dictWizardData.sMode === "host") {
+            _dictWizardData.sProjectName = _fsProjectNameFromDirectory();
+        }
         var elLabel = document.getElementById("wizardSelectedPath");
         if (elLabel) {
             elLabel.textContent = sChosenPath;
@@ -1189,9 +1198,14 @@ var VaibifyWorkflowManager = (function () {
            a project that will never build one states settings that
            govern nothing. */
         if (_dictWizardData.sMode === "host") {
+            /* No Project Name row: a host sandbox's name IS its
+               directory basename, so echoing it back as a separate
+               field would state a second identity the researcher never
+               chose. */
             elContent.innerHTML =
                 '<div class="wizard-summary-block">' +
-                _fsSummaryBasics() +
+                _fsSummaryRow("Directory", _dictWizardData.sDirectory) +
+                _fsSummaryRow("Template", _dictWizardData.sTemplateName) +
                 _fsSummaryRow(
                     "Mode",
                     "Host — commands run directly on this machine, " +

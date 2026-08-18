@@ -381,11 +381,19 @@ def test_two_independent_repos_are_allowed():
 
 
 def test_fbValidateConfig_rejects_metacharacter_names():
+    # An INTERNAL space is allowed (a host sandbox may be "AI
+    # Greenhouse"); path separators, record delimiters, shell
+    # metacharacters, leading/trailing whitespace and over-length are
+    # not. A space never rescues a name that also carries one of those.
     dictConfig = fdictLoadDefaults()
     for sBadName in [
         "proj;rm -rf /",
         "../escape",
-        "name with spaces",
+        "a/b",
+        "a|b",
+        "a\nb",
+        " leadingspace",
+        "trailingspace ",
         "name$(whoami)",
         "-leadingdash",
         ".leadingdot",
@@ -405,6 +413,8 @@ def test_fbValidateConfig_accepts_well_formed_names():
         "proj_1",
         "proj.1",
         "Project123",
+        "AI Greenhouse",
+        "proj 1",
         "x",
         "x" * 63,
     ]:

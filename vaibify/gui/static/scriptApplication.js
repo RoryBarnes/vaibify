@@ -400,6 +400,8 @@ const VaibifyApp = (function () {
             fnProcessWorkflowDiscovery);
         VaibifyPolling.fnSetSessionLifetimeHandler(
             _fnHandleSessionLifetime);
+        VaibifyPolling.fnSetFileTreeHandler(
+            VaibifyFiles.fnRefreshCurrentDirectory);
     }
 
     function _fnHandleSessionLifetime(dictLifetime) {
@@ -526,6 +528,7 @@ const VaibifyApp = (function () {
         VaibifySyncManager.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopFileTreePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();
@@ -584,6 +587,33 @@ const VaibifyApp = (function () {
         }
     }
 
+    function _fnRenderActiveResource(sProjectMode) {
+        /* A host project's toolbar names the DIRECTORY it works in, not
+           a separate sandbox name -- the two are the same thing, and
+           the field is labelled "Directory:". The basename keeps the
+           bar compact; the full path rides the hover title. A container
+           project still shows its container name. */
+        var elValue = document.getElementById("activeContainerName");
+        if (!elValue) return;
+        if (sProjectMode === "host") {
+            var sDir =
+                VaibifyContainerManager.fsGetSelectedContainerDirectory();
+            elValue.textContent = _fsBasename(sDir) || sDir || "";
+            elValue.title = sDir || "";
+            return;
+        }
+        elValue.textContent =
+            VaibifyContainerManager.fsGetSelectedContainerName() || "";
+        elValue.title = "";
+    }
+
+    function _fsBasename(sPath) {
+        var sTrimmed = (sPath || "").replace(/\/+$/, "");
+        var iLastSlash = sTrimmed.lastIndexOf("/");
+        return iLastSlash >= 0
+            ? sTrimmed.substring(iLastSlash + 1) : sTrimmed;
+    }
+
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
@@ -616,8 +646,7 @@ const VaibifyApp = (function () {
                 "error"
             );
         }
-        document.getElementById("activeContainerName").textContent =
-            VaibifyContainerManager.fsGetSelectedContainerName() || "";
+        _fnRenderActiveResource(data.sProjectMode);
         fnApplyProjectMode(data.sProjectMode);
         fnApplyWorkspaceRoot(data.sWorkspaceRoot);
         document.getElementById("activeWorkflowName").textContent =
@@ -629,6 +658,7 @@ const VaibifyApp = (function () {
         fnUpdateHighlightState();
         fnPollAllStepFiles();
         fnStartFileChangePolling();
+        VaibifyPolling.fnStartFileTreePolling();
         try {
             VaibifyTerminal.fnEnsureTab();
         } catch (errorTerminal) {
@@ -800,8 +830,7 @@ const VaibifyApp = (function () {
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
-            document.getElementById("activeContainerName").textContent =
-                VaibifyContainerManager.fsGetSelectedContainerName() || "";
+            _fnRenderActiveResource(dictConnect.sProjectMode);
             fnApplyProjectMode(dictConnect.sProjectMode);
             fnApplyWorkspaceRoot(dictConnect.sWorkspaceRoot);
             _fnRenderToolkitBanner(0);
@@ -811,6 +840,7 @@ const VaibifyApp = (function () {
             await VaibifyReposPanel.fnInit(sId);
             VaibifyProofTab.fnSetContainerId(sId);
             VaibifyPolling.fnStartDiscoveryPolling(sId);
+            VaibifyPolling.fnStartFileTreePolling();
         } catch (error) {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error"
@@ -1064,6 +1094,7 @@ const VaibifyApp = (function () {
         VaibifyWebSocket.fnDisconnect();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
+        VaibifyPolling.fnStopFileTreePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();
