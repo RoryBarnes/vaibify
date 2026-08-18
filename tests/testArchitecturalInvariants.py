@@ -4778,7 +4778,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # runs the IDENTICAL prove-and-clear — two entry points, one
     # transaction, which is the whole reason the route lives on this
     # module's core rather than reimplementing it.
-    "hostControlChannel.py": 915,
+    # +5 (2026-08-18): mint-bootstrap accepts bRemoteSession. The
+    # operation already existed; it now carries one flag, read from
+    # a request the socket already parses.
+    "hostControlChannel.py": 920,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -4855,7 +4858,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # holding a second copy of it. The docstring carries why, which is
     # the part a future reader needs before adding a lane with a
     # different window.
-    "sessionLifecycle.py": 1388,
+    # +18 (2026-08-18): the remote lane's hold window and the
+    # branch that chooses between the two. The window already
+    # lived here; what is new is that there are two of them and a
+    # session decides which applies. Same responsibility, and the
+    # alternative -- a second module owning one constant -- would
+    # put the pair somewhere they could drift apart.
+    "sessionLifecycle.py": 1406,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

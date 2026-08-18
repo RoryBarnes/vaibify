@@ -1914,7 +1914,7 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
         "fReconnectWindowSeconds": (
             sessionLifecycle.ffReconnectWindowSecondsForSession(
-                sBrowserSessionId,
+                sBrowserSessionId, dictCtx.get("dictBrowserSessions"),
             )
         ),
     }
@@ -2149,7 +2149,7 @@ async def fdictHandleConnect(
             "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
             "fReconnectWindowSeconds": (
                 sessionLifecycle.ffReconnectWindowSecondsForSession(
-                    sBrowserSessionId,
+                    sBrowserSessionId, dictCtx.get("dictBrowserSessions"),
                 )
             ),
         }

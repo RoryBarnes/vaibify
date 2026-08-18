@@ -808,7 +808,12 @@ async def _fdictHandleMintBootstrap(app, dictCtx, dictRequest):
     container must claim it afterwards exactly as a browser does, and
     is refused 409 while a dashboard holds it.
     """
-    del dictCtx, dictRequest
+    del dictCtx
+    # A remote helper says so when it mints. Nothing else may: the flag
+    # widens a session's hold window, and the only process entitled to
+    # claim it is the one serving a browser on another machine -- which
+    # reaches this socket only by already being this uid on this host.
+    bRemoteSession = bool(dictRequest.get("bRemoteSession"))
     dictStore = getattr(app.state, "dictBrowserSessions", None)
     if dictStore is None:
         return _fdictRefusal(
@@ -819,7 +824,7 @@ async def _fdictHandleMintBootstrap(app, dictCtx, dictRequest):
         "bAccepted": True,
         "bMinted": True,
         "sBootstrapCapability": browserSession.fsMintBootstrapCapability(
-            dictStore,
+            dictStore, bRemoteSession,
         ),
     }
 

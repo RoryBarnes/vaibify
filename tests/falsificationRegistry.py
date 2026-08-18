@@ -12640,7 +12640,8 @@ def _fdictEntry(sRel):
         old=(
             '        "fReconnectWindowSeconds": (\n'
             '            sessionLifecycle.ffReconnectWindowSecondsForSession(\n'
-            '                sBrowserSessionId,\n'
+            '                sBrowserSessionId, '
+            'dictCtx.get("dictBrowserSessions"),\n'
             '            )\n'
             '        ),\n'
         ),

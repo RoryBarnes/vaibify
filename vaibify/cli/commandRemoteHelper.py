@@ -176,7 +176,9 @@ def fsMintOneCapability(iPort):
     """Return one sign-in capability from the hub on iPort."""
     from .hubSession import HubSessionError, fsRequestBootstrapCapability
     try:
-        return fsRequestBootstrapCapability(iPort)
+        # Declared here and nowhere else: this is the one process
+        # that knows the browser is on another machine.
+        return fsRequestBootstrapCapability(iPort, bRemoteSession=True)
     except HubSessionError as error:
         raise RuntimeError(str(error))
 
