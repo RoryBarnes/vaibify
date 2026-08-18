@@ -12560,4 +12560,49 @@ def _fdictEntry(sRel):
             ';\n'
         ),
     ),
+
+    # --- Headless launch contract. A symmetric pair, and it has to be
+    # a pair: "a suppressed launch mints nothing" is equally true of a
+    # mint that was deleted outright, so either half alone can go
+    # vacuous without anything failing.
+    Falsification(
+        nodeid=(
+            'tests/testCliMain.py::'
+            'test_suppressed_launch_mints_no_capability'
+        ),
+        # Disable the suppression guard, restoring the ordering this
+        # replaced: the mint used to be the ARGUMENT to the
+        # suppression-checking call, so it ran before anything was
+        # checked and every headless launch armed a credential nobody
+        # could redeem.
+        # The guard is spelled identically in
+        # _fnOpenBrowserUnlessSuppressed, so the anchor carries the
+        # next line to name THIS one. Mutating both would still kill
+        # the test, but for the wrong reason -- and the count check
+        # exists to stop an anchor silently widening.
+        source='vaibify/cli/main.py',
+        old=(
+            '    if fbIsBrowserLaunchSuppressed():\n'
+            '        click.echo(\n'
+        ),
+        new=(
+            '    if False and fbIsBrowserLaunchSuppressed():\n'
+            '        click.echo(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliMain.py::'
+            'test_ordinary_launch_still_mints_a_capability'
+        ),
+        # Drop the mint and hand back the bare address -- the defect
+        # that sent a researcher to a dashboard refusing every call.
+        source='vaibify/cli/main.py',
+        old=(
+            '    sCapability = browserSession.fsMintBootstrapCapability'
+            '(dictStore)\n'
+            '    return f"{sBaseUrl}/#bootstrap={sCapability}"\n'
+        ),
+        new='    return sBaseUrl\n',
+    ),
 ]
