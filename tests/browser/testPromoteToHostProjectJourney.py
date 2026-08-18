@@ -56,6 +56,28 @@ def _fnOpenPromoteWizardAndChooseHost(page):
     page.wait_for_timeout(200)
 
 
+def _fnEnterHostFilesPanel(page, sName):
+    """Enter a host project's no-workflow view and open its Files tab."""
+    page.click(
+        f'.container-tile[data-name="{sName}"] .container-tile-main',
+    )
+    # The uncontained warning may or may not appear (its per-directory
+    # acknowledgement is host-global and can persist across journeys),
+    # so dismiss it only if it is there.
+    page.wait_for_timeout(400)
+    if page.is_visible("#modalConfirm"):
+        page.click("#btnConfirmOk")
+    page.wait_for_selector("#btnNoWorkflow", timeout=20000)
+    page.click("#btnNoWorkflow")
+    page.wait_for_selector(
+        '.left-tab[data-panel="files"]', state="visible", timeout=20000,
+    )
+    page.click('.left-tab[data-panel="files"]')
+    page.wait_for_selector(
+        "#panelFiles.active", state="visible", timeout=10000,
+    )
+
+
 def testTheSandboxTileOffersMakeAProject(pageDashboard, serverHub):
     """A host sandbox reads as a sandbox: its action is "Make a Project…"."""
     _fnWaitForPicker(pageDashboard, serverHub)
@@ -160,4 +182,11 @@ def testPromotingFlipsTheTileToAHostProjectWithNoBuild(
     )
     assert elAction is not None
     assert "Containerize" in elAction.text_content()
+    # The Files panel of the freshly-promoted host Project must NOT
+    # offer "Convert to Project" -- it already is one. Enter it and
+    # check the bar's own id, hidden rather than merely absent.
+    _fnEnterHostFilesPanel(pageDashboard, S_NEW_PROJECT_NAME)
+    assert pageDashboard.is_hidden("#fileConvertToProjectBar"), (
+        "a host Project's Files panel still offered 'Convert to Project'"
+    )
     assert pageDashboard.listPageErrors == []

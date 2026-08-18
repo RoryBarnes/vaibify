@@ -6,6 +6,7 @@ var VaibifyContainerManager = (function () {
     var _sSelectedContainerId = null;
     var _sSelectedContainerName = null;
     var _sSelectedContainerDirectory = "";
+    var _bSelectedContainerIsProject = false;
 
     async function fnLoadContainers() {
         try {
@@ -1669,6 +1670,18 @@ var VaibifyContainerManager = (function () {
         return (el && el.dataset.directory) || "";
     }
 
+    function _fbIsProjectById(sId) {
+        /* The tile carries data-is-project from the registry truth. It
+           gates the Files-panel "Convert to Project" affordance: a
+           project that IS one already must not be offered the
+           conversion. A container tile has no such attribute and reads
+           false, which is harmless -- the Files button is host-only. */
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]'
+        );
+        return Boolean(el && el.dataset.isProject === "true");
+    }
+
     async function fnConnectToContainer(sId) {
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
@@ -1676,6 +1689,7 @@ var VaibifyContainerManager = (function () {
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
             _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);
+            _bSelectedContainerIsProject = _fbIsProjectById(sId);
             VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
@@ -1887,6 +1901,10 @@ var VaibifyContainerManager = (function () {
         return _sSelectedContainerDirectory;
     }
 
+    function fbGetSelectedContainerIsProject() {
+        return _bSelectedContainerIsProject;
+    }
+
     return {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
@@ -1899,6 +1917,7 @@ var VaibifyContainerManager = (function () {
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
         fsGetSelectedContainerDirectory: fsGetSelectedContainerDirectory,
+        fbGetSelectedContainerIsProject: fbGetSelectedContainerIsProject,
         fnReleaseClaim: fnReleaseClaim,
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,

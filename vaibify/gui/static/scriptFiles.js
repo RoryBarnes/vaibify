@@ -80,13 +80,18 @@ var VaibifyFiles = (function () {
     }
 
     function _fnUpdateConvertButtonVisibility() {
-        /* The "Convert to Project" button belongs to a HOST project
-           only -- a containerized project is already a Project. The
-           mode is the server's answer, read through VaibifyApp. */
+        /* The "Convert to Project" button is for a host SANDBOX only.
+           A containerized project is already a Project (host-only bar),
+           and a host project that has ALREADY been promoted
+           (bIsProject) is a Project too -- offering it "Convert to
+           Project" again would misname its own status. Both signals are
+           the server's answer, read through the manager and VaibifyApp. */
         var elBar = document.getElementById("fileConvertToProjectBar");
         if (!elBar) return;
-        elBar.style.display =
-            VaibifyApp.fsGetProjectMode() === "host" ? "" : "none";
+        var bHostSandbox =
+            VaibifyApp.fsGetProjectMode() === "host" &&
+            !VaibifyContainerManager.fbGetSelectedContainerIsProject();
+        elBar.style.display = bHostSandbox ? "" : "none";
     }
 
     var _bConvertButtonBound = false;
