@@ -83,6 +83,7 @@ S_SOCKET_OPERATION_BREAK_GLASS = "break-glass"
 S_SOCKET_OPERATION_ABANDON_HOST_JOURNAL = "abandon-host-journal"
 S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
 S_SOCKET_OPERATION_MINT_BOOTSTRAP = "mint-bootstrap"
+S_SOCKET_OPERATION_LIST_REATTACHABLE = "list-reattachable"
 
 F_RECONCILE_DRAIN_WAIT_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
@@ -828,6 +829,42 @@ async def _fdictHandleMintBootstrap(app, dictCtx, dictRequest):
         ),
     }
 
+async def _fdictHandleListReattachable(app, dictCtx, dictRequest):
+    """Name the sessions on this hub whose browser went away.
+
+    A researcher whose tunnel dropped for longer than the hold window
+    comes back to a project that is still THEIRS -- the record keeps
+    its flock and its running work -- but to a credential that has been
+    revoked. Reclaiming it is a TRANSFER, and a transfer has to name a
+    container, which a returning client cannot know: it never sent one,
+    because the project is chosen in the dashboard after the tunnel is
+    up.
+
+    So the hub is asked. Only ORPHANED records are listed: an ACTIVE
+    one has a browser attending it right now, and handing that away on
+    a reconnect would evict a live session rather than resume a dead
+    one.
+
+    Naming rather than choosing is deliberate. This answers "what is
+    reattachable"; whether to reattach, and what to do about more than
+    one candidate, belongs to the caller -- which can ask a human.
+    """
+    del dictCtx, dictRequest
+    listReattachable = [
+        {
+            "sContainerName": sName,
+            "iOwnerGeneration": recordOwner.iOwnerGeneration,
+        }
+        for sName, recordOwner in getattr(
+            app.state, "dictContainerOwners", {},
+        ).items()
+        if recordOwner.sState == (
+            containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+        )
+    ]
+    return {"bAccepted": True, "listReattachable": listReattachable}
+
+
 
 _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
@@ -837,6 +874,8 @@ _DICT_SOCKET_OPERATION_HANDLERS = {
         _fdictHandleAbandonHostJournal,
     S_SOCKET_OPERATION_MINT_TRANSFER: _fdictHandleMintTransfer,
     S_SOCKET_OPERATION_MINT_BOOTSTRAP: _fdictHandleMintBootstrap,
+    S_SOCKET_OPERATION_LIST_REATTACHABLE:
+        _fdictHandleListReattachable,
 }
 
 

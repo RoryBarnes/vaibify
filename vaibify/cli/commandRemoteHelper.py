@@ -38,7 +38,11 @@ import time
 
 import click
 
-from .remoteProtocol import fsFormatStartupRecord
+from .remoteProtocol import (
+    S_CAPABILITY_BOOTSTRAP,
+    S_CAPABILITY_TRANSFER,
+    fsFormatStartupRecord,
+)
 
 # How long to wait for a hub this helper started to answer on both its
 # TCP port and its control socket. A cold start imports the world.
@@ -183,6 +187,71 @@ def fsMintOneCapability(iPort):
         raise RuntimeError(str(error))
 
 
+def ftOfferReattachment(iPort):
+    """Return (kind, capability, project) for a returning researcher.
+
+    A tunnel down longer than the hold window leaves the project still
+    theirs -- the record keeps its flock and its running work -- and
+    the credential revoked. Handing back a FRESH sign-in would land
+    them on the picker looking at a project they cannot claim, because
+    the very busy-veto that protects their run also refuses the
+    take-over. A transfer is the path that exists for this, and it
+    adopts a registered durable task rather than interrupting it.
+
+    Exactly one orphaned session reattaches. Zero means there is
+    nothing to come back to. SEVERAL means guessing, and guessing
+    would hand the researcher a project that was not the one they
+    left -- so it declines and lets them choose in the dashboard.
+    """
+    from vaibify.gui.hostControlChannel import (
+        HostControlError,
+        S_SOCKET_OPERATION_LIST_REATTACHABLE,
+        S_SOCKET_OPERATION_MINT_TRANSFER,
+        fdictSendHostControlRequest,
+    )
+    try:
+        dictListed = fdictSendHostControlRequest(
+            iPort, {"sOperation": S_SOCKET_OPERATION_LIST_REATTACHABLE},
+        )
+    except HostControlError:
+        return (S_CAPABILITY_BOOTSTRAP, "", "")
+    listReattachable = dictListed.get("listReattachable") or []
+    if len(listReattachable) != 1:
+        if listReattachable:
+            _fnSay(
+                f"{len(listReattachable)} sessions here are waiting to "
+                "be picked back up; signing in fresh so you can choose"
+            )
+        return (S_CAPABILITY_BOOTSTRAP, "", "")
+    dictOnly = listReattachable[0]
+    sName = dictOnly.get("sContainerName", "")
+    try:
+        dictMinted = fdictSendHostControlRequest(iPort, {
+            "sOperation": S_SOCKET_OPERATION_MINT_TRANSFER,
+            "sContainerName": sName,
+            "iExpectedOwnerGeneration": dictOnly.get(
+                "iOwnerGeneration", 0,
+            ),
+        })
+    except HostControlError:
+        return (S_CAPABILITY_BOOTSTRAP, "", "")
+    if not dictMinted.get("bMinted"):
+        # A refusal here is ordinary -- the record may have been reaped
+        # or transferred in the moment between listing and minting --
+        # and a fresh sign-in still works, so it is not an error.
+        _fnSay(
+            "could not pick the previous session back up: "
+            + str(dictMinted.get("sError", "the hub refused"))
+        )
+        return (S_CAPABILITY_BOOTSTRAP, "", "")
+    return (
+        S_CAPABILITY_TRANSFER,
+        dictMinted.get("sTransferCapability")
+        or dictMinted.get("sCapability", ""),
+        sName,
+    )
+
+
 def fsDescribeExecutionMode():
     """Return the execution mode this remote machine can offer.
 
@@ -197,13 +266,15 @@ def fsDescribeExecutionMode():
         return "host"
 
 
-def _fnEmitStartupRecord(iPort, sCapability):
+def _fnEmitStartupRecord(iPort, sCapability, sKind="", sProject=""):
     """Write the single protocol line and flush it."""
     sRecord = fsFormatStartupRecord(
         iPort=iPort,
         sBootstrapCapability=sCapability,
         sExecutionMode=fsDescribeExecutionMode(),
         sHostname=socket.gethostname(),
+        sCapabilityKind=sKind or S_CAPABILITY_BOOTSTRAP,
+        sReattachedContainerName=sProject,
     )
     sys.stdout.write(sRecord + "\n")
     sys.stdout.flush()
@@ -243,11 +314,17 @@ def fnRemoteHelperCommand(iPort):
             _fnSay(f"starting a vaibify hub on port {iPort}")
             processHub = _fprocessStartDetachedHub(iPort)
         _fnAwaitHubReadiness(iPort, processHub)
-        sCapability = fsMintOneCapability(iPort)
+        sKind, sCapability, sProject = ftOfferReattachment(iPort)
+        if sKind != S_CAPABILITY_TRANSFER or not sCapability:
+            sKind = S_CAPABILITY_BOOTSTRAP
+            sCapability = fsMintOneCapability(iPort)
+            sProject = ""
+        else:
+            _fnSay(f"picking the previous session back up: {sProject}")
     except RuntimeError as error:
         _fnFailAndExit(str(error))
         return
-    _fnEmitStartupRecord(iPort, sCapability)
+    _fnEmitStartupRecord(iPort, sCapability, sKind, sProject)
     _fnSay("ready; holding the tunnel open until the client hangs up")
     _fnHoldChannelOpen()
     _fnSay("client hung up; the hub keeps running")

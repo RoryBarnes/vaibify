@@ -46,12 +46,23 @@ T_EXECUTION_MODES = ("docker", "host")
 # claiming authority over work it cannot see.
 T_EXECUTION_PLACEMENTS = ("direct",)
 
+# The two things a capability can be. A client that could not tell
+# them apart would put a transfer capability in a #bootstrap fragment,
+# where the bootstrap lane refuses it outright -- deliberately, because
+# redeeming a transfer without committing the ownership hand-over would
+# be a bare credential with the transfer skipped.
+S_CAPABILITY_BOOTSTRAP = "bootstrap"
+S_CAPABILITY_TRANSFER = "transfer"
+T_CAPABILITY_KINDS = (S_CAPABILITY_BOOTSTRAP, S_CAPABILITY_TRANSFER)
+
 S_STARTUP_RECORD_PREFIX = "VAIBIFY-REMOTE "
 
 __all__ = [
     "I_MAX_RECORD_BYTES",
     "I_PROTOCOL_VERSION",
     "RemoteProtocolError",
+    "S_CAPABILITY_BOOTSTRAP",
+    "S_CAPABILITY_TRANSFER",
     "S_STARTUP_RECORD_PREFIX",
     "T_EXECUTION_MODES",
     "T_EXECUTION_PLACEMENTS",
@@ -67,13 +78,23 @@ class RemoteProtocolError(Exception):
 
 def fsFormatStartupRecord(
     iPort, sBootstrapCapability, sExecutionMode, sHostname,
-    sExecutionPlacement="direct",
+    sExecutionPlacement="direct", sCapabilityKind=S_CAPABILITY_BOOTSTRAP,
+    sReattachedContainerName="",
 ):
-    """Return the single stdout line a remote helper emits."""
+    """Return the single stdout line a remote helper emits.
+
+    The capability field carries one of two KINDS. A bootstrap signs a
+    fresh browser in; a transfer hands a session that is already the
+    researcher's back to a new browser, which is what a return after
+    the hold window needs -- the old credential is revoked but the
+    project, its flock and its running work are all still theirs.
+    """
     return S_STARTUP_RECORD_PREFIX + json.dumps({
         "iProtocolVersion": I_PROTOCOL_VERSION,
         "iPort": iPort,
         "sBootstrapCapability": sBootstrapCapability,
+        "sCapabilityKind": sCapabilityKind,
+        "sReattachedContainerName": sReattachedContainerName,
         "sExecutionMode": sExecutionMode,
         "sExecutionPlacement": sExecutionPlacement,
         "sHostname": sHostname,
@@ -103,6 +124,7 @@ def fdictParseStartupRecord(sLine, iExpectedPort):
     _fnValidatePort(dictRecord, iExpectedPort)
     _fnValidateCapability(dictRecord)
     _fnValidateVocabularyFields(dictRecord)
+    _fnValidateCapabilityKind(dictRecord)
     _fnValidateHostname(dictRecord)
     return dictRecord
 
@@ -196,6 +218,21 @@ def _fnValidateVocabularyFields(dictRecord):
         )
 
 
+def _fnValidateCapabilityKind(dictRecord):
+    """The kind decides which fragment, so it is closed vocabulary."""
+    jsonKind = dictRecord.get("sCapabilityKind", S_CAPABILITY_BOOTSTRAP)
+    if jsonKind not in T_CAPABILITY_KINDS:
+        raise RemoteProtocolError(
+            f"the remote sent capability kind {jsonKind!r}, which this "
+            f"vaibify does not know. Known: {T_CAPABILITY_KINDS}",
+        )
+    jsonName = dictRecord.get("sReattachedContainerName", "")
+    if not isinstance(jsonName, str):
+        raise RemoteProtocolError(
+            "the remote's reattached project name was not text",
+        )
+
+
 def _fnValidateHostname(dictRecord):
     """A hostname is display text; refuse anything that is not."""
     jsonHostname = dictRecord.get("sHostname")
@@ -207,7 +244,10 @@ def _fnValidateHostname(dictRecord):
         )
 
 
-def fsLocalDashboardUrl(iPort, sBootstrapCapability):
+def fsLocalDashboardUrl(
+    iPort, sBootstrapCapability,
+    sCapabilityKind=S_CAPABILITY_BOOTSTRAP,
+):
     """Return the loopback URL the local browser is sent to.
 
     Built entirely from values the CLIENT holds. The scheme and host
@@ -217,7 +257,11 @@ def fsLocalDashboardUrl(iPort, sBootstrapCapability):
     the FRAGMENT so it stays out of access logs and out of the
     terminal.
     """
+    sFragment = (
+        "transfer" if sCapabilityKind == S_CAPABILITY_TRANSFER
+        else "bootstrap"
+    )
     return (
         f"http://127.0.0.1:{int(iPort)}"
-        f"/#bootstrap={sBootstrapCapability}"
+        f"/#{sFragment}={sBootstrapCapability}"
     )

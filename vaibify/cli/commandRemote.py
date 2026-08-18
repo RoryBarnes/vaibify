@@ -36,6 +36,7 @@ import time
 import click
 
 from .remoteProtocol import (
+    S_CAPABILITY_TRANSFER,
     RemoteProtocolError,
     fdictParseStartupRecord,
     fsLocalDashboardUrl,
@@ -214,6 +215,12 @@ def _fnReportSession(dictRecord, iPort):
         f"Connected to {dictRecord['sHostname']} "
         f"({dictRecord['sExecutionMode']} mode)."
     )
+    if dictRecord.get("sCapabilityKind") == S_CAPABILITY_TRANSFER:
+        sProject = dictRecord.get("sReattachedContainerName") or "it"
+        click.echo(
+            f"  Picking up where you left off: {sProject} was still "
+            "yours, and anything it was running kept running."
+        )
     click.echo(f"  Dashboard: http://127.0.0.1:{iPort}")
     click.echo(
         "  The browser tab that just opened is signed in; this address "
@@ -290,7 +297,10 @@ def fnRemoteCommand(sDestination, iExplicitPort):
         sys.exit(1)
     _fnReportSession(dictRecord, iPort)
     _fnOpenBrowserUnlessSuppressed(
-        fsLocalDashboardUrl(iPort, dictRecord["sBootstrapCapability"]),
+        fsLocalDashboardUrl(
+            iPort, dictRecord["sBootstrapCapability"],
+            dictRecord.get("sCapabilityKind", ""),
+        ),
     )
     try:
         iStatus = _fiHoldAndReconnect(processTunnel, sDestination, iPort)

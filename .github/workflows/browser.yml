@@ -19,8 +19,15 @@ name: browser
 # blocks merge; container acceptance blocks the next release.
 
 on:
+  # NO base-branch filter, deliberately. These gates were declared
+  # `branches: [main]`, so a pull request based on another branch --
+  # a stacked PR, which is how a large feature gets reviewed in
+  # pieces -- triggered NONE of them and reported "no checks" rather
+  # than failing. That reads almost exactly like "all checks passed"
+  # on a PR page, and it hid an entire feature branch from CI on
+  # 2026-08-18. A gate that does not run is worse than a gate that
+  # fails, because only one of them says so.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -49,6 +56,17 @@ jobs:
           python -m pip install -e ".[dev,browser]"
 
       - name: Install Chromium
+        # BOUNDED. --with-deps shells out to apt, and on 2026-08-18 this
+        # step sat for one hour forty-four minutes on a runner whose
+        # package fetch never returned -- against a lane that normally
+        # finishes end to end in four. Nothing below it could hang like
+        # that, because every step below it is bounded; this one was the
+        # only unbounded step in the job, so the run reported nothing at
+        # all while looking busy, and would have kept doing so until
+        # GitHub's six-hour job ceiling. An unbounded setup step in front
+        # of a bounded test is the same false-green shape as `docker info
+        # || exit 0`: the check cannot say what it did not do.
+        timeout-minutes: 8
         run: python -m playwright install --with-deps chromium
 
       - name: Run the browser lane

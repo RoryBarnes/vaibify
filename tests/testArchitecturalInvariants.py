@@ -4788,7 +4788,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +5 (2026-08-18): mint-bootstrap accepts bRemoteSession. The
     # operation already existed; it now carries one flag, read from
     # a request the socket already parses.
-    "hostControlChannel.py": 920,
+    # +39 (2026-08-18): list-reattachable. The socket is where a
+    # process asks the hub questions only the hub can answer, and
+    # "which session here lost its browser" is exactly that -- a
+    # returning client cannot know, because it never named a project.
+    # It NAMES rather than chooses: whether to reattach, and what to do
+    # with more than one candidate, stays with the caller, which can
+    # ask a human. Putting the choice here would have made the socket
+    # decide policy.
+    "hostControlChannel.py": 959,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
