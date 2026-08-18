@@ -277,29 +277,17 @@ def fnLaunchHub(iExplicitPort):
     a socket lingering from the previous hub cannot permanently move
     the researcher's bookmarked URL.
     """
-    import uvicorn
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     from .portAllocator import fiResolveHubPort
+    from .serverLaunch import fnRunServer
     iPort = fiResolveHubPort(iExplicitPort)
     fileHandleSession = _ffileAcquireHubSessionSlotOrExit("hub", iPort)
     try:
         sUrl = f"http://127.0.0.1:{iPort}"
         app = fappCreateHubApplication(iExpectedPort=iPort)
         _fnAnnounceAndOpen(sUrl, app, "vaibify")
-        uvicorn.run(
-            app, host="127.0.0.1", port=iPort,
-            log_level="warning", timeout_graceful_shutdown=3,
-            # log_config=None keeps uvicorn from calling
-            # logging.config.dictConfig, whose _clearExistingHandlers
-            # CLOSES every handler in the process — including the
-            # rotating vaibify.log handler main() just attached. File
-            # logging was silently dead in every CLI-launched hub
-            # until a stack trace on the handler's close caught this
-            # (2026-08-14); log_level above still applies to
-            # uvicorn's own loggers.
-            log_config=None,
-        )
+        fnRunServer(app, iPort)
     finally:
         fnReleaseSessionSlot(fileHandleSession)
 
@@ -383,18 +371,12 @@ def fnVerifyCommand(sProjectName):
 def fnSetupCommand():
     """Launch the setup wizard to create or edit configuration."""
     from vaibify.install.setupServer import fappCreateSetupWizard
-    import uvicorn
+    from .serverLaunch import fnRunServer
     sUrl = "http://127.0.0.1:8051"
     click.echo(f"Starting setup wizard at {sUrl}")
     app = fappCreateSetupWizard()
     _fnOpenBrowserUnlessSuppressed(sUrl)
-    uvicorn.run(
-        app, host="127.0.0.1", port=8051,
-        log_level="warning", timeout_graceful_shutdown=3,
-        # See fnLaunchHub: uvicorn's dictConfig closes every attached
-        # handler; log_config=None preserves the vaibify.log handler.
-        log_config=None,
-    )
+    fnRunServer(app, 8051)
 
 
 @main.command("gui")
@@ -406,7 +388,7 @@ def fnSetupCommand():
 def fnGuiCommand(sProjectName):
     """Launch the vaibify dashboard."""
     from vaibify.gui.pipelineServer import fappCreateApplication
-    import uvicorn
+    from .serverLaunch import fnRunServer
     _fnConfigureErrorLogging()
     if sProjectName is None:
         # The landing page is the HUB, and there is one implementation
@@ -425,13 +407,7 @@ def fnGuiCommand(sProjectName):
         iExpectedPort=8050,
     )
     _fnAnnounceAndOpen(sUrl, app, f"vaibify: {sProjectName}")
-    uvicorn.run(
-        app, host="127.0.0.1", port=8050,
-        log_level="warning", timeout_graceful_shutdown=3,
-        # See fnLaunchHub: uvicorn's dictConfig closes every attached
-        # handler; log_config=None preserves the vaibify.log handler.
-        log_config=None,
-    )
+    fnRunServer(app, 8050)
 
 
 @main.command("push")

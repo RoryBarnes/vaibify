@@ -12605,4 +12605,23 @@ def _fdictEntry(sRel):
         ),
         new='    return sBaseUrl\n',
     ),
+
+    # --- One launcher, so socket-liveness settings cannot be lost by
+    # a call site that simply forgot them.
+    Falsification(
+        nodeid=(
+            'tests/testServerLaunchContract.py::'
+            'test_only_the_launcher_runs_uvicorn'
+        ),
+        # Bind a server without going through the launcher. The setup
+        # wizard's line is the anchor because it carries a literal
+        # port and is therefore unique; the two `(app, iPort)` calls
+        # are spelled identically to each other.
+        source='vaibify/cli/main.py',
+        old='    fnRunServer(app, 8051)\n',
+        new=(
+            '    import uvicorn\n'
+            '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
+        ),
+    ),
 ]
