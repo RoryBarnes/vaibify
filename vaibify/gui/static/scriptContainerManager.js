@@ -220,6 +220,7 @@ var VaibifyContainerManager = (function () {
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
             _fsRenderContainerOnlyMenuItems(bHost) +
+            _fsRenderHostConvertMenuItem(bHost) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
@@ -302,6 +303,18 @@ var VaibifyContainerManager = (function () {
             "Rebuild</div>" +
             '<div class="container-menu-item" data-action="force-rebuild">' +
             "Force Rebuild</div>" +
+            '<div class="container-menu-separator"></div>'
+        );
+    }
+
+    function _fsRenderHostConvertMenuItem(bHost) {
+        /* Only a host tile carries "Convert to Project": the action
+           re-registers this sandbox as a containerized project. A
+           container tile has nothing to convert. */
+        if (!bHost) return "";
+        return (
+            '<div class="container-menu-item" data-action="convert">' +
+            "Convert to Project…</div>" +
             '<div class="container-menu-separator"></div>'
         );
     }
@@ -840,7 +853,26 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
         else if (sAction === "force-rebuild")
             await fnForceRebuildContainer(sName);
+        else if (sAction === "convert") _fnStartConversion(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
+    }
+
+    function _fnStartConversion(sName) {
+        /* The convert wizard needs the project's directory too. It is
+           read from the tile by name-equality rather than an attribute
+           selector, so a host name carrying a space cannot break the
+           lookup. */
+        var elTile = _felTileByName(sName);
+        var sDirectory = elTile ? (elTile.dataset.directory || "") : "";
+        VaibifyWorkflowManager.fnOpenConvertWizard(sName, sDirectory);
+    }
+
+    function _felTileByName(sName) {
+        var listTiles = document.querySelectorAll(".container-tile");
+        for (var i = 0; i < listTiles.length; i++) {
+            if (listTiles[i].dataset.name === sName) return listTiles[i];
+        }
+        return null;
     }
 
     async function fnShowContainerSettings(sName) {
@@ -1851,5 +1883,6 @@ var VaibifyContainerManager = (function () {
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,
         fnResumeInterruptedStart: fnResumeInterruptedStart,
+        fnBuildContainer: fnBuildContainer,
     };
 })();

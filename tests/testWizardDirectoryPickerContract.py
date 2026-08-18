@@ -116,10 +116,11 @@ def test_wizard_data_includes_all_new_fields():
     # A window over the source rather than a parse, so it has to be
     # widened whenever the defaults grow or gain neighbours. Raised
     # 1500 -> 2500 on 2026-08-09, when the mode-aware page selection
-    # landed between the call site and the defaults themselves; every
-    # field below is still present, and the assertion below is what
-    # says so.
-    sBody = sSource[iIdx:iIdx + 2500]
+    # landed between the call site and the defaults themselves. Raised
+    # 2500 -> 4000 on 2026-08-17, when fnOpenConvertWizard and its
+    # Docker-safe-suggestion helper landed in the same span; every field
+    # below is still present, and the assertion below is what says so.
+    sBody = sSource[iIdx:iIdx + 4000]
     for sField in ("listFeatures", "bUseGithubAuth", "bNeverSleep",
                    "bNetworkIsolation", "listSystemPackages",
                    "listPythonPackages", "listCondaPackages",

@@ -9368,13 +9368,20 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowManager.js',
         # The host wizard walks the container page list, asking for a
         # Python version, repositories, features and packages that
-        # govern an image the project will never have.
+        # govern an image the project will never have. (Updated
+        # 2026-08-17 for the convert branch: the host branch is now an
+        # early return, so the mutation points it at the container
+        # pages in place.)
         old=(
-            '        return _dictWizardData.sMode === "host"\n'
-            '            ? _T_HOST_WIZARD_PAGES : '
-            '_T_CONTAINER_WIZARD_PAGES;\n'
+            '        if (_dictWizardData.sMode === "host") {\n'
+            '            return _T_HOST_WIZARD_PAGES;\n'
+            '        }\n'
         ),
-        new='        return _T_CONTAINER_WIZARD_PAGES;\n',
+        new=(
+            '        if (_dictWizardData.sMode === "host") {\n'
+            '            return _T_CONTAINER_WIZARD_PAGES;\n'
+            '        }\n'
+        ),
     ),
     # --- Cancelling a host run (host mode wave 5) ---
     #

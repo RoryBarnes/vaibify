@@ -498,6 +498,18 @@ var VaibifyWorkflowManager = (function () {
         _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
         _DICT_WIZARD_PAGE.SUMMARY,
     ];
+    /* Converting an existing host sandbox reuses the container pages
+       but OMITS Directory and Template: the directory already exists
+       and is scaffolded, so re-choosing or re-templating it would
+       clobber the researcher's files. Name is KEPT and mandatory --
+       the host basename may not be Docker-safe -- and pre-filled with
+       a sanitized suggestion. The page arrays are indexed by page
+       ENUM, so this new LIST needs no reindexing. */
+    var _T_CONVERT_WIZARD_PAGES = [
+        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.PYTHON,
+        _DICT_WIZARD_PAGE.REPOSITORIES, _DICT_WIZARD_PAGE.FEATURES,
+        _DICT_WIZARD_PAGE.PACKAGES, _DICT_WIZARD_PAGE.SUMMARY,
+    ];
     var _LIST_WIZARD_HELP = [
         '<p>The folder on your host machine where vaibify writes ' +
         '<code>vaibify.yml</code> and stores any project files. This ' +
@@ -687,8 +699,46 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _flistWizardPages() {
-        return _dictWizardData.sMode === "host"
-            ? _T_HOST_WIZARD_PAGES : _T_CONTAINER_WIZARD_PAGES;
+        if (_dictWizardData.sMode === "host") {
+            return _T_HOST_WIZARD_PAGES;
+        }
+        if (_dictWizardData.sMode === "convert") {
+            return _T_CONVERT_WIZARD_PAGES;
+        }
+        return _T_CONTAINER_WIZARD_PAGES;
+    }
+
+    function fnOpenConvertWizard(sHostName, sDirectory) {
+        /* The two triggers (host tile action + host-only Files-panel
+           button) both land here. The directory is the existing,
+           already-registered one -- never re-chosen -- and the new
+           container name is pre-filled with a Docker-safe suggestion
+           the researcher can edit on the mandatory Name page. */
+        _iWizardStep = 0;
+        _dictWizardData = _fdictBuildDefaultWizardData();
+        _dictWizardData.sMode = "convert";
+        _dictWizardData.sHostName = sHostName;
+        _dictWizardData.sDirectory = sDirectory || "";
+        _dictWizardData.sProjectName = _fsDockerSafeSuggestion(
+            _fsProjectNameFromDirectory());
+        document.getElementById("modalCreateWizard")
+            .style.display = "flex";
+        _fnRenderWizardStep(_iWizardStep);
+    }
+
+    function _fsDockerSafeSuggestion(sName) {
+        /* Sanitize a host basename into a valid Docker identifier so
+           the Name page opens on something acceptable: illegal runs
+           collapse to a hyphen, leading non-alphanumerics and trailing
+           separators are trimmed, and the length is capped at 63. The
+           researcher can still type anything; the backend is the
+           authority (fbIsDockerSafeName). */
+        var sCleaned = (sName || "")
+            .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+            .replace(/^[^a-zA-Z0-9]+/, "")
+            .replace(/[-._]+$/, "");
+        if (sCleaned.length > 63) sCleaned = sCleaned.substring(0, 63);
+        return sCleaned || "project";
     }
 
     function _fiWizardPageAt(iPosition) {
@@ -782,7 +832,11 @@ var VaibifyWorkflowManager = (function () {
             return;
         }
         if (_iWizardStep >= _flistWizardPages().length - 1) {
-            _fnSubmitCreateProject();
+            if (_dictWizardData.sMode === "convert") {
+                _fnSubmitConvertProject();
+            } else {
+                _fnSubmitCreateProject();
+            }
             return;
         }
         _iWizardStep++;
@@ -829,7 +883,11 @@ var VaibifyWorkflowManager = (function () {
             iPosition === 0;
         document.getElementById("btnWizardNext").textContent =
             iPosition === _flistWizardPages().length - 1
-                ? "Create" : "Next";
+                ? _fsFinalButtonLabel() : "Next";
+    }
+
+    function _fsFinalButtonLabel() {
+        return _dictWizardData.sMode === "convert" ? "Convert" : "Create";
     }
 
     function _fnRenderStepDirectory(elContent) {
@@ -1215,12 +1273,27 @@ var VaibifyWorkflowManager = (function () {
         }
         elContent.innerHTML =
             '<div class="wizard-summary-block">' +
-            _fsSummaryBasics() +
+            _fsSummaryHeadBlock() +
             _fsSummaryRow("Python", _dictWizardData.sPythonVersion) +
             _fsSummaryReposLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
             _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
             '</div>';
+    }
+
+    function _fsSummaryHeadBlock() {
+        /* A conversion has no Template and its Directory already
+           exists, so its head names the DIRECTORY it converts and the
+           NEW container name it will carry -- not a template it never
+           chose. */
+        if (_dictWizardData.sMode === "convert") {
+            return _fsSummaryRow(
+                "Directory", _dictWizardData.sDirectory) +
+                _fsSummaryRow(
+                    "New container name",
+                    _dictWizardData.sProjectName);
+        }
+        return _fsSummaryBasics();
     }
 
     function _fsSummaryBasics() {
@@ -1438,6 +1511,64 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
+    function _fnSubmitConvertProject() {
+        /* One confirm modal before the irreversible-ish step: it
+           re-registers the project under a new name, the project must
+           be closed first, a build runs next (minutes to hours), and
+           the vaibify.yml is rewritten with container fields. A failed
+           build does NOT revert to host -- it leaves a registered,
+           not-yet-built container, exactly the normal post-create
+           state. */
+        VaibifyApp.fnShowConfirmModal(
+            "Convert to a containerized Project",
+            _fsConversionConfirmBody(),
+            _fnExecuteConversion,
+            {
+                sConfirmLabel: "Convert and build",
+                sCancelLabel: "Go back",
+                sDetails:
+                    "The project must be closed (released) first. If " +
+                    "the build fails, the project stays registered as " +
+                    "a container that has not been built yet -- it does " +
+                    "not revert to a host sandbox -- and you can retry " +
+                    "the build from its tile.",
+            }
+        );
+    }
+
+    function _fsConversionConfirmBody() {
+        return "Re-register '" + _dictWizardData.sHostName +
+            "' as the containerized project '" +
+            _dictWizardData.sProjectName + "'. The project's " +
+            "vaibify.yml is rewritten with the container settings you " +
+            "chose, and a Docker image build starts next (this can " +
+            "take minutes to hours).";
+    }
+
+    async function _fnExecuteConversion() {
+        var sHostName = _dictWizardData.sHostName;
+        var sNewName = _dictWizardData.sProjectName;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sHostName) +
+                "/convert-to-container", _dictWizardData);
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+            return;
+        }
+        _fnCloseWizard();
+        VaibifyApp.fnShowToast(
+            "Converted '" + sHostName + "' to '" + sNewName +
+            "'. Building the image now.", "success");
+        /* Reuse the tile build path: it opens the build-progress
+           modal, polls .../build/progress, and reloads the container
+           list (flipping the tile host -> container) in its finally. */
+        await VaibifyContainerManager.fnBuildContainer(sNewName);
+        VaibifyContainerManager.fnLoadContainers();
+    }
+
     return {
         fnRenderWorkflowList: fnRenderWorkflowList,
         fnCreateNewWorkflow: fnCreateNewWorkflow,
@@ -1449,6 +1580,7 @@ var VaibifyWorkflowManager = (function () {
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,
         fnOpenCreateWizard: fnOpenCreateWizard,
+        fnOpenConvertWizard: fnOpenConvertWizard,
         fnBindCreateWizardModal: fnBindCreateWizardModal,
     };
 })();

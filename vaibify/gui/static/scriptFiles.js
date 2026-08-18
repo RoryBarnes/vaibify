@@ -18,6 +18,7 @@ var VaibifyFiles = (function () {
         if (!sContainerId) return;
 
         fnRenderBreadcrumb(sCurrentPath);
+        _fnUpdateConvertButtonVisibility();
 
         try {
             var listEntries = await VaibifyApi.fdictGet(
@@ -76,6 +77,36 @@ var VaibifyFiles = (function () {
         return listEntries.map(function (entry) {
             return (entry.bIsDirectory ? "d:" : "f:") + entry.sName;
         }).sort().join("\n");
+    }
+
+    function _fnUpdateConvertButtonVisibility() {
+        /* The "Convert to Project" button belongs to a HOST project
+           only -- a containerized project is already a Project. The
+           mode is the server's answer, read through VaibifyApp. */
+        var elBar = document.getElementById("fileConvertToProjectBar");
+        if (!elBar) return;
+        elBar.style.display =
+            VaibifyApp.fsGetProjectMode() === "host" ? "" : "none";
+    }
+
+    var _bConvertButtonBound = false;
+
+    function fnBindConvertButton() {
+        if (_bConvertButtonBound) return;
+        var elButton = document.getElementById("btnConvertToProject");
+        if (!elButton) return;
+        _bConvertButtonBound = true;
+        elButton.addEventListener("click", _fnHandleConvertClick);
+    }
+
+    function _fnHandleConvertClick() {
+        /* A host project's resource id IS its registry name, so
+           fsGetContainerId returns the sHostName the convert route
+           keys on; the directory comes from the open project. */
+        var sHostName = VaibifyApp.fsGetContainerId();
+        var sDirectory =
+            VaibifyContainerManager.fsGetSelectedContainerDirectory();
+        VaibifyWorkflowManager.fnOpenConvertWizard(sHostName, sDirectory);
     }
 
     function fnRenderBreadcrumb(sPath) {
@@ -249,6 +280,7 @@ var VaibifyFiles = (function () {
     }
 
     document.addEventListener("DOMContentLoaded", fnBindDropZone);
+    document.addEventListener("DOMContentLoaded", fnBindConvertButton);
 
     return {
         fnLoadDirectory: fnLoadDirectory,
