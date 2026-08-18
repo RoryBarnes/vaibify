@@ -4,6 +4,7 @@ __all__ = [
     "AddProjectRequest",
     "CreateProjectRequest",
     "ConvertToContainerRequest",
+    "PromoteHostProjectRequest",
     "ContainerSettingsRequest",
     "CreateHostDirectoryRequest",
     "fnRegisterRegistryRoutes",
@@ -139,6 +140,15 @@ class ConvertToContainerRequest(BaseModel):
     fMemoryLimitGigabytes: float = 0.0
 
 
+class PromoteHostProjectRequest(BaseModel):
+    # Promotion to a host-based Project collects nothing but the name:
+    # sMode stays "host", so there is no container to configure, no image
+    # to build, and no resource limit to set. A separate model rather
+    # than a reused ConvertToContainerRequest, so a container field that
+    # does not apply to a host Project cannot arrive at all.
+    sProjectName: str
+
+
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: Optional[bool] = None
     bClaudeAutoUpdate: Optional[bool] = None
@@ -171,6 +181,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
     _fnRegisterConvertToContainer(app, dictCtx)
+    _fnRegisterPromoteToHostProject(app, dictCtx)
     _fnRegisterCreateHostDirectory(app, dictCtx)
     _fnRegisterClaimContainer(app, dictCtx)
     _fnRegisterReleaseContainer(app, dictCtx)
@@ -1501,6 +1512,116 @@ def _fdictConversionResult(sNewName):
         bBuildRequired=True,
         sBuildPath=f"/api/containers/{sNewName}/build",
     )
+
+
+def _fnRegisterPromoteToHostProject(app, dictCtx):
+    """Register POST /api/registry/{sName}/promote-to-host-project.
+
+    The host twin of the convert route: a host sandbox becomes a named
+    host-based Project under a new host-safe name, while ``sMode`` STAYS
+    ``"host"`` -- no container is configured and no image is built. It
+    rewrites the project's own vaibify.yml on the host and re-registers
+    it in the host registry; it opens NO container connection, so it
+    declares ``separate-authority`` and is governed by
+    ``_fdictRequireProject`` plus the storage-safe name and duplicate
+    validators, the same disposition the convert route carries. It
+    returns the promoted entry with ``bBuildRequired`` False -- there is
+    no build hand-off.
+    """
+
+    # separate-authority: every write lands in the project's own
+    # vaibify.yml and in the host registry; no container is touched.
+    @app.post("/api/registry/{sName}/promote-to-host-project")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictPromoteToHostProject(
+        sName: str, request: PromoteHostProjectRequest,
+    ):
+        from vaibify.config import registryManager
+        _fnRejectInvalidProjectName(sName)
+        dictProject = _fdictRequireProject(sName)
+        # Refuse a container project (409): a container is already a
+        # Project, and there is nothing to promote.
+        fnRefuseHostOnlyForContainerProject(
+            sName, "Promoting to a host Project",
+        )
+        # Idempotency: a host sandbox already promoted is refused (409)
+        # rather than re-registered a second time.
+        _fnRefuseAlreadyHostProject(dictProject)
+        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
+        # Host-safe name: spaces allowed, path separators and control
+        # chars forbidden. Docker-safety is NOT required -- the name
+        # never becomes a Docker object in host mode.
+        _fnRequireValidProjectName(request.sProjectName, "host")
+        _fnRejectDuplicateForConversion(request.sProjectName, sName)
+        # Config file FIRST, registry entry SECOND (the convert route's
+        # ordering rationale): a failed registry write then leaves a host
+        # sandbox whose config names the new name but whose entry is
+        # unchanged, and re-running is safe.
+        _fnRewriteConfigForPromotion(
+            dictProject["sConfigPath"], request.sProjectName,
+        )
+        try:
+            registryManager.fnPromoteHostProject(
+                sName, request.sProjectName,
+            )
+        except KeyError as error:
+            raise HTTPException(404, str(error))
+        except ValueError as error:
+            raise HTTPException(409, str(error))
+        return _fdictPromotionResult(request.sProjectName)
+
+
+def _fnRefuseAlreadyHostProject(dictProject):
+    """409 when the host project has already been promoted to a Project.
+
+    Read from the same predicate the whole codebase uses; a container
+    project is caught earlier by the host-only guard, so any entry
+    reaching here is host mode and ``fbIsProject`` reflects its stored
+    promotion flag.
+    """
+    from vaibify.config.registryManager import fbIsProject
+    if fbIsProject(dictProject):
+        raise HTTPException(409, detail={"sMessage": (
+            f"'{dictProject['sName']}' is already a Project."
+        )})
+
+
+def _fnRewriteConfigForPromotion(sConfigPath, sNewName):
+    """Set the host vaibify.yml's projectName to the promoted name.
+
+    A host Project stays host mode, so promotion touches exactly one
+    config field -- the name -- and preserves every other field the
+    researcher's vaibify.yml carried by loading it and overlaying only
+    ``projectName``. The merged config is validated before it is written,
+    so an already-broken file cannot be stranded under a new name. The
+    request never carries a path -- the config path is the
+    already-registered, home-rooted one -- so this adds no traversal
+    vector.
+    """
+    import yaml
+    from vaibify.config.projectConfig import (
+        fbValidateConfig,
+        fconfigFromYamlDict,
+        fnSaveToFile,
+    )
+    with open(sConfigPath, "r") as fileHandle:
+        dictExisting = yaml.safe_load(fileHandle) or {}
+    dictMerged = dict(dictExisting)
+    dictMerged["projectName"] = sNewName
+    if not fbValidateConfig(dictMerged):
+        raise HTTPException(
+            400,
+            "The promoted configuration is invalid; the project name "
+            "must be a valid host-safe name.",
+        )
+    fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+
+
+def _fdictPromotionResult(sNewName):
+    """Return the promoted registry entry with no build hand-off."""
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(sNewName) or {}
+    return dict(dictProject, bBuildRequired=False)
 
 
 def _fnValidateCreateDirectory(sDirectory):

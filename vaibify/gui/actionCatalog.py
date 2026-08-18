@@ -914,6 +914,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # control plane, so it is excluded here and the browser-hub route
     # never carries an @ffnAgentAction.
     ("POST", "/api/registry/{sName}/convert-to-container"),
+    # Promoting a host sandbox to a host-based Project re-registers an
+    # environment under a new name and renames its lock/lease/journal
+    # key, exactly like the conversion above. A compromised in-container
+    # agent must never operate that control plane, so it is excluded here
+    # and the browser-hub route never carries an @ffnAgentAction.
+    ("POST", "/api/registry/{sName}/promote-to-host-project"),
     # Clearing a quarantine asserts the container is safe to use again;
     # a compromised agent asserting that about its own container is the
     # exact inversion of what the journal exists for.

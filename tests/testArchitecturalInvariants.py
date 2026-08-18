@@ -5079,7 +5079,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # registry surface it belongs with. The +29 over the first estimate
     # is the conversion-aware duplicate check that skips the project
     # being converted (so an already-safe name may be kept).
-    "registryRoutes.py": 1737,
+    # +121 (2026-08-18): POST /api/registry/{sName}/promote-to-host-project
+    # — the host twin of convert, its request model, and its helpers
+    # (already-Project idempotency refusal, projectName-only config
+    # rewrite, no-build result). One more registry lifecycle route,
+    # cohesive with convert/create/claim/release beside it; it reuses this
+    # module's own busy-refusal, name validator, and self-skipping
+    # duplicate check rather than duplicating them, so a separate module
+    # would only scatter the registry surface it belongs with.
+    "registryRoutes.py": 1858,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -5124,7 +5132,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +6 (2026-08-17): the convert-to-container route joins the
     # control-plane exclusion block with its rationale — a compromised
     # agent must never re-register an environment under a new name.
-    "actionCatalog.py": 982,
+    # +6 (2026-08-18): the promote-to-host-project route joins the
+    # control-plane exclusion block with the same rationale — promotion
+    # also re-registers an environment under a new name.
+    "actionCatalog.py": 988,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5272,7 +5283,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # migration, and phase 4 deletes it together with the ambient
     # branch, at which point this entry goes with it. Creating a module
     # in order to delete it is churn, not a seam.
-    "routeScope.py": 946,
+    # +6 (2026-08-18): the promote-to-host-project control-plane scope
+    # entry (browser-hub) beside the convert route's, with its rationale.
+    "routeScope.py": 952,
 }
 
 

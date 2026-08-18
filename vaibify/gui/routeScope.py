@@ -214,6 +214,12 @@ DICT_CONTROL_PLANE_SCOPES = {
     # owned/locked/journal refusal in the handler.
     ("POST", "/api/registry/{sName}/convert-to-container"):
         S_SCOPE_BROWSER_HUB,
+    # Promoting a host sandbox to a host-based Project is the same kind
+    # of pre-container hub operation: there is no container to own, so it
+    # carries the browser-hub credential and does its own owned/locked/
+    # journal refusal in the handler.
+    ("POST", "/api/registry/{sName}/promote-to-host-project"):
+        S_SCOPE_BROWSER_HUB,
     # Reconcile is the recovery path for a container nobody can claim,
     # so like stop it must stay answerable for an UNOWNED container —
     # container-lifecycle, never a lease-enforced scope.
