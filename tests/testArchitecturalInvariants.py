@@ -5116,7 +5116,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sibling in the exclusion list, with the reason they share.
     # +4 (2026-08-17): the reconcile route joins the control-plane
     # exclusion block with its rationale.
-    "actionCatalog.py": 976,
+    # +3 (2026-08-18): the idle-timeout preference PUT excluded from the
+    # agent lane — a compromised agent must not disable the idle reaper.
+    # Same governance responsibility as the host-warning PUT above.
+    "actionCatalog.py": 979,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
