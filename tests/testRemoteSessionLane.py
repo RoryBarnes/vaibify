@@ -127,3 +127,70 @@ def test_the_client_and_the_hub_agree_on_the_remote_window():
         "hold the session; the last attempts would be refused and "
         "reported to the researcher as a dead server"
     )
+
+
+def test_the_connect_payload_names_the_execution_host(appHub):
+    """The dashboard cannot say where it is without being told."""
+    sCredential = _fsCredentialForLane(appHub, bRemoteSession=True)
+    clientBrowser = TestClient(
+        appHub, headers={"X-Session-Token": sCredential},
+    )
+    responseClaim = clientBrowser.post(
+        f"/api/registry/{S_CONTAINER_NAME}/claim",
+    )
+    responseConnect = clientBrowser.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": responseClaim.json()["sLeaseId"]},
+    )
+    dictPayload = responseConnect.json()
+    assert dictPayload["bRemoteSession"] is True
+    assert dictPayload["sExecutionHostname"], (
+        "a remote dashboard with no hostname can only say 'somewhere "
+        "else', which is not something a researcher can act on"
+    )
+
+
+def test_a_local_connect_is_not_labelled_remote(appHub):
+    """The symmetric half: labelling everything remote is no answer."""
+    sCredential = _fsCredentialForLane(appHub, bRemoteSession=False)
+    clientBrowser = TestClient(
+        appHub, headers={"X-Session-Token": sCredential},
+    )
+    responseClaim = clientBrowser.post(
+        f"/api/registry/{S_CONTAINER_NAME}/claim",
+    )
+    responseConnect = clientBrowser.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": responseClaim.json()["sLeaseId"]},
+    )
+    assert responseConnect.json()["bRemoteSession"] is False
+
+
+def test_the_remote_terminal_banner_names_the_machine():
+    """"Your own machine" is false through a tunnel; this is the fix.
+
+    The quiescence sentence must survive the rewrite: a terminal is a
+    terminal wherever it runs, and vaibify still cannot prove a
+    shell's descendants died.
+    """
+    from vaibify.gui.routes.terminalRoutes import (
+        S_HOST_TERMINAL_BANNER, fsRemoteTerminalBanner,
+    )
+    sBanner = fsRemoteTerminalBanner("compute-server-3")
+    assert "compute-server-3" in sBanner
+    assert "not on the computer you are sitting at" in sBanner
+    assert "YOUR OWN machine" not in sBanner, (
+        "the remote banner must not repeat the local claim"
+    )
+    assert "quiescence as unproven" in sBanner, (
+        "the containment caveat is not about locality and must stay"
+    )
+    assert "quiescence as unproven" in S_HOST_TERMINAL_BANNER
+
+
+def test_the_remote_banner_survives_an_unknown_hostname():
+    """A hostname lookup can fail; the banner still must not lie."""
+    from vaibify.gui.routes.terminalRoutes import fsRemoteTerminalBanner
+    sBanner = fsRemoteTerminalBanner("")
+    assert "the remote machine" in sBanner
+    assert "not on the computer you are sitting at" in sBanner

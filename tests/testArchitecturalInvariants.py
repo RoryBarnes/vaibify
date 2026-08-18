@@ -4708,7 +4708,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shipping its own copy of the number, which is precisely the
     # arrangement whose drift misreported an expired session as a
     # restarted server.
-    "pipelineServer.py": 2865,
+    # +20 (2026-08-18): the handshake gained the fields a client needs
+    # to know WHERE it is -- execution topology, hostname, and whether
+    # it arrived over a tunnel. The three functions that answer those
+    # moved OUT, to gui/executionTopology.py: they answer "where am I",
+    # which none of this module's other 2800 lines ask, and the domain
+    # had been naming the concept with no home for it. What is left
+    # here is the payload itself, which is this function's whole job.
+    "pipelineServer.py": 2885,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
