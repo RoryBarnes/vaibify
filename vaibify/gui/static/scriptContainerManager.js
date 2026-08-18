@@ -6,6 +6,7 @@ var VaibifyContainerManager = (function () {
     var _sSelectedContainerId = null;
     var _sSelectedContainerName = null;
     var _sSelectedContainerDirectory = "";
+    var _bSelectedContainerIsProject = false;
 
     async function fnLoadContainers() {
         try {
@@ -170,9 +171,19 @@ var VaibifyContainerManager = (function () {
         return dictContainer.sMode === "host";
     }
 
+    function _fbIsProject(dictContainer) {
+        /* A container is a Project by definition; a host entry is a
+           Project only when it has been promoted (bIsProject true). The
+           backend enrichment carries the flag, so the tile never
+           re-derives the sandbox/Project distinction. */
+        if (!_fbHostProject(dictContainer)) return true;
+        return dictContainer.bIsProject === true;
+    }
+
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
         var bHost = _fbHostProject(dictContainer);
+        var bIsProject = _fbIsProject(dictContainer);
         /* A host project has no container, so the registry sends no
            sContainerId. Its resource id IS its registry name -- the
            same substitution the backend claim path makes -- and the
@@ -205,6 +216,7 @@ var VaibifyContainerManager = (function () {
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
             '" data-mode="' + (bHost ? "host" : "container") +
+            '" data-is-project="' + (bIsProject ? "true" : "false") +
             '" data-quarantined="' + (bQuarantined ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
@@ -220,6 +232,7 @@ var VaibifyContainerManager = (function () {
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
             _fsRenderContainerOnlyMenuItems(bHost) +
+            _fsRenderHostConvertMenuItem(bHost, bIsProject) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
@@ -302,6 +315,22 @@ var VaibifyContainerManager = (function () {
             "Rebuild</div>" +
             '<div class="container-menu-item" data-action="force-rebuild">' +
             "Force Rebuild</div>" +
+            '<div class="container-menu-separator"></div>'
+        );
+    }
+
+    function _fsRenderHostConvertMenuItem(bHost, bIsProject) {
+        /* Only a host tile carries this action. A host SANDBOX is
+           offered "Make a Project…", which opens the destination choice
+           (host Project or container). A host PROJECT has already
+           graduated, so it is never offered promotion again -- it is
+           offered "Containerize…" instead, which goes straight to the
+           container flow. A container tile has nothing here. */
+        if (!bHost) return "";
+        var sLabel = bIsProject ? "Containerize…" : "Make a Project…";
+        return (
+            '<div class="container-menu-item" data-action="convert">' +
+            sLabel + "</div>" +
             '<div class="container-menu-separator"></div>'
         );
     }
@@ -840,7 +869,31 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
         else if (sAction === "force-rebuild")
             await fnForceRebuildContainer(sName);
+        else if (sAction === "convert") _fnStartConversion(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
+    }
+
+    function _fnStartConversion(sName) {
+        /* The convert wizard needs the project's directory too. It is
+           read from the tile by name-equality rather than an attribute
+           selector, so a host name carrying a space cannot break the
+           lookup. A sandbox is offered the destination choice (host
+           Project vs container); a host Project, already graduated, is
+           offered only containerization. */
+        var elTile = _felTileByName(sName);
+        var sDirectory = elTile ? (elTile.dataset.directory || "") : "";
+        var bIsProject = elTile
+            ? elTile.dataset.isProject === "true" : false;
+        VaibifyWorkflowManager.fnOpenConvertWizard(
+            sName, sDirectory, !bIsProject);
+    }
+
+    function _felTileByName(sName) {
+        var listTiles = document.querySelectorAll(".container-tile");
+        for (var i = 0; i < listTiles.length; i++) {
+            if (listTiles[i].dataset.name === sName) return listTiles[i];
+        }
+        return null;
     }
 
     async function fnShowContainerSettings(sName) {
@@ -1617,6 +1670,18 @@ var VaibifyContainerManager = (function () {
         return (el && el.dataset.directory) || "";
     }
 
+    function _fbIsProjectById(sId) {
+        /* The tile carries data-is-project from the registry truth. It
+           gates the Files-panel "Convert to Project" affordance: a
+           project that IS one already must not be offered the
+           conversion. A container tile has no such attribute and reads
+           false, which is harmless -- the Files button is host-only. */
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]'
+        );
+        return Boolean(el && el.dataset.isProject === "true");
+    }
+
     async function fnConnectToContainer(sId) {
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
@@ -1624,6 +1689,7 @@ var VaibifyContainerManager = (function () {
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
             _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);
+            _bSelectedContainerIsProject = _fbIsProjectById(sId);
             VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
@@ -1835,6 +1901,10 @@ var VaibifyContainerManager = (function () {
         return _sSelectedContainerDirectory;
     }
 
+    function fbGetSelectedContainerIsProject() {
+        return _bSelectedContainerIsProject;
+    }
+
     return {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
@@ -1847,9 +1917,11 @@ var VaibifyContainerManager = (function () {
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
         fsGetSelectedContainerDirectory: fsGetSelectedContainerDirectory,
+        fbGetSelectedContainerIsProject: fbGetSelectedContainerIsProject,
         fnReleaseClaim: fnReleaseClaim,
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,
         fnResumeInterruptedStart: fnResumeInterruptedStart,
+        fnBuildContainer: fnBuildContainer,
     };
 })();

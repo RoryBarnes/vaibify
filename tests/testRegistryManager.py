@@ -182,6 +182,67 @@ def testIsHostProjectReadsTheModeDiscriminator():
     assert not registryManager.fbIsHostProject("unknown-docker-id")
 
 
+# --- fbIsProject: the sandbox/Project discriminator ---
+
+def testContainerEntryIsAlwaysAProjectRegardlessOfFlag():
+    """A container is a Project by definition, whatever bIsProject says.
+
+    The stored flag is deliberately WRONG here (``False`` on a container)
+    to prove the predicate reads the mode first: a container that somehow
+    carried a false flag must still read as a Project.
+    """
+    assert registryManager.fbIsProject(
+        {"sName": "c", "sMode": "container", "bIsProject": False})
+    # Absent sMode is container mode, so absent-everything is a Project.
+    assert registryManager.fbIsProject({"sName": "legacy"})
+
+
+def testHostEntryDefaultsToSandbox():
+    """A host entry with no bIsProject key reads as a sandbox."""
+    assert not registryManager.fbIsProject(
+        {"sName": "h", "sMode": "host"})
+
+
+def testPromotedHostEntryReadsAsProject():
+    """A host entry with bIsProject true reads as a Project, staying host."""
+    dictEntry = {"sName": "h", "sMode": "host", "bIsProject": True}
+    assert registryManager.fbIsProject(dictEntry)
+    assert dictEntry["sMode"] == "host"
+
+
+def testEnrichmentCarriesTheProjectFlagForBothModes(monkeypatch):
+    """The registry listing carries bIsProject so the frontend can branch.
+
+    A host sandbox reports False, a promoted host Project reports True
+    (still host), and a container reports True. Docker is stubbed so the
+    container branch never reaches a live daemon.
+    """
+    monkeypatch.setattr(
+        "vaibify.docker.imageBuilder.fbImageExists", lambda sTag: False)
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        lambda sName: {"bExists": False, "bRunning": False})
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "sandbox", "sDirectory": "/x",
+         "sConfigPath": "/x/vaibify.yml", "sContainerName": "sandbox",
+         "sMode": "host"},
+        {"sName": "hostProject", "sDirectory": "/y",
+         "sConfigPath": "/y/vaibify.yml", "sContainerName": "hostProject",
+         "sMode": "host", "bIsProject": True},
+        {"sName": "boxed", "sDirectory": "/z",
+         "sConfigPath": "/z/vaibify.yml", "sContainerName": "boxed",
+         "sMode": "container"},
+    ]})
+    dictByName = {
+        dictEntry["sName"]: dictEntry
+        for dictEntry in registryManager.flistGetAllProjectsWithStatus()
+    }
+    assert dictByName["sandbox"]["bIsProject"] is False
+    assert dictByName["hostProject"]["bIsProject"] is True
+    assert dictByName["hostProject"]["sMode"] == "host"
+    assert dictByName["boxed"]["bIsProject"] is True
+
+
 def testMutateRegistryLockedReadsUnderTheLock(monkeypatch):
     """An entry written just before the lock is taken must be seen.
 
@@ -471,6 +532,218 @@ def testHostEntryStatusIsMissingWhenTheConfigIsGone(
     os.unlink(os.path.join(sProjectDir, "vaibify.yml"))
     listResult = registryManager.flistGetAllProjectsWithStatus()
     assert listResult[0]["sStatus"] == "missing"
+
+
+# -----------------------------------------------------------------------
+# fnConvertProjectToContainer — the host->container re-registration
+# -----------------------------------------------------------------------
+
+
+def testConvertRewritesModeNameAndContainerNameInPlace(tmp_path):
+    """A host entry becomes a container entry under the new name.
+
+    The keys distinct on purpose (basename 'ai greenhouse' != the new
+    Docker-safe name 'aiGreenhouse'), so the writer cannot pass by
+    reading one field where it should read another: the lock/lease/
+    journal key changes to the new name, and the directory must NOT.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "ai greenhouse",
+        "sDirectory": "/home/researcher/ai greenhouse",
+        "sConfigPath": "/home/researcher/ai greenhouse/vaibify.yml",
+        "sContainerName": "ai greenhouse",
+        "sMode": "host",
+    }]})
+    registryManager.fnConvertProjectToContainer(
+        "ai greenhouse", "aiGreenhouse",
+    )
+    assert registryManager.fdictGetProject("ai greenhouse") is None
+    dictConverted = registryManager.fdictGetProject("aiGreenhouse")
+    assert dictConverted is not None
+    assert dictConverted["sMode"] == "container"
+    assert dictConverted["sName"] == "aiGreenhouse"
+    assert dictConverted["sContainerName"] == "aiGreenhouse"
+    assert dictConverted["sDirectory"] == (
+        "/home/researcher/ai greenhouse"
+    )
+    assert dictConverted["sConfigPath"] == (
+        "/home/researcher/ai greenhouse/vaibify.yml"
+    )
+    assert not registryManager.fbIsHostProject("aiGreenhouse")
+
+
+def testConvertRaisesKeyErrorWhenProjectAbsent():
+    with pytest.raises(KeyError, match="not found"):
+        registryManager.fnConvertProjectToContainer("ghost", "ghostBox")
+
+
+def testConvertRefusesANonHostProject():
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "already-container",
+        "sDirectory": "/x",
+        "sConfigPath": "/x/vaibify.yml",
+        "sContainerName": "already-container",
+        "sMode": "container",
+    }]})
+    with pytest.raises(ValueError, match="not a host project"):
+        registryManager.fnConvertProjectToContainer(
+            "already-container", "somethingElse",
+        )
+    dictUnchanged = registryManager.fdictGetProject("already-container")
+    assert dictUnchanged["sMode"] == "container"
+
+
+def testConvertRefusesANameThatCollidesWithAnotherEntry():
+    """The new name must be free among the OTHER entries."""
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "greenhouse", "sDirectory": "/a",
+         "sConfigPath": "/a/vaibify.yml",
+         "sContainerName": "greenhouse", "sMode": "host"},
+        {"sName": "occupied", "sDirectory": "/b",
+         "sConfigPath": "/b/vaibify.yml",
+         "sContainerName": "occupied", "sMode": "container"},
+    ]})
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnConvertProjectToContainer(
+            "greenhouse", "occupied",
+        )
+    assert registryManager.fdictGetProject("greenhouse")["sMode"] == "host"
+
+
+def testConvertToItsOwnNameIsPermittedAndDoesNotSelfCollide():
+    """Skipping self by identity means the same name is not a collision.
+
+    A host name that is already Docker-safe may be kept; the writer must
+    not read the entry's own name as a duplicate of itself.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "greenhouse",
+        "sDirectory": "/a",
+        "sConfigPath": "/a/vaibify.yml",
+        "sContainerName": "greenhouse",
+        "sMode": "host",
+    }]})
+    registryManager.fnConvertProjectToContainer("greenhouse", "greenhouse")
+    dictConverted = registryManager.fdictGetProject("greenhouse")
+    assert dictConverted["sMode"] == "container"
+    assert dictConverted["sContainerName"] == "greenhouse"
+
+
+# -----------------------------------------------------------------------
+# fnPromoteHostProject — the host-sandbox -> host-Project promotion
+# -----------------------------------------------------------------------
+
+
+def testPromoteFlipsTheProjectFlagAndRenamesInPlace(tmp_path):
+    """A host sandbox becomes a host Project under the new name.
+
+    Keys distinct on purpose (basename 'greenhouse sandbox' != the new
+    name 'AI Greenhouse'), so the writer cannot pass by reading one field
+    where it should read another: the lock/lease/journal key changes to
+    the new name, the mode STAYS host, no bImageExists/bRunning appears,
+    and the directory must NOT move.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "greenhouse sandbox",
+        "sDirectory": "/home/researcher/greenhouse sandbox",
+        "sConfigPath": "/home/researcher/greenhouse sandbox/vaibify.yml",
+        "sContainerName": "greenhouse sandbox",
+        "sMode": "host",
+    }]})
+    registryManager.fnPromoteHostProject(
+        "greenhouse sandbox", "AI Greenhouse",
+    )
+    assert registryManager.fdictGetProject("greenhouse sandbox") is None
+    dictPromoted = registryManager.fdictGetProject("AI Greenhouse")
+    assert dictPromoted is not None
+    assert dictPromoted["sMode"] == "host"
+    assert dictPromoted["sName"] == "AI Greenhouse"
+    assert dictPromoted["sContainerName"] == "AI Greenhouse"
+    assert dictPromoted["bIsProject"] is True
+    assert dictPromoted["sDirectory"] == (
+        "/home/researcher/greenhouse sandbox"
+    )
+    assert dictPromoted["sConfigPath"] == (
+        "/home/researcher/greenhouse sandbox/vaibify.yml"
+    )
+    # Still a host project, and now a Project.
+    assert registryManager.fbIsHostProject("AI Greenhouse")
+    assert registryManager.fbIsProject(dictPromoted)
+
+
+def testPromoteRaisesKeyErrorWhenProjectAbsent():
+    with pytest.raises(KeyError, match="not found"):
+        registryManager.fnPromoteHostProject("ghost", "Ghost Project")
+
+
+def testPromoteRefusesAContainerProject():
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "already-container",
+        "sDirectory": "/x",
+        "sConfigPath": "/x/vaibify.yml",
+        "sContainerName": "already-container",
+        "sMode": "container",
+    }]})
+    with pytest.raises(ValueError, match="not a host project"):
+        registryManager.fnPromoteHostProject(
+            "already-container", "Something Else",
+        )
+    dictUnchanged = registryManager.fdictGetProject("already-container")
+    assert dictUnchanged["sMode"] == "container"
+
+
+def testPromoteRefusesAnAlreadyPromotedHostProject():
+    """Idempotency guard: a host Project cannot be promoted again."""
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "AI Greenhouse",
+        "sDirectory": "/a",
+        "sConfigPath": "/a/vaibify.yml",
+        "sContainerName": "AI Greenhouse",
+        "sMode": "host",
+        "bIsProject": True,
+    }]})
+    with pytest.raises(ValueError, match="already a Project"):
+        registryManager.fnPromoteHostProject(
+            "AI Greenhouse", "AI Greenhouse Two",
+        )
+    assert registryManager.fdictGetProject("AI Greenhouse")["bIsProject"]
+
+
+def testPromoteRefusesANameThatCollidesWithAnotherEntry():
+    """The new name must be free among the OTHER entries."""
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "greenhouse", "sDirectory": "/a",
+         "sConfigPath": "/a/vaibify.yml",
+         "sContainerName": "greenhouse", "sMode": "host"},
+        {"sName": "occupied", "sDirectory": "/b",
+         "sConfigPath": "/b/vaibify.yml",
+         "sContainerName": "occupied", "sMode": "container"},
+    ]})
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnPromoteHostProject("greenhouse", "occupied")
+    assert registryManager.fbIsHostProject("greenhouse")
+    assert not registryManager.fbIsProject(
+        registryManager.fdictGetProject("greenhouse"))
+
+
+def testPromoteToItsOwnNameIsPermittedAndDoesNotSelfCollide():
+    """A sandbox may keep its basename and still graduate to a Project.
+
+    The writer must skip the entry being promoted by identity, or the
+    entry would collide with itself. The flag flips even when the name
+    does not change.
+    """
+    registryManager.fnSaveRegistry({"listProjects": [{
+        "sName": "greenhouse",
+        "sDirectory": "/a",
+        "sConfigPath": "/a/vaibify.yml",
+        "sContainerName": "greenhouse",
+        "sMode": "host",
+    }]})
+    registryManager.fnPromoteHostProject("greenhouse", "greenhouse")
+    dictPromoted = registryManager.fdictGetProject("greenhouse")
+    assert dictPromoted["sMode"] == "host"
+    assert dictPromoted["bIsProject"] is True
 
 
 def testContainerEntryStatusStillConsultsDocker(tmp_path, monkeypatch):
