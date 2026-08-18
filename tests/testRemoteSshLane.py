@@ -41,6 +41,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 import pytest
@@ -179,9 +180,20 @@ def test_a_real_forward_carries_real_traffic(processRemoteTunnel):
     """A -L forward reaches the hub, not merely accepts a connection.
 
     A forward that accepts and carries nothing looks identical to a
-    working one until something asks a question. Distinct ports here:
-    same-port on one host is a loop, and the equality the product
-    actually uses is asserted over the argv builder instead.
+    working one until something asks a question.
+
+    THE ANSWER IS A 400, AND THAT IS THE POINT. A single host cannot
+    forward N to N -- that is a loop -- so this forwards a different
+    local port, and the hub then refuses the request because its Host
+    header names a port that is not the one the backend expects. That
+    refusal is only reachable by a request that ARRIVED: a forward
+    carrying nothing yields a connection error, not an HTTP status. So
+    one assertion proves both halves -- traffic crossed the tunnel, and
+    the Host check is the reason the product insists on N-to-N.
+
+    This is the honest shape of the test on one machine. Asserting a
+    200 would require weakening the Host check, which exists to stop a
+    rebound DNS name driving the local API.
     """
     fdictParseStartupRecord(
         processRemoteTunnel.stdout.readline(), I_TEST_PORT,
@@ -199,13 +211,25 @@ def test_a_real_forward_carries_real_traffic(processRemoteTunnel):
             if not _fbPortIsFree(iLocalPort):
                 break
             time.sleep(0.25)
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{iLocalPort}/", timeout=20,
-        ) as response:
-            baBody = response.read()
-        assert response.status == 200
-        assert b"vaibify" in baBody.lower(), (
-            "the forward carried a response that was not the dashboard"
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{iLocalPort}/", timeout=20,
+            ) as response:
+                iStatus = response.status
+        except urllib.error.HTTPError as errorHttp:
+            iStatus = errorHttp.code
+        except urllib.error.URLError as errorUrl:
+            raise AssertionError(
+                "nothing answered through the forward, so it accepted "
+                f"a connection and carried nothing: {errorUrl}"
+            )
+        assert iStatus == 400, (
+            "the hub answered through the forward with "
+            f"{iStatus}, not the 400 its Host check owes a request "
+            "whose port does not match the backend's. Either the "
+            "forward reached something that is not vaibify, or the "
+            "Host check has stopped refusing a mismatched port -- "
+            "which is what keeps a rebound name off the local API."
         )
     finally:
         processForward.kill()
