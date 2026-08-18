@@ -35,6 +35,10 @@ var VaibifyWebSocket = (function () {
         }
     }
 
+    function ffGetReconnectWindowSeconds() {
+        return _fReconnectWindowSeconds;
+    }
+
     function _ffNextReconnectDelaySeconds() {
         /* Return the next backoff delay, or -1 when retrying further
          * would outlive the window the server promised to hold. */
@@ -277,6 +281,7 @@ var VaibifyWebSocket = (function () {
         fnOnEvent: fnOnEvent,
         fnConnect: fnConnect,
         fnSetReconnectWindowSeconds: fnSetReconnectWindowSeconds,
+        ffGetReconnectWindowSeconds: ffGetReconnectWindowSeconds,
         fnSend: fnSend,
         fnSendDirect: fnSendDirect,
         fnDisconnect: fnDisconnect,
