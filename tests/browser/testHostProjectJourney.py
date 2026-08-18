@@ -577,6 +577,22 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
     )
     assert "pass" in _fsStepStatusClass(pageDashboard)
 
+    # The passed light is set and confirmed. Re-route /state so a
+    # reconciliation landing AFTER the stop cannot RE-DERIVE it: with no
+    # sLogPath the recovery skips fnApplyCompletedState, so the light's
+    # survival depends ONLY on the kill handler -- the behaviour under
+    # test. Without this, a poll landing in the assert window healed the
+    # mutated clear and the falsification SURVIVED on the 3.14 runner.
+    pageDashboard.unroute("**/api/pipeline/*/state")
+    pageDashboard.route(
+        "**/api/pipeline/*/state",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"bRunning": False}),
+        ),
+    )
+
     pageDashboard.evaluate("() => VaibifyPipelineRunner.fnKillPipeline()")
     pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
     pageDashboard.click("#btnConfirmOk")
