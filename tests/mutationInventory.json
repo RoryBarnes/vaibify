@@ -576,7 +576,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 1359,
+      "iLine": 1392,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -589,7 +589,7 @@
       "sScopeFingerprint": "8af36da422b672dd"
     },
     {
-      "iLine": 1396,
+      "iLine": 1429,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -680,20 +680,20 @@
       "sScopeFingerprint": "f5f03ff3b7eb02ca"
     },
     {
-      "iLine": 568,
+      "iLine": 655,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
       "sCapabilityName": "os.kill",
       "sDisposition": "separate-authority",
-      "sDispositionRationale": "The idle self-shutdown signals os.getpid() -- this process, and only this process. The busy veto that precedes it reads dictContainerOwners so a hub can never self-retire mid-run. There is no other target reachable from this call.",
+      "sDispositionRationale": "The idle self-shutdown signals os.getpid() -- this process, and only this process. The busy veto that precedes it reads dictContainerOwners so a hub can never self-retire mid-run, and a never/inf timeout short-circuits the decision to False. The os.kill target is unchanged by the live-timeout edit. There is no other target reachable from this call.",
       "sFile": "gui/serverLifespan.py",
       "sFingerprint": "670635d843915ac7",
       "sScope": "_fnIdleShutdownWatchdogLoop",
-      "sScopeFingerprint": "8bdb9f054b58908c"
+      "sScopeFingerprint": "62e12181eb5cc2ce"
     },
     {
-      "iLine": 100,
+      "iLine": 101,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
