@@ -16,9 +16,11 @@ lives here, beneath them.
 __all__ = [
     "I_REJECT_CONTAINER_ONLY",
     "S_UNAVAILABLE_IN_HOST_MODE",
+    "S_UNAVAILABLE_IN_CONTAINER_MODE",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fnRefuseContainerOnlyForHostProject",
+    "fnRefuseHostOnlyForContainerProject",
     "fdictRequireLaneTupleForCommit",
     "fdictRunAutomaticReadUnderTheDrain",
     "fdictRunRemoteVerifyBlocking",
@@ -76,6 +78,11 @@ I_REJECT_CONTAINER_ONLY = 409
 # The machine-readable half. The prose is what a researcher reads; a
 # panel deciding whether to hide a control must not have to parse it.
 S_UNAVAILABLE_IN_HOST_MODE = "host-mode"
+# The mirror marker: a HOST-only capability aimed at a container
+# project. Its own value so a panel can tell the two refusals apart --
+# "this needs a container" is the opposite diagnosis from "this project
+# already IS one".
+S_UNAVAILABLE_IN_CONTAINER_MODE = "container-mode"
 
 
 def fnRefuseContainerOnlyForHostProject(sName, sCapability):
@@ -103,6 +110,37 @@ def fnRefuseContainerOnlyForHostProject(sName, sCapability):
                 "and has no container."
             ),
             "sUnavailableIn": S_UNAVAILABLE_IN_HOST_MODE,
+        },
+    )
+
+
+def fnRefuseHostOnlyForContainerProject(sName, sCapability):
+    """Raise 409 when a host-only capability names a container project.
+
+    The exact mirror of :func:`fnRefuseContainerOnlyForHostProject`, and
+    it must live on the server for the same reason: the dashboard shows
+    "Convert to Project" only on a host tile, but hiding is courtesy --
+    the route is reachable by ``curl`` and by any panel that forgets, and
+    a container project has nothing to convert.
+
+    It is also how the convert route stays idempotent: a repeat call
+    after a successful conversion sees a container project and is refused
+    here rather than re-registering it a second time. Not 403, for the
+    withdrawn terminal's reason -- a refusal a client reads as "your
+    credential was rejected" sends the researcher to re-claim a project
+    that is already theirs.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sName):
+        return
+    raise HTTPException(
+        I_REJECT_CONTAINER_ONLY,
+        detail={
+            "sMessage": (
+                f"{sCapability} applies only to host projects. "
+                f"'{sName}' is already a containerized project."
+            ),
+            "sUnavailableIn": S_UNAVAILABLE_IN_CONTAINER_MODE,
         },
     )
 
