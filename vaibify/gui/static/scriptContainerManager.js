@@ -170,9 +170,19 @@ var VaibifyContainerManager = (function () {
         return dictContainer.sMode === "host";
     }
 
+    function _fbIsProject(dictContainer) {
+        /* A container is a Project by definition; a host entry is a
+           Project only when it has been promoted (bIsProject true). The
+           backend enrichment carries the flag, so the tile never
+           re-derives the sandbox/Project distinction. */
+        if (!_fbHostProject(dictContainer)) return true;
+        return dictContainer.bIsProject === true;
+    }
+
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
         var bHost = _fbHostProject(dictContainer);
+        var bIsProject = _fbIsProject(dictContainer);
         /* A host project has no container, so the registry sends no
            sContainerId. Its resource id IS its registry name -- the
            same substitution the backend claim path makes -- and the
@@ -205,6 +215,7 @@ var VaibifyContainerManager = (function () {
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
             '" data-mode="' + (bHost ? "host" : "container") +
+            '" data-is-project="' + (bIsProject ? "true" : "false") +
             '" data-quarantined="' + (bQuarantined ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
@@ -220,7 +231,7 @@ var VaibifyContainerManager = (function () {
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
             _fsRenderContainerOnlyMenuItems(bHost) +
-            _fsRenderHostConvertMenuItem(bHost) +
+            _fsRenderHostConvertMenuItem(bHost, bIsProject) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
@@ -307,14 +318,18 @@ var VaibifyContainerManager = (function () {
         );
     }
 
-    function _fsRenderHostConvertMenuItem(bHost) {
-        /* Only a host tile carries "Convert to Project": the action
-           re-registers this sandbox as a containerized project. A
-           container tile has nothing to convert. */
+    function _fsRenderHostConvertMenuItem(bHost, bIsProject) {
+        /* Only a host tile carries this action. A host SANDBOX is
+           offered "Make a Project…", which opens the destination choice
+           (host Project or container). A host PROJECT has already
+           graduated, so it is never offered promotion again -- it is
+           offered "Containerize…" instead, which goes straight to the
+           container flow. A container tile has nothing here. */
         if (!bHost) return "";
+        var sLabel = bIsProject ? "Containerize…" : "Make a Project…";
         return (
             '<div class="container-menu-item" data-action="convert">' +
-            "Convert to Project…</div>" +
+            sLabel + "</div>" +
             '<div class="container-menu-separator"></div>'
         );
     }
@@ -861,10 +876,15 @@ var VaibifyContainerManager = (function () {
         /* The convert wizard needs the project's directory too. It is
            read from the tile by name-equality rather than an attribute
            selector, so a host name carrying a space cannot break the
-           lookup. */
+           lookup. A sandbox is offered the destination choice (host
+           Project vs container); a host Project, already graduated, is
+           offered only containerization. */
         var elTile = _felTileByName(sName);
         var sDirectory = elTile ? (elTile.dataset.directory || "") : "";
-        VaibifyWorkflowManager.fnOpenConvertWizard(sName, sDirectory);
+        var bIsProject = elTile
+            ? elTile.dataset.isProject === "true" : false;
+        VaibifyWorkflowManager.fnOpenConvertWizard(
+            sName, sDirectory, !bIsProject);
     }
 
     function _felTileByName(sName) {

@@ -120,7 +120,10 @@ def test_wizard_data_includes_all_new_fields():
     # 2500 -> 4000 on 2026-08-17, when fnOpenConvertWizard and its
     # Docker-safe-suggestion helper landed in the same span; every field
     # below is still present, and the assertion below is what says so.
-    sBody = sSource[iIdx:iIdx + 4000]
+    # Raised 4000 -> 6000 on 2026-08-18, when the host-Project promotion
+    # branch (the destination-choice helpers beside fnOpenConvertWizard)
+    # landed in the same span.
+    sBody = sSource[iIdx:iIdx + 6000]
     for sField in ("listFeatures", "bUseGithubAuth", "bNeverSleep",
                    "bNetworkIsolation", "listSystemPackages",
                    "listPythonPackages", "listCondaPackages",

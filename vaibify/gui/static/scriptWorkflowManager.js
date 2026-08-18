@@ -474,6 +474,7 @@ var VaibifyWorkflowManager = (function () {
         "Features & Authentication",
         "Packages",
         "Summary",
+        "How to become a Project",
     ];
     /* The wizard's pages are a CATALOGUE; which of them a project
        needs depends on its mode. A host project has no image to
@@ -487,6 +488,7 @@ var VaibifyWorkflowManager = (function () {
     var _DICT_WIZARD_PAGE = {
         DIRECTORY: 0, TEMPLATE: 1, NAME: 2, PYTHON: 3,
         REPOSITORIES: 4, FEATURES: 5, PACKAGES: 6, SUMMARY: 7,
+        DESTINATION: 8,
     };
     var _T_CONTAINER_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
@@ -504,11 +506,25 @@ var VaibifyWorkflowManager = (function () {
        clobber the researcher's files. Name is KEPT and mandatory --
        the host basename may not be Docker-safe -- and pre-filled with
        a sanitized suggestion. The page arrays are indexed by page
-       ENUM, so this new LIST needs no reindexing. */
+       ENUM, so this new LIST needs no reindexing. This container-only
+       list is what a host PROJECT (already graduated) sees when it is
+       containerized -- there is no destination to choose. */
     var _T_CONVERT_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.PYTHON,
         _DICT_WIZARD_PAGE.REPOSITORIES, _DICT_WIZARD_PAGE.FEATURES,
         _DICT_WIZARD_PAGE.PACKAGES, _DICT_WIZARD_PAGE.SUMMARY,
+    ];
+    /* A host SANDBOX becoming a Project first chooses its destination.
+       Both branches open on the same Destination page (position 0), so
+       switching the choice keeps position 0 valid and re-lists only the
+       pages after it. The container branch is the convert list above
+       with the choice prepended; the host branch collects nothing but
+       a host-safe name and a summary -- no image, no build. */
+    var _T_CONVERT_CHOICE_PAGES = [_DICT_WIZARD_PAGE.DESTINATION].concat(
+        _T_CONVERT_WIZARD_PAGES);
+    var _T_PROMOTE_CHOICE_PAGES = [
+        _DICT_WIZARD_PAGE.DESTINATION, _DICT_WIZARD_PAGE.NAME,
+        _DICT_WIZARD_PAGE.SUMMARY,
     ];
     var _LIST_WIZARD_HELP = [
         '<p>The folder on your host machine where vaibify writes ' +
@@ -655,6 +671,21 @@ var VaibifyWorkflowManager = (function () {
         'Nothing here is permanent: you can edit <code>vaibify.yml</code> ' +
         'directly after creation, or remove the project from the registry ' +
         'and start over.</p>',
+
+        '<p>A sandbox can graduate to a Project in two independent ways ' +
+        '&mdash; they are separate axes, and you can do the second later ' +
+        'even after the first.</p>' +
+        '<p><strong>Host Project</strong> &mdash; keeps running directly ' +
+        'on this machine. It gets a real name and is tracked as a ' +
+        'Project, but <em>no container is built</em>: nothing to wait ' +
+        'for, and the work stays uncontained (host mode). Choose this ' +
+        'when you want to name and keep a workspace without the ' +
+        'reproducibility machinery of a container.</p>' +
+        '<p><strong>Containerized Project</strong> &mdash; rebuilds the ' +
+        'project inside a Docker image for full reproducibility. This ' +
+        'collects container settings and runs a build (minutes to ' +
+        'hours). Choose this when you want the work isolated and ' +
+        'exactly reproducible.</p>',
     ];
     var _LIST_FEATURE_DEFINITIONS = [
         {sKey: "claude", sLabel: "Claude Code CLI",
@@ -703,26 +734,66 @@ var VaibifyWorkflowManager = (function () {
             return _T_HOST_WIZARD_PAGES;
         }
         if (_dictWizardData.sMode === "convert") {
-            return _T_CONVERT_WIZARD_PAGES;
+            /* A host PROJECT being containerized skips the destination
+               choice: it has already graduated, so the only remaining
+               question is the container's. A host SANDBOX chooses first,
+               and the two branches share the Destination page at
+               position 0. */
+            if (!_dictWizardData.bOfferHostPromotion) {
+                return _T_CONVERT_WIZARD_PAGES;
+            }
+            return _dictWizardData.sConvertDestination === "host"
+                ? _T_PROMOTE_CHOICE_PAGES
+                : _T_CONVERT_CHOICE_PAGES;
         }
         return _T_CONTAINER_WIZARD_PAGES;
     }
 
-    function fnOpenConvertWizard(sHostName, sDirectory) {
+    function fnOpenConvertWizard(sHostName, sDirectory, bOfferHostPromotion) {
         /* The two triggers (host tile action + host-only Files-panel
            button) both land here. The directory is the existing,
-           already-registered one -- never re-chosen -- and the new
-           container name is pre-filled with a Docker-safe suggestion
-           the researcher can edit on the mandatory Name page. */
+           already-registered one -- never re-chosen. A host sandbox is
+           offered a destination choice (host Project vs container); a
+           host Project (already graduated) is not -- it goes straight to
+           the container flow. The name is pre-filled once the branch is
+           known, because a host-safe name allows spaces a Docker name
+           does not. */
         _iWizardStep = 0;
         _dictWizardData = _fdictBuildDefaultWizardData();
         _dictWizardData.sMode = "convert";
         _dictWizardData.sHostName = sHostName;
         _dictWizardData.sDirectory = sDirectory || "";
-        _dictWizardData.sProjectName = _fsDockerSafeSuggestion(
-            _fsProjectNameFromDirectory());
+        _dictWizardData.bOfferHostPromotion = bOfferHostPromotion !== false;
+        if (_dictWizardData.bOfferHostPromotion) {
+            _dictWizardData.sConvertDestination = "";
+            _dictWizardData.sProjectName = "";
+        } else {
+            _dictWizardData.sConvertDestination = "container";
+            _dictWizardData.sProjectName = _fsDockerSafeSuggestion(
+                _fsProjectNameFromDirectory());
+        }
         document.getElementById("modalCreateWizard")
             .style.display = "flex";
+        _fnRenderWizardStep(_iWizardStep);
+    }
+
+    function _fbPromotingToHostProject() {
+        return _dictWizardData.sMode === "convert" &&
+            _dictWizardData.sConvertDestination === "host";
+    }
+
+    function _fnChooseConvertDestination(sDestination) {
+        /* The choice decides the rest of the wizard AND how the name is
+           seeded: a host Project name is host-safe (spaces allowed) so
+           the raw basename fits, while a container name is sanitized to a
+           Docker identifier. Re-render the current step so the progress
+           dots (the two branches differ in length) and the final-button
+           label reflect the choice. */
+        _dictWizardData.sConvertDestination = sDestination;
+        var sBasename = _fsProjectNameFromDirectory();
+        _dictWizardData.sProjectName = sDestination === "host"
+            ? sBasename
+            : _fsDockerSafeSuggestion(sBasename);
         _fnRenderWizardStep(_iWizardStep);
     }
 
@@ -833,7 +904,11 @@ var VaibifyWorkflowManager = (function () {
         }
         if (_iWizardStep >= _flistWizardPages().length - 1) {
             if (_dictWizardData.sMode === "convert") {
-                _fnSubmitConvertProject();
+                if (_fbPromotingToHostProject()) {
+                    _fnSubmitPromoteHostProject();
+                } else {
+                    _fnSubmitConvertProject();
+                }
             } else {
                 _fnSubmitCreateProject();
             }
@@ -860,6 +935,7 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderStepFeatures,
             _fnRenderStepPackages,
             _fnRenderStepSummary,
+            _fnRenderStepDestination,
         ];
         listRenderers[iPage](elContent);
     }
@@ -887,7 +963,8 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fsFinalButtonLabel() {
-        return _dictWizardData.sMode === "convert" ? "Convert" : "Create";
+        if (_dictWizardData.sMode !== "convert") return "Create";
+        return _fbPromotingToHostProject() ? "Promote" : "Convert";
     }
 
     function _fnRenderStepDirectory(elContent) {
@@ -995,16 +1072,69 @@ var VaibifyWorkflowManager = (function () {
         );
     }
 
+    var _LIST_DESTINATION_CHOICES = [
+        {sKey: "host", sTitle: "Host Project",
+         sDescription: "Runs on this machine. Named and tracked as a " +
+            "Project, but no container is built. Stays uncontained."},
+        {sKey: "container", sTitle: "Containerized Project",
+         sDescription: "Full reproducibility. Rebuilds the project " +
+            "inside a Docker image (this can take minutes to hours)."},
+    ];
+
+    function _fnRenderStepDestination(elContent) {
+        elContent.innerHTML = '<div class="add-choice-cards">' +
+            _LIST_DESTINATION_CHOICES.map(function (dictChoice) {
+                var sActive =
+                    dictChoice.sKey === _dictWizardData.sConvertDestination
+                        ? " style=\"border-color:" +
+                          "var(--color-pale-blue);\""
+                        : "";
+                return '<div class="add-choice-card" ' +
+                    'data-destination="' +
+                    VaibifyUtilities.fnEscapeHtml(dictChoice.sKey) + '"' +
+                    sActive + '>' +
+                    '<div class="add-choice-title">' +
+                    VaibifyUtilities.fnEscapeHtml(dictChoice.sTitle) +
+                    '</div><div class="add-choice-description">' +
+                    VaibifyUtilities.fnEscapeHtml(
+                        dictChoice.sDescription) +
+                    '</div></div>';
+            }).join("") + '</div>';
+        _fnBindDestinationCardClicks(elContent);
+    }
+
+    function _fnBindDestinationCardClicks(elContent) {
+        elContent.querySelectorAll(".add-choice-card").forEach(
+            function (el) {
+                el.addEventListener("click", function () {
+                    _fnChooseConvertDestination(el.dataset.destination);
+                });
+            }
+        );
+    }
+
     function _fnRenderStepProjectName(elContent) {
         var sDefault = _fsProjectNameFromDirectory();
         if (!_dictWizardData.sProjectName) {
             _dictWizardData.sProjectName = sDefault;
         }
+        /* A host Project's name is host-safe (spaces allowed) and never
+           becomes a Docker object; a container name is a Docker
+           identifier. The placeholder and note follow the branch so the
+           researcher is not told a host name must look like a container
+           one. */
+        var bHostProject = _fbPromotingToHostProject();
+        var sPlaceholder = bHostProject ? "My Project" : "my-project";
+        var sNote = bHostProject
+            ? '<p class="muted-text">Spaces are allowed. This project ' +
+              'stays on this machine &mdash; no container is built.</p>'
+            : "";
         elContent.innerHTML =
             '<div class="form-group">' +
             '<label>Project Name</label>' +
             '<input type="text" id="inputWizardProjectName" ' +
-            'placeholder="my-project">' +
+            'placeholder="' + sPlaceholder + '">' +
+            sNote +
             '</div>';
         document.getElementById(
             "inputWizardProjectName").value =
@@ -1255,6 +1385,22 @@ var VaibifyWorkflowManager = (function () {
            image's Python version, repositories and package lists for
            a project that will never build one states settings that
            govern nothing. */
+        if (_fbPromotingToHostProject()) {
+            /* Promotion to a host Project states only what it changes:
+               the directory it keeps, the new name it takes, and that it
+               stays on this machine with no build. */
+            elContent.innerHTML =
+                '<div class="wizard-summary-block">' +
+                _fsSummaryRow("Directory", _dictWizardData.sDirectory) +
+                _fsSummaryRow(
+                    "New Project name", _dictWizardData.sProjectName) +
+                _fsSummaryRow(
+                    "Mode",
+                    "Host — runs directly on this machine; no " +
+                    "container is built") +
+                '</div>';
+            return;
+        }
         if (_dictWizardData.sMode === "host") {
             /* No Project Name row: a host sandbox's name IS its
                directory basename, so echoing it back as a separate
@@ -1462,6 +1608,12 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fbValidateWizardStep(iPage) {
+        if (iPage === _DICT_WIZARD_PAGE.DESTINATION &&
+                !_dictWizardData.sConvertDestination) {
+            VaibifyApp.fnShowToast(
+                "Please choose how this becomes a Project.", "warning");
+            return false;
+        }
         if (iPage === _DICT_WIZARD_PAGE.DIRECTORY &&
                 !_dictWizardData.sDirectory) {
             VaibifyApp.fnShowToast(
@@ -1566,6 +1718,37 @@ var VaibifyWorkflowManager = (function () {
            modal, polls .../build/progress, and reloads the container
            list (flipping the tile host -> container) in its finally. */
         await VaibifyContainerManager.fnBuildContainer(sNewName);
+        VaibifyContainerManager.fnLoadContainers();
+    }
+
+    async function _fnSubmitPromoteHostProject() {
+        /* No confirm modal and no build: promotion only names the
+           project and marks it graduated, staying in host mode. The
+           birth animation is the same milestone the container path
+           celebrates -- a sandbox becoming a Project -- so it fires here
+           too. */
+        var sHostName = _dictWizardData.sHostName;
+        var sNewName = _dictWizardData.sProjectName;
+        var elButton = document.getElementById("btnWizardNext");
+        elButton.disabled = true;
+        elButton.textContent = "Promoting...";
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sHostName) +
+                "/promote-to-host-project", {sProjectName: sNewName});
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+            elButton.disabled = false;
+            elButton.textContent = "Promote";
+            return;
+        }
+        _fnCloseWizard();
+        VaibifyApp.fnAnimateProjectBirth();
+        VaibifyApp.fnShowToast(
+            "Promoted '" + sHostName + "' to the host Project '" +
+            sNewName + "'.", "success");
         VaibifyContainerManager.fnLoadContainers();
     }
 

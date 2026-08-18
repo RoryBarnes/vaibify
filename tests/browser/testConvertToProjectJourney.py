@@ -63,30 +63,50 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
     """The action is host-only: a container is already a Project.
 
     Asserted on both tiles in the one list, so a menu item rendered
-    unconditionally would fail here rather than mislead a researcher.
+    unconditionally would fail here rather than mislead a researcher. A
+    host sandbox that has not graduated offers "Make a Project…".
     """
     _fnWaitForPicker(pageDashboard, serverHub)
-    assert pageDashboard.query_selector(
+    elHostAction = pageDashboard.query_selector(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
         '.container-menu-item[data-action="convert"]',
-    ) is not None, "the host tile offers no Convert action"
+    )
+    assert elHostAction is not None, "the host tile offers no Convert action"
+    assert "Make a Project" in elHostAction.text_content()
     assert pageDashboard.query_selector(
         f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
         '.container-menu-item[data-action="convert"]',
     ) is None, "a containerized tile offered Convert"
 
 
-def testConvertWizardOpensOnNameWithADockerSafePrefill(
-    pageDashboard, serverHub,
-):
-    """The mandatory Name page opens pre-filled and Docker-safe."""
-    _fnWaitForPicker(pageDashboard, serverHub)
-    _fnOpenHostTileMenu(pageDashboard, S_HOST_PROJECT_READY)
-    pageDashboard.click(
+def _fnOpenConvertMenuAndChooseContainer(page):
+    """Open the sandbox's wizard and pick the Containerized destination.
+
+    A host sandbox now opens on the destination choice, so the container
+    flow the rest of this file exercises is reached by choosing
+    "Containerized Project" and advancing to the Name page.
+    """
+    _fnOpenHostTileMenu(page, S_HOST_PROJECT_READY)
+    page.click(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
         '.container-menu-item[data-action="convert"]',
     )
-    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    page.wait_for_selector("#modalCreateWizard", timeout=5000)
+    assert page.text_content(
+        "#wizardStepTitle",
+    ).strip() == "How to become a Project"
+    page.click('.add-choice-card[data-destination="container"]')
+    page.wait_for_timeout(150)
+    page.click("#btnWizardNext")
+    page.wait_for_timeout(200)
+
+
+def testConvertWizardOpensOnNameWithADockerSafePrefill(
+    pageDashboard, serverHub,
+):
+    """After choosing container, the Name page is pre-filled Docker-safe."""
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnOpenConvertMenuAndChooseContainer(pageDashboard)
     assert pageDashboard.text_content(
         "#wizardStepTitle",
     ).strip() == "Project Name"
@@ -110,12 +130,7 @@ def testConvertSummaryNamesTheNewContainerAndOmitsTemplate(
 ):
     """A conversion has no Template; its summary names the new container."""
     _fnWaitForPicker(pageDashboard, serverHub)
-    _fnOpenHostTileMenu(pageDashboard, S_HOST_PROJECT_READY)
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-menu-item[data-action="convert"]',
-    )
-    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    _fnOpenConvertMenuAndChooseContainer(pageDashboard)
     _fnWalkConvertWizardToSummary(pageDashboard)
     assert pageDashboard.text_content(
         "#wizardStepTitle",
@@ -144,12 +159,7 @@ def testConvertingFlipsTheTileFromHostToContainer(
     """
     from vaibify.config import registryManager
     _fnWaitForPicker(pageDashboard, serverHub)
-    _fnOpenHostTileMenu(pageDashboard, S_HOST_PROJECT_READY)
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-menu-item[data-action="convert"]',
-    )
-    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    _fnOpenConvertMenuAndChooseContainer(pageDashboard)
     _fnWalkConvertWizardToSummary(pageDashboard)
     pageDashboard.click("#btnWizardNext")
     # The one confirm modal, warning before the irreversible-ish step.
