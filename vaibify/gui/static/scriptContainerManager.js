@@ -1164,6 +1164,15 @@ var VaibifyContainerManager = (function () {
 
     var _I_START_POLL_INTERVAL_MILLISECONDS = 1000;
     var _I_START_POLL_LIMIT = 900;
+    /* A start survives the page that asked for it, so the RESUMED poll
+       runs while a just-reloaded page is still settling -- the first
+       /start-status can transiently fail (the session token not yet
+       re-established, a network blip). Abandoning the start on that one
+       failure stranded the researcher's running container and flaked
+       the reload-resume browser test. Tolerate a bounded run of
+       consecutive poll errors, retrying within the poll budget; a
+       PERSISTENT failure still propagates. */
+    var _I_START_POLL_ERROR_TOLERANCE = 5;
 
     /* The name of a start this tab is following, remembered across a
        reload. A start outlives the request that asked for it, so a
@@ -1245,10 +1254,27 @@ var VaibifyContainerManager = (function () {
     async function _fnFollowStartToItsOutcome(sName, dictStart) {
         VaibifyApp.fnShowToast("Starting container...", "info");
         var iAttempt = 0;
+        var iConsecutiveErrors = 0;
         while (iAttempt < _I_START_POLL_LIMIT) {
-            var dictStatus = await VaibifyApi.fdictGet(
-                _fsContainerUrl(sName, "/start-status")
-            );
+            var dictStatus;
+            try {
+                dictStatus = await VaibifyApi.fdictGet(
+                    _fsContainerUrl(sName, "/start-status")
+                );
+                iConsecutiveErrors = 0;
+            } catch (error) {
+                /* A transient poll failure must not abandon a start that
+                   is still running on the server; retry within the poll
+                   budget. Only a PERSISTENT failure propagates. */
+                iConsecutiveErrors += 1;
+                if (iConsecutiveErrors > _I_START_POLL_ERROR_TOLERANCE) {
+                    throw error;
+                }
+                await _fnSleepMilliseconds(
+                    _I_START_POLL_INTERVAL_MILLISECONDS);
+                iAttempt += 1;
+                continue;
+            }
             if (dictStatus.sState !== "PENDING") {
                 _fnReportStartOutcome(sName, dictStatus);
                 return;

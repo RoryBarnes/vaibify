@@ -956,3 +956,65 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
         if pageControl is not None:
             pageControl.context.close()
         _fnReleaseBrowserLaneOwnership(stateApp)
+
+
+def testAStartSurvivesATransientStatusPollFailure(
+    pageDashboard, serverHub,
+):
+    """A single transient /start-status error must not abandon a start.
+
+    The status poll runs while a page is still settling -- most sharply
+    the RESUMED poll on a just-reloaded tab, whose first request can
+    fail before the session is re-established. The pre-fix loop
+    abandoned the whole start on that one failure, stranding a running
+    container and flaking the reload-resume journey on loaded CI. The
+    poll now tolerates a bounded run of transient errors.
+
+    Deterministic and adversarial: the FIRST /start-status is aborted
+    exactly once, then let through. Without the tolerance the follow
+    throws on that abort and no "Container started" toast ever appears;
+    the assertion that the abort actually fired keeps the test honest.
+    """
+    from vaibify.gui import startReservation
+
+    stateApp = serverHub.app.state
+    _fnWriteBrowserLaneProjectConfig(serverHub)
+    fnRealExecutor = startReservation._fsExecuteReservedStart
+    fnRealRunningList = serverHub.adapterDocker.flistGetRunningContainers
+
+    def _fsImmediateStart(sName, reservation, configProject):
+        return "browserLaneStartedContainerId"
+
+    serverHub.adapterDocker.flistGetRunningContainers = lambda: []
+    startReservation._fsExecuteReservedStart = _fsImmediateStart
+
+    dictRoute = {"iSeen": 0}
+
+    def _fnAbortFirstStatusPoll(route):
+        dictRoute["iSeen"] += 1
+        if dictRoute["iSeen"] == 1:
+            route.abort("failed")
+        else:
+            route.continue_()
+
+    try:
+        pageDashboard.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        pageDashboard.route("**/start-status", _fnAbortFirstStatusPoll)
+        pageDashboard.evaluate(
+            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            % S_CONTAINER_NAME
+        )
+        pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).first.wait_for(state="visible", timeout=20000)
+        assert dictRoute["iSeen"] >= 2, (
+            "the transient failure never fired, so the retry path was "
+            "not exercised"
+        )
+        assert pageDashboard.listPageErrors == []
+    finally:
+        startReservation._fsExecuteReservedStart = fnRealExecutor
+        serverHub.adapterDocker.flistGetRunningContainers = fnRealRunningList
+        _fnReleaseBrowserLaneOwnership(stateApp)
