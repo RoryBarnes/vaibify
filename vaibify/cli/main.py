@@ -95,6 +95,7 @@ from .commandGenerateStandards import fnGenerateStandardsCommand
 from .commandInit import fnInitCommand
 from .commandLs import fnListCommand
 from .commandOpen import fnOpenContainerCommand
+from .commandRemoteHelper import fnRemoteHelperCommand
 from .commandReconcile import fnReconcileCommand
 from .commandRegister import fnRegisterCommand
 from .commandReproduce import fnReproduceCommand
@@ -313,6 +314,7 @@ main.add_command(fnListSessionsCommand)
 main.add_command(fnDoCommand)
 main.add_command(fnReconcileCommand)
 main.add_command(fnOpenContainerCommand)
+main.add_command(fnRemoteHelperCommand)
 
 
 @main.command("stop")
