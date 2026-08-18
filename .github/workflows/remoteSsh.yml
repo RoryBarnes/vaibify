@@ -1,0 +1,90 @@
+name: remote-ssh
+
+# The remote-access transport, over a real OpenSSH connection.
+#
+# Everything else about the feature is provable without SSH: the
+# protocol validates, the helper starts a hub and its capability
+# redeems, the client builds an argv. None of that proves the two
+# halves meet. What only a real connection proves is that OpenSSH
+# accepts the argv this client builds, that the login shell on the far
+# side finds `vaibify` and leaves its stdout intact, that the forward
+# carries loopback traffic rather than merely accepting connections,
+# and that a capability minted over there redeems over here.
+#
+# ONE cell on purpose — Linux, one Python. A transport does not become
+# more trustworthy by being proven 24 times across the OS/Python
+# matrix. macOS is deliberately absent: its sshd needs Remote Login
+# enabled by a human, and a lane that a hosted runner cannot arrange is
+# a lane that would sit permanently skipped.
+#
+# THIS LANE MAY NOT SKIP ITSELF GREEN. VAIBIFY_REQUIRE_REMOTE_SSH turns
+# the "no usable sshd" skip into a failure, so a job whose whole
+# purpose is SSH coverage cannot report success for having connected to
+# nothing. That guard is the same one the browser and live-Docker lanes
+# carry, and it exists because `docker info || exit 0` once turned an
+# unreachable daemon green.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  remote-ssh:
+    # The job name IS the status-check name — what you type when adding
+    # a required check. Keep it searchable as "remote".
+    name: 'remote-ssh'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      # An sshd the runner talks to as itself, with a throwaway key
+      # that exists only for the life of this job. No password, no
+      # agent, no host-key prompt — and StrictHostKeyChecking is left
+      # at its default for the client, which learns the key here.
+      - name: Start an sshd and authorize an ephemeral key
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo systemctl enable --now ssh
+          ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_remote_lane
+          cat ~/.ssh/id_ed25519_remote_lane.pub >> ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          printf 'Host localhost\n  IdentityFile ~/.ssh/id_ed25519_remote_lane\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+          ssh-keyscan -H localhost >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes localhost 'echo sshd reachable as $(whoami)'
+
+      # `vaibify` must be findable by a NON-INTERACTIVE login shell,
+      # which is a different PATH from this step's. Proving it here
+      # turns the commonest real failure into a named setup error
+      # rather than a mysterious empty startup record later.
+      - name: Prove vaibify is on the non-interactive remote PATH
+        run: |
+          ssh -o BatchMode=yes localhost 'vaibify --version'
+
+      - name: Run the remote SSH lane
+        timeout-minutes: 15
+        env:
+          # Turns the "no usable sshd" skip into a failure.
+          VAIBIFY_REQUIRE_REMOTE_SSH: '1'
+        run: |
+          python -m pytest tests/testRemoteSshLane.py --tb=short -v
+
+      # The helper deliberately leaves its hub running, so the runner
+      # is left tidy explicitly rather than by hoping the job ends.
+      - name: Stop any hub the lane left behind
+        if: always()
+        run: pkill -f 'vaibify --no-browser --port' || true

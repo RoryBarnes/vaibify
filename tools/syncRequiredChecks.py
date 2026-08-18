@@ -52,6 +52,7 @@ T_GATE_WORKFLOWS = (
     "security.yml",
     "agentDocsPathCheck.yml",
     "styleContract.yml",
+    "remoteSsh.yml",
 )
 
 T_MATRIX_TOKENS = (

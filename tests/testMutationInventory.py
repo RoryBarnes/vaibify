@@ -202,7 +202,10 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # be mutated, so there is no gateway it could be inside. Classified on
 # arrival as separate-authority, with fixed argv and an int-cast port
 # as its only interpolation.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 207
+# +1 (2026-08-18): the remote client's ssh launch. Same standing as
+# the helper's: it runs on the laptop before any project exists,
+# so there is no gateway it could be inside. Classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -432,7 +435,7 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # is fixed source text and the only interpolated value is an int-cast
 # port already bounded by the command that accepted it.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 21,
+    "opaque-subprocess-command": 22,
     "untraceable-docker-sdk-root": 12,
 }
 

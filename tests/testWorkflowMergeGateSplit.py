@@ -33,6 +33,12 @@ T_PRE_MERGE_WORKFLOWS = (
     "security.yml",
     "agentDocsPathCheck.yml",
     "styleContract.yml",
+    # The remote transport, over a real sshd. A pre-merge gate because
+    # it is the ONLY thing that proves the client's argv and the
+    # helper's record meet: everything else about the feature passes
+    # with the two halves never having spoken. Its no-skip-green guard
+    # is what makes that claim worth anything.
+    "remoteSsh.yml",
 )
 
 # Runs after a merge: these publish or package what `main` now is.

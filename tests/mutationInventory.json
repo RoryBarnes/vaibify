@@ -1,7 +1,7 @@
 {
- "iAcquisitionCount": 74,
- "iRowCount": 338,
- "iUnresolvedSiteCount": 33,
+ "iAcquisitionCount": 75,
+ "iRowCount": 339,
+ "iUnresolvedSiteCount": 34,
  "listAcquisitions": [
   {
    "iLine": 10,
@@ -67,6 +67,19 @@
    "sFingerprint": "6fd3356aab432824",
    "sScope": "fnRemoveVolume",
    "sScopeFingerprint": "26cc6860caf48b8a"
+  },
+  {
+   "iLine": 32,
+   "iOrdinal": 0,
+   "sAcquisitionKind": "import",
+   "sCapability": "process-launch",
+   "sCapabilityName": "subprocess",
+   "sDisposition": "separate-authority",
+   "sDispositionRationale": "The remote client's OpenSSH launch, on the researcher's own host lane, outside the carrier's scope by design (design section 8). It mutates nothing on this machine: it starts ssh, which opens a forward and runs a FIXED remote command. The argv is built by fsaBuildSshCommand from source text plus two validated values -- an int()-cast port and a destination that fnValidateSshDestination has matched against ^[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?$ and refused if it begins with a dash. The destination is its own argv element and never enters the remote command string, which matters because OpenSSH hands that string to the far side's LOGIN SHELL; this is also why the command carries no project name, a value that may legally contain a space. No shell=True, no user-supplied text in the command. Review relied on: fnValidateSshDestination, fiChooseLocalPort (port bounded 1..65535), fsaBuildSshCommand (the only argv builder), and tests/testRemoteClient.py, which pins the option-looking and shell-looking destinations as refusals and the absence of --project.",
+   "sFile": "cli/commandRemote.py",
+   "sFingerprint": "7d8752c4c7ea34c2",
+   "sScope": "<module>",
+   "sScopeFingerprint": "7d8752c4c7ea34c2"
   },
   {
    "iLine": 125,
@@ -1252,6 +1265,32 @@
    "sOperationMetadata": "UNCLASSIFIED",
    "sPrimitive": "fbStopContainerProvenSettled",
    "sReferenceKind": "direct-call"
+  },
+  {
+   "bInsideGateway": false,
+   "bMutationCapable": true,
+   "iOrdinal": 0,
+   "listCarrierModes": [
+    "none"
+   ],
+   "listExecutionLanes": [
+    "host-cli"
+   ],
+   "listLockOwners": [
+    "none"
+   ],
+   "sAccess": "unknown-command",
+   "sCarrierDisposition": "excluded",
+   "sExclusionRationale": "The remote client's OpenSSH launch, on the researcher's own host lane, outside the carrier's scope by design (design section 8). It mutates nothing on this machine: it starts ssh, which opens a forward and runs a FIXED remote command. The argv is built by fsaBuildSshCommand from source text plus two validated values -- an int()-cast port and a destination that fnValidateSshDestination has matched against ^[A-Za-z0-9._-]+(@[A-Za-z0-9._-]+)?$ and refused if it begins with a dash. The destination is its own argv element and never enters the remote command string, which matters because OpenSSH hands that string to the far side's LOGIN SHELL; this is also why the command carries no project name, a value that may legally contain a space. No shell=True, no user-supplied text in the command. Review relied on: fnValidateSshDestination, fiChooseLocalPort (port bounded 1..65535), fsaBuildSshCommand (the only argv builder), and tests/testRemoteClient.py, which pins the option-looking and shell-looking destinations as refusals and the absence of --project.",
+   "sFile": "cli/commandRemote.py",
+   "sFingerprint": "71d1e5c94b8d5f9d",
+   "sFunction": "_fprocessStartTunnel",
+   "sJournalKind": "none",
+   "sLifetime": "outlives-request",
+   "sLogicalOperation": "open the SSH tunnel this session runs over",
+   "sOperationMetadata": "remote-tunnel-launch",
+   "sPrimitive": "process UNKNOWN",
+   "sReferenceKind": "unknown-command"
   },
   {
    "bInsideGateway": false,
@@ -9812,6 +9851,15 @@
   }
  ],
  "listUnresolvedSites": [
+  {
+   "iLine": 150,
+   "iOrdinal": 0,
+   "sBlindSpotKind": "opaque-subprocess-command",
+   "sFile": "cli/commandRemote.py",
+   "sFingerprint": "71d1e5c94b8d5f9d",
+   "sFunction": "_fprocessStartTunnel",
+   "sScopeFingerprint": "1069dc33abfe2c43"
+  },
   {
    "iLine": 134,
    "iOrdinal": 0,
