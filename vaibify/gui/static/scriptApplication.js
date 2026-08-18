@@ -649,6 +649,8 @@ const VaibifyApp = (function () {
         _fnRenderActiveResource(data.sProjectMode);
         fnApplyProjectMode(data.sProjectMode);
         fnApplyWorkspaceRoot(data.sWorkspaceRoot);
+        VaibifyWebSocket.fnSetReconnectWindowSeconds(
+            data.fReconnectWindowSeconds);
         document.getElementById("activeWorkflowName").textContent =
             sWorkflowName || "";
         document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
@@ -833,6 +835,8 @@ const VaibifyApp = (function () {
             _fnRenderActiveResource(dictConnect.sProjectMode);
             fnApplyProjectMode(dictConnect.sProjectMode);
             fnApplyWorkspaceRoot(dictConnect.sWorkspaceRoot);
+            VaibifyWebSocket.fnSetReconnectWindowSeconds(
+                dictConnect.fReconnectWindowSeconds);
             _fnRenderToolkitBanner(0);
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();

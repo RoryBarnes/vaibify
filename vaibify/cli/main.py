@@ -133,13 +133,21 @@ _fnEnsureFirstTimeSetup()
 )
 @click.option(
     "--port", "iPort", default=None, type=int,
-    help="Port for the hub server (default: 8050, "
-    "auto-shifts upward if taken).",
+    help="Port for the hub server. Defaults to the port the last hub "
+    "used, so a bookmarked tab keeps working; an explicit port is "
+    "used verbatim and fails loudly if it is taken.",
+)
+@click.option(
+    "--no-browser", "bNoBrowser", is_flag=True, default=False,
+    help="Serve without opening a browser. The process still runs in "
+    "the foreground until you stop it; this does not make it a daemon.",
 )
 @click.pass_context
-def main(ctx, sConfigPath, iPort):
+def main(ctx, sConfigPath, iPort, bNoBrowser):
     """Vaibify - Vibe boldly. Verify everything."""
     _fnConfigureErrorLogging()
+    if bNoBrowser:
+        fnSuppressBrowserLaunch()
     if sConfigPath:
         from .configLoader import fnSetConfigPath
         fnSetConfigPath(sConfigPath)
@@ -160,14 +168,34 @@ def _ffileAcquireHubSessionSlotOrExit(sRole, iPort):
         sys.exit(1)
 
 
-def _fnOpenBrowserUnlessSuppressed(sUrl):
-    """Open sUrl in a background thread unless the suppress env var is set."""
+def fbIsBrowserLaunchSuppressed():
+    """Return True when this process must not open a browser.
+
+    ``--no-browser`` and the environment variable are ONE switch, not
+    two: the flag sets the variable. Every reader that already honours
+    the variable -- this module, ``vaibify open``, and any hub this
+    process spawns -- therefore honours the flag with no new plumbing,
+    and a suppressed launch cannot be half-suppressed by a caller who
+    checked only one of them.
+    """
     import os
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
+    return bool(os.environ.get(S_SUPPRESS_BROWSER_ENV))
+
+
+def fnSuppressBrowserLaunch():
+    """Suppress browser launches for this process and its children."""
+    import os
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
+    os.environ[S_SUPPRESS_BROWSER_ENV] = "1"
+
+
+def _fnOpenBrowserUnlessSuppressed(sUrl):
+    """Open sUrl in a background thread unless launches are suppressed."""
     import threading
     import time
     import webbrowser
-    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
-    if os.environ.get(S_SUPPRESS_BROWSER_ENV):
+    if fbIsBrowserLaunchSuppressed():
         return
     threading.Thread(
         target=lambda: (time.sleep(1), webbrowser.open(sUrl)),
@@ -208,8 +236,21 @@ def _fnAnnounceAndOpen(sBaseUrl, app, sWhat):
     showed a spinner forever. The address is still printed, because it
     is genuinely useful for knowing the port; it is now labelled as the
     address rather than offered as the way in.
+
+    A suppressed launch returns BEFORE minting. The capability is a
+    one-time credential with a 300-second life and a cap of 64 armed at
+    once, so minting one for a browser that will never open spends a
+    slot and arms a credential nobody redeems. The order matters more
+    than it looks: this used to evaluate the mint as the ARGUMENT to
+    the suppression-checking call, so every headless launch armed one.
     """
     click.echo(f"Starting {sWhat} at {sBaseUrl}")
+    if fbIsBrowserLaunchSuppressed():
+        click.echo(
+            "Not opening a browser. This process serves in the "
+            "foreground until you stop it — it is not a daemon."
+        )
+        return
     click.echo(
         "Opening your browser. The dashboard signs in with a one-time "
         "link, so that tab is the way in — this address alone cannot "
@@ -236,29 +277,17 @@ def fnLaunchHub(iExplicitPort):
     a socket lingering from the previous hub cannot permanently move
     the researcher's bookmarked URL.
     """
-    import uvicorn
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     from .portAllocator import fiResolveHubPort
+    from .serverLaunch import fnRunServer
     iPort = fiResolveHubPort(iExplicitPort)
     fileHandleSession = _ffileAcquireHubSessionSlotOrExit("hub", iPort)
     try:
         sUrl = f"http://127.0.0.1:{iPort}"
         app = fappCreateHubApplication(iExpectedPort=iPort)
         _fnAnnounceAndOpen(sUrl, app, "vaibify")
-        uvicorn.run(
-            app, host="127.0.0.1", port=iPort,
-            log_level="warning", timeout_graceful_shutdown=3,
-            # log_config=None keeps uvicorn from calling
-            # logging.config.dictConfig, whose _clearExistingHandlers
-            # CLOSES every handler in the process — including the
-            # rotating vaibify.log handler main() just attached. File
-            # logging was silently dead in every CLI-launched hub
-            # until a stack trace on the handler's close caught this
-            # (2026-08-14); log_level above still applies to
-            # uvicorn's own loggers.
-            log_config=None,
-        )
+        fnRunServer(app, iPort)
     finally:
         fnReleaseSessionSlot(fileHandleSession)
 
@@ -342,18 +371,12 @@ def fnVerifyCommand(sProjectName):
 def fnSetupCommand():
     """Launch the setup wizard to create or edit configuration."""
     from vaibify.install.setupServer import fappCreateSetupWizard
-    import uvicorn
+    from .serverLaunch import fnRunServer
     sUrl = "http://127.0.0.1:8051"
     click.echo(f"Starting setup wizard at {sUrl}")
     app = fappCreateSetupWizard()
     _fnOpenBrowserUnlessSuppressed(sUrl)
-    uvicorn.run(
-        app, host="127.0.0.1", port=8051,
-        log_level="warning", timeout_graceful_shutdown=3,
-        # See fnLaunchHub: uvicorn's dictConfig closes every attached
-        # handler; log_config=None preserves the vaibify.log handler.
-        log_config=None,
-    )
+    fnRunServer(app, 8051)
 
 
 @main.command("gui")
@@ -365,7 +388,7 @@ def fnSetupCommand():
 def fnGuiCommand(sProjectName):
     """Launch the vaibify dashboard."""
     from vaibify.gui.pipelineServer import fappCreateApplication
-    import uvicorn
+    from .serverLaunch import fnRunServer
     _fnConfigureErrorLogging()
     if sProjectName is None:
         # The landing page is the HUB, and there is one implementation
@@ -384,13 +407,7 @@ def fnGuiCommand(sProjectName):
         iExpectedPort=8050,
     )
     _fnAnnounceAndOpen(sUrl, app, f"vaibify: {sProjectName}")
-    uvicorn.run(
-        app, host="127.0.0.1", port=8050,
-        log_level="warning", timeout_graceful_shutdown=3,
-        # See fnLaunchHub: uvicorn's dictConfig closes every attached
-        # handler; log_config=None preserves the vaibify.log handler.
-        log_config=None,
-    )
+    fnRunServer(app, 8050)
 
 
 @main.command("push")

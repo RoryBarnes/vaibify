@@ -486,8 +486,88 @@ const VaibifyTerminal = (function () {
         if (dictTab.websocket || !dictTab.terminal) return;
         if (!fbTerminalIsAvailableHere()) return;
         fnDisarmLazyShellDial(dictTab);
+        _fnCancelShellRedial(dictTab);
+        dictTab.iRedialAttempt = 0;
+        dictTab.fRedialElapsedSeconds = 0;
         dictTab.terminal.reset();
         fnConnectTerminalWebSocket(dictTab, dictTab.terminal);
+    }
+
+    /* A dropped terminal socket used to write "[Connection closed]"
+       and stop forever: the pane was dead until the researcher
+       recreated the tab, which is not something a dashboard should
+       ask for after a Wi-Fi blip.
+
+       What comes back is a NEW shell, deliberately. The old one is
+       gone -- closing the socket terminates the recorded session and
+       proves it dead, which is what lets vaibify say anything honest
+       about the project being quiet -- so the pane says the shell
+       ended rather than pretending the session resumed. Anything a
+       researcher needs to survive a disconnection belongs in a step,
+       which is durable; a terminal is not. */
+
+    function _fnReleaseSocketDisposables(dictTab) {
+        if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();
+        dictTab.disposableOnData = null;
+        if (dictTab.disposableOnResize) {
+            dictTab.disposableOnResize.dispose();
+        }
+        dictTab.disposableOnResize = null;
+    }
+
+    function _fnCancelShellRedial(dictTab) {
+        if (dictTab.iRedialTimer) {
+            clearTimeout(dictTab.iRedialTimer);
+        }
+        dictTab.iRedialTimer = null;
+    }
+
+    function _ffNextRedialDelaySeconds(dictTab) {
+        /* Same shape and the same budget as the pipeline socket: the
+           window belongs to the SESSION, so a terminal that outlived
+           it would be retrying against a revoked credential. */
+        var fWindow = _F_REDIAL_WINDOW_DEFAULT_SECONDS;
+        if (typeof VaibifyWebSocket !== "undefined" &&
+                VaibifyWebSocket.ffGetReconnectWindowSeconds) {
+            fWindow = VaibifyWebSocket.ffGetReconnectWindowSeconds();
+        }
+        var fDelay = Math.min(
+            Math.pow(2, dictTab.iRedialAttempt || 0),
+            _F_REDIAL_MAX_DELAY_SECONDS,
+        );
+        var fElapsed = dictTab.fRedialElapsedSeconds || 0;
+        if (fElapsed + fDelay > fWindow - _F_REDIAL_MARGIN_SECONDS) {
+            return -1;
+        }
+        return fDelay;
+    }
+
+    function _fnScheduleShellRedial(dictTab, terminal, event) {
+        var iCode = event ? event.code : 0;
+        /* A deliberate refusal answers the same way every time, and a
+           normal close is the researcher leaving. Neither is retried. */
+        var bNormal = iCode === 1000 || iCode === 1001;
+        var bRefusal = iCode >= 4000 && iCode < 5000;
+        if (bNormal || bRefusal || !fbTerminalIsAvailableHere()) return;
+        var fDelay = _ffNextRedialDelaySeconds(dictTab);
+        if (fDelay < 0) {
+            terminal.write(
+                "\x1b[33m[vaibify]\x1b[0m Reconnecting stopped — this " +
+                "session has expired. Reload the dashboard to start a " +
+                "new shell.\r\n");
+            return;
+        }
+        dictTab.iRedialAttempt = (dictTab.iRedialAttempt || 0) + 1;
+        dictTab.fRedialElapsedSeconds =
+            (dictTab.fRedialElapsedSeconds || 0) + fDelay;
+        terminal.write(
+            "\x1b[2m  Reconnecting in " + fDelay + "s — a NEW shell " +
+            "will start; the previous one has ended.\x1b[0m\r\n");
+        dictTab.iRedialTimer = setTimeout(function () {
+            dictTab.iRedialTimer = null;
+            if (dictTab.websocket || !dictTab.terminal) return;
+            fnConnectTerminalWebSocket(dictTab, dictTab.terminal);
+        }, fDelay * 1000);
     }
 
     function fnConnectTerminalWebSocket(dictTab, terminal) {
@@ -505,6 +585,8 @@ const VaibifyTerminal = (function () {
         ws.binaryType = "arraybuffer";
 
         ws.onopen = function () {
+            dictTab.iRedialAttempt = 0;
+            dictTab.fRedialElapsedSeconds = 0;
             ws.send(JSON.stringify({
                 sType: "resize",
                 iRows: terminal.rows,
@@ -530,8 +612,12 @@ const VaibifyTerminal = (function () {
         };
 
         ws.onclose = function (event) {
+            if (dictTab.websocket !== ws) return;
+            dictTab.websocket = null;
+            _fnReleaseSocketDisposables(dictTab);
             terminal.write(
                 "\r\n" + fsDescribeTerminalClose(event) + "\r\n");
+            _fnScheduleShellRedial(dictTab, terminal, event);
         };
 
         dictTab.disposableOnData = terminal.onData(function (sData) {
@@ -556,6 +642,14 @@ const VaibifyTerminal = (function () {
        and retries forever; each of these sends them somewhere
        different, which is the whole reason the server keeps them
        distinct. */
+    /* The redial budget. The window itself belongs to the session and
+       is answered by VaibifyWebSocket, which was told it by the
+       server; this default only covers the moment before a connect
+       handshake has landed. */
+    var _F_REDIAL_WINDOW_DEFAULT_SECONDS = 15;
+    var _F_REDIAL_MAX_DELAY_SECONDS = 30;
+    var _F_REDIAL_MARGIN_SECONDS = 2;
+
     var _I_REJECT_TERMINAL_DISABLED = 4503;
     var _I_REJECT_TERMINAL_NOT_ON_HOST = 4504;
     var _I_REJECT_POISONED = 4423;
@@ -671,6 +765,7 @@ const VaibifyTerminal = (function () {
 
     function fnDisposeTab(dictTab) {
         fnDisarmLazyShellDial(dictTab);
+        _fnCancelShellRedial(dictTab);
         if (dictTab.websocket) dictTab.websocket.close();
         dictTab.websocket = null;
         if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();

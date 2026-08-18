@@ -4701,7 +4701,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the shell runs on the researcher's own machine — sent as the
     # session's first output bytes. Same relay purpose, not a new
     # responsibility.
-    "pipelineServer.py": 2855,
+    # +10 (2026-08-17): the connect payload publishes the session's
+    # reconnect window on both its branches. Not a second
+    # responsibility -- it is one more field of the handshake this
+    # function exists to build -- and the alternative was the client
+    # shipping its own copy of the number, which is precisely the
+    # arrangement whose drift misreported an expired session as a
+    # restarted server.
+    "pipelineServer.py": 2865,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4842,7 +4849,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # record's kind and target, like the sentence directly below it
     # already did. A refusal identified only by a hex id sends its
     # reader to debug the guard rather than the operation.
-    "sessionLifecycle.py": 1371,
+    # +17 (2026-08-17): ffReconnectWindowSecondsForSession. The window
+    # already lived here as a constant; what is new is that it is now
+    # ANSWERABLE, because the client is told the window rather than
+    # holding a second copy of it. The docstring carries why, which is
+    # the part a future reader needs before adding a lane with a
+    # different window.
+    "sessionLifecycle.py": 1388,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
