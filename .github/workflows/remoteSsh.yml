@@ -91,9 +91,25 @@ jobs:
           ssh -o BatchMode=yes localhost 'echo sshd reachable as $(whoami)'
 
       # `vaibify` must be findable by a NON-INTERACTIVE login shell,
-      # which is a different PATH from this step's. Proving it here
-      # turns the commonest real failure into a named setup error
-      # rather than a mysterious empty startup record later.
+      # which is a DIFFERENT PATH from this job's steps. setup-python
+      # exports its toolcache directory to the workflow, not to sshd:
+      # a remote command gets a fresh environment, and Ubuntu's default
+      # .bashrc returns early for non-interactive shells, so nothing a
+      # researcher normally edits is even read.
+      #
+      # This is a genuine deployment constraint, not a CI artefact. A
+      # pip --user install, a venv, or a conda environment activated by
+      # an interactive rc file is all invisible to `ssh host vaibify`,
+      # and the first run of this lane failed exactly that way. The
+      # symlink mirrors what a real remote install looks like -- on the
+      # default PATH -- rather than papering over the requirement.
+      - name: Put vaibify on the default PATH, as a real install would be
+        run: |
+          sudo ln -sf "$(command -v vaibify)" /usr/local/bin/vaibify
+          ls -l /usr/local/bin/vaibify
+
+      # Proving it here turns the commonest real failure into a named
+      # setup error rather than a mysterious empty startup record later.
       - name: Prove vaibify is on the non-interactive remote PATH
         run: |
           ssh -o BatchMode=yes localhost 'vaibify --version'
