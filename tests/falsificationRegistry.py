@@ -12624,4 +12624,26 @@ def _fdictEntry(sRel):
             '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
         ),
     ),
+
+    # --- The reconnect ladder is sized from the server's hold window.
+    # Withhold the window and the client silently falls back to its
+    # built-in default, which is the two-constants-that-must-agree
+    # arrangement this replaced. The no-workflow payload is the anchor
+    # because that is the branch a bare connect takes; its indentation
+    # is what distinguishes it from the workflow branch.
+    Falsification(
+        nodeid=(
+            'tests/testReconnectWindowContract.py::'
+            'test_connect_tells_the_browser_its_reconnect_window'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        "fReconnectWindowSeconds": (\n'
+            '            sessionLifecycle.ffReconnectWindowSecondsForSession(\n'
+            '                sBrowserSessionId,\n'
+            '            )\n'
+            '        ),\n'
+        ),
+        new='',
+    ),
 ]

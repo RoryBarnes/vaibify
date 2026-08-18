@@ -1912,6 +1912,11 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "sLeaseId": dictCtx.get("sViewerLease", ""),
         "sProjectMode": fsProjectModeOfResource(sContainerId),
         "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
+        "fReconnectWindowSeconds": (
+            sessionLifecycle.ffReconnectWindowSecondsForSession(
+                sBrowserSessionId,
+            )
+        ),
     }
 
 
@@ -2142,6 +2147,11 @@ async def fdictHandleConnect(
             ),
             "sProjectMode": fsProjectModeOfResource(sContainerId),
             "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
+            "fReconnectWindowSeconds": (
+                sessionLifecycle.ffReconnectWindowSecondsForSession(
+                    sBrowserSessionId,
+                )
+            ),
         }
     except HTTPException:
         raise

@@ -54,9 +54,29 @@ def test_file_operations_uses_batched_exist_endpoint():
 
 
 def test_websocket_module_does_exponential_reconnect():
+    """Backoff is exponential and BOUNDED BY THE SERVER'S WINDOW.
+
+    This asserted the literal ladder ``[1, 2, 4, 8, 16]`` until that
+    ladder was found to outlive the window it retried against: 31
+    seconds of attempts against a credential revoked at about 20, so
+    the last attempts were refused and the refusal reached the
+    researcher as "the server restarted". The delays are now derived
+    from ``fReconnectWindowSeconds``, which the server sends, so the
+    property worth pinning is the derivation — a hardcoded ladder
+    beside the window is the defect, not the fix.
+    """
     sSource = _fsReadStaticFile("scriptWebSocket.js")
-    assert "_laReconnectDelaysSeconds" in sSource
-    assert "[1, 2, 4, 8, 16]" in sSource
+    assert "_ffNextReconnectDelaySeconds" in sSource
+    assert "Math.pow(2, _iReconnectAttempt)" in sSource, (
+        "the backoff must still be exponential"
+    )
+    assert "_fReconnectWindowSeconds" in sSource, (
+        "the ladder must be sized from the server's hold window, not "
+        "from a constant that can drift out of agreement with it"
+    )
+    assert "fnSetReconnectWindowSeconds" in sSource, (
+        "the window must be settable from the connect payload"
+    )
     assert "_fnAttemptReconnect" in sSource
 
 

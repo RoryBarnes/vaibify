@@ -57,11 +57,30 @@ var VaibifyConnectionMonitor = (function () {
         if (iCode === 1000 || iCode === 1001) {
             return;
         }
+        /* Exhausting the reconnect window is its own fact. The
+         * connection was retried for as long as the server promised
+         * to hold the session, and the session then expired on
+         * schedule -- the server never restarted and never refused
+         * anything, which is what the other two messages claim. */
+        var bWindowExhausted = Boolean(
+            dictEvent && dictEvent.bWindowExhausted);
         fnSurfaceServerUnreachable({
-            sKind: _fsKindFromCloseCode(iCode),
+            sKind: bWindowExhausted
+                ? "windowExhausted"
+                : _fsKindFromCloseCode(iCode),
             iCode: iCode,
+            fWindowSeconds: dictEvent && dictEvent.fWindowSeconds,
             sMessage: "WebSocket closed (code " + (iCode || "?") + ")",
         });
+    }
+
+    function _fsDescribeHeldFor(fWindowSeconds) {
+        /* Say the window in the unit the researcher experienced. */
+        if (!fWindowSeconds || fWindowSeconds <= 0) return "a while";
+        if (fWindowSeconds < 90) {
+            return Math.round(fWindowSeconds) + " seconds";
+        }
+        return Math.round(fWindowSeconds / 60) + " minutes";
     }
 
     function _fsKindFromCloseCode(iCode) {
@@ -112,6 +131,15 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function _fsBuildToastMessage(dictError) {
+        if (dictError && dictError.sKind === "windowExhausted") {
+            return (
+                "Reconnecting failed for " +
+                _fsDescribeHeldFor(dictError.fWindowSeconds) +
+                ", so this session has expired. Any run you started " +
+                "is still going on the server. Click to reload and " +
+                "pick the project back up."
+            );
+        }
         if (dictError && dictError.sKind === "unauthorized") {
             return (
                 "Vaibify server has been restarted (session expired). " +

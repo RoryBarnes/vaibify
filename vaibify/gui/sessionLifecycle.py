@@ -106,6 +106,23 @@ F_RECONNECT_WINDOW_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
 F_SLIDING_IDLE_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
     "VAIBIFY_SLIDING_IDLE_SECONDS", 3600.0,
 )
+
+
+def ffReconnectWindowSecondsForSession(sBrowserSessionId=""):
+    """Return the hold window this browser session may rely on.
+
+    The client sizes its reconnect ladder from this number, so the two
+    cannot disagree by construction. They used to: a 31-second ladder
+    retried against a window that had already revoked the credential
+    at ~20 seconds, so the last attempts were refused 4401 and the
+    refusal was reported to the researcher as a server restart.
+
+    One value today. This is the seam a longer-lived lane branches at,
+    and the reason the client is TOLD the window rather than shipping
+    its own copy of the constant.
+    """
+    del sBrowserSessionId
+    return F_RECONNECT_WINDOW_SECONDS
 # How recently the owning browser must have spoken for a claim that has
 # not opened its first socket yet to count as still attended. Measured
 # against the hub screens' own poll, which is far faster, so the
