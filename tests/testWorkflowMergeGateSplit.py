@@ -279,6 +279,13 @@ def testTheMergeStatusDumpIsWrittenOutsideTheCheckout():
 _T_MATRIX_TOKENS = (
     ("${{ matrix.os }}", "os"),
     ("${{ matrix.python-version }}", "python-version"),
+    # The shard dimension. This list and the tool's are edited
+    # independently ON PURPOSE -- the agreement test below is only
+    # worth something if the two are derived separately -- so a new
+    # matrix key has to be added in both places. Missing here, the
+    # falsification lane's name kept a literal ``${{ matrix.shard }}``,
+    # which no job reports and which, required, blocks every merge.
+    ("${{ matrix.shard }}", "shard"),
 )
 
 
@@ -356,4 +363,40 @@ def testTheRequiredCheckToolAgreesWithThisSuite():
     assert set(moduleTool.flistRequiredContexts()) == setFromSuite, (
         "the tool and this suite expand the gate workflows to different "
         "check names; the ruleset would be written from the wrong set."
+    )
+
+
+def testNoDerivedCheckNameCarriesAnUnexpandedMatrixToken():
+    """A required check name must be one a job can actually report.
+
+    The sync tool builds required-check names by substituting matrix
+    values into each job's ``name:``. A dimension it does not know about
+    survives as a literal ``${{ matrix.something }}``, and that name is
+    reported by nothing -- so requiring it blocks every merge on a check
+    that cannot arrive. The tool's docstring describes this failure for
+    matrix include/exclude, where it REFUSES; an unknown dimension
+    reaches the same place by failing open into a name instead.
+
+    It was not hypothetical: the falsification lane's shard dimension
+    was missing, so the tool offered two such names. Nothing had applied
+    them yet, which is the only reason it had not been noticed.
+    """
+    import importlib.util
+
+    pathTool = _PATH_REPO / "tools" / "syncRequiredChecks.py"
+    specTool = importlib.util.spec_from_file_location(
+        "syncRequiredChecks", pathTool,
+    )
+    moduleTool = importlib.util.module_from_spec(specTool)
+    specTool.loader.exec_module(moduleTool)
+
+    listOffenders = [
+        sContext for sContext in moduleTool.flistRequiredContexts()
+        if "${{" in sContext or "matrix." in sContext
+    ]
+    assert listOffenders == [], (
+        "these derived check names still carry a matrix expression, so "
+        "no job will ever report them and requiring one would block "
+        f"every merge: {listOffenders}. Add the dimension to "
+        "T_MATRIX_TOKENS in tools/syncRequiredChecks.py."
     )
