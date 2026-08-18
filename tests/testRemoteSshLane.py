@@ -17,6 +17,22 @@ report success for having connected to nothing.
 It connects to ``localhost`` because the property under test is the
 transport, not the distance. A second machine would prove nothing more
 and could not run in CI.
+
+ONE THING A SINGLE HOST CANNOT PROVE, stated rather than faked. The
+product forwards local port N to remote port N -- it must, because the
+dashboard's Host check requires the browser-visible port to equal the
+backend's expected port. On one machine those are the same port, so
+that forward is a loop: ssh answers ``channel_new: internal error:
+channels_alloc ... too big`` and the helper, seeing the forward's own
+listener, correctly refuses to treat it as a hub. Both of those are the
+code behaving properly, so neither may be worked around.
+
+What follows therefore proves the two halves separately: the protocol
+crosses a real SSH channel (no forward needed -- on one host the hub is
+directly reachable), and a real ``-L`` forward carries real traffic
+(with distinct ports, the only shape a single host permits). The N-to-N
+equality is asserted where it can be: over the argv builder, in
+tests/testRemoteClient.py.
 """
 
 import json
@@ -31,6 +47,31 @@ import pytest
 
 from vaibify.cli.commandRemote import fsaBuildSshCommand
 from vaibify.cli.remoteProtocol import fdictParseStartupRecord
+
+
+def _flistCommandWithoutTheSelfForward(iPort):
+    """Return the product's ssh argv with its -L pair removed.
+
+    Everything else is the real thing: the same options, the same
+    fixed remote command, the same destination handling. Only the
+    forward is dropped, because on one host it would forward a port to
+    itself. See the module docstring -- the forward is proven
+    separately, with the distinct ports a single machine allows.
+    """
+    listCommand = fsaBuildSshCommand("localhost", iPort)
+    iFlag = listCommand.index("-L")
+    return listCommand[:iFlag] + listCommand[iFlag + 2:]
+
+
+def _fbPortIsFree(iPort):
+    """Return True when nothing is listening on loopback iPort."""
+    import socket
+    connectionProbe = socket.socket()
+    connectionProbe.settimeout(0.5)
+    try:
+        return connectionProbe.connect_ex(("127.0.0.1", iPort)) != 0
+    finally:
+        connectionProbe.close()
 
 S_REQUIRE_REMOTE_SSH_ENV = "VAIBIFY_REQUIRE_REMOTE_SSH"
 
@@ -85,9 +126,8 @@ def processRemoteTunnel():
     """Run the real ssh argv the client builds; clean up both ends."""
     _fnRequireReachableSsh()
     _fnStopHubOnPort(I_TEST_PORT)
-    listCommand = fsaBuildSshCommand("localhost", I_TEST_PORT)
     process = subprocess.Popen(
-        listCommand,
+        _flistCommandWithoutTheSelfForward(I_TEST_PORT),
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True,
     )
@@ -135,20 +175,37 @@ def test_the_forwarded_tunnel_signs_a_browser_in(processRemoteTunnel):
     )
 
 
-def test_the_dashboard_answers_through_the_forward(processRemoteTunnel):
-    """Loopback traffic reaches the remote hub, not just the port.
+def test_a_real_forward_carries_real_traffic(processRemoteTunnel):
+    """A -L forward reaches the hub, not merely accepts a connection.
 
-    A forward that accepts a connection and carries nothing looks
-    identical to a working one until something asks a question.
+    A forward that accepts and carries nothing looks identical to a
+    working one until something asks a question. Distinct ports here:
+    same-port on one host is a loop, and the equality the product
+    actually uses is asserted over the argv builder instead.
     """
     fdictParseStartupRecord(
         processRemoteTunnel.stdout.readline(), I_TEST_PORT,
     )
-    with urllib.request.urlopen(
-        f"http://127.0.0.1:{I_TEST_PORT}/", timeout=20,
-    ) as response:
-        baBody = response.read()
-    assert response.status == 200
-    assert b"vaibify" in baBody.lower(), (
-        "the forward carried a response that was not the dashboard"
+    iLocalPort = I_TEST_PORT + 1
+    processForward = subprocess.Popen(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes",
+         "-N", "-L",
+         f"127.0.0.1:{iLocalPort}:127.0.0.1:{I_TEST_PORT}",
+         "localhost"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
+    try:
+        for _ in range(40):
+            if not _fbPortIsFree(iLocalPort):
+                break
+            time.sleep(0.25)
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{iLocalPort}/", timeout=20,
+        ) as response:
+            baBody = response.read()
+        assert response.status == 200
+        assert b"vaibify" in baBody.lower(), (
+            "the forward carried a response that was not the dashboard"
+        )
+    finally:
+        processForward.kill()
