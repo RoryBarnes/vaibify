@@ -63,12 +63,25 @@ jobs:
       # agent, no host-key prompt — and StrictHostKeyChecking is left
       # at its default for the client, which learns the key here.
       - name: Start an sshd and authorize an ephemeral key
-        # Bounded like every other apt fetch in a gate: this one
-        # sits in front of the only lane that proves the tunnel.
+        # Bounded, and it fetches NOTHING when it does not have to.
+        # The first run of this lane timed out here: the runner's apt
+        # mirror was answering Ign for every index, on the same
+        # afternoon the same mirror wedged the browser lanes for an
+        # hour and three quarters. The bound turned a six-hour hang
+        # into an eight-minute failure, which is the guard working --
+        # but a lane that proves an SSH tunnel should not depend on a
+        # package mirror at all when the runner image already ships
+        # sshd. Install only if it is genuinely missing.
         timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openssh-server
+          if ! command -v sshd >/dev/null 2>&1 \
+              && [ ! -x /usr/sbin/sshd ]; then
+            echo "sshd absent from the image; fetching it"
+            sudo apt-get update
+            sudo apt-get install -y openssh-server
+          else
+            echo "sshd already present; no package fetch needed"
+          fi
           sudo systemctl enable --now ssh
           ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_remote_lane
           cat ~/.ssh/id_ed25519_remote_lane.pub >> ~/.ssh/authorized_keys
