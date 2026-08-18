@@ -151,7 +151,7 @@ def _fnServeGuiUnderLock(config, iPort):
     """Bind the GUI app to iPort while holding the container lock."""
     from vaibify.gui.pipelineServer import fappCreateApplication
     from vaibify.config.containerLock import fnReleaseContainerLock
-    import uvicorn
+    from .serverLaunch import fnRunServer
     fileHandleLock = _ffileAcquireProjectLockOrExit(
         config.sProjectName, iPort,
     )
@@ -159,10 +159,7 @@ def _fnServeGuiUnderLock(config, iPort):
         app = fappCreateApplication(
             sWorkspaceRoot=config.sWorkspaceRoot, iExpectedPort=iPort,
         )
-        uvicorn.run(
-            app, host="127.0.0.1", port=iPort,
-            timeout_graceful_shutdown=3,
-        )
+        fnRunServer(app, iPort)
     finally:
         fnReleaseContainerLock(fileHandleLock)
 

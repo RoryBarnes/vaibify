@@ -537,3 +537,108 @@ def test_gui_with_a_project_launches_that_projects_viewer(mockConfig):
             assert result.exit_code == 0, result.output
             assert "starting vaibify" in result.output.lower()
             mockRun.assert_called_once()
+
+
+# -----------------------------------------------------------------------
+# headless launch contract
+# -----------------------------------------------------------------------
+
+
+def _fnPatchedHeadlessLaunch(dictEnvironment):
+    """Return the context managers a hub launch needs, plus the mint mock.
+
+    The app is a MagicMock, so ``app.state.dictBrowserSessions`` is
+    truthy and the launch takes the branch that WOULD mint. A launch
+    against an app with no session store proves nothing about ordering,
+    because it never reaches the mint under any ordering.
+    """
+    import os
+    patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
+    return (
+        patch("uvicorn.run"),
+        patch("webbrowser.open"),
+        patch("vaibify.gui.browserSession.fsMintBootstrapCapability"),
+        patch.dict(os.environ, dictEnvironment),
+        patch(
+            "vaibify.gui.pipelineServer.fappCreateHubApplication",
+            return_value=MagicMock(),
+        ),
+        patchAcquireSlot,
+        patchReleaseSlot,
+    )
+
+
+def test_no_browser_flag_suppresses_the_launch():
+    """``--no-browser`` is the public spelling of the same switch.
+
+    The flag and ``VAIBIFY_SUPPRESS_BROWSER`` are one mechanism: the
+    flag sets the variable, so a reader that honours the variable
+    honours the flag and neither can be half-applied.
+    """
+    import os
+    import time
+    patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
+    with patch("uvicorn.run"), \
+            patch("webbrowser.open") as mockOpen, \
+            patch.dict(os.environ, {}), \
+            patch(
+                "vaibify.gui.pipelineServer.fappCreateHubApplication",
+                return_value=MagicMock(),
+            ), patchAcquireSlot, patchReleaseSlot:
+        os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
+        runner = CliRunner()
+        result = runner.invoke(main, ["--no-browser", "--port", "8050"])
+        assert result.exit_code == 0, result.output
+        assert "not opening a browser" in result.output.lower(), result.output
+        assert "not a daemon" in result.output.lower(), (
+            "a headless launch must say it still holds the terminal; "
+            f"researchers background it otherwise: {result.output}"
+        )
+    time.sleep(1.2)
+    mockOpen.assert_not_called()
+
+
+@pytest.mark.falsification
+def test_suppressed_launch_mints_no_capability():
+    """A launch that opens no browser must arm no credential.
+
+    Kills: disabling the suppression guard in ``_fnAnnounceAndOpen``,
+    which restores the historical ordering where the mint was the
+    ARGUMENT to the suppression-checking call and therefore ran before
+    anything was checked. Each wasted mint arms a one-time credential
+    nobody can redeem and holds one of 64 slots for 300 seconds.
+    """
+    (
+        patchRun, patchOpen, patchMint, patchEnvironment,
+        patchApp, patchAcquireSlot, patchReleaseSlot,
+    ) = _fnPatchedHeadlessLaunch({"VAIBIFY_SUPPRESS_BROWSER": "1"})
+    with patchRun, patchOpen, patchApp, patchAcquireSlot, \
+            patchReleaseSlot, patchEnvironment, patchMint as mockMint:
+        from vaibify.cli.main import fnLaunchHub
+        fnLaunchHub(8050)
+    mockMint.assert_not_called()
+
+
+@pytest.mark.falsification
+def test_ordinary_launch_still_mints_a_capability():
+    """The symmetric half: the suppressed assertion must not go vacuous.
+
+    ``assert_not_called`` is equally true of a mint that was deleted
+    outright, so the pair only means something with this half beside
+    it.
+
+    Kills: dropping the mint from ``_fsLaunchUrlWithCapability`` and
+    returning the bare address, which is the defect that sent a
+    researcher to a dashboard refusing every call.
+    """
+    import os
+    (
+        patchRun, patchOpen, patchMint, patchEnvironment,
+        patchApp, patchAcquireSlot, patchReleaseSlot,
+    ) = _fnPatchedHeadlessLaunch({})
+    with patchRun, patchOpen, patchApp, patchAcquireSlot, \
+            patchReleaseSlot, patchEnvironment, patchMint as mockMint:
+        os.environ.pop("VAIBIFY_SUPPRESS_BROWSER", None)
+        from vaibify.cli.main import fnLaunchHub
+        fnLaunchHub(8050)
+    mockMint.assert_called_once()

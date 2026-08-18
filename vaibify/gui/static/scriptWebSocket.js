@@ -12,7 +12,47 @@ var VaibifyWebSocket = (function () {
     var _bIntentionalDisconnect = false;
     var _iReconnectAttempt = 0;
     var _iReconnectTimer = null;
-    var _laReconnectDelaysSeconds = [1, 2, 4, 8, 16];
+    /* The ladder is SIZED FROM the server's hold window, never
+     * hardcoded beside it. A fixed [1,2,4,8,16] ladder ran 31 seconds
+     * against a window that revoked the credential at about 20, so its
+     * last two attempts were refused 4401 and the refusal surfaced to
+     * the researcher as "the server restarted" -- which it had not.
+     * The server sends fReconnectWindowSeconds at connect; a lane with
+     * a longer window therefore gets a longer ladder with no change
+     * here. */
+    var _fReconnectWindowSeconds = 15;
+    var _fReconnectElapsedSeconds = 0;
+    var _bLastCloseExhaustedWindow = false;
+    /* Backoff doubles from 1s but stops growing here, so a long window
+     * yields many attempts rather than a few enormous gaps. */
+    var _F_RECONNECT_MAX_DELAY_SECONDS = 30;
+    /* Land the last attempt before the window closes, not on it. */
+    var _F_RECONNECT_MARGIN_SECONDS = 2;
+
+    function fnSetReconnectWindowSeconds(fSeconds) {
+        if (typeof fSeconds === "number" && fSeconds > 0) {
+            _fReconnectWindowSeconds = fSeconds;
+        }
+    }
+
+    function ffGetReconnectWindowSeconds() {
+        return _fReconnectWindowSeconds;
+    }
+
+    function _ffNextReconnectDelaySeconds() {
+        /* Return the next backoff delay, or -1 when retrying further
+         * would outlive the window the server promised to hold. */
+        var fDelay = Math.min(
+            Math.pow(2, _iReconnectAttempt),
+            _F_RECONNECT_MAX_DELAY_SECONDS,
+        );
+        var fBudget =
+            _fReconnectWindowSeconds - _F_RECONNECT_MARGIN_SECONDS;
+        if (_fReconnectElapsedSeconds + fDelay > fBudget) {
+            return -1;
+        }
+        return fDelay;
+    }
 
     function fnOnEvent(sType, fnHandler) {
         if (!_dictEventHandlers[sType]) {
@@ -74,6 +114,8 @@ var VaibifyWebSocket = (function () {
             console.log("[WS] open, flushing",
                 _listPendingActions.length, "pending actions");
             _iReconnectAttempt = 0;
+            _fReconnectElapsedSeconds = 0;
+            _bLastCloseExhaustedWindow = false;
             _fnFlushPendingActions();
         };
         wsNew.onmessage = function (event) {
@@ -118,19 +160,25 @@ var VaibifyWebSocket = (function () {
             _fnEmitCloseEventAndDropPending(event);
             return;
         }
-        if (_iReconnectAttempt >= _laReconnectDelaysSeconds.length) {
+        var fDelaySeconds = _ffNextReconnectDelaySeconds();
+        if (fDelaySeconds < 0) {
+            /* The window the server promised has run out. That is a
+             * different fact from "the server went away", and the
+             * researcher is told which one happened. */
+            _bLastCloseExhaustedWindow = true;
             _fnEmitCloseEventAndDropPending(event);
             return;
         }
-        var iDelaySeconds =
-            _laReconnectDelaysSeconds[_iReconnectAttempt];
         _iReconnectAttempt++;
+        _fReconnectElapsedSeconds += fDelaySeconds;
         console.log(
             "[WS] scheduling reconnect attempt",
-            _iReconnectAttempt, "in", iDelaySeconds, "s",
+            _iReconnectAttempt, "in", fDelaySeconds, "s",
+            "(", _fReconnectElapsedSeconds, "of",
+            _fReconnectWindowSeconds, "s window )",
         );
         _iReconnectTimer = setTimeout(
-            _fnAttemptReconnect, iDelaySeconds * 1000,
+            _fnAttemptReconnect, fDelaySeconds * 1000,
         );
     }
 
@@ -141,6 +189,8 @@ var VaibifyWebSocket = (function () {
             sType: "_wsClose",
             iCode: event.code,
             bActionsDropped: bActionsDropped,
+            bWindowExhausted: _bLastCloseExhaustedWindow,
+            fWindowSeconds: _fReconnectWindowSeconds,
         });
     }
 
@@ -163,6 +213,8 @@ var VaibifyWebSocket = (function () {
             _iReconnectTimer = null;
         }
         _iReconnectAttempt = 0;
+        _fReconnectElapsedSeconds = 0;
+        _bLastCloseExhaustedWindow = false;
     }
 
     function fnSend(dictAction) {
@@ -228,6 +280,8 @@ var VaibifyWebSocket = (function () {
     return {
         fnOnEvent: fnOnEvent,
         fnConnect: fnConnect,
+        fnSetReconnectWindowSeconds: fnSetReconnectWindowSeconds,
+        ffGetReconnectWindowSeconds: ffGetReconnectWindowSeconds,
         fnSend: fnSend,
         fnSendDirect: fnSendDirect,
         fnDisconnect: fnDisconnect,

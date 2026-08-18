@@ -12560,4 +12560,90 @@ def _fdictEntry(sRel):
             ';\n'
         ),
     ),
+
+    # --- Headless launch contract. A symmetric pair, and it has to be
+    # a pair: "a suppressed launch mints nothing" is equally true of a
+    # mint that was deleted outright, so either half alone can go
+    # vacuous without anything failing.
+    Falsification(
+        nodeid=(
+            'tests/testCliMain.py::'
+            'test_suppressed_launch_mints_no_capability'
+        ),
+        # Disable the suppression guard, restoring the ordering this
+        # replaced: the mint used to be the ARGUMENT to the
+        # suppression-checking call, so it ran before anything was
+        # checked and every headless launch armed a credential nobody
+        # could redeem.
+        # The guard is spelled identically in
+        # _fnOpenBrowserUnlessSuppressed, so the anchor carries the
+        # next line to name THIS one. Mutating both would still kill
+        # the test, but for the wrong reason -- and the count check
+        # exists to stop an anchor silently widening.
+        source='vaibify/cli/main.py',
+        old=(
+            '    if fbIsBrowserLaunchSuppressed():\n'
+            '        click.echo(\n'
+        ),
+        new=(
+            '    if False and fbIsBrowserLaunchSuppressed():\n'
+            '        click.echo(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliMain.py::'
+            'test_ordinary_launch_still_mints_a_capability'
+        ),
+        # Drop the mint and hand back the bare address -- the defect
+        # that sent a researcher to a dashboard refusing every call.
+        source='vaibify/cli/main.py',
+        old=(
+            '    sCapability = browserSession.fsMintBootstrapCapability'
+            '(dictStore)\n'
+            '    return f"{sBaseUrl}/#bootstrap={sCapability}"\n'
+        ),
+        new='    return sBaseUrl\n',
+    ),
+
+    # --- One launcher, so socket-liveness settings cannot be lost by
+    # a call site that simply forgot them.
+    Falsification(
+        nodeid=(
+            'tests/testServerLaunchContract.py::'
+            'test_only_the_launcher_runs_uvicorn'
+        ),
+        # Bind a server without going through the launcher. The setup
+        # wizard's line is the anchor because it carries a literal
+        # port and is therefore unique; the two `(app, iPort)` calls
+        # are spelled identically to each other.
+        source='vaibify/cli/main.py',
+        old='    fnRunServer(app, 8051)\n',
+        new=(
+            '    import uvicorn\n'
+            '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
+        ),
+    ),
+
+    # --- The reconnect ladder is sized from the server's hold window.
+    # Withhold the window and the client silently falls back to its
+    # built-in default, which is the two-constants-that-must-agree
+    # arrangement this replaced. The no-workflow payload is the anchor
+    # because that is the branch a bare connect takes; its indentation
+    # is what distinguishes it from the workflow branch.
+    Falsification(
+        nodeid=(
+            'tests/testReconnectWindowContract.py::'
+            'test_connect_tells_the_browser_its_reconnect_window'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        "fReconnectWindowSeconds": (\n'
+            '            sessionLifecycle.ffReconnectWindowSecondsForSession(\n'
+            '                sBrowserSessionId,\n'
+            '            )\n'
+            '        ),\n'
+        ),
+        new='',
+    ),
 ]
