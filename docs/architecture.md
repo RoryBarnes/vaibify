@@ -758,12 +758,28 @@ departing page claims about itself.
 
 Modeled on JupyterHub's `ServerApp.shutdown_no_activity_timeout`, both
 the hub and the viewer run a watchdog (`_fnIdleShutdownWatchdogLoop`)
-that self-`SIGTERM`s after a sustained idle period (30 minutes by
-default, see [Configuration](configuration.md)). SIGTERM -- not a
+that self-`SIGTERM`s after a sustained idle period. SIGTERM -- not a
 direct teardown -- is deliberate: it lets uvicorn run the existing
 graceful-shutdown hooks that release the locks and the session slot,
 so the path that frees a container is the same whether the user quits
 manually or the watchdog fires.
+
+The timeout is not a fixed constant. It is resolved at startup
+(`_ffResolveIdleTimeoutSeconds`) across three precedence tiers — the
+`VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS` env override, then the stored
+host-global Settings preference, then the launch default — and
+published on `app.state.fIdleTimeoutSeconds`. The watchdog re-reads
+that attribute every tick (`_ffCurrentIdleTimeout`), so the gear
+menu's **Idle shutdown** control applies **live**: a change updates
+`app.state` and the loop honours it on its next pass, no relaunch. The
+**launch default is never** (`math.inf`, disabled) for a browser
+launch and `1800` seconds only for a headless/remote launch (browser
+suppressed via `VAIBIFY_SUPPRESS_BROWSER`) — a researcher at the
+dashboard is never reaped, but an abandoned headless server still
+retires. "Never" has no finite sentinel: `0` keeps its historical
+"retire as soon as idle" meaning, and disabled is carried as
+`math.inf`, which `_fbHubShouldSelfExit` treats as never-exit because
+no finite idle span reaches it.
 
 "Idle" is defined conservatively so a running pipeline is never
 interrupted (the dashboard's honesty contract). The watchdog vetoes

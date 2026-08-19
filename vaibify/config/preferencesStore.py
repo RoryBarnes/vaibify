@@ -88,6 +88,36 @@ def fnRecordHostWarningAcknowledged(sProjectDirectory):
     _fnMutatePreferencesLocked(fnStampAcknowledgement)
 
 
+_S_IDLE_TIMEOUT_KEY = "sIdleTimeoutSeconds"
+
+
+def fsIdleTimeoutPreference():
+    """Return the stored host-global idle-timeout preference, or empty.
+
+    The value is a string ("never" or a number of seconds) so a single
+    parser serves the env override, this preference, and the Settings
+    API. A missing or non-string value reads as empty, meaning "unset" —
+    the launch default then applies.
+    """
+    jsonStored = fdictLoadPreferences().get(_S_IDLE_TIMEOUT_KEY, "")
+    return jsonStored if isinstance(jsonStored, str) else ""
+
+
+def fnRecordIdleTimeoutPreference(sValue):
+    """Persist the host-global idle-timeout preference string.
+
+    Parameters
+    ----------
+    sValue : str
+        Either the "never" token or a non-negative number of seconds,
+        already validated by the caller.
+    """
+    def fnStampIdleTimeout(dictPreferences):
+        dictPreferences[_S_IDLE_TIMEOUT_KEY] = sValue
+
+    _fnMutatePreferencesLocked(fnStampIdleTimeout)
+
+
 def _ffileOpenPreferencesLock():
     """Open and acquire an exclusive lock for preferences writes."""
     fileHandle = open(_S_LOCK_PATH, "w")

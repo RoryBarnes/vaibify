@@ -5177,7 +5177,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +6 (2026-08-18): the promote-to-host-project route joins the
     # control-plane exclusion block with the same rationale — promotion
     # also re-registers an environment under a new name.
-    "actionCatalog.py": 988,
+    # +3 (2026-08-18): the idle-timeout preference PUT excluded from the
+    # agent lane — a compromised agent must not disable the idle reaper.
+    # Same governance responsibility as the host-warning PUT above.
+    # 2026-08-19: this branch and main each raised the entry for a
+    # different exclusion, so the merge keeps BOTH justifications and
+    # the figure is the merged file's real size. Taking either side's
+    # number alone would have re-armed the ratchet below the module it
+    # governs, which fails closed but for a reason nobody could read.
+    "actionCatalog.py": 991,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5327,7 +5335,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # in order to delete it is churn, not a seam.
     # +6 (2026-08-18): the promote-to-host-project control-plane scope
     # entry (browser-hub) beside the convert route's, with its rationale.
-    "routeScope.py": 952,
+    # +1 (2026-08-19, on merge): main's idle-timeout preference PUT takes
+    # a browser-hub control-plane scope, one line in the same table. This
+    # entry auto-merged, so nothing asked about the sum -- both sides
+    # grew the module and only the module-size ratchet noticed. It is one
+    # more row in DICT_CONTROL_PLANE_SCOPES, which is the table's whole
+    # job, so the seam has not moved.
+    "routeScope.py": 953,
 }
 
 

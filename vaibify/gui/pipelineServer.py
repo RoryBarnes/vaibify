@@ -2850,7 +2850,6 @@ from .serverLifespan import (  # noqa: E402,F401
     I_VAIBIFY_IO_THREAD_POOL_FLOOR,
     S_HUB_IDLE_TIMEOUT_ENV,
     _fcontextLifespanShared,
-    _ffIdleTimeoutSeconds,
     _fbAnyContainerRunning,
     _fbAnyHeldContainerBusy,
     _fbHubShouldSelfExit,

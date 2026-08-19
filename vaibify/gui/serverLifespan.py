@@ -9,6 +9,7 @@ helper. The watchdog's self-exit decision is resolved through
 
 import asyncio
 import logging
+import math
 import os
 import signal
 import time
@@ -244,15 +245,81 @@ F_HUB_WATCHDOG_INTERVAL_SECONDS = 60.0
 S_HUB_IDLE_TIMEOUT_ENV = "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS"
 
 
-def _ffIdleTimeoutSeconds():
-    """Return the idle timeout, honoring the env override when valid."""
-    sOverride = os.environ.get(S_HUB_IDLE_TIMEOUT_ENV, "")
-    if not sOverride:
-        return F_HUB_IDLE_TIMEOUT_SECONDS
+# Tokens (case-insensitive) that select "never self-retire" in the env
+# override, the stored preference, and the Settings API. There is no
+# finite sentinel for never: 0 keeps its historical meaning ("retire as
+# soon as idle"), so the disabled case is carried as ``math.inf`` and a
+# never-timeout window is one no finite idle span can ever reach.
+_SET_IDLE_NEVER_TOKENS = frozenset({"never", "off", "none", "disabled"})
+
+
+def _ffParseIdleTimeoutSeconds(sValue):
+    """Parse a timeout string to seconds; math.inf for never, None if invalid.
+
+    A never token yields ``math.inf`` (disabled). A finite value must be
+    a non-negative, non-NaN number of seconds. Empty, malformed, negative,
+    or NaN input returns ``None`` so the caller falls through to the next
+    precedence tier rather than adopting a garbage timeout.
+    """
+    sNormalized = (sValue or "").strip().lower()
+    if not sNormalized:
+        return None
+    if sNormalized in _SET_IDLE_NEVER_TOKENS:
+        return math.inf
     try:
-        return float(sOverride)
+        fSeconds = float(sNormalized)
     except ValueError:
+        return None
+    if math.isnan(fSeconds) or fSeconds < 0:
+        return None
+    return fSeconds
+
+
+def _ffIdleTimeoutFromEnvironment():
+    """Return the env-override idle timeout, or None when unset/invalid."""
+    return _ffParseIdleTimeoutSeconds(
+        os.environ.get(S_HUB_IDLE_TIMEOUT_ENV, ""),
+    )
+
+
+def _ffIdleTimeoutFromPreference():
+    """Return the stored host-global idle timeout, or None when unset."""
+    from vaibify.config import preferencesStore
+    return _ffParseIdleTimeoutSeconds(
+        preferencesStore.fsIdleTimeoutPreference(),
+    )
+
+
+def _ffDefaultIdleTimeoutForLaunch():
+    """Return the launch default: never for a browser launch, else finite.
+
+    The launch signal is the browser-suppression env var the launcher
+    sets for a headless/remote start (``S_SUPPRESS_BROWSER_ENV``). A
+    browser launch is a researcher sitting at the dashboard, so it must
+    never self-retire; a suppressed (headless/remote) launch keeps the
+    finite reaper so an abandoned server still retires.
+    """
+    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
+    if os.environ.get(S_SUPPRESS_BROWSER_ENV):
         return F_HUB_IDLE_TIMEOUT_SECONDS
+    return math.inf
+
+
+def _ffResolveIdleTimeoutSeconds():
+    """Resolve the effective idle timeout across the three precedence tiers.
+
+    Highest first: the ``VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS`` env override
+    (deterministic for scripts and tests), then the stored host-global
+    Settings preference, then the launch default (see
+    ``_ffDefaultIdleTimeoutForLaunch``). ``math.inf`` means never retire.
+    """
+    fEnvironment = _ffIdleTimeoutFromEnvironment()
+    if fEnvironment is not None:
+        return fEnvironment
+    fPreference = _ffIdleTimeoutFromPreference()
+    if fPreference is not None:
+        return fPreference
+    return _ffDefaultIdleTimeoutForLaunch()
 
 
 def fnIncrementWebSocketCount(app):
@@ -362,7 +429,13 @@ def _fbAnyHeldContainerBusy(app, dictCtx):
 
 def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
     """Return True only when no tab is connected, nothing is mid-run,
-    and the HTTP-activity clock has been idle at least ``fTimeout``."""
+    and the HTTP-activity clock has been idle at least ``fTimeout``.
+
+    A ``None`` or infinite ``fTimeout`` is the never/disabled case: the
+    hub self-retires on no idle span, so the decision is False outright.
+    """
+    if fTimeout is None or math.isinf(fTimeout):
+        return False
     if getattr(app.state, "iActiveWebSockets", 0) > 0:
         return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
@@ -549,12 +622,26 @@ def _fnDrainTerminalsOfReapableOwners(
         )
 
 
-async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
-    """Self-SIGTERM once the hub is idle past ``fTimeout``; else keep polling.
+def _ffCurrentIdleTimeout(app, fFallback):
+    """Return the timeout the watchdog must honour on this tick.
 
-    SIGTERM (not a direct teardown) lets uvicorn run the existing
-    graceful-shutdown hooks that release container locks and the
-    session slot. Exits cleanly on ``CancelledError`` at shutdown.
+    Read live from ``app.state.fIdleTimeoutSeconds`` so a Settings change
+    takes effect on the next tick without relaunching the hub. Falls back
+    to the value captured at registration when the attribute is absent
+    (e.g. a fake app in a unit test that drives the loop directly).
+    """
+    return getattr(app.state, "fIdleTimeoutSeconds", fFallback)
+
+
+async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
+    """Self-SIGTERM once the hub is idle past the live timeout; else poll on.
+
+    The timeout is re-read from ``app.state`` every tick
+    (``_ffCurrentIdleTimeout``) so a Settings change applies without a
+    relaunch; ``fTimeout`` is the registration-time fallback. SIGTERM
+    (not a direct teardown) lets uvicorn run the existing graceful-shutdown
+    hooks that release container locks and the session slot. Exits cleanly
+    on ``CancelledError`` at shutdown.
     """
     while True:
         try:
@@ -563,7 +650,7 @@ async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
             _fnReapIdleOwnershipsForApp(app, dictCtx)
             from . import pipelineServer
             if pipelineServer._fbHubShouldSelfExit(
-                app, dictCtx, fTimeout,
+                app, dictCtx, _ffCurrentIdleTimeout(app, fTimeout),
             ):
                 os.kill(os.getpid(), signal.SIGTERM)
                 return
@@ -579,17 +666,21 @@ def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
     """Install the idle self-shutdown watchdog on the lifespan.
 
     Mirrors ``_fnRegisterPeriodicContainerSweep``: starts an asyncio
-    task at startup and cancels it cleanly at shutdown. The timeout is
-    read once at registration so the env override is honored.
+    task at startup and cancels it cleanly at shutdown. The effective
+    timeout is resolved at startup and published on
+    ``app.state.fIdleTimeoutSeconds`` so the loop and the Settings route
+    share one live source; a Settings change updates that attribute and
+    the loop reads it on its next tick (no relaunch).
     """
     fIntervalEffective = (
         fInterval if fInterval is not None
         else F_HUB_WATCHDOG_INTERVAL_SECONDS
     )
-    fTimeout = _ffIdleTimeoutSeconds()
 
     async def fnStartWatchdog(app):
         app.state.fLastActivityMonotonic = time.monotonic()
+        fTimeout = _ffResolveIdleTimeoutSeconds()
+        app.state.fIdleTimeoutSeconds = fTimeout
         app.state.taskIdleWatchdog = asyncio.create_task(
             _fnIdleShutdownWatchdogLoop(
                 app, dictCtx, fIntervalEffective, fTimeout,
