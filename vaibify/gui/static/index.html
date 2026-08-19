@@ -486,6 +486,15 @@
                     Convert to Project…</button>
             </div>
             <div id="listFiles"></div>
+            <!-- Names the machine the bytes come from. Dropping a file
+                 always reads it from the browser's own computer, which
+                 through a tunnel is NOT the machine holding the files
+                 listed above. Static, like "Download to this computer"
+                 and unlike "Copy to execution-host path": the direction
+                 is fixed, so there is no lane in which it misleads. -->
+            <div id="fileUploadDropZone" class="file-drop-zone">
+                Upload from this computer — drop files here
+            </div>
         </div>
 
         <!-- Repos sub-panel -->
