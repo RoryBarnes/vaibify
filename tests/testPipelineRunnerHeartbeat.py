@@ -7,6 +7,7 @@ application layer during multi-minute commands.
 """
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -146,16 +147,33 @@ def test_heartbeat_callback_exception_does_not_break_command(monkeypatch):
     keep-alives for the rest of a multi-minute command.
     """
     monkeypatch.setattr(
-        pipelineRunner, "F_WS_HEARTBEAT_INTERVAL", 0.05,
+        pipelineRunner, "F_WS_HEARTBEAT_INTERVAL", 0.0,
     )
     iBeatCallCount = {"i": 0}
+    eventTwoBeatsObserved = threading.Event()
 
     async def fnCallback(dictEvent):
         if dictEvent.get("sType") == "wsHeartbeat":
             iBeatCallCount["i"] += 1
+            if iBeatCallCount["i"] >= 2:
+                eventTwoBeatsObserved.set()
             raise RuntimeError("transient send failure")
 
-    mockDocker = _fMockDockerSlow(0.3, iExitCode=0, sOutput="done\n")
+    mockDocker = MagicMock()
+
+    def ftWaitForSecondBeat(
+        sContainerId, sCommand, fnEmitChunk,
+        sWorkdir=None, sUser=None,
+    ):
+        if not eventTwoBeatsObserved.wait(timeout=2.0):
+            raise AssertionError(
+                "heartbeat loop stopped after the first callback failure"
+            )
+        return ExecResult(iExitCode=0, sStdout="done\n", sStderr="")
+
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
+        ftWaitForSecondBeat
+    )
 
     iResult, fCpu = asyncio.run(_ftRunSingleCommand(
         mockDocker, "cid", "cmd", "cmd", "/work", fnCallback,
