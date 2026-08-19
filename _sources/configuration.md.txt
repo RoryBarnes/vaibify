@@ -183,13 +183,29 @@ documentation.
 ### `VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS`
 
 How long a hub or viewer server may sit idle before it self-retires.
-The default is `1800` (30 minutes). Set this to a smaller value to
-reap abandoned servers sooner, or a larger value to keep them alive
-longer.
+This is the **highest-precedence** override — it wins over the stored
+Settings preference and the launch default — so scripts and CI can pin
+a deterministic value.
+
+Accepts a non-negative number of seconds, or the string `never` (also
+`off`, `none`, `disabled`) to disable self-shutdown entirely. `0`
+retains its historical meaning — retire as soon as the server is idle.
+A malformed or negative value is ignored, and resolution falls through
+to the next tier.
 
 ```bash
-VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS=60 vaibify
+VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS=60 vaibify     # 60-second reaper
+VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS=never vaibify  # never self-retire
 ```
+
+When this variable is unset, the effective timeout is resolved in this
+order: the stored host-global Settings preference (set from the gear
+menu's **Idle shutdown** control and applied live, without relaunching
+the hub), then the launch default. The launch default is **never** for
+a browser launch — a researcher sitting at the dashboard should never
+have the connection reaped out from under them — and `1800` (30
+minutes) for a headless/remote launch (browser suppressed via
+`VAIBIFY_SUPPRESS_BROWSER`), so an abandoned server still retires.
 
 Self-shutdown only fires when **no browser tab is connected** and **no
 pipeline is running** in any container the server holds; an open

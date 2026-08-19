@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev1075 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev1082 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a79d144"></script>
+      <script src="_static/documentation_options.js?v=8472f8b6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -884,12 +884,27 @@ departing page claims about itself.</p>
 <h3>Idle self-shutdown<a class="headerlink" href="#idle-self-shutdown" title="Link to this heading"></a></h3>
 <p>Modeled on JupyterHub’s <code class="docutils literal notranslate"><span class="pre">ServerApp.shutdown_no_activity_timeout</span></code>, both
 the hub and the viewer run a watchdog (<code class="docutils literal notranslate"><span class="pre">_fnIdleShutdownWatchdogLoop</span></code>)
-that self-<code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>s after a sustained idle period (30 minutes by
-default, see <a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration</span></a>). SIGTERM – not a
+that self-<code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>s after a sustained idle period. SIGTERM – not a
 direct teardown – is deliberate: it lets uvicorn run the existing
 graceful-shutdown hooks that release the locks and the session slot,
 so the path that frees a container is the same whether the user quits
 manually or the watchdog fires.</p>
+<p>The timeout is not a fixed constant. It is resolved at startup
+(<code class="docutils literal notranslate"><span class="pre">_ffResolveIdleTimeoutSeconds</span></code>) across three precedence tiers — the
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span></code> env override, then the stored
+host-global Settings preference, then the launch default — and
+published on <code class="docutils literal notranslate"><span class="pre">app.state.fIdleTimeoutSeconds</span></code>. The watchdog re-reads
+that attribute every tick (<code class="docutils literal notranslate"><span class="pre">_ffCurrentIdleTimeout</span></code>), so the gear
+menu’s <strong>Idle shutdown</strong> control applies <strong>live</strong>: a change updates
+<code class="docutils literal notranslate"><span class="pre">app.state</span></code> and the loop honours it on its next pass, no relaunch. The
+<strong>launch default is never</strong> (<code class="docutils literal notranslate"><span class="pre">math.inf</span></code>, disabled) for a browser
+launch and <code class="docutils literal notranslate"><span class="pre">1800</span></code> seconds only for a headless/remote launch (browser
+suppressed via <code class="docutils literal notranslate"><span class="pre">VAIBIFY_SUPPRESS_BROWSER</span></code>) — a researcher at the
+dashboard is never reaped, but an abandoned headless server still
+retires. “Never” has no finite sentinel: <code class="docutils literal notranslate"><span class="pre">0</span></code> keeps its historical
+“retire as soon as idle” meaning, and disabled is carried as
+<code class="docutils literal notranslate"><span class="pre">math.inf</span></code>, which <code class="docutils literal notranslate"><span class="pre">_fbHubShouldSelfExit</span></code> treats as never-exit because
+no finite idle span reaches it.</p>
 <p>“Idle” is defined conservatively so a running pipeline is never
 interrupted (the dashboard’s honesty contract). The watchdog vetoes
 shutdown when <strong>any browser tab is connected</strong> – tracked by a live

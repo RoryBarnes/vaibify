@@ -918,6 +918,9 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # acknowledgement in ~/.vaibify/preferences.json) — host-side UI
     # state the in-container agent has no business writing.
     ("PUT", "/api/preferences/host-warning-acknowledged"),
+    # Host-global idle-shutdown timeout. A compromised in-container agent
+    # must never disable the hub's idle reaper — researcher-only.
+    ("PUT", "/api/preferences/idle-timeout"),
 })
 
 

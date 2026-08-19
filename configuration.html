@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev1075 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev1082 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a79d144"></script>
+      <script src="_static/documentation_options.js?v=8472f8b6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -539,12 +539,26 @@ documentation.</p>
 <section id="vaibify-hub-idle-timeout-seconds">
 <h3><code class="docutils literal notranslate"><span class="pre">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span></code><a class="headerlink" href="#vaibify-hub-idle-timeout-seconds" title="Link to this heading"></a></h3>
 <p>How long a hub or viewer server may sit idle before it self-retires.
-The default is <code class="docutils literal notranslate"><span class="pre">1800</span></code> (30 minutes). Set this to a smaller value to
-reap abandoned servers sooner, or a larger value to keep them alive
-longer.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span><span class="o">=</span><span class="m">60</span><span class="w"> </span>vaibify
+This is the <strong>highest-precedence</strong> override — it wins over the stored
+Settings preference and the launch default — so scripts and CI can pin
+a deterministic value.</p>
+<p>Accepts a non-negative number of seconds, or the string <code class="docutils literal notranslate"><span class="pre">never</span></code> (also
+<code class="docutils literal notranslate"><span class="pre">off</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">disabled</span></code>) to disable self-shutdown entirely. <code class="docutils literal notranslate"><span class="pre">0</span></code>
+retains its historical meaning — retire as soon as the server is idle.
+A malformed or negative value is ignored, and resolution falls through
+to the next tier.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span><span class="o">=</span><span class="m">60</span><span class="w"> </span>vaibify<span class="w">     </span><span class="c1"># 60-second reaper</span>
+<span class="nv">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span><span class="o">=</span>never<span class="w"> </span>vaibify<span class="w">  </span><span class="c1"># never self-retire</span>
 </pre></div>
 </div>
+<p>When this variable is unset, the effective timeout is resolved in this
+order: the stored host-global Settings preference (set from the gear
+menu’s <strong>Idle shutdown</strong> control and applied live, without relaunching
+the hub), then the launch default. The launch default is <strong>never</strong> for
+a browser launch — a researcher sitting at the dashboard should never
+have the connection reaped out from under them — and <code class="docutils literal notranslate"><span class="pre">1800</span></code> (30
+minutes) for a headless/remote launch (browser suppressed via
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_SUPPRESS_BROWSER</span></code>), so an abandoned server still retires.</p>
 <p>Self-shutdown only fires when <strong>no browser tab is connected</strong> and <strong>no
 pipeline is running</strong> in any container the server holds; an open
 dashboard keeps the server alive indefinitely. See the
