@@ -473,8 +473,8 @@ def testTheScanDeclaresWhatItCannotRead(moduleGenerator):
                 f"only {iFound} sites of kind {sKind} are now opaque -- "
                 f"lower DICT_UNRESOLVED_BUDGET to hold the gain."
             )
-    assert dictInventory["iUnresolvedSiteCount"] == len(listUnresolved), (
-        "the recorded blind-spot count disagrees with a fresh scan; "
+    assert len(dictInventory["listUnresolvedSites"]) == len(listUnresolved), (
+        "the recorded blind spot disagrees with a fresh scan; "
         "regenerate the inventory"
     )
 

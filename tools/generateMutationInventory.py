@@ -75,6 +75,20 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 PATH_INVENTORY = PATH_REPOSITORY / "tests" / "mutationInventory.json"
 
+# tools/ is not a package, and this module is loaded three ways: as a
+# script, as ``tools.generateMutationInventory``, and by path under a
+# private name by the tests. Only the first of those puts tools/ on the
+# import path, so put it there before reaching for a sibling.
+sys.path.insert(0, str(PATH_REPOSITORY / "tools"))
+
+import ledgerFormat  # noqa: E402
+
+# The keys holding record collections, rendered one record per line.
+# See tools/ledgerFormat.py for why the layout is load-bearing.
+T_RECORD_COLLECTION_KEYS = (
+    "listAcquisitions", "listUnresolvedSites", "listRows",
+)
+
 S_UNCLASSIFIED = "UNCLASSIFIED"
 
 # Access kinds. The primitive alone determines this one, which is why it
@@ -1575,7 +1589,35 @@ def _flistNumberAcquisitionOrdinals(listAcquisitions):
         )
         dictAcquisition["iOrdinal"] = dictCounts.get(tKey, 0)
         dictCounts[tKey] = dictAcquisition["iOrdinal"] + 1
-    return sorted(listAcquisitions, key=fsAcquisitionKey)
+    return sorted(
+        _flistDropTheLineNumber(listAcquisitions), key=fsAcquisitionKey,
+    )
+
+
+def _flistDropTheLineNumber(listRecords):
+    """Return the records without the line they were scanned from.
+
+    The line is a genuine tiebreaker while ordinals are assigned above,
+    and pure churn once written down. Nothing reads it back: identity is
+    the fingerprint, and ``tools/mutationAttribution.py`` resolves a
+    stack frame against a freshly parsed line map rather than against
+    this record. But it moves whenever anything above it in the module
+    moves, so it made two branches editing unrelated parts of one file
+    collide on records neither had touched.
+
+    It was also already WRONG. Because no drift check compared it, the
+    committed values had silently fallen out of step with the source --
+    a field that is stale and unchecked does not help a reader locate
+    anything. ``sFile``, ``sFunction`` and ``sFingerprint`` do, and
+    those are checked.
+    """
+    return [
+        {
+            sField: objValue for sField, objValue in dictRecord.items()
+            if sField != "iLine"
+        }
+        for dictRecord in listRecords
+    ]
 
 
 def fsAcquisitionKey(dictAcquisition):
@@ -1650,7 +1692,7 @@ def _flistNumberBlindSpotOrdinals(listSites):
         )
         dictSite["iOrdinal"] = dictCounts.get(tKey, 0)
         dictCounts[tKey] = dictSite["iOrdinal"] + 1
-    return sorted(listSites, key=fsBlindSpotKey)
+    return sorted(_flistDropTheLineNumber(listSites), key=fsBlindSpotKey)
 
 
 def fsBlindSpotKey(dictSite):
@@ -1757,9 +1799,9 @@ def fdictCompareAgainstSource(dictInventory, listScanned):
         "listEdited": listEdited,
         "listAltered": listAltered,
         "listCountMismatch": (
-            [] if dictInventory.get("iRowCount") == len(listScanned)
+            [] if len(dictInventory["listRows"]) == len(listScanned)
             else [
-                f"recorded {dictInventory.get('iRowCount')}, "
+                f"recorded {len(dictInventory['listRows'])}, "
                 f"scanned {len(listScanned)}"
             ]
         ),
@@ -1805,11 +1847,6 @@ def _flistAcquisitionDrift(dictInventory):
         listDrift.append(
             f"recorded list holds {len(listRecorded)} acquisitions, scan "
             f"found {len(dictScanned)}"
-        )
-    if dictInventory.get("iAcquisitionCount") != len(listRecorded):
-        listDrift.append(
-            f"count field says {dictInventory.get('iAcquisitionCount')}, "
-            f"recorded list holds {len(listRecorded)}"
         )
     for sKey in sorted(set(dictRecorded) & set(dictScanned)):
         listDisagreeing = [
@@ -1873,12 +1910,6 @@ def _flistBlindSpotDrift(dictInventory):
         listDrift.append(
             f"recorded list holds {len(listRecordedSites)} sites, "
             f"scan found {len(dictScanned)}"
-        )
-    if dictInventory.get("iUnresolvedSiteCount") != len(listRecordedSites):
-        listDrift.append(
-            f"count field says "
-            f"{dictInventory.get('iUnresolvedSiteCount')}, recorded list "
-            f"holds {len(listRecordedSites)}"
         )
     for sKey in sorted(set(dictRecorded) & set(dictScanned)):
         listDisagreeing = [
@@ -1993,17 +2024,14 @@ def _fdictBuildInventory(listScanned, dictExisting):
     listUnresolved = flistUnresolvedSites()
     listAcquisitions = _flistMergeAcquisitions(dictExisting)
     return {
-        "iAcquisitionCount": len(listAcquisitions),
-        "listAcquisitions": listAcquisitions,
-        "iUnresolvedSiteCount": len(listUnresolved),
-        "listUnresolvedSites": listUnresolved,
         "sPurpose": (
             "Every acquisition of a declared capability in vaibify/, and "
             "every container-mutation call site, one entry each. "
             "Machine-derived identity; reviewer-classified meaning. See "
             "tools/generateMutationInventory.py."
         ),
-        "iRowCount": len(listMerged),
+        "listAcquisitions": listAcquisitions,
+        "listUnresolvedSites": listUnresolved,
         "listRows": listMerged,
     }
 
@@ -2056,19 +2084,19 @@ def main():
         print(json.dumps(dictDrift, indent=2))
         return 1 if any(dictDrift.values()) else 0
     dictInventory = _fdictBuildInventory(listScanned, fdictLoadInventory())
+    sRendered = ledgerFormat.fsRenderLedger(
+        dictInventory, T_RECORD_COLLECTION_KEYS,
+    )
     if args.write:
-        PATH_INVENTORY.write_text(
-            json.dumps(dictInventory, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        PATH_INVENTORY.write_text(sRendered, encoding="utf-8")
         iUnclassified = len(flistUnclassifiedKeys(dictInventory))
         print(
-            f"Wrote {dictInventory['iRowCount']} rows to "
+            f"Wrote {len(dictInventory['listRows'])} rows to "
             f"{PATH_INVENTORY.relative_to(PATH_REPOSITORY)}; "
             f"{iUnclassified} still need a reviewer."
         )
         return 0
-    print(json.dumps(dictInventory, indent=2, sort_keys=True))
+    print(sRendered, end="")
     return 0
 
 
