@@ -108,7 +108,21 @@ F_SLIDING_IDLE_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
 )
 
 
-def ffReconnectWindowSecondsForSession(sBrowserSessionId=""):
+# A remote session's socket dies for a different reason than a local
+# one's. Locally a closed socket means a human closed a window, and 15
+# seconds is generous for a reload. Through a tunnel it usually means a
+# network changed while the researcher sat there, so the same evidence
+# carries a different meaning and the lane carries its own number. The
+# client retries for exactly this long; see commandRemote.
+F_REMOTE_RECONNECT_WINDOW_SECONDS = containerOwnership.\
+    ffReadSecondsFromEnvironment(
+        "VAIBIFY_REMOTE_RECONNECT_WINDOW_SECONDS", 900.0,
+    )
+
+
+def ffReconnectWindowSecondsForSession(
+    sBrowserSessionId="", dictBrowserSessions=None,
+):
     """Return the hold window this browser session may rely on.
 
     The client sizes its reconnect ladder from this number, so the two
@@ -121,7 +135,11 @@ def ffReconnectWindowSecondsForSession(sBrowserSessionId=""):
     and the reason the client is TOLD the window rather than shipping
     its own copy of the constant.
     """
-    del sBrowserSessionId
+    if sBrowserSessionId and dictBrowserSessions:
+        if browserSession.fbSessionIsRemote(
+            dictBrowserSessions, sBrowserSessionId,
+        ):
+            return F_REMOTE_RECONNECT_WINDOW_SECONDS
     return F_RECONNECT_WINDOW_SECONDS
 # How recently the owning browser must have spoken for a claim that has
 # not opened its first socket yet to count as still attended. Measured

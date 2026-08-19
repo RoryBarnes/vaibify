@@ -560,6 +560,69 @@ const VaibifyApp = (function () {
         _dictSessionState.sWorkspaceRoot = sWorkspaceRoot || "/workspace";
     }
 
+    function fnApplyRemoteSession(bRemote, sExecutionHostname) {
+        /* A remote session is not a variant of host or container mode:
+           either can be reached over a tunnel. So this is its own
+           indicator, and it names the machine -- "somewhere else" is
+           not an answer a researcher can act on. */
+        _dictSessionState.bRemoteSession = Boolean(bRemote);
+        _dictSessionState.sExecutionHostname = sExecutionHostname || "";
+        var elBadge = document.getElementById("remoteSessionBadge");
+        if (elBadge) {
+            elBadge.textContent = bRemote
+                ? ("REMOTE \u2014 " + (sExecutionHostname || "another machine"))
+                : "";
+            elBadge.style.display = bRemote ? "" : "none";
+        }
+        _fnHideAffordancesThatCannotWorkRemotely(Boolean(bRemote));
+    }
+
+    function _fnHideAffordancesThatCannotWorkRemotely(bRemote) {
+        /* Both of these hand the BROWSER an address, and through a
+           tunnel the browser's 127.0.0.1 is the laptop. A new hub is
+           spawned on a port chosen after the tunnel was built, so
+           nothing forwards it; a vscode:// deep link carries a
+           container id that exists only on the remote daemon. Hiding
+           beats letting the browser report a deliberate dead end as a
+           server failure. */
+        var listRemoteHostile = [
+            "btnNewVaibifyWindow",
+            "btnNewVaibifyWindowWorkflows",
+            "btnVsCode",
+        ];
+        listRemoteHostile.forEach(function (sId) {
+            var elButton = document.getElementById(sId);
+            if (!elButton) return;
+            elButton.style.display = bRemote ? "none" : "";
+            if (bRemote) {
+                elButton.title =
+                    "Unavailable in a remote session: this would open " +
+                    "an address on the computer you are sitting at, " +
+                    "not on the machine running your work.";
+            }
+        });
+    }
+
+    function fnApplyExecutionTopology(dictTopology) {
+        /* Stored as sent. The frontend must not re-derive which
+           locations coincide from the mode string: that is a second
+           implementation of a fact the server already knows, and it
+           was the absence of ANY such check that let a host-mode
+           "pull to host" ship as a self-copy presented as a transfer. */
+        _dictSessionState.dictExecutionTopology = dictTopology || {};
+    }
+
+    function fbExecutionHostIsTheEnvironment() {
+        return Boolean(
+            (_dictSessionState.dictExecutionTopology || {})
+                .bSameFilesystem
+        );
+    }
+
+    function fbIsRemoteSession() {
+        return Boolean(_dictSessionState.bRemoteSession);
+    }
+
     function fnApplyProjectMode(sProjectMode) {
         /* The mode is always the SERVER's answer -- the registry
            listing that rendered the tile on the project-list screen,
@@ -648,6 +711,9 @@ const VaibifyApp = (function () {
         }
         _fnRenderActiveResource(data.sProjectMode);
         fnApplyProjectMode(data.sProjectMode);
+        fnApplyRemoteSession(
+            data.bRemoteSession, data.sExecutionHostname);
+        fnApplyExecutionTopology(data.dictExecutionTopology);
         fnApplyWorkspaceRoot(data.sWorkspaceRoot);
         VaibifyWebSocket.fnSetReconnectWindowSeconds(
             data.fReconnectWindowSeconds);
@@ -834,6 +900,11 @@ const VaibifyApp = (function () {
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             _fnRenderActiveResource(dictConnect.sProjectMode);
             fnApplyProjectMode(dictConnect.sProjectMode);
+            fnApplyRemoteSession(
+                dictConnect.bRemoteSession,
+                dictConnect.sExecutionHostname);
+            fnApplyExecutionTopology(
+                dictConnect.dictExecutionTopology);
             fnApplyWorkspaceRoot(dictConnect.sWorkspaceRoot);
             VaibifyWebSocket.fnSetReconnectWindowSeconds(
                 dictConnect.fReconnectWindowSeconds);
@@ -4985,6 +5056,11 @@ const VaibifyApp = (function () {
         fsGetContainerId: function () {
             return _dictSessionState.sContainerId;
         },
+        fbIsRemoteSession: fbIsRemoteSession,
+        fnApplyExecutionTopology: fnApplyExecutionTopology,
+        fbExecutionHostIsTheEnvironment:
+            fbExecutionHostIsTheEnvironment,
+        fnApplyRemoteSession: fnApplyRemoteSession,
         fsGetProjectMode: function () {
             return _dictSessionState.sProjectMode;
         },

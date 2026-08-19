@@ -4708,7 +4708,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shipping its own copy of the number, which is precisely the
     # arrangement whose drift misreported an expired session as a
     # restarted server.
-    "pipelineServer.py": 2865,
+    # +20 (2026-08-18): the handshake gained the fields a client needs
+    # to know WHERE it is -- execution topology, hostname, and whether
+    # it arrived over a tunnel. The three functions that answer those
+    # moved OUT, to gui/executionTopology.py: they answer "where am I",
+    # which none of this module's other 2800 lines ask, and the domain
+    # had been naming the concept with no home for it. What is left
+    # here is the payload itself, which is this function's whole job.
+    "pipelineServer.py": 2885,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4778,7 +4785,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # runs the IDENTICAL prove-and-clear — two entry points, one
     # transaction, which is the whole reason the route lives on this
     # module's core rather than reimplementing it.
-    "hostControlChannel.py": 915,
+    # +5 (2026-08-18): mint-bootstrap accepts bRemoteSession. The
+    # operation already existed; it now carries one flag, read from
+    # a request the socket already parses.
+    # +39 (2026-08-18): list-reattachable. The socket is where a
+    # process asks the hub questions only the hub can answer, and
+    # "which session here lost its browser" is exactly that -- a
+    # returning client cannot know, because it never named a project.
+    # It NAMES rather than chooses: whether to reattach, and what to do
+    # with more than one candidate, stays with the caller, which can
+    # ask a human. Putting the choice here would have made the socket
+    # decide policy.
+    "hostControlChannel.py": 959,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -4855,7 +4873,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # holding a second copy of it. The docstring carries why, which is
     # the part a future reader needs before adding a lane with a
     # different window.
-    "sessionLifecycle.py": 1388,
+    # +18 (2026-08-18): the remote lane's hold window and the
+    # branch that chooses between the two. The window already
+    # lived here; what is new is that there are two of them and a
+    # session decides which applies. Same responsibility, and the
+    # alternative -- a second module owning one constant -- would
+    # put the pair somewhere they could drift apart.
+    "sessionLifecycle.py": 1406,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

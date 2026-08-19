@@ -31,6 +31,7 @@ __all__ = [
     "S_CAPABILITY_OPERATION_BOOTSTRAP",
     "S_CAPABILITY_OPERATION_TRANSFER",
     "fdictCreateBrowserSessionStore",
+    "fbSessionIsRemote",
     "fsMintBootstrapCapability",
     "fsMintTransferCapability",
     "fsCapabilityOperationKind",
@@ -109,6 +110,13 @@ class BootstrapCapability:
     iExpectedOwnerGeneration: int = 0
     sIssuedCredential: str = ""
     sIssuedSessionId: str = ""
+    # Minted by a process serving a browser on ANOTHER machine, over an
+    # SSH tunnel. Carried on the capability rather than guessed at the
+    # hub, because the only process that knows is the one that minted
+    # it: through the tunnel a remote browser is an ordinary loopback
+    # client and is indistinguishable from a local one, which is
+    # exactly the property that keeps the security model unchanged.
+    bRemoteSession: bool = False
     sIssuedLease: str = ""
     iIssuedOwnerGeneration: int = 0
 
@@ -122,6 +130,7 @@ class BrowserSessionRecord:
     fCreatedMonotonic: float
     fLastSeenMonotonic: float
     sState: str = S_SESSION_STATE_ACTIVE
+    bRemoteSession: bool = False
 
 
 def fdictCreateBrowserSessionStore():
@@ -132,7 +141,7 @@ def fdictCreateBrowserSessionStore():
     }
 
 
-def fsMintBootstrapCapability(dictStore):
+def fsMintBootstrapCapability(dictStore, bRemoteSession=False):
     """Mint an unguessable ARMED capability, or ``""`` when at capacity.
 
     The sweep runs first, so the cap is measured against records that
@@ -156,6 +165,7 @@ def fsMintBootstrapCapability(dictStore):
             sCapability=sCapability,
             sState="ARMED",
             fMintedMonotonic=time.monotonic(),
+            bRemoteSession=bool(bRemoteSession),
         )
     return sCapability
 
@@ -203,6 +213,24 @@ def _fiCountActiveSessionsLocked(dictStore):
     )
 
 
+def fbSessionIsRemote(dictStore, sSessionId):
+    """Return True when this browser session arrived over a tunnel.
+
+    Answered from the session record rather than from the request,
+    because through the tunnel a remote browser IS an ordinary
+    loopback client -- which is the property that keeps Host, Origin
+    and credential checks unweakened, and the reason the fact has to
+    be carried rather than detected.
+    """
+    with _lockBrowserSessions:
+        for recordSession in dictStore.get(
+            "dictSessionsByCredential", {},
+        ).values():
+            if recordSession.sSessionId == sSessionId:
+                return bool(recordSession.bRemoteSession)
+    return False
+
+
 def ftRedeemCapability(dictStore, sCapability):
     """Exchange a capability for a browser-session credential.
 
@@ -241,7 +269,9 @@ def _ftMintSessionForCapability(dictStore, recordCap, fNow):
     redeem it once a session frees up, which is the whole point of
     refusing rather than evicting.
     """
-    sSessionId, sCredential = _ftCreateSessionRecordLocked(dictStore, fNow)
+    sSessionId, sCredential = _ftCreateSessionRecordLocked(
+        dictStore, fNow, recordCap.bRemoteSession,
+    )
     if sSessionId is None:
         return (None, None)
     recordCap.sState = "REDEEMED"
@@ -250,7 +280,7 @@ def _ftMintSessionForCapability(dictStore, recordCap, fNow):
     return (sSessionId, sCredential)
 
 
-def _ftCreateSessionRecordLocked(dictStore, fNow):
+def _ftCreateSessionRecordLocked(dictStore, fNow, bRemoteSession=False):
     """Create and store a fresh session record, or refuse at the cap.
 
     Returns ``(None, None)`` when the hub already holds
@@ -272,6 +302,7 @@ def _ftCreateSessionRecordLocked(dictStore, fNow):
         sCredential=sCredential,
         fCreatedMonotonic=fNow,
         fLastSeenMonotonic=fNow,
+        bRemoteSession=bool(bRemoteSession),
     )
     return (sSessionId, sCredential)
 

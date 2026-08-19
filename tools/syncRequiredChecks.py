@@ -52,11 +52,21 @@ T_GATE_WORKFLOWS = (
     "security.yml",
     "agentDocsPathCheck.yml",
     "styleContract.yml",
+    "remoteSsh.yml",
 )
 
 T_MATRIX_TOKENS = (
     ("${{ matrix.os }}", "os"),
     ("${{ matrix.python-version }}", "python-version"),
+    # The shard dimension. Absent from this tuple, the falsification
+    # lane's name kept its literal ``${{ matrix.shard }}`` and the tool
+    # offered two check names that NO job will ever report -- which,
+    # applied, blocks every merge on a check that cannot arrive. That is
+    # the failure this module's docstring describes for matrix
+    # include/exclude, reached by a different route: an unexpanded
+    # dimension fails open into a name, where include/exclude fails
+    # closed into a refusal. Any new matrix key needs an entry here.
+    ("${{ matrix.shard }}", "shard"),
 )
 
 # Fields the GET returns that the PUT will not accept.

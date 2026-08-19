@@ -61,8 +61,15 @@
 name: falsification
 
 on:
+  # NO base-branch filter, deliberately. These gates were declared
+  # `branches: [main]`, so a pull request based on another branch --
+  # a stacked PR, which is how a large feature gets reviewed in
+  # pieces -- triggered NONE of them and reported "no checks" rather
+  # than failing. That reads almost exactly like "all checks passed"
+  # on a PR page, and it hid an entire feature branch from CI on
+  # 2026-08-18. A gate that does not run is worse than a gate that
+  # fails, because only one of them says so.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -270,9 +277,24 @@ jobs:
       # Linux only, matching browser.yml's own single-cell lane: the
       # browser entries are a Linux claim there and stay one here.
       - name: Install the browser
+        # See browser.yml: the same unbounded apt fetch wedged both
+        # exclusive legs of this workflow on the same day, for the same
+        # hour and three quarters -- and, once bounded, kept failing
+        # them. So the same resolution applies here, for the same
+        # reason: take the browser from Playwright's CDN, take the OS
+        # libraries from the runner image, and let a launch decide
+        # whether that was true rather than assuming it.
+        timeout-minutes: 8
         run: |
           python -m pip install -e ".[browser]"
-          python -m playwright install --with-deps chromium
+          python -m playwright install chromium
+          if python tools/checkChromiumLaunches.py; then
+            echo "Chromium launches against the runner image's own libraries."
+            exit 0
+          fi
+          echo "Chromium did not launch; fetching its OS dependencies."
+          python -m playwright install-deps chromium
+          python tools/checkChromiumLaunches.py
 
       - name: Re-confirm (exclusive, 1 worker)
         timeout-minutes: 45

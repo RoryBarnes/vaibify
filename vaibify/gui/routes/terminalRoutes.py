@@ -77,6 +77,30 @@ S_HOST_TERMINAL_BANNER = (
 )
 
 
+# Through a tunnel the host banner's first sentence becomes false, and
+# it is the sentence that matters: a researcher who believes a shell is
+# local reasons about its blast radius as local. The remote variant
+# NAMES the machine instead, because "your own machine" and
+# "compute-server-3" call for different care with an rm.
+#
+# The quiescence sentence is unchanged and must stay: a terminal is a
+# terminal wherever it runs, and vaibify still cannot prove a shell's
+# descendants died.
+def fsRemoteTerminalBanner(sExecutionHostname):
+    """Return the banner for a shell reached over a tunnel."""
+    sWhere = sExecutionHostname or "the remote machine"
+    return (
+        "\r\n"
+        "\x1b[33m[vaibify]\x1b[0m This shell runs on \x1b[1m" + sWhere
+        + "\x1b[0m, not on the computer you are sitting at.\r\n"
+        "\x1b[33m[vaibify]\x1b[0m Processes you start here can keep "
+        "running after you close this session;\r\n"
+        "\x1b[33m[vaibify]\x1b[0m vaibify will report this project's "
+        "quiescence as unproven until reconciled.\r\n"
+        "\r\n"
+    )
+
+
 def _fnRegisterTerminalWs(app, dictCtx):
     """Register terminal WebSocket endpoint."""
 
@@ -204,14 +228,32 @@ async def _fnStartAndRunTerminal(
                     websocket, dictCtx.get("dictBrowserSessions"),
                 )
             ),
-            sIntroductionBanner=(
-                S_HOST_TERMINAL_BANNER if bHostProject else ""
+            sIntroductionBanner=_fsBannerForThisShell(
+                dictCtx, websocket, bHostProject,
             ),
         )
     finally:
         _fnRecordTerminalAttribution(
             dictCtx, sContainerId, S_TERMINAL_CLOSED_DETAIL,
         )
+
+
+def _fsBannerForThisShell(dictCtx, websocket, bHostProject):
+    """Return the banner this shell should open with.
+
+    A remote shell is always banner-worthy, host mode or not: that it
+    runs somewhere else is the surprising part, and a container on
+    another machine is no more "here" than a host directory is.
+    """
+    from ..webSocketAuthorization import fsBrowserSessionIdForCredential
+    sBrowserSessionId = fsBrowserSessionIdForCredential(
+        websocket, dictCtx.get("dictBrowserSessions"),
+    )
+    if _pipelineServer.fbConnectionIsRemote(dictCtx, sBrowserSessionId):
+        return fsRemoteTerminalBanner(
+            _pipelineServer.fsExecutionHostname(),
+        )
+    return S_HOST_TERMINAL_BANNER if bHostProject else ""
 
 
 def _fnRecordTerminalAttribution(dictCtx, sContainerId, sDetail):

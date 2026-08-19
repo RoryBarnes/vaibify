@@ -1,1210 +1,197 @@
 {
-  "dictDispositions": {
-    "090f643fe353d4d87e83ba1be4c79925cf24cd242bc94aab0ed1372f3fd77caa": {
-      "sDisposition": "host-variant",
-      "sRationale": "The df -B1 free-space probe is replaced by shutil.disk_usage on the host per the plan.",
-      "sSupportingSymbols": "fiCheckWorkspaceFreeBytes, _S_WORKSPACE_PATH"
-    },
-    "102669ea0025ff619a18c5a3ccaa85bf23cf3529d318e3ec6c2f881f3662f5f0": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "_fbRepoIsMissing, sCommand"
-    },
-    "1870d526ebb3dcfc2e5d2d35cec423826c61f3ecd1c15e65cc29b737dfdb5ad2": {
-      "sDisposition": "container-only",
-      "sRationale": "Entrypoint-readiness marker probes are container lifecycle; host projects are ready when claimed.",
-      "sSupportingSymbols": "_ftReadReadinessMarker, sCommand"
-    },
-    "189326b0ce05edd592a24148babc73a7f13fc7846d7b2fab5f1af5051fa6c222": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultPullFromOverleaf, _fsPipeStdinCommand, sCli, sStdin"
-    },
-    "1b2ee6dd9415b103b03ae9c94c6c9a26a4b40524e6634dca783d5a089efef35b": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitAddInContainer, sCommand"
-    },
-    "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe": {
-      "sDisposition": "host-variant",
-      "sRationale": "The host gateway's own internal delegation -- this IS the host implementation, not a caller handing it a command.",
-      "sSupportingSymbols": "HostConnection.ftResultExecuteCommand, HostConnection.ftRunInContainerStreamed"
-    },
-    "35061b2c8788208f487f7212949ac5ab9ce3333ffadf2d7849cb8ce99573357c": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitDiffCachedQuietInContainer, sCommand"
-    },
-    "356f200633714581b5cdbd0590eb693a2e2692fefc8abf22e6ee570e61ef7988": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fdictGitStatusInContainer, sCommand"
-    },
-    "3e0ce2ae7446180dbf963537c833256bbe3fe074e134092c7a26d4dfd4f2612e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fsDetectProjectRepoInContainer, sCommand"
-    },
-    "40d95b5eab09e954440e55d8ca45487be0ef526cc0f976e2fc1b62f4169fea79": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fdictComputeContainerDigests, sCommand"
-    },
-    "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47": {
-      "sDisposition": "portable",
-      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify itself.",
-      "sSupportingSymbols": "ftResultArchiveProject, fsPythonCommand, fsResolveHelperInterpreter"
-    },
-    "46f73300f81ff8f8390a4608f29b94cf5bacdd6eccbf8ce7ba168d089c6f6670": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "ftRunStepCommands, fsShellQuote, sPlotDirectory"
-    },
-    "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940": {
-      "sDisposition": "host-variant",
-      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
-      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
-    },
-    "55981e39eb916ce295b3ef61e0505a4c57fe1bab78f9c9bfc0e32fe496f8424e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitPullFastForwardInContainer, sCommand"
-    },
-    "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb": {
-      "sDisposition": "portable",
-      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program's own path is resolved the same way.",
-      "sSupportingSymbols": "_fsRunIntrospection, fsResolveHelperInterpreter, fsResolveScratchDirectory, sInterpreter"
-    },
-    "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitCommitInContainer, sBase"
-    },
-    "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b": {
-      "sDisposition": "portable",
-      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. keyring and requests are vaibify dependencies.",
-      "sSupportingSymbols": "fbValidateZenodoToken, _fsBuildZenodoValidationCommand, fsPythonCommand"
-    },
-    "637548aeb3b50dfea561214ed0569a70dc6e9260b9c11564dd8959b0ddf27cd9": {
-      "sDisposition": "container-only",
-      "sRationale": "The host agent is the user; there is no host invoker lane, so the in-container claude invocation is refused for host resources.",
-      "sSupportingSymbols": "ftResultGenerateViaClaude, sCommand"
-    },
-    "642e40ea665c868ffdbd49a1df7f0f8f76f7a09d65b6f2282dc0c342ec41db4e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_fdictProbeKeyringToken, sCommand"
-    },
-    "69a6e3eea407f069fe4015e509f6e844d59af5f783fb72896a79e72503a66220": {
-      "sDisposition": "container-only",
-      "sRationale": "Cancel-by-process-table-grep (ps aux | grep) would match and count unrelated host processes.",
-      "sSupportingSymbols": "_fiCountMatchingProcesses, sCountCommand"
-    },
-    "6b505702e72b1420b67a2d63d4025e67b3da6308d005d25ab6813f33ca8633c8": {
-      "sDisposition": "host-variant",
-      "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
-      "sSupportingSymbols": "fnMigrateFlatMarkers, sCommand"
-    },
-    "795b567f8946337be46b77a21ed968f102971c5550e9d7d5d9c5e5322414f200": {
-      "sDisposition": "container-only",
-      "sRationale": "Container-only BY DESIGN: the host branch of this probe already exists (_fdictCompareHostFileHash) and is selected by the absent sDockerContainerId key on the record.",
-      "sSupportingSymbols": "_fdictProbeContainerFileHash, sCommand, _fdictCompareHostFileHash, sDockerContainerId"
-    },
-    "7ac4c59baa7f428b512781b4dc39e48e579515679c41c911be4a88d838ef0900": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultPushScriptsToGithub, sGitCommand"
-    },
-    "7f5780efcc9d92db06599a66375102b839b70acd09d79610938f1adf8f8b69e6": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "_fdictProbePushOnce, sCommand"
-    },
-    "7fb2f8844351b7ed7a8445d31b5b0500ccd6819c4ffc684fbb9ceb233f493d2b": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_fbKeyringBackendHealthy, sCommand"
-    },
-    "82989d173a4daff7467ea4deac82a0ee2c469e7a110d1fa0ab608e457017c02e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "flistGetDirtyFiles, sCommand"
-    },
-    "82b8f10001e0ea6fec9249cbdc5864d1a1a2fe03edfd5ae72b36acba8b794ba7": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitFetchInContainer, sCommand"
-    },
-    "89b2fe519e86c9f535261b7f8453df94436bc0d0963f9953c1aed25f955febb6": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "flistListContainerFiles, sCommand"
-    },
-    "8c07f5f7e3c8aeb27a29df581d39379ec803169111e1191f47c3cca07a9c9e34": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fnStoreCredentialInContainer, fsShellQuote, sTempPath"
-    },
-    "8eb7df12159ea2c3421700a05cc3753c122caf3e27f25586e8db97092dee8822": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fdictRemoteHeadsInContainer, sCommand"
-    },
-    "97886427fd66e42b205a23ea78b8cfe95565e4ab1e324737c37e74cd5c4c8f39": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fsGitHeadShaInContainer, sCommand"
-    },
-    "9a322dee0621cc55fe5771f2ddf002b8bbfa62f17537440f7dd98c5bde992161": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultAddFileToGithub, sCommand"
-    },
-    "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29": {
-      "sDisposition": "portable",
-      "sRationale": "The reachability probe cds into the caller-supplied project repo path, which the routes read from the workflow whose sProjectRepoPath is already resolved per mode; one command text serves both legs and no root is hardcoded (the /workspace/*/ scan this replaced answered wrongly for every host project).",
-      "sSupportingSymbols": "_fsComposeGithubReachabilityCommand, _fsProjectRepoPathOrEmpty"
-    },
-    "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa": {
-      "sDisposition": "portable",
-      "sRationale": "The remote-url probe cds into the caller-supplied project repo path, mode-resolved upstream like the reachability probe; the credential slot is therefore derived from THIS project's remote in both modes.",
-      "sSupportingSymbols": "_fsComposeGithubRemoteUrlCommand, _fsProjectRepoPathOrEmpty"
-    },
-    "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fnStoreCredentialInContainer, sCommand"
-    },
-    "a806873115e2623aed0b0a5fe9ae40e7f1de2d37cb247eb9d31ab29a8af2058c": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "_fdictHashRemoteDataFiles, sCommand"
-    },
-    "aa91a40972721d063b73986140ffcfa0276034f81f9c4f7b7f501513d7c2ed5e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitRestoreStagedInContainer, sCommand"
-    },
-    "ae317769076a8f87e54e34ca31e512585eb53b216a7dde4e95f7117641c1cd9c": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "_fsMissingDependencyFile, sQuoted"
-    },
-    "ae415d4b247b3c407a13596df4d99d059b20802d7d3141410a10ef8841265b52": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fnDeleteCredentialFromContainer, sCommand"
-    },
-    "b0b2c979f05386443953b664e11c60fd047cdad71f3e56fbd677ac5c4f8106a7": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_ftResultAnnotatedPush, _fsPipeStdinCommand, sCli, sStdin"
-    },
-    "b36405923b612907353821b3fc02eb0b79d3a65dd0652fe43d7c8baa354f036b": {
-      "sDisposition": "container-only",
-      "sRationale": "The host agent is the user; there is no host invoker lane, so the in-container claude invocation is refused for host resources.",
-      "sSupportingSymbols": "fbContainerHasClaude"
-    },
-    "b4796ea348fd0f650a8bb44274b39069f502b88bb47b863f27930b74a49963df": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "fbCopyCredentialInContainer, sCommand"
-    },
-    "b76e5e901fed9af647be490a87843418b714f7997c7c4c23f94f39357b3c39e1": {
-      "sDisposition": "host-variant",
-      "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
-      "sSupportingSymbols": "fdictReadInstalledConftestVersions, sCommand"
-    },
-    "be580efa0eccb44a0ef85014f36d33b7b0bdd400a1bd042dbada7b730471c475": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "ftResultGitRemoveCachedInContainer, sCommand"
-    },
-    "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b": {
-      "sDisposition": "host-variant",
-      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
-      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
-    },
-    "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5": {
-      "sDisposition": "portable",
-      "sRationale": "The removal of the same resolved path; rm -f is POSIX and the path was already proven writable by the write that preceded it.",
-      "sSupportingSymbols": "_fsRunIntrospection, fsResolveScratchDirectory, sQuotedPath"
-    },
-    "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "_fsRunGitCommand, sCommand"
-    },
-    "c7883f59ab1799cae17a6cfc90412dcfdb13c91dd91bc3856e77cc63bd2d9000": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fsRemoteUrlInContainer, sCommand"
-    },
-    "caeda44e3f22fd406fd45ebd401b84e031451ba64e3e18cd27b9a9207e431e0e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "_ftResultPlainPush, _fsPipeStdinCommand, sCli, sStdin"
-    },
-    "cc5b61278c53b989716a07ce7c61ca40f23db9961c0a6f04bb815ac8d7df0b48": {
-      "sDisposition": "host-variant",
-      "sRationale": "Gated host step launch per the plan; the /usr/bin/time -f wrapper composed by _fsWrapWithTime is container-only (BSD time on macOS rejects -f) and the host variant must not carry it.",
-      "sSupportingSymbols": "_ftRunSingleCommand, sTimedCmd, _fsWrapWithTime"
-    },
-    "cfe9522cc6f9174c955b31d759de5b9d01ba34e9338a80556c7f709573ef4ff1": {
-      "sDisposition": "container-only",
-      "sRationale": "ps aux | grep | xargs kill -9 against a host process table would kill unrelated host processes.",
-      "sSupportingSymbols": "_fnKillMatchingProcesses, sKill"
-    },
-    "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8": {
-      "sDisposition": "portable",
-      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify.reproducibility.",
-      "sSupportingSymbols": "ftResultGenerateLatex, fsPythonCommand, fsResolveHelperInterpreter"
-    },
-    "d34f2eba8d24dbf9d82799abac7d63cee73352a1ecfccb3be2dd6622bdbaa741": {
-      "sDisposition": "host-variant",
-      "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
-      "sSupportingSymbols": "fnEnsureTestsDirectory, fsShellQuote, sTestsDir"
-    },
-    "d4f3d2f873f25c60073c600640762b81b6ce8d7395037af19f75b44f3a5830f2": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultPushStagedToGithub, sCommand"
-    },
-    "d6400f65a6f001f03a7ce7dab7d7a3fd067553dc47bad89e6a7ca07926b8df02": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "_fsetSnapshotDirectory, fsShellQuote, iMaxDepth, sDirectory"
-    },
-    "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0": {
-      "sDisposition": "portable",
-      "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. zenodoClient is found where this resource keeps it: the image's staged copy, or the installed package's own directory on the host.",
-      "sSupportingSymbols": "ftResultArchiveToZenodo, _fsBuildZenodoArchiveCommand, _fsZenodoClientDirectory, fsResolveHelperInterpreter"
-    },
-    "e35acd949a66dccfc76c0b690ca2d486c2859a32236a415853b8c2fce63dc283": {
-      "sDisposition": "portable",
-      "sRationale": "Both the scratch paths and the persist target are resolved per resource before composition. dot is graphviz, which the image installs and a researcher's machine may not; an absent binary is the shell's own non-zero result, reported as the failure it is rather than answering with a different diagram.",
-      "sSupportingSymbols": "_ftRenderDagThroughDot, fsResolveScratchDirectory, fsResolveProjectRoot, sPersistPath"
-    },
-    "e3bd0e2f2e0f2d897e0847b3aeb4fbcb594458d6522445c194d0713ab8d2c16a": {
-      "sDisposition": "host-variant",
-      "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
-      "sSupportingSymbols": "ftResultPushToGithub, sCommand"
-    },
-    "e5346aa7e915e068901a836017647f38933a6b12b9b4d2692d390b951604feb2": {
-      "sDisposition": "host-variant",
-      "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.",
-      "sSupportingSymbols": "fbWriteConftestMarkersBatch, sCommand"
-    },
-    "ea5c1d8aec9300957fb86dda9c76e0ac8c564c2c4b9d06e686b46373d90fed2e": {
-      "sDisposition": "host-variant",
-      "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
-      "sSupportingSymbols": "fdictComputeBlobShasInContainer, sCommand"
-    },
-    "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97": {
-      "sDisposition": "host-variant",
-      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
-      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
-    }
-  },
-  "iRowCount": 128,
-  "iUndisposedSiteBudget": 67,
+  "sPurpose": "Every call site handing command text to the container connection, one row each: machine-derived identity, reviewer-recorded host-mode disposition. See tools/generateHostCapabilityInventory.py.",
   "listRows": [
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fiRunTestCommandList",
-      "sFingerprint": "26461d67fc2a7b19297973209550f0ac1bf28b189ee83574ee79bbaa63626d5d",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/cli/commandTest.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictProbeContainerFileHash",
-      "sFingerprint": "795b567f8946337be46b77a21ed968f102971c5550e9d7d5d9c5e5322414f200",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/config/operationJournal.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "DockerConnection._ftRunTypedRead",
-      "sFingerprint": "a494879b9798479fb1800d0ed81e7df87f6c6773f724c56f76df205b2bf5e48b",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/docker/dockerConnection.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "DockerConnection.ftResultExecuteCommand",
-      "sFingerprint": "3ee745e9c50aca8abca2f8096b094a986dcec8f0f13effb465f3202ad5f7251b",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/docker/dockerConnection.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictCaptureAgentCliVersions",
-      "sFingerprint": "e34e7f2fae3428c8936a798447b1149035acbd43ebdeb4976849d58bba162bb9",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/aiProvenanceCapture.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fbWriteConftestMarkersBatch",
-      "sFingerprint": "e5346aa7e915e068901a836017647f38933a6b12b9b4d2692d390b951604feb2",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/conftestManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fdictReadInstalledConftestVersions",
-      "sFingerprint": "b76e5e901fed9af647be490a87843418b714f7997c7c4c23f94f39357b3c39e1",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/conftestManager.py"
-    },
-    {
-      "sCommandExpression": "f'mkdir -p {fsShellQuote(sTestsDir)}'",
-      "sEnclosingFunction": "fnEnsureTestsDirectory",
-      "sFingerprint": "d34f2eba8d24dbf9d82799abac7d63cee73352a1ecfccb3be2dd6622bdbaa741",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/conftestManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fnMigrateFlatMarkers",
-      "sFingerprint": "6b505702e72b1420b67a2d63d4025e67b3da6308d005d25ab6813f33ca8633c8",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/conftestManager.py"
-    },
-    {
-      "sCommandExpression": "UNKNOWN",
-      "sEnclosingFunction": "ConnectionRouter.ftResultExecuteCommand",
-      "sFingerprint": "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/connectionRouter.py"
-    },
-    {
-      "sCommandExpression": "UNKNOWN",
-      "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamed",
-      "sFingerprint": "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/connectionRouter.py"
-    },
-    {
-      "sCommandExpression": "UNKNOWN",
-      "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamedWithChunks",
-      "sFingerprint": "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940",
-      "sMethod": "ftRunInContainerStreamedWithChunks",
-      "sModule": "vaibify/gui/connectionRouter.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictProbePushOnce",
-      "sFingerprint": "7f5780efcc9d92db06599a66375102b839b70acd09d79610938f1adf8f8b69e6",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fdictComputeBlobShasInContainer",
-      "sFingerprint": "ea5c1d8aec9300957fb86dda9c76e0ac8c564c2c4b9d06e686b46373d90fed2e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fdictGitStatusInContainer",
-      "sFingerprint": "356f200633714581b5cdbd0590eb693a2e2692fefc8abf22e6ee570e61ef7988",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fdictRemoteHeadsInContainer",
-      "sFingerprint": "8eb7df12159ea2c3421700a05cc3753c122caf3e27f25586e8db97092dee8822",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "flistListContainerFiles",
-      "sFingerprint": "89b2fe519e86c9f535261b7f8453df94436bc0d0963f9953c1aed25f955febb6",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fsDetectProjectRepoInContainer",
-      "sFingerprint": "3e0ce2ae7446180dbf963537c833256bbe3fe074e134092c7a26d4dfd4f2612e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fsGitHeadShaInContainer",
-      "sFingerprint": "97886427fd66e42b205a23ea78b8cfe95565e4ab1e324737c37e74cd5c4c8f39",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fsRemoteUrlInContainer",
-      "sFingerprint": "c7883f59ab1799cae17a6cfc90412dcfdb13c91dd91bc3856e77cc63bd2d9000",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitAddInContainer",
-      "sFingerprint": "1b2ee6dd9415b103b03ae9c94c6c9a26a4b40524e6634dca783d5a089efef35b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sBase",
-      "sEnclosingFunction": "ftResultGitCommitInContainer",
-      "sFingerprint": "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitDiffCachedQuietInContainer",
-      "sFingerprint": "35061b2c8788208f487f7212949ac5ab9ce3333ffadf2d7849cb8ce99573357c",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitFetchInContainer",
-      "sFingerprint": "82b8f10001e0ea6fec9249cbdc5864d1a1a2fe03edfd5ae72b36acba8b794ba7",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitPullFastForwardInContainer",
-      "sFingerprint": "55981e39eb916ce295b3ef61e0505a4c57fe1bab78f9c9bfc0e32fe496f8424e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitRemoveCachedInContainer",
-      "sFingerprint": "be580efa0eccb44a0ef85014f36d33b7b0bdd400a1bd042dbada7b730471c475",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGitRestoreStagedInContainer",
-      "sFingerprint": "aa91a40972721d063b73986140ffcfa0276034f81f9c4f7b7f501513d7c2ed5e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/containerGit.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fsPreviewHdf5",
-      "sFingerprint": "78776d435d8137d7477e8529a871dd69421a1bdcec0243a0660d5a165f5776b3",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/dataPreview.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fsPreviewNpy",
-      "sFingerprint": "a2790bcfc7b0f0370107b265bc074b8897dd39c1f15839d6a280691fb1386930",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/dataPreview.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fsPreviewText",
-      "sFingerprint": "645d5b10ac3e41bdd290709e7b764d1a63d66ecb2a09682615627d91b42c3023",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/dataPreview.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fiQueryHeadCommitEpoch",
-      "sFingerprint": "8c82baca56c5dc2ef94b40e79e6983239257724a99884bd9bf29ba825fc5fd86",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/determinismEnvironment.py"
-    },
-    {
-      "sCommandExpression": "f'df -B1 {_S_WORKSPACE_PATH}'",
-      "sEnclosingFunction": "fiCheckWorkspaceFreeBytes",
-      "sFingerprint": "090f643fe353d4d87e83ba1be4c79925cf24cd242bc94aab0ed1372f3fd77caa",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/diskSpace.py"
-    },
-    {
-      "sCommandExpression": "f'rm -f {sQuotedPath}'",
-      "sEnclosingFunction": "_fsRunIntrospection",
-      "sFingerprint": "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/introspectionScript.py"
-    },
-    {
-      "sCommandExpression": "f'{sInterpreter} {sQuotedPath}'",
-      "sEnclosingFunction": "_fsRunIntrospection",
-      "sFingerprint": "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/introspectionScript.py"
-    },
-    {
-      "sCommandExpression": "'which claude'",
-      "sEnclosingFunction": "fbContainerHasClaude",
-      "sFingerprint": "b36405923b612907353821b3fc02eb0b79d3a65dd0652fe43d7c8baa354f036b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/llmInvoker.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultGenerateViaClaude",
-      "sFingerprint": "637548aeb3b50dfea561214ed0569a70dc6e9260b9c11564dd8959b0ddf27cd9",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/llmInvoker.py"
-    },
-    {
-      "sCommandExpression": "f'mv {fsShellQuote(sPathTemp)} {fsShellQuote(sPath)}'",
-      "sEnclosingFunction": "fnSaveContainerCache",
-      "sFingerprint": "b2ffa55a63961563fb4f9c17150547cb4bc3fb60dac173f3a8f695b8176f5bea",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/mtimeCache.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnAppendLogContent",
-      "sFingerprint": "27a4f37e500214982355b18325f815b434f7634df1b9a0889b1e87602c429402",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineLogger.py"
-    },
-    {
-      "sCommandExpression": "f'mkdir -p {fsShellQuote(sLogsDir)}'",
-      "sEnclosingFunction": "_fsEnsureLogsDirectory",
-      "sFingerprint": "fbb229db8cce9bb0860c7da87e44693d4a2f1777f00616cd8e8865d035b2bf35",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineLogger.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fnPruneOldLogs",
-      "sFingerprint": "4de084fd38449bce4835b1db11763a0edbc8b1b18d941b9c677357096115a232",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineLogger.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictHashRemoteDataFiles",
-      "sFingerprint": "a806873115e2623aed0b0a5fe9ae40e7f1de2d37cb247eb9d31ab29a8af2058c",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "f'test -f {sQuoted}'",
-      "sEnclosingFunction": "_fsMissingDependencyFile",
-      "sFingerprint": "ae317769076a8f87e54e34ca31e512585eb53b216a7dde4e95f7117641c1cd9c",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "f'find {fsShellQuote(sDirectory)} -maxdepth {iMaxDepth} -type f 2>/dev/null'",
-      "sEnclosingFunction": "_fsetSnapshotDirectory",
-      "sFingerprint": "d6400f65a6f001f03a7ce7dab7d7a3fd067553dc47bad89e6a7ca07926b8df02",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "sTimedCmd",
-      "sEnclosingFunction": "_ftRunSingleCommand",
-      "sFingerprint": "cc5b61278c53b989716a07ce7c61ca40f23db9961c0a6f04bb815ac8d7df0b48",
-      "sMethod": "ftRunInContainerStreamedWithChunks",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "f'mkdir -p {fsShellQuote(sPlotDirectory)}'",
-      "sEnclosingFunction": "ftRunStepCommands",
-      "sFingerprint": "46f73300f81ff8f8390a4608f29b94cf5bacdd6eccbf8ce7ba168d089c6f6670",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "sScript",
-      "sEnclosingFunction": "_flistExistingRemotePaths",
-      "sFingerprint": "0b6fb2cc654c78a465f458fc5bfcde4f83addc9e141c3ca16e37314ba34c813f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineServer.py"
-    },
-    {
-      "sCommandExpression": "'printenv CONTAINER_USER'",
-      "sEnclosingFunction": "_fsResolveContainerUser",
-      "sFingerprint": "d8e9b3f867d92d4f1002ae4120046f1fda2f6452d1d72f3ad0fef4bf1a2eb0bd",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineServer.py"
-    },
-    {
-      "sCommandExpression": "f'mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || {{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}'",
-      "sEnclosingFunction": "fbWriteStateAcknowledged",
-      "sFingerprint": "eb13967be0f2783a3102074a7ece8d3c6542a1f517fe112f7ef94d493593ffa5",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineState.py"
-    },
-    {
-      "sCommandExpression": "f'rm -f {fsShellQuote(sStatePath)} {fsShellQuote(sStatePath)}.*.tmp'",
-      "sEnclosingFunction": "fnClearState",
-      "sFingerprint": "a279bac00d295cc022fb033077f4b47e3899b7c36055eae37ae698cc7d16d52b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineState.py"
-    },
-    {
-      "sCommandExpression": "sCheckCommand",
-      "sEnclosingFunction": "_fnValidateSingleCommand",
-      "sFingerprint": "635e16b0922898f06b5535aeee9b6aaf1c94ce165b9ef197e3363cb66bf1ae57",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineValidator.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnValidateStepDirectory",
-      "sFingerprint": "e22e00ebd889b32fe36dc14596be9699c0bc9e3c5dfb7b6fc788c1f7df2d461f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineValidator.py"
-    },
-    {
-      "sCommandExpression": "_S_LIST_SCRIPT",
-      "sEnclosingFunction": "fdictListContainerTranscripts",
-      "sFingerprint": "bbe8255a04ec3b81818f0876864fb7b734fe1cc6960e044998fa3717cc82f4c4",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/promptRecordManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictListDraftsFromDir",
-      "sFingerprint": "a6fe94ffd61eef81653491f1610a92ceb503fe763a2b1e802463dfb1dd59abf4",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/draftRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnCommitDraftDelete.fnRemoveTheDraft",
-      "sFingerprint": "7dd80a033e3186315bb634260520f03cfa9d17a8c6192e69c04b4a378352024e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/draftRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnEnsureDraftDir",
-      "sFingerprint": "899828480cc8c4d4d2aa709ecccbf60d41176284f767976155c006ed55a33a0f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/draftRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'cosmic-ray init {fsShellQuote(sConfigPath)} {fsShellQuote(sSessionPath)} && cosmic-ray exec {fsShellQuote(sConfigPath)} {fsShellQuote(sSessionPath)}'",
-      "sEnclosingFunction": "_fdictRunMutationSync",
-      "sFingerprint": "10cddbac38089722692a512c4fb3a670f9ba9ed6ee54d586fa024aa78ea70cf5",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/falsificationRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'python {fsShellQuote(sSummaryPath)} {fsShellQuote(sSessionPath)}'",
-      "sEnclosingFunction": "_fdictSummarizeMutationSession",
-      "sFingerprint": "c8685d0983a90810fb7ba7e40c853987faea51c6536d4ec4e7b3daf2b6fe674c",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/falsificationRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'rm -rf {fsShellQuote(sWorkDirectory)} && mkdir -p {fsShellQuote(sWorkDirectory)}'",
-      "sEnclosingFunction": "_fsPrepareMutationSession",
-      "sFingerprint": "5943a70eab17e040e4facb91e48a711132453640039b11023725820c90a3dc6f",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/falsificationRoutes.py"
-    },
-    {
-      "sCommandExpression": "'cosmic-ray --version'",
-      "sEnclosingFunction": "_fsRequireCosmicRay",
-      "sFingerprint": "3fd97106693dd0ad731068e889d031f367c1e70b53c1d835ce7acd82df9b0f45",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/falsificationRoutes.py"
-    },
-    {
-      "sCommandExpression": "sTestCmd",
-      "sEnclosingFunction": "_fnRegisterFigure.fresponseCheckFigure",
-      "sFingerprint": "ebb774bce3451687795523278e63666e90a75b1e7f00e4cdcab480abde080a65",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/figureRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictDeleteOutputsUnderTheDrain.ftDeleteTheOutputs",
-      "sFingerprint": "afb394adda7d496e9863cb1e953f2e8be5c3c7a4469903a1377b82f1b01132e9",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictFetchTestMarkers",
-      "sFingerprint": "a9f9b50c59392b61d308173f5fc0104830a6b19d21bdfe03ea55a6295d15f854",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCountCommand",
-      "sEnclosingFunction": "_fiCountMatchingProcesses",
-      "sFingerprint": "69a6e3eea407f069fe4015e509f6e844d59af5f783fb72896a79e72503a66220",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCmd",
-      "sEnclosingFunction": "_fnDeleteLegacyMarkers",
-      "sFingerprint": "b9838ff1daa90229664b1063ac758fd6399ef45cd26ffe1d550e9b1ece40f217",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "'mkdir -p /usr/share/vaibify'",
-      "sEnclosingFunction": "_fnEnsureConftestTemplate",
-      "sFingerprint": "bc6567627e4da4728cf596d47da8aa187049247f4b9c272cbbadbae124c0cdc5",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "'test -f ' + sTemplatePath",
-      "sEnclosingFunction": "_fnEnsureConftestTemplate",
-      "sFingerprint": "ac6804a1ada5edfa56ca41734c86d93121638c2f9eac01433e71d2b0696b0aa2",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "sKill",
-      "sEnclosingFunction": "_fnKillMatchingProcesses",
-      "sFingerprint": "cfe9522cc6f9174c955b31d759de5b9d01ba34e9338a80556c7f709573ef4ff1",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/pipelineRoutes.py"
-    },
-    {
-      "sCommandExpression": "sFullCommand",
-      "sEnclosingFunction": "_flistConvertToStandards",
-      "sFingerprint": "239502adbbf3921b6ad8e6d67306bbf34c4205e8e5f2af88d076b856577aba4f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/plotRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -f {fsShellQuote(sFullPath)}'",
-      "sEnclosingFunction": "_flistVerifyConverted",
-      "sFingerprint": "2e40dffb908bd06c09dbb675f51019d5c19a8b696644a4ffdc1dad949cebfdb5",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/plotRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnReplaceRootWithSymlink",
-      "sFingerprint": "81074dc0bc9fed89d4f483aad1e266159d40b538c6685b0d84cd3a3277f0a440",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/replayRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -d {fsShellQuote(sFullPath)}'",
-      "sEnclosingFunction": "_fbDirectoryExists",
-      "sFingerprint": "f315a4aa2ecaf83c18cdc9a1293522daa7176e0916bc303fd083a2347fa422b6",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/repoRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -e {fsShellQuote(sGitPath)}'",
-      "sEnclosingFunction": "_fbDirectoryIsGitRepo",
-      "sFingerprint": "8fb11039368cfe18b928d8fe5dea5124764fdb71b9d2c1ac8b486ba306511b41",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/repoRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -e {fsShellQuote(sGitignorePath)}'",
-      "sEnclosingFunction": "_fbWriteInitialGitignoreIfAbsent",
-      "sFingerprint": "c1242ca4121ed9fd5b37dc162b737da05bb73f64e29b60ba9484d8b073dd8bce",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/repoRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'mkdir -p {fsShellQuote(sFullPath)}'",
-      "sEnclosingFunction": "_fnEnsureInitTargetDirectory",
-      "sFingerprint": "98f60fc215b6c55e1f18c17abaddee05dcfd1570737cd986719f9369f292e3bd",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/repoRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnRunGitInitWithInitialCommit",
-      "sFingerprint": "24d13efe523cc1bb860ab1377ebd4d9829fe8f9908c6953554dbb0b671735bde",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/repoRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_ftWriteGitIdentity",
-      "sFingerprint": "e3044e21450a0366dc82ce4d10abffbc569ac2902f9b7d2a4c9f2427f4c02e07",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/syncRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_ftReadReadinessMarker",
-      "sFingerprint": "1870d526ebb3dcfc2e5d2d35cec423826c61f3ecd1c15e65cc29b737dfdb5ad2",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/systemRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCatCmd",
-      "sEnclosingFunction": "_fdictRunOneTestCategory",
-      "sFingerprint": "b7e5b86c4465a75e1ebd278c13deb87c41e0f90c6ebc05c559431bb7db7c005c",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/testRoutes.py"
-    },
-    {
-      "sCommandExpression": "sFullCmd",
-      "sEnclosingFunction": "_ftRunCategoryCommands",
-      "sFingerprint": "aadb4e2deac2dc3689abca26ea614a186ee11716c98374d5ca75376e1cc5d37b",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/testRoutes.py"
-    },
-    {
-      "sCommandExpression": "sTestCmd",
-      "sEnclosingFunction": "_ftRunSaveAndRunTest",
-      "sFingerprint": "89a9a3fc02aa149ebf40dccec9ece61e87366c5db37967ffe003466577e4a9e3",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/gui/routes/testRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -e {fsShellQuote(sFullPath)}'",
-      "sEnclosingFunction": "_fnAssertWorkflowAbsent",
-      "sFingerprint": "2f9108cf2719ab4d5ef488ad7ca23dbeecf06571af79c5f977922d892a66cce1",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/workflowRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'mkdir -p {fsShellQuote(sWorkflowDir)}'",
-      "sEnclosingFunction": "_fsEnsureWorkflowDir",
-      "sFingerprint": "5fc538b40fc037195f5907983c947476b388de5701fe978230206594fc2009cb",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/workflowRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'git -C {fsShellQuote(sFullPath)} rev-parse --show-toplevel 2>/dev/null'",
-      "sEnclosingFunction": "_fsValidateRepoDirectory",
-      "sFingerprint": "5a628b5b382b49f7223b6c639aee6e104ac2cd374cd87d976ffee81a6e4ac600",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/workflowRoutes.py"
-    },
-    {
-      "sCommandExpression": "f'test -d {fsShellQuote(sFullPath)}'",
-      "sEnclosingFunction": "_fsValidateRepoDirectory",
-      "sFingerprint": "468ddf85a618d5cbc36ba3e59cc651f2acbf40189f2fcf20062b4666ca136a91",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/routes/workflowRoutes.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnAtomicInstallTempFile",
-      "sFingerprint": "bb3a47bf7c666d9b0a78c27ee95585d61da39286030da5d7298debe07a6522a2",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stateManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnCheckpointPriorState",
-      "sFingerprint": "21b2ce3ee5d2468614bd9e9f8653417c2b05c21adaa9edd79361ce6a909325a9",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stateManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnQuarantineCorruptStateFile",
-      "sFingerprint": "c908fabfb6e30690f04a960c8d1164e3ea484b33ef5d086f98c5104c914abc56",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stateManager.py"
-    },
-    {
-      "sCommandExpression": "'test -d ' + fsShellQuote(sOldAbsolute)",
-      "sEnclosingFunction": "_fbMoveStepDirectory",
-      "sFingerprint": "cddef7e2e97a7770ed49e19ae848902563a5c0a964e8abf4508f6accc0341c79",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stepRename.py"
-    },
-    {
-      "sCommandExpression": "'test -e ' + fsShellQuote(sNewAbsolute)",
-      "sEnclosingFunction": "_fbMoveStepDirectory",
-      "sFingerprint": "05ffc7bd1c8dce235d4a0e37110180f72514b75aaa2e55d3da2064599f269085",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stepRename.py"
-    },
-    {
-      "sCommandExpression": "_fsBuildDirectoryMoveCommand(sRepo, dictPlan['sOldDirectory'], dictPlan['sNewDirectory'])",
-      "sEnclosingFunction": "_fbMoveStepDirectory",
-      "sFingerprint": "44bc929b2e01c52f51b7e4bf67f891fa38319e4a2b259b0c063b5fb1c8dc1577",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stepRename.py"
-    },
-    {
-      "sCommandExpression": "_fsBuildDirectoryMoveCommand(sRepo, dictPlan['sNewDirectory'], dictPlan['sOldDirectory'])",
-      "sEnclosingFunction": "_fnUndoStepDirectoryMove",
-      "sFingerprint": "e7d01991d8aec971db7bf8cfc1f3af9609506fe2a734f3542e6ffad6d76273db",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stepRename.py"
-    },
-    {
-      "sCommandExpression": "'grep -Iq -- ' + fsShellQuote(dictPlan['sOldDirectory']) + ' ' + fsShellQuote(sAbsolute)",
-      "sEnclosingFunction": "flistScanScriptsForOldName",
-      "sFingerprint": "341bc9429fe45a4e3f06b307113294bdc2be85747cb1928fd6c555e50dcd015a",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/stepRename.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fbKeyringBackendHealthy",
-      "sFingerprint": "7fb2f8844351b7ed7a8445d31b5b0500ccd6819c4ffc684fbb9ceb233f493d2b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsComposeGithubReachabilityCommand(sProjectRepoPath)",
-      "sEnclosingFunction": "_fdictCheckGithub",
-      "sFingerprint": "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictProbeKeyringToken",
-      "sFingerprint": "642e40ea665c868ffdbd49a1df7f0f8f76f7a09d65b6f2282dc0c342ec41db4e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsComposeGithubRemoteUrlCommand(sProjectRepoPath)",
-      "sEnclosingFunction": "_fsReadGithubRemoteUrl",
-      "sFingerprint": "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "f'dot -T{sFormat} {fsShellQuote(sDotPath)} -o {fsShellQuote(sOutPath)} && cp {fsShellQuote(sOutPath)} {fsShellQuote(sPersistPath)}'",
-      "sEnclosingFunction": "_ftRenderDagThroughDot",
-      "sFingerprint": "e35acd949a66dccfc76c0b690ca2d486c2859a32236a415853b8c2fce63dc283",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)",
-      "sEnclosingFunction": "_ftResultAnnotatedPush",
-      "sFingerprint": "b0b2c979f05386443953b664e11c60fd047cdad71f3e56fbd677ac5c4f8106a7",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)",
-      "sEnclosingFunction": "_ftResultPlainPush",
-      "sFingerprint": "caeda44e3f22fd406fd45ebd401b84e031451ba64e3e18cd27b9a9207e431e0e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fbCopyCredentialInContainer",
-      "sFingerprint": "b4796ea348fd0f650a8bb44274b39069f502b88bb47b863f27930b74a49963df",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId)",
-      "sEnclosingFunction": "fbValidateZenodoToken",
-      "sFingerprint": "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fdictComputeContainerDigests",
-      "sFingerprint": "40d95b5eab09e954440e55d8ca45487be0ef526cc0f976e2fc1b62f4169fea79",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "flistGetDirtyFiles",
-      "sFingerprint": "82989d173a4daff7467ea4deac82a0ee2c469e7a110d1fa0ab608e457017c02e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fnDeleteCredentialFromContainer",
-      "sFingerprint": "ae415d4b247b3c407a13596df4d99d059b20802d7d3141410a10ef8841265b52",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "f'rm -f {fsShellQuote(sTempPath)}'",
-      "sEnclosingFunction": "fnStoreCredentialInContainer",
-      "sFingerprint": "8c07f5f7e3c8aeb27a29df581d39379ec803169111e1191f47c3cca07a9c9e34",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "fnStoreCredentialInContainer",
-      "sFingerprint": "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultAddFileToGithub",
-      "sFingerprint": "9a322dee0621cc55fe5771f2ddf002b8bbfa62f17537440f7dd98c5bde992161",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)",
-      "sEnclosingFunction": "ftResultArchiveProject",
-      "sFingerprint": "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsBuildZenodoArchiveCommand(sBaseApi, sSlot, listFilePaths, dictApi, sContainerId, iParentDepositId)",
-      "sEnclosingFunction": "ftResultArchiveToZenodo",
-      "sFingerprint": "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)",
-      "sEnclosingFunction": "ftResultGenerateLatex",
-      "sFingerprint": "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)",
-      "sEnclosingFunction": "ftResultPullFromOverleaf",
-      "sFingerprint": "189326b0ce05edd592a24148babc73a7f13fc7846d7b2fab5f1af5051fa6c222",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sGitCommand",
-      "sEnclosingFunction": "ftResultPushScriptsToGithub",
-      "sFingerprint": "7ac4c59baa7f428b512781b4dc39e48e579515679c41c911be4a88d838ef0900",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultPushStagedToGithub",
-      "sFingerprint": "d4f3d2f873f25c60073c600640762b81b6ce8d7395037af19f75b44f3a5830f2",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ftResultPushToGithub",
-      "sFingerprint": "e3bd0e2f2e0f2d897e0847b3aeb4fbcb594458d6522445c194d0713ab8d2c16a",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/syncDispatcher.py"
-    },
-    {
-      "sCommandExpression": "f'rm -rf {fsShellQuote(sTestsDir)}'",
-      "sEnclosingFunction": "_fnRemoveTestDirectory",
-      "sFingerprint": "6d23fc81c00399b296e3d98c567117a243c7313b49b1dead68488dd30fb96f54",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/testStatusManager.py"
-    },
-    {
-      "sCommandExpression": "f'rm -f {fsShellQuote(sPath)}'",
-      "sEnclosingFunction": "_fnRemoveTestFiles",
-      "sFingerprint": "807e115e2301b58d07c95c819c46c56b28c67aa34dc75f18f91ddddf49ead32f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/testStatusManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fbRepoIsMissing",
-      "sFingerprint": "102669ea0025ff619a18c5a3ccaa85bf23cf3529d318e3ec6c2f881f3662f5f0",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fsRunGitCommand",
-      "sFingerprint": "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "'mkdir -p ' + fsShellQuote(posixpath.dirname(fsSidecarPathFor(sContainerId)))",
-      "sEnclosingFunction": "fnWriteSidecar",
-      "sFingerprint": "1118c1781e49ed4ff3b093ddce2814ee09eb54c710f3d16cd5ac4512a4f936ac",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fdictDetectReposForCandidates",
-      "sFingerprint": "c38410fd39a5fb7256bc6015b0724f00d7a873d53809b79be8d1d1f2ab3ad155",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/workflowManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fiRmRfDirectory",
-      "sFingerprint": "f5947ce06dae36881525b93be0f8ce33ba63f0bcda8550ea8cedc13cf6951668",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/workflowManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_flistDiscoverCandidatePaths",
-      "sFingerprint": "85260f5b9dc63000c6af41f854ff1d8fce596c573c305b18726269fa81dd2092",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/workflowManager.py"
-    },
-    {
-      "sCommandExpression": "sCmd",
-      "sEnclosingFunction": "_fbWorkflowExistsInContainer",
-      "sFingerprint": "b049ebb379cc4048d2b23f03059e44b6af240b25c43620c3cc8f2cded4313d7e",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/workflowReloadDetector.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "HostConnection.ftResultExecuteCommand",
-      "sFingerprint": "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/host/hostConnection.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ContainerRepoFiles._ftExec",
-      "sFingerprint": "c1df12c11638a82ba47c48e548498c420c0c997e549385016ba569706f2cd5e3",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/reproducibility/repoFiles.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "ContainerRepoFiles.ftRunCommand",
-      "sFingerprint": "a4bf72367d2606cb29dd8995d78b71cc95806f19aede269126c5456f35baebb6",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/reproducibility/repoFiles.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "SnapshotRepoFiles.ffilesFetch",
-      "sFingerprint": "5e60254b4a3e5f2c1a4048aa61ea95d3da12c154571c43b8cb0121f308031618",
-      "sMethod": "ftRunInContainerStreamed",
-      "sModule": "vaibify/reproducibility/repoFiles.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "_fnMarkExecutableInContainer",
-      "sFingerprint": "217e872517a8ba645a60f54e9d56e52daa65c394ce59cc8e53896c6d2e5563f3",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/reproducibility/reproduceScriptGenerator.py"
-    }
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fiRunTestCommandList", "sFingerprint": "26461d67fc2a7b19297973209550f0ac1bf28b189ee83574ee79bbaa63626d5d", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/cli/commandTest.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictProbeContainerFileHash", "sFingerprint": "795b567f8946337be46b77a21ed968f102971c5550e9d7d5d9c5e5322414f200", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/config/operationJournal.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "DockerConnection._ftRunTypedRead", "sFingerprint": "a494879b9798479fb1800d0ed81e7df87f6c6773f724c56f76df205b2bf5e48b", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/docker/dockerConnection.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "DockerConnection.ftResultExecuteCommand", "sFingerprint": "3ee745e9c50aca8abca2f8096b094a986dcec8f0f13effb465f3202ad5f7251b", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/docker/dockerConnection.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictCaptureAgentCliVersions", "sFingerprint": "e34e7f2fae3428c8936a798447b1149035acbd43ebdeb4976849d58bba162bb9", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/aiProvenanceCapture.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fbWriteConftestMarkersBatch", "sFingerprint": "e5346aa7e915e068901a836017647f38933a6b12b9b4d2692d390b951604feb2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/conftestManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fdictReadInstalledConftestVersions", "sFingerprint": "b76e5e901fed9af647be490a87843418b714f7997c7c4c23f94f39357b3c39e1", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/conftestManager.py"},
+    {"sCommandExpression": "f'mkdir -p {fsShellQuote(sTestsDir)}'", "sEnclosingFunction": "fnEnsureTestsDirectory", "sFingerprint": "d34f2eba8d24dbf9d82799abac7d63cee73352a1ecfccb3be2dd6622bdbaa741", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/conftestManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fnMigrateFlatMarkers", "sFingerprint": "6b505702e72b1420b67a2d63d4025e67b3da6308d005d25ab6813f33ca8633c8", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/conftestManager.py"},
+    {"sCommandExpression": "UNKNOWN", "sEnclosingFunction": "ConnectionRouter.ftResultExecuteCommand", "sFingerprint": "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/connectionRouter.py"},
+    {"sCommandExpression": "UNKNOWN", "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamed", "sFingerprint": "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/connectionRouter.py"},
+    {"sCommandExpression": "UNKNOWN", "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamedWithChunks", "sFingerprint": "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940", "sMethod": "ftRunInContainerStreamedWithChunks", "sModule": "vaibify/gui/connectionRouter.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictProbePushOnce", "sFingerprint": "7f5780efcc9d92db06599a66375102b839b70acd09d79610938f1adf8f8b69e6", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fdictComputeBlobShasInContainer", "sFingerprint": "ea5c1d8aec9300957fb86dda9c76e0ac8c564c2c4b9d06e686b46373d90fed2e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fdictGitStatusInContainer", "sFingerprint": "356f200633714581b5cdbd0590eb693a2e2692fefc8abf22e6ee570e61ef7988", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fdictRemoteHeadsInContainer", "sFingerprint": "8eb7df12159ea2c3421700a05cc3753c122caf3e27f25586e8db97092dee8822", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "flistListContainerFiles", "sFingerprint": "89b2fe519e86c9f535261b7f8453df94436bc0d0963f9953c1aed25f955febb6", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fsDetectProjectRepoInContainer", "sFingerprint": "3e0ce2ae7446180dbf963537c833256bbe3fe074e134092c7a26d4dfd4f2612e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fsGitHeadShaInContainer", "sFingerprint": "97886427fd66e42b205a23ea78b8cfe95565e4ab1e324737c37e74cd5c4c8f39", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fsRemoteUrlInContainer", "sFingerprint": "c7883f59ab1799cae17a6cfc90412dcfdb13c91dd91bc3856e77cc63bd2d9000", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitAddInContainer", "sFingerprint": "1b2ee6dd9415b103b03ae9c94c6c9a26a4b40524e6634dca783d5a089efef35b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sBase", "sEnclosingFunction": "ftResultGitCommitInContainer", "sFingerprint": "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitDiffCachedQuietInContainer", "sFingerprint": "35061b2c8788208f487f7212949ac5ab9ce3333ffadf2d7849cb8ce99573357c", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitFetchInContainer", "sFingerprint": "82b8f10001e0ea6fec9249cbdc5864d1a1a2fe03edfd5ae72b36acba8b794ba7", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitPullFastForwardInContainer", "sFingerprint": "55981e39eb916ce295b3ef61e0505a4c57fe1bab78f9c9bfc0e32fe496f8424e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitRemoveCachedInContainer", "sFingerprint": "be580efa0eccb44a0ef85014f36d33b7b0bdd400a1bd042dbada7b730471c475", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGitRestoreStagedInContainer", "sFingerprint": "aa91a40972721d063b73986140ffcfa0276034f81f9c4f7b7f501513d7c2ed5e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/containerGit.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fsPreviewHdf5", "sFingerprint": "78776d435d8137d7477e8529a871dd69421a1bdcec0243a0660d5a165f5776b3", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/dataPreview.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fsPreviewNpy", "sFingerprint": "a2790bcfc7b0f0370107b265bc074b8897dd39c1f15839d6a280691fb1386930", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/dataPreview.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fsPreviewText", "sFingerprint": "645d5b10ac3e41bdd290709e7b764d1a63d66ecb2a09682615627d91b42c3023", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/dataPreview.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fiQueryHeadCommitEpoch", "sFingerprint": "8c82baca56c5dc2ef94b40e79e6983239257724a99884bd9bf29ba825fc5fd86", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/determinismEnvironment.py"},
+    {"sCommandExpression": "f'df -B1 {_S_WORKSPACE_PATH}'", "sEnclosingFunction": "fiCheckWorkspaceFreeBytes", "sFingerprint": "090f643fe353d4d87e83ba1be4c79925cf24cd242bc94aab0ed1372f3fd77caa", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/diskSpace.py"},
+    {"sCommandExpression": "f'rm -f {sQuotedPath}'", "sEnclosingFunction": "_fsRunIntrospection", "sFingerprint": "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/introspectionScript.py"},
+    {"sCommandExpression": "f'{sInterpreter} {sQuotedPath}'", "sEnclosingFunction": "_fsRunIntrospection", "sFingerprint": "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/introspectionScript.py"},
+    {"sCommandExpression": "'which claude'", "sEnclosingFunction": "fbContainerHasClaude", "sFingerprint": "b36405923b612907353821b3fc02eb0b79d3a65dd0652fe43d7c8baa354f036b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/llmInvoker.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultGenerateViaClaude", "sFingerprint": "637548aeb3b50dfea561214ed0569a70dc6e9260b9c11564dd8959b0ddf27cd9", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/llmInvoker.py"},
+    {"sCommandExpression": "f'mv {fsShellQuote(sPathTemp)} {fsShellQuote(sPath)}'", "sEnclosingFunction": "fnSaveContainerCache", "sFingerprint": "b2ffa55a63961563fb4f9c17150547cb4bc3fb60dac173f3a8f695b8176f5bea", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/mtimeCache.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnAppendLogContent", "sFingerprint": "27a4f37e500214982355b18325f815b434f7634df1b9a0889b1e87602c429402", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineLogger.py"},
+    {"sCommandExpression": "f'mkdir -p {fsShellQuote(sLogsDir)}'", "sEnclosingFunction": "_fsEnsureLogsDirectory", "sFingerprint": "fbb229db8cce9bb0860c7da87e44693d4a2f1777f00616cd8e8865d035b2bf35", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineLogger.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fnPruneOldLogs", "sFingerprint": "4de084fd38449bce4835b1db11763a0edbc8b1b18d941b9c677357096115a232", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineLogger.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictHashRemoteDataFiles", "sFingerprint": "a806873115e2623aed0b0a5fe9ae40e7f1de2d37cb247eb9d31ab29a8af2058c", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineRunner.py"},
+    {"sCommandExpression": "f'test -f {sQuoted}'", "sEnclosingFunction": "_fsMissingDependencyFile", "sFingerprint": "ae317769076a8f87e54e34ca31e512585eb53b216a7dde4e95f7117641c1cd9c", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineRunner.py"},
+    {"sCommandExpression": "f'find {fsShellQuote(sDirectory)} -maxdepth {iMaxDepth} -type f 2>/dev/null'", "sEnclosingFunction": "_fsetSnapshotDirectory", "sFingerprint": "d6400f65a6f001f03a7ce7dab7d7a3fd067553dc47bad89e6a7ca07926b8df02", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineRunner.py"},
+    {"sCommandExpression": "sTimedCmd", "sEnclosingFunction": "_ftRunSingleCommand", "sFingerprint": "cc5b61278c53b989716a07ce7c61ca40f23db9961c0a6f04bb815ac8d7df0b48", "sMethod": "ftRunInContainerStreamedWithChunks", "sModule": "vaibify/gui/pipelineRunner.py"},
+    {"sCommandExpression": "f'mkdir -p {fsShellQuote(sPlotDirectory)}'", "sEnclosingFunction": "ftRunStepCommands", "sFingerprint": "46f73300f81ff8f8390a4608f29b94cf5bacdd6eccbf8ce7ba168d089c6f6670", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineRunner.py"},
+    {"sCommandExpression": "sScript", "sEnclosingFunction": "_flistExistingRemotePaths", "sFingerprint": "0b6fb2cc654c78a465f458fc5bfcde4f83addc9e141c3ca16e37314ba34c813f", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineServer.py"},
+    {"sCommandExpression": "'printenv CONTAINER_USER'", "sEnclosingFunction": "_fsResolveContainerUser", "sFingerprint": "d8e9b3f867d92d4f1002ae4120046f1fda2f6452d1d72f3ad0fef4bf1a2eb0bd", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineServer.py"},
+    {"sCommandExpression": "f'mv {sQuotedTempPath} {fsShellQuote(sStatePath)} || {{ iStatus=$?; rm -f {sQuotedTempPath}; exit $iStatus; }}'", "sEnclosingFunction": "fbWriteStateAcknowledged", "sFingerprint": "eb13967be0f2783a3102074a7ece8d3c6542a1f517fe112f7ef94d493593ffa5", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineState.py"},
+    {"sCommandExpression": "f'rm -f {fsShellQuote(sStatePath)} {fsShellQuote(sStatePath)}.*.tmp'", "sEnclosingFunction": "fnClearState", "sFingerprint": "a279bac00d295cc022fb033077f4b47e3899b7c36055eae37ae698cc7d16d52b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineState.py"},
+    {"sCommandExpression": "sCheckCommand", "sEnclosingFunction": "_fnValidateSingleCommand", "sFingerprint": "635e16b0922898f06b5535aeee9b6aaf1c94ce165b9ef197e3363cb66bf1ae57", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineValidator.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnValidateStepDirectory", "sFingerprint": "e22e00ebd889b32fe36dc14596be9699c0bc9e3c5dfb7b6fc788c1f7df2d461f", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/pipelineValidator.py"},
+    {"sCommandExpression": "_S_LIST_SCRIPT", "sEnclosingFunction": "fdictListContainerTranscripts", "sFingerprint": "bbe8255a04ec3b81818f0876864fb7b734fe1cc6960e044998fa3717cc82f4c4", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/promptRecordManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictListDraftsFromDir", "sFingerprint": "a6fe94ffd61eef81653491f1610a92ceb503fe763a2b1e802463dfb1dd59abf4", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/draftRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnCommitDraftDelete.fnRemoveTheDraft", "sFingerprint": "7dd80a033e3186315bb634260520f03cfa9d17a8c6192e69c04b4a378352024e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/draftRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnEnsureDraftDir", "sFingerprint": "899828480cc8c4d4d2aa709ecccbf60d41176284f767976155c006ed55a33a0f", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/draftRoutes.py"},
+    {"sCommandExpression": "f'cosmic-ray init {fsShellQuote(sConfigPath)} {fsShellQuote(sSessionPath)} && cosmic-ray exec {fsShellQuote(sConfigPath)} {fsShellQuote(sSessionPath)}'", "sEnclosingFunction": "_fdictRunMutationSync", "sFingerprint": "10cddbac38089722692a512c4fb3a670f9ba9ed6ee54d586fa024aa78ea70cf5", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/falsificationRoutes.py"},
+    {"sCommandExpression": "f'python {fsShellQuote(sSummaryPath)} {fsShellQuote(sSessionPath)}'", "sEnclosingFunction": "_fdictSummarizeMutationSession", "sFingerprint": "c8685d0983a90810fb7ba7e40c853987faea51c6536d4ec4e7b3daf2b6fe674c", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/falsificationRoutes.py"},
+    {"sCommandExpression": "f'rm -rf {fsShellQuote(sWorkDirectory)} && mkdir -p {fsShellQuote(sWorkDirectory)}'", "sEnclosingFunction": "_fsPrepareMutationSession", "sFingerprint": "5943a70eab17e040e4facb91e48a711132453640039b11023725820c90a3dc6f", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/falsificationRoutes.py"},
+    {"sCommandExpression": "'cosmic-ray --version'", "sEnclosingFunction": "_fsRequireCosmicRay", "sFingerprint": "3fd97106693dd0ad731068e889d031f367c1e70b53c1d835ce7acd82df9b0f45", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/falsificationRoutes.py"},
+    {"sCommandExpression": "sTestCmd", "sEnclosingFunction": "_fnRegisterFigure.fresponseCheckFigure", "sFingerprint": "ebb774bce3451687795523278e63666e90a75b1e7f00e4cdcab480abde080a65", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/figureRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictDeleteOutputsUnderTheDrain.ftDeleteTheOutputs", "sFingerprint": "afb394adda7d496e9863cb1e953f2e8be5c3c7a4469903a1377b82f1b01132e9", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictFetchTestMarkers", "sFingerprint": "a9f9b50c59392b61d308173f5fc0104830a6b19d21bdfe03ea55a6295d15f854", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "sCountCommand", "sEnclosingFunction": "_fiCountMatchingProcesses", "sFingerprint": "69a6e3eea407f069fe4015e509f6e844d59af5f783fb72896a79e72503a66220", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "sCmd", "sEnclosingFunction": "_fnDeleteLegacyMarkers", "sFingerprint": "b9838ff1daa90229664b1063ac758fd6399ef45cd26ffe1d550e9b1ece40f217", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "'mkdir -p /usr/share/vaibify'", "sEnclosingFunction": "_fnEnsureConftestTemplate", "sFingerprint": "bc6567627e4da4728cf596d47da8aa187049247f4b9c272cbbadbae124c0cdc5", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "'test -f ' + sTemplatePath", "sEnclosingFunction": "_fnEnsureConftestTemplate", "sFingerprint": "ac6804a1ada5edfa56ca41734c86d93121638c2f9eac01433e71d2b0696b0aa2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "sKill", "sEnclosingFunction": "_fnKillMatchingProcesses", "sFingerprint": "cfe9522cc6f9174c955b31d759de5b9d01ba34e9338a80556c7f709573ef4ff1", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/pipelineRoutes.py"},
+    {"sCommandExpression": "sFullCommand", "sEnclosingFunction": "_flistConvertToStandards", "sFingerprint": "239502adbbf3921b6ad8e6d67306bbf34c4205e8e5f2af88d076b856577aba4f", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/plotRoutes.py"},
+    {"sCommandExpression": "f'test -f {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_flistVerifyConverted", "sFingerprint": "2e40dffb908bd06c09dbb675f51019d5c19a8b696644a4ffdc1dad949cebfdb5", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/plotRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnReplaceRootWithSymlink", "sFingerprint": "81074dc0bc9fed89d4f483aad1e266159d40b538c6685b0d84cd3a3277f0a440", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/replayRoutes.py"},
+    {"sCommandExpression": "f'test -d {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_fbDirectoryExists", "sFingerprint": "f315a4aa2ecaf83c18cdc9a1293522daa7176e0916bc303fd083a2347fa422b6", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/repoRoutes.py"},
+    {"sCommandExpression": "f'test -e {fsShellQuote(sGitPath)}'", "sEnclosingFunction": "_fbDirectoryIsGitRepo", "sFingerprint": "8fb11039368cfe18b928d8fe5dea5124764fdb71b9d2c1ac8b486ba306511b41", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/repoRoutes.py"},
+    {"sCommandExpression": "f'test -e {fsShellQuote(sGitignorePath)}'", "sEnclosingFunction": "_fbWriteInitialGitignoreIfAbsent", "sFingerprint": "c1242ca4121ed9fd5b37dc162b737da05bb73f64e29b60ba9484d8b073dd8bce", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/repoRoutes.py"},
+    {"sCommandExpression": "f'mkdir -p {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_fnEnsureInitTargetDirectory", "sFingerprint": "98f60fc215b6c55e1f18c17abaddee05dcfd1570737cd986719f9369f292e3bd", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/repoRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnRunGitInitWithInitialCommit", "sFingerprint": "24d13efe523cc1bb860ab1377ebd4d9829fe8f9908c6953554dbb0b671735bde", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/repoRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_ftWriteGitIdentity", "sFingerprint": "e3044e21450a0366dc82ce4d10abffbc569ac2902f9b7d2a4c9f2427f4c02e07", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/syncRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_ftReadReadinessMarker", "sFingerprint": "1870d526ebb3dcfc2e5d2d35cec423826c61f3ecd1c15e65cc29b737dfdb5ad2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/systemRoutes.py"},
+    {"sCommandExpression": "sCatCmd", "sEnclosingFunction": "_fdictRunOneTestCategory", "sFingerprint": "b7e5b86c4465a75e1ebd278c13deb87c41e0f90c6ebc05c559431bb7db7c005c", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
+    {"sCommandExpression": "sFullCmd", "sEnclosingFunction": "_ftRunCategoryCommands", "sFingerprint": "aadb4e2deac2dc3689abca26ea614a186ee11716c98374d5ca75376e1cc5d37b", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
+    {"sCommandExpression": "sTestCmd", "sEnclosingFunction": "_ftRunSaveAndRunTest", "sFingerprint": "89a9a3fc02aa149ebf40dccec9ece61e87366c5db37967ffe003466577e4a9e3", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
+    {"sCommandExpression": "f'test -e {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_fnAssertWorkflowAbsent", "sFingerprint": "2f9108cf2719ab4d5ef488ad7ca23dbeecf06571af79c5f977922d892a66cce1", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/workflowRoutes.py"},
+    {"sCommandExpression": "f'mkdir -p {fsShellQuote(sWorkflowDir)}'", "sEnclosingFunction": "_fsEnsureWorkflowDir", "sFingerprint": "5fc538b40fc037195f5907983c947476b388de5701fe978230206594fc2009cb", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/workflowRoutes.py"},
+    {"sCommandExpression": "f'git -C {fsShellQuote(sFullPath)} rev-parse --show-toplevel 2>/dev/null'", "sEnclosingFunction": "_fsValidateRepoDirectory", "sFingerprint": "5a628b5b382b49f7223b6c639aee6e104ac2cd374cd87d976ffee81a6e4ac600", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/workflowRoutes.py"},
+    {"sCommandExpression": "f'test -d {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_fsValidateRepoDirectory", "sFingerprint": "468ddf85a618d5cbc36ba3e59cc651f2acbf40189f2fcf20062b4666ca136a91", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/workflowRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnAtomicInstallTempFile", "sFingerprint": "bb3a47bf7c666d9b0a78c27ee95585d61da39286030da5d7298debe07a6522a2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stateManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnCheckpointPriorState", "sFingerprint": "21b2ce3ee5d2468614bd9e9f8653417c2b05c21adaa9edd79361ce6a909325a9", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stateManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnQuarantineCorruptStateFile", "sFingerprint": "c908fabfb6e30690f04a960c8d1164e3ea484b33ef5d086f98c5104c914abc56", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stateManager.py"},
+    {"sCommandExpression": "'test -d ' + fsShellQuote(sOldAbsolute)", "sEnclosingFunction": "_fbMoveStepDirectory", "sFingerprint": "cddef7e2e97a7770ed49e19ae848902563a5c0a964e8abf4508f6accc0341c79", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stepRename.py"},
+    {"sCommandExpression": "'test -e ' + fsShellQuote(sNewAbsolute)", "sEnclosingFunction": "_fbMoveStepDirectory", "sFingerprint": "05ffc7bd1c8dce235d4a0e37110180f72514b75aaa2e55d3da2064599f269085", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stepRename.py"},
+    {"sCommandExpression": "_fsBuildDirectoryMoveCommand(sRepo, dictPlan['sOldDirectory'], dictPlan['sNewDirectory'])", "sEnclosingFunction": "_fbMoveStepDirectory", "sFingerprint": "44bc929b2e01c52f51b7e4bf67f891fa38319e4a2b259b0c063b5fb1c8dc1577", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stepRename.py"},
+    {"sCommandExpression": "_fsBuildDirectoryMoveCommand(sRepo, dictPlan['sNewDirectory'], dictPlan['sOldDirectory'])", "sEnclosingFunction": "_fnUndoStepDirectoryMove", "sFingerprint": "e7d01991d8aec971db7bf8cfc1f3af9609506fe2a734f3542e6ffad6d76273db", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stepRename.py"},
+    {"sCommandExpression": "'grep -Iq -- ' + fsShellQuote(dictPlan['sOldDirectory']) + ' ' + fsShellQuote(sAbsolute)", "sEnclosingFunction": "flistScanScriptsForOldName", "sFingerprint": "341bc9429fe45a4e3f06b307113294bdc2be85747cb1928fd6c555e50dcd015a", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/stepRename.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fbKeyringBackendHealthy", "sFingerprint": "7fb2f8844351b7ed7a8445d31b5b0500ccd6819c4ffc684fbb9ceb233f493d2b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsComposeGithubReachabilityCommand(sProjectRepoPath)", "sEnclosingFunction": "_fdictCheckGithub", "sFingerprint": "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictProbeKeyringToken", "sFingerprint": "642e40ea665c868ffdbd49a1df7f0f8f76f7a09d65b6f2282dc0c342ec41db4e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsComposeGithubRemoteUrlCommand(sProjectRepoPath)", "sEnclosingFunction": "_fsReadGithubRemoteUrl", "sFingerprint": "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "f'dot -T{sFormat} {fsShellQuote(sDotPath)} -o {fsShellQuote(sOutPath)} && cp {fsShellQuote(sOutPath)} {fsShellQuote(sPersistPath)}'", "sEnclosingFunction": "_ftRenderDagThroughDot", "sFingerprint": "e35acd949a66dccfc76c0b690ca2d486c2859a32236a415853b8c2fce63dc283", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)", "sEnclosingFunction": "_ftResultAnnotatedPush", "sFingerprint": "b0b2c979f05386443953b664e11c60fd047cdad71f3e56fbd677ac5c4f8106a7", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)", "sEnclosingFunction": "_ftResultPlainPush", "sFingerprint": "caeda44e3f22fd406fd45ebd401b84e031451ba64e3e18cd27b9a9207e431e0e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fbCopyCredentialInContainer", "sFingerprint": "b4796ea348fd0f650a8bb44274b39069f502b88bb47b863f27930b74a49963df", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId)", "sEnclosingFunction": "fbValidateZenodoToken", "sFingerprint": "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fdictComputeContainerDigests", "sFingerprint": "40d95b5eab09e954440e55d8ca45487be0ef526cc0f976e2fc1b62f4169fea79", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "flistGetDirtyFiles", "sFingerprint": "82989d173a4daff7467ea4deac82a0ee2c469e7a110d1fa0ab608e457017c02e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fnDeleteCredentialFromContainer", "sFingerprint": "ae415d4b247b3c407a13596df4d99d059b20802d7d3141410a10ef8841265b52", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "f'rm -f {fsShellQuote(sTempPath)}'", "sEnclosingFunction": "fnStoreCredentialInContainer", "sFingerprint": "8c07f5f7e3c8aeb27a29df581d39379ec803169111e1191f47c3cca07a9c9e34", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "fnStoreCredentialInContainer", "sFingerprint": "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultAddFileToGithub", "sFingerprint": "9a322dee0621cc55fe5771f2ddf002b8bbfa62f17537440f7dd98c5bde992161", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)", "sEnclosingFunction": "ftResultArchiveProject", "sFingerprint": "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsBuildZenodoArchiveCommand(sBaseApi, sSlot, listFilePaths, dictApi, sContainerId, iParentDepositId)", "sEnclosingFunction": "ftResultArchiveToZenodo", "sFingerprint": "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "fsPythonCommand(sImport, sCall, sContainerId)", "sEnclosingFunction": "ftResultGenerateLatex", "sFingerprint": "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "_fsPipeStdinCommand(sStdin, sCli)", "sEnclosingFunction": "ftResultPullFromOverleaf", "sFingerprint": "189326b0ce05edd592a24148babc73a7f13fc7846d7b2fab5f1af5051fa6c222", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sGitCommand", "sEnclosingFunction": "ftResultPushScriptsToGithub", "sFingerprint": "7ac4c59baa7f428b512781b4dc39e48e579515679c41c911be4a88d838ef0900", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultPushStagedToGithub", "sFingerprint": "d4f3d2f873f25c60073c600640762b81b6ce8d7395037af19f75b44f3a5830f2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ftResultPushToGithub", "sFingerprint": "e3bd0e2f2e0f2d897e0847b3aeb4fbcb594458d6522445c194d0713ab8d2c16a", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/syncDispatcher.py"},
+    {"sCommandExpression": "f'rm -rf {fsShellQuote(sTestsDir)}'", "sEnclosingFunction": "_fnRemoveTestDirectory", "sFingerprint": "6d23fc81c00399b296e3d98c567117a243c7313b49b1dead68488dd30fb96f54", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/testStatusManager.py"},
+    {"sCommandExpression": "f'rm -f {fsShellQuote(sPath)}'", "sEnclosingFunction": "_fnRemoveTestFiles", "sFingerprint": "807e115e2301b58d07c95c819c46c56b28c67aa34dc75f18f91ddddf49ead32f", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/testStatusManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fbRepoIsMissing", "sFingerprint": "102669ea0025ff619a18c5a3ccaa85bf23cf3529d318e3ec6c2f881f3662f5f0", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/trackedReposManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fsRunGitCommand", "sFingerprint": "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/trackedReposManager.py"},
+    {"sCommandExpression": "'mkdir -p ' + fsShellQuote(posixpath.dirname(fsSidecarPathFor(sContainerId)))", "sEnclosingFunction": "fnWriteSidecar", "sFingerprint": "1118c1781e49ed4ff3b093ddce2814ee09eb54c710f3d16cd5ac4512a4f936ac", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/trackedReposManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fdictDetectReposForCandidates", "sFingerprint": "c38410fd39a5fb7256bc6015b0724f00d7a873d53809b79be8d1d1f2ab3ad155", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/workflowManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fiRmRfDirectory", "sFingerprint": "f5947ce06dae36881525b93be0f8ce33ba63f0bcda8550ea8cedc13cf6951668", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/workflowManager.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_flistDiscoverCandidatePaths", "sFingerprint": "85260f5b9dc63000c6af41f854ff1d8fce596c573c305b18726269fa81dd2092", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/workflowManager.py"},
+    {"sCommandExpression": "sCmd", "sEnclosingFunction": "_fbWorkflowExistsInContainer", "sFingerprint": "b049ebb379cc4048d2b23f03059e44b6af240b25c43620c3cc8f2cded4313d7e", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/workflowReloadDetector.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "HostConnection.ftResultExecuteCommand", "sFingerprint": "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/host/hostConnection.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ContainerRepoFiles._ftExec", "sFingerprint": "c1df12c11638a82ba47c48e548498c420c0c997e549385016ba569706f2cd5e3", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/reproducibility/repoFiles.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "ContainerRepoFiles.ftRunCommand", "sFingerprint": "a4bf72367d2606cb29dd8995d78b71cc95806f19aede269126c5456f35baebb6", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/reproducibility/repoFiles.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "SnapshotRepoFiles.ffilesFetch", "sFingerprint": "5e60254b4a3e5f2c1a4048aa61ea95d3da12c154571c43b8cb0121f308031618", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/reproducibility/repoFiles.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnMarkExecutableInContainer", "sFingerprint": "217e872517a8ba645a60f54e9d56e52daa65c394ce59cc8e53896c6d2e5563f3", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/reproducibility/reproduceScriptGenerator.py"}
   ],
-  "sPurpose": "Every call site handing command text to the container connection, one row each: machine-derived identity, reviewer-recorded host-mode disposition. See tools/generateHostCapabilityInventory.py."
+  "dictDispositions": {
+    "090f643fe353d4d87e83ba1be4c79925cf24cd242bc94aab0ed1372f3fd77caa": {"sDisposition": "host-variant", "sRationale": "The df -B1 free-space probe is replaced by shutil.disk_usage on the host per the plan.", "sSupportingSymbols": "fiCheckWorkspaceFreeBytes, _S_WORKSPACE_PATH"},
+    "102669ea0025ff619a18c5a3ccaa85bf23cf3529d318e3ec6c2f881f3662f5f0": {"sDisposition": "host-variant", "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.", "sSupportingSymbols": "_fbRepoIsMissing, sCommand"},
+    "1870d526ebb3dcfc2e5d2d35cec423826c61f3ecd1c15e65cc29b737dfdb5ad2": {"sDisposition": "container-only", "sRationale": "Entrypoint-readiness marker probes are container lifecycle; host projects are ready when claimed.", "sSupportingSymbols": "_ftReadReadinessMarker, sCommand"},
+    "189326b0ce05edd592a24148babc73a7f13fc7846d7b2fab5f1af5051fa6c222": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "ftResultPullFromOverleaf, _fsPipeStdinCommand, sCli, sStdin"},
+    "1b2ee6dd9415b103b03ae9c94c6c9a26a4b40524e6634dca783d5a089efef35b": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitAddInContainer, sCommand"},
+    "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe": {"sDisposition": "host-variant", "sRationale": "The host gateway's own internal delegation -- this IS the host implementation, not a caller handing it a command.", "sSupportingSymbols": "HostConnection.ftResultExecuteCommand, HostConnection.ftRunInContainerStreamed"},
+    "35061b2c8788208f487f7212949ac5ab9ce3333ffadf2d7849cb8ce99573357c": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitDiffCachedQuietInContainer, sCommand"},
+    "356f200633714581b5cdbd0590eb693a2e2692fefc8abf22e6ee570e61ef7988": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fdictGitStatusInContainer, sCommand"},
+    "3e0ce2ae7446180dbf963537c833256bbe3fe074e134092c7a26d4dfd4f2612e": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fsDetectProjectRepoInContainer, sCommand"},
+    "40d95b5eab09e954440e55d8ca45487be0ef526cc0f976e2fc1b62f4169fea79": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "fdictComputeContainerDigests, sCommand"},
+    "4691dd7726ec914558f0d43d264685d97a0de258dff9230685bf134293240d47": {"sDisposition": "portable", "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify itself.", "sSupportingSymbols": "ftResultArchiveProject, fsPythonCommand, fsResolveHelperInterpreter"},
+    "46f73300f81ff8f8390a4608f29b94cf5bacdd6eccbf8ce7ba168d089c6f6670": {"sDisposition": "host-variant", "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.", "sSupportingSymbols": "ftRunStepCommands, fsShellQuote, sPlotDirectory"},
+    "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940": {"sDisposition": "host-variant", "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.", "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"},
+    "55981e39eb916ce295b3ef61e0505a4c57fe1bab78f9c9bfc0e32fe496f8424e": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitPullFastForwardInContainer, sCommand"},
+    "57dc2be46f7dcc64403bae1ff6e0da0e2aec42fdb97ca349e6f44fa952b159eb": {"sDisposition": "portable", "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program's own path is resolved the same way.", "sSupportingSymbols": "_fsRunIntrospection, fsResolveHelperInterpreter, fsResolveScratchDirectory, sInterpreter"},
+    "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitCommitInContainer, sBase"},
+    "60ceb44312aa507f2819d0c7be944cf9072235bb96957368563e01b08d4fd26b": {"sDisposition": "portable", "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. keyring and requests are vaibify dependencies.", "sSupportingSymbols": "fbValidateZenodoToken, _fsBuildZenodoValidationCommand, fsPythonCommand"},
+    "637548aeb3b50dfea561214ed0569a70dc6e9260b9c11564dd8959b0ddf27cd9": {"sDisposition": "container-only", "sRationale": "The host agent is the user; there is no host invoker lane, so the in-container claude invocation is refused for host resources.", "sSupportingSymbols": "ftResultGenerateViaClaude, sCommand"},
+    "642e40ea665c868ffdbd49a1df7f0f8f76f7a09d65b6f2282dc0c342ec41db4e": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "_fdictProbeKeyringToken, sCommand"},
+    "69a6e3eea407f069fe4015e509f6e844d59af5f783fb72896a79e72503a66220": {"sDisposition": "container-only", "sRationale": "Cancel-by-process-table-grep (ps aux | grep) would match and count unrelated host processes.", "sSupportingSymbols": "_fiCountMatchingProcesses, sCountCommand"},
+    "6b505702e72b1420b67a2d63d4025e67b3da6308d005d25ab6813f33ca8633c8": {"sDisposition": "host-variant", "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.", "sSupportingSymbols": "fnMigrateFlatMarkers, sCommand"},
+    "795b567f8946337be46b77a21ed968f102971c5550e9d7d5d9c5e5322414f200": {"sDisposition": "container-only", "sRationale": "Container-only BY DESIGN: the host branch of this probe already exists (_fdictCompareHostFileHash) and is selected by the absent sDockerContainerId key on the record.", "sSupportingSymbols": "_fdictProbeContainerFileHash, sCommand, _fdictCompareHostFileHash, sDockerContainerId"},
+    "7ac4c59baa7f428b512781b4dc39e48e579515679c41c911be4a88d838ef0900": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "ftResultPushScriptsToGithub, sGitCommand"},
+    "7f5780efcc9d92db06599a66375102b839b70acd09d79610938f1adf8f8b69e6": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "_fdictProbePushOnce, sCommand"},
+    "7fb2f8844351b7ed7a8445d31b5b0500ccd6819c4ffc684fbb9ceb233f493d2b": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "_fbKeyringBackendHealthy, sCommand"},
+    "82989d173a4daff7467ea4deac82a0ee2c469e7a110d1fa0ab608e457017c02e": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "flistGetDirtyFiles, sCommand"},
+    "82b8f10001e0ea6fec9249cbdc5864d1a1a2fe03edfd5ae72b36acba8b794ba7": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitFetchInContainer, sCommand"},
+    "89b2fe519e86c9f535261b7f8453df94436bc0d0963f9953c1aed25f955febb6": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "flistListContainerFiles, sCommand"},
+    "8c07f5f7e3c8aeb27a29df581d39379ec803169111e1191f47c3cca07a9c9e34": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "fnStoreCredentialInContainer, fsShellQuote, sTempPath"},
+    "8eb7df12159ea2c3421700a05cc3753c122caf3e27f25586e8db97092dee8822": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fdictRemoteHeadsInContainer, sCommand"},
+    "97886427fd66e42b205a23ea78b8cfe95565e4ab1e324737c37e74cd5c4c8f39": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fsGitHeadShaInContainer, sCommand"},
+    "9a322dee0621cc55fe5771f2ddf002b8bbfa62f17537440f7dd98c5bde992161": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "ftResultAddFileToGithub, sCommand"},
+    "9c6a6c1f354f7f8f0f653126f503965236be210f9fc5cadb4953d7c8ffaa3a29": {"sDisposition": "portable", "sRationale": "The reachability probe cds into the caller-supplied project repo path, which the routes read from the workflow whose sProjectRepoPath is already resolved per mode; one command text serves both legs and no root is hardcoded (the /workspace/*/ scan this replaced answered wrongly for every host project).", "sSupportingSymbols": "_fsComposeGithubReachabilityCommand, _fsProjectRepoPathOrEmpty"},
+    "9d70a9140f60de5d138524753329ab2f0d8f002bf68f1b885e0e104d01eb7ffa": {"sDisposition": "portable", "sRationale": "The remote-url probe cds into the caller-supplied project repo path, mode-resolved upstream like the reachability probe; the credential slot is therefore derived from THIS project's remote in both modes.", "sSupportingSymbols": "_fsComposeGithubRemoteUrlCommand, _fsProjectRepoPathOrEmpty"},
+    "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "fnStoreCredentialInContainer, sCommand"},
+    "a806873115e2623aed0b0a5fe9ae40e7f1de2d37cb247eb9d31ab29a8af2058c": {"sDisposition": "host-variant", "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.", "sSupportingSymbols": "_fdictHashRemoteDataFiles, sCommand"},
+    "aa91a40972721d063b73986140ffcfa0276034f81f9c4f7b7f501513d7c2ed5e": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitRestoreStagedInContainer, sCommand"},
+    "ae317769076a8f87e54e34ca31e512585eb53b216a7dde4e95f7117641c1cd9c": {"sDisposition": "host-variant", "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.", "sSupportingSymbols": "_fsMissingDependencyFile, sQuoted"},
+    "ae415d4b247b3c407a13596df4d99d059b20802d7d3141410a10ef8841265b52": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "fnDeleteCredentialFromContainer, sCommand"},
+    "b0b2c979f05386443953b664e11c60fd047cdad71f3e56fbd677ac5c4f8106a7": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "_ftResultAnnotatedPush, _fsPipeStdinCommand, sCli, sStdin"},
+    "b36405923b612907353821b3fc02eb0b79d3a65dd0652fe43d7c8baa354f036b": {"sDisposition": "container-only", "sRationale": "The host agent is the user; there is no host invoker lane, so the in-container claude invocation is refused for host resources.", "sSupportingSymbols": "fbContainerHasClaude"},
+    "b4796ea348fd0f650a8bb44274b39069f502b88bb47b863f27930b74a49963df": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "fbCopyCredentialInContainer, sCommand"},
+    "b76e5e901fed9af647be490a87843418b714f7997c7c4c23f94f39357b3c39e1": {"sDisposition": "host-variant", "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.", "sSupportingSymbols": "fdictReadInstalledConftestVersions, sCommand"},
+    "be580efa0eccb44a0ef85014f36d33b7b0bdd400a1bd042dbada7b730471c475": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "ftResultGitRemoveCachedInContainer, sCommand"},
+    "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b": {"sDisposition": "host-variant", "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.", "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"},
+    "c4239c2c1b19f5a6e55136b4438ff61da825247a7e39d9589ee624f6c5246bf5": {"sDisposition": "portable", "sRationale": "The removal of the same resolved path; rm -f is POSIX and the path was already proven writable by the write that preceded it.", "sSupportingSymbols": "_fsRunIntrospection, fsResolveScratchDirectory, sQuotedPath"},
+    "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d": {"sDisposition": "host-variant", "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.", "sSupportingSymbols": "_fsRunGitCommand, sCommand"},
+    "c7883f59ab1799cae17a6cfc90412dcfdb13c91dd91bc3856e77cc63bd2d9000": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fsRemoteUrlInContainer, sCommand"},
+    "caeda44e3f22fd406fd45ebd401b84e031451ba64e3e18cd27b9a9207e431e0e": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "_ftResultPlainPush, _fsPipeStdinCommand, sCli, sStdin"},
+    "cc5b61278c53b989716a07ce7c61ca40f23db9961c0a6f04bb815ac8d7df0b48": {"sDisposition": "host-variant", "sRationale": "Gated host step launch per the plan; the /usr/bin/time -f wrapper composed by _fsWrapWithTime is container-only (BSD time on macOS rejects -f) and the host variant must not carry it.", "sSupportingSymbols": "_ftRunSingleCommand, sTimedCmd, _fsWrapWithTime"},
+    "cfe9522cc6f9174c955b31d759de5b9d01ba34e9338a80556c7f709573ef4ff1": {"sDisposition": "container-only", "sRationale": "ps aux | grep | xargs kill -9 against a host process table would kill unrelated host processes.", "sSupportingSymbols": "_fnKillMatchingProcesses, sKill"},
+    "d00e8d07dc892209dc81c5c165037dc6ac12d418887795712cc6b9ec84d418b8": {"sDisposition": "portable", "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. The program imports vaibify.reproducibility.", "sSupportingSymbols": "ftResultGenerateLatex, fsPythonCommand, fsResolveHelperInterpreter"},
+    "d34f2eba8d24dbf9d82799abac7d63cee73352a1ecfccb3be2dd6622bdbaa741": {"sDisposition": "host-variant", "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.", "sSupportingSymbols": "fnEnsureTestsDirectory, fsShellQuote, sTestsDir"},
+    "d4f3d2f873f25c60073c600640762b81b6ce8d7395037af19f75b44f3a5830f2": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "ftResultPushStagedToGithub, sCommand"},
+    "d6400f65a6f001f03a7ce7dab7d7a3fd067553dc47bad89e6a7ca07926b8df02": {"sDisposition": "host-variant", "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.", "sSupportingSymbols": "_fsetSnapshotDirectory, fsShellQuote, iMaxDepth, sDirectory"},
+    "da19887e07b9e7e464089bc3a5275a0d927011848cb00098766c9c1dc9e36dc0": {"sDisposition": "portable", "sRationale": "The interpreter is resolved per resource before the command is composed (fsResolveHelperInterpreter), so one command text serves both legs: the image's python3 in a container, and vaibify's own interpreter on the host, where python3 is whatever the researcher's PATH resolves and routinely lacks the dependencies these programs import. zenodoClient is found where this resource keeps it: the image's staged copy, or the installed package's own directory on the host.", "sSupportingSymbols": "ftResultArchiveToZenodo, _fsBuildZenodoArchiveCommand, _fsZenodoClientDirectory, fsResolveHelperInterpreter"},
+    "e35acd949a66dccfc76c0b690ca2d486c2859a32236a415853b8c2fce63dc283": {"sDisposition": "portable", "sRationale": "Both the scratch paths and the persist target are resolved per resource before composition. dot is graphviz, which the image installs and a researcher's machine may not; an absent binary is the shell's own non-zero result, reported as the failure it is rather than answering with a different diagram.", "sSupportingSymbols": "_ftRenderDagThroughDot, fsResolveScratchDirectory, fsResolveProjectRoot, sPersistPath"},
+    "e3bd0e2f2e0f2d897e0847b3aeb4fbcb594458d6522445c194d0713ab8d2c16a": {"sDisposition": "host-variant", "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.", "sSupportingSymbols": "ftResultPushToGithub, sCommand"},
+    "e5346aa7e915e068901a836017647f38933a6b12b9b4d2692d390b951604feb2": {"sDisposition": "host-variant", "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.", "sSupportingSymbols": "fbWriteConftestMarkersBatch, sCommand"},
+    "ea5c1d8aec9300957fb86dda9c76e0ac8c564c2c4b9d06e686b46373d90fed2e": {"sDisposition": "host-variant", "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.", "sSupportingSymbols": "fdictComputeBlobShasInContainer, sCommand"},
+    "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97": {"sDisposition": "host-variant", "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.", "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"}
+  },
+  "iUndisposedSiteBudget": 67
 }

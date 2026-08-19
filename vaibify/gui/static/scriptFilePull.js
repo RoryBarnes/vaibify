@@ -3,7 +3,49 @@
 var VaibifyFilePull = (function () {
     "use strict";
 
+    function fbCopyToHostIsMeaningful() {
+        /* In host mode the execution host and the execution
+           environment are ONE filesystem, so this action copies a file
+           from a directory to the home directory of the same machine
+           and presents it as a transfer. It shipped ungated at both
+           entry points; refusing beats performing a self-copy and
+           calling it a download. */
+        if (typeof VaibifyApp === "undefined") return true;
+        if (!VaibifyApp.fbExecutionHostIsTheEnvironment) return true;
+        return !VaibifyApp.fbExecutionHostIsTheEnvironment();
+    }
+
+    function fnDownloadToThisComputer(sContainerPath) {
+        /* The canonical remote-to-observer path: the file is streamed
+           in an HTTP response and the BROWSER saves it, so it lands on
+           the computer the researcher is sitting at whether the
+           backend is here or across a tunnel. The token rides the
+           query string because a browser navigation carries no
+           headers; the middleware has a carve-out for exactly this
+           route and no other. */
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var sToken = VaibifyApp.fsGetSessionToken();
+        var sUrl = "/api/files/" + encodeURIComponent(sContainerId) +
+            "/download/" + sContainerPath.split("/")
+                .map(encodeURIComponent).join("/") +
+            "?sToken=" + encodeURIComponent(sToken);
+        window.location.assign(sUrl);
+    }
+
     function fnPromptPullToHost(sContainerPath) {
+        if (!fbCopyToHostIsMeaningful()) {
+            VaibifyApp.fnShowToast(
+                "This project runs on the same filesystem as the " +
+                "vaibify backend, so there is nowhere to copy it to. " +
+                "Use \u201cDownload to this computer\u201d to bring " +
+                "the file to the machine you are sitting at.",
+                "error");
+            return;
+        }
+        return _fnPromptPullToHostInner(sContainerPath);
+    }
+
+    function _fnPromptPullToHostInner(sContainerPath) {
         var sFilename = sContainerPath.split("/").pop();
         var elExisting = document.getElementById("modalPull");
         if (elExisting) elExisting.remove();
@@ -19,7 +61,7 @@ var VaibifyFilePull = (function () {
 
     function fsRenderPullModalHtml(sFilename) {
         return '<div class="modal" style="width:480px">' +
-            '<h2>Pull to host</h2>' +
+            '<h2>Copy to execution-host path</h2>' +
             '<p style="margin-bottom:8px;color:var(--text-muted)">' +
             VaibifyUtilities.fnEscapeHtml(sFilename) + '</p>' +
             '<div class="pull-breadcrumb" ' +
@@ -32,7 +74,7 @@ var VaibifyFilePull = (function () {
             '<div class="modal-actions">' +
             '<button class="btn" id="btnPullCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
-            'id="btnPullConfirm">Pull Here</button>' +
+            'id="btnPullConfirm">Copy Here</button>' +
             '</div></div>';
     }
 
@@ -149,5 +191,7 @@ var VaibifyFilePull = (function () {
 
     return {
         fnPromptPullToHost: fnPromptPullToHost,
+        fnDownloadToThisComputer: fnDownloadToThisComputer,
+        fbCopyToHostIsMeaningful: fbCopyToHostIsMeaningful,
     };
 })();

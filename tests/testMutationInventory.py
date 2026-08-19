@@ -196,7 +196,16 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # whose enumeration is the in-process processLiveness probe primitive
 # (a journaled sweep deadlocks the resolver that needs it). All
 # classified on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 206
+# +1 (2026-08-18): the remote helper's detached hub launch. Outside the
+# gateways CORRECTLY and permanently -- it starts a hub on the
+# researcher's own host lane before any container or project exists to
+# be mutated, so there is no gateway it could be inside. Classified on
+# arrival as separate-authority, with fixed argv and an int-cast port
+# as its only interpolation.
+# +1 (2026-08-18): the remote client's ssh launch. Same standing as
+# the helper's: it runs on the laptop before any project exists,
+# so there is no gateway it could be inside. Classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -419,8 +428,14 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # admission-gated, journaled with the terminal kind by the seam
 # before the gate opens, and covered by
 # testOnlyTheGatedRouteConstructsATerminalSession.
+# +1 (2026-08-18): the remote helper's detached hub launch. The scan
+# cannot read a list-literal argv through Popen's signature, so it says
+# so rather than guessing -- which is the honest behaviour, not a
+# regression. What the record cannot decode, the review can: the argv
+# is fixed source text and the only interpolated value is an int-cast
+# port already bounded by the command that accepted it.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 20,
+    "opaque-subprocess-command": 22,
     "untraceable-docker-sdk-root": 12,
 }
 
@@ -458,8 +473,8 @@ def testTheScanDeclaresWhatItCannotRead(moduleGenerator):
                 f"only {iFound} sites of kind {sKind} are now opaque -- "
                 f"lower DICT_UNRESOLVED_BUDGET to hold the gain."
             )
-    assert dictInventory["iUnresolvedSiteCount"] == len(listUnresolved), (
-        "the recorded blind-spot count disagrees with a fresh scan; "
+    assert len(dictInventory["listUnresolvedSites"]) == len(listUnresolved), (
+        "the recorded blind spot disagrees with a fresh scan; "
         "regenerate the inventory"
     )
 

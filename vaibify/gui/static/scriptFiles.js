@@ -208,7 +208,15 @@ var VaibifyFiles = (function () {
             var elItem = event.target.closest(".file-item");
             if (!elItem || elItem.dataset.isDir === "true") return;
             event.preventDefault();
-            VaibifyFilePull.fnPromptPullToHost(elItem.dataset.path);
+            /* Right-click meant "copy this to the backend's host",
+               which in host mode is a self-copy and through a tunnel
+               reaches the wrong machine entirely. The gesture now does
+               the thing a researcher almost always means: bring the
+               file to the computer they are sitting at. The
+               execution-host copy stays available from the sync
+               panel's menu, where it is named for what it does. */
+            VaibifyFilePull.fnDownloadToThisComputer(
+                elItem.dataset.path);
         });
     }
 
