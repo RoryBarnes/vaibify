@@ -7,12 +7,15 @@ watchdog loop that self-SIGTERMs only when genuinely abandoned.
 """
 
 import asyncio
+import math
+import os
 import signal
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from vaibify.gui import pipelineServer
+from vaibify.gui import pipelineServer, serverLifespan
+from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
 
 
 # ---------------------------------------------------------------
@@ -169,6 +172,181 @@ def test_within_timeout_does_not_self_exit():
 
 
 # ---------------------------------------------------------------
+# Never / disabled timeout
+# ---------------------------------------------------------------
+
+def test_never_timeout_prevents_self_exit_however_idle():
+    """An infinite (never) timeout forbids self-exit no matter how idle."""
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 10_000_000.0,
+    )
+    assert pipelineServer._fbHubShouldSelfExit(
+        app, {"docker": None}, math.inf,
+    ) is False
+
+
+def test_none_timeout_prevents_self_exit():
+    """A ``None`` timeout is the disabled case and forbids self-exit."""
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 10_000.0,
+    )
+    assert pipelineServer._fbHubShouldSelfExit(
+        app, {"docker": None}, None,
+    ) is False
+
+
+def test_zero_timeout_still_self_exits_when_idle():
+    """Zero keeps its historical meaning: retire as soon as idle."""
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 0.001,
+    )
+    assert pipelineServer._fbHubShouldSelfExit(
+        app, {"docker": None}, 0.0,
+    ) is True
+
+
+# ---------------------------------------------------------------
+# Live timeout on app.state
+# ---------------------------------------------------------------
+
+def test_current_idle_timeout_prefers_app_state():
+    """The live reader returns the app.state value over the fallback."""
+    app = _fappBuildFakeApp(fIdleTimeoutSeconds=42.0)
+    assert serverLifespan._ffCurrentIdleTimeout(app, 999.0) == 42.0
+
+
+def test_current_idle_timeout_falls_back_when_unset():
+    """The live reader falls back when app.state carries no timeout."""
+    app = _fappBuildFakeApp()
+    assert serverLifespan._ffCurrentIdleTimeout(app, 999.0) == 999.0
+
+
+def test_watchdog_never_self_exits_while_timeout_is_never():
+    """With never on app.state the loop keeps polling and never SIGTERMs."""
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 10_000.0,
+        fIdleTimeoutSeconds=math.inf,
+    )
+    listKills = []
+
+    async def fnDrive():
+        with patch.object(
+            pipelineServer.os, "kill",
+            lambda iPid, iSignal: listKills.append(iPid),
+        ):
+            taskWatchdog = asyncio.create_task(
+                pipelineServer._fnIdleShutdownWatchdogLoop(
+                    app, {"docker": None}, 0.01, math.inf,
+                ),
+            )
+            await asyncio.sleep(0.1)
+            taskWatchdog.cancel()
+            try:
+                await taskWatchdog
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(fnDrive())
+    assert listKills == []
+
+
+def test_watchdog_fires_after_live_change_from_never_to_finite():
+    """A Settings change to a finite timeout takes effect without relaunch."""
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 100.0,
+        fIdleTimeoutSeconds=math.inf,
+    )
+    listKills = []
+
+    async def fnDrive():
+        async def fnEnableFiniteTimeout():
+            await asyncio.sleep(0.05)
+            app.state.fIdleTimeoutSeconds = 0.0
+
+        with patch.object(
+            pipelineServer.os, "kill",
+            lambda iPid, iSignal: listKills.append(iPid),
+        ):
+            taskFlip = asyncio.create_task(fnEnableFiniteTimeout())
+            await asyncio.wait_for(
+                pipelineServer._fnIdleShutdownWatchdogLoop(
+                    app, {"docker": None}, 0.01, math.inf,
+                ),
+                timeout=1.0,
+            )
+            await taskFlip
+
+    asyncio.run(fnDrive())
+    assert listKills, "watchdog never fired after the timeout went finite"
+
+
+# ---------------------------------------------------------------
+# Startup timeout resolution & precedence
+# ---------------------------------------------------------------
+
+def _fnClearIdleEnvironment():
+    """Remove both idle-relevant env vars from the current environment."""
+    os.environ.pop(serverLifespan.S_HUB_IDLE_TIMEOUT_ENV, None)
+    os.environ.pop(S_SUPPRESS_BROWSER_ENV, None)
+
+
+def test_env_override_beats_stored_preference_and_default():
+    """The env override is the highest-precedence timeout source."""
+    with patch.dict(os.environ, {}, clear=False), patch(
+        "vaibify.config.preferencesStore.fsIdleTimeoutPreference",
+        return_value="900",
+    ):
+        _fnClearIdleEnvironment()
+        os.environ[serverLifespan.S_HUB_IDLE_TIMEOUT_ENV] = "60"
+        assert serverLifespan._ffResolveIdleTimeoutSeconds() == 60.0
+
+
+def test_env_never_token_resolves_to_infinity():
+    """A ``never`` env override disables the reaper entirely."""
+    with patch.dict(os.environ, {}, clear=False), patch(
+        "vaibify.config.preferencesStore.fsIdleTimeoutPreference",
+        return_value="",
+    ):
+        _fnClearIdleEnvironment()
+        os.environ[serverLifespan.S_HUB_IDLE_TIMEOUT_ENV] = "never"
+        assert math.isinf(serverLifespan._ffResolveIdleTimeoutSeconds())
+
+
+def test_stored_preference_applies_when_no_env_override():
+    """The stored Settings preference wins over the launch default."""
+    with patch.dict(os.environ, {}, clear=False), patch(
+        "vaibify.config.preferencesStore.fsIdleTimeoutPreference",
+        return_value="120",
+    ):
+        _fnClearIdleEnvironment()
+        assert serverLifespan._ffResolveIdleTimeoutSeconds() == 120.0
+
+
+def test_browser_launch_defaults_to_never():
+    """With no env and no preference a browser launch never self-retires."""
+    with patch.dict(os.environ, {}, clear=False), patch(
+        "vaibify.config.preferencesStore.fsIdleTimeoutPreference",
+        return_value="",
+    ):
+        _fnClearIdleEnvironment()
+        assert math.isinf(serverLifespan._ffResolveIdleTimeoutSeconds())
+
+
+def test_headless_launch_defaults_to_finite_reaper():
+    """A browser-suppressed (headless/remote) launch keeps the finite reaper."""
+    with patch.dict(os.environ, {}, clear=False), patch(
+        "vaibify.config.preferencesStore.fsIdleTimeoutPreference",
+        return_value="",
+    ):
+        _fnClearIdleEnvironment()
+        os.environ[S_SUPPRESS_BROWSER_ENV] = "1"
+        assert (
+            serverLifespan._ffResolveIdleTimeoutSeconds()
+            == serverLifespan.F_HUB_IDLE_TIMEOUT_SECONDS
+        )
+
+
+# ---------------------------------------------------------------
 # Watchdog loop
 # ---------------------------------------------------------------
 
@@ -240,6 +418,31 @@ def test_watchdog_cancels_cleanly_at_shutdown():
 
     taskWatchdog = asyncio.run(fnDrive())
     assert taskWatchdog.done()
+
+
+def test_startup_publishes_effective_timeout_on_app_state():
+    """Registration's startup hook resolves and publishes the live timeout."""
+    app = _fappBuildFakeApp()
+    serverLifespan._fnRegisterIdleShutdownWatchdog(
+        app, {"docker": None}, fInterval=10.0,
+    )
+
+    async def fnDrive():
+        with patch.object(
+            serverLifespan, "_ffResolveIdleTimeoutSeconds",
+            return_value=math.inf,
+        ):
+            for fnStartup in app.state.listLifespanStartup:
+                await fnStartup(app)
+        taskWatchdog = app.state.taskIdleWatchdog
+        taskWatchdog.cancel()
+        try:
+            await taskWatchdog
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(fnDrive())
+    assert app.state.fIdleTimeoutSeconds == math.inf
 
 
 def test_watchdog_prunes_dead_spawn_children_each_tick():

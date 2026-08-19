@@ -6,6 +6,7 @@ per the house rule that lane behaviour is asserted at the boundary,
 never against a unit stub.
 """
 
+import math
 import os
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +17,9 @@ from vaibify.config import preferencesStore
 from vaibify.gui import actionCatalog
 from vaibify.gui import containerOwnership
 from vaibify.gui import pipelineServer
+from vaibify.gui import serverLifespan
 from vaibify.gui.routes import preferencesRoutes
+from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
@@ -41,6 +44,10 @@ def fixtureIsolatePreferences(tmp_path, monkeypatch):
         preferencesStore, "_S_LOCK_PATH",
         os.path.join(sPreferencesDirectory, "preferences.lock"),
     )
+    # Make idle-timeout resolution deterministic: no env override and no
+    # browser-suppression signal, so the launch default is "never".
+    monkeypatch.delenv(serverLifespan.S_HUB_IDLE_TIMEOUT_ENV, raising=False)
+    monkeypatch.delenv(S_SUPPRESS_BROWSER_ENV, raising=False)
 
 
 @pytest.fixture
@@ -115,6 +122,108 @@ def testPutRefusesAnEmptyPath(fixtureClient):
         json={"sProjectDirectory": "   "},
     )
     assert response.status_code == 400
+
+
+# ── Idle-timeout preference (GET / PUT), live application ─────────
+
+
+def testGetIdleTimeoutReflectsAppState(fixtureClient):
+    """GET reports the live app.state value the watchdog reads each tick."""
+    fixtureClient.app.state.fIdleTimeoutSeconds = 1800.0
+    response = fixtureClient.get("/api/preferences/idle-timeout")
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["bNever"] is False
+    assert dictBody["fSeconds"] == 1800.0
+
+
+def testGetIdleTimeoutReportsNeverForInfinity(fixtureClient):
+    """An infinite (disabled) timeout is reported as bNever with null seconds."""
+    fixtureClient.app.state.fIdleTimeoutSeconds = math.inf
+    response = fixtureClient.get("/api/preferences/idle-timeout")
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["bNever"] is True
+    assert dictBody["fSeconds"] is None
+
+
+def testPutIdleTimeoutPersistsAndAppliesLive(fixtureClient):
+    """PUT stores the preference and updates app.state without a relaunch."""
+    response = fixtureClient.put(
+        "/api/preferences/idle-timeout", json={"sValue": "900"},
+    )
+    assert response.status_code == 200
+    assert response.json()["fSeconds"] == 900.0
+    assert preferencesStore.fsIdleTimeoutPreference() == "900"
+    assert fixtureClient.app.state.fIdleTimeoutSeconds == 900.0
+
+
+def testPutIdleTimeoutNeverDisablesReaper(fixtureClient):
+    """PUT 'never' persists the token and sets the live timeout to infinity."""
+    response = fixtureClient.put(
+        "/api/preferences/idle-timeout", json={"sValue": "never"},
+    )
+    assert response.status_code == 200
+    assert response.json()["bNever"] is True
+    assert preferencesStore.fsIdleTimeoutPreference() == "never"
+    assert math.isinf(fixtureClient.app.state.fIdleTimeoutSeconds)
+
+
+@pytest.mark.parametrize("sBadValue", ["abc", "-5", "   ", "nan"])
+def testPutIdleTimeoutRejectsGarbage(fixtureClient, sBadValue):
+    """A malformed, negative, or empty value is refused and not persisted."""
+    response = fixtureClient.put(
+        "/api/preferences/idle-timeout", json={"sValue": sBadValue},
+    )
+    assert response.status_code == 400
+    assert preferencesStore.fsIdleTimeoutPreference() == ""
+
+
+def testPutIdleTimeoutEnvOverrideStillWinsLive(fixtureClient, monkeypatch):
+    """A stored preference never overrides the env; env wins live too."""
+    monkeypatch.setenv(serverLifespan.S_HUB_IDLE_TIMEOUT_ENV, "60")
+    response = fixtureClient.put(
+        "/api/preferences/idle-timeout", json={"sValue": "never"},
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    assert dictBody["bNever"] is False
+    assert dictBody["fSeconds"] == 60.0
+    assert dictBody["bEnvOverride"] is True
+    # The preference is still recorded, to take effect once the env clears.
+    assert preferencesStore.fsIdleTimeoutPreference() == "never"
+    assert fixtureClient.app.state.fIdleTimeoutSeconds == 60.0
+
+
+def testIdleTimeoutAgentLaneCatalogRefusesTheRoute():
+    """The catalog refuses the agent lane for the idle-timeout write."""
+    assert not actionCatalog.fbAgentLanePermitsRoute(
+        "PUT", "/api/preferences/idle-timeout",
+    )
+
+
+def testIdleTimeoutAgentLaneIsRefusedAtBoundary(clientAgent):
+    """The in-container agent cannot disable the reaper over the real app."""
+    response = clientAgent.put(
+        "/api/preferences/idle-timeout", json={"sValue": "never"},
+    )
+    assert response.status_code == 401
+    assert preferencesStore.fsIdleTimeoutPreference() == ""
+
+
+def testIdleTimeoutBrowserLaneAppliesLive(appViewer, monkeypatch):
+    """The researcher's browser sets the live timeout over the real app."""
+    monkeypatch.delenv(serverLifespan.S_HUB_IDLE_TIMEOUT_ENV, raising=False)
+    clientBrowser = TestClient(
+        appViewer,
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
+    )
+    response = clientBrowser.put(
+        "/api/preferences/idle-timeout", json={"sValue": "900"},
+    )
+    assert response.status_code == 200
+    assert preferencesStore.fsIdleTimeoutPreference() == "900"
+    assert appViewer.state.fIdleTimeoutSeconds == 900.0
 
 
 # ── Agent-lane refusal, at the real boundary ─────────────────────
