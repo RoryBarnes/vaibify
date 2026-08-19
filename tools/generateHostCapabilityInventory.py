@@ -63,6 +63,16 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 PATH_INVENTORY = PATH_REPOSITORY / "tests" / "hostCapabilityInventory.json"
 
+# tools/ is not a package and this module is also loaded by path, so
+# put its own directory on the import path before reaching a sibling.
+sys.path.insert(0, str(PATH_REPOSITORY / "tools"))
+
+import ledgerFormat  # noqa: E402
+
+# The keys holding record collections, rendered one record per line.
+# See tools/ledgerFormat.py for why the layout is load-bearing.
+T_RECORD_COLLECTION_KEYS = ("listRows", "dictDispositions")
+
 S_UNKNOWN_COMMAND = "UNKNOWN"
 
 # The three duck-typed exec entry points on the connection object. All
@@ -258,7 +268,7 @@ def fdictLoadInventory():
     if not PATH_INVENTORY.exists():
         return {
             "listRows": [], "dictDispositions": {},
-            "iRowCount": 0, "iUndisposedSiteBudget": 0,
+            "iUndisposedSiteBudget": 0,
         }
     return json.loads(PATH_INVENTORY.read_text(encoding="utf-8"))
 
@@ -329,9 +339,9 @@ def fdictCompareAgainstSource(dictInventory, listScanned):
             dictInventory,
         ),
         "listCountMismatch": (
-            [] if dictInventory.get("iRowCount") == len(listScanned)
+            [] if len(dictInventory["listRows"]) == len(listScanned)
             else [
-                f"recorded {dictInventory.get('iRowCount')}, "
+                f"recorded {len(dictInventory['listRows'])}, "
                 f"scanned {len(listScanned)}"
             ]
         ),
@@ -383,7 +393,6 @@ def fdictBuildInventory(listScanned, dictExisting):
             "reviewer-recorded host-mode disposition. See "
             "tools/generateHostCapabilityInventory.py."
         ),
-        "iRowCount": len(listScanned),
         "listRows": listScanned,
         "dictDispositions": dictDispositions,
         "iUndisposedSiteBudget": 0,
@@ -415,18 +424,18 @@ def main():
         print(json.dumps(dictDrift, indent=2))
         return 1 if any(dictDrift.values()) else 0
     dictInventory = fdictBuildInventory(listScanned, fdictLoadInventory())
+    sRendered = ledgerFormat.fsRenderLedger(
+        dictInventory, T_RECORD_COLLECTION_KEYS,
+    )
     if namespaceOptions.write:
-        PATH_INVENTORY.write_text(
-            json.dumps(dictInventory, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        PATH_INVENTORY.write_text(sRendered, encoding="utf-8")
         print(
-            f"Wrote {dictInventory['iRowCount']} rows to "
+            f"Wrote {len(dictInventory['listRows'])} rows to "
             f"{PATH_INVENTORY.relative_to(PATH_REPOSITORY)}; "
             f"{dictInventory['iUndisposedSiteBudget']} still undisposed."
         )
         return 0
-    print(json.dumps(dictInventory, indent=2, sort_keys=True))
+    print(sRendered, end="")
     return 0
 
 
