@@ -1,0 +1,317 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Working on a remote machine &mdash; Vaibify 0.0.1.dev1070 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=62704ffa"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Supported Data Formats" href="testFormats.html" />
+    <link rel="prev" title="The Dashboard" href="dashboard.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Working on a remote machine</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#three-places-and-why-the-difference-matters">Three places, and why the difference matters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#before-it-will-work">Before it will work</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-happens-when-the-connection-drops">What happens when the connection drops</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-happens-to-an-open-terminal">What happens to an open terminal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#moving-files">Moving files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-remote-session-does-not-change">What a remote session does not change</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#batch-schedulers-are-not-supported">Batch schedulers are not supported</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Working on a remote machine</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/remoteAccess.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="working-on-a-remote-machine">
+<h1>Working on a remote machine<a class="headerlink" href="#working-on-a-remote-machine" title="Link to this heading"></a></h1>
+<p>Vaibify can drive a hub running on another computer — a lab
+workstation, a departmental compute server, anything you can reach with
+<code class="docutils literal notranslate"><span class="pre">ssh</span></code>. The dashboard runs in the browser on the machine in front of
+you; everything else happens over there.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>remote<span class="w"> </span>compute-machine
+</pre></div>
+</div>
+<p>That opens one SSH connection, forwards a loopback port, starts or
+adopts a vaibify hub beside your projects on that machine, and opens a
+signed-in browser tab. The remote hub never listens on anything but its
+own loopback interface, so nothing about this puts vaibify on a network.</p>
+<section id="three-places-and-why-the-difference-matters">
+<h2>Three places, and why the difference matters<a class="headerlink" href="#three-places-and-why-the-difference-matters" title="Link to this heading"></a></h2>
+<p>Once the backend is somewhere else, a file can be in three places, and
+several buttons that used to be unambiguous stop being so.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Where</p></th>
+<th class="head"><p>What it means</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Observer machine</strong></p></td>
+<td><p>The computer you are sitting at, running the browser</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Execution host</strong></p></td>
+<td><p>The remote machine running the vaibify hub</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Execution environment</strong></p></td>
+<td><p>The container, or the project directory in host mode</p></td>
+</tr>
+</tbody>
+</table>
+<p>In Docker mode the execution host and the execution environment are
+different filesystems. In host mode they are the same one.</p>
+<p>The dashboard shows a <strong>REMOTE</strong> badge naming the execution host
+whenever you are driving another machine, because every sentence about
+“this machine” needs a subject once there are two of them.</p>
+</section>
+<section id="before-it-will-work">
+<h2>Before it will work<a class="headerlink" href="#before-it-will-work" title="Link to this heading"></a></h2>
+<p><strong>Both machines need the same version of vaibify.</strong> The helper refuses
+to adopt a hub of a different version rather than drive it with a
+protocol they may not share, and it names both versions when it
+refuses.</p>
+<p><strong>Vaibify must be on the remote user’s <em>non-interactive</em> PATH.</strong> This
+is the constraint that catches people, so it is worth being blunt: <code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">compute-machine</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code> must print a version. If it prints
+<code class="docutils literal notranslate"><span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code>, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> will fail with “the remote
+produced no vaibify startup record”, and that is why.</p>
+<p>A non-interactive SSH command does not read the files you normally edit
+— Ubuntu’s default <code class="docutils literal notranslate"><span class="pre">.bashrc</span></code> returns immediately for non-interactive
+shells — so a <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--user</span></code>, a virtualenv, or a conda
+environment activated by your shell profile is <em>invisible</em> to it.
+Options, in rough order of preference:</p>
+<ul class="simple">
+<li><p>install vaibify somewhere already on the default PATH, or symlink its
+entry point into <code class="docutils literal notranslate"><span class="pre">/usr/local/bin</span></code>;</p></li>
+<li><p>put the directory on the PATH <em>above</em> the non-interactive early-exit
+in the remote user’s shell configuration.</p></li>
+</ul>
+<p><strong>SSH configuration belongs to SSH.</strong> Proxy jumps, identity files,
+non-standard SSH ports, and usernames go in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>, where
+OpenSSH already understands them. Vaibify does not reimplement any of
+that, and deliberately accepts only a plain <code class="docutils literal notranslate"><span class="pre">[user&#64;]host</span></code>.</p>
+<p><strong>There is no <code class="docutils literal notranslate"><span class="pre">--project</span></code> option</strong>, on purpose. A project name may
+contain a space, and OpenSSH hands its remote command to the far side’s
+login shell, so passing one would mean quoting user text into a remote
+shell command. You choose the project in the dashboard once the tunnel
+is up, over HTTP, where that is a solved problem.</p>
+</section>
+<section id="what-happens-when-the-connection-drops">
+<h2>What happens when the connection drops<a class="headerlink" href="#what-happens-when-the-connection-drops" title="Link to this heading"></a></h2>
+<p>This is the part worth reading before you need it.</p>
+<p><strong>The remote hub is not tied to your tunnel.</strong> It is started detached
+and keeps running, so closing your laptop does not stop a pipeline. Its
+idle timeout is raised for remote sessions so it does not retire while
+you are away.</p>
+<p><strong>For fifteen minutes, your session is held.</strong> The client keeps trying
+to rebuild the tunnel for that long, and the hub keeps your session
+valid for at least as long as the client keeps trying — the two are
+derived from one number precisely so they cannot disagree.</p>
+<ul class="simple">
+<li><p><strong>Back within the window:</strong> the dashboard reconnects and you carry on.
+Streamed output produced while you were away is not replayed, but the
+run state is reconciled by the ordinary polling.</p></li>
+<li><p><strong>Back after the window:</strong> re-run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>. If exactly one
+session there lost its browser, it is handed back to you — the
+project, its lock, and anything it was running were all still yours.
+You will see “Picking up where you left off”. If several sessions are
+waiting, vaibify signs you in fresh and lets you choose, rather than
+guessing which one was yours.</p></li>
+</ul>
+<p><strong>A run is never interrupted by any of this.</strong> Losing a browser ends
+that browser’s authority over the project; it never ends the project’s
+work.</p>
+</section>
+<section id="what-happens-to-an-open-terminal">
+<h2>What happens to an open terminal<a class="headerlink" href="#what-happens-to-an-open-terminal" title="Link to this heading"></a></h2>
+<p><strong>A dropped connection ends your shell, and the pane comes back with a
+new one.</strong> It says so rather than pretending otherwise.</p>
+<p>This is deliberate. Closing the socket terminates the recorded session
+and proves it dead, and that proof is what lets vaibify report honestly
+on whether a project is quiet. A pane that silently reattached to a
+“resumed” shell would be claiming something vaibify cannot verify.</p>
+<p>The practical consequence: <strong>anything you need to survive a
+disconnection belongs in a step, not in the terminal.</strong> Steps are
+durable and their output is recorded; a terminal is neither. The banner
+at the top of every remote shell names the machine it is running on for
+the same reason.</p>
+</section>
+<section id="moving-files">
+<h2>Moving files<a class="headerlink" href="#moving-files" title="Link to this heading"></a></h2>
+<p>Three actions, named for where things actually go:</p>
+<ul class="simple">
+<li><p><strong>Download to this computer</strong> streams the file through the browser, so
+it lands on the machine you are sitting at. This is almost always what
+you want, and it is what right-clicking a file in the Files panel does.</p></li>
+<li><p><strong>Upload from this computer</strong> sends a local file into the execution
+environment.</p></li>
+<li><p><strong>Copy to execution-host path</strong> copies from a container workspace to
+the remote machine’s own filesystem. It is offered only when those are
+genuinely different places — in host mode they are the same
+filesystem, so it is hidden rather than performing a copy that goes
+nowhere.</p></li>
+</ul>
+</section>
+<section id="what-a-remote-session-does-not-change">
+<h2>What a remote session does not change<a class="headerlink" href="#what-a-remote-session-does-not-change" title="Link to this heading"></a></h2>
+<p><strong>Security is unchanged, because nothing was relaxed to make this
+work.</strong> SSH provides the encryption and proves <em>you</em> are the remote
+user. Everything after that is the same machinery a local dashboard
+uses: the browser still redeems a one-time capability for a session
+credential, still claims a project and holds a lease, and the hub still
+enforces its loopback Host and Origin checks. Through the tunnel your
+browser simply <em>is</em> a loopback client, which is why nothing needed a
+remote exemption.</p>
+<p><strong>Host mode is still uncontained.</strong> Running on a dedicated remote
+machine does not change what host mode claims: commands run with your
+full user authority, and PROOF Level 3 and Supervised attribution
+remain unavailable there. The dashboard says so in both modes.</p>
+<p><strong>Two dashboard actions are hidden in a remote session</strong> — opening a new
+vaibify window, and opening the project in VS Code. Both hand the
+browser an address, and through a tunnel that address resolves to the
+computer you are sitting at rather than the one doing the work. They are
+absent rather than broken, because a dead tab looks like a bug.</p>
+</section>
+<section id="batch-schedulers-are-not-supported">
+<h2>Batch schedulers are not supported<a class="headerlink" href="#batch-schedulers-are-not-supported" title="Link to this heading"></a></h2>
+<p>Slurm, PBS and LSF are out of scope for this release, and putting
+<code class="docutils literal notranslate"><span class="pre">sbatch</span></code> in a step’s command is not a workaround: the submission
+process exits successfully while the job is still queued, so vaibify
+would report work finished that had not started. A remote machine is a
+machine you run things on directly.</p>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<p><strong>“the remote produced no vaibify startup record”</strong> — usually the PATH
+problem above. Check <code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">&lt;host&gt;</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code> first. It can also
+mean SSH itself could not authenticate, in which case the SSH error is
+included in the message.</p>
+<p><strong>“a vaibify hub is already running on port N, but it is version X”</strong> —
+the two installations differ. Upgrade one, or pass <code class="docutils literal notranslate"><span class="pre">--port</span></code> to use a
+different port.</p>
+<p><strong>“something is already listening on port N … and it is not a vaibify
+hub”</strong> — something else on the remote machine holds that port. Pass
+<code class="docutils literal notranslate"><span class="pre">--port</span></code> with another number.</p>
+<p><strong>“port N is already in use on this machine”</strong> — the <em>local</em> side of the
+forward is taken. Omit <code class="docutils literal notranslate"><span class="pre">--port</span></code> and let vaibify choose.</p>
+<p><strong>The tab says the session expired</strong> — you were away longer than the
+hold window. Re-run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>; if your project is still there it
+is handed back.</p>
+<p><strong>A terminal left the project needing reconciliation</strong> — a shell whose
+descendants could not be proven dead leaves the project reporting
+quiescence as unproven. Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code> on the execution host.
+Note that this needs a shell on that machine, so it is worth having a
+way in that does not depend on the tunnel.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="dashboard.html" class="btn btn-neutral float-left" title="The Dashboard" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="testFormats.html" class="btn btn-neutral float-right" title="Supported Data Formats" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

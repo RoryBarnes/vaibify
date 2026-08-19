@@ -120,6 +120,28 @@ rm ~/.vaibify/.setup_done
 vaibify --version
 ```
 
+## Installing for remote access
+
+If you plan to drive this machine from another one with `vaibify
+remote`, vaibify must be on the **non-interactive** PATH of the user
+you will connect as. The test is exact:
+
+```bash
+ssh this-machine vaibify --version
+```
+
+It must print a version. A non-interactive SSH command does not read
+the shell files you normally edit -- Ubuntu's default `.bashrc` returns
+immediately for them -- so a `pip install --user`, a virtualenv, or a
+conda environment activated by your profile will not be found, and
+`vaibify remote` will report that the remote produced no startup
+record.
+
+Install somewhere already on the default PATH, symlink the entry point
+into `/usr/local/bin`, or extend the PATH above the non-interactive
+early-exit in that user's shell configuration. Both machines also need
+the same vaibify version; a mismatch is refused rather than guessed at.
+
 ## Browser Compatibility
 
 The Vaibify dashboard runs locally and renders in your default browser.

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev1058 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev1070 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=887cdc7d"></script>
+      <script src="_static/documentation_options.js?v=62704ffa"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -53,6 +53,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#developers">Developers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#data-format-libraries">Data Format Libraries</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installing-for-remote-access">Installing for remote access</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#browser-compatibility">Browser Compatibility</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#docker-on-macos">Docker on macOS</a></li>
 </ul>
@@ -61,6 +62,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
@@ -236,6 +238,24 @@ command:</p>
 vaibify<span class="w"> </span>--version
 </pre></div>
 </div>
+</section>
+<section id="installing-for-remote-access">
+<h2>Installing for remote access<a class="headerlink" href="#installing-for-remote-access" title="Link to this heading"></a></h2>
+<p>If you plan to drive this machine from another one with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>, vaibify must be on the <strong>non-interactive</strong> PATH of the user
+you will connect as. The test is exact:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ssh<span class="w"> </span>this-machine<span class="w"> </span>vaibify<span class="w"> </span>--version
+</pre></div>
+</div>
+<p>It must print a version. A non-interactive SSH command does not read
+the shell files you normally edit – Ubuntu’s default <code class="docutils literal notranslate"><span class="pre">.bashrc</span></code> returns
+immediately for them – so a <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--user</span></code>, a virtualenv, or a
+conda environment activated by your profile will not be found, and
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> will report that the remote produced no startup
+record.</p>
+<p>Install somewhere already on the default PATH, symlink the entry point
+into <code class="docutils literal notranslate"><span class="pre">/usr/local/bin</span></code>, or extend the PATH above the non-interactive
+early-exit in that user’s shell configuration. Both machines also need
+the same vaibify version; a mismatch is refused rather than guessed at.</p>
 </section>
 <section id="browser-compatibility">
 <h2>Browser Compatibility<a class="headerlink" href="#browser-compatibility" title="Link to this heading"></a></h2>

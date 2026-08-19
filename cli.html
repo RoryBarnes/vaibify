@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev1058 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev1070 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=887cdc7d"></script>
+      <script src="_static/documentation_options.js?v=62704ffa"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -51,6 +51,7 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#global-options">Global Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#driving-a-hub-on-another-machine">Driving a hub on another machine</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#troubleshooting-log">Troubleshooting log</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-targeting">Project Targeting</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-setup">Project Setup</a><ul>
@@ -112,6 +113,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
@@ -169,18 +171,46 @@
 <td><p>Path to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (default: <code class="docutils literal notranslate"><span class="pre">./vaibify.yml</span></code>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code></p></td>
-<td><p>Port for the hub server (default: 8050, auto-shifts upward if taken)</p></td>
+<td><p>Port for the hub server. Defaults to the port the last hub used, so a bookmarked tab keeps working; an explicit port is used verbatim and fails loudly if taken</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--version</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-browser</span></code></p></td>
+<td><p>Serve without opening a browser. The process still runs in the foreground until you stop it – this does not make it a daemon</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--version</span></code></p></td>
 <td><p>Print the installed version and exit</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
 <td><p>Show the help message and exit</p></td>
 </tr>
 </tbody>
 </table>
 <p>When invoked with no subcommand, Vaibify starts in <strong>hub mode</strong> – a
 browser-based dashboard for managing multiple projects.</p>
+</section>
+<section id="driving-a-hub-on-another-machine">
+<h2>Driving a hub on another machine<a class="headerlink" href="#driving-a-hub-on-another-machine" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>remote<span class="w"> </span>compute-machine
+vaibify<span class="w"> </span>remote<span class="w"> </span>researcher@compute-machine
+vaibify<span class="w"> </span>remote<span class="w"> </span>compute-machine<span class="w"> </span>--port<span class="w"> </span><span class="m">18050</span>
+</pre></div>
+</div>
+<p>Opens one SSH connection, forwards a loopback port, starts or adopts a
+hub beside your projects on that machine, and opens a signed-in browser
+tab locally. The remote hub keeps running if your tunnel drops, and a
+session is held for fifteen minutes so you can come back to it.</p>
+<p>Two things to check before the first attempt: both machines need the
+same vaibify version, and <code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">&lt;host&gt;</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code> must print
+one – a <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">--user</span></code> install, a virtualenv, or a conda environment
+activated by your shell profile is invisible to a non-interactive SSH
+command. SSH options themselves belong in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.</p>
+<p>There is no <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag: a project name may contain a space, and
+the remote command reaches a login shell, so the project is chosen in
+the dashboard once the tunnel is up.</p>
+<p>See <a class="reference internal" href="remoteAccess.html"><span class="std std-doc">Working on a remote machine</span></a> for what a dropped
+connection does to a run and to an open terminal, how the three file
+actions differ once the backend is elsewhere, and troubleshooting.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote-helper</span></code> is the far-end counterpart. It is invoked by
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> over SSH and is not meant to be run by hand.</p>
 </section>
 <section id="troubleshooting-log">
 <h2>Troubleshooting log<a class="headerlink" href="#troubleshooting-log" title="Link to this heading"></a></h2>
