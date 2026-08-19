@@ -257,6 +257,71 @@ def fnRemoveProject(sName):
     _fnMutateRegistryLocked(fnRemoveByName)
 
 
+def fnConvertProjectToContainer(sOldName, sNewName):
+    """Re-register a host project as a container under a new name.
+
+    Conversion is the one path that changes a registered project's mode
+    after creation. The lock, lease, and journal are all keyed by the
+    registry name, so the rename is the load-bearing edge: the entry's
+    ``sName`` and ``sContainerName`` both become ``sNewName`` while its
+    ``sDirectory`` and ``sConfigPath`` stay put — the files do not move.
+
+    Parameters
+    ----------
+    sOldName : str
+        The host project's current registry name (its directory
+        basename).
+    sNewName : str
+        The new Docker-safe container name.
+
+    Raises
+    ------
+    KeyError
+        If no project named ``sOldName`` is registered.
+    ValueError
+        If ``sOldName`` is not a host project, or ``sNewName`` collides
+        with a DIFFERENT registered project.
+    """
+    def fnRewriteEntry(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sOldName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sOldName}' not found in registry")
+        if dictEntry.get("sMode") != "host":
+            raise ValueError(
+                f"Project '{sOldName}' is not a host project; only a "
+                "host sandbox can be converted to a container"
+            )
+        _fnRequireNewNameFree(dictRegistry, dictEntry, sNewName)
+        dictEntry["sMode"] = "container"
+        dictEntry["sName"] = sNewName
+        dictEntry["sContainerName"] = sNewName
+
+    _fnMutateRegistryLocked(fnRewriteEntry)
+
+
+def _fdictFindEntryByName(dictRegistry, sName):
+    """Return the registry entry whose ``sName`` matches, or None."""
+    for dictEntry in dictRegistry["listProjects"]:
+        if dictEntry["sName"] == sName:
+            return dictEntry
+    return None
+
+
+def _fnRequireNewNameFree(dictRegistry, dictEntrySelf, sNewName):
+    """Raise ValueError when ``sNewName`` names a DIFFERENT entry.
+
+    The entry being converted is skipped by identity so its own
+    directory and name never false-positive against themselves.
+    """
+    for dictExisting in dictRegistry["listProjects"]:
+        if dictExisting is dictEntrySelf:
+            continue
+        if dictExisting["sName"] == sNewName:
+            raise ValueError(
+                f"Container '{sNewName}' is already registered"
+            )
+
+
 def fsGetContainerUser(sContainerName):
     """Return the container user for a registered container.
 
@@ -294,6 +359,73 @@ def fbIsHostProject(sResourceId):
     if dictProject is None:
         return False
     return dictProject.get("sMode") == "host"
+
+
+def fbIsProject(dictEntry):
+    """Return True when a registry entry has graduated to a Project.
+
+    An entry is a "Project" when it runs in a container (a container is
+    a Project by definition, whatever the stored flag says) OR when a
+    host sandbox has been explicitly promoted (``bIsProject`` true).
+    Otherwise it is a sandbox. A host entry written before promotion
+    existed has no ``bIsProject`` key and reads as a sandbox, mirroring
+    how a missing ``sMode`` reads as container mode. The argument is the
+    registry ENTRY, not a name, so this is the single place the whole
+    codebase asks the sandbox/Project question -- never a scattered
+    ``sMode == 'container' or bIsProject``.
+    """
+    if dictEntry.get("sMode") != "host":
+        return True
+    return bool(dictEntry.get("bIsProject"))
+
+
+def fnPromoteHostProject(sOldName, sNewName):
+    """Promote a host sandbox to a host-based Project under a new name.
+
+    The host twin of :func:`fnConvertProjectToContainer`: it graduates a
+    sandbox to a named Project while ``sMode`` STAYS ``"host"`` -- no
+    container, no image, no build. Like conversion it renames the
+    load-bearing edge, because the lock, lease, and journal are all keyed
+    by the registry name: the entry's ``sName`` and ``sContainerName``
+    both become ``sNewName`` while ``sDirectory`` and ``sConfigPath``
+    stay put -- the files do not move -- and ``bIsProject`` is set true.
+
+    Parameters
+    ----------
+    sOldName : str
+        The host sandbox's current registry name (its directory
+        basename).
+    sNewName : str
+        The new host-safe Project name (spaces allowed).
+
+    Raises
+    ------
+    KeyError
+        If no project named ``sOldName`` is registered.
+    ValueError
+        If ``sOldName`` is not a host project, is already a host
+        Project, or ``sNewName`` collides with a DIFFERENT registered
+        project.
+    """
+    def fnRewriteEntry(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sOldName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sOldName}' not found in registry")
+        if dictEntry.get("sMode") != "host":
+            raise ValueError(
+                f"Project '{sOldName}' is not a host project; only a "
+                "host sandbox can be promoted to a host Project"
+            )
+        if fbIsProject(dictEntry):
+            raise ValueError(
+                f"Project '{sOldName}' is already a Project"
+            )
+        _fnRequireNewNameFree(dictRegistry, dictEntry, sNewName)
+        dictEntry["sName"] = sNewName
+        dictEntry["sContainerName"] = sNewName
+        dictEntry["bIsProject"] = True
+
+    _fnMutateRegistryLocked(fnRewriteEntry)
 
 
 def fdictGetProject(sName):
@@ -354,6 +486,7 @@ def _fdictEnrichWithStatus(dictProject):
         fdictGetContainerStatus,
     )
     dictEnriched = dict(dictProject)
+    dictEnriched["bIsProject"] = fbIsProject(dictProject)
     sContainerName = dictProject["sContainerName"]
     sImageTag = f"{sContainerName}:latest"
     dictEnriched["bImageExists"] = fbImageExists(sImageTag)
@@ -377,6 +510,7 @@ def _fdictEnrichHostProjectStatus(dictProject):
     """
     from vaibify.config import preferencesStore
     dictEnriched = dict(dictProject)
+    dictEnriched["bIsProject"] = fbIsProject(dictProject)
     dictEnriched["bImageExists"] = False
     dictEnriched["bRunning"] = False
     sDirectory = dictProject.get("sDirectory", "")

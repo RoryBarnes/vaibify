@@ -234,6 +234,27 @@ def testTheFilePanelRefreshesWhenTheDirectoryChangesOnDisk(
     assert pageDashboard.listPageErrors == []
 
 
+def testTheFilesPanelOffersConversionForAHostSandbox(
+    pageDashboard, serverHub,
+):
+    """A host SANDBOX's Files panel offers 'Convert to Project'.
+
+    The counterpart lives in the promotion journey, where the same bar
+    is asserted HIDDEN once the project has graduated to a host Project
+    -- the two states differ by server truth (bIsProject), never a
+    fixture toggle. This side proves the sandbox is offered the path.
+    """
+    _fnEnterTheHostProjectWithoutAWorkflow(pageDashboard, serverHub)
+    pageDashboard.click('.left-tab[data-panel="files"]')
+    pageDashboard.wait_for_selector(
+        "#panelFiles.active", state="visible", timeout=10000,
+    )
+    assert pageDashboard.is_visible("#fileConvertToProjectBar"), (
+        "a host sandbox's Files panel did not offer 'Convert to Project'"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheRepositoriesTabAnswersForAHostProject(
     pageDashboard, serverHub,
 ):

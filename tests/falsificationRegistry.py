@@ -9368,13 +9368,20 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowManager.js',
         # The host wizard walks the container page list, asking for a
         # Python version, repositories, features and packages that
-        # govern an image the project will never have.
+        # govern an image the project will never have. (Updated
+        # 2026-08-17 for the convert branch: the host branch is now an
+        # early return, so the mutation points it at the container
+        # pages in place.)
         old=(
-            '        return _dictWizardData.sMode === "host"\n'
-            '            ? _T_HOST_WIZARD_PAGES : '
-            '_T_CONTAINER_WIZARD_PAGES;\n'
+            '        if (_dictWizardData.sMode === "host") {\n'
+            '            return _T_HOST_WIZARD_PAGES;\n'
+            '        }\n'
         ),
-        new='        return _T_CONTAINER_WIZARD_PAGES;\n',
+        new=(
+            '        if (_dictWizardData.sMode === "host") {\n'
+            '            return _T_CONTAINER_WIZARD_PAGES;\n'
+            '        }\n'
+        ),
     ),
     # --- Cancelling a host run (host mode wave 5) ---
     #
@@ -12228,6 +12235,30 @@ def _fdictEntry(sRel):
         new=(
             '    return ""\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testConvertToProjectJourney.py::'
+            'testConvertingFlipsTheTileFromHostToContainer'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Leave the converted entry in host mode: the registry poll never
+        # sees a container, the tile never flips to data-mode="container",
+        # and the researcher is left with no container to build.
+        old='        dictEntry["sMode"] = "container"\n',
+        new='        dictEntry["sMode"] = "host"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPromoteToHostProjectJourney.py::'
+            'testPromotingFlipsTheTileToAHostProjectWithNoBuild'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Never set the graduated flag: the promoted entry stays a
+        # sandbox, so bIsProject is False, the tile keeps
+        # data-is-project="false", and the promotion silently did nothing.
+        old='        dictEntry["bIsProject"] = True\n',
+        new='        dictEntry["bIsProject"] = False\n',
     ),
     Falsification(
         nodeid=(

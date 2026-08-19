@@ -759,6 +759,18 @@ body.proof-level-3 .toolbar-label {
     background: #1a2ce8;
 }
 
+.btn-convert-to-project {
+    background: var(--color-orange);
+    border-color: var(--color-orange);
+    color: var(--bg-primary);
+    font-weight: 600;
+}
+
+.btn-convert-to-project:hover {
+    background: var(--color-orange);
+    filter: brightness(1.15);
+}
+
 
 .btn-icon {
     padding: 4px 8px;
