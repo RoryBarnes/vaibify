@@ -58,6 +58,16 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 PATH_INVENTORY = PATH_REPOSITORY / "tests" / "styleInventory.json"
 
+# tools/ is not a package and this module is also loaded by path, so
+# put its own directory on the import path before reaching a sibling.
+sys.path.insert(0, str(PATH_REPOSITORY / "tools"))
+
+import ledgerFormat  # noqa: E402
+
+# The keys holding record collections, rendered one record per line.
+# See tools/ledgerFormat.py for why the layout is load-bearing.
+T_RECORD_COLLECTION_KEYS = ("listRows",)
+
 S_SCHEMA_VERSION = "1"
 
 # --------------------------------------------------------------------------
@@ -779,7 +789,9 @@ def main():
     if arguments.check:
         return fiCheckInventoryDrift()
     dictInventory = fdictGenerateInventory()
-    sRendered = json.dumps(dictInventory, indent=2, sort_keys=False) + "\n"
+    sRendered = ledgerFormat.fsRenderLedger(
+        dictInventory, T_RECORD_COLLECTION_KEYS,
+    )
     if arguments.write:
         PATH_INVENTORY.write_text(sRendered)
         print(f"wrote {len(dictInventory['listRows'])} rows")
