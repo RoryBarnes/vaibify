@@ -11,12 +11,13 @@ proves it dead, which is what lets vaibify say anything honest about a
 project being quiet. Claiming the session resumed would be worse than
 dying silently.
 
-HONEST SCOPE. These are source assertions. They prove the redial
-exists, is bounded by the session's window, and refuses to retry a
-deliberate refusal. They do NOT prove the pane comes back on a real
-drop -- that needs a browser cutting a live socket, and the browser
-lane exercises the dial and the banner but never a drop. Treat the
-recovery itself as unverified until a lane drives it.
+SCOPE. These are source assertions: the redial exists, is bounded by
+the session's window, and does not retry a deliberate refusal. The
+RECOVERY itself is no longer taken on trust --
+tests/browser/testTerminalPaneSurvivesADrop.py severs a live socket
+under a running PTY in a real browser and drives the pane back to a
+usable shell. These remain because they pin the shape cheaply and name
+the branches; that one proves it happens.
 """
 
 import pytest

@@ -1,8 +1,15 @@
 name: tests-macos
 
 on:
+  # NO base-branch filter, deliberately. These gates were declared
+  # `branches: [main]`, so a pull request based on another branch --
+  # a stacked PR, which is how a large feature gets reviewed in
+  # pieces -- triggered NONE of them and reported "no checks" rather
+  # than failing. That reads almost exactly like "all checks passed"
+  # on a PR page, and it hid an entire feature branch from CI on
+  # 2026-08-18. A gate that does not run is worse than a gate that
+  # fails, because only one of them says so.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

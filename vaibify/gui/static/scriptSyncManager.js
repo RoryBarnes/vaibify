@@ -1815,8 +1815,20 @@ var VaibifySyncManager = (function () {
         var listItems = [];
         if (!dictRow.bInvalid) {
             listItems.push({sLabel: "View", sAction: "viewFile"});
-            listItems.push(
-                {sLabel: "Pull to host", sAction: "pullToHost"});
+            listItems.push({
+                sLabel: "Download to this computer",
+                sAction: "downloadToThisComputer",
+            });
+            /* Offered only where the execution host and the execution
+               environment are different filesystems. In host mode they
+               are one, and this action was a self-copy presented as a
+               transfer. */
+            if (VaibifyFilePull.fbCopyToHostIsMeaningful()) {
+                listItems.push({
+                    sLabel: "Copy to execution-host path",
+                    sAction: "pullToHost",
+                });
+            }
         }
         if (_fbRowIsEditable(dictRow)) {
             listItems.push({sLabel: "Edit", sAction: "editItem"});
@@ -1909,6 +1921,8 @@ var VaibifySyncManager = (function () {
         } else if (dictItem.sAction === "viewInput") {
             _fnViewCommandInputs(
                 dictItem.listInputs, dictRow.sWorkdir);
+        } else if (dictItem.sAction === "downloadToThisComputer") {
+            VaibifyFilePull.fnDownloadToThisComputer(dictRow.sResolved);
         } else if (dictItem.sAction === "pullToHost") {
             VaibifyFilePull.fnPromptPullToHost(dictRow.sResolved);
         } else if (dictItem.sAction === "copyPath") {

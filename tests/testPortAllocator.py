@@ -8,9 +8,24 @@ import pytest
 
 
 def _sockBindOn(iPort):
-    """Bind a socket on 127.0.0.1:iPort and return it (caller closes)."""
+    """Occupy 127.0.0.1:iPort as a real listener (caller closes).
+
+    LISTENING, not merely bound. The probe under test binds with
+    ``SO_REUSEADDR`` -- deliberately, to match uvicorn -- and BSD lets
+    such a bind succeed against a socket that is bound but not
+    listening. So a test that only bound could see its "occupied" port
+    reported free, and the occupancy tests would fail for a reason
+    having nothing to do with the allocator.
+
+    That is not hypothetical: it surfaced on 2026-08-18 as a single
+    failure in one full-suite run out of five, on a branch whose new
+    tests churn sockets. A listener cannot be re-bound without
+    SO_REUSEPORT, so this is deterministic, and it also models what
+    actually occupies a port in production -- a server.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", iPort))
+    sock.listen(1)
     return sock
 
 

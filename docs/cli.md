@@ -9,12 +9,43 @@ Vaibify provides two equivalent entry points: `vaibify` and the shorthand
 | Flag                  | Description                              |
 |-----------------------|------------------------------------------|
 | `--config PATH`       | Path to `vaibify.yml` (default: `./vaibify.yml`) |
-| `--port N`            | Port for the hub server (default: 8050, auto-shifts upward if taken) |
+| `--port N`            | Port for the hub server. Defaults to the port the last hub used, so a bookmarked tab keeps working; an explicit port is used verbatim and fails loudly if taken |
+| `--no-browser`        | Serve without opening a browser. The process still runs in the foreground until you stop it -- this does not make it a daemon |
 | `--version`           | Print the installed version and exit     |
 | `--help`              | Show the help message and exit           |
 
 When invoked with no subcommand, Vaibify starts in **hub mode** -- a
 browser-based dashboard for managing multiple projects.
+
+## Driving a hub on another machine
+
+```bash
+vaibify remote compute-machine
+vaibify remote researcher@compute-machine
+vaibify remote compute-machine --port 18050
+```
+
+Opens one SSH connection, forwards a loopback port, starts or adopts a
+hub beside your projects on that machine, and opens a signed-in browser
+tab locally. The remote hub keeps running if your tunnel drops, and a
+session is held for fifteen minutes so you can come back to it.
+
+Two things to check before the first attempt: both machines need the
+same vaibify version, and `ssh <host> vaibify --version` must print
+one -- a `pip --user` install, a virtualenv, or a conda environment
+activated by your shell profile is invisible to a non-interactive SSH
+command. SSH options themselves belong in `~/.ssh/config`.
+
+There is no `--project` flag: a project name may contain a space, and
+the remote command reaches a login shell, so the project is chosen in
+the dashboard once the tunnel is up.
+
+See [Working on a remote machine](remoteAccess.md) for what a dropped
+connection does to a run and to an open terminal, how the three file
+actions differ once the backend is elsewhere, and troubleshooting.
+
+`vaibify remote-helper` is the far-end counterpart. It is invoked by
+`vaibify remote` over SSH and is not meant to be run by hand.
 
 ## Troubleshooting log
 

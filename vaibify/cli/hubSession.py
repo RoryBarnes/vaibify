@@ -189,7 +189,7 @@ def ftSendSessionRequest(
     )
 
 
-def fsRequestBootstrapCapability(iHubPort):
+def fsRequestBootstrapCapability(iHubPort, bRemoteSession=False):
     """Return a launch capability minted over the hub's control socket.
 
     Host-lane only: the socket lives in a ``0700`` directory, is
@@ -204,7 +204,10 @@ def fsRequestBootstrapCapability(iHubPort):
     )
     try:
         dictMinted = fdictSendHostControlRequest(
-            iHubPort, {"sOperation": S_SOCKET_OPERATION_MINT_BOOTSTRAP},
+            iHubPort, {
+                "sOperation": S_SOCKET_OPERATION_MINT_BOOTSTRAP,
+                "bRemoteSession": bool(bRemoteSession),
+            },
             F_BOOTSTRAP_TIMEOUT_SECONDS,
         )
     except HostControlError as error:
