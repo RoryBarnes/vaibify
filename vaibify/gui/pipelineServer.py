@@ -78,6 +78,11 @@ from . import conftestManager
 from . import containerOwnership
 from . import projectRoots
 from . import sessionLifecycle
+from .executionTopology import (
+    fbConnectionIsRemote,
+    fdictExecutionTopology,
+    fsExecutionHostname,
+)
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
@@ -1912,9 +1917,17 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "sLeaseId": dictCtx.get("sViewerLease", ""),
         "sProjectMode": fsProjectModeOfResource(sContainerId),
         "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
+        "dictExecutionTopology": fdictExecutionTopology(
+            fsProjectModeOfResource(sContainerId),
+        ),
+        "sExecutionHostname": fsExecutionHostname(),
+        "bRemoteSession": fbConnectionIsRemote(
+            dictCtx.get("dictBrowserSessions"),
+            sBrowserSessionId,
+        ),
         "fReconnectWindowSeconds": (
             sessionLifecycle.ffReconnectWindowSecondsForSession(
-                sBrowserSessionId,
+                sBrowserSessionId, dictCtx.get("dictBrowserSessions"),
             )
         ),
     }
@@ -2147,9 +2160,16 @@ async def fdictHandleConnect(
             ),
             "sProjectMode": fsProjectModeOfResource(sContainerId),
             "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
+            "dictExecutionTopology": fdictExecutionTopology(
+                fsProjectModeOfResource(sContainerId),
+            ),
+            "sExecutionHostname": fsExecutionHostname(),
+            "bRemoteSession": fbConnectionIsRemote(
+                dictCtx, sBrowserSessionId,
+            ),
             "fReconnectWindowSeconds": (
                 sessionLifecycle.ffReconnectWindowSecondsForSession(
-                    sBrowserSessionId,
+                    sBrowserSessionId, dictCtx.get("dictBrowserSessions"),
                 )
             ),
         }

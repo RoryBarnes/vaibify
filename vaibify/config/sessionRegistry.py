@@ -107,6 +107,22 @@ def ffileAcquireSessionSlot(sRole, iPort):
     return fileHandle
 
 
+def fsRunningVaibifyVersion():
+    """Return this process's vaibify version, or "unknown".
+
+    A separate process deciding whether it may REUSE a running hub has
+    to answer "is this hub compatible with me", and a live pid holding
+    a hub slot on the expected port does not answer it -- a hub of any
+    other version satisfies that equally. The version is written into
+    the slot so the question has an answer at all.
+    """
+    try:
+        from vaibify import __version__
+        return str(__version__)
+    except Exception:
+        return "unknown"
+
+
 def _fnWriteSlotPayload(fileHandle, sRole, iPort):
     """Serialize the slot-holder identity into the open slot file."""
     dictPayload = {
@@ -114,6 +130,7 @@ def _fnWriteSlotPayload(fileHandle, sRole, iPort):
         "sRole": sRole,
         "iPort": iPort,
         "sStartedIso": datetime.datetime.now().isoformat(),
+        "sVaibifyVersion": fsRunningVaibifyVersion(),
     }
     pidFileRegistry.fnWritePayload(fileHandle, dictPayload)
 

@@ -12217,14 +12217,16 @@ def _fdictEntry(sRel):
         # this entry guards instead is the ruling's honesty device:
         # drop the per-session banner and the researcher's first
         # host shell looks exactly like a contained one.
+        # Re-anchored 2026-08-18: the send site now SELECTS between a
+        # local and a remote banner (a tunnelled shell must not be told
+        # it runs on the reader's own machine), so the mutation moved
+        # into the selector. Identical intent -- the host banner never
+        # reaches the session's first bytes.
         old=(
-            '            sIntroductionBanner=(\n'
-            '                S_HOST_TERMINAL_BANNER if bHostProject'
-            ' else ""\n'
-            '            ),\n'
+            '    return S_HOST_TERMINAL_BANNER if bHostProject else ""\n'
         ),
         new=(
-            '            sIntroductionBanner="",\n'
+            '    return ""\n'
         ),
     ),
     Falsification(
@@ -12640,7 +12642,7 @@ def _fdictEntry(sRel):
         old=(
             '        "fReconnectWindowSeconds": (\n'
             '            sessionLifecycle.ffReconnectWindowSecondsForSession(\n'
-            '                sBrowserSessionId,\n'
+            '                sBrowserSessionId, dictCtx.get("dictBrowserSessions"),\n'
             '            )\n'
             '        ),\n'
         ),

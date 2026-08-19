@@ -301,6 +301,14 @@
             <!-- Permanent and non-dismissible on a host project: the
                  mode decides whether commands are contained at all,
                  so it is never allowed to be invisible. -->
+            <!-- Which machine the researcher is looking at. Silent
+                 for a local session, where "here" is unambiguous;
+                 through a tunnel every sentence about "this machine"
+                 needs a subject, so the host is named. -->
+            <span id="remoteSessionBadge" class="remote-session-badge"
+                  style="display: none;"
+                  title="This dashboard is driving a vaibify hub on another machine over an SSH tunnel. Files, commands and terminals are on that machine, not this one."
+                  ></span>
             <span id="hostModeBadge" class="host-mode-badge"
                   style="display: none;"
                   title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
