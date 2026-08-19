@@ -221,9 +221,18 @@ var VaibifyFiles = (function () {
     }
 
     function fnBindDropZone() {
-        var elList = document.getElementById("listFiles");
-        if (!elList) return;
-        fnBindDropEvents(elList);
+        /* The list stays a drop target -- it always was, and a
+           researcher who has learned to drop onto it must not find that
+           it stopped working. The labelled zone is bound BECAUSE it is
+           labelled: it says "drop files here", and a target that reads
+           as one without being one is worse than no label at all. */
+        var listTargets = [
+            document.getElementById("listFiles"),
+            document.getElementById("fileUploadDropZone"),
+        ];
+        listTargets.forEach(function (elTarget) {
+            if (elTarget) fnBindDropEvents(elTarget);
+        });
     }
 
     function fnBindDropEvents(elTarget) {
