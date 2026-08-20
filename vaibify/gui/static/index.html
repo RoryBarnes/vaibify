@@ -717,10 +717,10 @@
             Test generation will use the Anthropic API directly,
             which may incur charges.
         </p>
-        <div class="form-group">
-            <input type="password" id="inputApiKey"
-                   placeholder="Anthropic API Key (sk-ant-...)">
-        </div>
+        <p id="textApiKeyStatus"
+           style="font-size: 13px; margin-bottom: 16px;">
+            Checking for a configured API key...
+        </p>
         <div class="modal-actions">
             <button class="btn" id="btnApiCancel">Cancel</button>
             <button class="btn btn-primary" id="btnApiConfirm">

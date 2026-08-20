@@ -97,6 +97,7 @@ from .commandLs import fnListCommand
 from .commandOpen import fnOpenContainerCommand
 from .commandRemote import fnRemoteCommand
 from .commandRemoteHelper import fnRemoteHelperCommand
+from .commandSecret import fnSecretCommand
 from .commandReconcile import fnReconcileCommand
 from .commandRegister import fnRegisterCommand
 from .commandReproduce import fnReproduceCommand
@@ -317,6 +318,7 @@ main.add_command(fnReconcileCommand)
 main.add_command(fnOpenContainerCommand)
 main.add_command(fnRemoteCommand)
 main.add_command(fnRemoteHelperCommand)
+main.add_command(fnSecretCommand)
 
 
 @main.command("stop")

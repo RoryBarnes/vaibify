@@ -248,6 +248,37 @@ def _fsWriteEphemeralFile(sName, sValue):
     return sFilePath
 
 
+def fsMaterializeSecretValue(sName, sValue):
+    """Write an already-in-hand secret value to an ephemeral file.
+
+    The extraction-only credential lane (agent-council design 9.7)
+    holds a value in memory and needs the same secure temporary-file
+    machinery ``fsMountSecret`` uses, without a second retrieval.
+    This helper validates the name, writes the value through
+    ``_fsWriteEphemeralFile`` (per-user mode-0700 ``~/.vaibify/tmp``
+    root, mode-600 file) and returns the path. It retrieves nothing
+    and stores nothing; cleanup goes through ``fnCleanupSecretFiles``.
+
+    Parameters
+    ----------
+    sName : str
+        Logical name of the secret, used only in the file prefix.
+    sValue : str
+        The secret value already held in memory.
+
+    Returns
+    -------
+    str
+        Absolute path to the ephemeral file containing the secret.
+    """
+    _fnValidateSecretName(sName)
+    if not isinstance(sValue, str) or not sValue:
+        raise ValueError(
+            "The secret value must be a non-empty string."
+        )
+    return _fsWriteEphemeralFile(sName, sValue)
+
+
 def fnCleanupSecretFiles(listPaths):
     """Remove ephemeral secret files.
 

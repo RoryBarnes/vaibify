@@ -109,7 +109,6 @@ class TestFdictRunTestGeneration:
         dictWorkflow = {"listSteps": [{"sDirectory": "/ws"}]}
         mockRequest = MagicMock()
         mockRequest.bUseApi = False
-        mockRequest.sApiKey = None
         mockRequest.bDeterministic = True
         mockRequest.bForceOverwrite = False
 
@@ -119,7 +118,7 @@ class TestFdictRunTestGeneration:
         dictResult = await _fdictRunTestGeneration(
             dictCtx, "cid-1", 0, dictWorkflow,
             mockGenerate, mockRequest,
-            _frequestBuildStoodDownRequest(),
+            _frequestBuildStoodDownRequest(), None,
         )
         assert dictResult == dictExpected
         mockGenerate.assert_called_once()
@@ -132,7 +131,6 @@ class TestFdictRunTestGeneration:
         dictWorkflow = {"listSteps": []}
         mockRequest = MagicMock()
         mockRequest.bUseApi = True
-        mockRequest.sApiKey = "key"
         mockRequest.bDeterministic = False
         mockRequest.bForceOverwrite = True
 
@@ -142,9 +140,12 @@ class TestFdictRunTestGeneration:
         await _fdictRunTestGeneration(
             dictCtx, "cid-1", 0, dictWorkflow,
             mockGenerate, mockRequest,
-            _frequestBuildStoodDownRequest(),
+            _frequestBuildStoodDownRequest(), "resolved-key",
         )
         assert mockGenerate.call_args[1]["sUser"] == "defaultuser"
+        # The resolved keyring value -- not a request-body field --
+        # is what reaches the generator.
+        assert mockGenerate.call_args[0][6] == "resolved-key"
 
     @pytest.mark.asyncio
     async def test_generation_exception_raises_http(self):
@@ -154,7 +155,6 @@ class TestFdictRunTestGeneration:
         dictWorkflow = {"listSteps": []}
         mockRequest = MagicMock()
         mockRequest.bUseApi = False
-        mockRequest.sApiKey = None
         mockRequest.bDeterministic = True
         mockRequest.bForceOverwrite = False
 
@@ -165,7 +165,7 @@ class TestFdictRunTestGeneration:
             await _fdictRunTestGeneration(
                 dictCtx, "cid-1", 0, dictWorkflow,
                 mockGenerate, mockRequest,
-                _frequestBuildStoodDownRequest(),
+                _frequestBuildStoodDownRequest(), None,
             )
         assert excInfo.value.status_code == 500
         assert "Generation failed" in excInfo.value.detail
@@ -1403,3 +1403,112 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
         dictCtx["docker"].ftRunInContainerStreamed.assert_not_called()
         assert "sUnitTest" not in dictStep["dictVerification"]
         dictCtx["save"].assert_not_called()
+
+
+# -------------------------------------------------------------------
+# _fsRequireConfiguredProviderKey and the provider-key capability route
+# -------------------------------------------------------------------
+
+
+class TestProviderKeyResolution:
+    def test_resolves_the_stored_key_from_the_keyring(self):
+        """The route reads the anthropic_api_key slot at request time."""
+        from vaibify.config.secretManager import fnStoreSecret
+        from vaibify.gui.routes.testRoutes import (
+            _fsRequireConfiguredProviderKey,
+        )
+        fnStoreSecret(
+            "anthropic_api_key", "sk-ant-stored-key", "keyring",
+        )
+        assert _fsRequireConfiguredProviderKey() == "sk-ant-stored-key"
+
+    def test_refuses_with_the_host_command_when_unconfigured(self):
+        """An unconfigured key refuses BEFORE any carrier opens."""
+        from fastapi import HTTPException
+        from vaibify.gui.routes.testRoutes import (
+            _fsRequireConfiguredProviderKey,
+        )
+        with pytest.raises(HTTPException) as excInfo:
+            _fsRequireConfiguredProviderKey()
+        assert excInfo.value.status_code == 409
+        assert "No Anthropic API key is configured" in (
+            excInfo.value.detail
+        )
+        assert (
+            "vaibify secret set-provider-key --provider anthropic"
+            in excInfo.value.detail
+        )
+
+
+class TestProviderKeyCapabilityRoute:
+    def _fnCaptureHandler(self):
+        """Register the routes on a capture app; return the GET handler."""
+        from vaibify.gui.routes import testRoutes
+        dictCtx = _fdictBuildContext()
+        app = MagicMock()
+        listHandlers = {}
+
+        def ffnCaptureRoute(sPath):
+            def ffnDecorate(fnHandler):
+                listHandlers[sPath] = fnHandler
+                return fnHandler
+            return ffnDecorate
+
+        app.get = ffnCaptureRoute
+        app.post = ffnCaptureRoute
+        app.delete = ffnCaptureRoute
+        testRoutes._fnRegisterTestGenerate(app, dictCtx)
+        return listHandlers["/api/provider-key/{sProvider}"]
+
+    def _frequestBuildBrowserRequest(self, bAgentLane=False):
+        from vaibify.gui.actionCatalog import S_SESSION_HEADER_NAME
+        dictHeaders = (
+            {S_SESSION_HEADER_NAME.lower(): "agent-token"}
+            if bAgentLane else {}
+        )
+        return SimpleNamespace(headers=dictHeaders)
+
+    @pytest.mark.asyncio
+    async def test_reports_unconfigured_without_the_value(self):
+        fnHandler = self._fnCaptureHandler()
+        dictResult = await fnHandler(
+            "anthropic", self._frequestBuildBrowserRequest(),
+        )
+        assert dictResult["bConfigured"] is False
+        assert "set-provider-key" in dictResult["sConfigureCommand"]
+        assert set(dictResult) == {"bConfigured", "sConfigureCommand"}
+
+    @pytest.mark.asyncio
+    async def test_reports_configured_and_never_the_value(self):
+        from vaibify.config.secretManager import fnStoreSecret
+        fnStoreSecret(
+            "anthropic_api_key", "sk-ant-stored-key", "keyring",
+        )
+        fnHandler = self._fnCaptureHandler()
+        dictResult = await fnHandler(
+            "anthropic", self._frequestBuildBrowserRequest(),
+        )
+        assert dictResult["bConfigured"] is True
+        assert "sk-ant-stored-key" not in repr(dictResult)
+
+    @pytest.mark.asyncio
+    async def test_rejects_the_agent_token_lane(self):
+        """Credential capability reads refuse the in-container agent."""
+        from fastapi import HTTPException
+        fnHandler = self._fnCaptureHandler()
+        with pytest.raises(HTTPException) as excInfo:
+            await fnHandler(
+                "anthropic",
+                self._frequestBuildBrowserRequest(bAgentLane=True),
+            )
+        assert excInfo.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_unknown_provider_is_404(self):
+        from fastapi import HTTPException
+        fnHandler = self._fnCaptureHandler()
+        with pytest.raises(HTTPException) as excInfo:
+            await fnHandler(
+                "openai", self._frequestBuildBrowserRequest(),
+            )
+        assert excInfo.value.status_code == 404

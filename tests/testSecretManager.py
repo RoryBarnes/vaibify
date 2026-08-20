@@ -359,3 +359,59 @@ def test_secret_name_per_remote_keyring_slot_accepted():
         "github_token:owner-1/repo_2",
     ):
         _fnValidateSecretName(sName)
+
+
+# -------------------------------------------------------------------
+# fsMaterializeSecretValue: the materialize-in-hand helper
+# -------------------------------------------------------------------
+
+
+def test_fsMaterializeSecretValue_writes_mode_600_file():
+    """An in-hand value lands in an ephemeral file, mode 600, verbatim."""
+    from vaibify.config.secretManager import (
+        fnCleanupSecretFiles,
+        fsMaterializeSecretValue,
+    )
+    sFilePath = fsMaterializeSecretValue(
+        "council_runner_token", "held-in-memory-value",
+    )
+    try:
+        assert os.path.isfile(sFilePath)
+        iActualPermissions = stat.S_IMODE(os.stat(sFilePath).st_mode)
+        assert iActualPermissions == (stat.S_IRUSR | stat.S_IWUSR)
+        with open(sFilePath, "r") as fileHandle:
+            assert fileHandle.read() == "held-in-memory-value"
+    finally:
+        fnCleanupSecretFiles([sFilePath])
+    assert not os.path.exists(sFilePath)
+
+
+def test_fsMaterializeSecretValue_retrieves_nothing():
+    """The helper accepts a value; it must never call the retrieval lane."""
+    from vaibify.config import secretManager
+    from vaibify.config.secretManager import (
+        fnCleanupSecretFiles,
+        fsMaterializeSecretValue,
+    )
+    with patch.object(
+        secretManager, "fsRetrieveSecret",
+    ) as mockRetrieve:
+        sFilePath = fsMaterializeSecretValue(
+            "council_runner_token", "value",
+        )
+    fnCleanupSecretFiles([sFilePath])
+    mockRetrieve.assert_not_called()
+
+
+def test_fsMaterializeSecretValue_rejects_invalid_name():
+    from vaibify.config.secretManager import fsMaterializeSecretValue
+    with pytest.raises(ValueError):
+        fsMaterializeSecretValue("foo/../bar", "value")
+
+
+def test_fsMaterializeSecretValue_rejects_empty_value():
+    from vaibify.config.secretManager import fsMaterializeSecretValue
+    with pytest.raises(ValueError):
+        fsMaterializeSecretValue("council_runner_token", "")
+    with pytest.raises(ValueError):
+        fsMaterializeSecretValue("council_runner_token", None)

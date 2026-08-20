@@ -1224,12 +1224,23 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
             listTarBuilders.append(
                 str(pathFile.relative_to(REPO_ROOT))
             )
-    assert listTarBuilders == ["vaibify/docker/dockerConnection.py"], (
-        f"tar entries are built in {listTarBuilders}; this invariant "
-        f"pins the uid-1000 default of the ONE builder in the Docker "
-        f"gateway. A new tar-building write path is outside its reach "
-        f"— either route the write through the gateway or give the new "
-        f"path its own ownership invariant before extending this list."
+    # agentCouncilContext builds HOST-side snapshot archives that never
+    # reach ``put_archive``, so the uid-1000 contract does not apply to
+    # it; its own ownership invariants are
+    # ``testSnapshotTarEntriesCarryNeutralOwnership`` and
+    # ``testSnapshotModuleNeverWritesIntoTheContainer`` in
+    # ``tests/testAgentCouncilContext.py``.
+    assert sorted(listTarBuilders) == [
+        "vaibify/docker/dockerConnection.py",
+        "vaibify/gui/agentCouncilContext.py",
+    ], (
+        f"tar entries are built in {sorted(listTarBuilders)}; this "
+        f"invariant pins the uid-1000 default of the ONE builder in the "
+        f"Docker gateway (the council snapshot builder is host-side and "
+        f"carries its own invariant). A new tar-building write path is "
+        f"outside its reach — either route the write through the "
+        f"gateway or give the new path its own ownership invariant "
+        f"before extending this list."
     )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
@@ -4243,7 +4254,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
     # the definition producer (R8) — the stamp lives at the
     # producer's own seam, never at save time.
-    "routes/testRoutes.py": 817,
+    # +61 (2026-08-19, agent-council phase 0): the sApiKey raw-key lane
+    # is retired. The generate-test route resolves the stored provider
+    # key through secretManager BEFORE any carrier opens (a missing key
+    # must refuse an untouched container, so the pre-flight belongs
+    # beside the other pre-carrier refusals in this module), and the
+    # browser-only /api/provider-key/{sProvider} capability route
+    # reports bConfigured for the same consumer — the test-generation
+    # modal. Both sit at this module's existing seam: routes serving
+    # test generation.
+    "routes/testRoutes.py": 878,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5686,4 +5706,43 @@ def testFixedTemporaryNamesDoNotSpread():
         "pipelineUtils.fsBuildUniqueTemporaryPath, or lower "
         "I_FIXED_TEMPORARY_NAME_BUDGET if you removed one:\n  "
         + "\n  ".join(listSites)
+    )
+
+
+_REGEX_PROVIDER_CLIENT_CONSTRUCTION = re.compile(
+    r"\b(?:AsyncAnthropic|Anthropic|AsyncOpenAI|OpenAI)\s*\("
+)
+
+
+def testProviderClientConstructionOnlyInProviderApiTransport():
+    """Provider API clients are constructed only in the transport authority.
+
+    Agent-council design 8.3: one narrow low-level provider transport
+    (``vaibify/gui/providerApiTransport.py``) owns lazy SDK loading,
+    fixed official-endpoint client construction, and credential-safe
+    error wrapping. A second construction site would be a second
+    independent broker whose endpoint and error text nobody audits —
+    the exact defect the council design forbids. High-level callers
+    (``llmInvoker`` today, council adapters later) keep their own
+    prompt/response contracts and delegate the client to the transport.
+    """
+    listOffenders = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        if pathFile.name == "providerApiTransport.py":
+            continue
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        for iLine, sLine in enumerate(
+            fsReadSource(pathFile).splitlines(), 1
+        ):
+            if _REGEX_PROVIDER_CLIENT_CONSTRUCTION.search(sLine):
+                listOffenders.append(
+                    f"{pathFile.relative_to(REPO_ROOT)}:{iLine}"
+                    f"  {sLine.strip()}"
+                )
+    assert listOffenders == [], (
+        "Provider API client construction outside "
+        "vaibify/gui/providerApiTransport.py. Delegate to the "
+        "transport authority instead of constructing a second "
+        "client:\n  " + "\n  ".join(listOffenders)
     )
