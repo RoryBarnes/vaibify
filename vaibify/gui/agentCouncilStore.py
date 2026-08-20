@@ -34,6 +34,7 @@ __all__ = [
     "flistSummariseCampaigns",
     "fnCheckpointStoredCampaign",
     "fdictAppendCampaignEvent",
+    "fdictRecordCampaignEvidence",
     "fdictCollectCampaignEvents",
     "fsAcceptCampaignPlanLocally",
     "fbDeleteStoredCampaign",
@@ -581,6 +582,19 @@ def fdictAppendCampaignEvent(dictStore, sCampaignId, dictEvent):
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} for an event")
     return dictEntry["ringEvents"].fdictAppendEvent(dictEvent)
+
+
+def fdictRecordCampaignEvidence(dictStore, sCampaignId, dictEvidenceEntry):
+    """Record one evidence entry against a campaign's ledger.
+
+    The engine's evidence callback, bound per campaign by the
+    controller: admission or refusal is the ledger's decision, and a
+    refusal reverts the claim it would have backed (the engine's job).
+    """
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None:
+        raise ValueError(f"no stored campaign {sCampaignId!r} for evidence")
+    return dictEntry["ledgerEvidence"].fdictRecordEvidence(dictEvidenceEntry)
 
 
 def fdictCollectCampaignEvents(dictStore, sCampaignId, iAfterSequence):

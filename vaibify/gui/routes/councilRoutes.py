@@ -34,6 +34,8 @@ THREE THINGS THIS MODULE ENFORCES, each an invariant named in section 21:
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
+
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
@@ -63,7 +65,6 @@ I_MAX_QUESTION_LENGTH = 20000
 I_MAX_MODEL_LENGTH = 200
 I_MAX_ROLE_LENGTH = 2000
 I_MAX_RESPONSE_LENGTH = 20000
-I_MAX_PLAN_LENGTH = 200000
 I_MAX_PARTICIPANTS = 8
 I_MIN_PARTICIPANTS = 2
 
@@ -100,16 +101,11 @@ class CouncilRespondRequest(BaseModel):
     sResponseText: str = Field(min_length=1, max_length=I_MAX_RESPONSE_LENGTH)
 
 
-class CouncilAcceptPlanRequest(BaseModel):
-    """Body for accepting a plan; the researcher supplies the final text.
-
-    The text is required rather than read from the candidate plan
-    because acceptance is a review gate (section 6.6): the researcher
-    confirms the exact words that land, and the UI pre-fills them from
-    the candidate plan.
-    """
-
-    sPlanText: str = Field(min_length=1, max_length=I_MAX_PLAN_LENGTH)
+# Acceptance takes NO body (remediation R3): what lands in plan.md is
+# the council's own server-held candidate, accepted through the
+# engine's planReady gate — caller-supplied plan text was the accept
+# bypass the review flagged, and the review gate is the researcher
+# READING the candidate, not retyping it.
 
 
 def _fdictCampaignStore(requestHttp):
@@ -197,23 +193,73 @@ def _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
         for dictRequest in dictRegistry["dictApiRequestsById"].values())
 
 
-def _fsLaunchCampaignTurn(dictRegistry, dictStore, sCampaignId):
-    """Mint and register one turn-in-flight, refusing a duplicate launch.
+async def _fgenericSubmitMapped(dictControllerState, sCampaignId,
+                                sCommandKind, ffnExecuteCommand):
+    """Submit a controller command, mapping its refusals onto HTTP.
 
-    One stable registry record per turn (section 15.3): the turn id is
-    minted from a per-campaign counter so a second launch while a turn is
-    already live is refused, not silently doubled. The actual paid turn
-    is driven by the registry and its runner lifecycle at integration;
-    Phase 3 records the turn so the idle-watchdog veto holds and the UI
-    can show a live council.
+    A ``CouncilCommandError`` is a serialization or lifecycle refusal —
+    the campaign is deliberating, has nothing to continue, or was asked
+    for a command outside the vocabulary — and answers 409 with the
+    controller's own words. Everything else propagates untouched.
     """
-    if _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
+    try:
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            dictControllerState, sCampaignId, sCommandKind,
+            ffnExecuteCommand)
+    except agentCouncilController.CouncilCommandError as error:
+        raise HTTPException(409, str(error))
+
+
+def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
+                                     sCampaignId):
+    """Refuse a deliberation launch while the campaign has live work."""
+    if agentCouncilController.fbCampaignDriveIsLive(
+            dictControllerState, sCampaignId) or _fbCampaignHasLiveWork(
+            dictRegistry, sCampaignId):
         raise HTTPException(
             409, "a turn is already in flight for this council")
-    sTurnId = agentCouncilStore.fsMintNextTurnId(dictStore, sCampaignId)
-    agentCouncilRegistry.fbRegisterTurnInFlight(
-        dictRegistry, sCampaignId, sTurnId)
-    return sTurnId
+
+
+def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
+                             sProjectRepoPath, sCampaignId):
+    """Build the closure that captures the snapshot under the project lock.
+
+    The bounded project lock (design section 9.2) is the container's
+    reconciliation lock: the capture window is serialized against
+    pipeline state work for the same container, so the snapshot never
+    races a run the researcher just launched. The capture itself
+    streams in a worker thread; the coherence refusals live in
+    ``agentCouncilContext``.
+    """
+    from .. import agentCouncilContext
+    from ..pipelineState import _fnEnsureStateLockForContainer
+
+    async def _fdictCaptureUnderProjectLock():
+        _fnEnsureStateLockForContainer(dictCtx, sContainerId)
+        async with dictCtx["dictPipelineStateLocks"][sContainerId]:
+            return await asyncio.to_thread(
+                agentCouncilContext.fdictCaptureProjectContextSnapshot,
+                dictCtx["docker"], sContainerId, sProjectRepoPath,
+                sCampaignId,
+                _fdictCampaignStore(requestHttp)["sDurableStoreRoot"])
+
+    return _fdictCaptureUnderProjectLock
+
+
+def _ffnBuildImageResolver(dictCtx, sContainerId):
+    """Build the closure that resolves the project container's image."""
+
+    async def _fsResolveRunnerImage():
+        listContainers = await asyncio.to_thread(
+            dictCtx["docker"].flistGetRunningContainers)
+        for dictContainer in listContainers:
+            if dictContainer["sContainerId"] == sContainerId:
+                return dictContainer["sImage"]
+        raise HTTPException(
+            502, "cannot resolve the project container's image for the "
+            "council runners")
+
+    return _fsResolveRunnerImage
 
 
 def _fnDrainCampaignWork(dictRegistry, sCampaignId):
@@ -403,26 +449,37 @@ def _fnRegisterStartCouncil(app, dictCtx):
             "sSnapshotIdentity": "",
         })
 
+        dictControllerState = _fdictControllerState(requestHttp)
+        sCampaignId = dictCampaign["sCampaignId"]
+
         async def _fdictExecuteStart():
+            _fnRefuseLaunchWhileCampaignBusy(
+                dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
                 dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,
                 "researcher convened the council")
             agentCouncilStore.fdictRegisterStartedCampaign(
                 dictStore, dictCampaign)
-            sTurnId = _fsLaunchCampaignTurn(
-                dictRegistry, dictStore, dictCampaign["sCampaignId"])
+            dictLaunched = (
+                await agentCouncilController.fdictLaunchCampaignDeliberation(
+                    dictControllerState, dictStore, dictRegistry,
+                    sCampaignId,
+                    _ffnBuildSnapshotCapture(
+                        dictCtx, requestHttp, sContainerId,
+                        sProjectRepoPath, sCampaignId),
+                    _ffnBuildImageResolver(dictCtx, sContainerId)))
             agentCouncilStore.fdictAppendCampaignEvent(
-                dictStore, dictCampaign["sCampaignId"],
-                _fdictBuildEvent("campaignStarted", sTurnId))
+                dictStore, sCampaignId,
+                _fdictBuildEvent("campaignStarted", dictLaunched["sTurnId"]))
             return {
-                "sCampaignId": dictCampaign["sCampaignId"],
-                "sTurnId": sTurnId,
+                "sCampaignId": sCampaignId,
+                "sTurnId": dictLaunched["sTurnId"],
                 "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
-                    dictStore, dictCampaign["sCampaignId"]),
+                    dictStore, sCampaignId),
             }
 
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
-            _fdictControllerState(requestHttp), dictCampaign["sCampaignId"],
+        return await _fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_START, _fdictExecuteStart)
 
 
@@ -440,22 +497,26 @@ def _fnRegisterRespond(app, dictCtx):
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
 
+        dictControllerState = _fdictControllerState(requestHttp)
+
         async def _fdictExecuteRespond():
-            dictCampaign = _fjsonRequireCampaign(
+            _fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
-            dictCampaign["listResearcherResponses"].append(
-                {"sResponseText": request.sResponseText})
-            sTurnId = _fsLaunchCampaignTurn(
-                dictRegistry, dictStore, sCampaignId)
-            agentCouncilStore.fnCheckpointStoredCampaign(
-                dictStore, sCampaignId, dictCampaign)
+            dictContinued = (
+                await agentCouncilController
+                .fdictContinueCampaignAfterResponse(
+                    dictControllerState, dictStore, dictRegistry,
+                    sCampaignId, request.sResponseText))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
-                _fdictBuildEvent("researcherResponded", sTurnId))
-            return {"sTurnId": sTurnId, "dictCampaign": dictCampaign}
+                _fdictBuildEvent("researcherResponded",
+                                 dictContinued["sTurnId"]))
+            return {"sTurnId": dictContinued["sTurnId"],
+                    "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
+                        dictStore, sCampaignId)}
 
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
-            _fdictControllerState(requestHttp), sCampaignId,
+        return await _fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_RESPOND, _fdictExecuteRespond)
 
 
@@ -473,22 +534,20 @@ def _fnRegisterRequestStop(app, dictCtx):
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
 
+        dictControllerState = _fdictControllerState(requestHttp)
+
         async def _fdictExecuteRequestStop():
-            dictCampaign = _fjsonRequireCampaign(
+            _fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
-            _fnDrainCampaignWork(dictRegistry, sCampaignId)
-            dictCampaign["bStopRequested"] = True
-            agentCouncilCampaign.fnTransitionCampaignState(
-                dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
-                "researcher requested a stop")
-            agentCouncilStore.fnCheckpointStoredCampaign(
-                dictStore, sCampaignId, dictCampaign)
+            dictStopped = await agentCouncilController.fdictRequestCampaignStop(
+                dictControllerState, dictStore, dictRegistry, sCampaignId,
+                lambda: _fnDrainCampaignWork(dictRegistry, sCampaignId))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId, _fdictBuildEvent("stopRequested"))
-            return {"dictCampaign": dictCampaign}
+            return dictStopped
 
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
-            _fdictControllerState(requestHttp), sCampaignId,
+        return await _fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_REQUEST_STOP,
             _fdictExecuteRequestStop)
 
@@ -500,31 +559,27 @@ def _fnRegisterAcceptPlan(app, dictCtx):
         "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictAcceptPlan(
-        sContainerId: str, sCampaignId: str,
-        request: CouncilAcceptPlanRequest, requestHttp: Request,
+        sContainerId: str, sCampaignId: str, requestHttp: Request,
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
+        dictRegistry = _fdictCouncilRegistry(requestHttp)
+        dictControllerState = _fdictControllerState(requestHttp)
 
         async def _fdictExecuteAcceptPlan():
-            dictCampaign = _fjsonRequireCampaign(
+            _fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
-            sLocalPlanPath = agentCouncilStore.fsAcceptCampaignPlanLocally(
-                dictStore, sCampaignId, request.sPlanText)
-            dictCampaign["listResearcherDecisions"].append(
-                {"sDecision": "acceptPlan"})
-            agentCouncilCampaign.fnTransitionCampaignState(
-                dictCampaign, agentCouncilCampaign.S_STATE_PLAN_ACCEPTED,
-                "researcher accepted the plan")
-            agentCouncilStore.fnCheckpointStoredCampaign(
-                dictStore, sCampaignId, dictCampaign)
+            dictAccepted = (
+                await agentCouncilController.fdictAcceptCampaignPlan(
+                    dictControllerState, dictStore, dictRegistry,
+                    sCampaignId))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId, _fdictBuildEvent("planAccepted"))
-            return {"bAccepted": True, "sLocalPlanPath": sLocalPlanPath}
+            return dictAccepted
 
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
-            _fdictControllerState(requestHttp), sCampaignId,
+        return await _fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_ACCEPT_PLAN,
             _fdictExecuteAcceptPlan)
 
@@ -554,7 +609,7 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
             agentCouncilStore.fbDeleteStoredCampaign(dictStore, sCampaignId)
             return {"bDeleted": True, "sCampaignId": sCampaignId}
 
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
+        return await _fgenericSubmitMapped(
             _fdictControllerState(requestHttp), sCampaignId,
             agentCouncilController.S_COMMAND_DELETE, _fdictExecuteDelete)
 

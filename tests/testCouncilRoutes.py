@@ -7,11 +7,23 @@ never do. The assertions are the section 15.3 list: the browser lease is
 required, a foreign lease is refused, the agent-token lane is refused on
 every mutating route and on the credential-bearing capabilities read,
 start registers exactly one turn-in-flight, a launch while a turn is
-already live is refused, a stop leaves no live work, and accepting a plan
-writes only host app-data — never the project container.
+already live is refused, a stop is honest (a request against a live
+engine, an immediate settle otherwise), and accepting a plan writes only
+host app-data — never the project container.
+
+Since R1b, start drives the REAL controller and engine: the fixture
+substitutes gate-controlled fake provider connections and a fixture
+snapshot writer, so deliberation runs with no daemon and each test
+decides when turns settle by opening the gate. Clients that launch a
+campaign are context-managed so the drive task's event loop outlives
+the individual request.
 """
 
+import asyncio
+import io
 import os
+import tarfile
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +31,8 @@ from unittest.mock import patch
 
 from vaibify.gui import (
     actionCatalog,
+    agentCouncilContext,
+    agentCouncilController,
     agentCouncilRegistry,
     agentCouncilStore,
     browserSession,
@@ -26,6 +40,7 @@ from vaibify.gui import (
     pipelineServer,
 )
 from vaibify.config import registryManager
+from tests.agentCouncilHarness import fdictMakeTurnResult
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
@@ -82,6 +97,89 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
         os.path.join(sRegistryDirectory, "registry.json"))
 
 
+class _GatedFakeConnection:
+    """A provider connection whose turns settle only when the gate opens.
+
+    The gate is a ``threading.Event`` polled from the coroutine, NOT an
+    ``asyncio.Event``: the test thread opens the gate while the drive
+    task runs on the TestClient portal's loop in another thread, and a
+    Python 3.9 asyncio.Event is bound to whichever loop existed at its
+    construction — setting it cross-thread is exactly the
+    different-loop trap.
+    """
+
+    def __init__(self, eventGate):
+        self._eventGate = eventGate
+
+    async def fdictPrepareImmutableContext(self, dictTurnRequest):
+        return {"sContextIdentity": "gated-fake"}
+
+    async def fnStartTurn(self, dictTurnRequest):
+        while not self._eventGate.is_set():
+            await asyncio.sleep(0.02)
+
+    async def fiterStreamNormalizedEvents(self):
+        if False:
+            yield {}
+
+    async def fdictCollectStructuredResult(self):
+        return fdictMakeTurnResult(sVerdict="accept")
+
+    async def fsReportCompletion(self):
+        return "terminal"
+
+
+def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
+                               sProjectRepoPath, sCampaignId,
+                               sSnapshotStoreRoot=None):
+    """Write a minimal sealed snapshot the way the real capture would."""
+    sDirectory = os.path.join(sSnapshotStoreRoot, sCampaignId, "snapshot")
+    os.makedirs(sDirectory, exist_ok=True)
+    with tarfile.open(
+            os.path.join(sDirectory, "snapshot.tar"), "w") as fileTar:
+        baProject = b'{"name": "route-test-fixture"}'
+        infoProject = tarfile.TarInfo(name="project.json")
+        infoProject.size = len(baProject)
+        fileTar.addfile(infoProject, io.BytesIO(baProject))
+    return {"sSnapshotSha256": "fixture-snapshot-hash"}
+
+
+@pytest.fixture(autouse=True)
+def eventTurnGate(monkeypatch):
+    """Substitute gated fake connections and the fixture snapshot writer.
+
+    Returns the gate; a test opens it to let in-flight turns settle.
+    The engine itself runs REAL — only the provider seam and the
+    daemon-touching capture are replaced.
+    """
+    import threading
+    eventGate = threading.Event()
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(eventGate))
+    monkeypatch.setattr(
+        agentCouncilContext, "fdictCaptureProjectContextSnapshot",
+        _fdictWriteFixtureSnapshot)
+    return eventGate
+
+
+def _fnWaitForCampaignState(app, sCampaignId, sExpectedState,
+                            fDeadlineSeconds=15.0):
+    """Poll the store until the campaign reaches a state, or fail."""
+    fDeadline = time.monotonic() + fDeadlineSeconds
+    sObservedState = ""
+    while time.monotonic() < fDeadline:
+        dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore, sCampaignId)
+        sObservedState = dictRecord["sState"] if dictRecord else "(gone)"
+        if sObservedState == sExpectedState:
+            return
+        time.sleep(0.05)
+    raise AssertionError(
+        f"campaign never reached {sExpectedState!r} "
+        f"(stuck at {sObservedState!r})")
+
+
 def _fnBuildAppWithTmpStore(tmp_path):
     """Build a viewer app whose council store writes under tmp_path.
 
@@ -125,16 +223,17 @@ def _tEstablishOwnership(app, sName, sContainerId):
 def tOwnerClient(tmp_path):
     """A connected browser client that owns the container project.
 
-    Returns ``(client, app, docker)`` with the lease header set so the
-    bound-lease authority admits it.
+    Yields ``(client, app, docker)`` with the lease header set so the
+    bound-lease authority admits it. Context-managed so the campaign
+    drive task's event loop outlives each individual request.
     """
     app = _fnBuildAppWithTmpStore(tmp_path)
     sCredential, sLease = _tEstablishOwnership(
         app, S_CONTAINER_NAME, S_CONTAINER_ID)
-    client = TestClient(app, headers={
+    with TestClient(app, headers={
         "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
-    })
-    return client, app, MockDockerCouncil
+    }) as client:
+        yield client, app, MockDockerCouncil
 
 
 def _sStartOneCampaign(client):
@@ -236,29 +335,68 @@ def test_duplicate_turn_launch_refused_at_registry():
         dictRegistry, "campaign-x", "turn-1") is False
 
 
-# ── a stop leaves no live work (the human-pause guarantee) ────────
+# ── a stop is honest: a request while live, settled at the boundary ──
 
-def test_request_stop_leaves_no_live_work(tOwnerClient):
-    """After a stop the registry reports no live council work at all."""
+def test_request_stop_is_cooperative_then_settles(
+        tOwnerClient, eventTurnGate):
+    """A stop against a live engine is a REQUEST that settles honestly.
+
+    While turns are in flight the response says ``bStopRequested`` and
+    the state stays the truth (planning) — never a fabricated terminal
+    state over runners nobody settled. Opening the gate lets the
+    in-flight wave settle; the engine then archives at the next
+    boundary and every piece of live work retires.
+    """
     client, app, _ = tOwnerClient
     sCampaignId = _sStartOneCampaign(client)
     response = client.post(
         f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/request-stop")
     assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert dictBody["bStopRequested"] is True
+    assert dictBody["bSettled"] is False
+    assert dictBody["dictCampaign"]["sState"] == "planning"
+    eventTurnGate.set()
     from vaibify.gui import agentCouncilCampaign
-    assert response.json()["dictCampaign"]["sState"] == (
-        agentCouncilCampaign.S_STATE_INTERRUPTED)
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_ARCHIVED)
+    assert agentCouncilRegistry.fbHubHasLiveCouncilWork(app) is False
+
+
+def test_deliberation_reaches_plan_ready_with_no_hand_patched_state(
+        tOwnerClient, eventTurnGate):
+    """Start → real engine over the controller → planReady (R1 proof a).
+
+    Nothing patches the campaign record: the gate opens, every fake
+    turn accepts, and the ENGINE walks the record to planReady through
+    the store's checkpoints. The identity triple carries the sealed
+    snapshot hash the fixture capture returned.
+    """
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    sCampaignId = _sStartOneCampaign(client)
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+    dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        app.state.dictCouncilCampaignStore, sCampaignId)
+    assert dictRecord["dictCandidatePlan"] is not None
+    assert dictRecord["dictProjectIdentity"]["sSnapshotIdentity"] == (
+        "fixture-snapshot-hash")
     assert agentCouncilRegistry.fbHubHasLiveCouncilWork(app) is False
 
 
 # ── accepting a plan writes host app-data, never the project ──────
 
-def test_accept_plan_writes_local_only_not_the_project(tOwnerClient):
+def test_accept_plan_writes_local_only_not_the_project(
+        tOwnerClient, eventTurnGate):
     """A plan lands under the durable app-data root, not in the container."""
     client, app, _ = tOwnerClient
+    eventTurnGate.set()
     sCampaignId = _sStartOneCampaign(client)
-    client.post(
-        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/request-stop")
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
     response = client.post(
         f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/accept-plan",
         json={"sPlanText": "# Plan\n\nStep one.\n"})
@@ -269,7 +407,7 @@ def test_accept_plan_writes_local_only_not_the_project(tOwnerClient):
         app.state.dictCouncilCampaignStore["sDurableStoreRoot"])
 
 
-def test_accept_plan_does_not_write_the_container(tmp_path):
+def test_accept_plan_does_not_write_the_container(tmp_path, eventTurnGate):
     """The negative, proven on the docker double's write recorder."""
     docker = MockDockerCouncil()
     with patch.object(
@@ -284,14 +422,18 @@ def test_accept_plan_does_not_write_the_container(tmp_path):
         "sProjectRepoPath": S_PROJECT_REPO}
     sCredential, sLease = _tEstablishOwnership(
         app, S_CONTAINER_NAME, S_CONTAINER_ID)
-    client = TestClient(app, headers={
-        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease})
-    sCampaignId = _sStartOneCampaign(client)
-    client.post(
-        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/request-stop")
-    client.post(
-        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/accept-plan",
-        json={"sPlanText": "# Plan\n"})
+    eventTurnGate.set()
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        sCampaignId = _sStartOneCampaign(client)
+        from vaibify.gui import agentCouncilCampaign
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+        client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
+            "/accept-plan",
+            json={"sPlanText": "# Plan\n"})
     assert docker.listWrites == [], (
         "accepting a plan wrote to the project container: "
         f"{docker.listWrites}")
@@ -380,12 +522,16 @@ def test_capabilities_reports_container_providers(tOwnerClient):
     assert dictCapabilities["listProviders"]
 
 
-def test_delete_removes_a_stopped_campaign(tOwnerClient):
-    """Deleting a stopped campaign removes it from the store and disk."""
+def test_delete_removes_a_stopped_campaign(tOwnerClient, eventTurnGate):
+    """Deleting a settled campaign removes it from the store and disk."""
     client, app, _ = tOwnerClient
     sCampaignId = _sStartOneCampaign(client)
     client.post(
         f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/request-stop")
+    eventTurnGate.set()
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_ARCHIVED)
     response = client.delete(
         f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}")
     assert response.status_code == 200, response.text

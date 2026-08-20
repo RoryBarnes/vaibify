@@ -568,6 +568,21 @@ def _fnRegisterReleaseContainer(app, dictCtx):
         dictBody = dict(dictPayload, sName=sName, bReleased=(
             sOutcome == sessionLifecycle.S_RELEASE_RELEASED
         ))
+        if sOutcome == sessionLifecycle.S_RELEASE_RELEASED:
+            # No council deliberation may keep running against a
+            # project whose lease was just released (remediation R1):
+            # every live drive bound to this resource is asked to stop
+            # — cooperative for a real engine, so in-flight turns
+            # settle and their runners are destroyed by the
+            # connection's own completion path.
+            from vaibify.gui import agentCouncilController
+            dictControllerState = getattr(
+                app.state,
+                agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+                None)
+            if isinstance(dictControllerState, dict):
+                agentCouncilController.fnDrainControllerForResource(
+                    dictControllerState, sName)
         if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
             # The refusal reason rides `detail`, the shape the client's
             # error extractor reads — the same one the claim 409 uses.

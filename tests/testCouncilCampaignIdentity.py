@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch
 
 from vaibify.gui import (
+    agentCouncilContext,
+    agentCouncilController,
     agentCouncilStore,
     browserSession,
     containerOwnership,
@@ -27,6 +29,10 @@ from vaibify.gui import (
 )
 from vaibify.config import registryManager
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.testCouncilRoutes import (
+    _GatedFakeConnection,
+    _fdictWriteFixtureSnapshot,
+)
 
 
 S_CONTAINER_ID_A = "identitycontaineraid"
@@ -68,6 +74,25 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
         os.path.join(sRegistryDirectory, "registry.json"))
 
 
+@pytest.fixture(autouse=True)
+def fixtureFakeDeliberation(monkeypatch):
+    """Gate-closed fake connections + fixture snapshot writer.
+
+    The gate stays CLOSED: the campaign started under resource A keeps
+    a live drive for the whole test, which is exactly the premise the
+    foreign-delete leak check needs (a running campaign must answer a
+    foreign caller 404, never a busy 409).
+    """
+    import threading
+    eventGate = threading.Event()
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(eventGate))
+    monkeypatch.setattr(
+        agentCouncilContext, "fdictCaptureProjectContextSnapshot",
+        _fdictWriteFixtureSnapshot)
+
+
 def _fnSeedWorkflowRepo(app, sContainerId, sProjectRepoPath):
     """Bind the open workflow's project repo for one container."""
     app.state.dictRouteContext["workflows"][sContainerId] = {
@@ -101,13 +126,15 @@ def tTwoResourceApp(tmp_path):
             sDurableStoreRoot=str(tmp_path / "councils")))
     _fnSeedWorkflowRepo(app, S_CONTAINER_ID_A, S_REPO_A)
     _fnSeedWorkflowRepo(app, S_CONTAINER_ID_B, S_REPO_B)
-    clientA = _clientForContainer(app, S_CONTAINER_NAME_A, S_CONTAINER_ID_A)
-    clientB = _clientForContainer(app, S_CONTAINER_NAME_B, S_CONTAINER_ID_B)
-    response = clientA.post(
-        f"/api/agent-councils/{S_CONTAINER_ID_A}/start",
-        json=DICT_START_BODY)
-    assert response.status_code == 200, response.text
-    return app, clientA, clientB, response.json()["sCampaignId"]
+    with _clientForContainer(
+            app, S_CONTAINER_NAME_A, S_CONTAINER_ID_A) as clientA:
+        clientB = _clientForContainer(
+            app, S_CONTAINER_NAME_B, S_CONTAINER_ID_B)
+        response = clientA.post(
+            f"/api/agent-councils/{S_CONTAINER_ID_A}/start",
+            json=DICT_START_BODY)
+        assert response.status_code == 200, response.text
+        yield app, clientA, clientB, response.json()["sCampaignId"]
 
 
 def test_owner_still_reaches_its_own_campaign(tTwoResourceApp):

@@ -5172,7 +5172,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module's own busy-refusal, name validator, and self-skipping
     # duplicate check rather than duplicating them, so a separate module
     # would only scatter the registry surface it belongs with.
-    "registryRoutes.py": 1858,
+    # +15 (2026-08-20, remediation R1): a successful release drains the
+    # council controller's live drives for the released resource — no
+    # deliberation may keep running against a project whose lease is
+    # gone. Cohesive with the release route it extends.
+    "registryRoutes.py": 1873,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

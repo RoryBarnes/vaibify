@@ -3,27 +3,39 @@
 Section 15.5: create a planning council, watch normalized events, answer
 a blocking question, accept a plan, reload and reopen the campaign, and
 show a stale-baseline warning after the project state changes — all
-through the real backend routes and the in-process campaign store, with
-NO provider SDK and NO permissive Docker fallback. Phase 3 drives no
-runner, so a planning journey runs entirely against the store; the fake
-Docker adapter only answers container existence and stays fail-closed.
+through the real backend routes, the REAL controller and engine, and
+the in-process campaign store, with NO provider SDK and NO permissive
+Docker fallback (lane 1 of the R12 verification lanes: this proves the
+UI journey, nothing about real runners).
 
-The council's blocking-question, plan-ready and stale-baseline conditions
-are produced by the engine at integration. Here they are injected into
-the durable store between UI steps — the deterministic stand-in for the
-absent provider — and the UI is then driven to render and act on that
-backend truth through the ordinary poll path.
+Since R1b the blocking-question gate and the candidate plan are
+produced by the REAL engine driven over scripted fake provider
+connections (needsHuman at the first veto, accept everywhere after),
+and acceptance goes through the engine's planReady gate over the
+server-held candidate. The only remaining record patch is the
+stale-baseline flag, whose real producer is R12.
 """
 
+import io
 import os
 import shutil
+import tarfile
 import tempfile
+import time
 
 import pytest
 
+from vaibify.gui import agentCouncilContext
+from vaibify.gui import agentCouncilController
 from vaibify.gui import agentCouncilRegistry
 from vaibify.gui import agentCouncilStore
 
+from tests.agentCouncilHarness import (
+    CouncilRecorder,
+    FakeCouncilConnection,
+    fdictDecideCompleted,
+    fdictMakeTurnResult,
+)
 from .fakeDockerAdapter import (
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
@@ -53,6 +65,53 @@ def _fnIsolateCouncilStore(serverHub):
     yield
     _fnReleaseBrowserLaneOwnership(serverHub.app.state)
     shutil.rmtree(sTempRoot, ignore_errors=True)
+
+
+def _fdictWriteLaneSnapshot(connectionDocker, sContainerId,
+                            sProjectRepoPath, sCampaignId,
+                            sSnapshotStoreRoot=None):
+    """Write a minimal sealed snapshot the way the real capture would.
+
+    The browser lane's fake Docker adapter cannot serve get_archive or
+    the git identity reads, and lane 1 deliberately proves nothing
+    about real containers — the real capture has its own live lane.
+    """
+    sDirectory = os.path.join(sSnapshotStoreRoot, sCampaignId, "snapshot")
+    os.makedirs(sDirectory, exist_ok=True)
+    with tarfile.open(
+            os.path.join(sDirectory, "snapshot.tar"), "w") as fileTar:
+        baProject = b'{"name": "browser-lane-fixture"}'
+        infoProject = tarfile.TarInfo(name="project.json")
+        infoProject.size = len(baProject)
+        fileTar.addfile(infoProject, io.BytesIO(baProject))
+    return {"sSnapshotSha256": "browser-lane-snapshot-hash"}
+
+
+def _fdictDecideJourneyTurn(sHandle, dictTurnRequest):
+    """needsHuman at the first veto; accept with a plan everywhere else."""
+    if (dictTurnRequest["sPhase"] == "veto"
+            and dictTurnRequest["iRoundNumber"] == 1):
+        return fdictDecideCompleted(fdictMakeTurnResult(
+            sVerdict="needsHuman",
+            listOpenQuestions=["Choose the cache invalidation policy."]))
+    return fdictDecideCompleted(fdictMakeTurnResult(
+        sVerdict="accept",
+        listPlanItems=["add a content-hash cache to the slow step"],
+        sSummary="Cache the slow step keyed on content hashes."))
+
+
+@pytest.fixture(autouse=True)
+def _fnScriptedProviderSeam(monkeypatch):
+    """Route the controller's provider seam onto the scripted fakes."""
+    recorder = CouncilRecorder()
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant: FakeCouncilConnection(
+            dictParticipant["sParticipantId"], _fdictDecideJourneyTurn,
+            recorder))
+    monkeypatch.setattr(
+        agentCouncilContext, "fdictCaptureProjectContextSnapshot",
+        _fdictWriteLaneSnapshot)
 
 
 def _fdictStore(serverHub):
@@ -169,17 +228,8 @@ def testCouncilPlanningJourney(pageDashboard, serverHub):
 
 
 def _fnAnswerABlockingQuestion(page, serverHub, sCampaignId):
-    _fnPatchCampaign(serverHub, sCampaignId, {
-        "sState": "needsHuman",
-        "dictPendingHumanGate": {
-            "sGateKind": "blockingQuestion",
-            "sDecisionRequired": "Choose the cache invalidation policy.",
-            "sWhyEvidenceInsufficient": "Both policies pass every test.",
-            "listAlternatives": ["time-based", "content-hash"],
-            "listPositions": ["participant one prefers content-hash"],
-        },
-    })
-    _fnRetireLiveTurns(serverHub, sCampaignId)
+    """The REAL gate: the engine's first veto raised needsHuman."""
+    _fnWaitForState(page, serverHub, sCampaignId, "needsHuman")
     page.click('.council-tab[data-tab="council"]')
     page.wait_for_selector(".council-needs-human", timeout=16000)
     page.fill("#councilAnswer", "Use the content-hash policy.")
@@ -199,18 +249,13 @@ def _fnWaitForResponseRecorded(page, serverHub, sCampaignId):
 
 
 def _fnAcceptTheCandidatePlan(page, serverHub, sCampaignId):
-    _fnPatchCampaign(serverHub, sCampaignId, {
-        "sState": "planReady",
-        "dictCandidatePlan": {
-            "sPlanText": "Add a content-hash cache to the slow step.",
-            "sResultClassification": "asserted",
-        },
-    })
+    """Acceptance over the REAL planReady candidate the engine adopted."""
+    _fnWaitForState(page, serverHub, sCampaignId, "planReady")
     page.wait_for_selector('.council-tab[data-tab="plan"]', timeout=16000)
     page.click('.council-tab[data-tab="plan"]')
     page.wait_for_selector("#btnCouncilAcceptPlan", timeout=16000)
     page.click("#btnCouncilAcceptPlan")
-    _fnWaitForState(page, serverHub, sCampaignId, "planAccepted")
+    _fnWaitForState(page, serverHub, sCampaignId, "awaitingImplementation")
     page.wait_for_function(
         """() => document.querySelector('.council-plan-accepted') !== null""",
         timeout=16000,

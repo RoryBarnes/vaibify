@@ -344,9 +344,26 @@ def _fnRegisterCouncilLifecycle(app):
         if isinstance(dictStore, dict):
             await asyncio.to_thread(
                 agentCouncilStore.fdictReloadDurableCampaigns, dictStore)
+            # A reloaded campaign still in ``planning`` had a turn with
+            # no terminal record at the crash; it is classified as
+            # interrupted, never resumed (remediation R1) — the labeled
+            # runner reconcile below settles whatever that turn left.
+            await asyncio.to_thread(
+                agentCouncilController
+                .fiClassifyInterruptedCampaignsOnStartup, dictStore)
         await asyncio.to_thread(_fnReconcileCouncilRunners, app)
 
     async def fnDrainCouncilOnShutdown(app):
+        # Live drive tasks stop BEFORE the registry drain destroys
+        # runners: a drive still launching turns would race the drain's
+        # closed admission and report a spurious refusal instead of a
+        # clean stop.
+        dictControllerState = getattr(
+            app.state,
+            agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY, None)
+        if isinstance(dictControllerState, dict):
+            agentCouncilController.fnDrainControllerOnShutdown(
+                dictControllerState)
         await asyncio.to_thread(_fnDrainCouncilRunners, app)
 
     app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
