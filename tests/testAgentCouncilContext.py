@@ -1,0 +1,534 @@
+"""The council snapshot primitive refuses, records, and cleans up.
+
+Unit-level falsification of ``vaibify/gui/agentCouncilContext.py``
+against SYNTHETIC tar streams -- no Docker daemon. Every fake here is
+fail-closed: the connection double answers exactly the two git
+commands the module is allowed to run and raises on anything else, so
+a new container command cannot slip in unmodelled (the permissive-mock
+habit ``testDockerConnectionLive.py`` records the cost of).
+
+The live acceptance leg -- a real daemon, a container whose name
+differs from its id, byte-for-byte non-mutation -- is
+``tests/testAgentCouncilContextLive.py``.
+"""
+
+import io
+import json
+import os
+import pathlib
+import stat
+import tarfile
+
+import pytest
+
+from vaibify.gui import agentCouncilContext
+from vaibify.gui.agentCouncilContext import (
+    SnapshotRefusedError,
+    fdictCaptureProjectContextSnapshot,
+)
+from vaibify.gui.containerGit import (
+    _S_HEAD_MARKER,
+    _S_NOT_REPO_MARKER,
+    _S_STATUS_MARKER,
+)
+
+
+PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
+
+S_REPO_ROOT = "/projects/sampleRepo"
+S_ROOT_COMPONENT = "sampleRepo"
+S_CONTAINER_ID = "cid-council-1"
+S_DEFAULT_HEAD_SHA = "a1b2c3d4" * 5
+
+
+def _fbaBuildArchive(listSpecs, bIncludeRootMember=True):
+    """Return tar bytes shaped like ``container.get_archive`` output."""
+    bufferArchive = io.BytesIO()
+    with tarfile.open(fileobj=bufferArchive, mode="w") as fileTar:
+        if bIncludeRootMember:
+            infoRoot = tarfile.TarInfo(name=S_ROOT_COMPONENT)
+            infoRoot.type = tarfile.DIRTYPE
+            infoRoot.mode = 0o755
+            fileTar.addfile(infoRoot)
+        for dictSpec in listSpecs:
+            infoMember = tarfile.TarInfo(name=dictSpec["sName"])
+            infoMember.type = dictSpec.get("baTypeFlag", tarfile.REGTYPE)
+            infoMember.mode = dictSpec.get("iMode", 0o644)
+            infoMember.linkname = dictSpec.get("sLinkTarget", "")
+            baContent = dictSpec.get("baContent", b"")
+            if infoMember.type == tarfile.REGTYPE and baContent:
+                infoMember.size = len(baContent)
+                fileTar.addfile(infoMember, io.BytesIO(baContent))
+            else:
+                if infoMember.type == tarfile.REGTYPE:
+                    infoMember.size = len(baContent)
+                fileTar.addfile(infoMember)
+    return bufferArchive.getvalue()
+
+
+def _fsBuildStatusOutput(sHeadSha=S_DEFAULT_HEAD_SHA, sPorcelainBody=""):
+    """Return combined-status output shaped like the real git exec."""
+    return (
+        f"{_S_HEAD_MARKER}\n{sHeadSha}\n{_S_STATUS_MARKER}\n"
+        f"{sPorcelainBody}"
+    )
+
+
+class _FakeArchiveContainer:
+    """Answers get_archive with canned chunks; records the path asked."""
+
+    def __init__(self, iterChunks):
+        self._iterChunks = iterChunks
+        self.sRequestedPath = None
+
+    def get_archive(self, sPath):
+        self.sRequestedPath = sPath
+        return (self._iterChunks, {"name": sPath})
+
+
+class _FakeCouncilConnection:
+    """Fail-closed double for the two git reads plus the archive pull.
+
+    ``listStatusOutputs`` is consumed one entry per status call, with
+    the LAST entry reused once exhausted -- so a single entry means
+    "the repository never changed" and two different entries model a
+    repository mutating mid-capture.
+    """
+
+    def __init__(
+        self, baArchiveBytes=b"", listStatusOutputs=None,
+        sToplevelAnswer=S_REPO_ROOT, iterChunksOverride=None,
+    ):
+        iterChunks = (
+            iterChunksOverride
+            if iterChunksOverride is not None
+            else iter([baArchiveBytes])
+        )
+        self.containerFake = _FakeArchiveContainer(iterChunks)
+        self._listStatusOutputs = list(
+            listStatusOutputs or [_fsBuildStatusOutput()],
+        )
+        self._sToplevelAnswer = sToplevelAnswer
+
+    def fcontainerGetById(self, sContainerId):
+        return self.containerFake
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        if "rev-parse --show-toplevel" in sCommand:
+            return (0, self._sToplevelAnswer + "\n")
+        if "status --porcelain" in sCommand:
+            if len(self._listStatusOutputs) > 1:
+                return (0, self._listStatusOutputs.pop(0))
+            return (0, self._listStatusOutputs[0])
+        raise AssertionError(
+            f"unmodelled container command reached the fake: {sCommand!r}"
+        )
+
+
+class _FakeRefusingConnection:
+    """Explodes on ANY use: proves validation ran before any container I/O."""
+
+    def __getattr__(self, sAttributeName):
+        raise AssertionError(
+            f"the container was consulted ({sAttributeName}) before "
+            "input validation finished"
+        )
+
+
+def _fdictCapture(connection, pathStoreRoot, sCampaignId="campaign-one"):
+    """Run one capture against the fake with the test's store root."""
+    return fdictCaptureProjectContextSnapshot(
+        connection, S_CONTAINER_ID, S_REPO_ROOT, sCampaignId,
+        sSnapshotStoreRoot=str(pathStoreRoot),
+    )
+
+
+def _fnAssertStoreIsEmpty(pathStoreRoot):
+    """The falsified claim: a refused capture leaves nothing behind."""
+    assert list(pathStoreRoot.iterdir()) == [], (
+        "a refused or failed capture left a partial snapshot on disk"
+    )
+
+
+# ---------------------------------------------------------------------
+# Happy path: inclusion, exclusion recording, manifest completeness.
+# ---------------------------------------------------------------------
+
+
+def _fbaBuildRepresentativeArchive():
+    """A small repository with includable, excludable, and linked files."""
+    return _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt",
+         "baContent": b"alpha payload\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/analysis",
+         "baTypeFlag": tarfile.DIRTYPE, "iMode": 0o755},
+        {"sName": f"{S_ROOT_COMPONENT}/analysis/results.txt",
+         "baContent": b"beta payload\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/linkToData",
+         "baTypeFlag": tarfile.SYMTYPE, "sLinkTarget": "dataFile.txt"},
+        {"sName": f"{S_ROOT_COMPONENT}/.git/config",
+         "baContent": b"[core]\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/.claude/credentials.json",
+         "baContent": b"topSecretTokenValue"},
+        {"sName": f"{S_ROOT_COMPONENT}/analysis/__pycache__/cached.pyc",
+         "baContent": b"\x00compiled"},
+    ])
+
+
+def testCaptureWritesValidatedArchiveAndCompleteManifest(tmp_path):
+    connection = _FakeCouncilConnection(_fbaBuildRepresentativeArchive())
+    dictManifest = _fdictCapture(connection, tmp_path)
+
+    pathSnapshot = tmp_path / "campaign-one" / "snapshot"
+    with tarfile.open(pathSnapshot / "snapshot.tar") as fileTar:
+        dictMembers = {info.name: info for info in fileTar.getmembers()}
+        assert set(dictMembers) == {
+            "dataFile.txt", "analysis", "analysis/results.txt",
+            "linkToData",
+        }
+        assert (
+            fileTar.extractfile(dictMembers["dataFile.txt"]).read()
+            == b"alpha payload\n"
+        )
+        assert dictMembers["linkToData"].issym()
+        assert dictMembers["linkToData"].linkname == "dataFile.txt"
+
+    dictOmissions = {
+        dictRow["sPath"]: dictRow["sReason"]
+        for dictRow in dictManifest["listOmissions"]
+    }
+    assert set(dictOmissions) == {
+        ".git", ".claude", "analysis/__pycache__",
+    }
+    assert "commit and dirty-state digest" in dictOmissions[".git"]
+    assert dictManifest["sCommitSha"] == S_DEFAULT_HEAD_SHA
+    for sKey in (
+        "sSchemaVersion", "sCampaignId", "sContainerId",
+        "sProjectRepoPath", "sCaptureMethod", "sCoherenceMethod",
+        "sCommitSha", "sDirtyStateDigest", "sCaptureStartIso",
+        "sCaptureEndIso", "iIncludedMemberCount", "iTotalContentBytes",
+        "sSnapshotSha256", "listIncludedEntries", "listOmissions",
+    ):
+        assert sKey in dictManifest, f"manifest is missing {sKey}"
+    assert dictManifest["iTotalContentBytes"] == len(
+        b"alpha payload\n",
+    ) + len(b"beta payload\n")
+    assert connection.containerFake.sRequestedPath == S_REPO_ROOT
+
+    jsonReloaded = json.loads(
+        (pathSnapshot / "manifest.json").read_text(),
+    )
+    assert jsonReloaded["sSnapshotSha256"] == dictManifest["sSnapshotSha256"]
+
+
+def testSnapshotIdentityHashIsDeterministicOverContent(tmp_path):
+    """Two captures of the same content carry the same cited identity."""
+    dictFirst = _fdictCapture(
+        _FakeCouncilConnection(_fbaBuildRepresentativeArchive()),
+        tmp_path, sCampaignId="campaign-one",
+    )
+    dictSecond = _fdictCapture(
+        _FakeCouncilConnection(_fbaBuildRepresentativeArchive()),
+        tmp_path, sCampaignId="campaign-two",
+    )
+    assert dictFirst["sSnapshotSha256"] == dictSecond["sSnapshotSha256"]
+    assert dictFirst["sSnapshotSha256"] == (
+        agentCouncilContext._fsComputeSnapshotContentHash(
+            dictFirst["listIncludedEntries"],
+        )
+    )
+
+
+def testNoCredentialContentReachesTheSnapshotStore(tmp_path):
+    """The excluded credential file's BYTES appear nowhere on the host."""
+    connection = _FakeCouncilConnection(_fbaBuildRepresentativeArchive())
+    _fdictCapture(connection, tmp_path)
+    pathSnapshot = tmp_path / "campaign-one" / "snapshot"
+    for pathArtifact in pathSnapshot.iterdir():
+        assert b"topSecretTokenValue" not in pathArtifact.read_bytes(), (
+            f"credential bytes leaked into {pathArtifact.name}"
+        )
+
+
+def testSnapshotFilesArriveOwnerOnly(tmp_path):
+    connection = _FakeCouncilConnection(_fbaBuildRepresentativeArchive())
+    _fdictCapture(connection, tmp_path)
+    pathSnapshot = tmp_path / "campaign-one" / "snapshot"
+    for pathDirectory in (pathSnapshot, pathSnapshot.parent):
+        assert stat.S_IMODE(pathDirectory.stat().st_mode) == 0o700, (
+            f"{pathDirectory} is not owner-only"
+        )
+    for pathArtifact in pathSnapshot.iterdir():
+        assert stat.S_IMODE(pathArtifact.stat().st_mode) == 0o600, (
+            f"{pathArtifact.name} is not owner-only"
+        )
+
+
+# ---------------------------------------------------------------------
+# Member validation: each hostile shape is REFUSED and leaves nothing.
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dictHostileSpec,sExpectedFragment",
+    [
+        ({"sName": "/etc/passwd", "baContent": b"root:x"},
+         "absolute"),
+        ({"sName": f"{S_ROOT_COMPONENT}/../escaped.txt",
+          "baContent": b"x"},
+         "'..'"),
+        ({"sName": "otherRoot/file.txt", "baContent": b"x"},
+         "outside the archive root"),
+        ({"sName": f"{S_ROOT_COMPONENT}/device",
+          "baTypeFlag": tarfile.CHRTYPE},
+         "character device"),
+        ({"sName": f"{S_ROOT_COMPONENT}/blockDevice",
+          "baTypeFlag": tarfile.BLKTYPE},
+         "block device"),
+        ({"sName": f"{S_ROOT_COMPONENT}/pipe",
+          "baTypeFlag": tarfile.FIFOTYPE},
+         "FIFO"),
+        ({"sName": f"{S_ROOT_COMPONENT}/hardLink",
+          "baTypeFlag": tarfile.LNKTYPE,
+          "sLinkTarget": f"{S_ROOT_COMPONENT}/dataFile.txt"},
+         "hard link"),
+        ({"sName": f"{S_ROOT_COMPONENT}/socketLike",
+          "baTypeFlag": b"9"},
+         "unsupported type"),
+        ({"sName": f"{S_ROOT_COMPONENT}/escapingLink",
+          "baTypeFlag": tarfile.SYMTYPE,
+          "sLinkTarget": "../../etc/passwd"},
+         "outside the project root"),
+        ({"sName": f"{S_ROOT_COMPONENT}/absoluteLink",
+          "baTypeFlag": tarfile.SYMTYPE, "sLinkTarget": "/etc/passwd"},
+         "not a relative in-project path"),
+    ],
+    ids=[
+        "absolutePath", "parentEscape", "foreignRoot",
+        "characterDevice", "blockDevice", "fifo", "hardLink",
+        "unknownType", "escapingSymlink", "absoluteSymlink",
+    ],
+)
+def testHostileArchiveMemberRefusesAndCleansUp(
+    tmp_path, dictHostileSpec, sExpectedFragment,
+):
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"ok"},
+        dictHostileSpec,
+    ])
+    connection = _FakeCouncilConnection(baArchive)
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert sExpectedFragment in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testDuplicateMemberRefusesAndCleansUp(tmp_path):
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"one"},
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"two"},
+    ])
+    connection = _FakeCouncilConnection(baArchive)
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "twice" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testInRootSymlinkIsCapturedAsASymlink(tmp_path):
+    """The other half of the symlink policy: an in-root link is kept."""
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/analysis",
+         "baTypeFlag": tarfile.DIRTYPE},
+        {"sName": f"{S_ROOT_COMPONENT}/analysis/upLink",
+         "baTypeFlag": tarfile.SYMTYPE, "sLinkTarget": "../dataFile.txt"},
+    ])
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(baArchive), tmp_path,
+    )
+    listLinks = [
+        dictEntry for dictEntry in dictManifest["listIncludedEntries"]
+        if dictEntry["sType"] == "symlink"
+    ]
+    assert listLinks == [{
+        "sPath": "analysis/upLink", "sType": "symlink",
+        "iSizeBytes": 0, "sSha256": "", "sLinkTarget": "../dataFile.txt",
+    }]
+
+
+# ---------------------------------------------------------------------
+# Limits: each declared bound refuses cleanly at the boundary.
+# ---------------------------------------------------------------------
+
+
+def testMemberCountLimitRefuses(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        agentCouncilContext, "I_MAX_SNAPSHOT_FILE_COUNT", 2,
+    )
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/one.txt", "baContent": b"1"},
+        {"sName": f"{S_ROOT_COMPONENT}/two.txt", "baContent": b"2"},
+        {"sName": f"{S_ROOT_COMPONENT}/three.txt", "baContent": b"3"},
+    ])
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+    assert "member limit" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testPerFileByteLimitRefuses(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        agentCouncilContext, "I_MAX_SNAPSHOT_MEMBER_BYTES", 4,
+    )
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/big.txt", "baContent": b"12345"},
+    ])
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+    assert "per-file limit" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testTotalByteLimitRefuses(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        agentCouncilContext, "I_MAX_SNAPSHOT_TOTAL_BYTES", 6,
+    )
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/one.txt", "baContent": b"1234"},
+        {"sName": f"{S_ROOT_COMPONENT}/two.txt", "baContent": b"5678"},
+    ])
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+    assert "total snapshot size" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+# ---------------------------------------------------------------------
+# Root, identity, coherence, and reuse refusals.
+# ---------------------------------------------------------------------
+
+
+def testCampaignIdentifierIsValidatedBeforeAnyContainerUse():
+    for sHostileId in ("", ".", "..", "../evil", "a/b", "a b", None):
+        with pytest.raises(SnapshotRefusedError):
+            fdictCaptureProjectContextSnapshot(
+                _FakeRefusingConnection(), S_CONTAINER_ID, S_REPO_ROOT,
+                sHostileId, sSnapshotStoreRoot="/nonexistent",
+            )
+
+
+@pytest.mark.parametrize(
+    "sBadRepoPath", ["", "relative/path", "/", "/projects/sampleRepo/"],
+)
+def testMalformedRepositoryPathRefuses(tmp_path, sBadRepoPath):
+    connection = _FakeCouncilConnection(_fbaBuildRepresentativeArchive())
+    with pytest.raises(SnapshotRefusedError):
+        fdictCaptureProjectContextSnapshot(
+            connection, S_CONTAINER_ID, sBadRepoPath, "campaign-one",
+            sSnapshotStoreRoot=str(tmp_path),
+        )
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testRepositoryRootMustMatchTheGitAuthority(tmp_path):
+    """A subdirectory (git reports a different toplevel) is refused."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(), sToplevelAnswer="/projects",
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "work-tree root" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testNonRepositoryRefuses(tmp_path):
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listStatusOutputs=[_S_NOT_REPO_MARKER + "\n"],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "not a git repository" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testRepositoryChangeDuringStreamingRefusesAndCleansUp(tmp_path):
+    """The coherence falsifier: a mid-capture commit poisons the seal."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listStatusOutputs=[
+            _fsBuildStatusOutput(sHeadSha="a" * 40),
+            _fsBuildStatusOutput(sHeadSha="b" * 40),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "changed while the snapshot was streaming" in str(
+        errorInfo.value,
+    )
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testExistingSnapshotIsRefusedAndPreserved(tmp_path):
+    """Refusing reuse must never delete the capture already on disk."""
+    pathExisting = tmp_path / "campaign-one" / "snapshot"
+    pathExisting.mkdir(parents=True)
+    (pathExisting / "manifest.json").write_text("{}")
+    connection = _FakeCouncilConnection(_fbaBuildRepresentativeArchive())
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "already exists" in str(errorInfo.value)
+    assert (pathExisting / "manifest.json").exists(), (
+        "the refusal deleted the immutable snapshot it refused to touch"
+    )
+
+
+def testMidStreamFailureRemovesThePartialSnapshot(tmp_path):
+    """An I/O failure mid-stream must not strand a half-written tar."""
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt",
+         "baContent": b"x" * 4096},
+    ])
+
+    def _fiterTornStream():
+        yield baArchive[:512]
+        raise OSError("daemon stream torn mid-transfer")
+
+    connection = _FakeCouncilConnection(
+        iterChunksOverride=_fiterTornStream(),
+    )
+    with pytest.raises(OSError, match="torn mid-transfer"):
+        _fdictCapture(connection, tmp_path)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+# ---------------------------------------------------------------------
+# Structural: the new primitive keeps exactly its declared homes.
+# ---------------------------------------------------------------------
+
+
+def testGetArchiveKeepsExactlyItsTwoHomes():
+    """``get_archive`` is called from the gateway and this module only.
+
+    The Phase 0 review admitted ONE new caller of the daemon archive
+    read. A third home would be a new bulk-export surface nobody
+    reviewed -- the same growth this repository's mutation boundary
+    exists to make loud.
+    """
+    listOffenders = []
+    for pathModule in (PATH_REPOSITORY / "vaibify").rglob("*.py"):
+        if "__pycache__" in pathModule.parts:
+            continue
+        if ".get_archive(" in pathModule.read_text():
+            listOffenders.append(pathModule.name)
+    assert sorted(listOffenders) == [
+        "agentCouncilContext.py", "dockerConnection.py",
+    ], (
+        f"get_archive gained an unreviewed caller: {sorted(listOffenders)}"
+    )
+
+
+def testRefusalIsNotAnIoError():
+    """A swallowed refusal is the downgrade bug; keep the types apart."""
+    assert not issubclass(SnapshotRefusedError, OSError)
+    assert not issubclass(SnapshotRefusedError, PermissionError)

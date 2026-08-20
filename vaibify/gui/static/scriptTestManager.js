@@ -210,6 +210,33 @@ var VaibifyTestManager = (function () {
         var elModal = document.getElementById("modalApiConfirm");
         elModal.style.display = "flex";
         elModal.dataset.step = iStep;
+        fnRefreshProviderKeyStatus();
+    }
+
+    async function fnRefreshProviderKeyStatus() {
+        /* Browser-only capability read: the backend reports only
+           bConfigured plus the host command -- never the key value. */
+        var elStatus = document.getElementById("textApiKeyStatus");
+        var elConfirm = document.getElementById("btnApiConfirm");
+        elStatus.textContent = "Checking for a configured API key...";
+        elConfirm.disabled = true;
+        try {
+            var dictStatus = await VaibifyApi.fdictGet(
+                "/api/provider-key/anthropic");
+            if (dictStatus.bConfigured) {
+                elStatus.textContent =
+                    "An Anthropic API key is configured on this host.";
+                elConfirm.disabled = false;
+            } else {
+                elStatus.textContent =
+                    "No Anthropic API key is configured. On the " +
+                    "host, run: " + dictStatus.sConfigureCommand +
+                    " and then reopen this dialog.";
+            }
+        } catch (error) {
+            elStatus.textContent =
+                "Could not check the API key status: " + error.message;
+        }
     }
 
     function fnFinalizeGeneratedTest(iStep) {
@@ -258,7 +285,9 @@ var VaibifyTestManager = (function () {
         VaibifyApp.fnRenderStepList();
     }
 
-    async function fnGenerateTestsWithApi(iStep, sApiKey) {
+    async function fnGenerateTestsWithApi(iStep) {
+        /* No raw key crosses the browser: the backend resolves the
+           stored provider key through secretManager at request time. */
         VaibifyApp.fnShowToast(
             "Generating tests via API...", "success");
         var sContainerId = VaibifyApp.fsGetContainerId();
@@ -266,7 +295,7 @@ var VaibifyTestManager = (function () {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
-                {bUseApi: true, sApiKey: sApiKey}
+                {bUseApi: true}
             );
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
@@ -287,16 +316,8 @@ var VaibifyTestManager = (function () {
             "click", function () {
                 var elModal = document.getElementById("modalApiConfirm");
                 var iStep = parseInt(elModal.dataset.step);
-                var sApiKey = document.getElementById(
-                    "inputApiKey"
-                ).value.trim();
-                if (!sApiKey) {
-                    VaibifyApp.fnShowToast(
-                        "API key is required", "error");
-                    return;
-                }
                 elModal.style.display = "none";
-                fnGenerateTestsWithApi(iStep, sApiKey);
+                fnGenerateTestsWithApi(iStep);
             }
         );
     }
