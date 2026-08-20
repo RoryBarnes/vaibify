@@ -4746,7 +4746,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # which none of this module's other 2800 lines ask, and the domain
     # had been naming the concept with no home for it. What is left
     # here is the payload itself, which is this function's whole job.
-    "pipelineServer.py": 2885,
+    # +1 (2026-08-19): the Agent Council route module joined the route
+    # loader — one line, the unavoidable registration of a new route
+    # group through the existing path.
+    "pipelineServer.py": 2886,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5216,7 +5219,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the figure is the merged file's real size. Taking either side's
     # number alone would have re-armed the ratchet below the module it
     # governs, which fails closed but for a reason nobody could read.
-    "actionCatalog.py": 991,
+    # +14 (2026-08-19): the Agent Council's five human-only mutating
+    # routes joined SET_INTENTIONALLY_EXCLUDED_PATHS with their
+    # rationale — registering a new route module inherently touches the
+    # exclusion set, and the alternative (splitting the catalog) is the
+    # premature-abstraction failure the ratchet exists to prevent.
+    "actionCatalog.py": 1005,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5372,7 +5380,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # grew the module and only the module-size ratchet noticed. It is one
     # more row in DICT_CONTROL_PLANE_SCOPES, which is the table's whole
     # job, so the seam has not moved.
-    "routeScope.py": 953,
+    # +4 (2026-08-19): the Agent Council's four container-read GET routes
+    # joined SET_CONTAINER_READ_ROUTES — the frozen ratchet REQUIRES every
+    # owned-container GET to be listed there, so a new read module cannot
+    # avoid the four rows; the table is the module's job, not a new seam.
+    "routeScope.py": 957,
 }
 
 

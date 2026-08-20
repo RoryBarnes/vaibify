@@ -823,6 +823,20 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Agent Council actions are HUMAN-ONLY (design section 10.2):
+    # starting paid provider work, answering a council's question,
+    # stopping a running council, accepting a plan and deleting a
+    # retained campaign are researcher decisions the in-container agent
+    # must never make on its own. Each handler also rejects the agent
+    # token lane explicitly, so the fail-closed catalog exclusion and
+    # the per-handler refusal agree.
+    ("POST", "/api/agent-councils/{sContainerId}/start"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/respond"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan"),
+    ("DELETE", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container
     # agent exfiltrate home-directory files into a public repository.

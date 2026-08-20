@@ -252,6 +252,10 @@ _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
 # ``container-read`` must appear here, so a NEW owned-container GET fails
 # ``testContainerReadScopeIsAFrozenRatchetedAllowlist`` until acknowledged.
 SET_CONTAINER_READ_ROUTES = frozenset({
+    ("GET", "/api/agent-councils/{sContainerId}"),
+    ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),
