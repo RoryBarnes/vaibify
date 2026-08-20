@@ -15,6 +15,8 @@ import time
 
 from fastapi import FastAPI
 
+from . import agentCouncilRegistry
+from . import agentCouncilStore
 from . import browserSession
 from . import commitCarrier
 from . import containerOwnership
@@ -64,6 +66,19 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     )
     app.state.dictStartResults = (
         startResultStore.fdictCreateStartResultStore()
+    )
+    # The council's two app-owned authorities (design sections 9.3, 7.3):
+    # the registry accounts for live runner/API work and vetoes idle
+    # self-exit; the campaign store holds campaigns and checkpoints their
+    # durable record to host app-data. Both are plain dicts driven by
+    # module functions, so ``app.state`` owns one value each.
+    setattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY,
+        agentCouncilRegistry.fdictCreateCouncilRegistry(),
+    )
+    setattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
+        agentCouncilStore.fdictCreateCampaignStore(),
     )
     app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
@@ -166,6 +181,13 @@ def _fappBuildApplication(dictConfig):
     # hook may only run after the guarded workers have been drained
     # (design §8 — shutdown ordering is a correctness boundary).
     _fnRegisterShutdownDrainGuardedMutations(app)
+    # The council drain is registered AFTER the guarded-mutation drain
+    # and BEFORE the hub lifecycle so it runs before keep-alive shutdown
+    # and flock release (design section 21 — shutdown ordering). Its
+    # startup twin discovers and reconciles labeled runners a crash left
+    # behind, and reloads accepted campaigns from durable app-data,
+    # before any new council starts.
+    _fnRegisterCouncilLifecycle(app)
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
     routeScope.fnValidateRouteScopesOrRaise(app)
@@ -279,6 +301,69 @@ def _fnRegisterShutdownDrainGuardedMutations(app):
         )
 
     app.state.listLifespanShutdown.append(fnDrainGuardedMutations)
+
+
+def _fdockerCreateCouncilClientOrNone():
+    """Return a council Docker client, or None when no daemon is reachable.
+
+    The council is container-only, but the hub it runs in may be a host-
+    only machine with no Docker daemon at all. Reconcile and drain then
+    have no runners to act on, so a failed client construction is a
+    graceful skip rather than a startup or shutdown error.
+    """
+    try:
+        from . import agentCouncilRunner
+        return agentCouncilRunner.fdockerCreateCouncilClient()
+    except Exception:
+        return None
+
+
+def _fnRegisterCouncilLifecycle(app):
+    """Reconcile crashed-runner survivors and reload campaigns; drain on stop.
+
+    Startup (design section 9.4, 7.5): reload accepted campaigns from
+    durable app-data so a restarted hub shows them again, then discover
+    and settle any labeled runner a crash left behind before a new
+    council starts. Shutdown (design section 9.3): stop admitting new
+    turns and destroy or visibly quarantine every live runner. Both are
+    best-effort against the daemon — a host-only hub has none.
+    """
+
+    async def fnReconcileCouncilOnStartup(app):
+        dictStore = getattr(
+            app.state,
+            agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY, None)
+        if isinstance(dictStore, dict):
+            await asyncio.to_thread(
+                agentCouncilStore.fdictReloadDurableCampaigns, dictStore)
+        await asyncio.to_thread(_fnReconcileCouncilRunners, app)
+
+    async def fnDrainCouncilOnShutdown(app):
+        await asyncio.to_thread(_fnDrainCouncilRunners, app)
+
+    app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
+    app.state.listLifespanShutdown.append(fnDrainCouncilOnShutdown)
+
+
+def _fnReconcileCouncilRunners(app):
+    """Discover and settle labeled council runners left by a hub crash."""
+    dictRegistry = getattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY, None)
+    dockerCouncil = _fdockerCreateCouncilClientOrNone()
+    if not isinstance(dictRegistry, dict) or dockerCouncil is None:
+        return
+    agentCouncilRegistry.fdictReconcileLabeledRunnersOnRestart(
+        dictRegistry, dockerCouncil)
+
+
+def _fnDrainCouncilRunners(app):
+    """Close council admission and destroy or quarantine live runners."""
+    dictRegistry = getattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY, None)
+    if not isinstance(dictRegistry, dict):
+        return
+    agentCouncilRegistry.fdictDrainCouncilRegistry(
+        dictRegistry, _fdockerCreateCouncilClientOrNone())
 
 
 def _fnRegisterHubShutdownReleaseLocks(app):

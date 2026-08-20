@@ -438,6 +438,16 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
         return False
     if getattr(app.state, "iActiveWebSockets", 0) > 0:
         return False
+    # Live council work vetoes self-exit exactly like a live socket or a
+    # busy held container (design section 21). The council is invisible
+    # to the other two signals by construction — it polls over HTTP
+    # rather than holding a WebSocket, and its runners are deliberately
+    # kept out of ``dictContainerOwners`` — so without this predicate a
+    # closed tab would let the clock go stale and SIGTERM a hub
+    # mid-turn. Fail-closed: absence of the registry is "no council work".
+    from . import agentCouncilRegistry
+    if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
+        return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False
     fLast = getattr(
