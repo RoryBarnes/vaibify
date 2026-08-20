@@ -33,6 +33,7 @@ S_CONTAINER_ID = "councilcontainerid"
 S_CONTAINER_NAME = "council-project"
 S_HOST_PROJECT = "council-host-project"
 S_AGENT_TOKEN = "agent-token-for-council-container"
+S_PROJECT_REPO = "/workspace/project-repo"
 
 
 DICT_START_BODY = {
@@ -82,7 +83,12 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
 
 
 def _fnBuildAppWithTmpStore(tmp_path):
-    """Build a viewer app whose council store writes under tmp_path."""
+    """Build a viewer app whose council store writes under tmp_path.
+
+    The workflow cache is seeded with an open project repo because the
+    campaign identity is bound to (resource name, project repo): every
+    council route resolves that pair before touching the store.
+    """
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker", MockDockerCouncil,
     ):
@@ -91,6 +97,10 @@ def _fnBuildAppWithTmpStore(tmp_path):
     app.state.dictCouncilCampaignStore = (
         agentCouncilStore.fdictCreateCampaignStore(
             sDurableStoreRoot=str(tmp_path / "councils")))
+    app.state.dictRouteContext["workflows"][S_CONTAINER_ID] = {
+        "sProjectRepoPath": S_PROJECT_REPO}
+    app.state.dictRouteContext["workflows"][S_HOST_PROJECT] = {
+        "sProjectRepoPath": S_PROJECT_REPO}
     return app
 
 
@@ -270,6 +280,8 @@ def test_accept_plan_does_not_write_the_container(tmp_path):
     app.state.dictCouncilCampaignStore = (
         agentCouncilStore.fdictCreateCampaignStore(
             sDurableStoreRoot=str(tmp_path / "councils")))
+    app.state.dictRouteContext["workflows"][S_CONTAINER_ID] = {
+        "sProjectRepoPath": S_PROJECT_REPO}
     sCredential, sLease = _tEstablishOwnership(
         app, S_CONTAINER_NAME, S_CONTAINER_ID)
     client = TestClient(app, headers={

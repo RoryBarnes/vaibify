@@ -29,8 +29,10 @@ __all__ = [
     "CouncilProtocolError",
     "CouncilProviderConnection",
     "DICT_DEFAULT_SETTINGS",
+    "DICT_EMPTY_PROJECT_IDENTITY",
     "LIST_CAMPAIGN_REQUIRED_KEYS",
     "LIST_EXHAUSTED_ROUND_EXITS",
+    "LIST_PROJECT_IDENTITY_KEYS",
     "S_CLAIM_ASSERTED",
     "S_CLAIM_BLOCKED",
     "S_CLAIM_CONFIRMED",
@@ -60,6 +62,7 @@ __all__ = [
     "S_VERDICT_UNDETERMINED",
     "SET_CAMPAIGN_STATES",
     "SET_RECOGNIZED_VETO_VERDICTS",
+    "fbCampaignMatchesPrincipal",
     "fdictCreateCampaign",
     "fdictCreateParticipant",
     "fdictRestoreCampaignFromMetadata",
@@ -138,8 +141,23 @@ LIST_CAMPAIGN_REQUIRED_KEYS = [
     "dictSettings", "listRounds", "iGrantedAdditionalRounds",
     "dictCandidatePlan", "dictPendingHumanGate", "listResearcherDecisions",
     "listResearcherResponses", "listStateTransitions", "bStopRequested",
-    "iObjectionCounter", "iClaimCounter",
+    "iObjectionCounter", "iClaimCounter", "dictProjectIdentity",
 ]
+
+# The canonical identity triple a campaign is bound to (remediation R2):
+# the container name that is the lease principal (the owner map is keyed
+# by NAME, never the raw docker id), the validated project-repo path the
+# campaign deliberates over (one container can host several repos), and
+# the snapshot identity recorded when the immutable context is captured.
+LIST_PROJECT_IDENTITY_KEYS = [
+    "sResourceName", "sProjectRepoPath", "sSnapshotIdentity",
+]
+
+DICT_EMPTY_PROJECT_IDENTITY = {
+    "sResourceName": "",
+    "sProjectRepoPath": "",
+    "sSnapshotIdentity": "",
+}
 
 
 class CouncilProtocolError(Exception):
@@ -190,14 +208,50 @@ def _fdictValidateSettings(dictRequestedSettings):
     return dictSettings
 
 
+def _fdictValidateProjectIdentity(dictProjectIdentity):
+    """Validate the identity triple, or default to the unbound triple."""
+    if dictProjectIdentity is None:
+        return dict(DICT_EMPTY_PROJECT_IDENTITY)
+    if not isinstance(dictProjectIdentity, dict):
+        raise CouncilConfigurationError(
+            "the campaign project identity must be a mapping")
+    if sorted(dictProjectIdentity) != sorted(LIST_PROJECT_IDENTITY_KEYS):
+        raise CouncilConfigurationError(
+            "the campaign project identity must carry exactly "
+            f"{LIST_PROJECT_IDENTITY_KEYS}")
+    for sIdentityKey in LIST_PROJECT_IDENTITY_KEYS:
+        if not isinstance(dictProjectIdentity[sIdentityKey], str):
+            raise CouncilConfigurationError(
+                f"campaign identity '{sIdentityKey}' must be a string")
+    return dict(dictProjectIdentity)
+
+
+def fbCampaignMatchesPrincipal(dictCampaign, sResourceName,
+                               sProjectRepoPath):
+    """Report whether a campaign is bound to this principal and repo.
+
+    The cross-project refusal predicate (remediation R2). An unbound
+    identity — empty resource name or repo — matches NO principal, so a
+    record predating the identity binding is unreachable rather than
+    world-readable.
+    """
+    dictIdentity = dictCampaign.get("dictProjectIdentity") or {}
+    if not sResourceName or not sProjectRepoPath:
+        return False
+    return (dictIdentity.get("sResourceName") == sResourceName
+            and dictIdentity.get("sProjectRepoPath") == sProjectRepoPath)
+
+
 def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
-                        sChairbotParticipantId=""):
+                        sChairbotParticipantId="", dictProjectIdentity=None):
     """Create the durable campaign record in state draft.
 
     Requires at least two participants covering two distinct
     (provider, model) pairs. The chairbot defaults to the first
     configured participant (section 6.3.1); the effective charter
-    version and text are recorded immutably (section 5.5).
+    version and text are recorded immutably (section 5.5). The project
+    identity triple binds the campaign to its lease principal and repo
+    (remediation R2); the engine never reads it, the routes always do.
     """
     if not sQuestion:
         raise CouncilConfigurationError("the council question is required")
@@ -220,6 +274,8 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
     return {
         "sCampaignId": _fsMintIdentifier("campaign"),
         "sState": S_STATE_DRAFT,
+        "dictProjectIdentity": _fdictValidateProjectIdentity(
+            dictProjectIdentity),
         "sQuestion": sQuestion,
         "listParticipants": copy.deepcopy(listParticipants),
         "sChairbotParticipantId": sChairbotId,

@@ -15,6 +15,7 @@ import time
 
 from fastapi import FastAPI
 
+from . import agentCouncilController
 from . import agentCouncilRegistry
 from . import agentCouncilStore
 from . import browserSession
@@ -79,6 +80,13 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     setattr(
         app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
         agentCouncilStore.fdictCreateCampaignStore(),
+    )
+    # The controller is the sole writer of campaign state (remediation
+    # R1): routes submit bounded commands onto its per-campaign
+    # serialization primitive rather than mutating the store themselves.
+    setattr(
+        app.state, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        agentCouncilController.fdictCreateCouncilControllerState(),
     )
     app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]

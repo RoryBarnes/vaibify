@@ -24,7 +24,11 @@ import pytest
 from vaibify.gui import agentCouncilRegistry
 from vaibify.gui import agentCouncilStore
 
-from .fakeDockerAdapter import S_CONTAINER_ID, S_CONTAINER_NAME
+from .fakeDockerAdapter import (
+    S_CONTAINER_ID,
+    S_CONTAINER_NAME,
+    S_WORKFLOW_PATH,
+)
 from .testBrowserJourneys import _fnReleaseBrowserLaneOwnership
 
 
@@ -106,17 +110,23 @@ def _fdictClaimAndActivate(page, serverHub):
     page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     page.wait_for_selector(".container-tile", timeout=10000)
     return page.evaluate(
-        """async ([sContainerId, sName]) => {
+        """async ([sContainerId, sName, sWorkflowPath]) => {
             const dictClaim = await VaibifyApi.fdictPost(
                 '/api/registry/' + encodeURIComponent(sName) + '/claim', {});
             VaibifyApp.fnRecordClaimedLease(sName, dictClaim.sLeaseId);
             await VaibifyApp.fnEnterNoWorkflow(sContainerId);
+            /* A campaign is bound to the open workflow's project repo
+             * (remediation R2), so the journey opens the workflow the
+             * way the dashboard does before convening a council. */
+            await VaibifyApi.fdictPostRaw(
+                '/api/connect/' + sContainerId +
+                '?sWorkflowPath=' + encodeURIComponent(sWorkflowPath));
             VaibifyAgentCouncil.fnActivate(sContainerId);
             await VaibifyAgentCouncil.fnRefreshCapabilities();
             const elButton = document.getElementById('btnAgentCouncil');
             return {bDisabled: elButton.disabled};
         }""",
-        [S_CONTAINER_ID, S_CONTAINER_NAME],
+        [S_CONTAINER_ID, S_CONTAINER_NAME, S_WORKFLOW_PATH],
     )
 
 
@@ -223,15 +233,18 @@ def _fnReloadAndReopen(page, serverHub, sCampaignId):
     page.reload(wait_until="load")
     page.wait_for_selector(".container-tile", timeout=10000)
     page.evaluate(
-        """async ([sContainerId, sName]) => {
+        """async ([sContainerId, sName, sWorkflowPath]) => {
             const dictClaim = await VaibifyApi.fdictPost(
                 '/api/registry/' + encodeURIComponent(sName) + '/claim', {});
             VaibifyApp.fnRecordClaimedLease(sName, dictClaim.sLeaseId);
             await VaibifyApp.fnEnterNoWorkflow(sContainerId);
+            await VaibifyApi.fdictPostRaw(
+                '/api/connect/' + sContainerId +
+                '?sWorkflowPath=' + encodeURIComponent(sWorkflowPath));
             VaibifyAgentCouncil.fnActivate(sContainerId);
             await VaibifyAgentCouncil.fnRefreshCapabilities();
         }""",
-        [S_CONTAINER_ID, S_CONTAINER_NAME],
+        [S_CONTAINER_ID, S_CONTAINER_NAME, S_WORKFLOW_PATH],
     )
     page.click("#btnAgentCouncil")
     page.wait_for_selector("#btnCouncilOpenExisting", timeout=5000)

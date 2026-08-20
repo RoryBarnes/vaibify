@@ -546,11 +546,23 @@ def _fdictSummariseEntry(dictEntry):
     }
 
 
-def flistSummariseCampaigns(dictStore):
-    """Return listing summaries for every stored campaign, newest last."""
-    return [_fdictSummariseEntry(dictStore["dictEntriesById"][sCampaignId])
-            for sCampaignId in dictStore["listInsertionOrder"]
-            if sCampaignId in dictStore["dictEntriesById"]]
+def flistSummariseCampaigns(dictStore, fbSelectCampaign=None):
+    """Return listing summaries for stored campaigns, newest last.
+
+    ``fbSelectCampaign(dictCampaign)`` filters the listing; the routes
+    pass the principal-match predicate so one hub's store never lists a
+    campaign to a principal it is not bound to (remediation R2).
+    """
+    listSummaries = []
+    for sCampaignId in dictStore["listInsertionOrder"]:
+        dictEntry = dictStore["dictEntriesById"].get(sCampaignId)
+        if dictEntry is None:
+            continue
+        if fbSelectCampaign is not None and not fbSelectCampaign(
+                dictEntry["dictCampaign"]):
+            continue
+        listSummaries.append(_fdictSummariseEntry(dictEntry))
+    return listSummaries
 
 
 def fnCheckpointStoredCampaign(dictStore, sCampaignId, dictCampaign):

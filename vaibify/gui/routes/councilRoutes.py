@@ -38,9 +38,10 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from .. import agentCouncilCampaign
+from .. import agentCouncilController
 from .. import agentCouncilRegistry
 from .. import agentCouncilStore
-from ..pipelineServer import fsContainerNameForId
+from ..pipelineServer import fdictRequireWorkflow, fsContainerNameForId
 from ..routeContext import (
     fnRefuseContainerOnlyForHostProject,
     fnRejectAgentTokenLane,
@@ -126,6 +127,14 @@ def _fdictCouncilRegistry(requestHttp):
     )
 
 
+def _fdictControllerState(requestHttp):
+    """Return the app-owned controller state from ``app.state``."""
+    return getattr(
+        requestHttp.app.state,
+        agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+    )
+
+
 def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
     """Reject the agent lane, refuse a host project, require the daemon.
 
@@ -140,6 +149,24 @@ def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
     fnRefuseContainerOnlyForHostProject(sName, S_COUNCIL_CAPABILITY)
     dictCtx["require"](sContainerId)
     return sName
+
+
+def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId):
+    """Guard the route and resolve the (resource name, project repo) pair.
+
+    The canonical identity a campaign is bound to and matched against
+    (remediation R2): the lease principal is the container NAME, and the
+    repo is the open workflow's validated project repo — one container
+    can host several repos, and a campaign belongs to exactly one.
+    """
+    sName = _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+    dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        raise HTTPException(
+            409, "the open workflow is not inside a project repository; "
+            "a council campaign is scoped to one")
+    return sName, sProjectRepoPath
 
 
 def _fdictBuildEvent(sKind, sTurnId="", sDetail=""):
@@ -218,7 +245,7 @@ def _fsResolveChairbotId(listParticipants, iChairbotIndex):
     return listParticipants[iChairbotIndex]["sParticipantId"]
 
 
-def _fdictCreateCampaignFromRequest(request):
+def _fdictCreateCampaignFromRequest(request, dictProjectIdentity):
     """Build a draft campaign record from a validated start request."""
     listParticipants = [
         agentCouncilCampaign.fdictCreateParticipant(
@@ -234,6 +261,7 @@ def _fdictCreateCampaignFromRequest(request):
         return agentCouncilCampaign.fdictCreateCampaign(
             request.sQuestion, listParticipants,
             sChairbotParticipantId=sChairbotId,
+            dictProjectIdentity=dictProjectIdentity,
         )
     except agentCouncilCampaign.CouncilConfigurationError as error:
         raise HTTPException(400, str(error))
@@ -293,10 +321,14 @@ def _fnRegisterListCouncils(app, dictCtx):
     @app.get("/api/agent-councils/{sContainerId}")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictListCouncils(sContainerId: str, requestHttp: Request):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         return {
             "listCampaigns": agentCouncilStore.flistSummariseCampaigns(
-                _fdictCampaignStore(requestHttp)),
+                _fdictCampaignStore(requestHttp),
+                fbSelectCampaign=lambda dictCampaign:
+                    agentCouncilCampaign.fbCampaignMatchesPrincipal(
+                        dictCampaign, sName, sProjectRepoPath)),
         }
 
 
@@ -308,11 +340,11 @@ def _fnRegisterGetCouncil(app, dictCtx):
     async def fdictGetCouncil(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
-        jsonCampaign = agentCouncilStore.fjsonGetCampaignRecord(
-            _fdictCampaignStore(requestHttp), sCampaignId)
-        if jsonCampaign is None:
-            raise HTTPException(404, f"no council campaign '{sCampaignId}'")
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
+        jsonCampaign = _fjsonRequireCampaign(
+            _fdictCampaignStore(requestHttp), sCampaignId, sName,
+            sProjectRepoPath)
         return {"dictCampaign": jsonCampaign}
 
 
@@ -325,9 +357,13 @@ def _fnRegisterPollEvents(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         iAfter: int = 0,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         if iAfter < 0:
             raise HTTPException(400, "iAfter must not be negative")
+        _fjsonRequireCampaign(
+            _fdictCampaignStore(requestHttp), sCampaignId, sName,
+            sProjectRepoPath)
         dictEvents = agentCouncilStore.fdictCollectCampaignEvents(
             _fdictCampaignStore(requestHttp), sCampaignId, iAfter)
         if dictEvents is None:
@@ -344,25 +380,37 @@ def _fnRegisterStartCouncil(app, dictCtx):
         sContainerId: str, request: CouncilStartRequest,
         requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictCampaign = _fdictCreateCampaignFromRequest(request)
-        agentCouncilCampaign.fnTransitionCampaignState(
-            dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,
-            "researcher convened the council")
-        agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
-        sTurnId = _fsLaunchCampaignTurn(
-            dictRegistry, dictStore, dictCampaign["sCampaignId"])
-        agentCouncilStore.fdictAppendCampaignEvent(
-            dictStore, dictCampaign["sCampaignId"],
-            _fdictBuildEvent("campaignStarted", sTurnId))
-        return {
-            "sCampaignId": dictCampaign["sCampaignId"],
-            "sTurnId": sTurnId,
-            "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
-                dictStore, dictCampaign["sCampaignId"]),
-        }
+        dictCampaign = _fdictCreateCampaignFromRequest(request, {
+            "sResourceName": sName,
+            "sProjectRepoPath": sProjectRepoPath,
+            "sSnapshotIdentity": "",
+        })
+
+        async def _fdictExecuteStart():
+            agentCouncilCampaign.fnTransitionCampaignState(
+                dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,
+                "researcher convened the council")
+            agentCouncilStore.fdictRegisterStartedCampaign(
+                dictStore, dictCampaign)
+            sTurnId = _fsLaunchCampaignTurn(
+                dictRegistry, dictStore, dictCampaign["sCampaignId"])
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, dictCampaign["sCampaignId"],
+                _fdictBuildEvent("campaignStarted", sTurnId))
+            return {
+                "sCampaignId": dictCampaign["sCampaignId"],
+                "sTurnId": sTurnId,
+                "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
+                    dictStore, dictCampaign["sCampaignId"]),
+            }
+
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            _fdictControllerState(requestHttp), dictCampaign["sCampaignId"],
+            agentCouncilController.S_COMMAND_START, _fdictExecuteStart)
 
 
 def _fnRegisterRespond(app, dictCtx):
@@ -374,19 +422,28 @@ def _fnRegisterRespond(app, dictCtx):
         sContainerId: str, sCampaignId: str,
         request: CouncilRespondRequest, requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictCampaign = _fjsonRequireCampaign(dictStore, sCampaignId)
-        dictCampaign["listResearcherResponses"].append(
-            {"sResponseText": request.sResponseText})
-        sTurnId = _fsLaunchCampaignTurn(dictRegistry, dictStore, sCampaignId)
-        agentCouncilStore.fnCheckpointStoredCampaign(
-            dictStore, sCampaignId, dictCampaign)
-        agentCouncilStore.fdictAppendCampaignEvent(
-            dictStore, sCampaignId,
-            _fdictBuildEvent("researcherResponded", sTurnId))
-        return {"sTurnId": sTurnId, "dictCampaign": dictCampaign}
+
+        async def _fdictExecuteRespond():
+            dictCampaign = _fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            dictCampaign["listResearcherResponses"].append(
+                {"sResponseText": request.sResponseText})
+            sTurnId = _fsLaunchCampaignTurn(
+                dictRegistry, dictStore, sCampaignId)
+            agentCouncilStore.fnCheckpointStoredCampaign(
+                dictStore, sCampaignId, dictCampaign)
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId,
+                _fdictBuildEvent("researcherResponded", sTurnId))
+            return {"sTurnId": sTurnId, "dictCampaign": dictCampaign}
+
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            _fdictControllerState(requestHttp), sCampaignId,
+            agentCouncilController.S_COMMAND_RESPOND, _fdictExecuteRespond)
 
 
 def _fnRegisterRequestStop(app, dictCtx):
@@ -398,20 +455,29 @@ def _fnRegisterRequestStop(app, dictCtx):
     async def fdictRequestStop(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictCampaign = _fjsonRequireCampaign(dictStore, sCampaignId)
-        _fnDrainCampaignWork(dictRegistry, sCampaignId)
-        dictCampaign["bStopRequested"] = True
-        agentCouncilCampaign.fnTransitionCampaignState(
-            dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
-            "researcher requested a stop")
-        agentCouncilStore.fnCheckpointStoredCampaign(
-            dictStore, sCampaignId, dictCampaign)
-        agentCouncilStore.fdictAppendCampaignEvent(
-            dictStore, sCampaignId, _fdictBuildEvent("stopRequested"))
-        return {"dictCampaign": dictCampaign}
+
+        async def _fdictExecuteRequestStop():
+            dictCampaign = _fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            _fnDrainCampaignWork(dictRegistry, sCampaignId)
+            dictCampaign["bStopRequested"] = True
+            agentCouncilCampaign.fnTransitionCampaignState(
+                dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
+                "researcher requested a stop")
+            agentCouncilStore.fnCheckpointStoredCampaign(
+                dictStore, sCampaignId, dictCampaign)
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId, _fdictBuildEvent("stopRequested"))
+            return {"dictCampaign": dictCampaign}
+
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            _fdictControllerState(requestHttp), sCampaignId,
+            agentCouncilController.S_COMMAND_REQUEST_STOP,
+            _fdictExecuteRequestStop)
 
 
 def _fnRegisterAcceptPlan(app, dictCtx):
@@ -424,21 +490,30 @@ def _fnRegisterAcceptPlan(app, dictCtx):
         sContainerId: str, sCampaignId: str,
         request: CouncilAcceptPlanRequest, requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
-        dictCampaign = _fjsonRequireCampaign(dictStore, sCampaignId)
-        sLocalPlanPath = agentCouncilStore.fsAcceptCampaignPlanLocally(
-            dictStore, sCampaignId, request.sPlanText)
-        dictCampaign["listResearcherDecisions"].append(
-            {"sDecision": "acceptPlan"})
-        agentCouncilCampaign.fnTransitionCampaignState(
-            dictCampaign, agentCouncilCampaign.S_STATE_PLAN_ACCEPTED,
-            "researcher accepted the plan")
-        agentCouncilStore.fnCheckpointStoredCampaign(
-            dictStore, sCampaignId, dictCampaign)
-        agentCouncilStore.fdictAppendCampaignEvent(
-            dictStore, sCampaignId, _fdictBuildEvent("planAccepted"))
-        return {"bAccepted": True, "sLocalPlanPath": sLocalPlanPath}
+
+        async def _fdictExecuteAcceptPlan():
+            dictCampaign = _fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            sLocalPlanPath = agentCouncilStore.fsAcceptCampaignPlanLocally(
+                dictStore, sCampaignId, request.sPlanText)
+            dictCampaign["listResearcherDecisions"].append(
+                {"sDecision": "acceptPlan"})
+            agentCouncilCampaign.fnTransitionCampaignState(
+                dictCampaign, agentCouncilCampaign.S_STATE_PLAN_ACCEPTED,
+                "researcher accepted the plan")
+            agentCouncilStore.fnCheckpointStoredCampaign(
+                dictStore, sCampaignId, dictCampaign)
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId, _fdictBuildEvent("planAccepted"))
+            return {"bAccepted": True, "sLocalPlanPath": sLocalPlanPath}
+
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            _fdictControllerState(requestHttp), sCampaignId,
+            agentCouncilController.S_COMMAND_ACCEPT_PLAN,
+            _fdictExecuteAcceptPlan)
 
 
 def _fnRegisterDeleteCouncil(app, dictCtx):
@@ -449,24 +524,41 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
     async def fdictDeleteCouncil(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
     ):
-        _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
-        if _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
-            raise HTTPException(
-                409, "stop the council before deleting its campaign")
-        if agentCouncilStore.fjsonGetCampaignRecord(
-                dictStore, sCampaignId) is None:
-            raise HTTPException(404, f"no council campaign '{sCampaignId}'")
-        agentCouncilStore.fbDeleteStoredCampaign(dictStore, sCampaignId)
-        return {"bDeleted": True, "sCampaignId": sCampaignId}
+
+        async def _fdictExecuteDelete():
+            # Identity resolves BEFORE the live-work refusal: a foreign
+            # caller must see the same 404 as an unknown id, never a 409
+            # that leaks that the campaign exists and is running.
+            _fjsonRequireCampaign(dictStore, sCampaignId, sName,
+                                  sProjectRepoPath)
+            if _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
+                raise HTTPException(
+                    409, "stop the council before deleting its campaign")
+            agentCouncilStore.fbDeleteStoredCampaign(dictStore, sCampaignId)
+            return {"bDeleted": True, "sCampaignId": sCampaignId}
+
+        return await agentCouncilController.fgenericSubmitCampaignCommand(
+            _fdictControllerState(requestHttp), sCampaignId,
+            agentCouncilController.S_COMMAND_DELETE, _fdictExecuteDelete)
 
 
-def _fjsonRequireCampaign(dictStore, sCampaignId):
-    """Return a campaign record for mutation, or raise 404 when unknown."""
+def _fjsonRequireCampaign(dictStore, sCampaignId, sResourceName,
+                          sProjectRepoPath):
+    """Return a campaign bound to this principal, or raise 404.
+
+    A campaign bound to another resource or another repo answers with
+    the SAME 404 an unknown id gets (remediation R2): a foreign caller
+    learns nothing about whether the id exists.
+    """
     jsonCampaign = agentCouncilStore.fjsonGetCampaignRecord(
         dictStore, sCampaignId)
-    if jsonCampaign is None:
+    if jsonCampaign is None or not (
+            agentCouncilCampaign.fbCampaignMatchesPrincipal(
+                jsonCampaign, sResourceName, sProjectRepoPath)):
         raise HTTPException(404, f"no council campaign '{sCampaignId}'")
     return jsonCampaign
 
