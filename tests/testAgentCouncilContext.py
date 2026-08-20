@@ -88,6 +88,8 @@ def _fdictBuildObservationAnswer(listRecords=()):
     return {
         "bSuccess": True,
         "sReason": "",
+        "sHeadSha": S_DEFAULT_HEAD_SHA,
+        "sPorcelainDigest": "porcelaindigest0001",
         "dictPathIdentities": {
             sPath: {"sType": sType, "sIdentity": sIdentity}
             for sType, sIdentity, sPath in listRecords

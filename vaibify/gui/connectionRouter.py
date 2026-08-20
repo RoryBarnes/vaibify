@@ -129,6 +129,16 @@ class ConnectionRouter:
             sResourceId, *tArguments, **dictKeywords,
         )
 
+    def fdictFetchWorktreeIdentities(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictFetchWorktreeIdentities(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
     def flistDirectoryEntries(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         return self.fconnectionForResource(

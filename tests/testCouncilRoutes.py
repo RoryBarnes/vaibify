@@ -147,7 +147,9 @@ def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
         fileManifest.write(json.dumps({
             "sSnapshotSha256": "fixture-snapshot-hash",
             "sCommitSha": "fixturecommit0001",
-            "sDirtyStateDigest": "fixturedigest0001"}))
+            "sDirtyStateDigest": "fixturedigest0001",
+            "sBaselineHeadSha": "fixturecommit0001",
+            "sBaselinePorcelainDigest": "fixtureporcelain0001"}))
     return {"sSnapshotSha256": "fixture-snapshot-hash"}
 
 

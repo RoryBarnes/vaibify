@@ -384,61 +384,50 @@ def test_stale_baseline_is_computed_from_the_live_repository(
         tmp_path, monkeypatch):
     """R12: staleness has a REAL producer, never a fabricated flag.
 
-    The campaign read compares the sealed manifest's commit and
-    porcelain digest against the repository read NOW: matching state
-    reports fresh, a moved commit reports stale naming the move, and a
-    repository that cannot be read reports UNKNOWN — never fresh.
+    The campaign read re-runs the gitWorktreeIdentities typed read and
+    compares its head sha and porcelain digest against the sealed
+    manifest: matching state reports fresh, a moved commit reports
+    stale naming the move, and a repository that cannot be read
+    reports UNKNOWN — never fresh.
     """
-    import hashlib
     import json
 
-    from vaibify.gui import containerGit
-    from tests.testAgentCouncilContext import _fsBuildStatusOutput
+    class _MockDockerWithIdentities(MockDockerCouncil):
+        sHeadShaNow = "commitbefore01"
 
-    class _MockDockerWithGit(MockDockerCouncil):
-        sStatusOutput = _fsBuildStatusOutput(sHeadSha="commitbefore01")
-
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
-            if "rev-parse --show-toplevel" in sCommand:
-                return (0, S_PROJECT_REPO + "\n")
-            if "status --porcelain" in sCommand:
-                return (0, type(self).sStatusOutput)
-            raise AssertionError(f"unmodelled command: {sCommand!r}")
+        def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
+            return {"bSuccess": True, "sReason": "",
+                    "sHeadSha": type(self).sHeadShaNow,
+                    "sPorcelainDigest": "porcelainsteady01",
+                    "dictPathIdentities": {}}
 
     def _fdictDecide(sHandle, dictTurnRequest):
         return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
 
     _fnPatchScriptedConnections(monkeypatch, _fdictDecide)
     app, dictHeaders = _tBuildOwnedApp(
-        tmp_path, typeMockDocker=_MockDockerWithGit)
+        tmp_path, typeMockDocker=_MockDockerWithIdentities)
     with TestClient(app, headers=dictHeaders) as client:
         sCampaignId = client.post(
             f"/api/agent-councils/{S_CONTAINER_ID}/start",
             json=DICT_START_BODY).json()["sCampaignId"]
         _fnWaitForCampaignState(
             app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
-        # Seal the manifest with the identity the live read reports NOW,
-        # exactly as the real capture records it.
-        dictGitStatus = containerGit.fdictGitStatusInContainer(
-            app.state.dictRouteContext["docker"], S_CONTAINER_ID,
-            sWorkspace=S_PROJECT_REPO)
-        sDigest = hashlib.sha256(json.dumps(
-            dictGitStatus.get("dictFileStates") or {}, sort_keys=True,
-        ).encode("utf-8")).hexdigest()
+        # Seal the manifest with the identity the typed read reports
+        # NOW, exactly as the real capture records it.
         sManifestPath = os.path.join(
             app.state.dictCouncilCampaignStore["sDurableStoreRoot"],
             sCampaignId, "snapshot", "manifest.json")
         with open(sManifestPath, "w") as fileManifest:
             fileManifest.write(json.dumps({
-                "sCommitSha": dictGitStatus["sHeadSha"],
-                "sDirtyStateDigest": sDigest}))
+                "sBaselineHeadSha": "commitbefore01",
+                "sBaselinePorcelainDigest": "porcelainsteady01"}))
 
         sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
         dictFresh = client.get(sBase).json()["dictCampaign"]
         assert dictFresh["bPlanningBaselineStale"] is False
 
-        _MockDockerWithGit.sStatusOutput = _fsBuildStatusOutput(
-            sHeadSha="commitafter002")
+        _MockDockerWithIdentities.sHeadShaNow = "commitafter002"
         dictStale = client.get(sBase).json()["dictCampaign"]
         assert dictStale["bPlanningBaselineStale"] is True
         assert "commit moved" in dictStale["sPlanningBaselineSummary"]

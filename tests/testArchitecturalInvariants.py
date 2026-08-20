@@ -4074,11 +4074,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # principal/identity guards; splitting the exits into a second
     # module would scatter the guard ordering the module docstring
     # states, which is the drift the R2/R3 fixes exist to prevent.
-    # +58 (2026-08-20, remediation R10/R12): the credential-gate
-    # refusal helper and the real stale-baseline producer — both read
-    # at the same principal/identity guard points as every other
-    # campaign action, so they belong with the routes they gate.
-    "routes/councilRoutes.py": 880,
+    # +96 (2026-08-20, remediation R10/R12/R1): the credential-gate
+    # refusal helper, the real stale-baseline producer (a typed read —
+    # a declared lane may make no general exec), and the mode-(b)
+    # carrier admission around the snapshot capture, which the live
+    # controller lane demanded (an unadmitted capture exec refused at
+    # the funnel, exactly as designed). All read at the same
+    # principal/identity guard points as every other campaign action.
+    "routes/councilRoutes.py": 918,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4090,7 +4093,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +16 (2026-08-20, remediation R11): the recorded
     # agent-instruction-file policy decision in the module docstring —
     # a decision that must live beside the exclusion table it governs.
-    "agentCouncilContext.py": 863,
+    "agentCouncilContext.py": 869,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

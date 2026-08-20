@@ -50,7 +50,11 @@ from ..routeContext import (
     fnRejectAgentTokenLane,
     S_UNAVAILABLE_IN_HOST_MODE,
 )
-from ..routeScope import ffnDeclareCarrierMode, S_CARRIER_SEPARATE_AUTHORITY
+from ..routeScope import (
+    ffnDeclareCarrierMode,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
+)
 
 # The capability name the refusal reads back to the researcher, in their
 # words (section 21). One constant so every route names it identically.
@@ -278,27 +282,52 @@ def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
 
 
 def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
-                             sProjectRepoPath, sCampaignId):
+                             sProjectRepoPath, sCampaignId, sName):
     """Build the closure that captures the snapshot under the project lock.
 
-    The bounded project lock (design section 9.2) is the container's
-    reconciliation lock: the capture window is serialized against
-    pipeline state work for the same container, so the snapshot never
-    races a run the researcher just launched. The capture itself
-    streams in a worker thread; the coherence refusals live in
-    ``agentCouncilContext``.
+    The bounded project lock (design section 9.2) is the commit
+    carrier's mode-(b) drain: the capture window holds the container's
+    mutation lock, so the snapshot never races a run or a sync the
+    researcher just launched — and the capture's git identity reads run
+    ADMITTED in the worker thread rather than tripping the enforced
+    lane's refusal (the live controller lane caught exactly that). A
+    coherence refusal is an EXPECTED answer decided before anything
+    was half-written, so it is carried back as a value and re-raised
+    outside the carrier — never through the failed-worker settlement
+    that would quarantine a working container.
     """
     from .. import agentCouncilContext
-    from ..pipelineState import _fnEnsureStateLockForContainer
+    from .. import commitCarrier
 
     async def _fdictCaptureUnderProjectLock():
-        _fnEnsureStateLockForContainer(dictCtx, sContainerId)
-        async with dictCtx["dictPipelineStateLocks"][sContainerId]:
-            return await asyncio.to_thread(
-                agentCouncilContext.fdictCaptureProjectContextSnapshot,
-                dictCtx["docker"], sContainerId, sProjectRepoPath,
-                sCampaignId,
-                _fdictCampaignStore(requestHttp)["sDurableStoreRoot"])
+        dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
+            requestHttp.app.state, sContainerId, requestHttp)
+        if dictLaneTuple is None:
+            raise HTTPException(
+                403, "the snapshot capture could not be bound to the "
+                "container's owner record")
+
+        def _fdictCaptureWorker(supervisor):
+            try:
+                return {
+                    "bRefused": False,
+                    "dictManifest":
+                        agentCouncilContext.fdictCaptureProjectContextSnapshot(
+                            dictCtx["docker"], sContainerId,
+                            sProjectRepoPath, sCampaignId,
+                            _fdictCampaignStore(requestHttp)[
+                                "sDurableStoreRoot"]),
+                }
+            except agentCouncilContext.SnapshotRefusedError as error:
+                return {"bRefused": True, "sRefusalReason": str(error)}
+
+        dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+            requestHttp.app.state, sName, sContainerId, dictLaneTuple,
+            "helper", "council-snapshot-capture", _fdictCaptureWorker)
+        dictCaptured = dictOutcome["result"]
+        if dictCaptured["bRefused"]:
+            raise HTTPException(409, dictCaptured["sRefusalReason"])
+        return dictCaptured["dictManifest"]
 
     return _fdictCaptureUnderProjectLock
 
@@ -488,17 +517,19 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
     """Compare the project's CURRENT identity to the sealed snapshot's.
 
     The real stale-baseline producer (remediation R12): the snapshot
-    manifest recorded the commit and the porcelain-state digest at
-    capture; this reads both again from the live repository and reports
-    stale when either moved. Three honest answers — fresh (False),
-    stale (True, with what moved), and UNKNOWN (None) when there is no
-    manifest yet or the repository cannot be read; unknown is never
-    dressed up as fresh.
+    manifest recorded the typed-read head sha and porcelain digest at
+    capture (the SAME ``gitWorktreeIdentities`` observation the
+    coherence check took), and this re-runs that declared read against
+    the live repository. A typed read is the only container touch this
+    poll-path comparison may make — every council route is a DECLARED
+    carrier lane, so a general git exec here would (rightly) refuse at
+    the mutation funnel. Three honest answers — fresh (False), stale
+    (True, with what moved), and UNKNOWN (None) when there is no
+    manifest, the manifest predates the baseline fields, or the
+    repository cannot be read; unknown is never dressed up as fresh.
     """
-    import hashlib
     import json as moduleJson
     import os
-    from .. import containerGit
     sManifestPath = os.path.join(
         dictStore["sDurableStoreRoot"], sCampaignId, "snapshot",
         "manifest.json")
@@ -508,29 +539,35 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
     try:
         with open(sManifestPath, encoding="utf-8") as fileManifest:
             jsonManifest = moduleJson.load(fileManifest)
-        dictGitStatus = containerGit.fdictGitStatusInContainer(
-            dictCtx["docker"], sContainerId, sWorkspace=sProjectRepoPath)
-        if not dictGitStatus.get("bIsRepo"):
-            raise RuntimeError("the project repository cannot be read")
-        sCurrentDigest = hashlib.sha256(moduleJson.dumps(
-            dictGitStatus.get("dictFileStates") or {}, sort_keys=True,
-        ).encode("utf-8")).hexdigest()
-        sCurrentCommit = dictGitStatus.get("sHeadSha") or ""
+        if not jsonManifest.get("sBaselineHeadSha") and not (
+                jsonManifest.get("sBaselinePorcelainDigest")):
+            return {"bPlanningBaselineStale": None,
+                    "sPlanningBaselineSummary":
+                        "the sealed manifest predates the baseline "
+                        "identity fields"}
+        dictObservation = dictCtx["docker"].fdictFetchWorktreeIdentities(
+            sContainerId, sProjectRepoPath)
+        if not dictObservation.get("bSuccess"):
+            raise RuntimeError(
+                dictObservation.get("sReason") or "observation failed")
     except Exception as error:
         return {"bPlanningBaselineStale": None,
                 "sPlanningBaselineSummary":
                     "the baseline comparison could not run "
                     f"({type(error).__name__})"}
-    bCommitMoved = sCurrentCommit != jsonManifest.get("sCommitSha")
-    bTreeMoved = sCurrentDigest != jsonManifest.get("sDirtyStateDigest")
+    bCommitMoved = (dictObservation.get("sHeadSha", "")
+                    != jsonManifest.get("sBaselineHeadSha"))
+    bTreeMoved = (dictObservation.get("sPorcelainDigest", "")
+                  != jsonManifest.get("sBaselinePorcelainDigest"))
     if not bCommitMoved and not bTreeMoved:
         return {"bPlanningBaselineStale": False,
                 "sPlanningBaselineSummary": ""}
     listMoved = []
     if bCommitMoved:
         listMoved.append(
-            f"the commit moved from {jsonManifest.get('sCommitSha')} to "
-            f"{sCurrentCommit or '(none)'}")
+            "the commit moved from "
+            f"{jsonManifest.get('sBaselineHeadSha')} to "
+            f"{dictObservation.get('sHeadSha') or '(none)'}")
     if bTreeMoved:
         listMoved.append("the working tree changed")
     return {"bPlanningBaselineStale": True,
@@ -564,7 +601,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
     """Register POST /api/agent-councils/{sContainerId}/start."""
 
     @app.post("/api/agent-councils/{sContainerId}/start")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY,
+                           S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictStartCouncil(
         sContainerId: str, request: CouncilStartRequest,
         requestHttp: Request,
@@ -597,7 +635,7 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     sCampaignId,
                     _ffnBuildSnapshotCapture(
                         dictCtx, requestHttp, sContainerId,
-                        sProjectRepoPath, sCampaignId),
+                        sProjectRepoPath, sCampaignId, sName),
                     _ffnBuildImageResolver(dictCtx, sContainerId)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,

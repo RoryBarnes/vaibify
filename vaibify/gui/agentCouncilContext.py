@@ -362,6 +362,9 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
     return {
         "sCommitSha": dictGitStatus.get("sHeadSha") or "",
         "sDirtyStateDigest": sDirtyStateDigest,
+        "sObservedHeadSha": dictObservation.get("sHeadSha", ""),
+        "sObservedPorcelainDigest": dictObservation.get(
+            "sPorcelainDigest", ""),
         "dictPathIdentities": dictPathIdentities,
     }
 
@@ -812,6 +815,9 @@ def _fdictWriteSnapshotManifest(
         "sCoherenceMethod": _S_COHERENCE_METHOD,
         "sCommitSha": dictIdentityBefore["sCommitSha"],
         "sDirtyStateDigest": dictIdentityBefore["sDirtyStateDigest"],
+        "sBaselineHeadSha": dictIdentityBefore["sObservedHeadSha"],
+        "sBaselinePorcelainDigest": dictIdentityBefore[
+            "sObservedPorcelainDigest"],
         "sPreObservationDigest": _fsComputeObservationDigest(
             dictIdentityBefore,
         ),
