@@ -121,6 +121,15 @@ DICT_EXCLUDED_COMPONENT_REASONS = {
     ".opencode": "agent credential and configuration store",
     ".cline": "agent credential and configuration store",
     ".clinerules": "agent instruction directory",
+    "CLAUDE.md": "agent instruction file; the council delivers its own "
+                 "charter through the CLI instruction channel and must not "
+                 "let a snapshot agent doc steer the participant",
+    "AGENTS.md": "agent instruction file; the council delivers its own "
+                 "charter through the CLI instruction channel and must not "
+                 "let a snapshot agent doc steer the participant",
+    "GEMINI.md": "agent instruction file; the council delivers its own "
+                 "charter through the CLI instruction channel and must not "
+                 "let a snapshot agent doc steer the participant",
     ".openhands": "agent credential and configuration store",
     ".pi": "agent credential and configuration store",
     ".ssh": "credential store",
