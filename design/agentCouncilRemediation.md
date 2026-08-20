@@ -1,383 +1,322 @@
-# Agent Council — remediation plan (revision 2)
+# Agent Council — implementation plan for the remediation
 
-**What this file is.** A review-ready plan to turn the `feat/agent-council`
-prototype into a mergeable feature. It enumerates every outstanding defect from
-the two external reviews (2026-08-19), gives each a root cause, a fix, and the
-test that proves the fix, then sequences the work and names the hard gates.
+**Who this is for.** The agent implementing the remediation of the
+`feat/agent-council` prototype. It is self-contained: you should not need the
+conversation that produced it. Read it top to bottom before writing code.
 
-**What it is not.** Not a redesign. `design/agentCouncil.md` (revision 13)
-remains the specification; this plan realizes it where the prototype only stubbed
-it. Revision 2 of *this* plan folds in the second review: the controller becomes
-a serialized authority, project identity becomes canonical, the Docker gateway
-gains a handle-based contract with correct quarantine semantics, snapshot
-coherence gets a real algorithm, credential enablement becomes machine-readable,
-the verification lanes are separated, rebase moves first, and Codex moves to a
-feasibility-first follow-up (pending the maintainer's confirmation — see R9).
+**The authority above this file.** `design/agentCouncil.md` (revision 13) is the
+specification — protocol, charter, containment, and security requirements. This
+plan realizes it where the prototype only stubbed it; when in doubt, the spec
+wins. `design/agentCouncilPhase0Findings.md` records the Claude CLI empirics you
+depend on.
 
-**Status of the branch.** The components are real and independently tested; the
-production controller that composes them does not exist (`CouncilEngine(...)` is
-built only in `tests/`). Both reviews agree: a strong prototype, not a completed
-feature.
-
-**Decisions taken (2026-08-19).**
-- **Docker access: Option B** — one typed gateway is the sole caller of the
-  Docker SDK for the council.
-- **Credentials: default-off, evidence-gated** — the runner backend for a
-  provider is disabled until that provider's credential behavior is verified by
-  a live check, recorded as machine-readable evidence (R10).
-- **Controller: a serialized authority** — the controller is the sole writer of
-  campaign state; routes submit bounded commands under a per-campaign
-  serialization primitive (R1).
-- **Identity: canonical, not the URL resource id** — campaigns are bound to the
-  canonical container/lease principal plus the validated project-repo and
-  snapshot identities (R2).
+**The core truth to internalize.** The prototype's *components* are real and
+well-tested in isolation, but the *production feature is disconnected from them*:
+`CouncilEngine(...)` is constructed only under `tests/`. Two external reviews
+agree it is a strong prototype, not a feature. Your job is the missing
+integration and the correctness/containment/authorization defects below — not a
+rewrite. **Do not trust a green suite as proof of the feature**: this repo has
+shipped fatal bugs under fully green suites because stubs agreed with each other
+(see `CLAUDE.md` → "Epistemics"). Every guarantee that crosses an
+HTTP/WebSocket/container boundary must be proven with a real connection and with
+container **name ≠ id**.
 
 ---
 
-## 1. The outstanding issues
+## 0. Environment and working rules
 
-Each item: **defect → root cause → fix → proof** (a falsification test that fails
-if the fix regresses).
+- **Worktree / branch.** Work in
+  `/Users/rory/src/vaibify/.claude/worktrees/agent-council`, branch
+  `feat/agent-council`. Do not `cd` to the main checkout or other worktrees.
+  PR #81 is **closed** (so branch pushes spend no CI); do not reopen it — open a
+  fresh PR only when the merge gate (§4) is met.
+- **Docker for the Python SDK.** The daemon is Colima; the `docker` CLI finds it
+  by context but the **Python SDK does not**. Before running any `docker_live`
+  test or SDK code, `export DOCKER_HOST="unix:///Users/rory/.colima/default/docker.sock"`.
+- **Live tests** carry `pytest.mark.docker_live` (see `tests/conftest.py` — they
+  are not auto-skipped; they run against the real daemon). Run them explicitly,
+  e.g. `python -m pytest tests/testAgentCouncilProvidersLive.py -v`.
+- **Required verification commands** (run the ones your change touches):
+  - Python suite: `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`
+  - Architectural/style: `python -m pytest tests/testArchitecturalInvariants.py tests/testStyleInvariants.py -q`
+  - Mutation inventory: `python tools/generateMutationInventory.py --check`
+    (regenerate with `--write`); dispositions in `tests/testBlindSpotDispositions.py`
+  - Carrier coverage: `PYTHONPATH=. python tools/carrierIntentAudit.py`
+  - Host-mode refusal (both directions): `python -m pytest tests/testHostModeContainerOnlyRefusals.py -v`
+  - Browser lane (the ONLY real frontend check):
+    `pip install -e '.[browser]' && python -m playwright install chromium`, then
+    `python -m pytest tests/browser -m browser`.
+- **Style is machine-enforced** (`tests/testStyleInvariants.py`): Hungarian
+  variable prefixes on every binding, `f`+return-type function prefixes (`fn`
+  procedure, `ffn` returns-a-function, `fdict`/`flist`/`fb`/`fs`/`fi`/`ft`),
+  camelCase filenames, no abbreviations under 8 characters, `__all__` per module.
+  Never edit `tests/styleInventory.json` seeds/budgets to pass.
+- **Do not** import `vaibify.gui` into `pipelineUtils.py`; do not construct a
+  `TerminalSession` or touch `/ws/terminal`; reproducibility terminology is
+  `PROOF`/`iProofLevel`; no science-specific identifiers anywhere.
 
-### R1 — Blocker: no production controller, and it must be a *serialized authority*
+## 1. Starting conditions
 
-- **Defect.** `POST …/start` mints a synthetic "turn in flight" and returns; it
-  never builds the engine, captures a snapshot, invokes a provider, or creates a
-  runner. Beyond that, even a naive background task would race `respond`, `stop`,
-  `accept`, `delete`, and its own checkpoints against each other.
-- **Root cause.** No controller, and no concurrency model for one.
-- **Fix.** A **campaign controller** that is the **sole writer of campaign
-  state**. Routes never mutate campaign state directly; they submit **bounded
-  commands** (`respond`, `requestStop`, `acceptPlan`, `delete`) onto a
-  **per-campaign serialization primitive** (a single-owner lock or a per-campaign
-  command queue) that the controller drains in order. Specify, concretely:
-  - **Admission/carrier.** The controller's container mutations execute under
-    the council registry's admission (not the commit carrier — runner containers
-    are council-created, §10.3), reserved write-ahead and settled on proven
-    absence. Its durable checkpoints are the §7.5 app-data writes.
-  - **Ownership + honest failure.** The controller task is owned by the registry;
-    if it raises, the campaign is recorded `failed`/`interrupted` (never left
-    "running"), all live runners are settled or quarantined, and the turn is
-    retired.
-  - **Project release.** Releasing the project during deliberation drains the
-    controller (settle live work, suspend at the next boundary) before the lease
-    is released — it never leaves paid work hidden.
-  - **Restart classification.** A campaign whose controller disappeared mid-turn
-    is discovered on restart and classified honestly: labelled-runner survivors
-    are destroyed-with-proof or quarantined; a turn with no terminal record is
-    `interrupted`, never resumed silently or called complete.
-  On Start the controller captures the snapshot, builds `CouncilEngine` with the
-  real per-participant connections, drives deliberation, checkpoints as each
-  phase settles, settles all live work at a human gate, and retires the turn.
-  The route returns immediately; the UI polls (§11).
-- **Proof.** (a) An HTTP integration test drives Start with a fake provider in a
-  **real runner** to `planReady` with no hand-patched state. (b) A concurrency
-  test fires `respond`/`stop`/`accept`/`delete` while a turn is live and asserts
-  the serialization primitive orders them and campaign state stays consistent.
-  (c) A controller-crash test kills the controller mid-turn and asserts restart
-  classifies it `interrupted` with runners settled/quarantined, never resumed.
+**Commits on the branch (prototype + this plan):** `68979e4f` → `16e92880`.
+Rebase first (§3, step 1).
 
-### R2 — Blocker: campaigns must carry a *canonical* project identity
+**Modules that already exist and are tested in isolation — read them before
+changing:**
 
-- **Defect.** Campaigns carry no project identity; the store is global; `list`
-  returns everything; routes authorize the URL container but never that the
-  campaign belongs to it — a cross-project read/accept/stop/delete hole.
-- **Root cause.** No identity on the record, and — as the second review notes —
-  the raw `sContainerId` from the URL is the *wrong* identity to store: a Docker
-  id can change or be represented differently, ownership is name-keyed, and one
-  container can host multiple workflows/project repositories.
-- **Fix.** Bind each campaign to a **canonical identity triple**: the canonical
-  **container name / lease principal** (the name-keyed owner, per the repo's
-  ownership authority), the **validated project-repository identity** (the
-  project repo the council was started for — a container can host several), and
-  the **snapshot identity** (the immutable snapshot hash). Every `{sCampaignId}`
-  route resolves the campaign and **refuses 404** (not 403 — do not leak
-  existence across projects) unless all three match the authorized principal and
-  its active project repo. `list` filters to that principal + project repo.
-- **Proof.** With two resources (name ≠ id each): a campaign under A is 404 from
-  B on every route and absent from B's list. **And** with two project
-  repositories hosted by the *same* container: a campaign under repo 1 is not
-  reachable or listed under repo 2.
+| Module | Role | State |
+|---|---|---|
+| `agentCouncil.py` + `agentCouncilCampaign/Charter/Resolution/Evidence.py` | Pure engine, charter, state machine, veto/quorum, evidence ledger | Solid; 52 falsification tests (`tests/testAgentCouncilEngine/Charter/Ledger.py`) |
+| `agentCouncilStore.py` | Event ring, evidence ledger, durable checkpoint, local accept | Solid unit-tested |
+| `agentCouncilProviders.py` | Claude CLI runner adapter (`CouncilProviderConnection`), capability contract, credential lane, baseline executor | Adapter works live; **defects R4/R7/R10** |
+| `agentCouncilRunner.py` | Runner/sandbox container lifecycle (SDK) | Live-falsified; **must move behind the gateway, R4** |
+| `agentCouncilEgress.py` | Internal network + CONNECT proxy (SDK) | Live-falsified; **must move behind the gateway + harden, R4** |
+| `agentCouncilContext.py` | Immutable snapshot (`get_archive`) + manifest | Works; **coherence weak (R5), agent-doc policy unresolved (R11)** |
+| `agentCouncilRegistry.py` | Reservations, admission, idle-veto, drain | Solid; **production path never calls it (R4)** |
+| `routes/councilRoutes.py` | 9 HTTP routes | **No controller, no scoping, accept bypass (R1/R2/R3)** |
+| `static/scriptAgentCouncil.js` | Modal, workspace, polling | Shell; **shape/transition mismatches (R6), fabricated staleness (R12)** |
 
-### R3 — Blocker: plan acceptance bypasses consensus
+**The engine↔provider seam you will wire.** The engine drives a
+`CouncilProviderConnection`: `fdictPrepareImmutableContext(dictTurnRequest)` →
+`fnStartTurn(dictRequest)` → `fiterStreamNormalizedEvents()` →
+`fdictCollectStructuredResult()` → `fsReportCompletion()`. **Read
+`tests/agentCouncilHarness.py` and `tests/testAgentCouncilProvidersLive.py`** —
+they construct `CouncilEngine` with real connections exactly as production must,
+then assert a two-model campaign reaches `planReady` over real runners. Your
+controller (R1) mirrors that construction in product code.
 
-- **Defect.** `accept-plan` takes arbitrary caller text from any state and
-  transitions straight to `planAccepted`, never checking `planReady` or using the
-  engine's guarded acceptance. A test even accepts on a never-deliberated
-  campaign.
-- **Root cause.** The route re-implemented acceptance as a raw transition + file
-  write instead of delegating to the engine.
-- **Fix.** The route submits an `acceptPlan` command to the controller (R1),
-  which calls the engine's guarded acceptance: refuses unless `planReady`;
-  accepts the **council's own server-held candidate**, not caller text; only then
-  writes `plan.md` locally and transitions.
-- **Proof.** Accept on non-`planReady` is refused (409); accept on `planReady`
-  persists the engine's candidate, not caller text; the current stop-then-accept
-  test is inverted to assert the refusal.
+**Locked decisions (do not relitigate):**
+- **Option B** — one typed Docker gateway is the sole SDK caller for the council.
+- **Credentials default-off**, enabled only against a machine-readable evidence
+  record (R10).
+- **Controller is a serialized authority** — sole campaign-state writer (R1).
+- **Canonical identity** — not the raw URL id (R2).
+- **Codex is deferred** to a feasibility-first follow-up (R9); this branch ships
+  Claude-only and reports Codex as unimplemented.
 
-### R4 — Blocker: Docker gateway contract, quarantine semantics, egress hardening
+## 2. Work items
 
-- **Defect.** The engine creates the runner then leaks it on any later exception
-  (no `finally`); the production path never registers the runner in the registry;
-  the baseline executor discards the destruction result, so a `quarantined`
-  teardown still returns "confirmed" evidence.
-- **Root cause.** No single owner of the runner lifecycle; the registry is a
-  parallel structure the production path forgot; cleanup lives only on success.
-- **Fix (Option B).** Introduce **`agentCouncilDockerGateway.py`** — the **only**
-  module that calls the raw Docker SDK for the council. Its contract is stronger
-  than a module boundary:
-  - It **mints opaque reservation handles** and accepts **only those handles**,
-    never arbitrary container ids. Before any destructive operation it
-    **verifies the registry identity and the council label** on the target — so
-    it cannot act on a container it did not create, and cannot be handed the
-    active project container's id.
-  - Every operation **reserves** (write-ahead) before create and is wrapped so
-    the runner is **destroyed on every exit path** (success, exception, cancel)
-    via a structured owner (async context manager / explicit `finally`).
-  - **Quarantine semantics (corrected).** Destruction is attempted, but when
-    Docker **cannot prove absence** the result is NOT settled-clean: the
-    reservation stays **visibly quarantined**, admission stays **consumed**, the
-    campaign/UI says **the runner may still exist**, and **no evidence becomes
-    `confirmed`**. Proven absence settles clean; an indeterminate answer
-    quarantines. "Destroyed every time" was wrong.
-  - **Egress hardening.** The proxy container gets the same posture as the
-    runner: a **pinned** proxy image (digest-pinned, not floating
-    `python:3.10-slim`), non-root, all capabilities dropped, no-new-privileges,
-    and resource limits. The proxy is council infrastructure and must not be a
-    softer target than the runner it fronts.
-  Runner/egress keep their pure helpers (argv, tar, env, DNS, absence-probe
-  logic) but call the gateway for every SDK operation.
-- **Proof.**
-  - Inject an exception at each fallible step after creation and assert the
-    reservation is settled **or quarantined** every time, and never leaks
-    unrecorded (real daemon, name ≠ id).
-  - Force an indeterminate teardown and assert: reservation quarantined,
-    admission still consumed, evidence not `confirmed`, UI says may-exist.
-  - A single-authority architectural test: every council Docker SDK call
-    originates in `agentCouncilDockerGateway` (grep-style), and the gateway
-    refuses a handle whose registry identity/label does not verify.
-  - The proxy container is asserted digest-pinned, non-root, cap-dropped,
-    resource-limited.
+Each item: **defect → fix (with file targets) → proof**. A "proof" is a
+falsification test that fails if the fix regresses.
 
-### R5 — High: a real snapshot-coherence algorithm
+### R1 — Build the controller as a serialized authority
+- **Fix.** Add a **campaign controller** (new module, e.g.
+  `agentCouncilController.py`) that is the **sole writer of campaign state**.
+  `routes/councilRoutes.py` stops mutating campaign state; it submits **bounded
+  commands** (`start`, `respond`, `requestStop`, `acceptPlan`, `delete`) onto a
+  **per-campaign serialization primitive** (a single-owner async lock or
+  per-campaign command queue held in `app.state`) that the controller drains in
+  order. The controller:
+  - runs container mutations under the **council registry admission**
+    (write-ahead reserve, settle on proven absence — §10.3; NOT the commit
+    carrier), and durable checkpoints via `agentCouncilStore` (§7.5);
+  - on Start: captures the snapshot (`agentCouncilContext`), builds
+    `CouncilEngine` with the real Claude connection(s), drives deliberation,
+    checkpoints per phase, retires the turn;
+  - on a human gate: settles all live work, suspends (no live runner/turn);
+  - on raise: records `failed`/`interrupted` (never "running"), settles/
+    quarantines runners;
+  - on **project release**: drains before the lease releases;
+  - on **restart**: discovers labelled-runner survivors (destroy-with-proof or
+    quarantine) and classifies a turn with no terminal record as `interrupted`,
+    never resumed.
+  Register controller state in `appFactory.py` beside the registry; the
+  idle-veto and shutdown drain already exist — extend them to the controller's
+  live work.
+- **Proof.** (a) HTTP integration: Start → fake provider in a **real runner** →
+  `planReady`, no hand-patched state. (b) Concurrency: fire
+  respond/stop/accept/delete during a live turn; assert ordering + consistent
+  state. (c) Crash: kill the controller mid-turn; assert restart →
+  `interrupted`, runners settled/quarantined.
 
-- **Defect.** Coherence hashes only git status codes and paths, so an
-  already-dirty file whose *contents* change mid-capture is accepted. And a
-  content hash drawn from the *same* archive stream cannot be an independent
-  second observation.
-- **Root cause.** The digest is over status metadata, and there is no independent
-  pre/post observation nor a capture lock.
-- **Fix.** Specify the algorithm:
-  - Take the **bounded project lock** the design requires (§9.2) for the capture
-    window.
-  - Obtain **two independent source identities** — a pre-capture and a
-    post-capture observation of the project repo taken *outside* the archive
-    stream (e.g. a commit + per-path content digest of the tracked-dirty and
-    included-untracked set, gathered independently of the tar) — and match
-    archive members to them by path.
-  - Define behavior for **untracked additions/deletions, renames, symlink
-    swaps, and content that changes then reverts** during capture: any mismatch
-    between the two independent observations (including a changed-then-reverted
-    file whose intermediate archive bytes differ from both endpoints) **refuses
-    the capture and cleans up**. A refusal is honest; a torn snapshot is not.
-- **Proof.** A live test mutates the *contents* of an already-dirty file during
-  streaming and asserts refusal + cleanup; separate cases cover a rename, a
-  symlink swap, and a change-then-revert.
+### R2 — Canonical project identity + cross-project refusal
+- **Fix.** Bind each campaign (`agentCouncilCampaign.fdictCreateCampaign`) to a
+  **canonical identity triple**: the container **name / lease principal**
+  (name-keyed owner authority, not the raw id), the **validated project-repo
+  identity** (a container can host several — use the repo's project-repo
+  resolver, e.g. `containerGit.fsDetectProjectRepoInContainer`), and the
+  **snapshot identity**. Every `{sCampaignId}` route resolves the campaign and
+  **refuses 404** (not 403 — do not leak existence) unless all three match the
+  authorized principal and its active project repo. `list` filters to that
+  principal + repo.
+- **Proof.** Two resources (name ≠ id each): A's campaign is 404 from B on every
+  route and absent from B's list. Two project repos in one container: repo-1's
+  campaign is unreachable/unlisted under repo-2.
 
-### R6 — High: unify record shapes and transitions across engine/routes/frontend
+### R3 — Route acceptance through the engine's consensus gate
+- **Fix.** `accept-plan` submits an `acceptPlan` command to the controller (R1),
+  which calls the engine's guarded acceptance (`agentCouncil.py` — requires
+  `planReady`), accepts the **council's own server-held candidate** (not caller
+  text), then writes `plan.md` locally and transitions.
+- **Proof.** Accept on non-`planReady` → 409; accept on `planReady` persists the
+  engine's candidate; **invert** the current stop-then-accept test to assert the
+  refusal.
 
-- **Defect.** Seam mismatches, all downstream of R1: `sResponseText` vs `sText`;
-  candidate at `dictCandidatePlan.dictResult` vs UI reading `sPlanText`/`sText`;
-  exhausted-round choices sent as strings the backend never maps to the engine's
-  three exit transitions; settings rendered but not sent; "queued at a boundary"
-  copy vs a 409.
-- **Fix.** The engine's shapes are the authority; routes and frontend conform.
-  Responses use `sText`; the UI reads the candidate from its real path; the three
-  exhausted-round controls map to the engine's exit transitions; the convene
-  request sends the settings the form collects; the composer copy matches the
-  real continuation behavior R1 provides (recorded, consumed at the next
-  boundary). Build a proper **accepted-plan renderer** for the real candidate
-  shape.
-- **Proof.** A contract test asserts the fields the engine reads are the ones the
-  routes write; a frontend contract test asserts settings are sent and the
-  exhausted-round controls post the engine's transition names; the R1 test
-  exercises a real `respond` continuation.
+### R4 — Typed Docker gateway, correct quarantine semantics, egress hardening
+- **Fix.** New `agentCouncilDockerGateway.py` — the **only** council caller of
+  the Docker SDK. `agentCouncilRunner.py` and `agentCouncilEgress.py` keep their
+  pure helpers (argv, tar via `fbaBuildStampedFileTarball`, env, DNS wiring,
+  absence-probe logic) but call the gateway for every SDK op. The gateway:
+  - **mints opaque reservation handles** and accepts **only** those, never
+    arbitrary container ids; **verifies registry identity + the council label**
+    on the target before any destructive op (so it cannot touch the active
+    project container);
+  - **reserves before create, destroys on every exit path** (async context
+    manager / `finally`);
+  - **quarantine semantics (this is the crux):** proven absence → settle clean;
+    an **indeterminate** daemon answer → reservation stays **visibly
+    quarantined**, admission stays **consumed**, UI says **runner may exist**,
+    and **no evidence becomes `confirmed`**. The baseline executor must
+    **propagate** the destruction outcome (currently discards it).
+  - **egress hardening:** the proxy container gets the runner's posture — a
+    **digest-pinned** image (not floating `python:3.10-slim`), non-root, all caps
+    dropped, no-new-privileges, resource limits.
+- **Proof.** Inject an exception at each fallible step after create → reservation
+  always settled-or-quarantined, never leaked unrecorded (real daemon, name ≠
+  id). Force indeterminate teardown → quarantined + admission consumed + not
+  `confirmed` + UI may-exist. Architectural test: every council SDK call
+  originates in the gateway, and the gateway refuses a handle whose identity/
+  label fails to verify. Proxy asserted pinned/non-root/cap-dropped/limited.
 
-### R7 — High: honest capability reporting (Claude-only for this branch)
+### R5 — Real snapshot-coherence algorithm
+- **Fix (`agentCouncilContext.py`).** Take the **bounded project lock** (§9.2)
+  for the capture window. Obtain **two independent pre/post source identities**
+  outside the archive stream (commit + per-path content digest of the
+  tracked-dirty and included-untracked set), and match archive members to them by
+  path. Any mismatch — including **untracked add/delete, rename, symlink swap, or
+  content changed-then-reverted** whose intermediate bytes differ — **refuses the
+  capture and cleans up**.
+- **Proof.** Live: mutate a dirty file's **contents** during streaming → refusal
+  + cleanup; separate cases for rename, symlink swap, change-then-revert.
 
-- **Defect.** `bAvailable: … or True` is unconditionally true; the endpoint
-  advertises `codex` with no adapter.
-- **Fix.** `bAvailable` reflects the real probe (SDK/login/usable models present).
-  For **this branch**, advertise **only Claude** (Codex moves to R9's follow-up);
-  a provider with no adapter is never advertised as available.
-- **Proof.** An unavailable provider reports `bAvailable: False` and the toolbar
-  disables/explains; no adapter-less provider is advertised.
+### R6 — Unify record shapes and transitions
+- **Fix.** The engine's shapes are authority. Fix: researcher responses use
+  `sText` (routes currently write `sResponseText`); the UI reads the candidate
+  from its real path (`dictCandidatePlan.dictResult`, not top-level
+  `sPlanText`/`sText`); the three exhausted-round controls POST the engine's exit
+  transitions; the convene request sends the form's council settings; the
+  composer copy matches R1's real continuation. Build an accepted-plan renderer
+  for the real candidate shape.
+- **Proof.** Contract test: fields the engine reads == fields routes write.
+  Frontend contract test: settings sent; exhausted-round controls post the exit
+  transition names. R1 exercises a real `respond`.
 
-### R8 — Governance: honest mutation ratchets
+### R7 — Honest capability reporting (Claude-only)
+- **Fix.** `bAvailable` reflects the real probe (remove `... or True`).
+  `SET_ALLOWED_PROVIDERS` (in `routes/councilRoutes.py`) advertises **Claude
+  only**; no adapter-less provider is advertised.
+- **Proof.** Unavailable provider → `bAvailable: False` + toolbar disables/
+  explains; no adapter-less provider advertised.
 
-- **Fix (falls out of R4).** With every council Docker call behind the gateway,
-  the ~22 opaque SDK sites collapse to the gateway's small surface, so
-  `untraceable-docker-sdk-root` **falls** and its disposition ("governed by the
-  registry") becomes *true* (the gateway performs reservation/settlement).
-  Re-examine the unclassified-row rise honestly: classify the council use-site
-  rows where possible; where a row is genuinely best-effort metadata, say so —
-  never call it dispositioned. Any residual change is a reviewed maintainer
-  decision with the real reason.
-- **Proof.** `--check` clean; the single-authority gateway test; ratchet
-  constants reflect post-gateway counts with accurate comments.
+### R8 — Honest mutation ratchets (falls out of R4)
+- **Fix.** With every SDK call behind the gateway, `untraceable-docker-sdk-root`
+  **falls** and its disposition ("governed by the registry") becomes *true*.
+  Re-examine the unclassified-row rise: classify council use-site rows where
+  possible; where a row is genuinely best-effort metadata, say so — never call it
+  dispositioned. Regenerate the inventory; update
+  `tests/testBlindSpotDispositions.py`.
+- **Proof.** `--check` clean; single-authority gateway test; ratchet constants
+  reflect post-gateway counts with accurate comments.
 
-### R9 — Codex: a feasibility-first follow-up, **out of this merge gate** *(pending maintainer confirmation)*
+### R9 — Codex: deferred to a feasibility-first follow-up (confirmed)
+- **This branch:** Codex is not built and not advertised (R7). **Follow-up
+  (separate branch, after this merges):** Codex Phase 0 empirics **first**
+  (headless launch; instruction channel separable from snapshot agent docs, §5.5;
+  R10 credential feasibility), then the adapter. If feasibility fails, Codex ships
+  on the API backend or not at all — decided with evidence, before code.
 
-- **Context.** Two distinct Claude models already satisfy the MVP floor. The
-  second review recommends **not** gating this remediation on Codex: it expands
-  the credential, instruction-channel, parser, model-discovery, and
-  live-verification surface on an already-oversized branch, and its feasibility
-  checks must **precede** implementation, not follow. The maintainer previously
-  asked that Codex be added; this item reconciles the two by **keeping Codex in
-  the roadmap but sequencing it correctly** — the maintainer should confirm or
-  override.
-- **Plan.** For this branch: R7 makes capabilities report Codex as unimplemented
-  (honest), and Codex is **not** in the merge gate. As a **separate follow-up**,
-  in order:
-  1. **Codex Phase 0 empirics FIRST** — headless launch; a highest-priority
-     instruction channel **separable from the snapshot's agent docs** (§5.5); and
-     the credential feasibility of R10 (access-token-only headless auth,
-     non-interference). If any fails, Codex ships on the API backend or not at
-     all — decided with evidence, before code.
-  2. Only then the Codex `CouncilProviderConnection` (argv discipline, charter
-     via the separable channel, normalized events, model identity, live model
-     discovery), parallel to Claude's.
-- **Proof.** Codex's own §15.2 adapter tests and its own R10 credential record —
-  in the follow-up, not here.
+### R10 — Version-bound, machine-readable credential enablement
+- **Fix.** The runner backend for a provider is **disabled by default**, enabled
+  only against a **machine-readable evidence record** keyed to **provider+backend,
+  CLI version, project-image/executable identity, credential schema/source, host
+  platform, verification date**. Any mismatch → **disabled**. Even with a match,
+  **login presence + usable models are probed live** at launch. The **residual
+  token-exfiltration disclosure stays visible even after verification** (§2.7) —
+  the UI never states the handling as "proven secure" (it currently overclaims;
+  fix `scriptAgentCouncil.js`). The live check itself (one runner, copied
+  access-token only, trivial headless turn; project login still valid after;
+  token not rotated; staged files gone; across a failure and a crash-recovery) is
+  a **maintainer action on a paid account** — you cannot run it; you build the
+  gate that *reads* its result and defaults off without it.
+- **Proof.** Fake-token structural tests stay (delivery, 1000-owned, cleanup on
+  reachable paths). Enablement flag defaults off on any key mismatch (tested). No
+  green test may imply the live properties hold.
 
-### R10 — Gate: version-bound, machine-readable credential enablement
+### R11 — Decide the agent-instruction-file policy
+- **Defect.** `agentCouncilContext.py` currently **excludes**
+  `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` and `.claude`/`.codex` at every depth, while
+  the plan/spec also talk about "not shadowing" a snapshot `AGENTS.md` — two
+  different policies.
+- **Fix.** Decide explicitly and record it: are project instruction files
+  **evidence** or **exclusions**, at **which paths**, and **how does the CLI
+  charter channel out-rank** any that remain? Default to test against: exclude the
+  agent-instruction files (meta-instructions, not source under review) **and**
+  verify the `--append-system-prompt` charter out-ranks any hostile file — belt
+  and suspenders — but make it a decision with a per-adapter empirical test, not
+  an incidental exclusion edit.
+- **Proof.** Per-adapter test: a snapshot with a hostile `CLAUDE.md`/`AGENTS.md`
+  does not override the charter; plus a test pinning the chosen exclusion policy.
 
-- **Defect/status.** The runner reuses the subscription login (access token, not
-  refresh; materialized into the runner; no writeback). Three properties are
-  empirical and unverified per provider: (1) access-token-only headless auth;
-  (2) non-interference with the project login; (3) cleanup on success, failure,
-  cancel, crash-recovery. The launch UI states the token "is copied" as if
-  proven — a truth-in-UI violation.
-- **Fix.**
-  - The runner backend for a provider is **disabled by default** and enabled only
-    against a **machine-readable evidence record** keyed to **provider+backend,
-    CLI version, project-image/executable identity, credential schema/source,
-    host platform, and verification date**. Any mismatch **defaults to
-    disabled**. Even with a matching record, **login presence and usable models
-    are probed live** at launch.
-  - The **residual token-exfiltration disclosure stays visible even after
-    verification** — verification establishes the credential *mechanics*, not
-    that reuse is risk-free (§2.7). The UI never states the handling as "proven
-    secure."
-  - The live check (Claude first; Codex in R9's follow-up) runs on a real paid
-    account: one runner, copied token only, trivial headless turn completes;
-    project login still works afterward; token did not rotate; staged files gone;
-    repeated across an injected failure and a simulated crash-recovery.
-  - If a provider fails (1) or (2), it does not ship on the runner backend; the
-    API backend (separate keys, no reuse) is **not currently built** — building
-    it is then a scoped decision taken with the failure evidence.
-- **Proof.** The structural lane keeps its fake-token tests (delivery, 1000-owned
-  ownership, cleanup on reachable paths). The enablement flag reads the evidence
-  record and defaults off on any key mismatch (tested). No green test may *imply*
-  the live properties hold.
+### R12 — Separate the four verification lanes; add a stale-baseline producer
+- **Fix.** Name and keep four **distinct** lanes, stating what each does/does not
+  prove: (1) browser + fail-closed fake Docker — UI/journey only, nothing about
+  real runners; (2) HTTP/controller integration + deterministic fake provider —
+  the real controller/routes/store/serialization/recovery, no real Docker; (3)
+  live-Docker containment — real gateway/runners: leak/quarantine, resource +
+  network falsification, absence proofs; (4) paid-account credential (R10,
+  manual). Add a **real stale-baseline producer**: compute current project
+  identity (commit + dirty digest of the active repo) vs the recorded snapshot
+  identity; the UI shows "baseline stale" from that comparison, not fabricated
+  state.
+- **Proof.** Each lane named with its scope; a test drives the real staleness
+  computation (change the project after capture → stale shown).
 
-### R11 — Agent-instruction-file policy (resolve the contradiction I introduced)
+## 3. Build order
 
-- **Defect.** R9 (and §5.6) say the charter delivery must not shadow the
-  snapshot's `AGENTS.md`; but the context module now **excludes**
-  `AGENTS.md`/`CLAUDE.md`/`GEMINI.md` and the `.claude`/`.codex` trees at every
-  depth. "Deliver without shadowing" and "exclude entirely" are different
-  policies, and the plan must pick one explicitly.
-- **Fix.** Decide, per adapter, and record it: are project instruction files
-  **evidence content** (the council reviews them as part of the project) or
-  **exclusions** (kept out so they cannot steer the participant)? At **which
-  paths** (repo-root only, or every depth)? And **how does each CLI** prevent a
-  snapshot instruction file from overriding the server-owned charter (the
-  `--append-system-prompt`-style channel, verified to win)? Default position to
-  test against: exclude the *agent-instruction* files (they are meta-instructions,
-  not source under review) **and** verify the charter channel out-ranks any that
-  remain — belt and suspenders — but this must be a *decision with per-adapter
-  empirical tests*, not an incidental exclusion-list edit.
-- **Proof.** A per-adapter test that a snapshot containing a hostile
-  `CLAUDE.md`/`AGENTS.md` does not override the charter (the charter's
-  instructions win), plus a test pinning whichever exclusion policy is chosen.
-
-### R12 — Separate the verification lanes; add a stale-baseline producer
-
-- **Defect.** The plan blended four lanes that prove different things, and the
-  stale-baseline UI state is currently *fabricated* by the browser test with no
-  real producer.
-- **Fix.** Name and keep four **distinct** lanes, stating what each does and does
-  not prove:
-  1. **Browser + fail-closed fake Docker adapter** — UI/DOM and journey wiring
-     only; proves nothing about real runner behavior.
-  2. **HTTP/controller integration + deterministic fake provider** — the real
-     controller, routes, store, serialization, and recovery; no real Docker.
-  3. **Live-Docker containment** — real runners/gateway: leak/quarantine,
-     resource + network falsification, absence proofs.
-  4. **Paid-account credential** — R10, manual, per provider.
-  Add a **real stale-baseline producer**: compute the current project identity
-  (commit + dirty digest of the active project repo) and compare it to the
-  recorded snapshot identity; the UI shows "baseline stale" from that comparison,
-  not from fabricated state.
-- **Proof.** Each lane named in CI/docs with its scope; a test drives the real
-  staleness computation (change the project after capture → stale shown).
-
----
-
-## 2. Build order (per the second review)
-
-1. **Rebase** `feat/agent-council` on current `main`; resolve the `index.html`
-   conflict; regenerate the generated ledgers. (Do this *before* implementation,
-   and again at merge.)
-2. **R2 canonical identity** + **R1 per-campaign serialization primitive**
-   (the ownership/identity substrate).
-3. **R4 typed Docker gateway**, quarantine semantics, **egress hardening**;
-   **R8** honest ratchets fall out here.
-4. **R5 snapshot coherence** algorithm.
-5. **R1 controller** and lifecycle/recovery integration (crash, project-release,
-   restart classification).
+1. **Rebase** on current `main`; resolve the `index.html` conflict; regenerate
+   the generated ledgers (`generateMutationInventory.py --write`,
+   `tools/generateStyleInventory.py` only if the style suite demands it). Rebase
+   again at merge time.
+2. **R2 canonical identity** + **R1 serialization primitive** (the substrate).
+3. **R4 gateway** + quarantine semantics + egress hardening; **R8** falls out.
+4. **R5 snapshot coherence.**
+5. **R1 controller** + lifecycle/recovery (crash, release, restart).
 6. **R3 accept gate** + **R6 contract unification** + accepted-plan renderer.
-7. **R7 honest Claude-only capability reporting**; **R11 agent-doc policy**.
-8. **R10 live Claude credential gate** (maintainer action).
-9. **R12** the four named verification lanes + stale-baseline producer; then
-   **rebase + full gates** at merge.
-10. **R9 Codex** as a feasibility-first follow-up, **unless the maintainer
-    directs it into this branch** — in which case its Phase 0 empirics run at
-    step 2.5, before any Codex code.
+7. **R7 honest capability reporting**; **R11 agent-doc policy.**
+8. **R10 credential gate** (you build the gate; the live check is the
+   maintainer's).
+9. **R12 four named lanes** + stale-baseline producer; then rebase + full gates.
+10. **R9 Codex** — separate follow-up branch, not here.
 
-## 3. Definition of done (merge gate)
+Commit at each verified step (the branch is private; commit freely, push is
+CI-free while PR #81 stays closed). Use focused subagents per work item if you
+orchestrate, but verify each claim yourself by running the proof — do not accept
+a subagent's "green" without re-running it.
 
-- A researcher runs a real campaign to `planReady` over real disposable runners
-  with no fabricated state (R1 HTTP integration proof).
-- Concurrent `respond`/`stop`/`accept`/`delete` are serialized; a controller
-  crash classifies the campaign honestly on restart (R1).
-- A campaign is 404 and unlisted from any other project **and** from another
-  project repo in the same container (R2).
+## 4. Definition of done (open a fresh PR only when all hold)
+
+- Real campaign → `planReady` over real runners, no fabricated state (R1).
+- Concurrent commands serialized; controller crash → honest restart (R1).
+- Campaign 404/unlisted from another project **and** another repo in the same
+  container (R2).
 - Acceptance requires `planReady` and accepts the council's own candidate (R3).
-- **No possible runner leak can become unrecorded or be reported as clean**; an
-  indeterminate teardown is visibly quarantined with admission still consumed and
-  no confirmed evidence; the gateway is the sole SDK authority and verifies
-  handle identity/label before destroying; the proxy is digest-pinned and
-  hardened (R4).
-- Snapshot capture refuses and cleans up on any torn/independent-observation
-  mismatch (R5).
-- Capability and credential UI state only what is true; the runner backend is
-  enabled for a provider only against a matching machine-readable evidence
-  record, with login/models probed live and the residual risk still disclosed
-  (R7, R10).
-- The agent-instruction-file policy is decided and its charter-precedence proven
-  per adapter (R11).
-- The four verification lanes are named and green (browser real-flow, controller
-  integration, live-Docker, plus the recorded manual credential lane); staleness
-  has a real producer (R12).
+- **No possible runner leak can become unrecorded or reported as clean**;
+  indeterminate teardown → quarantined + admission consumed + no `confirmed`
+  evidence; gateway is sole SDK authority and verifies handle identity/label;
+  proxy pinned + hardened (R4).
+- Snapshot refuses + cleans up on any torn/independent-observation mismatch (R5).
+- Capability + credential UI state only what is true; runner backend enabled only
+  against a matching machine-readable record with live probing and the residual
+  risk still disclosed (R7, R10).
+- Agent-doc policy decided; charter precedence proven per adapter (R11).
+- Four verification lanes named + green (browser real-flow, controller
+  integration, live-Docker, recorded manual credential); staleness has a real
+  producer (R12).
 - Full suite, browser lane, mutation `--check`, carrier audit all green on a
   branch rebased on `main`.
 
-## 4. Out of scope (unchanged)
+## 5. Out of scope
 
 Review councils, the Deep protocol, tracked/manifest artifacts, and the
-API-backend adapters stay deferred — except that the API backend becomes required
-*for a specific provider* iff that provider fails its R10 gate. **Codex** is in
-the roadmap but out of this branch's merge gate (R9), pending maintainer
-confirmation.
+API-backend adapters stay deferred — except the API backend becomes required
+*for a provider* iff it fails its R10 gate. Codex is roadmap, not this branch
+(R9).
