@@ -12679,4 +12679,91 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testPromoteToHostProjectRoute.py::'
+            'testPromoteFromTheOwningBrowserSessionReleasesAndPromotes'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # No-op the self-release helper past its owner check: the
+        # owning tab's promote falls through to the busy refusal, which
+        # is the pre-2026-08-20 "close it, then convert it" dead end.
+        old=(
+            '    sLeaseId = fsLeaseFromRequest(requestHttp)\n'
+            '    if not sLeaseId:\n'
+            '        return\n'
+        ),
+        new=(
+            '    sLeaseId = fsLeaseFromRequest(requestHttp)\n'
+            '    return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConvertToContainerRoute.py::'
+            'testTheOwningBrowserSessionConvertsItsOwnOpenProject'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Drop the CONVERT handler's self-release call (the comment's
+        # last line makes this call site unique against the promote
+        # handler's): the owning tab's convert is refused as busy.
+        old=(
+            '        # Every validator runs BEFORE the caller\'s own session'
+            ' is\n'
+            '        # released: a refused name must never cost the'
+            ' researcher the\n'
+            '        # project view they are converting from.\n'
+            '        await _fnReleaseCallerOwnedSessionForConversion(\n'
+            '            app, sName, requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        # Every validator runs BEFORE the caller\'s own session'
+            ' is\n'
+            '        # released: a refused name must never cost the'
+            ' researcher the\n'
+            '        # project view they are converting from.\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromoteToHostProjectRoute.py::'
+            'testACopiedLeaseFromAnotherSessionStillRefuses'
+        ),
+        source='vaibify/gui/containerOwnership.py',
+        # Authorize release on the lease VALUE alone: a second session
+        # replaying the owner's copied lease then releases the true
+        # owner, and the promote it should never reach succeeds.
+        old=(
+            '    bUnboundOwner = (\n'
+            '        recordOwner.sBrowserSessionId == ""\n'
+            '        and bool(sLeaseId)\n'
+            '        and recordOwner.sLeaseId == sLeaseId\n'
+            '    )\n'
+        ),
+        new=(
+            '    bUnboundOwner = (\n'
+            '        bool(sLeaseId)\n'
+            '        and recordOwner.sLeaseId == sLeaseId\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPromoteFromInsideJourney.py::'
+            'testPromotingFromInsideTheOpenProjectSucceedsAndReenters'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Blind the wizard to its own open project: the promote still
+        # commits server-side, but the tab never tears down or
+        # re-enters -- it is stranded in the old view on a dead lease,
+        # which is the frontend half this journey exists to catch.
+        old=(
+            '        return Boolean(VaibifyApp.fsGetLeaseForContainer(\n'
+            '            _dictWizardData.sHostName));\n'
+        ),
+        new=(
+            '        return false;\n'
+        ),
+    ),
 ]

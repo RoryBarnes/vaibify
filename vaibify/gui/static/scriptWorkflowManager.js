@@ -1665,12 +1665,13 @@ var VaibifyWorkflowManager = (function () {
 
     function _fnSubmitConvertProject() {
         /* One confirm modal before the irreversible-ish step: it
-           re-registers the project under a new name, the project must
-           be closed first, a build runs next (minutes to hours), and
-           the vaibify.yml is rewritten with container fields. A failed
-           build does NOT revert to host -- it leaves a registered,
-           not-yet-built container, exactly the normal post-create
-           state. */
+           re-registers the project under a new name, a build runs next
+           (minutes to hours), and the vaibify.yml is rewritten with
+           container fields. A project open in THIS tab is released by
+           the server as part of the conversion; only another session's
+           hold refuses. A failed build does NOT revert to host -- it
+           leaves a registered, not-yet-built container, exactly the
+           normal post-create state. */
         VaibifyApp.fnShowConfirmModal(
             "Convert to a containerized Project",
             _fsConversionConfirmBody(),
@@ -1679,11 +1680,13 @@ var VaibifyWorkflowManager = (function () {
                 sConfirmLabel: "Convert and build",
                 sCancelLabel: "Go back",
                 sDetails:
-                    "The project must be closed (released) first. If " +
-                    "the build fails, the project stays registered as " +
-                    "a container that has not been built yet -- it does " +
-                    "not revert to a host sandbox -- and you can retry " +
-                    "the build from its tile.",
+                    "If the project is open in this tab it is closed " +
+                    "automatically; a project open in another session " +
+                    "must be closed there first. If the build fails, " +
+                    "the project stays registered as a container that " +
+                    "has not been built yet -- it does not revert to a " +
+                    "host sandbox -- and you can retry the build from " +
+                    "its tile.",
             }
         );
     }
@@ -1697,20 +1700,52 @@ var VaibifyWorkflowManager = (function () {
             "take minutes to hours).";
     }
 
+    function _fbWizardTargetsTheOpenProject() {
+        /* True when the wizard's host project is the one THIS tab
+           holds the lease for. The promote/convert routes then release
+           this tab's own session server-side as part of the
+           conversion, so the submit paths must quiet their channels
+           first and leave (or re-enter) afterwards. */
+        return Boolean(VaibifyApp.fsGetLeaseForContainer(
+            _dictWizardData.sHostName));
+    }
+
     async function _fnExecuteConversion() {
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
+        var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
+        /* Converting from inside the open project: the server releases
+           this tab's own session before re-registering, closing its
+           sockets with a refusal code the connection monitor would
+           surface as an outage. Disconnect deliberately first, the way
+           a workflow switch does, so the close reads as intentional. */
+        var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
+        if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sHostName) +
                 "/convert-to-container", _dictWizardData);
         } catch (error) {
+            /* Validators run server-side BEFORE the release, so a
+               refusal leaves this tab still owning the project --
+               reopen the socket it closed and stay in place. */
+            if (bSocketWasOpen) {
+                VaibifyPipelineRunner.fnConnectPipelineWebSocket();
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
         _fnCloseWizard();
+        if (bHeldByThisTab) {
+            /* The conversion released this tab's session, and the
+               project is now an unbuilt container -- there is no host
+               view to return to. Drop the dead lease and tear down to
+               the picker before the build starts. */
+            VaibifyApp.fnForgetLease();
+            VaibifyApp.fnDisconnect();
+        }
         VaibifyApp.fnShowToast(
             "Converted '" + sHostName + "' to '" + sNewName +
             "'. Building the image now.", "success");
@@ -1729,6 +1764,12 @@ var VaibifyWorkflowManager = (function () {
            too. */
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
+        var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
+        /* Same channel discipline as the conversion path: the server
+           releases this tab's own session before re-registering, so
+           quiet the socket deliberately first. */
+        var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
+        if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
         var elButton = document.getElementById("btnWizardNext");
         elButton.disabled = true;
         elButton.textContent = "Promoting...";
@@ -1737,6 +1778,12 @@ var VaibifyWorkflowManager = (function () {
                 "/api/registry/" + encodeURIComponent(sHostName) +
                 "/promote-to-host-project", {sProjectName: sNewName});
         } catch (error) {
+            /* Validators run server-side BEFORE the release, so a
+               refusal leaves this tab still owning the project --
+               reopen the socket it closed and stay in place. */
+            if (bSocketWasOpen) {
+                VaibifyPipelineRunner.fnConnectPipelineWebSocket();
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -1749,7 +1796,23 @@ var VaibifyWorkflowManager = (function () {
         VaibifyApp.fnShowToast(
             "Promoted '" + sHostName + "' to the host Project '" +
             sNewName + "'.", "success");
+        if (bHeldByThisTab) {
+            await _fnReenterPromotedProject(sNewName);
+            return;
+        }
         VaibifyContainerManager.fnLoadContainers();
+    }
+
+    async function _fnReenterPromotedProject(sNewName) {
+        /* The server released this tab's session as part of the
+           promotion, so the old lease is dead; forget it, tear the old
+           project view down, then re-enter through the same click path
+           a researcher would use -- claim, host warning if it is
+           unacknowledged, workflow picker -- under the new name. */
+        VaibifyApp.fnForgetLease();
+        VaibifyApp.fnDisconnect();
+        await VaibifyContainerManager.fnLoadContainers();
+        await VaibifyContainerManager.fnHandleContainerClick(sNewName);
     }
 
     return {

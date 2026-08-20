@@ -1935,6 +1935,7 @@ var VaibifyContainerManager = (function () {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
+        fnHandleContainerClick: fnHandleContainerClick,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,
         fnOpenAddChoice: fnOpenAddChoice,

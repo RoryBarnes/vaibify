@@ -168,6 +168,37 @@ def testClaimedProjectIs409AndDoesNotMutate(tclient):
     assert registryManager.fdictGetProject(S_NEW_NAME) is None
 
 
+@pytest.mark.falsification
+def testTheOwningBrowserSessionConvertsItsOwnOpenProject(tclient):
+    """The owning tab converts its own open project in one request.
+
+    The self-release helper is shared with the promote route, but the
+    convert handler must actually CALL it -- this drives the convert
+    leg with a real session-bound owner record holding a real flock,
+    and asserts the release committed (owner map empty, flock freed)
+    and the conversion proceeded.
+
+    Kills: a convert handler that reinstates the unconditional
+    owned-project refusal, or skips the self-release call.
+    """
+    from tests.testPromoteToHostProjectRoute import (
+        _fbFlockIsStillHeld,
+        _fdictOwnerHeaders,
+        _fsInstallOwningBrowserSession,
+    )
+    client, app = tclient
+    sCredential = _fsInstallOwningBrowserSession(app, S_HOST_NAME)
+    response = client.post(
+        _sConvertUrl(S_HOST_NAME), json=_fdictBody(),
+        headers=_fdictOwnerHeaders(sCredential),
+    )
+    assert response.status_code == 200, response.text
+    assert registryManager.fdictGetProject(S_NEW_NAME) is not None
+    assert registryManager.fdictGetProject(S_HOST_NAME) is None
+    assert app.state.dictContainerOwners == {}
+    assert not _fbFlockIsStillHeld(S_HOST_NAME)
+
+
 def testDuplicateNewNameIs409(tclient):
     """The new name must be free of every other registered project."""
     client, _ = tclient

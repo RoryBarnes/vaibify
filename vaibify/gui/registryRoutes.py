@@ -1376,7 +1376,8 @@ def _fnRegisterConvertToContainer(app, dictCtx):
     @app.post("/api/registry/{sName}/convert-to-container")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictConvertToContainer(
-        sName: str, request: ConvertToContainerRequest,
+        requestHttp: Request, sName: str,
+        request: ConvertToContainerRequest,
     ):
         from vaibify.config import registryManager
         _fnRejectInvalidProjectName(sName)
@@ -1387,17 +1388,23 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         fnRefuseHostOnlyForContainerProject(
             sName, "Converting to a container",
         )
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         _fnRequireValidProjectName(request.sProjectName, "container")
         _fnRejectUninstallablePackages(request.listCondaPackages)
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,
         )
-        # Duplicate-name check last: it is the one validator that reaches
-        # `docker ps`, so the cheap local checks refuse first. It skips
-        # the project being converted, so a host sandbox whose basename
-        # is already Docker-safe may keep its name.
+        # Duplicate-name check after the cheap local validators: it is
+        # the one validator that reaches `docker ps`. It skips the
+        # project being converted, so a host sandbox whose basename is
+        # already Docker-safe may keep its name.
         _fnRejectDuplicateForConversion(request.sProjectName, sName)
+        # Every validator runs BEFORE the caller's own session is
+        # released: a refused name must never cost the researcher the
+        # project view they are converting from.
+        await _fnReleaseCallerOwnedSessionForConversion(
+            app, sName, requestHttp,
+        )
+        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         # Config file FIRST, registry entry SECOND. If the registry write
         # then fails, the config names a container but the entry is still
         # host, so re-running is safe; the reverse order would drift
@@ -1416,15 +1423,52 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         return _fdictConversionResult(request.sProjectName)
 
 
+async def _fnReleaseCallerOwnedSessionForConversion(app, sName, requestHttp):
+    """Release the caller's own open session on the project, if any.
+
+    Conversion renames the lock/lease/journal key, so it must run only
+    when nobody holds the project. Refusing the researcher's OWN open
+    tab made promoting from inside the browser impossible -- the toast
+    said "close it, then convert it", which only the command line could
+    finish. Instead, when the presenting lease and browser session are
+    the very ones holding the project, the session is released through
+    the single lifecycle authority (terminals drained and proven,
+    channels closed, flock freed) before the conversion proceeds; the
+    frontend then re-enters under the new name. A caller presenting no
+    lease, or a lease a DIFFERENT session bound, releases nothing and
+    falls through to the busy refusal. A busy own session -- a live
+    run, a live guarded mutation, a live in-container agent -- is
+    refused with the lifecycle's own reason, session retained.
+    """
+    from vaibify.gui import browserSession, sessionLifecycle
+    if not app.state.dictContainerOwners.get(sName):
+        return
+    sLeaseId = fsLeaseFromRequest(requestHttp)
+    if not sLeaseId:
+        return
+    sBrowserSessionId = browserSession.fsSessionIdForCredential(
+        getattr(app.state, "dictBrowserSessions", {}),
+        requestHttp.headers.get("x-session-token", ""),
+    )
+    sOutcome, dictPayload = await sessionLifecycle.ftReleaseExplicit(
+        app.state, sName, sLeaseId, sBrowserSessionId=sBrowserSessionId,
+    )
+    if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
+        raise HTTPException(409, detail={"sMessage": dictPayload["sMessage"]})
+
+
 def _fnRefuseBusyProjectForConversion(app, sName, dictCtx):
     """409 when the project is open, locked, or has unsettled operations.
 
     Conversion renames the lock/lease/journal key, so it must run only
-    when nobody holds the project -- the confirm modal already tells the
-    researcher to close it first. All three axes are checked: the
-    in-process owner map (this hub's live session), the host flock
-    (another vaibify process), and the operation journal (an unsettled
-    or quarantined operation on the current name).
+    when nobody holds the project. The caller's own open session has
+    already been released by
+    :func:`_fnReleaseCallerOwnedSessionForConversion`, so an owner
+    record surviving to this check belongs to some OTHER session -- the
+    refusal tells the researcher to close it there. All three axes are
+    checked: the in-process owner map (this hub's live session), the
+    host flock (another vaibify process), and the operation journal (an
+    unsettled or quarantined operation on the current name).
     """
     from vaibify.config import operationJournal
     from vaibify.config.containerLock import fdictReadLockHolder
@@ -1534,7 +1578,8 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
     @app.post("/api/registry/{sName}/promote-to-host-project")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictPromoteToHostProject(
-        sName: str, request: PromoteHostProjectRequest,
+        requestHttp: Request, sName: str,
+        request: PromoteHostProjectRequest,
     ):
         from vaibify.config import registryManager
         _fnRejectInvalidProjectName(sName)
@@ -1547,12 +1592,18 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
         # Idempotency: a host sandbox already promoted is refused (409)
         # rather than re-registered a second time.
         _fnRefuseAlreadyHostProject(dictProject)
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         # Host-safe name: spaces allowed, path separators and control
         # chars forbidden. Docker-safety is NOT required -- the name
         # never becomes a Docker object in host mode.
         _fnRequireValidProjectName(request.sProjectName, "host")
         _fnRejectDuplicateForConversion(request.sProjectName, sName)
+        # Every validator runs BEFORE the caller's own session is
+        # released: a refused name must never cost the researcher the
+        # project view they are promoting from.
+        await _fnReleaseCallerOwnedSessionForConversion(
+            app, sName, requestHttp,
+        )
+        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         # Config file FIRST, registry entry SECOND (the convert route's
         # ordering rationale): a failed registry write then leaves a host
         # sandbox whose config names the new name but whose entry is

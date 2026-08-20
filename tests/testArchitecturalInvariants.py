@@ -5129,7 +5129,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module's own busy-refusal, name validator, and self-skipping
     # duplicate check rather than duplicating them, so a separate module
     # would only scatter the registry surface it belongs with.
-    "registryRoutes.py": 1858,
+    # +51 (2026-08-20): _fnReleaseCallerOwnedSessionForConversion — the
+    # convert/promote routes now release the CALLER'S OWN open session
+    # through the lifecycle authority instead of refusing it, so a
+    # sandbox can be promoted from inside the open project. One helper
+    # shared by both conversion routes, cohesive with the busy-refusal
+    # it sits beside.
+    "registryRoutes.py": 1909,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
