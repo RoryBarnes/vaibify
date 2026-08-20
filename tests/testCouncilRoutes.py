@@ -331,6 +331,42 @@ def test_list_and_get_campaign(tOwnerClient):
         f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}")
     assert responseGet.status_code == 200, responseGet.text
     assert responseGet.json()["dictCampaign"]["sCampaignId"] == sCampaignId
+    assert responseGet.json()["listQuarantinedRunners"] == []
+
+
+def test_get_campaign_reports_quarantined_runners(tOwnerClient):
+    """A quarantined reservation surfaces on the campaign read.
+
+    The "runner may exist" surface (remediation R4): a reservation the
+    daemon could not prove gone stays visible on the campaign response,
+    keyed to THIS campaign — a foreign campaign's quarantine must not
+    appear.
+    """
+    client, app, _ = tOwnerClient
+    sCampaignId = _sStartOneCampaign(client)
+    dictRegistry = app.state.dictCouncilRegistry
+    agentCouncilRegistry.fdictReserveRunner(
+        dictRegistry, sCampaignId, "res-quarantined", "claude",
+        {"iMemoryBytes": 1024, "fCpuCount": 1.0})
+    agentCouncilRegistry.fnMarkRunnerCreated(
+        dictRegistry, "res-quarantined", "container-unproven")
+    agentCouncilRegistry.fdictSettleReservation(
+        dictRegistry, "res-quarantined", "quarantined")
+    agentCouncilRegistry.fdictReserveRunner(
+        dictRegistry, "another-campaign", "res-foreign", "claude",
+        {"iMemoryBytes": 1024, "fCpuCount": 1.0})
+    agentCouncilRegistry.fnMarkRunnerCreated(
+        dictRegistry, "res-foreign", "container-foreign")
+    agentCouncilRegistry.fdictSettleReservation(
+        dictRegistry, "res-foreign", "quarantined")
+    responseGet = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}")
+    assert responseGet.status_code == 200, responseGet.text
+    assert responseGet.json()["listQuarantinedRunners"] == [{
+        "sReservationId": "res-quarantined",
+        "sCampaignId": sCampaignId,
+        "sProvider": "claude",
+    }]
 
 
 def test_capabilities_reports_container_providers(tOwnerClient):

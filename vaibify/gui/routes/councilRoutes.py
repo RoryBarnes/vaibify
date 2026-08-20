@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from .. import agentCouncilCampaign
 from .. import agentCouncilController
+from .. import agentCouncilDockerGateway
 from .. import agentCouncilRegistry
 from .. import agentCouncilStore
 from ..pipelineServer import fdictRequireWorkflow, fsContainerNameForId
@@ -345,7 +346,19 @@ def _fnRegisterGetCouncil(app, dictCtx):
         jsonCampaign = _fjsonRequireCampaign(
             _fdictCampaignStore(requestHttp), sCampaignId, sName,
             sProjectRepoPath)
-        return {"dictCampaign": jsonCampaign}
+        # The "runner may exist" surface (remediation R4): quarantined
+        # reservations are read through the gateway's registry-only
+        # view — no daemon is consulted on this read path.
+        dictGatewayView = (
+            agentCouncilDockerGateway.fdictCreateCouncilDockerGateway(
+                None, _fdictCouncilRegistry(requestHttp)))
+        return {
+            "dictCampaign": jsonCampaign,
+            "listQuarantinedRunners":
+                agentCouncilDockerGateway
+                .flistDescribeQuarantinedReservations(
+                    dictGatewayView, sCampaignId),
+        }
 
 
 def _fnRegisterPollEvents(app, dictCtx):

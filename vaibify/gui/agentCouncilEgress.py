@@ -1,20 +1,29 @@
 """Per-campaign egress boundary for Agent Council runners (design section 9.7).
 
 A council runner may reach exactly one destination family: its own
-provider's API endpoints. This module builds that boundary out of three
-pieces, each created per campaign and destroyed with the campaign, and
-each built through the Docker SDK with a council client passed in by the
-caller — the same idiom ``agentCouncilRunner`` uses, so this module adds
-no raw process-launch capability of its own:
+provider's API endpoints. The boundary is built out of three pieces,
+each created per campaign and destroyed with the campaign. Since
+remediation R4 this module holds ONLY the pure half — the server-owned
+proxy script, the allowlist and campaign-id validation, the resource
+NAME composition, the proxy argv/environment composition, and the
+runner's DNS wiring; every Docker-SDK call that realizes the boundary
+(network create/remove, proxy create/start/inspect, script copy-in,
+bridge attach, absence-proving teardown) lives in
+``agentCouncilDockerGateway``, the single council SDK authority
+(``tests/testCouncilGatewayAuthority.py`` fails the build if SDK reach
+reappears here). The three pieces:
 
 1. an INTERNAL Docker network (``networks.create(..., internal=True)``),
    which the kernel gives no route off the host — every direct dial to
    a bridge, external, or IPv6 address fails immediately with
    ``ENETUNREACH`` (errno 101, verified live on Docker 28.4.0);
 2. an allowlisting HTTP CONNECT proxy — a server-owned Python-stdlib
-   script (``S_CONNECT_PROXY_SCRIPT``) run in a ``python:3.10-slim``
-   container attached to BOTH the internal network and the default
-   bridge. It serves only ``CONNECT`` to hostnames on a fixed,
+   script (``S_CONNECT_PROXY_SCRIPT``) run in a digest-pinned
+   ``S_PROXY_IMAGE`` container attached to BOTH the internal network
+   and the default bridge, created by the gateway with the runner's own
+   hardened posture (unprivileged user, all capabilities dropped,
+   no-new-privileges, memory/CPU/PID bounds). It serves only
+   ``CONNECT`` to hostnames on a fixed,
    server-supplied allowlist, refuses raw-address targets, and performs
    name resolution ITSELF on its bridge side (or from a server-supplied
    hostname-to-address map, which is how the live tests pin their
@@ -26,16 +35,6 @@ no raw process-launch capability of its own:
    ``HTTPS_PROXY``/``HTTP_PROXY`` pointing at the proxy's NUMERIC
    internal address (so it never needs a resolver), and has its DNS
    black-holed as described below.
-
-Every Docker call here is rooted in the ``dockerCouncil`` SDK client the
-caller supplies. That client is a runtime object the mutation-inventory
-scan cannot resolve, so these calls are recorded as
-``untraceable-docker-sdk-root`` blind spots — exactly like the runner's
-— and carry a separate-authority disposition in
-``tests/testBlindSpotDispositions.py``: they operate only on the
-council-created egress network and CONNECT-proxy container, never the
-active project container, and their lifecycle is governed by the council
-registry, not the commit carrier.
 
 Phase 0 finding — the embedded-DNS exfiltration hazard
 ------------------------------------------------------
@@ -67,18 +66,16 @@ never routed, so no real resolver can ever answer from it. Note that
 addresses and silently substitutes public DNS, which would reopen the
 channel while appearing to close it.
 
-Teardown follows the prove-absence discipline of
-``agentCouncilRunner.fdictDestroyRunnerAndProveAbsence``: after removal,
-the daemon is asked to inspect the resources by name, and a daemon that
-did not answer with a positive ``NotFound`` yields an INDETERMINATE
-report, never a claim of absence.
+Teardown follows the prove-absence discipline of the gateway's
+container destruction: after removal, the daemon is asked to inspect
+the resources by name, and a daemon that did not answer with a positive
+``NotFound`` yields an INDETERMINATE report, never a claim of absence
+(``agentCouncilDockerGateway.fdictRemoveCampaignEgressResources``).
 """
 
 import ipaddress
 import re
-import time
 
-from vaibify.docker.dockerConnection import _fmoduleGetDocker
 from vaibify.gui import agentCouncilRunner
 
 __all__ = [
@@ -87,14 +84,15 @@ __all__ = [
     "S_BLACK_HOLE_NAMESERVER",
     "S_CONNECT_PROXY_SCRIPT",
     "S_PROXY_IMAGE",
+    "S_PROXY_READY_LINE",
+    "fbaBuildProxyScriptTarball",
     "fdictBuildRunnerProxyEnvironment",
-    "fdictRemoveCampaignEgressResources",
     "flistBuildRunnerNetworkArguments",
+    "flistComposeProxyCommand",
+    "fnValidateAllowlistOrRaise",
     "fnValidateCampaignIdOrRaise",
     "fsComposeNetworkName",
     "fsComposeProxyContainerName",
-    "fsCreateCampaignInternalNetwork",
-    "fsLaunchAllowlistProxy",
 ]
 
 
@@ -102,7 +100,13 @@ class EgressSetupError(RuntimeError):
     """A step of the egress-boundary build or teardown failed."""
 
 
-S_PROXY_IMAGE = "python:3.10-slim"
+# Digest-pinned (remediation R4) so the proxy the boundary trusts is the
+# exact reviewed image, not whatever a mutable tag points at today. The
+# plain tag is python:3.10-slim.
+S_PROXY_IMAGE = (
+    "python:3.10-slim@sha256:"
+    "a78e4529630cfe8c5199cafd6e0c28ee1579a13f86274396d8b6b2d80367aa3a"
+)
 I_PROXY_LISTEN_PORT = 8888
 S_PROXY_SCRIPT_DIRECTORY = "vaibifyEgress"
 S_PROXY_SCRIPT_BASENAME = "vaibifyEgressProxy.py"
@@ -121,20 +125,14 @@ _S_PROXY_NAME_PREFIX = "vaibifyCouncilProxy"
 _RE_CAMPAIGN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
 _RE_HOSTNAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
-_F_PROXY_READY_DEADLINE_SECONDS = 20.0
-_F_PROXY_READY_POLL_SECONDS = 0.25
+F_PROXY_READY_DEADLINE_SECONDS = 20.0
+F_PROXY_READY_POLL_SECONDS = 0.25
 
-# The three-state answer of a prove-absence probe, mirroring the runner:
-# an "absent" claim is only ever a POSITIVE NotFound, never a swallowed
-# daemon error, which lands the resource as indeterminate instead.
-_S_ABSENCE_ABSENT = "absent"
-_S_ABSENCE_PRESENT = "present"
-_S_ABSENCE_INDETERMINATE = "indeterminate"
-
-# The line the proxy prints once its listening socket is bound; launch
-# blocks until it appears so a caller never wires a runner to a proxy
-# that is still importing.
-_S_PROXY_READY_LINE = "vaibify-egress: listening"
+# The line the proxy prints once its listening socket is bound; the
+# gateway's launch blocks until it appears so a caller never wires a
+# runner to a proxy that is still importing. The listen port is above
+# 1024, so the bind succeeds for the unprivileged proxy user.
+S_PROXY_READY_LINE = "vaibify-egress: listening"
 
 # Server-owned constant text, executed inside the proxy container.
 # Parameterized EXCLUSIVELY through argv composed by this module from
@@ -323,28 +321,8 @@ def fsComposeProxyContainerName(sCampaignId):
     return f"{_S_PROXY_NAME_PREFIX}-{sCampaignId}"
 
 
-def fsCreateCampaignInternalNetwork(dockerCouncil, sCampaignId):
-    """Create the campaign's internal network and return its name.
-
-    ``internal=True`` is the boundary itself: the daemon attaches no
-    gateway off the host, so a runner's direct dial to any bridge,
-    external or IPv6 address fails with ``ENETUNREACH`` before a
-    single packet leaves the machine.
-    """
-    sNetworkName = fsComposeNetworkName(sCampaignId)
-    try:
-        dockerCouncil.networks.create(
-            sNetworkName, driver="bridge", internal=True)
-    except Exception as error:
-        raise EgressSetupError(
-            f"failed to create internal network {sNetworkName}: "
-            f"{type(error).__name__}: {error}"
-        )
-    return sNetworkName
-
-
-def _fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
-                                dictHostnameAddressMap):
+def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
+                               dictHostnameAddressMap):
     """Refuse allowlist material that is not plainly server-shaped."""
     if not saAllowedHostnames:
         raise EgressSetupError("the egress allowlist must not be empty")
@@ -378,71 +356,25 @@ def _fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
             )
 
 
-def _fnCopyProxyScriptIntoContainer(dockerCouncil, sContainerId):
-    """Deliver the server-owned proxy script into the created container.
+def fbaBuildProxyScriptTarball():
+    """Build the ownership-stamped tarball carrying the proxy script.
 
     Reuses the runner's ownership-stamping one-file tarball builder, so
-    the single tar-entry discipline in the package stays in one place and
-    ``tarfile.TarInfo``'s native uid/gid default of 0 can never leak. The
-    archive endpoint extracts at ``/``, so the script lands at
-    ``S_PROXY_SCRIPT_CONTAINER_PATH``.
+    the single tar-entry discipline in the package stays in one place
+    and ``tarfile.TarInfo``'s native uid/gid default of 0 can never
+    leak — the 1000-stamped entries are what let the NON-ROOT proxy
+    read its own script. The gateway extracts the archive at ``/``, so
+    the script lands at ``S_PROXY_SCRIPT_CONTAINER_PATH``.
     """
-    baTarball = agentCouncilRunner.fbaBuildStampedFileTarball(
+    return agentCouncilRunner.fbaBuildStampedFileTarball(
         S_PROXY_SCRIPT_DIRECTORY, S_PROXY_SCRIPT_BASENAME,
         S_CONNECT_PROXY_SCRIPT.encode("utf-8"),
         iFileMode=0o644, iDirectoryMode=0o755,
     )
-    try:
-        dockerCouncil.api.put_archive(sContainerId, "/", baTarball)
-    except Exception as error:
-        raise EgressSetupError(
-            "failed to copy the proxy script into the egress proxy: "
-            f"{type(error).__name__}: {error}"
-        )
 
 
-def _fnAwaitProxyListening(dockerCouncil, sContainerId):
-    """Block until the proxy logs its ready line, or raise."""
-    fDeadline = time.monotonic() + _F_PROXY_READY_DEADLINE_SECONDS
-    while time.monotonic() < fDeadline:
-        try:
-            baLogs = dockerCouncil.api.logs(
-                sContainerId, stdout=True, stderr=True)
-        except Exception:
-            time.sleep(_F_PROXY_READY_POLL_SECONDS)
-            continue
-        sCombined = baLogs.decode("utf-8", errors="replace")
-        if _S_PROXY_READY_LINE in sCombined:
-            return
-        if "Traceback" in sCombined:
-            raise EgressSetupError(
-                f"the egress proxy crashed on startup: {sCombined}")
-        time.sleep(_F_PROXY_READY_POLL_SECONDS)
-    raise EgressSetupError(
-        f"the egress proxy never reported {_S_PROXY_READY_LINE!r} within "
-        f"{_F_PROXY_READY_DEADLINE_SECONDS} seconds"
-    )
-
-
-def _fsReadProxyInternalAddress(dockerCouncil, sContainerId, sNetworkName):
-    """Return the proxy's numeric address on the internal network."""
-    try:
-        dictInspect = dockerCouncil.api.inspect_container(sContainerId)
-    except Exception as error:
-        raise EgressSetupError(
-            "could not read the internal-network address of the egress "
-            f"proxy: {type(error).__name__}: {error}"
-        )
-    dictNetworks = dictInspect.get("NetworkSettings", {}).get("Networks", {})
-    sAddress = dictNetworks.get(sNetworkName, {}).get("IPAddress", "")
-    if not sAddress:
-        raise EgressSetupError(
-            f"the egress proxy reports no address on {sNetworkName}")
-    return sAddress
-
-
-def _flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
-                              dictHostnameAddressMap):
+def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
+                             dictHostnameAddressMap):
     """Compose the argv the proxy container runs, from server-owned values."""
     saCommand = [
         "python", S_PROXY_SCRIPT_CONTAINER_PATH,
@@ -459,72 +391,6 @@ def _flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
             ),
         ])
     return saCommand
-
-
-def fsLaunchAllowlistProxy(dockerCouncil, sCampaignId, saAllowedHostnames,
-                           iaAllowedPorts=None,
-                           dictHostnameAddressMap=None):
-    """Launch the campaign's CONNECT proxy; return its internal address.
-
-    The container is created on the internal network, given the
-    server-owned script through the archive endpoint, attached to the
-    default bridge (its resolving and dialing side), and only then
-    started — so it is dual-homed before the first byte is served. The
-    returned address is the NUMERIC internal-network address the runner's
-    proxy environment points at, which is why a runner needs no resolver.
-    """
-    iaPorts = list(iaAllowedPorts) if iaAllowedPorts else [443]
-    dictAddressMap = dict(dictHostnameAddressMap or {})
-    saHostnames = [sHostname.lower() for sHostname in saAllowedHostnames]
-    _fnValidateAllowlistOrRaise(saHostnames, iaPorts, dictAddressMap)
-    sNetworkName = fsComposeNetworkName(sCampaignId)
-    sProxyName = fsComposeProxyContainerName(sCampaignId)
-    try:
-        containerProxy = dockerCouncil.containers.create(
-            S_PROXY_IMAGE,
-            command=_flistComposeProxyCommand(
-                saHostnames, iaPorts, dictAddressMap),
-            name=sProxyName,
-            network=sNetworkName,
-        )
-    except Exception as error:
-        raise EgressSetupError(
-            f"failed to create the egress proxy container {sProxyName}: "
-            f"{type(error).__name__}: {error}"
-        )
-    sContainerId = containerProxy.id
-    try:
-        _fnCopyProxyScriptIntoContainer(dockerCouncil, sContainerId)
-        _fnAttachToDefaultBridge(dockerCouncil, sContainerId)
-        containerProxy.start()
-        _fnAwaitProxyListening(dockerCouncil, sContainerId)
-        return _fsReadProxyInternalAddress(
-            dockerCouncil, sContainerId, sNetworkName)
-    except Exception:
-        _fnRemoveContainerQuietly(dockerCouncil, sContainerId)
-        raise
-
-
-def _fnAttachToDefaultBridge(dockerCouncil, sContainerId):
-    """Attach the proxy to the default bridge — its resolving/dialing side."""
-    try:
-        dockerCouncil.api.connect_container_to_network(sContainerId, "bridge")
-    except Exception as error:
-        raise EgressSetupError(
-            "failed to attach the egress proxy to the default bridge: "
-            f"{type(error).__name__}: {error}"
-        )
-
-
-def _fnRemoveContainerQuietly(dockerCouncil, sContainerId):
-    """Force-remove a container, tolerating one already gone."""
-    moduleDocker = _fmoduleGetDocker()
-    try:
-        dockerCouncil.api.remove_container(sContainerId, force=True, v=True)
-    except moduleDocker.errors.NotFound:
-        pass
-    except Exception:
-        pass
 
 
 def fdictBuildRunnerProxyEnvironment(sProxyInternalAddress,
@@ -561,80 +427,3 @@ def flistBuildRunnerNetworkArguments(sCampaignId):
         "--dns-option", "timeout:1",
         "--dns-option", "attempts:1",
     ]
-
-
-def _fsRemoveProxyContainer(dockerCouncil, sProxyName):
-    """Force-remove the proxy container and probe its absence by name.
-
-    Returns one of the three absence answers. ``absent`` is only ever a
-    POSITIVE ``NotFound`` from the inspect probe AFTER removal; any other
-    daemon error — a failed removal, an inspect that faulted — is
-    ``indeterminate``, reported by the caller, never swallowed into a
-    claim of absence.
-    """
-    moduleDocker = _fmoduleGetDocker()
-    try:
-        dockerCouncil.api.remove_container(sProxyName, force=True, v=True)
-    except moduleDocker.errors.NotFound:
-        pass
-    except Exception:
-        return _S_ABSENCE_INDETERMINATE
-    try:
-        dockerCouncil.api.inspect_container(sProxyName)
-    except moduleDocker.errors.NotFound:
-        return _S_ABSENCE_ABSENT
-    except Exception:
-        return _S_ABSENCE_INDETERMINATE
-    return _S_ABSENCE_PRESENT
-
-
-def _fsRemoveInternalNetwork(dockerCouncil, sNetworkName):
-    """Remove the internal network and probe its absence by name.
-
-    Same three-state discipline as the proxy: ``absent`` is a positive
-    ``NotFound`` from the inspect probe after removal, and any other
-    daemon fault is ``indeterminate``. The proxy is removed first, so a
-    clean removal leaves the network with no endpoints to refuse it.
-    """
-    moduleDocker = _fmoduleGetDocker()
-    try:
-        dockerCouncil.api.remove_network(sNetworkName)
-    except moduleDocker.errors.NotFound:
-        pass
-    except Exception:
-        return _S_ABSENCE_INDETERMINATE
-    try:
-        dockerCouncil.api.inspect_network(sNetworkName)
-    except moduleDocker.errors.NotFound:
-        return _S_ABSENCE_ABSENT
-    except Exception:
-        return _S_ABSENCE_INDETERMINATE
-    return _S_ABSENCE_PRESENT
-
-
-def fdictRemoveCampaignEgressResources(dockerCouncil, sCampaignId):
-    """Remove the campaign's proxy and network, proving absence.
-
-    Returns ``{bProxyAbsenceProven, bNetworkAbsenceProven,
-    saIndeterminateResources}``. A proven flag is True only when the
-    daemon positively answered ``NotFound`` for that name AFTER the
-    removal attempt. A daemon that did not answer lands the resource
-    in ``saIndeterminateResources`` with its flag False — reported,
-    never swallowed, exactly as an unanswered container probe makes a
-    settlement inconclusive rather than clean. The proxy is removed
-    before the network so the network has no endpoint to refuse.
-    """
-    sProxyName = fsComposeProxyContainerName(sCampaignId)
-    sNetworkName = fsComposeNetworkName(sCampaignId)
-    sProxyAnswer = _fsRemoveProxyContainer(dockerCouncil, sProxyName)
-    sNetworkAnswer = _fsRemoveInternalNetwork(dockerCouncil, sNetworkName)
-    saIndeterminateResources = []
-    if sProxyAnswer == _S_ABSENCE_INDETERMINATE:
-        saIndeterminateResources.append(sProxyName)
-    if sNetworkAnswer == _S_ABSENCE_INDETERMINATE:
-        saIndeterminateResources.append(sNetworkName)
-    return {
-        "bProxyAbsenceProven": sProxyAnswer == _S_ABSENCE_ABSENT,
-        "bNetworkAbsenceProven": sNetworkAnswer == _S_ABSENCE_ABSENT,
-        "saIndeterminateResources": saIndeterminateResources,
-    }

@@ -21,15 +21,19 @@ import subprocess
 import pytest
 
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
-from vaibify.gui.agentCouncilRunner import fdockerCreateCouncilClient
+from vaibify.gui import agentCouncilRegistry
+from vaibify.gui.agentCouncilDockerGateway import (
+    fdictCreateCouncilDockerGateway,
+    fdictRemoveCampaignEgressResources,
+    fdockerCreateCouncilClient,
+    fsCreateCampaignInternalNetwork,
+    fsLaunchAllowlistProxy,
+)
 from vaibify.gui.agentCouncilEgress import (
     I_PROXY_LISTEN_PORT,
     S_BLACK_HOLE_NAMESERVER,
     fdictBuildRunnerProxyEnvironment,
-    fdictRemoveCampaignEgressResources,
     flistBuildRunnerNetworkArguments,
-    fsCreateCampaignInternalNetwork,
-    fsLaunchAllowlistProxy,
 )
 
 pytestmark = pytest.mark.docker_live
@@ -150,14 +154,16 @@ def fnRemoveContainerQuietly(sContainerName):
 
 
 @pytest.fixture(scope="module")
-def dockerCouncil():
-    """A council Docker client, the same one the runner backend uses."""
+def dictGatewayLive():
+    """A council Docker gateway, the single SDK authority under test."""
     fnRequireDaemonReachable()
-    return fdockerCreateCouncilClient()
+    return fdictCreateCouncilDockerGateway(
+        fdockerCreateCouncilClient(),
+        agentCouncilRegistry.fdictCreateCouncilRegistry())
 
 
 @pytest.fixture(scope="module")
-def dictEgressTopology(dockerCouncil):
+def dictEgressTopology(dictGatewayLive):
     """Stand up the full egress topology once for this module.
 
     Internal network + proxy allowlisting ONLY the provider stand-in's
@@ -168,12 +174,12 @@ def dictEgressTopology(dockerCouncil):
     sCampaignId = "livetest-" + secrets.token_hex(4)
     sProviderContainer = f"vaibifyEgressLiveProvider-{sCampaignId}"
     sForbiddenContainer = f"vaibifyEgressLiveForbidden-{sCampaignId}"
-    fsCreateCampaignInternalNetwork(dockerCouncil, sCampaignId)
+    fsCreateCampaignInternalNetwork(dictGatewayLive, sCampaignId)
     try:
         sProviderAddress = fsStartBridgeStandIn(sProviderContainer)
         sForbiddenAddress = fsStartBridgeStandIn(sForbiddenContainer)
         sProxyAddress = fsLaunchAllowlistProxy(
-            dockerCouncil,
+            dictGatewayLive,
             sCampaignId,
             [S_PROVIDER_HOSTNAME],
             iaAllowedPorts=[I_STAND_IN_PORT],
@@ -193,7 +199,7 @@ def dictEgressTopology(dockerCouncil):
         fnRemoveContainerQuietly(sProviderContainer)
         fnRemoveContainerQuietly(sForbiddenContainer)
         dictRemoval = fdictRemoveCampaignEgressResources(
-            dockerCouncil, sCampaignId)
+            dictGatewayLive, sCampaignId)
         assert dictRemoval["saIndeterminateResources"] == [], (
             "teardown could not prove absence of: "
             f"{dictRemoval['saIndeterminateResources']}"
@@ -360,7 +366,7 @@ def test_sandbox_network_none_reaches_nothing(dictEgressTopology):
     assert "RESOLVE-OK" not in sOutput
 
 
-def test_teardown_proves_absence_and_is_idempotent(dockerCouncil):
+def test_teardown_proves_absence_and_is_idempotent(dictGatewayLive):
     """Removal reports PROVEN absence, and a second pass still proves it.
 
     A dedicated campaign is built and torn down so the assertion covers
@@ -371,21 +377,21 @@ def test_teardown_proves_absence_and_is_idempotent(dockerCouncil):
     """
     fnRequireDaemonReachable()
     sCampaignId = "livetear-" + secrets.token_hex(4)
-    fsCreateCampaignInternalNetwork(dockerCouncil, sCampaignId)
+    fsCreateCampaignInternalNetwork(dictGatewayLive, sCampaignId)
     fsLaunchAllowlistProxy(
-        dockerCouncil, sCampaignId, [S_PROVIDER_HOSTNAME],
+        dictGatewayLive, sCampaignId, [S_PROVIDER_HOSTNAME],
         iaAllowedPorts=[I_STAND_IN_PORT],
         dictHostnameAddressMap={S_PROVIDER_HOSTNAME: "203.0.113.7"},
     )
     dictFirstRemoval = fdictRemoveCampaignEgressResources(
-        dockerCouncil, sCampaignId)
+        dictGatewayLive, sCampaignId)
     assert dictFirstRemoval == {
         "bProxyAbsenceProven": True,
         "bNetworkAbsenceProven": True,
         "saIndeterminateResources": [],
     }
     dictSecondRemoval = fdictRemoveCampaignEgressResources(
-        dockerCouncil, sCampaignId)
+        dictGatewayLive, sCampaignId)
     assert dictSecondRemoval["bProxyAbsenceProven"] is True
     assert dictSecondRemoval["bNetworkAbsenceProven"] is True
     assert dictSecondRemoval["saIndeterminateResources"] == []

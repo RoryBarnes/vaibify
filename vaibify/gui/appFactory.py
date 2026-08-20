@@ -320,8 +320,8 @@ def _fdockerCreateCouncilClientOrNone():
     graceful skip rather than a startup or shutdown error.
     """
     try:
-        from . import agentCouncilRunner
-        return agentCouncilRunner.fdockerCreateCouncilClient()
+        from . import agentCouncilDockerGateway
+        return agentCouncilDockerGateway.fdockerCreateCouncilClient()
     except Exception:
         return None
 

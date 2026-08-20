@@ -1,4 +1,4 @@
-"""Disposable runner and sandbox container lifecycle for the Agent Council.
+"""Pure runner/sandbox lifecycle values for the Agent Council.
 
 Phase 0 of the Agent Council (design/agentCouncil.md sections 2.6 and
 9.6): each provider turn — and each sandboxed script execution — gets a
@@ -6,47 +6,22 @@ fresh disposable container, and the WHOLE container is destroyed
 afterward, settled only after an absence probe positively establishes
 the container is gone. Process exit is never the containment proof; a
 ``setsid``-detached descendant dies with the process namespace it
-detached inside, and namespace destruction is the only claim this
-module makes about quietness.
+detached inside, and namespace destruction is the only claim the
+council makes about quietness.
 
-Council containers are NEVER the active project container. They are
-council-created and council-destroyed: this module never touches
-``dictContainerOwners``, never mints a lease, and never opens a
-commit-carrier admission — their lifecycle is governed by the council
-registry (Phase 2), not the commit carrier (design section 10.3). The
-Docker-client acquisition and every container primitive here will be
-dispositioned in ``tests/mutationInventory.json`` at integration.
+Since remediation R4 this module holds ONLY the pure half of that
+lifecycle: the containment vocabulary (labels, roles, absence answers,
+destruction outcomes), the resource-limit validation, the SDK
+create-specification composition, the tar validation/ownership-stamping
+discipline, and the socket pumps that drive an already-opened exec
+stream. Every Docker-SDK call — client creation, container create and
+start, the exec that PRODUCES a stream socket, kill, absence probe,
+destruction, discovery — lives in ``agentCouncilDockerGateway``, the
+single council SDK authority (``tests/testCouncilGatewayAuthority.py``
+fails the build if SDK reach reappears here).
 
-The seven-step lifecycle (design section 9.6) maps onto this module as:
-
-1.  ``fdictCreateRunnerContainer`` — private PID/network/IPC namespaces,
-    all capabilities dropped, no-new-privileges, no devices, default
-    seccomp, unprivileged user, an explicit entrypoint override that
-    bypasses the image's hub-oriented startup, and hard CPU / memory
-    (swap pinned) / PID-count / writable-disk limits.
-2.  ``fnCopySnapshotIntoRunner`` — the sealed snapshot tarball, every
-    entry stamped to the unprivileged container user through the
-    ``_finfoBuildTarEntry`` discipline, extracted INSIDE the container
-    by that user. No mount of any host path, no workspace volume, no
-    Docker socket, no host home, no credential store.
-3.  (limits are baked at creation; the per-turn bounds live in step 4)
-4.  ``fdictExecuteBoundedTurn`` — one bounded command with an
-    output-byte cap and a wall-clock budget, both enforced host-side.
-5-7. ``fdictDestroyRunnerAndProveAbsence`` — stop and remove the whole
-    container, then settle only on a positive absence answer; an
-    indeterminate daemon answer is a quarantine result, never success.
-
-``flistDiscoverLabeledRunners`` is the crash-recovery half: every
-council container carries the ``vaibify-council`` label with its
-reservation identifier, so a restarted hub can discover labeled
-survivors and settle them through the same destruction transaction.
-
-Writable-disk bound, selected and proven for Phase 0: ``storage_opt``
-is unavailable on Docker Desktop / colima (overlayfs without pquota),
-so the rootfs is mounted read-only and the only writable surfaces are
-two SIZED tmpfs mounts — the council working tree and ``/tmp``. Two
-empirical facts shape the implementation and are pinned by the live
-suite (``tests/testAgentCouncilRunnerLive.py``):
+Two empirical facts shape the create specification and are pinned by
+the live suite (``tests/testAgentCouncilRunnerLive.py``):
 
 - the Docker archive endpoint (``put_archive`` / ``docker cp``) refuses
   ANY write into a read-only-rootfs container, tmpfs target included
@@ -56,7 +31,7 @@ suite (``tests/testAgentCouncilRunnerLive.py``):
   construction, because a non-root ``tar`` cannot chown;
 - tmpfs pages are charged to the container's memory cgroup, so the
   tmpfs sizes must stay below the memory limit or the "disk" bound
-  silently becomes the memory bound; ``fdictCreateRunnerContainer``
+  silently becomes the memory bound; ``_fnValidateRunnerLimits``
   refuses limit sets that would do that.
 
 A sandbox container differs from a runner in exactly two ways (design
@@ -75,8 +50,6 @@ import tarfile
 import time
 
 from vaibify.docker.dockerConnection import (
-    _fmoduleGetDocker,
-    _fnEnsureDockerHost,
     _I_CONTAINER_DEFAULT_UID,
     _I_CONTAINER_DEFAULT_GID,
 )
@@ -92,20 +65,19 @@ __all__ = [
     "S_ABSENCE_INDETERMINATE",
     "S_OUTCOME_DESTROYED",
     "S_OUTCOME_QUARANTINED",
-    "fdockerCreateCouncilClient",
     "fdictBuildDefaultRunnerLimits",
-    "fdictCreateRunnerContainer",
+    "fdictComposeRunnerCreateSpecification",
+    "fbufferRepackSnapshotStamped",
+    "fnSendAllBounded",
+    "fdictPumpBoundedExecStream",
     "fbaBuildStampedFileTarball",
-    "fnCopySnapshotIntoRunner",
-    "fdictExecuteBoundedTurn",
-    "fdictProbeRunnerAbsence",
-    "fdictDestroyRunnerAndProveAbsence",
-    "flistDiscoverLabeledRunners",
 ]
 
 # Every council container carries this label; the value is the council
 # registry's reservation identifier, which is what lets a restarted hub
-# reconnect a surviving container to the reservation it was minted for.
+# reconnect a surviving container to the reservation it was minted for
+# — and what the gateway's handle-keyed destruction verifies before it
+# removes anything.
 S_COUNCIL_LABEL = "vaibify-council"
 S_COUNCIL_ROLE_LABEL = "vaibify-council-role"
 S_ROLE_RUNNER = "runner"
@@ -129,7 +101,6 @@ S_COUNCIL_CONTAINER_USER = (
 LIST_COUNCIL_ENTRYPOINT = ["/bin/sh"]
 LIST_COUNCIL_IDLE_COMMAND = ["-c", "sleep 2147483647"]
 
-I_COUNCIL_DAEMON_TIMEOUT_SECONDS = 60
 F_STREAM_POLL_SECONDS = 1.0
 F_SNAPSHOT_COPY_BUDGET_SECONDS = 120.0
 F_DEFAULT_TURN_WALL_CLOCK_SECONDS = 300.0
@@ -140,21 +111,6 @@ S_ABSENCE_PRESENT = "present"
 S_ABSENCE_INDETERMINATE = "indeterminate"
 S_OUTCOME_DESTROYED = "destroyed"
 S_OUTCOME_QUARANTINED = "quarantined"
-
-
-def fdockerCreateCouncilClient(iTimeoutSeconds=None):
-    """Create a Docker client for council-container operations.
-
-    Follows the ``DockerConnection`` acquisition pattern (context-derived
-    ``DOCKER_HOST``, lazy docker-py import) but with a much shorter
-    per-call timeout: council teardown must DETECT an unresponsive
-    daemon and quarantine, not hang. Streaming reads are not governed
-    by this timeout — the bounded-turn pump polls its raw socket.
-    """
-    _fnEnsureDockerHost()
-    if iTimeoutSeconds is None:
-        iTimeoutSeconds = I_COUNCIL_DAEMON_TIMEOUT_SECONDS
-    return _fmoduleGetDocker().from_env(timeout=iTimeoutSeconds)
 
 
 def fdictBuildDefaultRunnerLimits():
@@ -190,33 +146,9 @@ def _fnValidateRunnerLimits(dictLimits):
         )
 
 
-def fdictCreateRunnerContainer(
-    dockerCouncil, sImageReference, sReservationId,
-    dictLimits=None, sNetworkName=None, bSandbox=False,
-    dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
-):
-    """Create and start one disposable council container.
-
-    Private PID, network and IPC namespaces (nothing shared with the
-    host or any other container), all capabilities dropped,
-    no-new-privileges, no devices, the daemon's default seccomp
-    profile, the unprivileged council user, a read-only rootfs with two
-    sized tmpfs mounts as the entire writable surface, and no mounts of
-    any host path. ``sNetworkName`` is the Phase 0 egress-proxy seam: a
-    runner may be attached to a named internal network whose only exit
-    is the allowlisting proxy; the fail-closed default is no network. A
-    sandbox refuses any network by contract.
-
-    ``dictEnvironment`` (the Phase 2 proxy environment and the CLI's
-    relocated config directory), ``listDnsServers`` and
-    ``listDnsOptions`` (the Phase 0 egress black-hole resolver) are the
-    runner-backend wiring; all default to unset so the containment
-    tests that create a bare runner are unaffected. A sandbox carries
-    no credential and no network, so it takes none of these.
-    """
-    if dictLimits is None:
-        dictLimits = fdictBuildDefaultRunnerLimits()
-    _fnValidateRunnerLimits(dictLimits)
+def _fnValidateSandboxIsolation(bSandbox, sNetworkName, dictEnvironment,
+                                listDnsServers, listDnsOptions):
+    """Refuse a sandbox specification that widens the sandbox contract."""
     if bSandbox and sNetworkName is not None:
         raise ValueError(
             "A council sandbox attaches to no network at all (design "
@@ -228,9 +160,35 @@ def fdictCreateRunnerContainer(
             "resolver (design section 9.6); refuse it rather than wire "
             "egress or environment into it."
         )
+
+
+def fdictComposeRunnerCreateSpecification(
+    sImageReference, sReservationId,
+    dictLimits=None, sNetworkName=None, bSandbox=False,
+    dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
+):
+    """Compose the SDK create keywords for one disposable council container.
+
+    PURE: validates the limits and the sandbox contract and RETURNS the
+    values; the gateway is the only module that hands them to the SDK.
+    The posture is fixed here so no caller can weaken it: private PID,
+    network and IPC namespaces, all capabilities dropped,
+    no-new-privileges, no devices, the daemon's default seccomp profile,
+    the unprivileged council user, a read-only rootfs with two sized
+    tmpfs mounts as the entire writable surface, and no mounts of any
+    host path. ``sNetworkName`` is the egress-proxy seam; the
+    fail-closed default is no network, and a sandbox refuses any
+    network, environment or resolver by contract.
+    """
+    if dictLimits is None:
+        dictLimits = fdictBuildDefaultRunnerLimits()
+    _fnValidateRunnerLimits(dictLimits)
+    _fnValidateSandboxIsolation(
+        bSandbox, sNetworkName, dictEnvironment, listDnsServers,
+        listDnsOptions)
     sRole = S_ROLE_SANDBOX if bSandbox else S_ROLE_RUNNER
-    sNetworkMode = sNetworkName if sNetworkName is not None else "none"
-    sContainerName = f"vaibifyCouncil{sRole.capitalize()}{secrets.token_hex(6)}"
+    sContainerName = (
+        f"vaibifyCouncil{sRole.capitalize()}{secrets.token_hex(6)}")
     dictTmpfsMounts = {
         S_RUNNER_SNAPSHOT_ROOT: (
             f"size={dictLimits['iWorkingTreeBytes']},"
@@ -241,36 +199,33 @@ def fdictCreateRunnerContainer(
             f"size={dictLimits['iScratchBytes']},mode=1777"
         ),
     }
-    containerRunner = dockerCouncil.containers.create(
-        sImageReference,
-        entrypoint=LIST_COUNCIL_ENTRYPOINT,
-        command=LIST_COUNCIL_IDLE_COMMAND,
-        name=sContainerName,
-        user=S_COUNCIL_CONTAINER_USER,
-        cap_drop=["ALL"],
-        security_opt=["no-new-privileges:true"],
-        network_mode=sNetworkMode,
-        ipc_mode="private",
-        read_only=True,
-        tmpfs=dictTmpfsMounts,
-        mem_limit=dictLimits["iMemoryBytes"],
-        memswap_limit=dictLimits["iMemoryBytes"],
-        nano_cpus=int(dictLimits["fCpuCount"] * 1_000_000_000),
-        pids_limit=dictLimits["iPidsLimit"],
-        labels={
-            S_COUNCIL_LABEL: sReservationId,
-            S_COUNCIL_ROLE_LABEL: sRole,
-        },
-        environment=dictEnvironment or None,
-        dns=list(listDnsServers) if listDnsServers else None,
-        dns_opt=list(listDnsOptions) if listDnsOptions else None,
-    )
-    containerRunner.start()
     return {
-        "sContainerId": containerRunner.id,
         "sContainerName": sContainerName,
-        "sReservationId": sReservationId,
         "sRole": sRole,
+        "dictCreateKeywords": {
+            "entrypoint": LIST_COUNCIL_ENTRYPOINT,
+            "command": LIST_COUNCIL_IDLE_COMMAND,
+            "name": sContainerName,
+            "user": S_COUNCIL_CONTAINER_USER,
+            "cap_drop": ["ALL"],
+            "security_opt": ["no-new-privileges:true"],
+            "network_mode": (
+                sNetworkName if sNetworkName is not None else "none"),
+            "ipc_mode": "private",
+            "read_only": True,
+            "tmpfs": dictTmpfsMounts,
+            "mem_limit": dictLimits["iMemoryBytes"],
+            "memswap_limit": dictLimits["iMemoryBytes"],
+            "nano_cpus": int(dictLimits["fCpuCount"] * 1_000_000_000),
+            "pids_limit": dictLimits["iPidsLimit"],
+            "labels": {
+                S_COUNCIL_LABEL: sReservationId,
+                S_COUNCIL_ROLE_LABEL: sRole,
+            },
+            "environment": dictEnvironment or None,
+            "dns": list(listDnsServers) if listDnsServers else None,
+            "dns_opt": list(listDnsOptions) if listDnsOptions else None,
+        },
     }
 
 
@@ -315,7 +270,7 @@ def _finfoStampCouncilOwnership(infoMember):
     return infoMember
 
 
-def _fbufferRepackSnapshotStamped(baSnapshotTar):
+def fbufferRepackSnapshotStamped(baSnapshotTar):
     """Repack a snapshot tarball with every member validated and stamped."""
     bufferRepacked = io.BytesIO()
     with tarfile.open(fileobj=io.BytesIO(baSnapshotTar), mode="r:*") \
@@ -336,25 +291,12 @@ def _fbufferRepackSnapshotStamped(baSnapshotTar):
     return bufferRepacked
 
 
-def _ftStartExecStream(dockerCouncil, sContainerId, listCommand,
-                            bStdin, sWorkingDirectory=None):
-    """Create an exec as the council user; return (execId, rawSocket)."""
-    dictExecCreated = dockerCouncil.api.exec_create(
-        sContainerId, listCommand,
-        stdin=bStdin, stdout=True, stderr=True,
-        user=S_COUNCIL_CONTAINER_USER,
-        workdir=sWorkingDirectory,
-    )
-    socketExec = dockerCouncil.api.exec_start(
-        dictExecCreated["Id"], socket=True,
-    )
-    socketRaw = getattr(socketExec, "_sock", socketExec)
-    socketRaw.settimeout(F_STREAM_POLL_SECONDS)
-    return (dictExecCreated["Id"], socketRaw)
+def fnSendAllBounded(socketRaw, baPayload, fDeadlineMonotonic):
+    """Send every byte before the deadline, or raise.
 
-
-def _fnSendAllBounded(socketRaw, baPayload, fDeadlineMonotonic):
-    """Send every byte before the deadline, or raise."""
+    Operates on an ALREADY-OPENED exec socket; the exec that produces
+    the socket lives in the gateway.
+    """
     iOffset = 0
     while iOffset < len(baPayload):
         if time.monotonic() >= fDeadlineMonotonic:
@@ -388,13 +330,14 @@ def _ftExtractFramePayloads(baPending):
     return (baPayload, baPending)
 
 
-def _fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
-                                fDeadlineMonotonic):
+def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
+                               fDeadlineMonotonic):
     """Read an exec stream under an output-byte cap and a deadline.
 
     Host-side enforcement: the poll timeout keeps every blocking read
     bounded, so neither a silent process nor a stalled daemon can hold
-    this loop past the deadline.
+    this loop past the deadline. Operates on an ALREADY-OPENED exec
+    socket; the exec that produces the socket lives in the gateway.
     """
     baCaptured = b""
     baPending = b""
@@ -455,216 +398,3 @@ def fbaBuildStampedFileTarball(
         fileTar.addfile(
             _finfoStampCouncilOwnership(infoFile), io.BytesIO(baContent))
     return bufferTar.getvalue()
-
-
-def fnCopySnapshotIntoRunner(dockerCouncil, sContainerId, baSnapshotTar,
-                             sDestinationDirectory=S_RUNNER_SNAPSHOT_ROOT):
-    """Copy the sealed snapshot tarball into a council container.
-
-    Every member is validated against extraction-root escape and
-    stamped to the unprivileged council user, then the tarball is
-    streamed through an exec's stdin and extracted INSIDE the container
-    by that user. The archive endpoint (``put_archive``) cannot be used
-    here — the daemon refuses it wholesale on a read-only-rootfs
-    container — and the in-container extraction is what makes a
-    root-owned copy impossible: a non-root ``tar`` cannot chown.
-    """
-    if not posixpath.isabs(sDestinationDirectory):
-        raise ValueError(
-            "Council snapshot destination must be an absolute container "
-            f"path, got {sDestinationDirectory!r}."
-        )
-    bufferRepacked = _fbufferRepackSnapshotStamped(baSnapshotTar)
-    fDeadlineMonotonic = time.monotonic() + F_SNAPSHOT_COPY_BUDGET_SECONDS
-    tExecStream = _ftStartExecStream(
-        dockerCouncil, sContainerId,
-        ["tar", "-xf", "-", "-C", sDestinationDirectory],
-        bStdin=True,
-    )
-    sExecId, socketRaw = tExecStream
-    try:
-        _fnSendAllBounded(
-            socketRaw, bufferRepacked.getvalue(), fDeadlineMonotonic,
-        )
-        socketRaw.shutdown(socket.SHUT_WR)
-        dictPumped = _fdictPumpBoundedExecStream(
-            socketRaw, I_DEFAULT_TURN_OUTPUT_CAP_BYTES, fDeadlineMonotonic,
-        )
-    finally:
-        socketRaw.close()
-    if dictPumped["bDeadlineExceeded"]:
-        raise RuntimeError(
-            "Council snapshot copy exceeded its "
-            f"{F_SNAPSHOT_COPY_BUDGET_SECONDS:.0f}s budget."
-        )
-    iExitCode = dockerCouncil.api.exec_inspect(sExecId).get("ExitCode")
-    if iExitCode != 0:
-        sOutputTail = dictPumped["baCaptured"][-2048:].decode(
-            "utf-8", errors="replace",
-        )
-        raise RuntimeError(
-            "Council snapshot extraction failed inside the container "
-            f"(exit {iExitCode}): {sOutputTail}"
-        )
-
-
-def _fnKillContainerQuietly(dockerCouncil, sContainerId):
-    """Kill the container, tolerating one already stopped or gone."""
-    try:
-        dockerCouncil.api.kill(sContainerId)
-    except Exception:
-        pass
-
-
-def fdictExecuteBoundedTurn(
-    dockerCouncil, sContainerId, listCommand,
-    iOutputByteCap=None, fWallClockSeconds=None, sWorkingDirectory=None,
-    baStdinPayload=None,
-):
-    """Execute one bounded command (the turn) in a council container.
-
-    Output is captured under a byte cap and the whole turn under a
-    wall-clock budget, both enforced host-side. Breaching either bound
-    kills the CONTAINER, not just the exec — the runner is disposable
-    and a turn that broke its budget has ended; the caller settles it
-    with ``fdictDestroyRunnerAndProveAbsence``. ``iExitCode`` is
-    ``None`` when no exit code could be established (a killed turn),
-    never a fabricated zero.
-
-    ``baStdinPayload`` streams bytes to the command's stdin before the
-    output pump begins (the CLI adapter's untrusted-material channel:
-    researcher and peer text reach the provider through stdin, never
-    argv). It is sent under the same wall-clock deadline and the write
-    half is then shut so a reader that waits on EOF unblocks. Left
-    unset, the command runs with no stdin exactly as before.
-    """
-    if iOutputByteCap is None:
-        iOutputByteCap = I_DEFAULT_TURN_OUTPUT_CAP_BYTES
-    if fWallClockSeconds is None:
-        fWallClockSeconds = F_DEFAULT_TURN_WALL_CLOCK_SECONDS
-    fStartedMonotonic = time.monotonic()
-    fDeadlineMonotonic = fStartedMonotonic + fWallClockSeconds
-    tExecStream = _ftStartExecStream(
-        dockerCouncil, sContainerId, listCommand,
-        bStdin=baStdinPayload is not None,
-        sWorkingDirectory=sWorkingDirectory,
-    )
-    sExecId, socketRaw = tExecStream
-    try:
-        if baStdinPayload is not None:
-            _fnSendAllBounded(socketRaw, baStdinPayload, fDeadlineMonotonic)
-            socketRaw.shutdown(socket.SHUT_WR)
-        dictPumped = _fdictPumpBoundedExecStream(
-            socketRaw, iOutputByteCap, fDeadlineMonotonic,
-        )
-    finally:
-        socketRaw.close()
-    bBreached = (
-        dictPumped["bOutputCapExceeded"] or dictPumped["bDeadlineExceeded"]
-    )
-    if bBreached:
-        _fnKillContainerQuietly(dockerCouncil, sContainerId)
-    iExitCode = None
-    try:
-        iExitCode = dockerCouncil.api.exec_inspect(sExecId).get("ExitCode")
-    except Exception:
-        pass
-    return {
-        "iExitCode": iExitCode,
-        "sOutput": dictPumped["baCaptured"].decode(
-            "utf-8", errors="replace",
-        ),
-        "bOutputCapExceeded": dictPumped["bOutputCapExceeded"],
-        "bWallClockExceeded": dictPumped["bDeadlineExceeded"],
-        "fElapsedSeconds": time.monotonic() - fStartedMonotonic,
-    }
-
-
-def fdictProbeRunnerAbsence(dockerCouncil, sContainerId):
-    """Positively establish whether a council container is gone.
-
-    Three distinct answers, because "absent" and "the daemon errored"
-    must never be conflated: ``absent`` is the daemon POSITIVELY
-    answering 404 for the identifier; ``present`` is the daemon
-    returning the container; anything else — timeout, transport error,
-    daemon fault — is ``indeterminate``, which callers must treat as
-    quarantine, never as completion.
-    """
-    moduleDocker = _fmoduleGetDocker()
-    try:
-        dockerCouncil.api.inspect_container(sContainerId)
-        return {"sAnswer": S_ABSENCE_PRESENT, "sDetail": ""}
-    except moduleDocker.errors.NotFound:
-        return {"sAnswer": S_ABSENCE_ABSENT, "sDetail": ""}
-    except Exception as error:
-        return {
-            "sAnswer": S_ABSENCE_INDETERMINATE,
-            "sDetail": f"{type(error).__name__}: {error}",
-        }
-
-
-def fdictDestroyRunnerAndProveAbsence(dockerCouncil, sContainerId):
-    """Destroy a council container and settle only on proven absence.
-
-    Namespace destruction is the containment: force-removal kills every
-    process in the container's PID namespace, detached descendants
-    included. The transaction settles as ``destroyed`` only when the
-    absence probe positively answers ``absent``; a daemon error during
-    removal or an indeterminate probe answer yields ``quarantined`` —
-    the caller must keep the reservation visible and retry, never
-    report a clean completion.
-    """
-    moduleDocker = _fmoduleGetDocker()
-    try:
-        dockerCouncil.api.remove_container(sContainerId, force=True, v=True)
-    except moduleDocker.errors.NotFound:
-        pass
-    except Exception as error:
-        return {
-            "sOutcome": S_OUTCOME_QUARANTINED,
-            "sReason": (
-                "Removal did not complete; the container may still be "
-                f"running: {type(error).__name__}: {error}"
-            ),
-            "dictProbe": {
-                "sAnswer": S_ABSENCE_INDETERMINATE,
-                "sDetail": "removal failed before the probe",
-            },
-        }
-    dictProbe = fdictProbeRunnerAbsence(dockerCouncil, sContainerId)
-    if dictProbe["sAnswer"] == S_ABSENCE_ABSENT:
-        return {"sOutcome": S_OUTCOME_DESTROYED, "sReason": "",
-                "dictProbe": dictProbe}
-    return {
-        "sOutcome": S_OUTCOME_QUARANTINED,
-        "sReason": (
-            "The absence probe answered "
-            f"{dictProbe['sAnswer']!r}, not {S_ABSENCE_ABSENT!r}; the "
-            "container is not proven gone."
-        ),
-        "dictProbe": dictProbe,
-    }
-
-
-def flistDiscoverLabeledRunners(dockerCouncil):
-    """Discover every council-labeled container, running or not.
-
-    The crash-recovery entry point: a restarted hub calls this before
-    any new council starts, matches each survivor's reservation
-    identifier against the council registry, and settles each one
-    through ``fdictDestroyRunnerAndProveAbsence``.
-    """
-    listContainers = dockerCouncil.containers.list(
-        all=True, filters={"label": S_COUNCIL_LABEL},
-    )
-    listDiscovered = []
-    for containerFound in listContainers:
-        dictLabels = containerFound.labels or {}
-        listDiscovered.append({
-            "sContainerId": containerFound.id,
-            "sContainerName": containerFound.name,
-            "sReservationId": dictLabels.get(S_COUNCIL_LABEL, ""),
-            "sRole": dictLabels.get(S_COUNCIL_ROLE_LABEL, ""),
-            "sStatus": containerFound.status,
-        })
-    return listDiscovered

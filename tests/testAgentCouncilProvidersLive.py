@@ -26,6 +26,7 @@ import tarfile
 import pytest
 
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
+from vaibify.gui import agentCouncilDockerGateway as moduleGateway
 from vaibify.gui import agentCouncilRegistry as registry
 from vaibify.gui import agentCouncilRunner
 from vaibify.gui.agentCouncilProviders import (
@@ -118,11 +119,14 @@ def _fbaBuildFakeProviderSnapshot():
 
 @pytest.fixture
 def tCouncilLiveHarness():
+    """Yield (dictGateway, listCreatedContainerIds), gateway-first (R4)."""
     fnRequireDaemonReachable()
-    dockerCouncil = agentCouncilRunner.fdockerCreateCouncilClient()
+    dockerCouncil = moduleGateway.fdockerCreateCouncilClient()
+    dictGateway = moduleGateway.fdictCreateCouncilDockerGateway(
+        dockerCouncil, registry.fdictCreateCouncilRegistry())
     listCreatedContainerIds = []
     try:
-        yield (dockerCouncil, listCreatedContainerIds)
+        yield (dictGateway, listCreatedContainerIds)
     finally:
         for sContainerId in listCreatedContainerIds:
             try:
@@ -130,6 +134,11 @@ def tCouncilLiveHarness():
                     sContainerId, force=True, v=True)
             except Exception:
                 pass
+
+
+def _fsContainerIdForHandle(dictGateway, sHandle):
+    """Read the container id a live handle currently names."""
+    return dictGateway["dictHandlesById"][sHandle]["sContainerId"]
 
 
 def _fdictBuildTurnRequest(sMarker):
@@ -157,19 +166,22 @@ def test_adapter_turn_parses_real_stream_json_and_proves_destruction(
     extracts the structured result and resolved model, then proves the
     runner gone.
     """
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
     baSnapshot = _fbaBuildFakeProviderSnapshot()
     sMarker = "UNTRUSTED_MARKER_" + secrets.token_hex(4)
+    dictRequest = _fdictBuildTurnRequest(sMarker)
     connection = ClaudeRunnerConnection(
-        dockerCouncil, S_RUNNER_TEST_IMAGE, baSnapshot, "sonnet",
+        dictGateway, dictRequest["sCampaignId"], S_RUNNER_TEST_IMAGE,
+        baSnapshot, "sonnet",
         saCliProgram=LIST_FAKE_CLI_PROGRAM, dictLimits=_fdictSmallLimits(),
         fWallClockSeconds=60.0)
-    dictRequest = _fdictBuildTurnRequest(sMarker)
+    listRunnerContainerIds = []
 
     async def _fdictRunOneTurn():
         await connection.fdictPrepareImmutableContext(dictRequest)
-        listCreatedContainerIds.append(
-            connection._dictRunner["sContainerId"])
+        listRunnerContainerIds.append(
+            _fsContainerIdForHandle(dictGateway, connection._sHandle))
+        listCreatedContainerIds.append(listRunnerContainerIds[-1])
         await connection.fnStartTurn(dictRequest)
         listEvents = [dictEvent async for dictEvent
                       in connection.fiterStreamNormalizedEvents()]
@@ -190,9 +202,11 @@ def test_adapter_turn_parses_real_stream_json_and_proves_destruction(
     assert connection.dictModelIdentity["sResolvedModel"] == "sonnet"
     assert sCompletion == "terminal"
 
-    dictProbe = agentCouncilRunner.fdictProbeRunnerAbsence(
-        dockerCouncil, connection._dictRunner["sContainerId"])
+    dictProbe = moduleGateway.fdictProbeRunnerAbsence(
+        dictGateway["dockerCouncil"], listRunnerContainerIds[0])
     assert dictProbe["sAnswer"] == agentCouncilRunner.S_ABSENCE_ABSENT
+    # The settled reservation freed its budget: nothing live remains.
+    assert dictGateway["dictRegistry"]["dictReservationsById"] == {}
 
 
 def test_fake_campaign_reaches_plan_ready_over_real_runners(
@@ -204,7 +218,7 @@ def test_fake_campaign_reaches_plan_ready_over_real_runners(
     from vaibify.gui.agentCouncilStore import (
         CouncilEvidenceLedger, InMemoryCampaignCheckpoint)
 
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
     baSnapshot = _fbaBuildFakeProviderSnapshot()
     listParticipants = [
         fdictCreateParticipant("claude", "sonnet"),
@@ -216,11 +230,12 @@ def test_fake_campaign_reaches_plan_ready_over_real_runners(
 
     def _fnTrackConnection(dictParticipant):
         connection = ClaudeRunnerConnection(
-            dockerCouncil, S_RUNNER_TEST_IMAGE, baSnapshot,
-            dictParticipant["sRequestedModel"],
+            dictGateway, dictCampaign["sCampaignId"], S_RUNNER_TEST_IMAGE,
+            baSnapshot, dictParticipant["sRequestedModel"],
             saCliProgram=LIST_FAKE_CLI_PROGRAM,
             dictLimits=_fdictSmallLimits(), fWallClockSeconds=60.0)
-        return _TrackingConnection(connection, listCreatedContainerIds)
+        return _TrackingConnection(
+            connection, dictGateway, listCreatedContainerIds)
 
     dictConnections = {
         dictParticipant["sParticipantId"]: _fnTrackConnection(dictParticipant)
@@ -240,15 +255,17 @@ def test_fake_campaign_reaches_plan_ready_over_real_runners(
 class _TrackingConnection:
     """Wrap a real connection to register each runner id for teardown."""
 
-    def __init__(self, connection, listCreatedContainerIds):
+    def __init__(self, connection, dictGateway, listCreatedContainerIds):
         self._connection = connection
+        self._dictGateway = dictGateway
         self._listCreatedContainerIds = listCreatedContainerIds
 
     async def fdictPrepareImmutableContext(self, dictTurnRequest):
         dictContext = await self._connection.fdictPrepareImmutableContext(
             dictTurnRequest)
         self._listCreatedContainerIds.append(
-            self._connection._dictRunner["sContainerId"])
+            _fsContainerIdForHandle(
+                self._dictGateway, self._connection._sHandle))
         return dictContext
 
     async def fnStartTurn(self, dictTurnRequest):
@@ -267,11 +284,12 @@ class _TrackingConnection:
 def test_baseline_evidence_executor_runs_server_command_in_a_sandbox(
         tCouncilLiveHarness):
     """The mandatory baseline executor runs a server command in a sandbox."""
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
     baSnapshot = _fbaBuildFakeProviderSnapshot()
     fdictExecuteBaselineEvidence = ffnBuildBaselineEvidenceExecutor(
-        dockerCouncil, S_RUNNER_TEST_IMAGE, "snapshot-hash-fixed",
-        baSnapshot, dictLimits=_fdictSmallLimits(), fWallClockSeconds=60.0)
+        dictGateway, "campBaseline", S_RUNNER_TEST_IMAGE,
+        "snapshot-hash-fixed", baSnapshot, dictLimits=_fdictSmallLimits(),
+        fWallClockSeconds=60.0)
     # The command reads a snapshot file, proving the sandbox was seeded
     # from the immutable snapshot, not a runner's mutated copy.
     dictExecuted = fdictExecuteBaselineEvidence(
@@ -285,47 +303,50 @@ def test_baseline_evidence_executor_runs_server_command_in_a_sandbox(
 def test_shutdown_drain_destroys_a_live_registered_runner(
         tCouncilLiveHarness):
     """The drain destroys a live runner and settles its reservation."""
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
-    dictRegistry = registry.fdictCreateCouncilRegistry()
-    sReservationId = "council-drain-" + secrets.token_hex(4)
-    registry.fdictReserveRunner(
-        dictRegistry, "campaignDrain", sReservationId, "claude",
-        {"iMemoryBytes": 256 * I_MEBIBYTE, "fCpuCount": 1.0})
-    dictRunner = agentCouncilRunner.fdictCreateRunnerContainer(
-        dockerCouncil, S_RUNNER_TEST_IMAGE, sReservationId,
-        dictLimits=_fdictSmallLimits())
-    listCreatedContainerIds.append(dictRunner["sContainerId"])
-    registry.fnMarkRunnerCreated(
-        dictRegistry, sReservationId, dictRunner["sContainerId"])
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
+    dictRegistry = dictGateway["dictRegistry"]
+    dictCreated = moduleGateway.fdictReserveAndCreateRunner(
+        dictGateway, "campaignDrain", "claude",
+        {"iMemoryBytes": 256 * I_MEBIBYTE, "fCpuCount": 1.0},
+        S_RUNNER_TEST_IMAGE, dictLimits=_fdictSmallLimits())
+    assert dictCreated["bCreated"] is True, dictCreated
+    sReservationId = dictCreated["sReservationId"]
+    sContainerId = _fsContainerIdForHandle(
+        dictGateway, dictCreated["sHandle"])
+    listCreatedContainerIds.append(sContainerId)
 
     dictReport = registry.fdictDrainCouncilRegistry(
-        dictRegistry, dockerCouncil)
+        dictRegistry, dictGateway["dockerCouncil"])
 
     assert dictReport["listDestroyed"] == [sReservationId]
     assert dictRegistry["bAdmittingNewTurns"] is False
-    dictProbe = agentCouncilRunner.fdictProbeRunnerAbsence(
-        dockerCouncil, dictRunner["sContainerId"])
+    dictProbe = moduleGateway.fdictProbeRunnerAbsence(
+        dictGateway["dockerCouncil"], sContainerId)
     assert dictProbe["sAnswer"] == agentCouncilRunner.S_ABSENCE_ABSENT
 
 
 def test_restart_reconciles_an_orphaned_labeled_runner(tCouncilLiveHarness):
     """A restarted hub discovers a labeled survivor and settles it."""
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
-    sReservationId = "council-orphan-" + secrets.token_hex(4)
-    dictRunner = agentCouncilRunner.fdictCreateRunnerContainer(
-        dockerCouncil, S_RUNNER_TEST_IMAGE, sReservationId,
-        dictLimits=_fdictSmallLimits())
-    listCreatedContainerIds.append(dictRunner["sContainerId"])
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
+    dictCreated = moduleGateway.fdictReserveAndCreateRunner(
+        dictGateway, "campaignOrphan", "claude",
+        {"iMemoryBytes": 256 * I_MEBIBYTE, "fCpuCount": 1.0},
+        S_RUNNER_TEST_IMAGE, dictLimits=_fdictSmallLimits())
+    assert dictCreated["bCreated"] is True, dictCreated
+    sReservationId = dictCreated["sReservationId"]
+    sContainerId = _fsContainerIdForHandle(
+        dictGateway, dictCreated["sHandle"])
+    listCreatedContainerIds.append(sContainerId)
 
     # A restarted hub: fresh client, fresh registry, discover by label.
-    dockerRestarted = agentCouncilRunner.fdockerCreateCouncilClient()
-    dictRegistry = registry.fdictCreateCouncilRegistry()
+    dockerRestarted = moduleGateway.fdockerCreateCouncilClient()
+    dictRegistryRestarted = registry.fdictCreateCouncilRegistry()
     dictReport = registry.fdictReconcileLabeledRunnersOnRestart(
-        dictRegistry, dockerRestarted)
+        dictRegistryRestarted, dockerRestarted)
 
     assert sReservationId in dictReport["listDestroyed"]
-    dictProbe = agentCouncilRunner.fdictProbeRunnerAbsence(
-        dockerRestarted, dictRunner["sContainerId"])
+    dictProbe = moduleGateway.fdictProbeRunnerAbsence(
+        dockerRestarted, sContainerId)
     assert dictProbe["sAnswer"] == agentCouncilRunner.S_ABSENCE_ABSENT
 
 
@@ -339,21 +360,24 @@ def test_credential_lands_owned_by_the_unprivileged_user_in_the_runner(
     the empirical items documented as unrun in the report — they need a
     real subscription credential and a real project image.
     """
-    dockerCouncil, listCreatedContainerIds = tCouncilLiveHarness
+    dictGateway, listCreatedContainerIds = tCouncilLiveHarness
     sHostCredentialPath = fsStageRunnerCredentialFile("FAKE-ACCESS-TOKEN-XYZ")
     try:
-        dictRunner = agentCouncilRunner.fdictCreateRunnerContainer(
-            dockerCouncil, S_RUNNER_TEST_IMAGE,
-            "council-cred-" + secrets.token_hex(4),
-            dictLimits=_fdictSmallLimits(),
+        dictCreated = moduleGateway.fdictReserveAndCreateRunner(
+            dictGateway, "campCredential", "claude",
+            {"iMemoryBytes": 256 * I_MEBIBYTE, "fCpuCount": 1.0},
+            S_RUNNER_TEST_IMAGE, dictLimits=_fdictSmallLimits(),
             dictEnvironment={"CLAUDE_CONFIG_DIR":
                              S_RUNNER_CLAUDE_CONFIG_DIRECTORY})
-        listCreatedContainerIds.append(dictRunner["sContainerId"])
+        assert dictCreated["bCreated"] is True, dictCreated
+        sHandle = dictCreated["sHandle"]
+        listCreatedContainerIds.append(
+            _fsContainerIdForHandle(dictGateway, sHandle))
         fnDeliverCredentialIntoRunner(
-            dockerCouncil, dictRunner["sContainerId"],
+            dictGateway, sHandle,
             fbaBuildCredentialTarball(sHostCredentialPath))
-        dictProbe = agentCouncilRunner.fdictExecuteBoundedTurn(
-            dockerCouncil, dictRunner["sContainerId"],
+        dictProbe = moduleGateway.fdictExecuteBoundedTurn(
+            dictGateway, sHandle,
             ["/bin/sh", "-c",
              "python3 -c \"import os,json;"
              "p='%s/.credentials.json';"
@@ -369,5 +393,4 @@ def test_credential_lands_owned_by_the_unprivileged_user_in_the_runner(
 
     assert "OWNER 1000 1000" in dictProbe["sOutput"], dictProbe["sOutput"]
     assert "TOKEN FAKE-ACCESS-TOKEN-XYZ" in dictProbe["sOutput"]
-    agentCouncilRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, dictRunner["sContainerId"])
+    moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)

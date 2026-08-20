@@ -40,8 +40,8 @@ import asyncio
 import hashlib
 import json
 import posixpath
-import secrets
 
+from . import agentCouncilDockerGateway
 from . import agentCouncilEgress
 from . import agentCouncilRunner
 from . import providerApiTransport
@@ -83,6 +83,11 @@ __all__ = [
 ]
 
 S_PROVIDER_CLAUDE = "claude"
+
+# The registry's per-provider accounting bucket for baseline sandboxes:
+# a sandbox is provider-neutral (no credential, no network), so it must
+# not consume a provider's own concurrency quota.
+S_BASELINE_SANDBOX_PROVIDER = "baselineSandbox"
 
 # The one destination family a Claude runner may reach (section 9.7).
 S_ANTHROPIC_API_HOSTNAME = "api.anthropic.com"
@@ -436,17 +441,16 @@ def fbaBuildCredentialTarball(sHostCredentialPath):
         baCredential)
 
 
-def fnDeliverCredentialIntoRunner(dockerCouncil, sContainerId,
-                                  baCredentialTar):
+def fnDeliverCredentialIntoRunner(dictGateway, sHandle, baCredentialTar):
     """Copy the credential tarball into the runner's writable scratch.
 
-    Reuses the runner's validated, ownership-stamping copy-in path, so
+    Reuses the gateway's validated, ownership-stamping copy-in path, so
     the login lands owned by the unprivileged user under
     ``/tmp/vaibifyCouncilClaude`` — the ``CLAUDE_CONFIG_DIR`` the runner
     was told about at creation.
     """
-    agentCouncilRunner.fnCopySnapshotIntoRunner(
-        dockerCouncil, sContainerId, baCredentialTar,
+    agentCouncilDockerGateway.fnCopySnapshotIntoRunner(
+        dictGateway, sHandle, baCredentialTar,
         sDestinationDirectory=agentCouncilRunner.S_RUNNER_SCRATCH_ROOT)
 
 
@@ -456,20 +460,25 @@ def fnDeliverCredentialIntoRunner(dockerCouncil, sContainerId,
 class ClaudeRunnerConnection(CouncilProviderConnection):
     """One participant's disposable-runner connection over the Claude CLI.
 
-    Each turn gets a fresh runner: prepare-context creates it (egress
-    wiring, snapshot copy-in, credential delivery), start-turn runs the
-    CLI headless and captures its stream-json, and report-completion
-    destroys the runner and settles honestly — destroyed is terminal, a
-    quarantine is indeterminate (section 9.4). The runner is
-    council-created, never the active project container: this connection
-    holds no lease and opens no commit-carrier admission.
+    Each turn gets a fresh runner reserved and created through the
+    council Docker gateway: prepare-context reserves-then-creates it
+    (egress wiring, snapshot copy-in, credential delivery), start-turn
+    runs the CLI headless and captures its stream-json, and
+    report-completion destroys the runner and settles honestly —
+    destroyed is terminal, a quarantine is indeterminate (section 9.4).
+    Any exception in prepare, start or collect destroys-and-settles the
+    runner's handle BEFORE propagating, so no exit path leaks a live
+    runner or a dangling reservation. The runner is council-created,
+    never the active project container: this connection holds no lease
+    and opens no commit-carrier admission.
     """
 
-    def __init__(self, dockerCouncil, sImageReference, baSnapshotTar,
-                 sRequestedModel, dictEgress=None, sHostCredentialPath="",
-                 dictLimits=None, saCliProgram=None, fWallClockSeconds=None,
-                 iOutputByteCap=None):
-        self.dockerCouncil = dockerCouncil
+    def __init__(self, dictGateway, sCampaignId, sImageReference,
+                 baSnapshotTar, sRequestedModel, dictEgress=None,
+                 sHostCredentialPath="", dictLimits=None, saCliProgram=None,
+                 fWallClockSeconds=None, iOutputByteCap=None):
+        self.dictGateway = dictGateway
+        self.sCampaignId = sCampaignId
         self.sImageReference = sImageReference
         self.baSnapshotTar = baSnapshotTar
         self.sRequestedModel = sRequestedModel
@@ -479,7 +488,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         self.saCliProgram = list(saCliProgram) if saCliProgram else None
         self.fWallClockSeconds = fWallClockSeconds
         self.iOutputByteCap = iOutputByteCap
-        self._dictRunner = None
+        self._sHandle = ""
         self._sReservationId = ""
         self._listEvents = []
         self._dictTurnExecution = None
@@ -499,37 +508,72 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                 S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
         return dictEnvironment
 
-    async def fdictPrepareImmutableContext(self, dictTurnRequest):
-        """Create the runner, copy the snapshot and login in; return identity.
+    def _fdictComposeRunnerCost(self):
+        """Declare the admission cost of one runner to the registry."""
+        dictLimits = (self.dictLimits
+                      or agentCouncilRunner.fdictBuildDefaultRunnerLimits())
+        return {"iMemoryBytes": dictLimits["iMemoryBytes"],
+                "fCpuCount": dictLimits["fCpuCount"]}
 
-        The runner joins only the campaign's internal egress network (or
-        no network at all in the fake-provider tests), receives the proxy
-        environment and the relocated config directory, and gets the
-        sealed snapshot and — when a login was staged — a minimal
-        credential copy. The reservation id becomes the context identity;
-        no Docker id enters the protocol record (section 9.8).
+    async def _fnDestroyHandleAfterFailure(self):
+        """Destroy-and-settle the live handle so a failure leaks nothing.
+
+        The destruction outcome lands in the registry (destroyed frees
+        the reservation; anything unproven stays visibly quarantined);
+        a refusal or fault inside the destroy itself is swallowed here
+        because the ORIGINAL turn failure is the exception the engine
+        must see, and the reservation is still recorded either way.
         """
-        self._sReservationId = (
-            f"council-{dictTurnRequest['sCampaignId']}-"
-            f"{secrets.token_hex(6)}")
+        if not self._sHandle:
+            return
+        try:
+            self._dictDestroyOutcome = await asyncio.to_thread(
+                agentCouncilDockerGateway.fdictDestroyAndSettle,
+                self.dictGateway, self._sHandle)
+        except Exception:
+            pass
+        self._sHandle = ""
+
+    async def fdictPrepareImmutableContext(self, dictTurnRequest):
+        """Reserve and create the runner, copy the snapshot and login in.
+
+        The gateway reserves admission BEFORE creating (an admission
+        refusal raises with the registry's reason and creates nothing),
+        and the runner joins only the campaign's internal egress network
+        (or no network at all in the fake-provider tests). The
+        reservation id becomes the context identity; no Docker id enters
+        the protocol record (section 9.8).
+        """
+        self._listEvents = []
+        self._dictTurnExecution = None
+        self._dictDestroyOutcome = None
         dictEnvironment = self._fdictComposeRunnerEnvironment()
         sNetworkName = (self.dictEgress["sNetworkName"]
                         if self.dictEgress else None)
         listDnsServers, listDnsOptions = _ftBuildDnsWiring(self.dictEgress)
-        self._dictRunner = await asyncio.to_thread(
-            agentCouncilRunner.fdictCreateRunnerContainer,
-            self.dockerCouncil, self.sImageReference, self._sReservationId,
+        dictCreated = await asyncio.to_thread(
+            agentCouncilDockerGateway.fdictReserveAndCreateRunner,
+            self.dictGateway, self.sCampaignId, S_PROVIDER_CLAUDE,
+            self._fdictComposeRunnerCost(), self.sImageReference,
             self.dictLimits, sNetworkName, False,
             dictEnvironment or None, listDnsServers, listDnsOptions)
-        await asyncio.to_thread(
-            agentCouncilRunner.fnCopySnapshotIntoRunner,
-            self.dockerCouncil, self._dictRunner["sContainerId"],
-            self.baSnapshotTar)
-        if self.sHostCredentialPath:
+        if not dictCreated["bCreated"]:
+            raise agentCouncilDockerGateway.CouncilGatewayError(
+                "runner admission refused: " + dictCreated["sRefusalReason"])
+        self._sHandle = dictCreated["sHandle"]
+        self._sReservationId = dictCreated["sReservationId"]
+        try:
             await asyncio.to_thread(
-                fnDeliverCredentialIntoRunner, self.dockerCouncil,
-                self._dictRunner["sContainerId"],
-                fbaBuildCredentialTarball(self.sHostCredentialPath))
+                agentCouncilDockerGateway.fnCopySnapshotIntoRunner,
+                self.dictGateway, self._sHandle, self.baSnapshotTar)
+            if self.sHostCredentialPath:
+                await asyncio.to_thread(
+                    fnDeliverCredentialIntoRunner, self.dictGateway,
+                    self._sHandle,
+                    fbaBuildCredentialTarball(self.sHostCredentialPath))
+        except BaseException:
+            await self._fnDestroyHandleAfterFailure()
+            raise
         return {"sContextIdentity": self._sReservationId,
                 "sReservationId": self._sReservationId}
 
@@ -539,22 +583,27 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         The composed instruction (charter + role + phase) rides
         ``--append-system-prompt``; the quoted untrusted material is the
         stdin prompt. The blocking bounded-turn primitive runs off the
-        event loop; its captured output is parsed into normalized events.
+        event loop; its captured output is parsed into normalized
+        events. A raise destroys-and-settles the runner first.
         """
         saArgv = flistComposeClaudeArgv(
             self.sRequestedModel, dictTurnRequest["sInstructionChannel"],
             self.saCliProgram)
         baStdin = fsComposeUntrustedPromptText(
             dictTurnRequest["listQuotedMaterial"]).encode("utf-8")
-        self._dictTurnExecution = await asyncio.to_thread(
-            agentCouncilRunner.fdictExecuteBoundedTurn,
-            self.dockerCouncil, self._dictRunner["sContainerId"], saArgv,
-            self.iOutputByteCap, self.fWallClockSeconds,
-            agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin)
-        self._listEvents = flistParseStreamJsonEvents(
-            self._dictTurnExecution["sOutput"])
-        self.dictModelIdentity = fdictExtractModelIdentity(
-            self._listEvents, self.sRequestedModel)
+        try:
+            self._dictTurnExecution = await asyncio.to_thread(
+                agentCouncilDockerGateway.fdictExecuteBoundedTurn,
+                self.dictGateway, self._sHandle, saArgv,
+                self.iOutputByteCap, self.fWallClockSeconds,
+                agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin)
+            self._listEvents = flistParseStreamJsonEvents(
+                self._dictTurnExecution["sOutput"])
+            self.dictModelIdentity = fdictExtractModelIdentity(
+                self._listEvents, self.sRequestedModel)
+        except BaseException:
+            await self._fnDestroyHandleAfterFailure()
+            raise
 
     async def fiterStreamNormalizedEvents(self):
         """Yield the normalized events parsed from the CLI stream."""
@@ -562,8 +611,16 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             yield dictEvent
 
     async def fdictCollectStructuredResult(self):
-        """Return the turn's final structured result (section 8.5)."""
-        return fdictExtractStructuredResult(self._listEvents)
+        """Return the turn's final structured result (section 8.5).
+
+        A raise destroys-and-settles the runner first, so even a fault
+        in result handling cannot leak a live container.
+        """
+        try:
+            return fdictExtractStructuredResult(self._listEvents)
+        except BaseException:
+            await self._fnDestroyHandleAfterFailure()
+            raise
 
     async def fsReportCompletion(self):
         """Destroy the runner and report terminal or indeterminate.
@@ -574,11 +631,13 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         is indeterminate, so the engine records the turn as interrupted
         and the UI shows a quarantine, never a clean completion.
         """
-        self._dictDestroyOutcome = await asyncio.to_thread(
-            agentCouncilRunner.fdictDestroyRunnerAndProveAbsence,
-            self.dockerCouncil, self._dictRunner["sContainerId"])
-        if (self._dictDestroyOutcome["sOutcome"]
-                == agentCouncilRunner.S_OUTCOME_DESTROYED):
+        if self._sHandle:
+            self._dictDestroyOutcome = await asyncio.to_thread(
+                agentCouncilDockerGateway.fdictDestroyAndSettle,
+                self.dictGateway, self._sHandle)
+            self._sHandle = ""
+        if (self._dictDestroyOutcome or {}).get("sOutcome") == (
+                agentCouncilRunner.S_OUTCOME_DESTROYED):
             return S_COMPLETION_TERMINAL
         return S_COMPLETION_INDETERMINATE
 
@@ -607,9 +666,10 @@ def _ftBuildDnsWiring(dictEgress):
 # ----- mandatory baseline-evidence executor (section 9.6) --------------
 
 
-def ffnBuildBaselineEvidenceExecutor(dockerCouncil, sImageReference,
-                                     sSnapshotHash, baSnapshotTar,
-                                     dictLimits=None, fWallClockSeconds=None):
+def ffnBuildBaselineEvidenceExecutor(dictGateway, sCampaignId,
+                                     sImageReference, sSnapshotHash,
+                                     baSnapshotTar, dictLimits=None,
+                                     fWallClockSeconds=None):
     """Build the engine's server-driven baseline-evidence callback.
 
     Mandatory on every backend, runner-only included (section 9.6): to
@@ -617,26 +677,43 @@ def ffnBuildBaselineEvidenceExecutor(dockerCouncil, sImageReference,
     the supporting command in a FRESH sandbox seeded from the immutable
     snapshot, and the ledger's state identity IS the snapshot hash, never
     a runner's possibly-mutated copy. A sandbox carries no credential and
-    no network; it is destroyed with proven absence. Returns the callback
-    the engine invokes as ``fdictExecuteBaselineEvidence(dictRequest)``.
+    no network; it is reserved through the gateway BEFORE creation and
+    destroyed with proven absence. An UNPROVEN destruction raises after
+    the registry records the quarantine, so the engine reverts the claim
+    and no evidence over an unaccounted sandbox ever becomes confirmed
+    (remediation R4). Returns the callback the engine invokes as
+    ``fdictExecuteBaselineEvidence(dictRequest)``.
     """
     def fdictExecuteBaselineEvidence(dictRequest):
-        sReservationId = f"council-baseline-{secrets.token_hex(6)}"
-        dictSandbox = agentCouncilRunner.fdictCreateRunnerContainer(
-            dockerCouncil, sImageReference, sReservationId,
+        dictCreated = agentCouncilDockerGateway.fdictReserveAndCreateRunner(
+            dictGateway, sCampaignId, S_BASELINE_SANDBOX_PROVIDER,
+            _fdictComposeSandboxCost(dictLimits), sImageReference,
             dictLimits=dictLimits, bSandbox=True)
-        sContainerId = dictSandbox["sContainerId"]
+        if not dictCreated["bCreated"]:
+            raise agentCouncilDockerGateway.CouncilGatewayError(
+                "baseline sandbox admission refused: "
+                + dictCreated["sRefusalReason"])
+        sHandle = dictCreated["sHandle"]
+        bTurnCompleted = False
         try:
-            agentCouncilRunner.fnCopySnapshotIntoRunner(
-                dockerCouncil, sContainerId, baSnapshotTar)
-            dictExecuted = agentCouncilRunner.fdictExecuteBoundedTurn(
-                dockerCouncil, sContainerId,
+            agentCouncilDockerGateway.fnCopySnapshotIntoRunner(
+                dictGateway, sHandle, baSnapshotTar)
+            dictExecuted = agentCouncilDockerGateway.fdictExecuteBoundedTurn(
+                dictGateway, sHandle,
                 ["/bin/sh", "-c", dictRequest.get("sCommandText", "")],
                 fWallClockSeconds=fWallClockSeconds,
                 sWorkingDirectory=agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT)
+            bTurnCompleted = True
         finally:
-            agentCouncilRunner.fdictDestroyRunnerAndProveAbsence(
-                dockerCouncil, sContainerId)
+            dictDestroyed = agentCouncilDockerGateway.fdictDestroyAndSettle(
+                dictGateway, sHandle)
+            if bTurnCompleted and dictDestroyed["sOutcome"] != (
+                    agentCouncilRunner.S_OUTCOME_DESTROYED):
+                raise agentCouncilDockerGateway.CouncilGatewayError(
+                    "baseline sandbox destruction is unproven "
+                    "(quarantined); the claim cannot be confirmed over "
+                    "a sandbox that may still exist: "
+                    + dictDestroyed["sReason"])
         return {
             "sSnapshotHash": sSnapshotHash,
             "sExecutionImageIdentity": sImageReference,
@@ -644,6 +721,14 @@ def ffnBuildBaselineEvidenceExecutor(dockerCouncil, sImageReference,
             "sOutputDigest": _fsDigestText(dictExecuted["sOutput"]),
         }
     return fdictExecuteBaselineEvidence
+
+
+def _fdictComposeSandboxCost(dictLimits):
+    """Declare the admission cost of one baseline sandbox."""
+    dictEffectiveLimits = (
+        dictLimits or agentCouncilRunner.fdictBuildDefaultRunnerLimits())
+    return {"iMemoryBytes": dictEffectiveLimits["iMemoryBytes"],
+            "fCpuCount": dictEffectiveLimits["fCpuCount"]}
 
 
 def _fsDigestText(sText):

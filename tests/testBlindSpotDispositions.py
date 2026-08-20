@@ -64,27 +64,36 @@ SET_DISPOSITIONS = frozenset({
 
 
 _S_COUNCIL_RUNNER_RATIONALE = (
-    "A Docker-SDK call operating only on a COUNCIL-created container, "
-    "never the active project container. Every runner is stamped with "
-    "the S_COUNCIL_LABEL at creation and is reached only by an id that "
-    "came from that labelled creation or from the label-filtered "
-    "discovery sweep, so this call can never name the project container. "
-    "Its lifecycle authority is the council registry (a separate "
-    "authority from the commit carrier, per the design's section 10.3): "
-    "the registry admits the reservation, and the container is settled "
-    "only after fdictDestroyRunnerAndProveAbsence proves the namespace "
-    "gone. Opaque to the scanner because the SDK client is a runtime "
-    "object, not a literal it can resolve. Falsified live by "
-    "testAgentCouncilRunnerLive.py (no mounts, no socket, 1000-owned, "
-    "detached child dies with the namespace) and "
+    "A Docker-SDK call inside agentCouncilDockerGateway — since "
+    "remediation R4 the ONLY council module with SDK reach "
+    "(testCouncilGatewayAuthority.py fails the build on any other) — "
+    "operating only on a COUNCIL-created container, never the active "
+    "project container. Every runner is stamped with the "
+    "S_COUNCIL_LABEL at creation and its registry reservation is "
+    "written BEFORE the create (fdictReserveAndCreateRunner), so its "
+    "lifecycle governance by the council registry is now enforced in "
+    "code, not asserted: an admission refusal creates nothing, a "
+    "failure after the reserve settles or quarantines the reservation, "
+    "and the handle-keyed destruction verifies the target's council "
+    "label against the handle's reservation id BEFORE any removal "
+    "(fdictDestroyAndSettle), refusing a container the gateway did not "
+    "create. Reached only through an opaque gateway-minted handle or "
+    "the label-filtered discovery sweep. Opaque to the scanner because "
+    "the SDK client is a runtime object, not a literal it can resolve. "
+    "Falsified live by testAgentCouncilRunnerLive.py (no mounts, no "
+    "socket, 1000-owned, detached child dies with the namespace), "
+    "testCouncilGatewayLive.py (failure-after-create settles; forced "
+    "indeterminate teardown quarantines with budget held) and "
     "testAgentCouncilProvidersLive.py (shutdown drain and restart "
     "reconcile settle only labelled runners)."
 )
 _LIST_COUNCIL_RUNNER_SYMBOLS = [
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL",
-    "gui/agentCouncilRunner.py::fdictCreateRunnerContainer",
-    "gui/agentCouncilRunner.py::flistDiscoverLabeledRunners",
-    "gui/agentCouncilRunner.py::fdictDestroyRunnerAndProveAbsence",
+    "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification",
+    "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner",
+    "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle",
+    "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners",
+    "gui/agentCouncilDockerGateway.py::fdictDestroyRunnerAndProveAbsence",
 ]
 _DICT_COUNCIL_RUNNER_DISPOSITION = {
     "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
@@ -94,27 +103,33 @@ _DICT_COUNCIL_RUNNER_DISPOSITION = {
 
 
 _S_COUNCIL_EGRESS_RATIONALE = (
-    "A Docker-SDK call operating only on a COUNCIL-created egress "
-    "network and its CONNECT-proxy container, never the active project "
-    "container. Both are named from the server-minted "
-    "_S_NETWORK_NAME_PREFIX / _S_PROXY_NAME_PREFIX plus a campaign id "
-    "that fnValidateCampaignIdOrRaise refuses unless it is 1-64 "
-    "characters of [A-Za-z0-9-]; the proxy image is the fixed "
-    "S_PROXY_IMAGE, and the proxy's argv and environment are composed "
-    "from validated server-owned values, so no researcher, project or "
-    "model text reaches the SDK command= or environment=. Its lifecycle "
-    "authority is the council registry (a separate authority from the "
-    "commit carrier, per the design's section 10.3), not a lease: the "
-    "network and proxy are created per campaign and settled only after "
-    "fdictRemoveCampaignEgressResources proves each gone by a positive "
-    "NotFound, an unanswered daemon reported indeterminate rather than "
-    "swallowed. Opaque to the scanner because the SDK client is a "
-    "runtime object passed as a parameter, not a literal it can "
-    "resolve. Falsified live by testAgentCouncilEgressLive.py (every "
-    "escape refused -- allowlisted CONNECT tunnels while forbidden "
-    "host, raw-IP, non-CONNECT, direct-dial, external-DNS, IPv6 and "
-    "no-network are all refused -- and teardown proves absence "
-    "idempotently)."
+    "A Docker-SDK call inside agentCouncilDockerGateway — since "
+    "remediation R4 the ONLY council module with SDK reach "
+    "(testCouncilGatewayAuthority.py fails the build on any other) — "
+    "operating only on a COUNCIL-created egress network and its "
+    "CONNECT-proxy container, never the active project container. Both "
+    "are named from the server-minted _S_NETWORK_NAME_PREFIX / "
+    "_S_PROXY_NAME_PREFIX plus a campaign id that "
+    "fnValidateCampaignIdOrRaise refuses unless it is 1-64 characters "
+    "of [A-Za-z0-9-]; the proxy image is the DIGEST-PINNED "
+    "S_PROXY_IMAGE, created with the runner's hardened posture "
+    "(unprivileged user, all capabilities dropped, no-new-privileges, "
+    "memory/CPU/PID bounds), and the proxy's argv and environment are "
+    "composed from validated server-owned values, so no researcher, "
+    "project or model text reaches the SDK command= or environment=. "
+    "Its lifecycle authority is the council registry (a separate "
+    "authority from the commit carrier, per the design's section "
+    "10.3), not a lease: the network and proxy are created per "
+    "campaign and settled only after fdictRemoveCampaignEgressResources "
+    "proves each gone by a positive NotFound, an unanswered daemon "
+    "reported indeterminate rather than swallowed. Opaque to the "
+    "scanner because the SDK client is a runtime object, not a literal "
+    "it can resolve. Falsified live by testAgentCouncilEgressLive.py "
+    "(every escape refused -- allowlisted CONNECT tunnels while "
+    "forbidden host, raw-IP, non-CONNECT, direct-dial, external-DNS, "
+    "IPv6 and no-network are all refused -- and teardown proves "
+    "absence idempotently) and testCouncilGatewayLive.py (the pinned, "
+    "non-root, cap-dropped, bounded posture inspected live)."
 )
 _LIST_COUNCIL_EGRESS_SYMBOLS = [
     "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX",
@@ -128,50 +143,50 @@ _DICT_COUNCIL_EGRESS_DISPOSITION = {
     "listSupportingSymbols": _LIST_COUNCIL_EGRESS_SYMBOLS,
 }
 DICT_BLIND_SPOT_DISPOSITIONS = {
-    "gui/agentCouncilEgress.py|_fnAttachToDefaultBridge|"
+    "gui/agentCouncilDockerGateway.py|_fnAttachToDefaultBridge|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fnAwaitProxyListening|"
+    "gui/agentCouncilDockerGateway.py|_fnAwaitProxyListening|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fnCopyProxyScriptIntoContainer|"
+    "gui/agentCouncilDockerGateway.py|_fnCopyProxyScriptIntoContainer|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fnRemoveContainerQuietly|"
+    "gui/agentCouncilDockerGateway.py|_fnKillContainerQuietly|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|_fnRemoveContainerQuietly|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fsReadProxyInternalAddress|"
+    "gui/agentCouncilDockerGateway.py|_fsReadProxyInternalAddress|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fsRemoveInternalNetwork|"
+    "gui/agentCouncilDockerGateway.py|_fsRemoveInternalNetwork|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fsRemoveInternalNetwork|"
+    "gui/agentCouncilDockerGateway.py|_fsRemoveInternalNetwork|"
     "untraceable-docker-sdk-root|1": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fsRemoveProxyContainer|"
+    "gui/agentCouncilDockerGateway.py|_fsRemoveProxyContainer|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|_fsRemoveProxyContainer|"
+    "gui/agentCouncilDockerGateway.py|_fsRemoveProxyContainer|"
     "untraceable-docker-sdk-root|1": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|fsCreateCampaignInternalNetwork|"
+    "gui/agentCouncilDockerGateway.py|_ftStartExecStream|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|_ftStartExecStream|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fdictDestroyRunnerAndProveAbsence|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fdictExecuteBoundedTurn|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fdictExecuteBoundedTurn|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fdictProbeRunnerAbsence|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fdictReserveAndCreateRunner|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|flistDiscoverLabeledRunners|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fnCopySnapshotIntoRunner|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fnCopySnapshotIntoRunner|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|fsCreateCampaignInternalNetwork|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilEgress.py|fsLaunchAllowlistProxy|"
+    "gui/agentCouncilDockerGateway.py|fsLaunchAllowlistProxy|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilRunner.py|_fnKillContainerQuietly|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|_ftStartExecStream|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|_ftStartExecStream|"
-    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fdictCreateRunnerContainer|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fdictDestroyRunnerAndProveAbsence|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fdictExecuteBoundedTurn|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fdictExecuteBoundedTurn|"
-    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fdictProbeRunnerAbsence|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|flistDiscoverLabeledRunners|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fnCopySnapshotIntoRunner|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilRunner.py|fnCopySnapshotIntoRunner|"
-    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/commitCarrier.py|fdictLaunchGatedHelperProcess|"
     "opaque-subprocess-command|0": {
         "sDisposition": S_DISPOSITION_EXCEPTIONAL_AUTHORITY,
@@ -282,21 +297,29 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "config/mutationAdmission.py::fnAssertOperationAdmittedByIdentity":
         "7e18213dca68a496",
     # Agent Council egress and runner: both separate-authority, governed
-    # by the council registry, not the commit carrier. Each operates only
-    # on council-created resources through a passed-in SDK client.
+    # by the council registry, not the commit carrier — and since R4 that
+    # governance is enforced by the gateway (reserve-before-create,
+    # label-verified destruction), the only council module with SDK
+    # reach. Re-read 2026-08-19 for the R4 migration: S_PROXY_IMAGE's
+    # hash moved because the image is now digest-pinned, and the moved
+    # symbols' hashes are their gateway/runner forms after the split.
     "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX":
         "8aaa3bf0a0e83395",
     "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX": "129ae0023fac3690",
-    "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "c1467c7127ad0b8b",
+    "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "3af607254cf1d87f",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise":
         "87db3f8231c827f6",
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL": "a5575a22df9e26bf",
-    "gui/agentCouncilRunner.py::fdictCreateRunnerContainer":
-        "c52564fcca7295fb",
-    "gui/agentCouncilRunner.py::flistDiscoverLabeledRunners":
-        "1b5685e9be13e5ba",
-    "gui/agentCouncilRunner.py::fdictDestroyRunnerAndProveAbsence":
-        "277cbba5207f3444",
+    "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification":
+        "2f637bbd2a9ad36f",
+    "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner":
+        "1890cb0e081d815d",
+    "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle":
+        "51560bacb4682048",
+    "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners":
+        "5ef01ac0709ce6a9",
+    "gui/agentCouncilDockerGateway.py::fdictDestroyRunnerAndProveAbsence":
+        "05d83409bc4a9f16",
     "gui/commitCarrier.py::S_GATED_HELPER_STUB": "2bd6936769eb618c",
     "gui/commitCarrier.py::fdictLaunchGatedHelperProcess":
         "58b0217540f74765",

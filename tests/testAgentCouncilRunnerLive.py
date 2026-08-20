@@ -31,6 +31,7 @@ import time
 import pytest
 
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
+from vaibify.gui import agentCouncilDockerGateway as moduleGateway
 
 pytestmark = pytest.mark.docker_live
 
@@ -57,13 +58,24 @@ def _fdictSmallLimits(**dictOverrides):
 
 @pytest.fixture
 def tCouncilHarness():
-    """Yield (moduleRunner, dockerCouncil, listCreatedContainerIds)."""
+    """Yield (moduleRunner, dictGateway, listCreatedContainerIds).
+
+    Every SDK-touching operation goes through the council Docker
+    gateway (remediation R4); the runner module supplies only the
+    constants and pure helpers the assertions read. The raw client is
+    reachable as ``dictGateway["dockerCouncil"]`` for the inspect-side
+    assertions.
+    """
     fnRequireDaemonReachable()
+    from vaibify.gui import agentCouncilDockerGateway as moduleGateway
+    from vaibify.gui import agentCouncilRegistry as moduleRegistry
     from vaibify.gui import agentCouncilRunner as moduleRunner
-    dockerCouncil = moduleRunner.fdockerCreateCouncilClient()
+    dockerCouncil = moduleGateway.fdockerCreateCouncilClient()
+    dictGateway = moduleGateway.fdictCreateCouncilDockerGateway(
+        dockerCouncil, moduleRegistry.fdictCreateCouncilRegistry())
     listCreatedContainerIds = []
     try:
-        yield (moduleRunner, dockerCouncil, listCreatedContainerIds)
+        yield (moduleRunner, dictGateway, listCreatedContainerIds)
     finally:
         for sContainerId in listCreatedContainerIds:
             try:
@@ -75,17 +87,36 @@ def tCouncilHarness():
 
 
 def _fdictCreateTracked(tCouncilHarness, dictLimits=None, bSandbox=False):
-    """Create a runner registered for teardown; return its handle."""
-    moduleRunner, dockerCouncil, listCreatedContainerIds = tCouncilHarness
-    dictRunner = moduleRunner.fdictCreateRunnerContainer(
-        dockerCouncil, S_RUNNER_TEST_IMAGE,
-        f"test-reservation-{secrets.token_hex(4)}",
-        dictLimits=dictLimits if dictLimits is not None
-        else _fdictSmallLimits(),
+    """Create a runner through the gateway; return its handle record.
+
+    The returned dict carries ``sHandle`` (the gateway's opaque key for
+    every subsequent operation) plus the container id and reservation
+    id the assertions read. The container id is registered for
+    teardown even on failure.
+    """
+    from vaibify.gui import agentCouncilDockerGateway as moduleGateway
+    _, dictGateway, listCreatedContainerIds = tCouncilHarness
+    dictEffectiveLimits = (dictLimits if dictLimits is not None
+                           else _fdictSmallLimits())
+    dictCreated = moduleGateway.fdictReserveAndCreateRunner(
+        dictGateway, f"livetest{secrets.token_hex(4)}", "claude",
+        {"iMemoryBytes": dictEffectiveLimits["iMemoryBytes"],
+         "fCpuCount": dictEffectiveLimits["fCpuCount"]},
+        S_RUNNER_TEST_IMAGE,
+        dictLimits=dictEffectiveLimits,
         bSandbox=bSandbox,
     )
-    listCreatedContainerIds.append(dictRunner["sContainerId"])
-    return dictRunner
+    assert dictCreated["bCreated"] is True, dictCreated
+    sHandle = dictCreated["sHandle"]
+    dictHandle = dictGateway["dictHandlesById"][sHandle]
+    listCreatedContainerIds.append(dictHandle["sContainerId"])
+    return {
+        "sHandle": sHandle,
+        "sContainerId": dictHandle["sContainerId"],
+        "sContainerName": dictHandle["sContainerName"],
+        "sReservationId": dictHandle["sReservationId"],
+        "sRole": dictHandle["sRole"],
+    }
 
 
 def _fbaBuildSnapshotTarball(iFileCount, iFileSizeBytes, bRootOwned=False):
@@ -157,20 +188,20 @@ def test_detached_descendant_survives_parent_exit_and_dies_with_namespace(
     and proving absence is what actually ends the descendant: its PID
     namespace no longer exists.
     """
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(tCouncilHarness)
-    sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["python3", "-c", S_DETACHED_DESCENDANT_SCRIPT],
         fWallClockSeconds=30.0,
     )
     assert dictTurn["iExitCode"] == 0, dictTurn
     assert "PARENT_EXITING" in dictTurn["sOutput"]
 
-    dictProbeTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictProbeTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["/bin/sh", "-c", S_DESCENDANT_PROBE_COMMAND],
         fWallClockSeconds=30.0,
     )
@@ -184,9 +215,7 @@ def test_detached_descendant_survives_parent_exit_and_dies_with_namespace(
         "nothing about a hostile one: " + dictProbeTurn["sOutput"]
     )
 
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, sContainerId,
-    )
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED, (
         dictDestroyed
     )
@@ -214,14 +243,14 @@ except OSError:
 """
 
 
-def _fdictProbeResponsiveWithRetry(moduleRunner, dockerCouncil,
-                                   sContainerId, fBudgetSeconds=45.0):
+def _fdictProbeResponsiveWithRetry(dictGateway, sHandle,
+                                   fBudgetSeconds=45.0):
     """Echo inside the container, retrying while the PID budget drains."""
     fDeadlineMonotonic = time.monotonic() + fBudgetSeconds
     while True:
         try:
-            dictProbe = moduleRunner.fdictExecuteBoundedTurn(
-                dockerCouncil, sContainerId,
+            dictProbe = moduleGateway.fdictExecuteBoundedTurn(
+                dictGateway, sHandle,
                 ["/bin/sh", "-c", "echo STILL_RESPONSIVE"],
                 fWallClockSeconds=15.0,
             )
@@ -239,14 +268,14 @@ def _fdictProbeResponsiveWithRetry(moduleRunner, dockerCouncil,
 
 def test_fork_bomb_hits_pids_limit_and_harms_only_its_turn(tCouncilHarness):
     """A fork bomb is stopped by pids_limit inside its own namespace."""
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(
         tCouncilHarness, dictLimits=_fdictSmallLimits(iPidsLimit=64),
     )
-    sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["python3", "-c", S_FORK_BOMB_SCRIPT],
         fWallClockSeconds=60.0,
     )
@@ -256,10 +285,8 @@ def test_fork_bomb_hits_pids_limit_and_harms_only_its_turn(tCouncilHarness):
 
     # "Harms only its own turn": once the bomb's children expire, the
     # same container answers a fresh turn — and destruction settles.
-    _fdictProbeResponsiveWithRetry(moduleRunner, dockerCouncil, sContainerId)
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, sContainerId,
-    )
+    _fdictProbeResponsiveWithRetry(dictGateway, sHandle)
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
 
 
@@ -279,22 +306,24 @@ def test_memory_balloon_is_killed_with_swap_pinned(tCouncilHarness):
     available to spill into, the balloon would complete and print its
     marker; it must not.
     """
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(
         tCouncilHarness,
         dictLimits=_fdictSmallLimits(iMemoryBytes=256 * I_MEBIBYTE),
     )
     sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictAttrs = dockerCouncil.api.inspect_container(sContainerId)
+    dictAttrs = dictGateway["dockerCouncil"].api.inspect_container(
+        sContainerId)
     assert dictAttrs["HostConfig"]["Memory"] == 256 * I_MEBIBYTE
     assert dictAttrs["HostConfig"]["MemorySwap"] == 256 * I_MEBIBYTE, (
         "memswap must be pinned to the memory limit so pressure cannot "
         "spill to swap"
     )
 
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["python3", "-c", S_MEMORY_BALLOON_SCRIPT],
         fWallClockSeconds=120.0,
     )
@@ -304,9 +333,7 @@ def test_memory_balloon_is_killed_with_swap_pinned(tCouncilHarness):
     )
     assert dictTurn["iExitCode"] != 0, dictTurn
 
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, sContainerId,
-    )
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
 
 
@@ -332,7 +359,7 @@ def test_disk_filling_script_hits_the_tmpfs_bound(tCouncilHarness):
     ENOSPC near the tmpfs size, far below its target — and the rootfs
     refuses writes entirely, so there is no unbounded surface left.
     """
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(
         tCouncilHarness,
         dictLimits=_fdictSmallLimits(
@@ -340,10 +367,10 @@ def test_disk_filling_script_hits_the_tmpfs_bound(tCouncilHarness):
             iWorkingTreeBytes=64 * I_MEBIBYTE,
         ),
     )
-    sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["python3", "-c", S_DISK_FILL_SCRIPT],
         fWallClockSeconds=120.0,
     )
@@ -355,8 +382,8 @@ def test_disk_filling_script_hits_the_tmpfs_bound(tCouncilHarness):
         f"the writer placed {iRefusedAtBytes} bytes on a 64MiB tmpfs"
     )
 
-    dictRootfs = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictRootfs = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["/bin/sh", "-c",
          "touch /usr/blocked 2>/dev/null && echo ROOTFS_WRITABLE "
          "|| echo ROOTFS_REFUSED"],
@@ -366,9 +393,7 @@ def test_disk_filling_script_hits_the_tmpfs_bound(tCouncilHarness):
         "the rootfs must be read-only or the disk bound has an "
         "unbounded bypass"
     )
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, sContainerId,
-    )
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
 
 
@@ -381,11 +406,13 @@ def test_runner_has_no_mounts_no_socket_and_a_1000_owned_editable_snapshot(
     the unprivileged user, appendable by the very identity the CLI will
     run as.
     """
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(tCouncilHarness)
     sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictAttrs = dockerCouncil.api.inspect_container(sContainerId)
+    dictAttrs = dictGateway["dockerCouncil"].api.inspect_container(
+        sContainerId)
     dictHostConfig = dictAttrs["HostConfig"]
     assert not dictHostConfig["Binds"], dictHostConfig["Binds"]
     assert dictAttrs["Mounts"] == [], dictAttrs["Mounts"]
@@ -402,12 +429,12 @@ def test_runner_has_no_mounts_no_socket_and_a_1000_owned_editable_snapshot(
     sSerializedHostConfig = repr(dictHostConfig)
     assert "docker.sock" not in sSerializedHostConfig
 
-    moduleRunner.fnCopySnapshotIntoRunner(
-        dockerCouncil, sContainerId,
+    moduleGateway.fnCopySnapshotIntoRunner(
+        dictGateway, sHandle,
         _fbaBuildSnapshotTarball(4, 4096, bRootOwned=True),
     )
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["/bin/sh", "-c",
          "id -u; "
          "python3 -c \"import os; "
@@ -444,16 +471,18 @@ except OSError:
 
 def test_sandbox_variant_reaches_no_network_at_all(tCouncilHarness):
     """A sandbox has network_mode none and cannot dial or resolve."""
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictSandbox = _fdictCreateTracked(tCouncilHarness, bSandbox=True)
     sContainerId = dictSandbox["sContainerId"]
+    sHandle = dictSandbox["sHandle"]
     assert dictSandbox["sRole"] == moduleRunner.S_ROLE_SANDBOX
 
-    dictAttrs = dockerCouncil.api.inspect_container(sContainerId)
+    dictAttrs = dictGateway["dockerCouncil"].api.inspect_container(
+        sContainerId)
     assert dictAttrs["HostConfig"]["NetworkMode"] == "none"
 
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, sContainerId,
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
         ["python3", "-c", S_NETWORK_PROBE_SCRIPT],
         fWallClockSeconds=60.0,
     )
@@ -462,26 +491,26 @@ def test_sandbox_variant_reaches_no_network_at_all(tCouncilHarness):
     assert "DNS_REFUSED" in dictTurn["sOutput"]
 
     with pytest.raises(ValueError):
-        moduleRunner.fdictCreateRunnerContainer(
-            dockerCouncil, S_RUNNER_TEST_IMAGE, "refused-reservation",
+        moduleRunner.fdictComposeRunnerCreateSpecification(
+            S_RUNNER_TEST_IMAGE, "refused-reservation",
             bSandbox=True, sNetworkName="bridge",
         )
 
 
 def test_turn_output_cap_and_wall_clock_budget_bind(tCouncilHarness):
     """Both per-turn bounds are enforced host-side and end the runner."""
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
 
     dictFlooder = _fdictCreateTracked(tCouncilHarness)
-    dictFlood = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, dictFlooder["sContainerId"],
+    dictFlood = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, dictFlooder["sHandle"],
         ["/bin/sh", "-c", "while :; do echo flooding-the-output; done"],
         iOutputByteCap=65536, fWallClockSeconds=60.0,
     )
     assert dictFlood["bOutputCapExceeded"] is True
     assert len(dictFlood["sOutput"].encode()) <= 65536
-    dictDestroyedFlooder = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, dictFlooder["sContainerId"],
+    dictDestroyedFlooder = moduleGateway.fdictDestroyAndSettle(
+        dictGateway, dictFlooder["sHandle"],
     )
     assert dictDestroyedFlooder["sOutcome"] == (
         moduleRunner.S_OUTCOME_DESTROYED
@@ -489,16 +518,16 @@ def test_turn_output_cap_and_wall_clock_budget_bind(tCouncilHarness):
 
     dictSleeper = _fdictCreateTracked(tCouncilHarness)
     fStartedMonotonic = time.monotonic()
-    dictSleep = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, dictSleeper["sContainerId"],
+    dictSleep = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, dictSleeper["sHandle"],
         ["/bin/sh", "-c", "sleep 60"],
         fWallClockSeconds=3.0,
     )
     fElapsedSeconds = time.monotonic() - fStartedMonotonic
     assert dictSleep["bWallClockExceeded"] is True
     assert fElapsedSeconds < 15.0, fElapsedSeconds
-    dictDestroyedSleeper = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, dictSleeper["sContainerId"],
+    dictDestroyedSleeper = moduleGateway.fdictDestroyAndSettle(
+        dictGateway, dictSleeper["sHandle"],
     )
     assert dictDestroyedSleeper["sOutcome"] == (
         moduleRunner.S_OUTCOME_DESTROYED
@@ -508,21 +537,20 @@ def test_turn_output_cap_and_wall_clock_budget_bind(tCouncilHarness):
 def test_absence_probe_distinguishes_gone_from_daemon_error(
         tCouncilHarness):
     """Absent is a positive 404; a daemon fault is never completion."""
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictRunner = _fdictCreateTracked(tCouncilHarness)
     sContainerId = dictRunner["sContainerId"]
+    sHandle = dictRunner["sHandle"]
 
-    dictPresent = moduleRunner.fdictProbeRunnerAbsence(
-        dockerCouncil, sContainerId,
+    dictPresent = moduleGateway.fdictProbeRunnerAbsence(
+        dictGateway["dockerCouncil"], sContainerId,
     )
     assert dictPresent["sAnswer"] == moduleRunner.S_ABSENCE_PRESENT
 
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, sContainerId,
-    )
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
-    dictAbsent = moduleRunner.fdictProbeRunnerAbsence(
-        dockerCouncil, sContainerId,
+    dictAbsent = moduleGateway.fdictProbeRunnerAbsence(
+        dictGateway["dockerCouncil"], sContainerId,
     )
     assert dictAbsent["sAnswer"] == moduleRunner.S_ABSENCE_ABSENT
 
@@ -531,7 +559,7 @@ def test_absence_probe_distinguishes_gone_from_daemon_error(
         base_url="unix:///nonexistent/never-a-daemon.sock",
         version="1.41", timeout=2,
     )
-    dictIndeterminate = moduleRunner.fdictProbeRunnerAbsence(
+    dictIndeterminate = moduleGateway.fdictProbeRunnerAbsence(
         dockerUnreachable, sContainerId,
     )
     assert dictIndeterminate["sAnswer"] == (
@@ -540,7 +568,7 @@ def test_absence_probe_distinguishes_gone_from_daemon_error(
         "a daemon transport error must never be read as absence: "
         + repr(dictIndeterminate)
     )
-    dictQuarantined = moduleRunner.fdictDestroyRunnerAndProveAbsence(
+    dictQuarantined = moduleGateway.fdictDestroyRunnerAndProveAbsence(
         dockerUnreachable, sContainerId,
     )
     assert dictQuarantined["sOutcome"] == (
@@ -554,14 +582,14 @@ def test_absence_probe_distinguishes_gone_from_daemon_error(
 def test_crash_discovery_finds_abandoned_labeled_runner_and_settles_it(
         tCouncilHarness):
     """A restarted hub can discover a labeled survivor and settle it."""
-    moduleRunner, dockerCouncil, _ = tCouncilHarness
+    moduleRunner, dictGateway, _ = tCouncilHarness
     dictAbandoned = _fdictCreateTracked(tCouncilHarness)
     sReservationId = dictAbandoned["sReservationId"]
 
     # Simulate the hub crash: forget the handle, build a fresh client
     # as a restarted process would, and rediscover by label alone.
-    dockerRestarted = moduleRunner.fdockerCreateCouncilClient()
-    listDiscovered = moduleRunner.flistDiscoverLabeledRunners(
+    dockerRestarted = moduleGateway.fdockerCreateCouncilClient()
+    listDiscovered = moduleGateway.flistDiscoverLabeledRunners(
         dockerRestarted,
     )
     listMatching = [
@@ -575,12 +603,12 @@ def test_crash_discovery_finds_abandoned_labeled_runner_and_settles_it(
     assert listMatching[0]["sContainerId"] == dictAbandoned["sContainerId"]
     assert listMatching[0]["sRole"] == moduleRunner.S_ROLE_RUNNER
 
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
+    dictDestroyed = moduleGateway.fdictDestroyRunnerAndProveAbsence(
         dockerRestarted, listMatching[0]["sContainerId"],
     )
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
 
-    listAfter = moduleRunner.flistDiscoverLabeledRunners(dockerRestarted)
+    listAfter = moduleGateway.flistDiscoverLabeledRunners(dockerRestarted)
     assert not any(
         dictFound["sReservationId"] == sReservationId
         for dictFound in listAfter
@@ -596,27 +624,22 @@ def test_lifecycle_timing_reproduces_containment_measurement(
     prove absence — printing each phase's duration for the record and
     asserting a generous total ceiling.
     """
-    moduleRunner, dockerCouncil, listCreatedContainerIds = tCouncilHarness
+    moduleRunner, dictGateway, listCreatedContainerIds = tCouncilHarness
     baSnapshotTar = _fbaBuildSnapshotTarball(120, 256 * 1024)
 
     fCreateStarted = time.monotonic()
-    dictRunner = moduleRunner.fdictCreateRunnerContainer(
-        dockerCouncil, S_RUNNER_TEST_IMAGE,
-        f"timing-reservation-{secrets.token_hex(4)}",
-        dictLimits=_fdictSmallLimits(),
-    )
-    listCreatedContainerIds.append(dictRunner["sContainerId"])
+    dictRunner = _fdictCreateTracked(tCouncilHarness)
     fCreateSeconds = time.monotonic() - fCreateStarted
 
     fCopyStarted = time.monotonic()
-    moduleRunner.fnCopySnapshotIntoRunner(
-        dockerCouncil, dictRunner["sContainerId"], baSnapshotTar,
+    moduleGateway.fnCopySnapshotIntoRunner(
+        dictGateway, dictRunner["sHandle"], baSnapshotTar,
     )
     fCopySeconds = time.monotonic() - fCopyStarted
 
     fExecuteStarted = time.monotonic()
-    dictTurn = moduleRunner.fdictExecuteBoundedTurn(
-        dockerCouncil, dictRunner["sContainerId"],
+    dictTurn = moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, dictRunner["sHandle"],
         ["python3", "-c", S_DETACHED_DESCENDANT_SCRIPT],
         fWallClockSeconds=60.0,
     )
@@ -624,15 +647,15 @@ def test_lifecycle_timing_reproduces_containment_measurement(
     assert dictTurn["iExitCode"] == 0, dictTurn
 
     fDestroyStarted = time.monotonic()
-    dictDestroyed = moduleRunner.fdictDestroyRunnerAndProveAbsence(
-        dockerCouncil, dictRunner["sContainerId"],
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(
+        dictGateway, dictRunner["sHandle"],
     )
     fDestroySeconds = time.monotonic() - fDestroyStarted
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
 
     fProbeStarted = time.monotonic()
-    dictProbe = moduleRunner.fdictProbeRunnerAbsence(
-        dockerCouncil, dictRunner["sContainerId"],
+    dictProbe = moduleGateway.fdictProbeRunnerAbsence(
+        dictGateway["dockerCouncil"], dictRunner["sContainerId"],
     )
     fProbeSeconds = time.monotonic() - fProbeStarted
     assert dictProbe["sAnswer"] == moduleRunner.S_ABSENCE_ABSENT

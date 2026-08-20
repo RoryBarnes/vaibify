@@ -352,15 +352,28 @@ def fdictDrainCouncilRegistry(dictRegistry, dockerCouncil):
     }
 
 
+def _fmoduleImportCouncilGateway():
+    """Import the council Docker gateway at call time, not import time.
+
+    The gateway imports this registry for its reserve/settle
+    bookkeeping, so a module-level import here would be a cycle; the
+    drain and reconcile lanes are the registry's only two SDK-touching
+    moments, and both borrow the gateway's container-id primitives.
+    """
+    from . import agentCouncilDockerGateway
+    return agentCouncilDockerGateway
+
+
 def _fnDrainOneReservation(dictRegistry, dockerCouncil, dictReservation,
                            listDestroyed, listQuarantined):
     """Destroy one reservation's runner and record where it landed."""
+    moduleGateway = _fmoduleImportCouncilGateway()
     sReservationId = dictReservation["sReservationId"]
     iEpoch = dictReservation["iEpoch"]
     if not dictReservation["sContainerId"]:
         del dictRegistry["dictReservationsById"][sReservationId]
         return
-    dictDestroyed = agentCouncilRunner.fdictDestroyRunnerAndProveAbsence(
+    dictDestroyed = moduleGateway.fdictDestroyRunnerAndProveAbsence(
         dockerCouncil, dictReservation["sContainerId"])
     fdictSettleReservation(
         dictRegistry, sReservationId, dictDestroyed["sOutcome"], iEpoch)
@@ -380,12 +393,13 @@ def fdictReconcileLabeledRunnersOnRestart(dictRegistry, dockerCouncil):
     transaction. A destroyed survivor is done; a quarantined one is
     recorded so it stays visible. Returns the reconciliation report.
     """
-    listSurvivors = agentCouncilRunner.flistDiscoverLabeledRunners(
+    moduleGateway = _fmoduleImportCouncilGateway()
+    listSurvivors = moduleGateway.flistDiscoverLabeledRunners(
         dockerCouncil)
     listDestroyed = []
     listQuarantined = []
     for dictSurvivor in listSurvivors:
-        dictDestroyed = agentCouncilRunner.fdictDestroyRunnerAndProveAbsence(
+        dictDestroyed = moduleGateway.fdictDestroyRunnerAndProveAbsence(
             dockerCouncil, dictSurvivor["sContainerId"])
         if dictDestroyed["sOutcome"] == agentCouncilRunner.S_OUTCOME_DESTROYED:
             listDestroyed.append(dictSurvivor["sReservationId"])

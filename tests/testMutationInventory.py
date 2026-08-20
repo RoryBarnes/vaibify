@@ -441,15 +441,18 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # regression. What the record cannot decode, the review can: the argv
 # is fixed source text and the only interpolated value is an int-cast
 # port already bounded by the command that accepted it.
-# +22 (Agent Council): the runner and egress each drive Docker through a
-# dockerCouncil SDK client received as a parameter, so its chain root is
-# a runtime object the scan cannot resolve. That is the honest reason
-# these are opaque, not a regression -- both are reviewed and disposed as
+# +22 (Agent Council): every council Docker call drives the SDK through
+# a dockerCouncil client that is a runtime object, so its chain root is
+# one the scan cannot resolve. That is the honest reason these are
+# opaque, not a regression -- all are reviewed and disposed as
 # separate-authority in tests/testBlindSpotDispositions.py (they operate
 # only on council-created containers/networks, governed by the council
-# registry, never the active project container). 11 runner sites + 11
-# egress sites join the 12 pre-council SDK-root blind spots. The egress
-# rise landed when it was converted from a `docker` CLI subprocess (one
+# registry, never the active project container). Since remediation R4
+# all 22 sites live in gui/agentCouncilDockerGateway.py, the single
+# council SDK authority (testCouncilGatewayAuthority.py fails the build
+# on SDK reach anywhere else in the council), joining the 12 pre-council
+# SDK-root blind spots. The egress half of the count landed when egress
+# was converted from a `docker` CLI subprocess (one
 # opaque-subprocess-command site) to the SDK, matching the runner idiom
 # and removing a raw process-launch capability from vaibify/gui/.
 DICT_UNRESOLVED_BUDGET = {

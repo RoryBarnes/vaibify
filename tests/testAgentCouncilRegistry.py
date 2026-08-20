@@ -13,6 +13,7 @@ import types
 
 import pytest
 
+from vaibify.gui import agentCouncilDockerGateway
 from vaibify.gui import agentCouncilRegistry as registry
 from vaibify.gui import agentCouncilRunner
 from vaibify.gui import serverLifespan
@@ -133,7 +134,7 @@ def testDrainStopsAdmissionAndSettlesLiveRunners(monkeypatch):
         dictRegistry, "req0", "campaignA", "claude")
 
     monkeypatch.setattr(
-        agentCouncilRunner, "fdictDestroyRunnerAndProveAbsence",
+        agentCouncilDockerGateway, "fdictDestroyRunnerAndProveAbsence",
         lambda dockerCouncil, sContainerId: {
             "sOutcome": agentCouncilRunner.S_OUTCOME_DESTROYED,
             "sReason": "", "dictProbe": {}})
@@ -154,12 +155,12 @@ def testDrainStopsAdmissionAndSettlesLiveRunners(monkeypatch):
 def testReconcileDiscoversAndSettlesOrphanedSurvivors(monkeypatch):
     dictRegistry = registry.fdictCreateCouncilRegistry()
     monkeypatch.setattr(
-        agentCouncilRunner, "flistDiscoverLabeledRunners",
+        agentCouncilDockerGateway, "flistDiscoverLabeledRunners",
         lambda dockerCouncil: [
             {"sContainerId": "c1", "sReservationId": "res1", "sRole": "runner",
              "sContainerName": "n1", "sStatus": "running"}])
     monkeypatch.setattr(
-        agentCouncilRunner, "fdictDestroyRunnerAndProveAbsence",
+        agentCouncilDockerGateway, "fdictDestroyRunnerAndProveAbsence",
         lambda dockerCouncil, sContainerId: {
             "sOutcome": agentCouncilRunner.S_OUTCOME_DESTROYED,
             "sReason": "", "dictProbe": {}})
