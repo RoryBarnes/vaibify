@@ -24,6 +24,7 @@ pipeline can benefit from containerized reproducibility.
    cli
    pipelines
    dashboard
+   agentCouncil
    remoteAccess
    testFormats
    templates

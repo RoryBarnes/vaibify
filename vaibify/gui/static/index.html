@@ -346,6 +346,13 @@
                  aria-hidden="true" role="dialog"
                  aria-label="Help"></div>
         </div>
+        <!-- Agent Council: after the project identity, before the Run
+             menu (design section 6.1). Disabled without an active
+             project or fewer than two supported participants; on a host
+             project it explains itself as an on-ramp to CONVERT. -->
+        <button class="btn" id="btnAgentCouncil" disabled
+                title="Open a project to convene a council.">
+            Agent Council</button>
         <!-- Run Menu -->
         <div class="toolbar-menu" id="toolbarMenuRun">
             <button class="btn toolbar-menu-trigger">Run</button>
@@ -1106,6 +1113,32 @@
     </div>
 </div>
 
+<!-- Agent Council creation chooser / planning modal (design section
+     6.2, 6.3). The body is rendered by scriptAgentCouncil.js. -->
+<div id="agentCouncilModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content council-modal">
+        <button type="button" id="btnAgentCouncilModalClose"
+                class="modal-close" aria-label="Close">&times;</button>
+        <div id="agentCouncilModalBody"></div>
+    </div>
+</div>
+
+<!-- Agent Council workspace: a dockable, collapsible lower panel
+     (design section 6.4). NOT attached to the terminal route. The tab
+     bar and consoles are rendered by scriptAgentCouncil.js from the
+     backend registry's truth. -->
+<div id="agentCouncilWorkspace" class="council-workspace"
+     style="display: none;">
+    <div class="council-workspace-header">
+        <span class="council-workspace-title">Agent Council</span>
+        <button type="button" id="btnAgentCouncilWorkspaceClose"
+                class="btn btn-small" aria-label="Close workspace">
+            Close</button>
+    </div>
+    <div id="agentCouncilWorkspaceBody"
+         class="council-workspace-body"></div>
+</div>
+
 <!-- Toast Container -->
 <div id="toastContainer"></div>
 
@@ -1155,5 +1188,6 @@
 <script src="/static/scriptTerminal.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepEditor.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptResourceMonitor.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptAgentCouncil.js?v=__CACHE_VERSION__"></script>
 </body>
 </html>

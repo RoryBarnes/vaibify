@@ -303,6 +303,25 @@ class FailClosedDockerAdapter:
             for sPath in listPaths
         ]
 
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Answer the Repos panel's batched git-status typed read.
+
+        A typed read, not a command, so it is exempt from
+        ``LIST_MODELLED_COMMANDS`` — the fail-closed COMMAND contract is
+        untouched. The fake models no git history, so every requested
+        repo reports a clean, empty status rather than raising an
+        ``AttributeError`` the caller does not catch (it guards only
+        ``OSError``/``ValueError``). Returning the empty list per repo is
+        the honest "nothing to report" answer for a container with no
+        commits, and it keeps a project-open journey free of a spurious
+        500 the moment the panel polls.
+        """
+        return [
+            {"sPath": sRepoPath, "bMissing": False, "sBranch": "main",
+             "sPorcelain": "", "sUrl": ""}
+            for sRepoPath in listRepoPaths
+        ]
+
     def _fbPathExists(self, sPath):
         """Answer the typed existence read for the paths it models.
 
