@@ -59,7 +59,83 @@ SET_DISPOSITIONS = frozenset({
 })
 
 
+_S_COUNCIL_RUNNER_RATIONALE = (
+    "A Docker-SDK call operating only on a COUNCIL-created container, "
+    "never the active project container. Every runner is stamped with "
+    "the S_COUNCIL_LABEL at creation and is reached only by an id that "
+    "came from that labelled creation or from the label-filtered "
+    "discovery sweep, so this call can never name the project container. "
+    "Its lifecycle authority is the council registry (a separate "
+    "authority from the commit carrier, per the design's section 10.3): "
+    "the registry admits the reservation, and the container is settled "
+    "only after fdictDestroyRunnerAndProveAbsence proves the namespace "
+    "gone. Opaque to the scanner because the SDK client is a runtime "
+    "object, not a literal it can resolve. Falsified live by "
+    "testAgentCouncilRunnerLive.py (no mounts, no socket, 1000-owned, "
+    "detached child dies with the namespace) and "
+    "testAgentCouncilProvidersLive.py (shutdown drain and restart "
+    "reconcile settle only labelled runners)."
+)
+_LIST_COUNCIL_RUNNER_SYMBOLS = [
+    "gui/agentCouncilRunner.py::S_COUNCIL_LABEL",
+    "gui/agentCouncilRunner.py::fdictCreateRunnerContainer",
+    "gui/agentCouncilRunner.py::flistDiscoverLabeledRunners",
+    "gui/agentCouncilRunner.py::fdictDestroyRunnerAndProveAbsence",
+]
+_DICT_COUNCIL_RUNNER_DISPOSITION = {
+    "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
+    "sRationale": _S_COUNCIL_RUNNER_RATIONALE,
+    "listSupportingSymbols": _LIST_COUNCIL_RUNNER_SYMBOLS,
+}
 DICT_BLIND_SPOT_DISPOSITIONS = {
+    "gui/agentCouncilEgress.py|_ftRunDockerCommand|"
+    "opaque-subprocess-command|0": {
+        "sDisposition": S_DISPOSITION_DETERMINED_IN_SOURCE,
+        "sRationale": (
+            "Opaque to the scanner, determined in the source: every "
+            "caller builds a literal argv whose executable is the string "
+            "\"docker\" and whose subcommand is a literal "
+            "(\"network create --internal\", \"run\", \"cp\", \"rm -f\", "
+            "\"inspect\", \"logs\", \"start\", \"ps\", \"network rm\"). "
+            "The only variable elements are server-MINTED resource names "
+            "(_S_NETWORK_NAME_PREFIX / _S_PROXY_NAME_PREFIX) and the "
+            "fixed proxy image S_PROXY_IMAGE; no researcher, project or "
+            "model text ever reaches the argv. It manages the council's "
+            "own egress network and CONNECT-proxy container, never the "
+            "active project container, and there is no shell, so it can "
+            "never become a different command however its callers "
+            "change. Falsified live by testAgentCouncilEgressLive.py "
+            "(every escape refused)."
+        ),
+        "listSupportingSymbols": [
+            "gui/agentCouncilEgress.py::_ftRunDockerCommand",
+            "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX",
+            "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX",
+            "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
+        ],
+    },
+    "gui/agentCouncilRunner.py|_fnKillContainerQuietly|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|_ftStartExecStream|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|_ftStartExecStream|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fdictCreateRunnerContainer|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fdictDestroyRunnerAndProveAbsence|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fdictExecuteBoundedTurn|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fdictExecuteBoundedTurn|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fdictProbeRunnerAbsence|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|flistDiscoverLabeledRunners|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fnCopySnapshotIntoRunner|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    "gui/agentCouncilRunner.py|fnCopySnapshotIntoRunner|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/commitCarrier.py|fdictLaunchGatedHelperProcess|"
     "opaque-subprocess-command|0": {
         "sDisposition": S_DISPOSITION_EXCEPTIONAL_AUTHORITY,
@@ -169,6 +245,20 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     # the same holder comparison, the same exception type.
     "config/mutationAdmission.py::fnAssertOperationAdmittedByIdentity":
         "7e18213dca68a496",
+    # Agent Council egress (determined-in-source) and runner
+    # (separate-authority; the council registry, not the commit carrier).
+    "gui/agentCouncilEgress.py::_ftRunDockerCommand": "ffb47a77dc48730c",
+    "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX":
+        "8aaa3bf0a0e83395",
+    "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX": "129ae0023fac3690",
+    "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "c1467c7127ad0b8b",
+    "gui/agentCouncilRunner.py::S_COUNCIL_LABEL": "a5575a22df9e26bf",
+    "gui/agentCouncilRunner.py::fdictCreateRunnerContainer":
+        "c52564fcca7295fb",
+    "gui/agentCouncilRunner.py::flistDiscoverLabeledRunners":
+        "1b5685e9be13e5ba",
+    "gui/agentCouncilRunner.py::fdictDestroyRunnerAndProveAbsence":
+        "277cbba5207f3444",
     "gui/commitCarrier.py::S_GATED_HELPER_STUB": "2bd6936769eb618c",
     "gui/commitCarrier.py::fdictLaunchGatedHelperProcess":
         "58b0217540f74765",
