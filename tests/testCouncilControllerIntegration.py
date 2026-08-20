@@ -66,6 +66,11 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteFixtureSnapshot)
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
 
 
 def _fnPatchScriptedConnections(monkeypatch, ffnDecide):
@@ -78,10 +83,10 @@ def _fnPatchScriptedConnections(monkeypatch, ffnDecide):
     return recorder
 
 
-def _tBuildOwnedApp(tmp_path):
+def _tBuildOwnedApp(tmp_path, typeMockDocker=MockDockerCouncil):
     """Build the app, seed the workflow repo, mint ownership."""
     with patch.object(
-        pipelineServer, "_fconnectionCreateDocker", MockDockerCouncil,
+        pipelineServer, "_fconnectionCreateDocker", typeMockDocker,
     ):
         app = pipelineServer.fappCreateApplication(
             sWorkspaceRoot="/workspace", sTerminalUserArg="testuser")
@@ -294,6 +299,170 @@ def test_accept_after_a_restart_rebuilds_the_engine_gate(
         assert response.status_code == 200, response.text
         with open(response.json()["sLocalPlanPath"]) as filePlan:
             assert "a plausible summary" in filePlan.read()
+
+
+def test_exhausted_round_exits_drive_the_engine_transitions(
+        tmp_path, monkeypatch):
+    """The three exit routes post the ENGINE'S transitions (R6 proof).
+
+    The convene payload's settings reach the campaign (iMaximumRounds
+    1, proving the settings passthrough), the objecting veto exhausts
+    the budget, a plain respond is refused with the three-exits answer,
+    a granted round runs and exhausts again, the resolve/override exit
+    records the dispositions and runs the final veto, and the accepted
+    final candidate carries the researcher-overridden objection in its
+    provenance — every transition the engine's own.
+    """
+    def _fdictDecide(sHandle, dictTurnRequest):
+        bFinalVeto = (dictTurnRequest["sPhase"] == "veto"
+                      and dictTurnRequest["iRoundNumber"] >= 3)
+        if dictTurnRequest["sPhase"] == "veto" and not bFinalVeto:
+            return fdictDecideCompleted(fdictMakeTurnResult(
+                sVerdict="blockingObjection",
+                listBlockingObjections=["the prior is unjustified"]))
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    _fnPatchScriptedConnections(monkeypatch, _fdictDecide)
+    app, dictHeaders = _tBuildOwnedApp(tmp_path)
+    with TestClient(app, headers=dictHeaders) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=dict(DICT_START_BODY, dictSettings={"iMaximumRounds": 1}))
+        assert response.status_code == 200, response.text
+        sCampaignId = response.json()["sCampaignId"]
+        sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_NEEDS_HUMAN)
+        dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore, sCampaignId)
+        assert dictRecord["dictSettings"]["iMaximumRounds"] == 1
+        assert dictRecord["dictPendingHumanGate"]["sGateKind"] == (
+            agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS)
+
+        responsePlain = client.post(
+            sBase + "/respond", json={"sResponseText": "keep going"})
+        assert responsePlain.status_code == 409, responsePlain.text
+        assert "three" in responsePlain.json()["detail"]
+
+        responseGrant = client.post(
+            sBase + "/grant-resolution-round", json={"iGrantedRounds": 1})
+        assert responseGrant.status_code == 200, responseGrant.text
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_NEEDS_HUMAN)
+        dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore, sCampaignId)
+        listObjections = dictRecord["dictPendingHumanGate"][
+            "listUnresolvedObjections"]
+        assert listObjections, "the granted round must exhaust again"
+
+        dictDispositions = {
+            dictObjection["sObjectionId"]: {
+                "sAction": "override",
+                "sText": "the prior is standard in this field"}
+            for dictObjection in listObjections}
+        responseResolve = client.post(
+            sBase + "/resolve-objections",
+            json={"dictDispositionByObjectionId": dictDispositions})
+        assert responseResolve.status_code == 200, responseResolve.text
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+        dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore, sCampaignId)
+        assert dictRecord["dictCandidatePlan"][
+            "listResearcherOverriddenObjections"], (
+            "the override must survive as researcher provenance")
+
+        responseReject = client.post(
+            sBase + "/reject-candidate",
+            json={"sReasonText": "not this quarter"})
+        assert responseReject.status_code == 200, responseReject.text
+        assert responseReject.json()["dictCampaign"]["sState"] == (
+            agentCouncilCampaign.S_STATE_ARCHIVED)
+
+
+def test_stale_baseline_is_computed_from_the_live_repository(
+        tmp_path, monkeypatch):
+    """R12: staleness has a REAL producer, never a fabricated flag.
+
+    The campaign read compares the sealed manifest's commit and
+    porcelain digest against the repository read NOW: matching state
+    reports fresh, a moved commit reports stale naming the move, and a
+    repository that cannot be read reports UNKNOWN — never fresh.
+    """
+    import hashlib
+    import json
+
+    from vaibify.gui import containerGit
+    from tests.testAgentCouncilContext import _fsBuildStatusOutput
+
+    class _MockDockerWithGit(MockDockerCouncil):
+        sStatusOutput = _fsBuildStatusOutput(sHeadSha="commitbefore01")
+
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            if "rev-parse --show-toplevel" in sCommand:
+                return (0, S_PROJECT_REPO + "\n")
+            if "status --porcelain" in sCommand:
+                return (0, type(self).sStatusOutput)
+            raise AssertionError(f"unmodelled command: {sCommand!r}")
+
+    def _fdictDecide(sHandle, dictTurnRequest):
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    _fnPatchScriptedConnections(monkeypatch, _fdictDecide)
+    app, dictHeaders = _tBuildOwnedApp(
+        tmp_path, typeMockDocker=_MockDockerWithGit)
+    with TestClient(app, headers=dictHeaders) as client:
+        sCampaignId = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=DICT_START_BODY).json()["sCampaignId"]
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+        # Seal the manifest with the identity the live read reports NOW,
+        # exactly as the real capture records it.
+        dictGitStatus = containerGit.fdictGitStatusInContainer(
+            app.state.dictRouteContext["docker"], S_CONTAINER_ID,
+            sWorkspace=S_PROJECT_REPO)
+        sDigest = hashlib.sha256(json.dumps(
+            dictGitStatus.get("dictFileStates") or {}, sort_keys=True,
+        ).encode("utf-8")).hexdigest()
+        sManifestPath = os.path.join(
+            app.state.dictCouncilCampaignStore["sDurableStoreRoot"],
+            sCampaignId, "snapshot", "manifest.json")
+        with open(sManifestPath, "w") as fileManifest:
+            fileManifest.write(json.dumps({
+                "sCommitSha": dictGitStatus["sHeadSha"],
+                "sDirtyStateDigest": sDigest}))
+
+        sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
+        dictFresh = client.get(sBase).json()["dictCampaign"]
+        assert dictFresh["bPlanningBaselineStale"] is False
+
+        _MockDockerWithGit.sStatusOutput = _fsBuildStatusOutput(
+            sHeadSha="commitafter002")
+        dictStale = client.get(sBase).json()["dictCampaign"]
+        assert dictStale["bPlanningBaselineStale"] is True
+        assert "commit moved" in dictStale["sPlanningBaselineSummary"]
+
+
+def test_unreadable_repository_reports_unknown_never_fresh(
+        tmp_path, monkeypatch):
+    """A comparison that cannot run answers UNKNOWN, not fresh."""
+    def _fdictDecide(sHandle, dictTurnRequest):
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    _fnPatchScriptedConnections(monkeypatch, _fdictDecide)
+    app, dictHeaders = _tBuildOwnedApp(tmp_path)
+    with TestClient(app, headers=dictHeaders) as client:
+        sCampaignId = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=DICT_START_BODY).json()["sCampaignId"]
+        _fnWaitForCampaignState(
+            app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+        dictRecord = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
+        ).json()["dictCampaign"]
+        assert dictRecord["bPlanningBaselineStale"] is None
+        assert "could not run" in dictRecord["sPlanningBaselineSummary"]
 
 
 def test_commands_during_a_live_turn_keep_state_consistent(

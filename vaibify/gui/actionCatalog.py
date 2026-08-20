@@ -836,6 +836,15 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
     ("POST",
      "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/grant-resolution-round"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/resolve-objections"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/reject-candidate"),
     ("DELETE", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container

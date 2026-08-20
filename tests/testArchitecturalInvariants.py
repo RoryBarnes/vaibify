@@ -4067,6 +4067,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # undelivered, and the branch lives inside the mint so no caller
     # can forget it.
     "containerOwnership.py": 907,
+    # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
+    # default cap when the three exhausted-round exit routes and the
+    # credential-gate refusal joined it. One cohesive responsibility —
+    # every route is a campaign-lifecycle action over the same
+    # principal/identity guards; splitting the exits into a second
+    # module would scatter the guard ordering the module docstring
+    # states, which is the drift the R2/R3 fixes exist to prevent.
+    # +58 (2026-08-20, remediation R10/R12): the credential-gate
+    # refusal helper and the real stale-baseline producer — both read
+    # at the same principal/identity guard points as every other
+    # campaign action, so they belong with the routes they gate.
+    "routes/councilRoutes.py": 880,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4075,7 +4087,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # snapshot a snapshot, and a separate "coherence module" would split
     # the refusal from the stream it judges, inviting the drift the
     # check exists to catch.
-    "agentCouncilContext.py": 847,
+    # +16 (2026-08-20, remediation R11): the recorded
+    # agent-instruction-file policy decision in the module docstring —
+    # a decision that must live beside the exclusion table it governs.
+    "agentCouncilContext.py": 863,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5237,7 +5252,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rationale — registering a new route module inherently touches the
     # exclusion set, and the alternative (splitting the catalog) is the
     # premature-abstraction failure the ratchet exists to prevent.
-    "actionCatalog.py": 1005,
+    # +9 (2026-08-20, remediation R6): the three exhausted-round exit
+    # routes (grant-resolution-round / resolve-objections /
+    # reject-candidate) joined the same human-only exclusion block.
+    "actionCatalog.py": 1014,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

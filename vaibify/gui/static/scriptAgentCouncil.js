@@ -145,11 +145,12 @@ var VaibifyAgentCouncil = (function () {
         if (!dictCapabilities.bAvailable) {
             return _fdictDisabled(_fsUnavailableExplanation(dictCapabilities));
         }
-        if (_fiSupportedParticipantCount(dictCapabilities) < 2) {
+        if (_fiSupportedParticipantCount(dictCapabilities) < 1) {
             return _fdictDisabled(
-                "A council needs at least two supported participants; " +
-                "only " + _fiSupportedParticipantCount(dictCapabilities) +
-                " is available on this project.");
+                "No provider with a reviewed council adapter is " +
+                "available on this project — a council needs at least " +
+                "two supported participants, drawn from two distinct " +
+                "models of an available provider.");
         }
         return _fdictEnabledState();
     }
@@ -192,7 +193,14 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fiSupportedParticipantCount(dictCapabilities) {
-        return (dictCapabilities.listProviders || []).length;
+        /* Providers that are actually AVAILABLE (remediation R7): one
+           available provider supports a full council, because the
+           two-distinct-models quorum draws on its model list — the
+           backend validator is the authority on that rule. */
+        return (dictCapabilities.listProviders || []).filter(
+            function (dictProvider) {
+                return dictProvider.bAvailable !== false;
+            }).length;
     }
 
     function fnHandleToolbarClick() {
@@ -577,6 +585,7 @@ var VaibifyAgentCouncil = (function () {
             sQuestion: sQuestion,
             listParticipants: _flistBuildParticipantPayload(),
             iChairbotIndex: _dictState.iChairbotIndex,
+            dictSettings: _fdictReadSettingsForm(),
         };
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -590,6 +599,26 @@ var VaibifyAgentCouncil = (function () {
                     (error.message || String(error));
             }
         }
+    }
+
+    function _fdictReadSettingsForm() {
+        /* The convene request SENDS the settings the form renders
+           (remediation R6) — a form whose values never left the
+           browser was configuration theatre. The backend's bounded
+           validator stays the authority; this only collects. */
+        var elAnonymity = document.getElementById("councilPeerAnonymity");
+        var iMinimumRounds = parseInt(
+            _fsReadValue("councilMinimumRounds") || "1", 10);
+        return {
+            bPeerAnonymity: elAnonymity
+                ? !!elAnonymity.checked
+                : DICT_DEFAULT_SETTINGS.bPeerAnonymity,
+            sEffortPerParticipant: _fsReadValue("councilEffort")
+                || DICT_DEFAULT_SETTINGS.sEffortPerParticipant,
+            sExecutionPermission: _fsReadValue("councilExecution")
+                || DICT_DEFAULT_SETTINGS.sExecutionPermission,
+            iMinimumRounds: iMinimumRounds > 0 ? iMinimumRounds : 1,
+        };
     }
 
     function _flistBuildParticipantPayload() {
@@ -855,6 +884,7 @@ var VaibifyAgentCouncil = (function () {
             "<h3>" + _fsEscape(dictCampaign.sQuestion) + "</h3>" +
             "<p>Phase: <strong>" + _fsEscape(dictCampaign.sState) +
             "</strong></p>" +
+            _fsQuarantineWarning(dictCampaign) +
             _fsBaselineWarning(dictCampaign) +
             _fsVerdictBanner(dictCampaign) +
             _fsParticipantStates(dictCampaign) +
@@ -933,8 +963,13 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsLifecycleFromCampaign(dictCampaign) {
+        /* A terminal campaign STATE proves nothing about runners on its
+           own (remediation R4/R10): "verified stopped" is reserved for
+           a backend-reported lifecycle after the absence probe, and
+           the quarantine banner covers the may-still-exist case. This
+           inferred value therefore claims only "stopped". */
         if (SET_LIVE_STATES[dictCampaign.sState]) return "deliberating";
-        if (SET_TERMINAL_STATES[dictCampaign.sState]) return "verifiedStopped";
+        if (SET_TERMINAL_STATES[dictCampaign.sState]) return "stopped";
         return "waiting";
     }
 
@@ -944,9 +979,25 @@ var VaibifyAgentCouncil = (function () {
             deliberating: "deliberating",
             cleaningUp: "cleaning up",
             verifiedStopped: "verified stopped",
+            stopped: "stopped",
             waiting: "waiting",
         };
         return dictLabels[sLifecycle] || sLifecycle;
+    }
+
+    function _fsQuarantineWarning(dictCampaign) {
+        /* The R4 "runner may exist" surface: a quarantined reservation
+           is a runner the daemon could not prove gone. It holds its
+           admission budget and this banner until reconciliation proves
+           absence — never silently absorbed into a clean stop. */
+        var listQuarantined = dictCampaign.listQuarantinedRunners || [];
+        if (!listQuarantined.length) return "";
+        return "<p class=\"council-verdict council-verdict-" +
+            "blockedForWantOfEvidence\">⚠ " + listQuarantined.length +
+            " council runner(s) may still exist: the daemon could not " +
+            "prove destruction, so the reservation is quarantined and " +
+            "keeps holding its budget. Run <code>vaibify reconcile</code>" +
+            " to prove absence.</p>";
     }
 
     function _fsResearcherDecisions(dictCampaign) {
@@ -987,7 +1038,7 @@ var VaibifyAgentCouncil = (function () {
             return "<li class=\"council-event\"><span " +
                 "class=\"council-seq\">#" + dictEvent.iSequence + "</span> " +
                 "<span class=\"council-event-kind\">" +
-                _fsEscape(dictEvent.sKind) + "</span> " +
+                _fsEscape(dictEvent.sEventKind || "") + "</span> " +
                 _fsEscape(dictEvent.sDetail || "") +
                 (dictEvent.sTurnId ? " <span class=\"council-turn\">(" +
                     _fsEscape(dictEvent.sTurnId) + ")</span>" : "") +
@@ -1009,24 +1060,18 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsComposer(dictCampaign) {
-        var sRecipients = (dictCampaign.listParticipants || []).map(
-            function (dictParticipant, iIndex) {
-                return "<option value=\"" +
-                    _fsEscape(dictParticipant.sParticipantId) + "\">" +
-                    "Participant " + (iIndex + 1) + "</option>";
-            }).join("");
+        /* The protocol has no mid-deliberation message channel
+           (remediation R6): the engine accepts researcher text ONLY at
+           a human gate, so this surface says what a researcher can
+           actually do while the council deliberates — read, or stop.
+           A message box here would post a respond the backend rightly
+           refuses 409, which is a control that only ever fails. */
+        void dictCampaign;
         return "<div class=\"council-composer\">" +
-            "<h4>Message the council</h4>" +
-            "<p class=\"council-hint\">Your message is queued for the " +
-            "next protocol boundary, recorded in the campaign for every " +
-            "participant to see, and never injected into a running turn. " +
-            "Choosing one recipient directs who is asked to respond — " +
-            "it is not a private side-channel.</p>" +
-            "<select id=\"councilRecipient\"><option value=\"\">Whole " +
-            "council</option>" + sRecipients + "</select>" +
-            "<textarea id=\"councilMessage\" rows=\"3\"></textarea>" +
-            "<button type=\"button\" id=\"btnCouncilSend\" " +
-            "class=\"btn btn-primary\">Send</button>" +
+            "<p class=\"council-hint\">The council is deliberating. It " +
+            "will pause here when it needs your decision; until then " +
+            "you can watch the consoles or stop after the current " +
+            "turn.</p>" +
             "<button type=\"button\" id=\"btnCouncilStop\" " +
             "class=\"btn\">Stop council</button>" +
             "</div>";
@@ -1041,16 +1086,24 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsBlockingQuestionCard(dictCampaign, dictGate) {
+        /* The ENGINE'S gate shape (remediation R6): a list of
+           questions, each carrying who raised it. The quorum-shortfall
+           gate shares this renderer — its single server-raised
+           question rides the same list. */
+        var listQuestions = dictGate.listQuestions || [];
+        var sQuestionRows = listQuestions.map(function (dictQuestion) {
+            return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
+                " <span class=\"council-question-author\">(raised by " +
+                _fsEscape(dictQuestion.sRaisedByParticipantId || "") +
+                ")</span></li>";
+        }).join("");
         return "<div class=\"council-needs-human\">" +
             "<h4>The council needs your decision</h4>" +
-            "<p>" + _fsEscape(dictGate.sDecisionRequired ||
-                "A material choice could not be settled from evidence.") +
-            "</p>" +
-            _fsGateDetail("Why evidence does not decide it",
-                dictGate.sWhyEvidenceInsufficient) +
-            _fsGateList("Alternatives and consequences",
-                dictGate.listAlternatives) +
-            _fsGateList("Participant positions", dictGate.listPositions) +
+            (sQuestionRows
+                ? "<ul class=\"council-questions\">" + sQuestionRows +
+                    "</ul>"
+                : "<p>A material choice could not be settled from " +
+                    "evidence.</p>") +
             "<textarea id=\"councilAnswer\" rows=\"3\"></textarea>" +
             "<button type=\"button\" id=\"btnCouncilAnswer\" " +
             "class=\"btn btn-primary\">Record decision</button>" +
@@ -1060,56 +1113,125 @@ var VaibifyAgentCouncil = (function () {
     function _fsExhaustedRoundCard(dictCampaign, dictGate) {
         /* Exactly the three section 5.1 exits as distinct controls, and
            NO plain respond field that would silently relaunch the spent
-           round budget (section 6.5). */
+           round budget (section 6.5). Each control posts the ENGINE'S
+           own exit transition; the resolve/override exit requires a
+           decision on EVERY unresolved objection before it submits. */
+        var listObjections = dictGate.listUnresolvedObjections || [];
+        var sObjectionRows = listObjections.map(function (dictObjection) {
+            return "<div class=\"council-objection-row\" " +
+                "data-objection-id=\"" +
+                _fsEscape(dictObjection.sObjectionId || "") + "\">" +
+                "<p>" + _fsEscape(dictObjection.sObjectionText || "") +
+                "</p>" +
+                "<select class=\"council-objection-action\">" +
+                "<option value=\"\">Decide…</option>" +
+                "<option value=\"resolve\">Resolve (the plan will be " +
+                "amended)</option>" +
+                "<option value=\"override\">Override (recorded as YOUR " +
+                "decision)</option>" +
+                "</select>" +
+                "<input type=\"text\" class=\"council-objection-text\" " +
+                "placeholder=\"How it is resolved, or why overridden\">" +
+                "</div>";
+        }).join("");
         return "<div class=\"council-needs-human council-exhausted\">" +
             "<h4>Rounds exhausted with objections outstanding</h4>" +
-            _fsGateList("Unresolved objections",
-                dictGate.listUnresolvedObjections) +
+            sObjectionRows +
             "<div class=\"council-exits\">" +
+            "<label>Rounds to grant <input type=\"number\" " +
+            "id=\"councilGrantRounds\" min=\"1\" value=\"1\"></label>" +
             "<button type=\"button\" id=\"btnCouncilGrantRound\" " +
             "class=\"btn\">Grant a bounded resolution round</button>" +
             "<button type=\"button\" id=\"btnCouncilResolveOverride\" " +
             "class=\"btn\">Resolve or override, then a final veto</button>" +
+            "<input type=\"text\" id=\"councilRejectReason\" " +
+            "placeholder=\"Why the candidate is rejected (optional)\">" +
             "<button type=\"button\" id=\"btnCouncilReject\" " +
             "class=\"btn danger\">Reject and archive</button>" +
             "</div></div>";
-    }
-
-    function _fsGateDetail(sTitle, sBody) {
-        if (!sBody) return "";
-        return "<p><strong>" + _fsEscape(sTitle) + ":</strong> " +
-            _fsEscape(sBody) + "</p>";
-    }
-
-    function _fsGateList(sTitle, listItems) {
-        if (!listItems || !listItems.length) return "";
-        var sRows = listItems.map(function (jsonItem) {
-            return "<li>" + _fsEscape(
-                typeof jsonItem === "string"
-                    ? jsonItem : JSON.stringify(jsonItem)) + "</li>";
-        }).join("");
-        return "<p><strong>" + _fsEscape(sTitle) + "</strong></p><ul>" +
-            sRows + "</ul>";
     }
 
     /* ------------------------------------------------------------------ */
     /* Plan tab and accepted-plan actions (section 6.6)                   */
     /* ------------------------------------------------------------------ */
 
+    function _fsCandidatePlanBody(dictPlan) {
+        /* The engine's real candidate shape (remediation R6): the
+           synthesis result lives at dictCandidatePlan.dictResult, and
+           the objection provenance lists ride beside it. Never a
+           top-level plan-text field a fabricated record carried — no
+           record no engine ever wrote. */
+        var dictResult = dictPlan.dictResult || {};
+        var sParts = "<p class=\"council-plan-summary\">" +
+            _fsEscape(dictResult.sSummary || "") + "</p>";
+        var listItems = dictResult.listPlanItems || [];
+        if (listItems.length) {
+            sParts += "<h5>Plan</h5><ol>" + listItems.map(function (sItem) {
+                return "<li>" + _fsEscape(String(sItem)) + "</li>";
+            }).join("") + "</ol>";
+        }
+        var listQuestions = dictResult.listOpenQuestions || [];
+        if (listQuestions.length) {
+            sParts += "<h5>Open questions</h5><ul>" +
+                listQuestions.map(function (sQuestion) {
+                    return "<li>" + _fsEscape(String(sQuestion)) + "</li>";
+                }).join("") + "</ul>";
+        }
+        sParts += _fsObjectionProvenance(dictPlan);
+        return sParts;
+    }
+
+    function _fsObjectionProvenance(dictPlan) {
+        var sParts = "";
+        [["listCouncilClearedObjections", "Objections cleared in review"],
+         ["listResearcherResolvedObjections",
+          "Objections resolved by the researcher"],
+         ["listResearcherOverriddenObjections",
+          "Objections OVERRIDDEN by the researcher"]]
+            .forEach(function (tProvenance) {
+                var listObjections = dictPlan[tProvenance[0]] || [];
+                if (!listObjections.length) return;
+                sParts += "<h5>" + tProvenance[1] + "</h5><ul>" +
+                    listObjections.map(function (dictObjection) {
+                        return "<li>" + _fsEscape(
+                            dictObjection.sObjectionText || "") + "</li>";
+                    }).join("") + "</ul>";
+            });
+        return sParts;
+    }
+
+    function _fsComposePlanBriefText(dictPlan) {
+        /* The copy/download text, composed from the same candidate the
+           backend's plan.md composer reads — display-side only; the
+           backend stays the authority for the accepted artifact. */
+        var dictResult = dictPlan.dictResult || {};
+        var listLines = ["# Council plan", "", dictResult.sSummary || ""];
+        (dictResult.listPlanItems || []).forEach(function (sItem, iIndex) {
+            listLines.push((iIndex + 1) + ". " + String(sItem));
+        });
+        (dictResult.listOpenQuestions || []).forEach(function (sQuestion) {
+            listLines.push("- open question: " + String(sQuestion));
+        });
+        return listLines.join("\n");
+    }
+
     function _fsPlanTab(dictCampaign) {
         var dictPlan = dictCampaign.dictCandidatePlan;
         if (!dictPlan) {
             return "<p class=\"council-hint\">No candidate plan yet.</p>";
         }
-        var sPlanText = dictPlan.sPlanText || dictPlan.sText || "";
         return "<div class=\"council-plan\">" +
             _fsVerdictBanner(dictCampaign) +
-            "<pre id=\"councilPlanText\" class=\"council-plan-text\">" +
-            _fsEscape(sPlanText) + "</pre>" +
-            _fsPlanActions(dictCampaign, sPlanText) + "</div>";
+            "<div class=\"council-plan-text\">" +
+            _fsCandidatePlanBody(dictPlan) + "</div>" +
+            _fsPlanActions(dictCampaign) + "</div>";
     }
 
-    function _fsPlanActions(dictCampaign, sPlanText) {
+    function _fsPlanActions(dictCampaign) {
+        /* No "request another pass" control (remediation R6): the
+           engine offers exactly acceptance and rejection at planReady;
+           a control posting a transition the protocol does not have
+           would either fail or fabricate one. */
         if (SET_TERMINAL_STATES[dictCampaign.sState]) {
             return "<p class=\"council-plan-accepted\">This plan was " +
                 "accepted. Give the saved plan and its implementation " +
@@ -1119,8 +1241,6 @@ var VaibifyAgentCouncil = (function () {
         return "<div class=\"council-plan-actions\">" +
             "<button type=\"button\" id=\"btnCouncilAcceptPlan\" " +
             "class=\"btn btn-primary\">Accept and save plan</button>" +
-            "<button type=\"button\" id=\"btnCouncilAnotherPass\" " +
-            "class=\"btn\">Request another pass</button>" +
             "<button type=\"button\" id=\"btnCouncilCopyBrief\" " +
             "class=\"btn\">Copy implementation brief</button>" +
             "<button type=\"button\" id=\"btnCouncilDownloadPlan\" " +
@@ -1141,53 +1261,28 @@ var VaibifyAgentCouncil = (function () {
                 _fnRenderWorkspace();
             });
         });
-        _fnBindElement("btnCouncilSend", _fnSendMessage);
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
         _fnBindElement("btnCouncilAnswer", _fnAnswerQuestion);
-        _fnBindElement("btnCouncilGrantRound", function () {
-            _fnRespondExit("grantBoundedResolutionRound");
-        });
-        _fnBindElement("btnCouncilResolveOverride", function () {
-            _fnRespondExit("resolveOrOverrideThenFinalVeto");
-        });
-        _fnBindElement("btnCouncilReject", function () {
-            _fnRespondExit("rejectOrArchiveCandidate");
-        });
+        _fnBindElement("btnCouncilGrantRound", _fnGrantResolutionRound);
+        _fnBindElement("btnCouncilResolveOverride", _fnResolveObjections);
+        _fnBindElement("btnCouncilReject", _fnRejectCandidate);
         _fnBindPlanActions(dictCampaign);
     }
 
     function _fnBindPlanActions(dictCampaign) {
         _fnBindElement("btnCouncilAcceptPlan", _fnAcceptPlan);
-        _fnBindElement("btnCouncilAnotherPass", function () {
-            _fnSendMessageText("Please make another pass on the plan.");
-        });
         _fnBindElement("btnCouncilCopyBrief", function () {
             _fnCopyBrief(dictCampaign);
         });
         _fnBindElement("btnCouncilDownloadPlan", function () {
             _fnDownloadPlan(dictCampaign);
         });
-        _fnBindElement("btnCouncilRejectPlan", _fnStopCouncil);
+        _fnBindElement("btnCouncilRejectPlan", _fnRejectCandidate);
     }
 
     /* ------------------------------------------------------------------ */
     /* Human actions — each refetches backend truth, never optimistic     */
     /* ------------------------------------------------------------------ */
-
-    async function _fnSendMessage() {
-        var sMessage = _fsReadValue("councilMessage");
-        if (!sMessage) return;
-        var sRecipient = _fsReadValue("councilRecipient");
-        var sPrefixed = sRecipient
-            ? "[to participant " + sRecipient + "] " + sMessage
-            : sMessage;
-        await _fnSendMessageText(sPrefixed);
-    }
-
-    async function _fnSendMessageText(sMessage) {
-        await _fnPostAction("/" + _dictState.sActiveCampaignId + "/respond",
-            {sResponseText: sMessage});
-    }
 
     async function _fnAnswerQuestion() {
         var sAnswer = _fsReadValue("councilAnswer");
@@ -1196,11 +1291,52 @@ var VaibifyAgentCouncil = (function () {
             {sResponseText: sAnswer});
     }
 
-    async function _fnRespondExit(sExit) {
-        /* Each exhausted-round exit maps to one defined transition; the
-           backend owns the transition, the frontend only names it. */
-        await _fnPostAction("/" + _dictState.sActiveCampaignId + "/respond",
-            {sResponseText: "[exit] " + sExit});
+    /* Each exhausted-round exit posts the ENGINE'S own transition
+       (remediation R6) — its dedicated route, never a respond message
+       the backend would have to parse back into an intent. */
+
+    async function _fnGrantResolutionRound() {
+        var iRounds = parseInt(
+            _fsReadValue("councilGrantRounds") || "1", 10);
+        await _fnPostAction(
+            "/" + _dictState.sActiveCampaignId + "/grant-resolution-round",
+            {iGrantedRounds: iRounds > 0 ? iRounds : 1});
+    }
+
+    async function _fnResolveObjections() {
+        var dictDispositions = {};
+        var bIncomplete = false;
+        document.querySelectorAll(".council-objection-row").forEach(
+            function (elRow) {
+                var sObjectionId = elRow.getAttribute("data-objection-id");
+                var elAction = elRow.querySelector(
+                    ".council-objection-action");
+                var elText = elRow.querySelector(
+                    ".council-objection-text");
+                if (!elAction || !elAction.value) {
+                    bIncomplete = true;
+                    return;
+                }
+                dictDispositions[sObjectionId] = {
+                    sAction: elAction.value,
+                    sText: elText ? elText.value : "",
+                };
+            });
+        if (bIncomplete) {
+            VaibifyApp.fnShowToast(
+                "Every objection needs a resolve or override decision " +
+                "before the final veto.", "error");
+            return;
+        }
+        await _fnPostAction(
+            "/" + _dictState.sActiveCampaignId + "/resolve-objections",
+            {dictDispositionByObjectionId: dictDispositions});
+    }
+
+    async function _fnRejectCandidate() {
+        await _fnPostAction(
+            "/" + _dictState.sActiveCampaignId + "/reject-candidate",
+            {sReasonText: _fsReadValue("councilRejectReason") || ""});
     }
 
     async function _fnStopCouncil() {
@@ -1209,16 +1345,13 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnAcceptPlan() {
-        var sPlanText = _fsReadValue("councilPlanText");
-        if (!sPlanText) {
-            var dictPlan = (_dictState.dictCampaign || {}).dictCandidatePlan
-                || {};
-            sPlanText = dictPlan.sPlanText || dictPlan.sText || "";
-        }
+        /* No body (remediation R3): the backend accepts the council's
+           own server-held candidate through the engine's planReady
+           gate; the review gate is the researcher READING it here. */
         try {
-            var dictResult = await VaibifyApi.fdictPost(
-                _fsRoute("/" + _dictState.sActiveCampaignId + "/accept-plan"),
-                {sPlanText: sPlanText});
+            var dictResult = await VaibifyApi.fdictPostRaw(
+                _fsRoute("/" + _dictState.sActiveCampaignId
+                    + "/accept-plan"));
             _fnReportPlanSaved(dictResult);
             await _fnReloadActiveCampaign();
         } catch (error) {
@@ -1259,8 +1392,7 @@ var VaibifyAgentCouncil = (function () {
 
     function _fnCopyBrief(dictCampaign) {
         var dictPlan = dictCampaign.dictCandidatePlan || {};
-        var sBrief = dictPlan.sImplementationBrief
-            || dictPlan.sPlanText || dictPlan.sText || "";
+        var sBrief = _fsComposePlanBriefText(dictPlan);
         if (navigator.clipboard && sBrief) {
             navigator.clipboard.writeText(sBrief);
             VaibifyApp.fnShowToast("Implementation brief copied.", "info");
@@ -1272,7 +1404,7 @@ var VaibifyAgentCouncil = (function () {
            remote session is NOT the execution host — say so (section
            21). */
         var dictPlan = dictCampaign.dictCandidatePlan || {};
-        var sText = dictPlan.sPlanText || dictPlan.sText || "";
+        var sText = _fsComposePlanBriefText(dictPlan);
         var elLink = document.createElement("a");
         elLink.href = "data:text/plain;charset=utf-8," +
             encodeURIComponent(sText);

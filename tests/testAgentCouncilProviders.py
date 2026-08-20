@@ -246,3 +246,24 @@ def testStampedFileTarballCarriesCouncilUserOwnership():
     dictByName = {member.name: member for member in listMembers}
     assert dictByName["configDir/.credentials.json"].mode == 0o600
     assert dictByName["configDir"].mode == 0o700
+
+
+def test_charter_rides_the_instruction_flag_never_a_snapshot_file():
+    """R11 belt two: the charter is delivered as ``--append-system-prompt``.
+
+    The composed argv carries the server-owned instruction as a FLAG
+    value; nothing in the adapter writes an instruction file into the
+    snapshot tree (which a hostile repo could shadow or a provider
+    could rank below its own repo-doc conventions). Whether a real
+    model obeys a hostile surviving doc over this flag is the
+    maintainer's paid-model empiric — recorded, never assumed here.
+    """
+    from vaibify.gui.agentCouncilProviders import flistComposeClaudeArgv
+    saArgv = flistComposeClaudeArgv("modelOne", "THE COUNCIL CHARTER")
+    iFlag = saArgv.index("--append-system-prompt")
+    assert saArgv[iFlag + 1] == "THE COUNCIL CHARTER"
+    import inspect
+    from vaibify.gui import agentCouncilProviders
+    sSource = inspect.getsource(agentCouncilProviders)
+    assert ".md" not in sSource.replace("agentCouncil.md", ""), (
+        "the adapter must never write or reference an agent-doc file")

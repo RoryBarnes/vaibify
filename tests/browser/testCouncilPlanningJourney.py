@@ -17,6 +17,7 @@ stale-baseline flag, whose real producer is R12.
 """
 
 import io
+import json
 import os
 import shutil
 import tarfile
@@ -84,6 +85,12 @@ def _fdictWriteLaneSnapshot(connectionDocker, sContainerId,
         infoProject = tarfile.TarInfo(name="project.json")
         infoProject.size = len(baProject)
         fileTar.addfile(infoProject, io.BytesIO(baProject))
+    with open(os.path.join(sDirectory, "manifest.json"),
+              "w") as fileManifest:
+        fileManifest.write(json.dumps({
+            "sSnapshotSha256": "browser-lane-snapshot-hash",
+            "sCommitSha": "fixturecommit0001",
+            "sDirtyStateDigest": "fixturedigest0001"}))
     return {"sSnapshotSha256": "browser-lane-snapshot-hash"}
 
 
@@ -112,6 +119,11 @@ def _fnScriptedProviderSeam(monkeypatch):
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteLaneSnapshot)
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
 
 
 def _fdictStore(serverHub):
@@ -203,7 +215,7 @@ def _fnConveneThroughTheForm(page):
                            timeout=8000)
 
 
-def testCouncilPlanningJourney(pageDashboard, serverHub):
+def testCouncilPlanningJourney(pageDashboard, serverHub, monkeypatch):
     """The whole planning arc, driven through the real backend store."""
     dictActivation = _fdictClaimAndActivate(pageDashboard, serverHub)
     assert dictActivation["bDisabled"] is False, (
@@ -221,7 +233,8 @@ def testCouncilPlanningJourney(pageDashboard, serverHub):
     _fnAnswerABlockingQuestion(pageDashboard, serverHub, sCampaignId)
     _fnAcceptTheCandidatePlan(pageDashboard, serverHub, sCampaignId)
     _fnReloadAndReopen(pageDashboard, serverHub, sCampaignId)
-    _fnShowStaleBaselineWarning(pageDashboard, serverHub, sCampaignId)
+    _fnShowStaleBaselineWarning(
+        pageDashboard, serverHub, sCampaignId, monkeypatch)
 
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []
@@ -298,11 +311,23 @@ def _fnReloadAndReopen(page, serverHub, sCampaignId):
                            timeout=8000)
 
 
-def _fnShowStaleBaselineWarning(page, serverHub, sCampaignId):
-    _fnPatchCampaign(serverHub, sCampaignId, {
-        "bPlanningBaselineStale": True,
-        "sPlanningBaselineSummary": "3 files changed since the council ran",
-    })
+def _fnShowStaleBaselineWarning(page, serverHub, sCampaignId, monkeypatch):
+    """The UI renders the backend's staleness verdict (lane 1 scope).
+
+    The producer itself is REAL since R12 — computed per read from the
+    sealed manifest against the live repository — and its computation
+    is proven in tests/testCouncilControllerIntegration.py. Lane 1's
+    fake Docker adapter has no repository to move, so this patches the
+    route-level producer, not the record: the record carries no
+    staleness field at all any more.
+    """
+    from vaibify.gui.routes import councilRoutes
+    monkeypatch.setattr(
+        councilRoutes, "_fdictComputeBaselineStaleness",
+        lambda *listArguments: {
+            "bPlanningBaselineStale": True,
+            "sPlanningBaselineSummary":
+                "3 files changed since the council ran"})
     page.click('.council-tab[data-tab="council"]')
     page.wait_for_selector(
         ".council-verdict-blockedForWantOfEvidence", timeout=16000)

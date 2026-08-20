@@ -57,6 +57,9 @@ __all__ = [
     "fdictRequestCampaignStop",
     "fdictAcceptCampaignPlan",
     "fdictContinueCampaignAfterResponse",
+    "fdictGrantCampaignResolutionRound",
+    "fdictRejectCampaignCandidate",
+    "fdictResolveCampaignObjections",
     "fsComposePlanMarkdown",
     "fgenericSubmitCampaignCommand",
     "fiClassifyInterruptedCampaignsOnStartup",
@@ -393,27 +396,141 @@ def _fbaReadSealedSnapshot(dictStore, sCampaignId):
         return fileSnapshot.read()
 
 
+def _fdictRequireContinuationRuntime(dictControllerState, sCampaignId,
+                                     sAction):
+    """Return the runtime a continuation drives, or refuse honestly."""
+    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction)
+    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
+    if dictRuntime is None:
+        raise CouncilCommandError(
+            "this campaign has no live deliberation to continue — the "
+            "hub restarted since it ran; convene a fresh council")
+    return dictRuntime
+
+
+def _fnRequireHumanGate(dictRuntime, sExpectedGateKind=""):
+    """Refuse a continuation whose gate the engine would refuse.
+
+    The engine enforces the same rule inside the drive task, but a
+    refusal must land as the ROUTE'S 409 — not as a 200 whose turn
+    then quietly faults — so the gate is checked before the task
+    spawns. The engine's own check stays as the second lock.
+    """
+    dictCampaign = dictRuntime["dictCampaign"]
+    if dictCampaign["sState"] != agentCouncilCampaign.S_STATE_NEEDS_HUMAN:
+        raise CouncilCommandError(
+            "the campaign is not waiting on the researcher")
+    dictGate = dictCampaign["dictPendingHumanGate"] or {}
+    sGateKind = dictGate.get("sGateKind", "")
+    if sExpectedGateKind and sGateKind != sExpectedGateKind:
+        raise CouncilCommandError(
+            f"this action answers a {sExpectedGateKind} gate, not "
+            f"{sGateKind}")
+    if not sExpectedGateKind and sGateKind == (
+            agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS):
+        raise CouncilCommandError(
+            "the round budget is exhausted; choose one of the three "
+            "exits — a plain response does not restart the loop")
+
+
 async def fdictContinueCampaignAfterResponse(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         sResponseText):
     """Answer a blocking question and relaunch deliberation.
 
-    Refuses while a drive task is live, and refuses when the campaign
-    has no runtime to continue (a hub restart classified it
-    interrupted; a fresh council is the honest path — the engine is
-    never resumed over runners nobody can account for).
+    Refuses while a drive task is live, when the campaign has no
+    runtime to continue (a hub restart classified it interrupted; a
+    fresh council is the honest path — the engine is never resumed
+    over runners nobody can account for), and when the pending gate is
+    the exhausted-rounds one, whose only continuations are its three
+    exits.
     """
-    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "respond")
-    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
-    if dictRuntime is None:
-        raise CouncilCommandError(
-            "this campaign has no live deliberation to answer — the hub "
-            "restarted since it ran; convene a fresh council")
+    dictRuntime = _fdictRequireContinuationRuntime(
+        dictControllerState, sCampaignId, "respond")
+    _fnRequireHumanGate(dictRuntime)
     sTurnId = _fsSpawnDriveTask(
         dictRuntime,
         lambda: dictRuntime["engineCouncil"]
         .fdictContinueAfterResearcherResponse(sResponseText))
     return {"sTurnId": sTurnId}
+
+
+async def fdictGrantCampaignResolutionRound(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        iGrantedRounds):
+    """Exhausted-round exit 1: grant a bounded resolution round."""
+    dictRuntime = _fdictRequireContinuationRuntime(
+        dictControllerState, sCampaignId, "grant a resolution round")
+    _fnRequireHumanGate(
+        dictRuntime, agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS)
+    if iGrantedRounds < 1:
+        raise CouncilCommandError(
+            "a resolution round grant must be at least one round")
+    sTurnId = _fsSpawnDriveTask(
+        dictRuntime,
+        lambda: dictRuntime["engineCouncil"]
+        .fdictGrantResolutionRound(iGrantedRounds))
+    return {"sTurnId": sTurnId}
+
+
+async def fdictResolveCampaignObjections(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        dictDispositionByObjectionId):
+    """Exhausted-round exit 2: dispose every objection, one final veto."""
+    dictRuntime = _fdictRequireContinuationRuntime(
+        dictControllerState, sCampaignId, "resolve objections")
+    _fnRequireHumanGate(
+        dictRuntime, agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS)
+    sTurnId = _fsSpawnDriveTask(
+        dictRuntime,
+        lambda: dictRuntime["engineCouncil"]
+        .fdictResolveObjectionsAndRequestFinalVeto(
+            dictDispositionByObjectionId))
+    return {"sTurnId": sTurnId}
+
+
+async def fdictRejectCampaignCandidate(dictControllerState, dictStore,
+                                       dictRegistry, sCampaignId,
+                                       sReasonText):
+    """Reject/archive the candidate — exhausted exit 3, or at planReady.
+
+    Synchronous: rejection drives no provider turn, so with no live
+    runtime the engine is rebuilt around the restored record with inert
+    connections, exactly as acceptance does. The engine's own guard
+    decides which states may reject.
+    """
+    from .agentCouncil import CouncilEngine
+    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "reject")
+    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
+    if dictRuntime is not None:
+        dictHolder = dictRuntime
+    else:
+        dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
+            agentCouncilStore.fjsonGetCampaignRecord(dictStore, sCampaignId))
+
+        def _fdictRefuseBaseline(dictRequest):
+            raise CouncilCommandError("rejection drives no baseline evidence")
+
+        dictHolder = {"dictCampaign": dictCampaign}
+        dictHolder["engineCouncil"] = CouncilEngine(
+            dictCampaign,
+            {dictParticipant["sParticipantId"]:
+                agentCouncilCampaign.CouncilProviderConnection()
+             for dictParticipant in dictCampaign["listParticipants"]},
+            lambda dictEvent: agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId, dictEvent),
+            lambda dictEntry: agentCouncilStore.fdictRecordCampaignEvidence(
+                dictStore, sCampaignId, dictEntry),
+            lambda dictSettled: agentCouncilStore.fnCheckpointStoredCampaign(
+                dictStore, sCampaignId, dictSettled),
+            _fdictRefuseBaseline)
+    try:
+        dictHolder["engineCouncil"].fdictRejectCandidate(sReasonText)
+    except agentCouncilCampaign.CouncilProtocolError as error:
+        raise CouncilCommandError(str(error))
+    return {"bRejected": True,
+            "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
+                dictStore, sCampaignId)}
 
 
 async def fdictRequestCampaignStop(dictControllerState, dictStore,

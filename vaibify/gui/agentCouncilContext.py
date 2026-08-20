@@ -61,6 +61,22 @@ the first place). The porcelain-state digest deliberately keeps its
 full working-tree width, so a rename, add, delete, or type change
 among tracked files still refuses even under an excluded parent.
 
+**Agent-instruction-file policy (R11, DECIDED).** Project agent docs
+-- ``CLAUDE.md`` / ``AGENTS.md`` / ``GEMINI.md`` and the agent config
+directories -- are EXCLUSIONS, not evidence, at EVERY depth: they are
+meta-instructions to an agent, not source under review, and shipping
+one hands a hostile repository a steering channel into a participant.
+The exclusion is belt one. Belt two is the delivery mechanism: the
+council charter reaches the CLI as ``--append-system-prompt`` (a flag,
+never a file written into the snapshot tree), so even a doc that
+somehow survived would sit in user-level context below the charter's
+system-level instruction. Both belts are pinned by tests
+(``testAgentDocExclusionPolicyIsPinned`` here,
+``test_charter_rides_the_instruction_flag_never_a_snapshot_file`` in
+the provider suite); whether a REAL model obeys a hostile surviving
+doc over the charter is a per-adapter empiric that needs a paid model
+turn -- the maintainer's live-check lane, recorded, never assumed.
+
 **Symlink policy (reviewed, recorded).** A symbolic link whose target
 stays inside the project root is captured as a symlink. A link whose
 target is absolute or resolves outside the root REFUSES the whole

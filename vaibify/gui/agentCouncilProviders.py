@@ -333,19 +333,25 @@ def fdictDiscoverClaudeModels(sApiKey=None):
             "listModelIds": list(LIST_CLAUDE_MODEL_ALIAS_FALLBACK)}
 
 
-def fdictClaudeCapabilityContract(sApiKey=None):
+def fdictClaudeCapabilityContract(sApiKey=None,
+                                  bRunnerBackendEnabled=False):
     """Declare the Claude runner adapter's capability contract (section 8.2).
 
     Availability, the live model-discovery mechanism, the credential
     delivery requirement, the model-id/usage and failure extraction
     references, and the separable-instruction-channel finding (the CLI
     HAS one — ``--append-system-prompt`` — so section 5.5 is satisfied).
+    ``bAvailable`` is the CALLER'S credential-enablement evaluation
+    (remediation R7/R10) and defaults False — the `or True` this
+    replaces advertised availability unconditionally, which was a
+    fiction; the runner backend is available only when the credential
+    gate enables it, and the API SDK probe governs model discovery
+    alone.
     """
     return {
         "sProvider": S_PROVIDER_CLAUDE,
         "sBackend": "runner",
-        "bAvailable": providerApiTransport.fbProviderSdkAvailable(
-            providerApiTransport.S_PROVIDER_ANTHROPIC) or True,
+        "bAvailable": bRunnerBackendEnabled,
         "bHasSeparableInstructionChannel": True,
         "sInstructionChannelFlag": "--append-system-prompt",
         "dictModelDiscovery": fdictDiscoverClaudeModels(sApiKey),

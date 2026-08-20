@@ -190,28 +190,43 @@ def test_sequence_gap_and_eviction_are_surfaced():
     assert "iLowestRetainedSequence" in sSource
 
 
-def test_needs_human_blocking_question_card():
+def test_needs_human_blocking_question_card_renders_engine_questions():
+    """The gate card reads the ENGINE'S shape (remediation R6)."""
     sSource = _fsCouncilSource()
     assert "_fsBlockingQuestionCard" in sSource
     assert "needs your decision" in sSource
-    assert "Why evidence does not decide it" in sSource
-    assert "Participant positions" in sSource
+    assert "listQuestions" in sSource
+    assert "sQuestionText" in sSource
+    assert "sRaisedByParticipantId" in sSource
+    # The invented gate fields no engine ever wrote must be gone.
+    assert "sDecisionRequired" not in sSource
+    assert "sWhyEvidenceInsufficient" not in sSource
 
 
-def test_exhausted_round_offers_exactly_three_exits_no_respond_field():
+def test_exhausted_round_posts_the_three_engine_exit_routes():
+    """Each exit control posts its own route (remediation R6), never a
+    respond message the backend would have to parse back into intent."""
     sSource = _fsCouncilSource()
     assert "_fsExhaustedRoundCard" in sSource
-    for sExit in (
-        "grantBoundedResolutionRound",
-        "resolveOrOverrideThenFinalVeto",
-        "rejectOrArchiveCandidate",
+    for sRouteSuffix in (
+        "/grant-resolution-round",
+        "/resolve-objections",
+        "/reject-candidate",
     ):
-        assert sExit in sSource, "missing exhausted-round exit " + sExit
+        assert sRouteSuffix in sSource, (
+            "missing exhausted-round exit route " + sRouteSuffix)
+    assert '"[exit] "' not in sSource, (
+        "the fake exit-as-respond message channel must stay dead")
+    # Every unresolved objection gets a decision control, and the
+    # resolve exit refuses to submit with one undecided.
+    assert "listUnresolvedObjections" in sSource
+    assert "council-objection-row" in sSource
+    assert "Every objection needs a resolve or override" in sSource
     # The exhausted card must not carry a plain respond textarea that
     # would silently relaunch the spent budget (section 6.5): its only
     # textarea id (councilAnswer) belongs to the blocking-question card.
     iCard = sSource.find("function _fsExhaustedRoundCard")
-    iEnd = sSource.find("function _fsGateDetail", iCard)
+    iEnd = sSource.find("    /* ---", iCard)
     assert iCard != -1 and iEnd != -1
     sCardBody = sSource[iCard:iEnd]
     assert "textarea" not in sCardBody, (
@@ -220,22 +235,65 @@ def test_exhausted_round_offers_exactly_three_exits_no_respond_field():
     )
 
 
-def test_composer_states_message_handling():
+def test_composer_matches_the_real_continuation_semantics():
+    """The protocol has no mid-deliberation message channel (R6): the
+    surface offers watching and stopping, never a Send box whose POST
+    the backend rightly refuses."""
     sSource = _fsCouncilSource()
-    assert "queued for the" in sSource and "protocol boundary" in sSource
-    assert "recorded in the campaign for every" in sSource
-    assert "never injected into a running turn" in sSource
-    assert "not a private side-channel" in sSource
+    assert "The council is deliberating" in sSource
+    assert "stop after the current" in sSource
+    assert "btnCouncilSend" not in sSource
+    assert "Message the council" not in sSource
+    assert "councilMessage" not in sSource
 
 
 def test_plan_acceptance_controls_present():
     sSource = _fsCouncilSource()
     for sId in (
-        "btnCouncilAcceptPlan", "btnCouncilAnotherPass",
+        "btnCouncilAcceptPlan",
         "btnCouncilCopyBrief", "btnCouncilDownloadPlan",
         "btnCouncilRejectPlan",
     ):
         assert sId in sSource, "missing plan action " + sId
+    # "Request another pass" posted a transition the engine does not
+    # offer at planReady; the control is gone (remediation R6).
+    assert "btnCouncilAnotherPass" not in sSource
+
+
+def test_candidate_plan_renders_the_engine_result_shape():
+    """The plan tab reads dictCandidatePlan.dictResult (R6), never the
+    fabricated top-level sPlanText no engine ever wrote."""
+    sSource = _fsCouncilSource()
+    assert "_fsCandidatePlanBody" in sSource
+    assert "dictResult" in sSource
+    assert "listPlanItems" in sSource
+    assert "listResearcherOverriddenObjections" in sSource
+    assert "sPlanText" not in sSource
+    assert "councilPlanText" not in sSource
+
+
+def test_accept_posts_no_body_and_events_read_the_engine_field():
+    """Acceptance is the server-held candidate (R3): no caller text.
+    The event log reads the engine's sEventKind (R6)."""
+    sSource = _fsCouncilSource()
+    iAccept = sSource.find("async function _fnAcceptPlan")
+    iEnd = sSource.find("function _fnReportPlanSaved", iAccept)
+    assert iAccept != -1 and iEnd != -1
+    sAcceptBody = sSource[iAccept:iEnd]
+    assert "fdictPostRaw" in sAcceptBody
+    assert "sPlanText" not in sAcceptBody
+    assert "dictEvent.sEventKind" in sSource
+    assert "dictEvent.sKind" not in sSource
+
+
+def test_convene_sends_the_settings_form():
+    """The start payload carries dictSettings from the form (R6)."""
+    sSource = _fsCouncilSource()
+    assert "_fdictReadSettingsForm" in sSource
+    assert "dictSettings: _fdictReadSettingsForm()" in sSource
+    for sFormId in ("councilPeerAnonymity", "councilEffort",
+                    "councilExecution", "councilMinimumRounds"):
+        assert sFormId in sSource, "settings form lost " + sFormId
 
 
 def test_stale_planning_baseline_warning():

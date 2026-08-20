@@ -21,6 +21,7 @@ the individual request.
 
 import asyncio
 import io
+import json
 import os
 import tarfile
 import time
@@ -141,6 +142,12 @@ def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
         infoProject = tarfile.TarInfo(name="project.json")
         infoProject.size = len(baProject)
         fileTar.addfile(infoProject, io.BytesIO(baProject))
+    with open(os.path.join(sDirectory, "manifest.json"),
+              "w") as fileManifest:
+        fileManifest.write(json.dumps({
+            "sSnapshotSha256": "fixture-snapshot-hash",
+            "sCommitSha": "fixturecommit0001",
+            "sDirtyStateDigest": "fixturedigest0001"}))
     return {"sSnapshotSha256": "fixture-snapshot-hash"}
 
 
@@ -160,6 +167,11 @@ def eventTurnGate(monkeypatch):
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteFixtureSnapshot)
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
     return eventGate
 
 
@@ -451,7 +463,7 @@ def test_events_poll_returns_sequence_and_bounds(tOwnerClient):
     assert response.status_code == 200, response.text
     dictEvents = response.json()
     assert dictEvents["iHighestRetainedSequence"] >= 1
-    assert any(dictEvent["sKind"] == "campaignStarted"
+    assert any(dictEvent["sEventKind"] == "campaignStarted"
                for dictEvent in dictEvents["listEvents"])
     # An iAfter at the high-water mark returns nothing new.
     responseTail = client.get(

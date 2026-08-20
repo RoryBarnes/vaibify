@@ -91,6 +91,11 @@ def fixtureFakeDeliberation(monkeypatch):
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteFixtureSnapshot)
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
 
 
 def _fnSeedWorkflowRepo(app, sContainerId, sProjectRepoPath):
@@ -163,6 +168,10 @@ def test_foreign_resource_gets_404_on_every_campaign_route(tTwoResourceApp):
         ("POST", f"{sBase}/respond", {"sResponseText": "carry on"}),
         ("POST", f"{sBase}/request-stop", None),
         ("POST", f"{sBase}/accept-plan", {"sPlanText": "# plan"}),
+        ("POST", f"{sBase}/grant-resolution-round", {"iGrantedRounds": 1}),
+        ("POST", f"{sBase}/resolve-objections",
+         {"dictDispositionByObjectionId": {}}),
+        ("POST", f"{sBase}/reject-candidate", {"sReasonText": "no"}),
         ("DELETE", sBase, None),
     ]
     for sMethod, sUrl, dictBody in listAttempts:
