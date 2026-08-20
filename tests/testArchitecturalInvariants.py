@@ -1230,9 +1230,20 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     # ``testSnapshotTarEntriesCarryNeutralOwnership`` and
     # ``testSnapshotModuleNeverWritesIntoTheContainer`` in
     # ``tests/testAgentCouncilContext.py``.
+    #
+    # agentCouncilRunner builds the credential-delivery tarball
+    # (``fbaBuildStampedFileTarball``, section 9.7). It stamps BOTH
+    # entries to the unprivileged council user through the same
+    # ``_finfoStampCouncilOwnership`` discipline as the snapshot repack,
+    # so the tarfile default of 0 never leaks; its own ownership
+    # invariant is
+    # ``testStampedFileTarballCarriesCouncilUserOwnership`` in
+    # ``tests/testAgentCouncilProviders.py``, and the live copy-in path
+    # re-stamps every member besides.
     assert sorted(listTarBuilders) == [
         "vaibify/docker/dockerConnection.py",
         "vaibify/gui/agentCouncilContext.py",
+        "vaibify/gui/agentCouncilRunner.py",
     ], (
         f"tar entries are built in {sorted(listTarBuilders)}; this "
         f"invariant pins the uid-1000 default of the ONE builder in the "
