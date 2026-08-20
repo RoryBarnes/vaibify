@@ -22,6 +22,7 @@ __all__ = [
     "SET_SUPPORTED_PROVIDERS",
     "fbProviderSdkAvailable",
     "flistCreateAnthropicMessageContent",
+    "flistDiscoverAnthropicModels",
     "fnValidateProviderName",
     "fsProviderKeySlotName",
     "fsRedactSecretText",
@@ -111,5 +112,37 @@ def flistCreateAnthropicMessageContent(
         raise ProviderTransportError(
             fsRedactSecretText(
                 f"Anthropic API request failed: {errorProvider}", sApiKey,
+            )
+        ) from None
+
+
+def flistDiscoverAnthropicModels(sApiKey):
+    """List the resolved model ids the key can reach via ``GET /v1/models``.
+
+    The council participant picker is populated from this live list, not
+    a hardcoded alias table that goes stale (agent-council design 8.2).
+    The client is constructed with the key alone, so it targets the
+    SDK's fixed official endpoint; every page is walked so a paginated
+    account is not silently truncated. Any SDK failure is re-raised as a
+    ``ProviderTransportError`` whose text is credential-redacted and
+    whose cause chain is suppressed.
+    """
+    moduleAnthropic = _fmoduleRequireAnthropicSdk()
+    try:
+        listModelIdentifiers = []
+        for genericModel in moduleAnthropic.Anthropic(
+            api_key=sApiKey,
+        ).models.list():
+            sModelIdentifier = getattr(genericModel, "id", None)
+            if sModelIdentifier:
+                listModelIdentifiers.append(sModelIdentifier)
+        return listModelIdentifiers
+    except ProviderTransportError:
+        raise
+    except Exception as errorProvider:
+        raise ProviderTransportError(
+            fsRedactSecretText(
+                f"Anthropic model discovery failed: {errorProvider}",
+                sApiKey,
             )
         ) from None

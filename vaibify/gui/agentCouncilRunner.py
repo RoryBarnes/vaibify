@@ -95,6 +95,7 @@ __all__ = [
     "fdockerCreateCouncilClient",
     "fdictBuildDefaultRunnerLimits",
     "fdictCreateRunnerContainer",
+    "fbaBuildStampedFileTarball",
     "fnCopySnapshotIntoRunner",
     "fdictExecuteBoundedTurn",
     "fdictProbeRunnerAbsence",
@@ -192,6 +193,7 @@ def _fnValidateRunnerLimits(dictLimits):
 def fdictCreateRunnerContainer(
     dockerCouncil, sImageReference, sReservationId,
     dictLimits=None, sNetworkName=None, bSandbox=False,
+    dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
 ):
     """Create and start one disposable council container.
 
@@ -204,6 +206,13 @@ def fdictCreateRunnerContainer(
     runner may be attached to a named internal network whose only exit
     is the allowlisting proxy; the fail-closed default is no network. A
     sandbox refuses any network by contract.
+
+    ``dictEnvironment`` (the Phase 2 proxy environment and the CLI's
+    relocated config directory), ``listDnsServers`` and
+    ``listDnsOptions`` (the Phase 0 egress black-hole resolver) are the
+    runner-backend wiring; all default to unset so the containment
+    tests that create a bare runner are unaffected. A sandbox carries
+    no credential and no network, so it takes none of these.
     """
     if dictLimits is None:
         dictLimits = fdictBuildDefaultRunnerLimits()
@@ -212,6 +221,12 @@ def fdictCreateRunnerContainer(
         raise ValueError(
             "A council sandbox attaches to no network at all (design "
             "section 9.6); refuse the sandbox rather than widen it."
+        )
+    if bSandbox and (dictEnvironment or listDnsServers or listDnsOptions):
+        raise ValueError(
+            "A council sandbox carries no credential, no network and no "
+            "resolver (design section 9.6); refuse it rather than wire "
+            "egress or environment into it."
         )
     sRole = S_ROLE_SANDBOX if bSandbox else S_ROLE_RUNNER
     sNetworkMode = sNetworkName if sNetworkName is not None else "none"
@@ -246,6 +261,9 @@ def fdictCreateRunnerContainer(
             S_COUNCIL_LABEL: sReservationId,
             S_COUNCIL_ROLE_LABEL: sRole,
         },
+        environment=dictEnvironment or None,
+        dns=list(listDnsServers) if listDnsServers else None,
+        dns_opt=list(listDnsOptions) if listDnsOptions else None,
     )
     containerRunner.start()
     return {
@@ -409,6 +427,36 @@ def _fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
     }
 
 
+def fbaBuildStampedFileTarball(
+    sDirectoryBasename, sFileBasename, baContent,
+    iFileMode=0o600, iDirectoryMode=0o700,
+):
+    """Build a one-file-under-one-directory tarball, ownership-stamped.
+
+    The runner-backend credential delivery (design section 9.7) needs a
+    tiny tarball to hand the copy-in path. Both entries are stamped to
+    the unprivileged council user through the same
+    ``_finfoStampCouncilOwnership`` discipline the snapshot repack uses,
+    so ``tarfile.TarInfo``'s native uid/gid default of 0 can never leak
+    a root-owned credential — the file-ownership trap this repository has
+    shipped once. The single-file shape keeps this builder generic: the
+    Claude-specific directory and file names arrive as arguments.
+    """
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        infoDirectory = tarfile.TarInfo(name=sDirectoryBasename)
+        infoDirectory.type = tarfile.DIRTYPE
+        infoDirectory.mode = iDirectoryMode
+        fileTar.addfile(_finfoStampCouncilOwnership(infoDirectory))
+        infoFile = tarfile.TarInfo(
+            name=posixpath.join(sDirectoryBasename, sFileBasename))
+        infoFile.size = len(baContent)
+        infoFile.mode = iFileMode
+        fileTar.addfile(
+            _finfoStampCouncilOwnership(infoFile), io.BytesIO(baContent))
+    return bufferTar.getvalue()
+
+
 def fnCopySnapshotIntoRunner(dockerCouncil, sContainerId, baSnapshotTar,
                              sDestinationDirectory=S_RUNNER_SNAPSHOT_ROOT):
     """Copy the sealed snapshot tarball into a council container.
@@ -471,6 +519,7 @@ def _fnKillContainerQuietly(dockerCouncil, sContainerId):
 def fdictExecuteBoundedTurn(
     dockerCouncil, sContainerId, listCommand,
     iOutputByteCap=None, fWallClockSeconds=None, sWorkingDirectory=None,
+    baStdinPayload=None,
 ):
     """Execute one bounded command (the turn) in a council container.
 
@@ -481,6 +530,13 @@ def fdictExecuteBoundedTurn(
     with ``fdictDestroyRunnerAndProveAbsence``. ``iExitCode`` is
     ``None`` when no exit code could be established (a killed turn),
     never a fabricated zero.
+
+    ``baStdinPayload`` streams bytes to the command's stdin before the
+    output pump begins (the CLI adapter's untrusted-material channel:
+    researcher and peer text reach the provider through stdin, never
+    argv). It is sent under the same wall-clock deadline and the write
+    half is then shut so a reader that waits on EOF unblocks. Left
+    unset, the command runs with no stdin exactly as before.
     """
     if iOutputByteCap is None:
         iOutputByteCap = I_DEFAULT_TURN_OUTPUT_CAP_BYTES
@@ -490,10 +546,14 @@ def fdictExecuteBoundedTurn(
     fDeadlineMonotonic = fStartedMonotonic + fWallClockSeconds
     tExecStream = _ftStartExecStream(
         dockerCouncil, sContainerId, listCommand,
-        bStdin=False, sWorkingDirectory=sWorkingDirectory,
+        bStdin=baStdinPayload is not None,
+        sWorkingDirectory=sWorkingDirectory,
     )
     sExecId, socketRaw = tExecStream
     try:
+        if baStdinPayload is not None:
+            _fnSendAllBounded(socketRaw, baStdinPayload, fDeadlineMonotonic)
+            socketRaw.shutdown(socket.SHUT_WR)
         dictPumped = _fdictPumpBoundedExecStream(
             socketRaw, iOutputByteCap, fDeadlineMonotonic,
         )
