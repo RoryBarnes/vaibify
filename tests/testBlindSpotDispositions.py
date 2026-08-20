@@ -25,12 +25,16 @@ on and the ruling expires, whatever the call site looks like.
 **A call-node hash is an identity, never a warrant for a semantic
 review.**
 
-The five sites under ``vaibify/gui/`` are ruled on below. None is left
-undisposed; one is an exceptional authority with a tested constraint,
-and the other four are opaque to the SCANNER while being entirely
-determined in the source -- an argv whose executable is a literal, with
-only its arguments variable. That distinction is the whole content of
-these rulings, and it is why they are written by hand.
+Every opaque site under ``vaibify/gui/`` is ruled on below, and none is
+left undisposed. The rulings fall into three shapes: one exceptional
+authority with a tested constraint; the determined-in-source sites,
+opaque to the SCANNER while entirely determined in the source -- an argv
+whose executable is a literal, with only its arguments variable; and the
+separate-authority sites of the Agent Council, Docker-SDK calls whose
+client is a runtime parameter the scan cannot resolve, operating only on
+council-created resources governed by the council registry rather than
+the commit carrier. That distinction is the whole content of these
+rulings, and it is why they are written by hand.
 """
 
 import ast
@@ -87,33 +91,65 @@ _DICT_COUNCIL_RUNNER_DISPOSITION = {
     "sRationale": _S_COUNCIL_RUNNER_RATIONALE,
     "listSupportingSymbols": _LIST_COUNCIL_RUNNER_SYMBOLS,
 }
+
+
+_S_COUNCIL_EGRESS_RATIONALE = (
+    "A Docker-SDK call operating only on a COUNCIL-created egress "
+    "network and its CONNECT-proxy container, never the active project "
+    "container. Both are named from the server-minted "
+    "_S_NETWORK_NAME_PREFIX / _S_PROXY_NAME_PREFIX plus a campaign id "
+    "that fnValidateCampaignIdOrRaise refuses unless it is 1-64 "
+    "characters of [A-Za-z0-9-]; the proxy image is the fixed "
+    "S_PROXY_IMAGE, and the proxy's argv and environment are composed "
+    "from validated server-owned values, so no researcher, project or "
+    "model text reaches the SDK command= or environment=. Its lifecycle "
+    "authority is the council registry (a separate authority from the "
+    "commit carrier, per the design's section 10.3), not a lease: the "
+    "network and proxy are created per campaign and settled only after "
+    "fdictRemoveCampaignEgressResources proves each gone by a positive "
+    "NotFound, an unanswered daemon reported indeterminate rather than "
+    "swallowed. Opaque to the scanner because the SDK client is a "
+    "runtime object passed as a parameter, not a literal it can "
+    "resolve. Falsified live by testAgentCouncilEgressLive.py (every "
+    "escape refused -- allowlisted CONNECT tunnels while forbidden "
+    "host, raw-IP, non-CONNECT, direct-dial, external-DNS, IPv6 and "
+    "no-network are all refused -- and teardown proves absence "
+    "idempotently)."
+)
+_LIST_COUNCIL_EGRESS_SYMBOLS = [
+    "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX",
+    "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX",
+    "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
+    "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise",
+]
+_DICT_COUNCIL_EGRESS_DISPOSITION = {
+    "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
+    "sRationale": _S_COUNCIL_EGRESS_RATIONALE,
+    "listSupportingSymbols": _LIST_COUNCIL_EGRESS_SYMBOLS,
+}
 DICT_BLIND_SPOT_DISPOSITIONS = {
-    "gui/agentCouncilEgress.py|_ftRunDockerCommand|"
-    "opaque-subprocess-command|0": {
-        "sDisposition": S_DISPOSITION_DETERMINED_IN_SOURCE,
-        "sRationale": (
-            "Opaque to the scanner, determined in the source: every "
-            "caller builds a literal argv whose executable is the string "
-            "\"docker\" and whose subcommand is a literal "
-            "(\"network create --internal\", \"run\", \"cp\", \"rm -f\", "
-            "\"inspect\", \"logs\", \"start\", \"ps\", \"network rm\"). "
-            "The only variable elements are server-MINTED resource names "
-            "(_S_NETWORK_NAME_PREFIX / _S_PROXY_NAME_PREFIX) and the "
-            "fixed proxy image S_PROXY_IMAGE; no researcher, project or "
-            "model text ever reaches the argv. It manages the council's "
-            "own egress network and CONNECT-proxy container, never the "
-            "active project container, and there is no shell, so it can "
-            "never become a different command however its callers "
-            "change. Falsified live by testAgentCouncilEgressLive.py "
-            "(every escape refused)."
-        ),
-        "listSupportingSymbols": [
-            "gui/agentCouncilEgress.py::_ftRunDockerCommand",
-            "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX",
-            "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX",
-            "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
-        ],
-    },
+    "gui/agentCouncilEgress.py|_fnAttachToDefaultBridge|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fnAwaitProxyListening|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fnCopyProxyScriptIntoContainer|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fnRemoveContainerQuietly|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fsReadProxyInternalAddress|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fsRemoveInternalNetwork|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fsRemoveInternalNetwork|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fsRemoveProxyContainer|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|_fsRemoveProxyContainer|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|fsCreateCampaignInternalNetwork|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilEgress.py|fsLaunchAllowlistProxy|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilRunner.py|_fnKillContainerQuietly|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilRunner.py|_ftStartExecStream|"
@@ -245,13 +281,15 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     # the same holder comparison, the same exception type.
     "config/mutationAdmission.py::fnAssertOperationAdmittedByIdentity":
         "7e18213dca68a496",
-    # Agent Council egress (determined-in-source) and runner
-    # (separate-authority; the council registry, not the commit carrier).
-    "gui/agentCouncilEgress.py::_ftRunDockerCommand": "ffb47a77dc48730c",
+    # Agent Council egress and runner: both separate-authority, governed
+    # by the council registry, not the commit carrier. Each operates only
+    # on council-created resources through a passed-in SDK client.
     "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX":
         "8aaa3bf0a0e83395",
     "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX": "129ae0023fac3690",
     "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "c1467c7127ad0b8b",
+    "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise":
+        "87db3f8231c827f6",
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL": "a5575a22df9e26bf",
     "gui/agentCouncilRunner.py::fdictCreateRunnerContainer":
         "c52564fcca7295fb",
