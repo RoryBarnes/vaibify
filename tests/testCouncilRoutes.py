@@ -641,3 +641,65 @@ def test_container_project_is_never_host_refused(tOwnerClient):
     detail = dictBody.get("detail") if isinstance(dictBody, dict) else {}
     if isinstance(detail, dict):
         assert "sUnavailableIn" not in detail, response.text
+
+
+# ── the enabled-path wiring the review found missing ───────────────
+
+
+def test_start_hands_the_resolved_image_to_the_credential_gate(
+        tOwnerClient, monkeypatch):
+    """The evidence record's image pin is compared at START, always.
+
+    The gate used to be consulted with no image identity, so an
+    evidence record verified in a different image enabled paid work
+    anyway. Start now resolves the project image first and the gate
+    sees it on every call.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    listSeenImageIdentities = []
+
+    def _fdictRecordingGate(sProvider, sImageIdentity=None):
+        listSeenImageIdentities.append(sImageIdentity)
+        return {"bEnabled": True, "sReason": "", "dictRecord": {}}
+
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        _fdictRecordingGate)
+    client, app, docker = tOwnerClient
+    _sStartOneCampaign(client)
+    assert listSeenImageIdentities == ["ubuntu:24.04"], (
+        "start must evaluate the gate with the resolved project image, "
+        "never blind")
+
+
+def test_capture_refusal_leaves_a_failed_record_never_planning(
+        tOwnerClient, monkeypatch):
+    """Transactional start at the route: no phantom planning campaign.
+
+    A coherence refusal answers 409 AND the registered record says
+    failed — a reader who never saw the response cannot mistake the
+    campaign for one that is deliberating.
+    """
+    def _fdictRefuseCapture(*tArguments, **dictKeywords):
+        raise agentCouncilContext.SnapshotRefusedError(
+            "the repository changed while the snapshot was streaming")
+
+    monkeypatch.setattr(
+        agentCouncilContext, "fdictCaptureProjectContextSnapshot",
+        _fdictRefuseCapture)
+    client, app, docker = tOwnerClient
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=DICT_START_BODY)
+    assert response.status_code == 409, response.text
+    dictStore = app.state.dictCouncilCampaignStore
+    listStates = [
+        agentCouncilStore.fjsonGetCampaignRecord(dictStore, sId)["sState"]
+        for sId in dictStore["listInsertionOrder"]]
+    assert listStates == ["failed"], (
+        "a failed start must not strand a planning record")
+
+
+# The release-refuses-while-deliberating proof lives in
+# tests/testCouncilRunnerAccess.py: the release route is a HUB route
+# (fnRegisterRegistryRoutes), not part of the viewer app this file
+# builds, so it is driven there over the hub-app fixture shape.

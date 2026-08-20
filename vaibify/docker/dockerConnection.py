@@ -452,22 +452,28 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps(listStatuses))\n"
     ),
     # The council snapshot's coherence observation (remediation R5):
-    # the type and content identity of every changed worktree path —
-    # tracked-with-any-difference plus untracked-not-ignored — read
-    # immediately before and immediately after the archive streams, so
-    # a capture the repository moved under is refused rather than
-    # sealed. Git enumerates (it is the only honest way to ask git
-    # what changed); the blob identity is then computed HERE over the
-    # raw worktree bytes — sha1 over ``blob <size>\\0`` + content,
-    # byte-identical to ``git hash-object --no-filters`` — so no
-    # clean-filter rewriting can make two different byte states report
-    # one identity. A symlink records its readlink target instead,
-    # because hashing reads THROUGH a link. Fail-CLOSED: any
+    # the type and content identity of EVERY present worktree path —
+    # all tracked paths plus untracked-not-ignored — read immediately
+    # before and immediately after the archive streams, so a capture
+    # the repository moved under is refused rather than sealed. Full
+    # width, not changed-paths-only, is the point: a CLEAN tracked
+    # file changed mid-stream and reverted leaves HEAD, the porcelain
+    # digest, and the changed-path set all equal, and only a raw-byte
+    # identity taken outside the stream can contradict the archive's
+    # intermediate bytes. Git enumerates (it is the only honest way to
+    # ask git what exists); the blob identity is then computed HERE
+    # over the raw worktree bytes — sha1 over ``blob <size>\\0`` +
+    # content, byte-identical to ``git hash-object --no-filters`` — so
+    # no clean-filter rewriting can make two different byte states
+    # report one identity, and the comparison never crosses into the
+    # filtered object-store domain (which would break repositories
+    # using content filters). A symlink records its readlink target
+    # instead, because hashing reads THROUGH a link. Fail-CLOSED: any
     # enumeration fault answers ``bSuccess`` False, never an empty
-    # observation masquerading as a quiet repository. An unborn HEAD
-    # skips the two diff enumerations (everything is untracked then);
-    # a path that vanishes between enumeration and stat reports as
-    # ``missing``, which the caller treats as a tear, not a skip.
+    # observation masquerading as a quiet repository. A tracked path
+    # deleted from the worktree (or one that vanishes between
+    # enumeration and stat) reports as ``missing``; the caller decides
+    # what a missing path means for its lane.
     S_TYPED_READ_GIT_WORKTREE_IDENTITIES: (
         "import hashlib,json,os,subprocess,sys\n"
         "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
@@ -485,23 +491,18 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    if fprocessRunGit(\n"
         "            ['rev-parse','--is-inside-work-tree']).returncode!=0:\n"
         "        fnFail('not a git work tree')\n"
-        "    bHasHead=fprocessRunGit(\n"
-        "        ['rev-parse','--verify','HEAD']).returncode==0\n"
         "    listEnumerations=[\n"
+        "        ['ls-files','-z'],\n"
         "        ['ls-files','--others','--exclude-standard','-z']]\n"
-        "    if bHasHead:\n"
-        "        listEnumerations+=[\n"
-        "            ['diff','--name-only','-z','HEAD'],\n"
-        "            ['diff','--name-only','-z','--cached']]\n"
-        "    setChanged=set()\n"
+        "    setPresent=set()\n"
         "    for listArguments in listEnumerations:\n"
         "        processGit=fprocessRunGit(listArguments)\n"
         "        if processGit.returncode!=0:\n"
         "            fnFail('enumeration failed: '+' '.join(listArguments))\n"
-        "        setChanged.update(\n"
+        "        setPresent.update(\n"
         "            sPath for sPath in processGit.stdout.split(chr(0))\n"
         "            if sPath)\n"
-        "    for sRelative in sorted(setChanged):\n"
+        "    for sRelative in sorted(setPresent):\n"
         "        sAbsolute=os.path.join(sRepo,sRelative)\n"
         "        if os.path.islink(sAbsolute):\n"
         "            dictIdentities[sRelative]={'sType':'symlink',\n"

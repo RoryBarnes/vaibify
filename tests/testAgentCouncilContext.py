@@ -16,6 +16,7 @@ import io
 import json
 import os
 import pathlib
+import posixpath
 import stat
 import tarfile
 
@@ -97,6 +98,35 @@ def _fdictBuildObservationAnswer(listRecords=()):
     }
 
 
+def _fdictBuildObservationFromArchive(baArchiveBytes):
+    """Derive the quiet-repository observation from the archive itself.
+
+    The typed read now identifies EVERY present path, so a fake
+    observation that agrees with the archive must cover every file and
+    symlink the archive carries — this computes exactly that, with the
+    same raw-byte blob formula production uses, and models "the
+    repository never changed".
+    """
+    listRecords = []
+    with tarfile.open(fileobj=io.BytesIO(baArchiveBytes)) as fileTar:
+        for infoMember in fileTar.getmembers():
+            sName = posixpath.normpath(infoMember.name)
+            if sName in (".", S_ROOT_COMPONENT) or not sName.startswith(
+                    S_ROOT_COMPONENT + "/"):
+                continue
+            sRelativePath = sName[len(S_ROOT_COMPONENT) + 1:]
+            if infoMember.issym():
+                listRecords.append(
+                    ("symlink", infoMember.linkname, sRelativePath))
+            elif infoMember.isfile():
+                baContent = fileTar.extractfile(infoMember).read()
+                listRecords.append((
+                    "file",
+                    agentCouncilContext._fsComputeGitBlobIdentity(baContent),
+                    sRelativePath))
+    return _fdictBuildObservationAnswer(listRecords)
+
+
 class _FakeArchiveContainer:
     """Answers get_archive with canned chunks; records the path asked."""
 
@@ -134,8 +164,14 @@ class _FakeCouncilConnection:
         self._listStatusOutputs = list(
             listStatusOutputs or [_fsBuildStatusOutput()],
         )
+        # The default observation is derived FROM the archive: the
+        # full-width identity read must cover every archived member,
+        # so "the repository never changed" means "the observation
+        # agrees with the archive", not "the observation saw nothing".
         self._listObservationAnswers = list(
-            listObservationAnswers or [_fdictBuildObservationAnswer()],
+            listObservationAnswers
+            or [_fdictBuildObservationFromArchive(baArchiveBytes)
+                if baArchiveBytes else _fdictBuildObservationAnswer()],
         )
         self._bObservationExecFails = bObservationExecFails
         self._sToplevelAnswer = sToplevelAnswer
@@ -580,6 +616,62 @@ def testChangeThenRevertIsCaughtByTheArchiveMatch(tmp_path):
     _fnAssertStoreIsEmpty(tmp_path)
 
 
+def testCleanFileChangeThenRevertIsCaughtByRawIdentity(tmp_path):
+    """The reviewer's hole: a CLEAN file torn mid-stream and reverted.
+
+    HEAD never moved, the porcelain digest never moved, the changed
+    path set is empty both times — every changed-paths-only signal is
+    silent. The full-width observation records the clean file's raw
+    blob identity, and the archive's intermediate bytes contradict it.
+    """
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt",
+         "baContent": b"intermediate hostile bytes\n"},
+    ])
+    dictQuietAnswer = _fdictBuildObservationAnswer(
+        [("file",
+          agentCouncilContext._fsComputeGitBlobIdentity(
+              b"committed clean bytes\n"),
+          "dataFile.txt")],
+    )
+    connection = _FakeCouncilConnection(
+        baArchive,
+        listObservationAnswers=[dictQuietAnswer, dict(dictQuietAnswer)],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "change-then-revert" in str(errorInfo.value)
+    assert "'dataFile.txt'" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testUnobservedArchiveMemberRefuses(tmp_path):
+    """A member the observation never saw cannot be coherence-pinned.
+
+    A file created after the pre-observation and deleted before the
+    post-observation appears in the archive with no identity to match
+    it against; sealing it would ship bytes nothing observed. It is
+    refused by name.
+    """
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt",
+         "baContent": b"alpha payload\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/ghostFile.txt",
+         "baContent": b"appeared mid-stream\n"},
+    ])
+    connection = _FakeCouncilConnection(
+        baArchive,
+        listObservationAnswers=[_fdictBuildObservationAnswer(
+            [("file", S_ALPHA_PAYLOAD_BLOB_SHA, "dataFile.txt")],
+        )],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "never" in str(errorInfo.value)
+    assert "'ghostFile.txt'" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
 def testMidStreamTypeSwapToSymlinkRefuses(tmp_path):
     """A file observed pre-capture returns as a symlink post-capture."""
     connection = _FakeCouncilConnection(
@@ -669,17 +761,18 @@ def testExcludedPathChurnDoesNotRefuseTheCapture(tmp_path):
     mid-stream. The snapshot does not carry those bytes, so the
     capture SEALS -- the observation is limited to included paths.
     """
+    dictAnswerBefore = _fdictBuildObservationFromArchive(
+        _fbaBuildRepresentativeArchive())
+    dictAnswerBefore["dictPathIdentities"][".claude/credentials.json"] = {
+        "sType": "file", "sIdentity": "e" * 40}
+    dictAnswerAfter = _fdictBuildObservationFromArchive(
+        _fbaBuildRepresentativeArchive())
+    dictAnswerAfter["dictPathIdentities"][".claude/credentials.json"] = {
+        "sType": "file", "sIdentity": "f" * 40}
     dictManifest = _fdictCapture(
         _FakeCouncilConnection(
             _fbaBuildRepresentativeArchive(),
-            listObservationAnswers=[
-                _fdictBuildObservationAnswer(
-                    [("file", "e" * 40, ".claude/credentials.json")],
-                ),
-                _fdictBuildObservationAnswer(
-                    [("file", "f" * 40, ".claude/credentials.json")],
-                ),
-            ],
+            listObservationAnswers=[dictAnswerBefore, dictAnswerAfter],
         ),
         tmp_path,
     )

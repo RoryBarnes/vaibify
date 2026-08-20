@@ -4081,7 +4081,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # controller lane demanded (an unadmitted capture exec refused at
     # the funnel, exactly as designed). All read at the same
     # principal/identity guard points as every other campaign action.
-    "routes/councilRoutes.py": 918,
+    # +58 (2026-08-20, review fixes): start resolves the project image
+    # BEFORE the credential gate so the evidence record's image pin is
+    # always compared; the credential-stager closure the production
+    # factory stages the runner login through (route-built, because
+    # the controller must not import the route context); and the
+    # staleness producer gained its content axis (the per-path
+    # identity digest the porcelain digest cannot see).
+    "routes/councilRoutes.py": 976,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4093,7 +4100,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +16 (2026-08-20, remediation R11): the recorded
     # agent-instruction-file policy decision in the module docstring —
     # a decision that must live beside the exclusion table it governs.
-    "agentCouncilContext.py": 869,
+    # +47 (2026-08-20, review fix): the observation widened to EVERY
+    # present path and the archive match became total (an unobserved
+    # file or symlink member refuses), closing the clean-file
+    # change-then-revert hole; plus the per-path identity digest the
+    # staleness comparison rides. Same one responsibility: what makes
+    # a sealed snapshot a snapshot.
+    "agentCouncilContext.py": 916,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4940,7 +4953,26 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # session decides which applies. Same responsibility, and the
     # alternative -- a second module owning one constant -- would
     # put the pair somewhere they could drift apart.
-    "sessionLifecycle.py": 1406,
+    # +14 (2026-08-20): a live Agent Council drive joins the release
+    # busy-refusals, beside the durable-task and guarded-mutation
+    # vetoes it behaves like (not force-overridable): paid provider
+    # work no release should silently abandon. The predicate lives in
+    # the controller; this is only the arbitration point reading it.
+    "sessionLifecycle.py": 1420,
+    # NEW at 963 (2026-08-20, review fixes): the controller crossed the
+    # default cap when the enabled launch path became real — the
+    # once-per-campaign runner-access provisioner (egress boundary +
+    # staged credential) the production connection factory wears, its
+    # release on every no-further-turn settlement path, the
+    # transactional launch (a failed start leaves a failed record,
+    # never a phantom planning one), the release busy-predicate, the
+    # bounded shutdown settle, and the fuller plan.md composition. One
+    # cohesive responsibility: the controller is the sole writer of
+    # campaign state, and every one of these is a campaign-lifecycle
+    # transition it alone may make; a separate "provisioning module"
+    # would move the access lifecycle away from the settlement points
+    # that release it, which is how resources get stranded.
+    "agentCouncilController.py": 963,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

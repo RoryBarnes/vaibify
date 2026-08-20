@@ -30,26 +30,35 @@ is controller integration wiring (R1b: a mode-b lock-held carrier
 around this call); this module does not fake one. What it does
 instead: immediately before and immediately after streaming it takes
 an independent observation OUTSIDE the archive stream -- the HEAD
-commit, a digest of the porcelain file-state map, and, for every
-changed path (tracked-with-any-porcelain-state plus
-untracked-not-ignored), the path's type and a content identity -- the
-git blob sha computed in the container over the raw worktree bytes
-(byte-identical to ``git hash-object --no-filters``), through the
-declared ``gitWorktreeIdentities`` typed read rather than a general
-container command; a symlink records its readlink target instead,
-because hashing reads THROUGH a link. The capture REFUSES,
-naming the torn property, unless the two observations are exactly
-equal -- and additionally refuses unless every observed changed
-path's archive member carries the same git blob identity (recomputed
-host-side over the archived bytes) or symlink target as the
-PRE-observation. The archive match is what catches a
-change-then-revert: pre equals post, but the archive holds the
-intermediate bytes. Clean tracked files are pinned by the commit sha
--- a mid-stream edit to one makes it dirty and fails the porcelain
-comparison. A torn capture is therefore detected, never silently
-sealed; the manifest records the method and both observation digests
-(digests only, never observation content) so the guarantee travels
-with the snapshot.
+commit, a digest of the porcelain file-state map, and, for EVERY
+present path (all tracked paths plus untracked-not-ignored), the
+path's type and a content identity -- the git blob sha computed in
+the container over the raw worktree bytes (byte-identical to ``git
+hash-object --no-filters``), through the declared
+``gitWorktreeIdentities`` typed read rather than a general container
+command; a symlink records its readlink target instead, because
+hashing reads THROUGH a link. The capture REFUSES, naming the torn
+property, unless the two observations are exactly equal -- and
+additionally refuses unless EVERY archive member matches the
+PRE-observation: each observed path's member carries the same git
+blob identity (recomputed host-side over the archived bytes) or
+symlink target, and a file or symlink member the observation never
+saw refuses outright. Full observation width is load-bearing, not
+thoroughness for its own sake: a CLEAN tracked file changed
+mid-stream and reverted leaves HEAD, the porcelain digest, and the
+changed-path set all equal, and only its raw-byte identity taken
+outside the stream contradicts the archive's intermediate bytes. The
+identities stay in the raw-worktree-byte domain on both sides, never
+the filtered object-store domain, so content filters cannot alias two
+byte states -- and cannot falsely refuse a clean repository. (A
+consequence, recorded: a submodule's files exist on disk but are
+enumerated by no superproject git command, so a repository carrying a
+checked-out submodule REFUSES capture as unobserved members --
+fail-closed, until submodule pinning is designed on its own terms.) A
+torn capture is therefore detected, never silently sealed; the
+manifest records the method and both observation digests (digests
+only, never observation content) so the guarantee travels with the
+snapshot.
 
 **Observation scope (decision, recorded).** The per-path content
 observation is limited to paths the snapshot INCLUDES: a path under a
@@ -105,6 +114,7 @@ __all__ = [
     "S_SNAPSHOT_ARCHIVE_BASENAME",
     "S_SNAPSHOT_MANIFEST_BASENAME",
     "fdictCaptureProjectContextSnapshot",
+    "fsComputePathIdentitiesDigest",
 ]
 
 import hashlib
@@ -195,10 +205,10 @@ _S_CAMPAIGN_IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
 _S_COHERENCE_METHOD = (
     "two independent pre/post observations outside the archive stream "
     "(HEAD commit + porcelain state digest + per-path git content "
-    "identities and symlink targets of every non-excluded changed "
-    "path) compared exactly, plus every observed changed path's "
-    "archive member matched to the pre-observation by git blob "
-    "identity; the bounded project lock is controller (R1b) wiring"
+    "identities and symlink targets of every non-excluded present "
+    "path) compared exactly, plus EVERY archive member matched to the "
+    "pre-observation by git blob identity, unobserved members refused; "
+    "the bounded project lock is controller (R1b) wiring"
 )
 
 
@@ -323,7 +333,7 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
 
     Carries the HEAD commit, a digest of the porcelain file-state map
     (an edit, add, or delete anywhere in the working tree changes it),
-    and the per-path type/content identities of every changed path the
+    and the per-path type/content identities of every present path the
     snapshot would include (see the module docstring's observation
     scope). No remote URL is read or recorded: a remote URL can embed
     a credential, and nothing secret may enter the manifest.
@@ -699,18 +709,22 @@ def _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture):
 
     Ties what the archive CONTAINS to an identity observed outside the
     stream, which is what catches a change-then-revert: pre equals
-    post, but the archive holds the intermediate bytes. Only observed
-    changed paths are matched; clean tracked files are pinned by the
-    commit sha instead (a mid-stream edit makes one dirty and fails
-    the pre/post porcelain comparison).
+    post, but the archive holds the intermediate bytes. EVERY member
+    is matched, in both directions: each observed present path's
+    member must carry the observed blob identity or symlink target,
+    and each file or symlink member must be an observed path — a
+    member the observation never saw (created and deleted between the
+    observations, or a submodule's un-enumerable files) refuses
+    outright. The old changed-paths-only match left clean tracked
+    files pinned by nothing an archive could contradict; the full
+    present-path observation closes that.
     """
     dictEntriesByPath = {
         dictEntry["sPath"]: dictEntry
         for dictEntry in dictCapture["listIncludedEntries"]
     }
-    for sPath, dictObserved in sorted(
-        dictIdentityBefore["dictPathIdentities"].items(),
-    ):
+    dictObservedPaths = dictIdentityBefore["dictPathIdentities"]
+    for sPath, dictObserved in sorted(dictObservedPaths.items()):
         if dictObserved["sType"] == "missing":
             continue
         sMismatch = _fsDescribeArchiveEntryMismatch(
@@ -722,6 +736,16 @@ def _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture):
                 f"observation: {sMismatch}. The repository changed "
                 "while the daemon was serializing it; the partial "
                 "capture is discarded."
+            )
+    for sPath, dictEntry in sorted(dictEntriesByPath.items()):
+        if dictEntry["sType"] not in ("file", "symlink"):
+            continue
+        if sPath not in dictObservedPaths:
+            raise SnapshotRefusedError(
+                f"The snapshot archive holds a {dictEntry['sType']} at "
+                f"{sPath!r} that the pre-capture observation never "
+                "saw; an unobserved member cannot be coherence-pinned, "
+                "so the partial capture is discarded."
             )
 
 
@@ -758,6 +782,27 @@ def _fsComputeGitBlobIdentity(baContent):
     """Return git's blob sha1 for raw bytes (hash-object --no-filters)."""
     baHeader = b"blob " + str(len(baContent)).encode("ascii") + b"\x00"
     return hashlib.sha1(baHeader + baContent).hexdigest()
+
+
+def fsComputePathIdentitiesDigest(dictPathIdentitiesRaw):
+    """Digest the non-excluded per-path identity map, for staleness.
+
+    The one comparison the porcelain digest cannot make: a DIRTY file
+    whose content changes again moves no porcelain line (v2 status
+    hashes index and HEAD objects, never worktree bytes), but it moves
+    this digest, because the map carries the raw-worktree blob identity
+    of every present path. Filters excluded components itself so the
+    capture-time manifest field and the poll-time recomputation agree
+    on scope by construction, whether the caller pre-filtered or not.
+    """
+    dictFiltered = {
+        sPath: dictPathIdentity
+        for sPath, dictPathIdentity in sorted(dictPathIdentitiesRaw.items())
+        if _ftFindExcludedComponent(sPath) is None
+    }
+    return hashlib.sha256(
+        json.dumps(dictFiltered, sort_keys=True).encode("utf-8"),
+    ).hexdigest()
 
 
 def _fsComputeObservationDigest(dictIdentity):
@@ -818,6 +863,8 @@ def _fdictWriteSnapshotManifest(
         "sBaselineHeadSha": dictIdentityBefore["sObservedHeadSha"],
         "sBaselinePorcelainDigest": dictIdentityBefore[
             "sObservedPorcelainDigest"],
+        "sBaselinePathIdentitiesDigest": fsComputePathIdentitiesDigest(
+            dictIdentityBefore["dictPathIdentities"]),
         "sPreObservationDigest": _fsComputeObservationDigest(
             dictIdentityBefore,
         ),

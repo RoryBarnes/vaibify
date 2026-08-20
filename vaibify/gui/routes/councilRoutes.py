@@ -44,7 +44,11 @@ from .. import agentCouncilController
 from .. import agentCouncilDockerGateway
 from .. import agentCouncilRegistry
 from .. import agentCouncilStore
-from ..pipelineServer import fdictRequireWorkflow, fsContainerNameForId
+from ..pipelineServer import (
+    WORKSPACE_ROOT,
+    fdictRequireWorkflow,
+    fsContainerNameForId,
+)
 from ..routeContext import (
     fnRefuseContainerOnlyForHostProject,
     fnRejectAgentTokenLane,
@@ -255,18 +259,23 @@ async def _fgenericSubmitMapped(dictControllerState, sCampaignId,
         raise HTTPException(409, str(error))
 
 
-def _fnRefuseRunnerBackendUnlessEnabled():
+def _fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
     """Refuse paid runner work unless the credential gate enables it.
 
     The gate defaults OFF (remediation R10): starting a council is paid
     provider work over a copied credential, and nothing but the
-    maintainer's recorded live check enables that. The refusal carries
-    the gate's own reason so the researcher reads why, not a bare 409.
+    maintainer's recorded live check enables that. The start path
+    resolves the project image FIRST and passes it here, so the
+    evidence record's image pin is ALWAYS compared before a campaign
+    is registered — an evidence record verified in a different image
+    refuses at start, not at the first burned runner. The refusal
+    carries the gate's own reason so the researcher reads why, not a
+    bare 409.
     """
     from .. import agentCouncilCredentialGate
     dictEnablement = (
         agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
-            "claude"))
+            "claude", sImageIdentity))
     if not dictEnablement["bEnabled"]:
         raise HTTPException(409, dictEnablement["sReason"])
 
@@ -346,6 +355,34 @@ def _ffnBuildImageResolver(dictCtx, sContainerId):
             "council runners")
 
     return _fsResolveRunnerImage
+
+
+def _ffnBuildCredentialStager(dictCtx, sContainerId):
+    """Build the closure that stages the runner's host credential copy.
+
+    Invoked in the launch worker thread by the controller's PRODUCTION
+    connection factory on the first connection build — a patched fake
+    seam never lands there, so no fake lane needs a persisted login.
+    Extraction reads the narrowest authenticating field from the login
+    the project container already persists (a file fetch, never a
+    container command) and materializes it as an ephemeral mode-600
+    host file; the workspace root goes through ``projectRoots``, never
+    a ``/workspace`` literal.
+    """
+    from .. import agentCouncilProviders
+    from .. import projectRoots
+
+    def _fsStageRunnerCredential():
+        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT)
+        dictCredential = agentCouncilProviders.fdictExtractRunnerCredential(
+            dictCtx["docker"], sContainerId,
+            agentCouncilProviders.fsComposeCredentialContainerPath(
+                sWorkspaceRoot))
+        return agentCouncilProviders.fsStageRunnerCredentialFile(
+            dictCredential["sAccessToken"])
+
+    return _fsStageRunnerCredential
 
 
 def _fnDrainCampaignWork(dictRegistry, sCampaignId):
@@ -559,7 +596,17 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
                     != jsonManifest.get("sBaselineHeadSha"))
     bTreeMoved = (dictObservation.get("sPorcelainDigest", "")
                   != jsonManifest.get("sBaselinePorcelainDigest"))
-    if not bCommitMoved and not bTreeMoved:
+    # The porcelain digest never hashes worktree bytes, so a dirty
+    # file whose CONTENT changed again moves only the per-path
+    # identity digest; compared whenever the manifest recorded one.
+    from .. import agentCouncilContext
+    sBaselineContentDigest = jsonManifest.get(
+        "sBaselinePathIdentitiesDigest")
+    bContentMoved = bool(sBaselineContentDigest) and (
+        agentCouncilContext.fsComputePathIdentitiesDigest(
+            dictObservation.get("dictPathIdentities") or {})
+        != sBaselineContentDigest)
+    if not bCommitMoved and not bTreeMoved and not bContentMoved:
         return {"bPlanningBaselineStale": False,
                 "sPlanningBaselineSummary": ""}
     listMoved = []
@@ -570,6 +617,8 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
             f"{dictObservation.get('sHeadSha') or '(none)'}")
     if bTreeMoved:
         listMoved.append("the working tree changed")
+    if bContentMoved and not bTreeMoved:
+        listMoved.append("file contents changed")
     return {"bPlanningBaselineStale": True,
             "sPlanningBaselineSummary": "; ".join(listMoved)}
 
@@ -621,7 +670,14 @@ def _fnRegisterStartCouncil(app, dictCtx):
         sCampaignId = dictCampaign["sCampaignId"]
 
         async def _fdictExecuteStart():
-            _fnRefuseRunnerBackendUnlessEnabled()
+            # The image resolves BEFORE the credential gate so the
+            # evidence record's image pin is always compared, and both
+            # run before the campaign registers — a refusal here leaves
+            # no record at all (the launch itself is transactional
+            # about the record it registers below).
+            sImageReference = await _ffnBuildImageResolver(
+                dictCtx, sContainerId)()
+            _fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
@@ -636,7 +692,9 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     _ffnBuildSnapshotCapture(
                         dictCtx, requestHttp, sContainerId,
                         sProjectRepoPath, sCampaignId, sName),
-                    _ffnBuildImageResolver(dictCtx, sContainerId)))
+                    sImageReference,
+                    fsStageRunnerCredential=_ffnBuildCredentialStager(
+                        dictCtx, sContainerId)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("campaignStarted", dictLaunched["sTurnId"]))

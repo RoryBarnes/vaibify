@@ -17,7 +17,13 @@ provider and backend, the CLI version the check ran, the project-image
 identity it ran in, the credential schema and source, the host
 platform, and the verification date. ANY mismatch — a missing record,
 an unreadable one, a missing key, a different image — evaluates to
-DISABLED with the mismatch named, never to a permissive default. Even
+DISABLED with the mismatch named, never to a permissive default. The
+image identity is the pin that does the runtime work: the START path
+resolves the project image first and always passes it, and because the
+CLI binary ships inside that image, pinning the image identity is what
+holds the CLI version fixed between live checks — the recorded
+``sCliVersion`` documents what was verified, while the image comparison
+enforces it (a CLI probe would itself need a runner turn). Even
 with a match, login PRESENCE is probed live at launch (the extraction
 raises without a persisted login), and the first turn's failure
 classification is the live usable-model probe: an unusable credential

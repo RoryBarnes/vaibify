@@ -569,12 +569,11 @@ def _fnRegisterReleaseContainer(app, dictCtx):
             sOutcome == sessionLifecycle.S_RELEASE_RELEASED
         ))
         if sOutcome == sessionLifecycle.S_RELEASE_RELEASED:
-            # No council deliberation may keep running against a
-            # project whose lease was just released (remediation R1):
-            # every live drive bound to this resource is asked to stop
-            # — cooperative for a real engine, so in-flight turns
-            # settle and their runners are destroyed by the
-            # connection's own completion path.
+            # A LIVE council drive refused the release inside the
+            # lifecycle authority's busy check, so what remains here
+            # are runtimes between turns: they are asked to stop so no
+            # council deliberation can relaunch against a project
+            # whose lease was just released (remediation R1).
             from vaibify.gui import agentCouncilController
             dictControllerState = getattr(
                 app.state,

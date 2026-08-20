@@ -568,6 +568,20 @@ def _fsReleaseBusyReason(appState, sName, bForce):
             f"Container '{sName}' has a guarded operation still "
             "running. It is retained until that operation settles."
         )
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if isinstance(dictCouncilControllerState, dict) and (
+        agentCouncilController.fbControllerHasLiveDriveForResource(
+            dictCouncilControllerState, sName,
+        )
+    ):
+        return (
+            f"Container '{sName}' has an Agent Council still "
+            "deliberating — paid provider work that no release should "
+            "silently abandon. Stop the council first, then release."
+        )
     if bForce:
         return ""
     recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)

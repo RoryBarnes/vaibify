@@ -364,6 +364,12 @@ def _fnRegisterCouncilLifecycle(app):
         if isinstance(dictControllerState, dict):
             agentCouncilController.fnDrainControllerOnShutdown(
                 dictControllerState)
+            # A bounded settle, never a proof: drives that miss the
+            # deadline are handed to the registry drain below, and the
+            # provisioned runner access (egress boundary, staged host
+            # credential) is released for every campaign either way.
+            await agentCouncilController.fnAwaitControllerSettleOnShutdown(
+                dictControllerState)
         await asyncio.to_thread(_fnDrainCouncilRunners, app)
 
     app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
