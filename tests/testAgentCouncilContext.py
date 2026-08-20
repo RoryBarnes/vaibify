@@ -74,6 +74,27 @@ def _fsBuildStatusOutput(sHeadSha=S_DEFAULT_HEAD_SHA, sPorcelainBody=""):
     )
 
 
+# git blob sha of b"alpha payload\n" -- sha1(b"blob 14\x00alpha payload\n").
+S_ALPHA_PAYLOAD_BLOB_SHA = "865bed5670d16db9134717fd4a5402c6f16e53ae"
+
+
+def _fdictBuildObservationAnswer(listRecords=()):
+    """Return an identity observation shaped like the typed read's answer.
+
+    ``listRecords`` holds ``(sType, sIdentity, sPath)`` tuples, exactly
+    the per-path records the ``gitWorktreeIdentities`` typed read
+    reports back through ``fdictFetchWorktreeIdentities``.
+    """
+    return {
+        "bSuccess": True,
+        "sReason": "",
+        "dictPathIdentities": {
+            sPath: {"sType": sType, "sIdentity": sIdentity}
+            for sType, sIdentity, sPath in listRecords
+        },
+    }
+
+
 class _FakeArchiveContainer:
     """Answers get_archive with canned chunks; records the path asked."""
 
@@ -87,16 +108,19 @@ class _FakeArchiveContainer:
 
 
 class _FakeCouncilConnection:
-    """Fail-closed double for the two git reads plus the archive pull.
+    """Fail-closed double for the git reads plus the archive pull.
 
-    ``listStatusOutputs`` is consumed one entry per status call, with
-    the LAST entry reused once exhausted -- so a single entry means
-    "the repository never changed" and two different entries model a
-    repository mutating mid-capture.
+    ``listStatusOutputs`` and ``listObservationAnswers`` are each
+    consumed one entry per call, with the LAST entry reused once
+    exhausted -- so a single entry means "the repository never
+    changed" and two different entries model a repository mutating
+    mid-capture. ``bObservationExecFails`` models the identity typed
+    read failing closed inside the container.
     """
 
     def __init__(
         self, baArchiveBytes=b"", listStatusOutputs=None,
+        listObservationAnswers=None, bObservationExecFails=False,
         sToplevelAnswer=S_REPO_ROOT, iterChunksOverride=None,
     ):
         iterChunks = (
@@ -108,10 +132,23 @@ class _FakeCouncilConnection:
         self._listStatusOutputs = list(
             listStatusOutputs or [_fsBuildStatusOutput()],
         )
+        self._listObservationAnswers = list(
+            listObservationAnswers or [_fdictBuildObservationAnswer()],
+        )
+        self._bObservationExecFails = bObservationExecFails
         self._sToplevelAnswer = sToplevelAnswer
 
     def fcontainerGetById(self, sContainerId):
         return self.containerFake
+
+    def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
+        if self._bObservationExecFails:
+            return {"bSuccess": False,
+                    "sReason": "identity program exploded",
+                    "dictPathIdentities": {}}
+        if len(self._listObservationAnswers) > 1:
+            return self._listObservationAnswers.pop(0)
+        return self._listObservationAnswers[0]
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if "rev-parse --show-toplevel" in sCommand:
@@ -205,11 +242,19 @@ def testCaptureWritesValidatedArchiveAndCompleteManifest(tmp_path):
     for sKey in (
         "sSchemaVersion", "sCampaignId", "sContainerId",
         "sProjectRepoPath", "sCaptureMethod", "sCoherenceMethod",
-        "sCommitSha", "sDirtyStateDigest", "sCaptureStartIso",
+        "sCommitSha", "sDirtyStateDigest", "sPreObservationDigest",
+        "sPostObservationDigest", "sCaptureStartIso",
         "sCaptureEndIso", "iIncludedMemberCount", "iTotalContentBytes",
         "sSnapshotSha256", "listIncludedEntries", "listOmissions",
     ):
         assert sKey in dictManifest, f"manifest is missing {sKey}"
+    assert dictManifest["sPreObservationDigest"] == (
+        dictManifest["sPostObservationDigest"]
+    ), "a sealed capture's two observation digests must agree"
+    assert len(dictManifest["sPreObservationDigest"]) == 64, (
+        "the manifest must record an observation DIGEST, never the "
+        "observation itself"
+    )
     assert dictManifest["iTotalContentBytes"] == len(
         b"alpha payload\n",
     ) + len(b"beta payload\n")
@@ -467,6 +512,206 @@ def testRepositoryChangeDuringStreamingRefusesAndCleansUp(tmp_path):
         errorInfo.value,
     )
     _fnAssertStoreIsEmpty(tmp_path)
+
+
+# ---------------------------------------------------------------------
+# R5 coherence: the pre/post observation and the archive match.
+# ---------------------------------------------------------------------
+
+
+def testGitBlobIdentityMatchesGitHashObject():
+    """The host-side blob identity is git's own, for a known string."""
+    assert agentCouncilContext._fsComputeGitBlobIdentity(
+        b"alpha payload\n",
+    ) == S_ALPHA_PAYLOAD_BLOB_SHA
+
+
+def testMidStreamContentChangeOfDirtyFileRefuses(tmp_path):
+    """The R5 defect case: porcelain state identical, content torn.
+
+    An already-dirty file's CONTENT changes mid-stream; its porcelain
+    state stays "dirty" so the old digest-only check sealed the tear.
+    """
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(
+                [("file", S_ALPHA_PAYLOAD_BLOB_SHA, "dataFile.txt")],
+            ),
+            _fdictBuildObservationAnswer(
+                [("file", "b" * 40, "dataFile.txt")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "content identity of 'dataFile.txt' changed" in str(
+        errorInfo.value,
+    )
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testChangeThenRevertIsCaughtByTheArchiveMatch(tmp_path):
+    """R5 proof (b1), deterministic: pre == post, archive holds B.
+
+    Both observations report the dirty file at the blob identity of
+    ``b"original bytes\\n"``, but the archive streamed
+    ``b"alpha payload\\n"`` -- the intermediate bytes of a
+    change-then-revert. Only the archive-to-observation match can see
+    this tear.
+    """
+    sOriginalBytesBlobSha = agentCouncilContext._fsComputeGitBlobIdentity(
+        b"original bytes\n",
+    )
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(
+                [("file", sOriginalBytesBlobSha, "dataFile.txt")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "change-then-revert" in str(errorInfo.value)
+    assert "'dataFile.txt'" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testMidStreamTypeSwapToSymlinkRefuses(tmp_path):
+    """A file observed pre-capture returns as a symlink post-capture."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(
+                [("file", S_ALPHA_PAYLOAD_BLOB_SHA, "dataFile.txt")],
+            ),
+            _fdictBuildObservationAnswer(
+                [("symlink", "analysis/results.txt", "dataFile.txt")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "changed type from file to symlink" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testMidStreamSymlinkTargetTearInTheArchiveRefuses(tmp_path):
+    """The archive's symlink target must match the pre-observation."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(
+                [("symlink", "analysis/results.txt", "linkToData")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "symlink target of 'linkToData' in the archive" in str(
+        errorInfo.value,
+    )
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testMidStreamPathSetChangeRefuses(tmp_path):
+    """An untracked file appearing mid-stream tears the path set."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(),
+            _fdictBuildObservationAnswer(
+                [("file", "c" * 40, "appearedMidStream.txt")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "changed-path set differs" in str(errorInfo.value)
+    assert "'appearedMidStream.txt'" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testObservedPathAbsentFromTheArchiveRefuses(tmp_path):
+    """A path observed as present must have an archive member."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(),
+        listObservationAnswers=[
+            _fdictBuildObservationAnswer(
+                [("file", "d" * 40, "vanishedBeforeSerialize.txt")],
+            ),
+        ],
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "absent from the archive" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testObservationFailureRefusesRatherThanWeakening(tmp_path):
+    """A failed identity read refuses; it never passes as 'no changes'."""
+    connection = _FakeCouncilConnection(
+        _fbaBuildRepresentativeArchive(), bObservationExecFails=True,
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(connection, tmp_path)
+    assert "identity observation failed" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testExcludedPathChurnDoesNotRefuseTheCapture(tmp_path):
+    """The recorded scope decision: excluded-tree churn is not a tear.
+
+    A credential file under an excluded component changes content
+    mid-stream. The snapshot does not carry those bytes, so the
+    capture SEALS -- the observation is limited to included paths.
+    """
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(
+            _fbaBuildRepresentativeArchive(),
+            listObservationAnswers=[
+                _fdictBuildObservationAnswer(
+                    [("file", "e" * 40, ".claude/credentials.json")],
+                ),
+                _fdictBuildObservationAnswer(
+                    [("file", "f" * 40, ".claude/credentials.json")],
+                ),
+            ],
+        ),
+        tmp_path,
+    )
+    assert dictManifest["sPreObservationDigest"] == (
+        dictManifest["sPostObservationDigest"]
+    )
+
+
+def testCommitMoveNamesTheTornProperty():
+    """The refusal message names WHICH property tore: the commit."""
+    dictIdentityBefore = {
+        "sCommitSha": "a" * 40, "sDirtyStateDigest": "same",
+        "dictPathIdentities": {},
+    }
+    dictIdentityAfter = dict(dictIdentityBefore, sCommitSha="b" * 40)
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        agentCouncilContext._fnRefuseIncoherentCapture(
+            dictIdentityBefore, dictIdentityAfter,
+        )
+    assert "HEAD commit moved" in str(errorInfo.value)
+
+
+def testPorcelainDigestTearNamesTheTornProperty():
+    """The refusal message names the porcelain digest when it tears."""
+    dictIdentityBefore = {
+        "sCommitSha": "a" * 40, "sDirtyStateDigest": "one",
+        "dictPathIdentities": {},
+    }
+    dictIdentityAfter = dict(dictIdentityBefore, sDirtyStateDigest="two")
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        agentCouncilContext._fnRefuseIncoherentCapture(
+            dictIdentityBefore, dictIdentityAfter,
+        )
+    assert "porcelain working-tree state digest" in str(errorInfo.value)
 
 
 def testExistingSnapshotIsRefusedAndPreserved(tmp_path):

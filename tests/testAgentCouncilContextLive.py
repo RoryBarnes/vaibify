@@ -6,6 +6,13 @@ produce a coherent snapshot with root validation, member validation,
 exclusions and limits applied, clean up an injected mid-stream
 failure, and mutate NOTHING in the container.
 
+The R5 legs below additionally mutate the repository DURING streaming
+-- by wrapping ``get_archive`` so the first yielded chunk triggers an
+exec inside the container -- and assert that every tear the porcelain
+digest alone cannot see (dirty-content change, change-then-revert,
+rename, symlink swap) is refused with the torn property named and no
+partial snapshot left behind.
+
 The fixture builds a throwaway alpine container, installs git and bash
 (the exec path assumes bash, and the git identity read needs git),
 creates the unprivileged ``researcher`` user the exec path defaults
@@ -14,7 +21,9 @@ Package installation needs network; when it is unavailable the run
 skips with the reason stated, exactly as the daemon guard does.
 """
 
+import re
 import secrets
+import threading
 
 import pytest
 
@@ -68,7 +77,7 @@ def tLiveProjectContainer():
     )
     try:
         iExitCode, _ = container.exec_run(
-            ["/bin/sh", "-c", "apk add --no-cache git bash"],
+            ["/bin/sh", "-c", "apk add --no-cache git bash python3"],
         )
         if iExitCode != 0:
             pytest.skip(
@@ -211,3 +220,265 @@ def test_live_injected_stream_failure_cleans_up_and_mutates_nothing(
         "the injected failure left a partial snapshot behind"
     )
     assert _fsReadContainerContentDigest(sContainerId) == sDigestBefore
+
+
+# ---------------------------------------------------------------------
+# R5: the repository is mutated DURING streaming; every tear refuses.
+# ---------------------------------------------------------------------
+
+
+def _fnRunInContainerAsResearcher(containerReal, sScript):
+    """Run one bash script in the fixture container as the repo owner."""
+    iExitCode, baOutput = containerReal.exec_run(
+        ["/bin/bash", "-c", sScript], user="researcher",
+    )
+    assert iExitCode == 0, baOutput
+
+
+class _MidStreamMutatingContainerProxy:
+    """Delegates everything; runs one mutation after the FIRST chunk.
+
+    The small chunk size keeps the daemon's tar stream multi-chunk so
+    the mutation genuinely lands mid-transfer.
+    """
+
+    def __init__(self, containerReal, sMutationScript):
+        self._containerReal = containerReal
+        self._sMutationScript = sMutationScript
+
+    def get_archive(self, sPath):
+        iterReal, dictStat = self._containerReal.get_archive(
+            sPath, chunk_size=65536,
+        )
+        containerReal = self._containerReal
+        sMutationScript = self._sMutationScript
+
+        def _fiterMutatingChunks():
+            bMutationDone = False
+            for baChunk in iterReal:
+                yield baChunk
+                if not bMutationDone:
+                    bMutationDone = True
+                    _fnRunInContainerAsResearcher(
+                        containerReal, sMutationScript,
+                    )
+
+        return (_fiterMutatingChunks(), dictStat)
+
+    def __getattr__(self, sAttributeName):
+        return getattr(self._containerReal, sAttributeName)
+
+
+def _fnAssertMidStreamMutationRefuses(
+    tLiveProjectContainer, tmp_path, sPreparationScript, sMutationScript,
+    sExpectedPattern,
+):
+    """Drive one capture with a mid-stream mutation; assert the refusal."""
+    from vaibify.gui.agentCouncilContext import (
+        SnapshotRefusedError,
+        fdictCaptureProjectContextSnapshot,
+    )
+
+    sName, sContainerId, connection = tLiveProjectContainer
+    assert sName != sContainerId, (
+        "the fixture must exercise a container whose name differs from "
+        "its id"
+    )
+    containerReal = connection.fcontainerGetById(sContainerId)
+    if sPreparationScript:
+        _fnRunInContainerAsResearcher(containerReal, sPreparationScript)
+    connection.fcontainerGetById = (
+        lambda sRequestedId: _MidStreamMutatingContainerProxy(
+            containerReal, sMutationScript,
+        )
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        fdictCaptureProjectContextSnapshot(
+            connection, sContainerId, S_REPO_ROOT, "torn-campaign",
+            sSnapshotStoreRoot=str(tmp_path),
+        )
+    assert re.search(sExpectedPattern, str(errorInfo.value)), (
+        f"the refusal did not name the torn property: {errorInfo.value}"
+    )
+    assert list(tmp_path.iterdir()) == [], (
+        "the refused capture left a partial snapshot behind"
+    )
+
+
+def test_live_midstream_content_change_of_dirty_file_refuses(
+    tLiveProjectContainer, tmp_path,
+):
+    """R5 proof (a): an already-dirty file's CONTENT changes mid-stream.
+
+    The porcelain state stays 'dirty' before and after, so only the
+    per-path content identity can see this tear.
+    """
+    _fnAssertMidStreamMutationRefuses(
+        tLiveProjectContainer, tmp_path,
+        "cd /home/researcher/sampleRepo && "
+        "printf 'dirty version one\\n' > dataFile.txt",
+        "cd /home/researcher/sampleRepo && "
+        "printf 'dirty version two\\n' > dataFile.txt",
+        r"content identity of 'dataFile\.txt' changed",
+    )
+
+
+def test_live_midstream_rename_of_tracked_file_refuses(
+    tLiveProjectContainer, tmp_path,
+):
+    """R5 proof (c): a tracked file is renamed mid-stream.
+
+    The rename flips the porcelain map (a deletion plus an untracked
+    appearance), so the state-digest half of the observation names it.
+    """
+    _fnAssertMidStreamMutationRefuses(
+        tLiveProjectContainer, tmp_path,
+        "",
+        "cd /home/researcher/sampleRepo && "
+        "mv dataFile.txt dataFileMoved.txt",
+        r"porcelain working-tree state digest",
+    )
+
+
+def test_live_midstream_symlink_swap_refuses(
+    tLiveProjectContainer, tmp_path,
+):
+    """R5 proof (d): an untracked regular file becomes a symlink.
+
+    The porcelain state stays 'untracked' either way, so only the
+    observed TYPE of the path can see this tear.
+    """
+    _fnAssertMidStreamMutationRefuses(
+        tLiveProjectContainer, tmp_path,
+        "",
+        "cd /home/researcher/sampleRepo && "
+        "rm scratch.txt && ln -s dataFile.txt scratch.txt",
+        r"path 'scratch\.txt' changed type from file to symlink",
+    )
+
+
+BA_MUTATION_MARKER = b"COUNCIL_MUTATION_MARKER_BYTES_01"
+
+
+class _ChangeThenRevertContainerProxy:
+    """Change the dirty file to B mid-stream; revert to A only if B is
+    in the streamed bytes.
+
+    The daemon decides how much of the file it serialized before our
+    first chunk arrived, so a fixed script cannot make the outcome
+    deterministic. This proxy makes it deterministic by LOOKING: after
+    the last chunk it searches the accumulated stream for B's marker.
+    Marker present (B or torn content was captured) -> revert to A, so
+    pre == post == A and the ARCHIVE-match refusal must fire. Marker
+    absent (pure A was captured) -> leave B in place, so post != pre
+    and the CONTENT-identity refusal must fire. Every daemon buffering
+    behaviour therefore ends in a refusal.
+
+    The mutation runs on a THREAD, and that is load-bearing, not
+    tidiness: the daemon does not service an exec on a container whose
+    archive stream is still draining (verified live on Docker 28.4.0 /
+    colima — an inline exec after the first chunk of this 8 MiB stream
+    deadlocked until the 600 s client timeout, while the small-repo
+    mutation tests passed only because their whole tar fit in the
+    socket buffers and the archive handler had already finished). The
+    generator therefore keeps consuming chunks while the mutation exec
+    waits its turn daemon-side, and joins the thread before the revert
+    decision so the pre/post reads always see the mutation landed.
+    """
+
+    def __init__(self, containerReal):
+        self._containerReal = containerReal
+
+    def get_archive(self, sPath):
+        iterReal, dictStat = self._containerReal.get_archive(
+            sPath, chunk_size=65536,
+        )
+        containerReal = self._containerReal
+
+        def _fiterAdaptiveChunks():
+            listStreamedChunks = []
+            threadMutate = None
+            for baChunk in iterReal:
+                yield baChunk
+                listStreamedChunks.append(baChunk)
+                if threadMutate is None:
+                    threadMutate = threading.Thread(
+                        target=_fnRunInContainerAsResearcher,
+                        args=(containerReal,
+                              "cp /home/researcher/bytesVersionB.bin "
+                              "/home/researcher/sampleRepo/bigFile.bin"))
+                    threadMutate.start()
+            assert threadMutate is not None, "the stream yielded no chunks"
+            threadMutate.join(timeout=120)
+            assert not threadMutate.is_alive(), (
+                "the mid-stream mutation exec never completed")
+            if BA_MUTATION_MARKER in b"".join(listStreamedChunks):
+                _fnRunInContainerAsResearcher(
+                    containerReal,
+                    "cp /home/researcher/bytesVersionA.bin "
+                    "/home/researcher/sampleRepo/bigFile.bin",
+                )
+
+        return (_fiterAdaptiveChunks(), dictStat)
+
+    def __getattr__(self, sAttributeName):
+        return getattr(self._containerReal, sAttributeName)
+
+
+S_BUILD_CHANGE_THEN_REVERT_FIXTURE = """
+set -e
+cd /home/researcher/sampleRepo
+printf 'seed\\n' > bigFile.bin
+git add bigFile.bin
+git commit -q -m 'add the large tracked file'
+head -c 8388608 /dev/zero | tr '\\0' 'a' > /home/researcher/bytesVersionA.bin
+cp /home/researcher/bytesVersionA.bin /home/researcher/bytesVersionB.bin
+printf 'COUNCIL_MUTATION_MARKER_BYTES_01' | dd \
+of=/home/researcher/bytesVersionB.bin bs=1 seek=4194304 conv=notrunc \
+2>/dev/null
+cp /home/researcher/bytesVersionA.bin bigFile.bin
+"""
+
+
+def test_live_change_then_revert_refuses_deterministically(
+    tLiveProjectContainer, tmp_path,
+):
+    """R5 proof (b2): change-then-revert around an 8 MiB dirty file.
+
+    Construction used (stated per the spec): the tracked file is dirty
+    at bytes-A before capture; between the first and second 64 KiB
+    chunks it is changed to bytes-B (same size, one marker region
+    differing); after the last chunk the proxy reverts to A ONLY when
+    B's marker appears in the streamed bytes (see
+    ``_ChangeThenRevertContainerProxy`` -- the adaptive revert is what
+    makes SOME refusal deterministic under any daemon buffering).
+    Either refusal message is accepted; both name the file and its
+    content identity.
+    """
+    from vaibify.gui.agentCouncilContext import (
+        SnapshotRefusedError,
+        fdictCaptureProjectContextSnapshot,
+    )
+
+    sName, sContainerId, connection = tLiveProjectContainer
+    assert sName != sContainerId
+    containerReal = connection.fcontainerGetById(sContainerId)
+    _fnRunInContainerAsResearcher(
+        containerReal, S_BUILD_CHANGE_THEN_REVERT_FIXTURE,
+    )
+    connection.fcontainerGetById = (
+        lambda sRequestedId: _ChangeThenRevertContainerProxy(containerReal)
+    )
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        fdictCaptureProjectContextSnapshot(
+            connection, sContainerId, S_REPO_ROOT, "revert-campaign",
+            sSnapshotStoreRoot=str(tmp_path),
+        )
+    assert re.search(
+        r"content identity of 'bigFile\.bin'", str(errorInfo.value),
+    ), (
+        f"the refusal did not name the reverted file: {errorInfo.value}"
+    )
+    assert list(tmp_path.iterdir()) == [], (
+        "the refused capture left a partial snapshot behind"
+    )

@@ -4067,6 +4067,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # undelivered, and the branch lives inside the mint so no caller
     # can forget it.
     "containerOwnership.py": 907,
+    # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
+    # crossed the cap when the coherence check became a real algorithm —
+    # two independent pre/post per-path observations plus archive-member
+    # matching by git blob identity. Capture and coherence are ONE
+    # responsibility: the coherence refusal is what makes a sealed
+    # snapshot a snapshot, and a separate "coherence module" would split
+    # the refusal from the stream it judges, inviting the drift the
+    # check exists to catch.
+    "agentCouncilContext.py": 847,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

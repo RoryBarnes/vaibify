@@ -24,15 +24,42 @@ API already backs :meth:`DockerConnection.fiterStreamFile`. This module
 is the single home of the repository-scale use of it; the unit suite
 pins that no third module grows a ``get_archive`` call site.
 
-**Coherence caveat (honest, not assumed).** Section 9.2 wants the
-capture under a bounded project lock. That lock is Phase 3 route
-wiring (a mode-b lock-held carrier around this call); this module
-does not fake one. Instead it reads the repository identity (commit
-plus a digest of the porcelain working-tree state) immediately before
-and immediately after streaming, and REFUSES the capture when the two
-disagree. A torn capture is therefore detected, never silently sealed;
-the manifest records the method so the caveat travels with the
-snapshot.
+**Coherence algorithm (R5; the lock stays the controller's job).**
+Section 9.2 wants the capture under a bounded project lock. That lock
+is controller integration wiring (R1b: a mode-b lock-held carrier
+around this call); this module does not fake one. What it does
+instead: immediately before and immediately after streaming it takes
+an independent observation OUTSIDE the archive stream -- the HEAD
+commit, a digest of the porcelain file-state map, and, for every
+changed path (tracked-with-any-porcelain-state plus
+untracked-not-ignored), the path's type and a content identity -- the
+git blob sha computed in the container over the raw worktree bytes
+(byte-identical to ``git hash-object --no-filters``), through the
+declared ``gitWorktreeIdentities`` typed read rather than a general
+container command; a symlink records its readlink target instead,
+because hashing reads THROUGH a link. The capture REFUSES,
+naming the torn property, unless the two observations are exactly
+equal -- and additionally refuses unless every observed changed
+path's archive member carries the same git blob identity (recomputed
+host-side over the archived bytes) or symlink target as the
+PRE-observation. The archive match is what catches a
+change-then-revert: pre equals post, but the archive holds the
+intermediate bytes. Clean tracked files are pinned by the commit sha
+-- a mid-stream edit to one makes it dirty and fails the porcelain
+comparison. A torn capture is therefore detected, never silently
+sealed; the manifest records the method and both observation digests
+(digests only, never observation content) so the guarantee travels
+with the snapshot.
+
+**Observation scope (decision, recorded).** The per-path content
+observation is limited to paths the snapshot INCLUDES: a path under a
+policy-excluded component is dropped from the observation set, so
+churn inside an excluded tree -- an agent config store rewriting
+itself mid-capture -- cannot spuriously refuse a capture of content
+the snapshot does not carry (git never reports ``.git`` internals in
+the first place). The porcelain-state digest deliberately keeps its
+full working-tree width, so a rename, add, delete, or type change
+among tracked files still refuses even under an excluded parent.
 
 **Symlink policy (reviewed, recorded).** A symbolic link whose target
 stays inside the project root is captured as a symlink. A link whose
@@ -150,8 +177,12 @@ _DICT_REFUSED_MEMBER_TYPE_NAMES = {
 _S_CAMPAIGN_IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
 
 _S_COHERENCE_METHOD = (
-    "repository identity (commit + dirty-state digest) compared before "
-    "and after streaming; the bounded project lock is Phase 3 wiring"
+    "two independent pre/post observations outside the archive stream "
+    "(HEAD commit + porcelain state digest + per-path git content "
+    "identities and symlink targets of every non-excluded changed "
+    "path) compared exactly, plus every observed changed path's "
+    "archive member matched to the pre-observation by git blob "
+    "identity; the bounded project lock is controller (R1b) wiring"
 )
 
 
@@ -200,13 +231,15 @@ def fdictCaptureProjectContextSnapshot(
             connectionDocker, sContainerId, sRepoRoot,
         )
         _fnRefuseIncoherentCapture(dictIdentityBefore, dictIdentityAfter)
+        _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture)
         sArchivePath = os.path.join(
             sSnapshotDirectory, S_SNAPSHOT_ARCHIVE_BASENAME,
         )
         os.replace(sArchivePath + _S_PARTIAL_SUFFIX, sArchivePath)
         return _fdictWriteSnapshotManifest(
             sSnapshotDirectory, sContainerId, sRepoRoot, sCampaignId,
-            dictIdentityBefore, sCaptureStartIso, dictCapture,
+            dictIdentityBefore, dictIdentityAfter, sCaptureStartIso,
+            dictCapture,
         )
     except BaseException:
         _fnRemovePartialSnapshot(sSnapshotDirectory)
@@ -270,12 +303,14 @@ def _fsValidateProjectRepositoryRoot(
 
 
 def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
-    """Return the commit and dirty-state digest via the git authority.
+    """Return one full repository observation via the git authority.
 
-    The dirty digest hashes the porcelain file-state map, so an edit,
-    an add, or a delete anywhere in the working tree changes it. No
-    remote URL is read or recorded: a remote URL can embed a
-    credential, and nothing secret may enter the manifest.
+    Carries the HEAD commit, a digest of the porcelain file-state map
+    (an edit, add, or delete anywhere in the working tree changes it),
+    and the per-path type/content identities of every changed path the
+    snapshot would include (see the module docstring's observation
+    scope). No remote URL is read or recorded: a remote URL can embed
+    a credential, and nothing secret may enter the manifest.
     """
     dictGitStatus = containerGit.fdictGitStatusInContainer(
         connectionDocker, sContainerId, sWorkspace=sRepoRoot,
@@ -292,9 +327,26 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
             dictGitStatus.get("dictFileStates") or {}, sort_keys=True,
         ).encode("utf-8"),
     ).hexdigest()
+    dictObservation = connectionDocker.fdictFetchWorktreeIdentities(
+        sContainerId, sRepoRoot,
+    )
+    if not dictObservation.get("bSuccess"):
+        raise SnapshotRefusedError(
+            "The per-path identity observation failed "
+            f"({dictObservation.get('sReason') or 'no detail'}); a "
+            "capture whose coherence cannot be established is refused."
+        )
+    dictPathIdentities = {
+        sPath: dictPathIdentity
+        for sPath, dictPathIdentity in sorted(
+            dictObservation["dictPathIdentities"].items(),
+        )
+        if _ftFindExcludedComponent(sPath) is None
+    }
     return {
         "sCommitSha": dictGitStatus.get("sHeadSha") or "",
         "sDirtyStateDigest": sDirtyStateDigest,
+        "dictPathIdentities": dictPathIdentities,
     }
 
 
@@ -532,6 +584,7 @@ def _fdictCopyFileMember(
         "sType": "file",
         "iSizeBytes": len(baContent),
         "sSha256": hashlib.sha256(baContent).hexdigest(),
+        "sGitBlobSha": _fsComputeGitBlobIdentity(baContent),
     }
 
 
@@ -571,17 +624,134 @@ def _fnCloseArchiveStream(iterTarStream):
 
 
 def _fnRefuseIncoherentCapture(dictIdentityBefore, dictIdentityAfter):
-    """Refuse a capture the repository changed underneath."""
-    if dictIdentityBefore == dictIdentityAfter:
+    """Refuse a capture the repository changed underneath, naming the tear."""
+    sTornProperty = _fsFindTornIdentityProperty(
+        dictIdentityBefore, dictIdentityAfter,
+    )
+    if sTornProperty is None:
         return
     raise SnapshotRefusedError(
         "The project repository changed while the snapshot was "
-        "streaming (the commit or working-tree state differs between "
-        "the pre- and post-capture reads); the partial capture is "
+        f"streaming: {sTornProperty}. The partial capture is "
         "discarded. Re-run the capture when the project is quiet -- "
         "the bounded project lock that will serialize capture against "
-        "pipeline work is Phase 3 wiring."
+        "pipeline work is controller (R1b) wiring."
     )
+
+
+def _fsFindTornIdentityProperty(dictIdentityBefore, dictIdentityAfter):
+    """Name the first pre/post observation property that differs, or None."""
+    if dictIdentityBefore["sCommitSha"] != dictIdentityAfter["sCommitSha"]:
+        return (
+            "the HEAD commit moved from "
+            f"{dictIdentityBefore['sCommitSha'] or '(none)'} to "
+            f"{dictIdentityAfter['sCommitSha'] or '(none)'}"
+        )
+    if (
+        dictIdentityBefore["sDirtyStateDigest"]
+        != dictIdentityAfter["sDirtyStateDigest"]
+    ):
+        return "the porcelain working-tree state digest differs"
+    dictPathsBefore = dictIdentityBefore["dictPathIdentities"]
+    dictPathsAfter = dictIdentityAfter["dictPathIdentities"]
+    if set(dictPathsBefore) != set(dictPathsAfter):
+        listTornPaths = sorted(set(dictPathsBefore) ^ set(dictPathsAfter))
+        return (
+            "the changed-path set differs "
+            f"({', '.join(repr(sPath) for sPath in listTornPaths[:3])})"
+        )
+    for sPath in sorted(dictPathsBefore):
+        dictBefore = dictPathsBefore[sPath]
+        dictAfter = dictPathsAfter[sPath]
+        if dictBefore["sType"] != dictAfter["sType"]:
+            return (
+                f"path {sPath!r} changed type from "
+                f"{dictBefore['sType']} to {dictAfter['sType']}"
+            )
+        if dictBefore["sIdentity"] != dictAfter["sIdentity"]:
+            if dictBefore["sType"] == "symlink":
+                return f"the symlink target of {sPath!r} changed"
+            return f"the content identity of {sPath!r} changed"
+    return None
+
+
+def _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture):
+    """Refuse when the archive disagrees with the pre-capture observation.
+
+    Ties what the archive CONTAINS to an identity observed outside the
+    stream, which is what catches a change-then-revert: pre equals
+    post, but the archive holds the intermediate bytes. Only observed
+    changed paths are matched; clean tracked files are pinned by the
+    commit sha instead (a mid-stream edit makes one dirty and fails
+    the pre/post porcelain comparison).
+    """
+    dictEntriesByPath = {
+        dictEntry["sPath"]: dictEntry
+        for dictEntry in dictCapture["listIncludedEntries"]
+    }
+    for sPath, dictObserved in sorted(
+        dictIdentityBefore["dictPathIdentities"].items(),
+    ):
+        if dictObserved["sType"] == "missing":
+            continue
+        sMismatch = _fsDescribeArchiveEntryMismatch(
+            sPath, dictObserved, dictEntriesByPath.get(sPath),
+        )
+        if sMismatch is not None:
+            raise SnapshotRefusedError(
+                "The snapshot archive disagrees with the pre-capture "
+                f"observation: {sMismatch}. The repository changed "
+                "while the daemon was serializing it; the partial "
+                "capture is discarded."
+            )
+
+
+def _fsDescribeArchiveEntryMismatch(sPath, dictObserved, dictEntry):
+    """Return prose for one archive-versus-observation tear, or None."""
+    if dictEntry is None:
+        return f"observed path {sPath!r} is absent from the archive"
+    if dictObserved["sIdentity"] == "unreadable":
+        return f"path {sPath!r} could not be content-identified by git"
+    if dictObserved["sType"] != dictEntry["sType"]:
+        return (
+            f"path {sPath!r} was observed as a {dictObserved['sType']} "
+            f"but the archive holds a {dictEntry['sType']}"
+        )
+    if dictObserved["sType"] == "file" and (
+        dictEntry.get("sGitBlobSha") != dictObserved["sIdentity"]
+    ):
+        return (
+            f"the archive's content identity of {sPath!r} does not "
+            "match the pre-capture observation (the archive holds "
+            "intermediate bytes -- a change-then-revert)"
+        )
+    if dictObserved["sType"] == "symlink" and (
+        dictEntry.get("sLinkTarget") != dictObserved["sIdentity"]
+    ):
+        return (
+            f"the symlink target of {sPath!r} in the archive does not "
+            "match the pre-capture observation"
+        )
+    return None
+
+
+def _fsComputeGitBlobIdentity(baContent):
+    """Return git's blob sha1 for raw bytes (hash-object --no-filters)."""
+    baHeader = b"blob " + str(len(baContent)).encode("ascii") + b"\x00"
+    return hashlib.sha1(baHeader + baContent).hexdigest()
+
+
+def _fsComputeObservationDigest(dictIdentity):
+    """Return the sha256 the manifest records for one observation.
+
+    The manifest carries only this digest -- never the observation's
+    path list, blob identities, or symlink targets -- so nothing about
+    the repository's contents enters the manifest beyond what the
+    included entries already state.
+    """
+    return hashlib.sha256(
+        json.dumps(dictIdentity, sort_keys=True).encode("utf-8"),
+    ).hexdigest()
 
 
 def _fsComputeSnapshotContentHash(listIncludedEntries):
@@ -608,7 +778,7 @@ def _fsComputeSnapshotContentHash(listIncludedEntries):
 
 def _fdictWriteSnapshotManifest(
     sSnapshotDirectory, sContainerId, sRepoRoot, sCampaignId,
-    dictIdentity, sCaptureStartIso, dictCapture,
+    dictIdentityBefore, dictIdentityAfter, sCaptureStartIso, dictCapture,
 ):
     """Compose and write the manifest; return it as the capture record."""
     listOmissions = [
@@ -624,8 +794,14 @@ def _fdictWriteSnapshotManifest(
         "sProjectRepoPath": sRepoRoot,
         "sCaptureMethod": "docker get_archive (daemon API read)",
         "sCoherenceMethod": _S_COHERENCE_METHOD,
-        "sCommitSha": dictIdentity["sCommitSha"],
-        "sDirtyStateDigest": dictIdentity["sDirtyStateDigest"],
+        "sCommitSha": dictIdentityBefore["sCommitSha"],
+        "sDirtyStateDigest": dictIdentityBefore["sDirtyStateDigest"],
+        "sPreObservationDigest": _fsComputeObservationDigest(
+            dictIdentityBefore,
+        ),
+        "sPostObservationDigest": _fsComputeObservationDigest(
+            dictIdentityAfter,
+        ),
         "sCaptureStartIso": sCaptureStartIso,
         "sCaptureEndIso": datetime.now(timezone.utc).isoformat(),
         "iIncludedMemberCount": dictCapture["iIncludedMemberCount"],

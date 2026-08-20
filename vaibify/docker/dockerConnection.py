@@ -263,6 +263,7 @@ S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
+S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -449,6 +450,80 @@ _DICT_TYPED_READ_PROGRAMS = {
         "            dictStatus[sField]=''\n"
         "    listStatuses.append(dictStatus)\n"
         "sys.stdout.write(json.dumps(listStatuses))\n"
+    ),
+    # The council snapshot's coherence observation (remediation R5):
+    # the type and content identity of every changed worktree path —
+    # tracked-with-any-difference plus untracked-not-ignored — read
+    # immediately before and immediately after the archive streams, so
+    # a capture the repository moved under is refused rather than
+    # sealed. Git enumerates (it is the only honest way to ask git
+    # what changed); the blob identity is then computed HERE over the
+    # raw worktree bytes — sha1 over ``blob <size>\\0`` + content,
+    # byte-identical to ``git hash-object --no-filters`` — so no
+    # clean-filter rewriting can make two different byte states report
+    # one identity. A symlink records its readlink target instead,
+    # because hashing reads THROUGH a link. Fail-CLOSED: any
+    # enumeration fault answers ``bSuccess`` False, never an empty
+    # observation masquerading as a quiet repository. An unborn HEAD
+    # skips the two diff enumerations (everything is untracked then);
+    # a path that vanishes between enumeration and stat reports as
+    # ``missing``, which the caller treats as a tear, not a skip.
+    S_TYPED_READ_GIT_WORKTREE_IDENTITIES: (
+        "import hashlib,json,os,subprocess,sys\n"
+        "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "def fnFail(sReason):\n"
+        "    sys.stdout.write(json.dumps({'bSuccess':False,"
+        "'sReason':sReason,'dictPathIdentities':{}}))\n"
+        "    sys.exit(0)\n"
+        "def fprocessRunGit(listArguments):\n"
+        "    return subprocess.run(\n"
+        "        ['git','-c','core.fsmonitor=false','-C',sRepo]\n"
+        "        +listArguments,\n"
+        "        capture_output=True,text=True,timeout=60)\n"
+        "dictIdentities={}\n"
+        "try:\n"
+        "    if fprocessRunGit(\n"
+        "            ['rev-parse','--is-inside-work-tree']).returncode!=0:\n"
+        "        fnFail('not a git work tree')\n"
+        "    bHasHead=fprocessRunGit(\n"
+        "        ['rev-parse','--verify','HEAD']).returncode==0\n"
+        "    listEnumerations=[\n"
+        "        ['ls-files','--others','--exclude-standard','-z']]\n"
+        "    if bHasHead:\n"
+        "        listEnumerations+=[\n"
+        "            ['diff','--name-only','-z','HEAD'],\n"
+        "            ['diff','--name-only','-z','--cached']]\n"
+        "    setChanged=set()\n"
+        "    for listArguments in listEnumerations:\n"
+        "        processGit=fprocessRunGit(listArguments)\n"
+        "        if processGit.returncode!=0:\n"
+        "            fnFail('enumeration failed: '+' '.join(listArguments))\n"
+        "        setChanged.update(\n"
+        "            sPath for sPath in processGit.stdout.split(chr(0))\n"
+        "            if sPath)\n"
+        "    for sRelative in sorted(setChanged):\n"
+        "        sAbsolute=os.path.join(sRepo,sRelative)\n"
+        "        if os.path.islink(sAbsolute):\n"
+        "            dictIdentities[sRelative]={'sType':'symlink',\n"
+        "                'sIdentity':os.readlink(sAbsolute)}\n"
+        "        elif os.path.isfile(sAbsolute):\n"
+        "            hashBlob=hashlib.sha1()\n"
+        "            hashBlob.update(('blob '\n"
+        "                +str(os.path.getsize(sAbsolute))\n"
+        "                +chr(0)).encode())\n"
+        "            with open(sAbsolute,'rb') as fileIn:\n"
+        "                for baChunk in iter(\n"
+        "                        lambda: fileIn.read(65536), b''):\n"
+        "                    hashBlob.update(baChunk)\n"
+        "            dictIdentities[sRelative]={'sType':'file',\n"
+        "                'sIdentity':hashBlob.hexdigest()}\n"
+        "        else:\n"
+        "            dictIdentities[sRelative]={'sType':'missing',\n"
+        "                'sIdentity':''}\n"
+        "except Exception as error:\n"
+        "    fnFail(type(error).__name__+': '+str(error))\n"
+        "sys.stdout.write(json.dumps({'bSuccess':True,'sReason':'',\n"
+        "    'dictPathIdentities':dictIdentities}))\n"
     ),
 }
 
@@ -1065,6 +1140,37 @@ class DockerConnection:
         except ValueError as errorParse:
             raise OSError(
                 "The repository status read answered unparseable "
+                f"output: {errorParse}"
+            )
+
+    def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
+        """Return the changed-path identity observation for one repo.
+
+        The council snapshot's coherence read (remediation R5): the
+        declared ``gitWorktreeIdentities`` program enumerates every
+        changed worktree path and computes each one's content identity
+        in the container, over the raw bytes. The command is not built
+        here — this names a declared read operation and
+        :meth:`_ftRunTypedRead` builds it, so the repository path
+        cannot become program or shell syntax. Returns the program's
+        ``{"bSuccess", "sReason", "dictPathIdentities"}`` answer;
+        callers must treat ``bSuccess`` False as a refusal to observe,
+        never as a quiet repository. A failed READ raises ``OSError``,
+        and so does an unparseable answer.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_GIT_WORKTREE_IDENTITIES, sRepoPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot observe worktree identities in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "{}")
+        except ValueError as errorParse:
+            raise OSError(
+                "The worktree identity read answered unparseable "
                 f"output: {errorParse}"
             )
 
