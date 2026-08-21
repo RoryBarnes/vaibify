@@ -69,6 +69,8 @@ dictResult = {
     "listAssumptions": [], "listEvidence": [], "listMathematicalClaims": [],
     "listArchitectureClaims": [], "listSecurityRisks": [],
     "listCounterexamplesAttempted": [], "listPlanItems": [],
+    "listRejectedAlternatives": [], "listVerificationRequirements": [],
+    "listStopConditions": [],
     "listOpenQuestions": [], "listBlockingObjections": [],
 }
 print(json.dumps({"type": "result", "subtype": "success", "is_error": False,

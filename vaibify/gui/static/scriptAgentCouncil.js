@@ -1170,13 +1170,25 @@ var VaibifyAgentCouncil = (function () {
                 return "<li>" + _fsEscape(String(sItem)) + "</li>";
             }).join("") + "</ol>";
         }
-        var listQuestions = dictResult.listOpenQuestions || [];
-        if (listQuestions.length) {
-            sParts += "<h5>Open questions</h5><ul>" +
-                listQuestions.map(function (sQuestion) {
-                    return "<li>" + _fsEscape(String(sQuestion)) + "</li>";
-                }).join("") + "</ul>";
-        }
+        /* The design section 7.1 sections the schema now asks
+           participants to produce. Rendered only when populated, so a
+           plan accepted under charter 1.0.0 — whose participants were
+           never asked — shows what it actually has rather than empty
+           headings claiming the council considered them. */
+        [["listRejectedAlternatives", "Rejected alternatives, and why"],
+         ["listVerificationRequirements",
+          "Required verification, automated and manual"],
+         ["listStopConditions",
+          "Stop conditions — halt and return to the council"],
+         ["listOpenQuestions", "Open questions"]]
+            .forEach(function (tSection) {
+                var listEntries = dictResult[tSection[0]] || [];
+                if (!listEntries.length) return;
+                sParts += "<h5>" + _fsEscape(tSection[1]) + "</h5><ul>" +
+                    listEntries.map(function (sEntry) {
+                        return "<li>" + _fsEscape(String(sEntry)) + "</li>";
+                    }).join("") + "</ul>";
+            });
         sParts += _fsObjectionProvenance(dictPlan);
         return sParts;
     }
@@ -1209,9 +1221,16 @@ var VaibifyAgentCouncil = (function () {
         (dictResult.listPlanItems || []).forEach(function (sItem, iIndex) {
             listLines.push((iIndex + 1) + ". " + String(sItem));
         });
-        (dictResult.listOpenQuestions || []).forEach(function (sQuestion) {
-            listLines.push("- open question: " + String(sQuestion));
-        });
+        [["listRejectedAlternatives", "rejected alternative"],
+         ["listVerificationRequirements", "verification required"],
+         ["listStopConditions", "stop condition"],
+         ["listOpenQuestions", "open question"]]
+            .forEach(function (tSection) {
+                (dictResult[tSection[0]] || []).forEach(function (sEntry) {
+                    listLines.push(
+                        "- " + tSection[1] + ": " + String(sEntry));
+                });
+            });
         return listLines.join("\n");
     }
 

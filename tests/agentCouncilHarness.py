@@ -35,8 +35,17 @@ from vaibify.gui.agentCouncilStore import (
 
 def fdictMakeTurnResult(sVerdict="accept", listBlockingObjections=None,
                         listOpenQuestions=None, listEvidence=None,
-                        listPlanItems=None, sSummary="a plausible summary"):
-    """Build one schema-valid structured turn result (section 8.5)."""
+                        listPlanItems=None, sSummary="a plausible summary",
+                        listRejectedAlternatives=None,
+                        listVerificationRequirements=None,
+                        listStopConditions=None):
+    """Build one schema-valid structured turn result (section 8.5).
+
+    Every array in ``LIST_TURN_RESULT_ARRAY_KEYS`` appears, so this
+    factory stays the definition of "schema-valid": a key added to the
+    schema without a key added here fails validation loudly rather
+    than letting the fake lanes pass a shape production would reject.
+    """
     return {
         "sSummary": sSummary,
         "sVerdict": sVerdict,
@@ -47,6 +56,10 @@ def fdictMakeTurnResult(sVerdict="accept", listBlockingObjections=None,
         "listSecurityRisks": [],
         "listCounterexamplesAttempted": [],
         "listPlanItems": list(listPlanItems or []),
+        "listRejectedAlternatives": list(listRejectedAlternatives or []),
+        "listVerificationRequirements": list(
+            listVerificationRequirements or []),
+        "listStopConditions": list(listStopConditions or []),
         "listOpenQuestions": list(listOpenQuestions or []),
         "listBlockingObjections": list(listBlockingObjections or []),
     }

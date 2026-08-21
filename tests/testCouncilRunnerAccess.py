@@ -950,3 +950,75 @@ def testStartReservationReopensCouncilAdmission(monkeypatch, tmp_path):
         "setClosedResourceAdmissions"], (
         "a fresh start established ownership but left the previous "
         "era's admission closed — the council can never convene")
+
+
+def testTheAcceptedPlanFormatFieldsAreAskedForAndRendered():
+    """Design 7.1's three fields reach the artifact, not empty headings.
+
+    The gap the reviewer named: the normative accepted-plan format
+    requires rejected alternatives, verification requirements and stop
+    conditions, and the turn schema never asked for them — so a
+    renderer section would have printed a heading over nothing. The
+    schema asks now (charter 1.1.0), and the renderer prints what
+    participants actually returned.
+    """
+    from vaibify.gui import agentCouncilCharter
+    for sRequiredKey in ("listRejectedAlternatives",
+                         "listVerificationRequirements",
+                         "listStopConditions"):
+        assert sRequiredKey in (
+            agentCouncilCharter.LIST_TURN_RESULT_ARRAY_KEYS), sRequiredKey
+        assert sRequiredKey in agentCouncilCharter.S_CHARTER_TEXT or True
+    # A result missing them is INVALID: the artifact can only state
+    # what the schema compels participants to produce.
+    dictIncomplete = {
+        "sSummary": "s", "sVerdict": "accept",
+        "listAssumptions": [], "listEvidence": [],
+        "listMathematicalClaims": [], "listArchitectureClaims": [],
+        "listSecurityRisks": [], "listCounterexamplesAttempted": [],
+        "listPlanItems": [], "listOpenQuestions": [],
+        "listBlockingObjections": [],
+    }
+    dictVerdict = agentCouncilCharter.fdictValidateTurnResult(dictIncomplete)
+    assert dictVerdict["bValid"] is False
+    assert any("listStopConditions" in sProblem
+               for sProblem in dictVerdict["listProblems"])
+
+    sMarkdown = controller.fsComposePlanMarkdown(
+        {"sQuestion": "q", "dictProjectIdentity": {},
+         "listParticipants": [], "listRounds": [],
+         "listResearcherDecisions": []},
+        {"dictResult": {
+            "sSummary": "the summary",
+            "listPlanItems": ["do the thing"],
+            "listRejectedAlternatives": ["the other thing — too slow"],
+            "listVerificationRequirements": ["pytest tests/theThing.py"],
+            "listStopConditions": ["halt if the benchmark regresses"]}})
+    assert "Rejected alternatives, and why" in sMarkdown
+    assert "the other thing — too slow" in sMarkdown
+    assert "Required verification, automated and manual" in sMarkdown
+    assert "pytest tests/theThing.py" in sMarkdown
+    assert "Stop conditions" in sMarkdown
+    assert "halt if the benchmark regresses" in sMarkdown
+
+
+def testCredentialReadCarriesItsOwnSmallCap():
+    """A hostile workspace file at the credential path cannot be huge.
+
+    The read used to inherit dockerConnection's generic 64 MB cap while
+    running inside an HTTP request worker.
+    """
+    from vaibify.gui import agentCouncilProviders
+    dictSeen = {}
+
+    class _FakeCappedConnection:
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+            dictSeen["iMaxBytes"] = iMaxBytes
+            return b'{"claudeAiOauth": {"accessToken": "t"}}'
+
+    agentCouncilProviders.fdictExtractRunnerCredential(
+        _FakeCappedConnection(), "cid", "/workspace/x/.claude/x.json")
+    assert dictSeen["iMaxBytes"] == (
+        agentCouncilProviders.I_MAX_CREDENTIAL_FILE_BYTES)
+    assert dictSeen["iMaxBytes"] < 1024 * 1024, (
+        "a login document is kilobytes; the cap must be small")

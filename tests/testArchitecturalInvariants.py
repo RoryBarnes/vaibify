@@ -4098,7 +4098,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # gate says the maintainer's evidence permits paid work in this
     # image, this says the project actually HAS a login to copy, and it
     # refuses before the campaign registers or any runner exists.
-    "routes/councilRoutes.py": 1032,
+    # +16 (2026-08-21): capabilities carries the adapter's model
+    # discovery (design 8.2 amendment — labelled un-verified aliases
+    # for the subscription backend, live enumeration for the API one)
+    # so the picker stops being free text and the discovery code stops
+    # being unreachable.
+    "routes/councilRoutes.py": 1048,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4126,6 +4131,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # whose campaign record is gone. One responsibility: the sole
     # council SDK authority, and the sweep is its crash-recovery leg.
     "agentCouncilDockerGateway.py": 849,
+    # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
+    # probe and the credential-specific read cap join the adapter that
+    # already owns every other credential-lane rule. One cohesive
+    # responsibility: what the runner backend may read, copy, and
+    # claim about a login.
+    "agentCouncilProviders.py": 817,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5034,7 +5045,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the release authority can veto rather than drop a lease over a
     # proxy nobody proved gone — retaining the runtime told the caller
     # nothing.
-    "agentCouncilController.py": 1214,
+    # +7 (2026-08-21): the plan renderer gained the three design 7.1
+    # sections the turn schema now asks participants to produce
+    # (rejected alternatives, verification requirements, stop
+    # conditions) — the artifact half of the charter 1.1.0 change.
+    "agentCouncilController.py": 1221,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

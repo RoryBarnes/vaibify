@@ -84,7 +84,7 @@ class MockDockerCouncil:
             "sImageIdentity": S_IMAGE_IDENTITY,
         }]
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         """Answer the launch-time login-presence probe, and only it.
 
         Fail-closed like every other double here: the ONE path the
@@ -805,7 +805,7 @@ def test_login_presence_probe_holds_no_credential_material():
     from vaibify.gui import agentCouncilProviders
 
     class _FakeLoginConnection:
-        def fbaFetchFile(self, sContainerId, sPath):
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
             return json.dumps({
                 "claudeAiOauth": {
                     "accessToken": "the-secret-token",
@@ -819,7 +819,7 @@ def test_login_presence_probe_holds_no_credential_material():
         "the probe must answer a boolean, never the credential itself")
 
     class _FakeMissingLoginConnection:
-        def fbaFetchFile(self, sContainerId, sPath):
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
             raise FileNotFoundError(sPath)
 
     assert agentCouncilProviders.fbRunnerCredentialIsPresent(

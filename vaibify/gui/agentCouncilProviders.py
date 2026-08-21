@@ -114,6 +114,12 @@ S_CLAUDE_CONFIG_COMPONENT = ".claude"
 S_OAUTH_BLOCK_KEY = "claudeAiOauth"
 S_ACCESS_TOKEN_KEY = "accessToken"
 
+# A login document is kilobytes. Capping the credential read here —
+# rather than inheriting dockerConnection's generic 64 MB file cap —
+# bounds what a hostile workspace file at the credential path can make
+# an HTTP request worker materialize.
+I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
+
 # The default CLI program vector and its fixed, allowlisted flags. The
 # only interpolated values are the resolved model id and the composed
 # instruction; nothing else varies per turn. ``--verbose`` is required
@@ -396,10 +402,17 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
     program and a path, never a general container command) and returns
     only the access token. The refresh token is never read out, so a
     leaked runner copy cannot mint new sessions (section 9.7).
+
+    The read is capped at :data:`I_MAX_CREDENTIAL_FILE_BYTES` rather
+    than inheriting the generic 64 MB file cap: a login document is a
+    few kilobytes, this path runs inside an HTTP request worker, and a
+    hostile workspace file at the credential path should be refused
+    rather than materialized in memory.
     """
     try:
         baContent = connectionDocker.fbaFetchFile(
-            sContainerId, sCredentialContainerPath)
+            sContainerId, sCredentialContainerPath,
+            iMaxBytes=I_MAX_CREDENTIAL_FILE_BYTES)
     except FileNotFoundError as errorMissing:
         raise RunnerCredentialError(
             "no persisted Claude login was found on the workspace volume "
@@ -419,16 +432,23 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
 
 def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
                                 sCredentialContainerPath):
-    """Report whether a usable provider login exists, holding nothing.
+    """Report whether a COPYABLE access token exists, holding nothing.
 
-    The launch-time presence probe (section 9.7): the same reviewed
-    read the extraction uses, with the token DISCARDED immediately —
-    the answer is a boolean, so no credential material outlives the
-    call. Runs before a campaign registers, so a project with no
-    persisted login is refused with that reason instead of failing its
-    first turn after a runner has already been created and destroyed.
-    An unreadable or token-less login answers False exactly like a
-    missing one: the researcher must log in either way.
+    Presence, never usability — the distinction matters and the name
+    keeps it: this proves the persisted login parses and carries a
+    token the runner lane could copy. Whether that token still
+    authenticates is knowable only by spending a turn, which is what
+    the first turn's authentication-classified failure reports
+    (section 9.7).
+
+    The launch-time probe: the same reviewed read the extraction uses,
+    with the token DISCARDED immediately — the answer is a boolean, so
+    no credential material outlives the call. Runs before a campaign
+    registers, so a project with no persisted login is refused with
+    that reason instead of failing its first turn after a runner has
+    already been created and destroyed. An unreadable, oversized or
+    token-less login answers False exactly like a missing one: the
+    researcher must log in either way.
     """
     try:
         fdictExtractRunnerCredential(

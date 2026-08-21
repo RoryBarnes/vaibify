@@ -64,7 +64,7 @@ class MockDockerTwoContainers:
              "sImageIdentity": "sha256:" + "bb22" * 16},
         ]
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         """Answer the launch-time login-presence probe, and only it."""
         if sPath.endswith("/.claude/.credentials.json"):
             return (b'{"claudeAiOauth": '

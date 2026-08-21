@@ -2063,8 +2063,11 @@ For each CLI (runner-backend) adapter additionally:
   minimal token;
 - streaming JSON parsing across chunk boundaries;
 - reported model identity extraction;
-- live model-list discovery producing the participant picker's contents; and
+- model-list discovery producing the participant picker's contents
+  (see the amendment below); and
 - non-zero exit with partial valid output reported honestly.
+
+**Amendment (2026-08-21): what "live discovery" means per backend.** The API backend enumerates models live through the reviewed transport, and that is what this clause was written for. The SUBSCRIPTION runner backend has no API key to enumerate with — the researcher's Claude Code login is a session, not a key — and asking the CLI to enumerate would spend a paid turn on every capabilities read. So for the runner backend the picker is populated from the CLI-accepted alias set, carried to the UI with `bVerified: false` and its source named `cliAliasFallback`. That is a labelled un-verified list, never a discovered one presented as discovered, and the requirement is met in the only way the backend admits. `fdictDiscoverClaudeModels` still performs real discovery when a key IS supplied, so the API backend inherits the clause unchanged rather than the code path going dead.
 
 Add an architectural test that Anthropic/OpenAI client construction occurs
 only in `providerApiTransport.py`, while both `llmInvoker` and council adapters
@@ -2652,8 +2655,11 @@ The reviewing agent should try to falsify this plan and answer:
 20. Is the section 2.7 credential-risk acceptance displayed at launch rather
     than buried, and does every claim about credential narrowing rest on a
     Phase 0 measurement rather than an assumption?
-21. Is every participant model list populated from a live discovery
-    mechanism, and does the participant record keep (provider, model)
+21. Is every participant model list populated from its backend's
+    discovery mechanism — live enumeration for the API backend, a
+    labelled un-verified alias set for the subscription runner
+    backend (see the section 8.2 amendment) — and does the
+    participant record keep (provider, model)
     distinct so several models from one provider deliberate as distinct
     participants?
 22. Are the two credential lanes each single-authority — `secretManager` for

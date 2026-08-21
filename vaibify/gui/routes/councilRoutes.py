@@ -369,16 +369,20 @@ def _ffnBuildImageResolver(dictCtx, sContainerId):
 
 
 def _fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
-    """Refuse a launch when the project holds no usable provider login.
+    """Refuse a launch when the project holds no copyable provider token.
 
-    R10's live presence probe, at the cheapest correct point: the
+    R10's live PRESENCE probe, at the cheapest correct point: the
     credential gate says the maintainer's evidence record permits paid
-    work in this image, and this says the project actually HAS a login
-    to copy. It runs before the campaign registers and before any
-    runner exists — the per-turn extraction would otherwise discover
-    the absence only after a runner had been created and destroyed,
-    and the researcher would read a failed turn instead of "log in".
-    The token is discarded inside the probe; only a boolean returns.
+    work in this image, and this says the project actually has a login
+    the runner lane could copy. It proves presence, never usability —
+    a token that no longer authenticates is only discoverable by
+    spending a turn, and the first turn's authentication-classified
+    failure is what reports that. It runs before the campaign
+    registers and before any runner exists; the per-turn extraction
+    would otherwise discover an absent login only after a runner had
+    been created and destroyed, and the researcher would read a failed
+    turn instead of "log in". The token is discarded inside the probe;
+    only a boolean returns.
     """
     from .. import agentCouncilProviders
     from .. import projectRoots
@@ -389,9 +393,9 @@ def _fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
             agentCouncilProviders.fsComposeCredentialContainerPath(
                 sWorkspaceRoot)):
         raise HTTPException(
-            409, "this project has no usable Claude login for the "
-            "council runners to copy. Open the project's terminal and "
-            "log in to Claude, then convene the council again.")
+            409, "this project has no Claude login for the council "
+            "runners to copy. Open the project's terminal and log in "
+            "to Claude, then convene the council again.")
 
 
 def _ffnBuildCredentialStager(dictCtx, sContainerId):
@@ -536,6 +540,17 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
             "sReason": str(error.detail),
             "dictRecord": None,
         }
+    # The adapter's own capability contract carries the model
+    # discovery the picker reads (design section 8.2). For the
+    # SUBSCRIPTION runner backend there is no API key to enumerate
+    # with and enumeration would otherwise cost a paid turn, so the
+    # payload is the CLI-accepted alias set, carried with
+    # ``bVerified`` False and its source named — a labelled
+    # un-verified list, never a discovered one. The design amendment
+    # recording that is in section 8.2.
+    from .. import agentCouncilProviders
+    dictContract = agentCouncilProviders.fdictClaudeCapabilityContract(
+        bRunnerBackendEnabled=dictEnablement["bEnabled"])
     return {
         "bAvailable": dictEnablement["bEnabled"],
         "sUnavailableIn": "",
@@ -543,7 +558,8 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
         "listProviders": [
             {"sProvider": "claude", "sBackend": "runner",
              "bAvailable": dictEnablement["bEnabled"],
-             "sReason": dictEnablement["sReason"]},
+             "sReason": dictEnablement["sReason"],
+             "dictModelDiscovery": dictContract["dictModelDiscovery"]},
         ],
     }
 
