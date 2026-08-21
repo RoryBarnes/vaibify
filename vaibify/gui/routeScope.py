@@ -221,6 +221,22 @@ DICT_CONTROL_PLANE_SCOPES = {
     # journal refusal in the handler.
     ("POST", "/api/registry/{sName}/promote-to-host-project"):
         S_SCOPE_BROWSER_HUB,
+    # Setting a project's git remote writes the researcher's own
+    # repository on the host and opens no container, so it is a
+    # browser-hub operation on the same terms as convert and promote
+    # beside it. The handler additionally refuses the agent lane: an
+    # in-container agent must not repoint where the researcher's work
+    # pushes to.
+    ("POST", "/api/registry/{sName}/git-remote"): S_SCOPE_BROWSER_HUB,
+    # The dependency scan writes NOTHING -- it is a POST because the
+    # selection is a list, not because anything changes. It still
+    # carries the browser-hub credential rather than being left
+    # unscoped: it reads files in the researcher's own directory and
+    # reports what it found, so the read is worth the same gate as the
+    # writes beside it. The handler additionally refuses the agent
+    # lane.
+    ("POST", "/api/registry/{sName}/scan-dependencies"):
+        S_SCOPE_BROWSER_HUB,
     # Reconcile is the recovery path for a container nobody can claim,
     # so like stop it must stay answerable for an UNOWNED container —
     # container-lifecycle, never a lease-enforced scope.

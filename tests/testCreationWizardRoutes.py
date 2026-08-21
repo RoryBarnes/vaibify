@@ -133,6 +133,119 @@ def testCreateProjectSuccess(
     assert os.path.isfile(os.path.join(sProjectDir, "vaibify.yml"))
 
 
+@pytest.mark.falsification
+def testCreateScaffoldsTheProjectFileWhereDiscoveryLooks(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A GUI-created project is born canonical, not in the legacy root.
+
+    Driven against the REAL shipped workflow template, whose
+    project.json sits at the template root: ``vaibify init`` gained
+    the relocation into ``.vaibify/projects/`` and the GUI-serving
+    copier was missed, so every dashboard-created project was born in
+    the layout discovery could only reach through the legacy fallback
+    (live incident, 2026-08-20).
+
+    Kills: dropping the ``fnMoveProjectFileWhereDiscoveryLooks`` call
+    from ``templateManager.fnCopyTemplate``.
+    """
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes.os.path.expanduser",
+        lambda _: str(tmp_path),
+    )
+    sProjectDir = str(tmp_path / "born-canonical")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "born-canonical",
+            "sTemplateName": "workflow",
+            "sPythonVersion": "3.12",
+            "listRepositories": [],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert os.path.isfile(os.path.join(
+        sProjectDir, ".vaibify", "projects", "project.json",
+    )), "the Project file did not land in discovery's canonical home"
+    assert not os.path.exists(os.path.join(sProjectDir, "project.json")), (
+        "the Project file was left at the repo root, the legacy shape"
+    )
+
+
+def testASandboxScaffoldsNoWorkflowAtAll(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A sandbox is a blank workspace, not a project that already began.
+
+    The shipped sandbox template used to carry a zero-step
+    project.json, so creating a sandbox put an unexplained project
+    card beside "Blank Project" in the picker — which read as the
+    directory having been converted to a Project nobody asked for
+    (live report, 2026-08-20). A sandbox now scaffolds NO workflow;
+    the first Project appears when the researcher creates or promotes
+    one deliberately.
+    """
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes.os.path.expanduser",
+        lambda _: str(tmp_path),
+    )
+    sProjectDir = str(tmp_path / "blank-sandbox")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "blank-sandbox",
+            "sTemplateName": "sandbox",
+            "sPythonVersion": "3.12",
+            "listRepositories": [],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert not os.path.exists(os.path.join(sProjectDir, "project.json"))
+    assert not os.path.exists(os.path.join(
+        sProjectDir, ".vaibify", "projects", "project.json",
+    )), "a sandbox scaffolded a workflow the researcher never asked for"
+
+
+def testCreateRefusesToScaffoldOverAnExistingProject(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Scaffolding over an existing Project is refused, nothing written.
+
+    The refusal runs before the first write, so a refused create
+    leaves the directory exactly as it found it — no template debris
+    beside a Project it just declined to touch.
+    """
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes.os.path.expanduser",
+        lambda _: str(tmp_path),
+    )
+    sProjectDir = str(tmp_path / "occupied")
+    sExistingDir = os.path.join(sProjectDir, ".vaibify", "projects")
+    os.makedirs(sExistingDir)
+    with open(
+        os.path.join(sExistingDir, "project.json"), "w",
+    ) as fileHandle:
+        fileHandle.write('{"listSteps": []}')
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "occupied",
+            "sTemplateName": "sandbox",
+            "sPythonVersion": "3.12",
+            "listRepositories": [],
+        },
+    )
+    assert response.status_code == 409
+    assert "already exists" in response.text
+    assert not os.path.exists(
+        os.path.join(sProjectDir, "container.conf"),
+    ), "a refused create left template debris behind"
+    assert not os.path.exists(os.path.join(sProjectDir, "vaibify.yml"))
+
+
 def _fnStageSandboxTemplate(tmp_path, monkeypatch):
     """Stage an empty sandbox template and root creation at tmp_path."""
     sTemplateDir = str(tmp_path / "templates" / "sandbox")

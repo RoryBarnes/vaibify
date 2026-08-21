@@ -2019,15 +2019,21 @@ def _fsValidateConnectWorkflowPath(sWorkflowPath, sProjectRoot):
     fsValidatePathWithinRoot(sNormalized, sProjectRoot)
     if not sNormalized.endswith(".json"):
         raise HTTPException(
-            400, "sWorkflowPath must point at a .json file")
+            400, "The project file's path must end in .json.")
+    # The shapes admitted here are exactly the ones discovery offers:
+    # the two .vaibify directories, plus the legacy repo-root
+    # project.json through the shared predicate — a shape this guard
+    # refused after discovery began listing it, so the researcher was
+    # offered a project the connect then bounced.
     if not any(
         sSuffix in sNormalized
         for sSuffix in workflowManager.T_VAIBIFY_PROJECT_SUFFIXES
-    ):
+    ) and not workflowManager.fbWorkflowPathIsLegacyRootFile(sNormalized):
         raise HTTPException(
             400,
-            "sWorkflowPath must be under .vaibify/projects/ "
-            "inside a repository",
+            "The project file must be a .json file under "
+            ".vaibify/projects/ in the repository, or a project.json "
+            "at the repository root.",
         )
     return sNormalized
 
@@ -2667,11 +2673,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
             return projectRoots.fsResolveProjectRoot(
                 sContainerId, WORKSPACE_ROOT,
             )
-        sWorkflowDirectory = posixpath.dirname(sPath)
-        if "/.vaibify" in sWorkflowDirectory:
-            return sWorkflowDirectory[
-                :sWorkflowDirectory.index("/.vaibify")]
-        return sWorkflowDirectory
+        return workflowManager.fsDeriveRepoRootFromDirectory(
+            posixpath.dirname(sPath),
+        )
 
     def ffilesBuildRepoFiles(sContainerId):
         from vaibify.reproducibility.repoFiles import ContainerRepoFiles

@@ -196,6 +196,37 @@ def testRealContainerCopiesAndRenamesFiles():
     )
 
 
+def testRealContainerMakesDirectories():
+    """`mkdir -p` must create nested directories and be idempotent.
+
+    It carries the state-directory bootstrap: the first state.json
+    save in a legacy root-layout repo runs ``mkdir -p
+    <repo>/.vaibify`` before writing, and every later save repeats it
+    against the existing directory. Lane 1's fake answers 0 for both
+    shapes; a shell where either failed would crash the very save
+    that records run results.
+    """
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    sDirectory = "/tmp/vaibifyAcceptanceMkdir/.vaibify"
+    iFirst, _ = connection.ftResultExecuteCommand(
+        sContainer, f"mkdir -p '{sDirectory}'",
+    )
+    iProbe, _ = connection.ftResultExecuteCommand(
+        sContainer, f"test -d '{sDirectory}'",
+    )
+    iRepeat, _ = connection.ftResultExecuteCommand(
+        sContainer, f"mkdir -p '{sDirectory}'",
+    )
+    assert (iFirst, iProbe, iRepeat) == (0, 0, 0), (
+        "mkdir -p must create the directory once and answer 0 again "
+        f"on repeat: first={iFirst} probe={iProbe} repeat={iRepeat}"
+    )
+    connection.ftResultExecuteCommand(
+        sContainer, "rm -rf /tmp/vaibifyAcceptanceMkdir",
+    )
+
+
 def testRealContainerReportsItsContainerUser():
     """`printenv CONTAINER_USER` must name the unprivileged user.
 

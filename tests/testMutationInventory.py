@@ -216,7 +216,24 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # +1 (2026-08-18): the remote client's ssh launch. Same standing as
 # the helper's: it runs on the laptop before any project exists,
 # so there is no gateway it could be inside. Classified on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
+# +1 (2026-08-20): stateManager._fnEnsureStateDirectoryExists — a
+# `mkdir -p` on state.json's directory, composed locally from the
+# fsShellQuote'd state path. Added so a legacy root-layout repo (whose
+# Project file predates .vaibify/ existing at all) can bootstrap its
+# first state save instead of crashing the load; it sits in the same
+# persist tail as the checkpoint cp and install mv and rides the same
+# admissions. Classified on arrival.
+# +3 (2026-08-21): the workspace seed. Two are the route's own carrier
+# worker (the `mkdir -p` that put_archive requires, and the tree write
+# itself) and one is the connection router's pass-through delegate.
+# They are the first path by which host content reaches a container at
+# all -- before this, a converted project's workspace could only be
+# filled by the entrypoint's git clones, so a researcher converting a
+# local directory got an empty container. Every source path is proven
+# to sit under the project's registered directory before the worker
+# opens, and the destination is composed, never accepted. Classified
+# on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -1408,6 +1425,40 @@ def testANonDockerSubprocessIsNotRecorded(moduleGenerator):
     """) == []
 
 
+def testAShellWrapperWithAVariablePayloadIsDeclaredOpaque(
+    moduleGenerator,
+):
+    """A literal shell in argv[0] must not launder an unreadable command.
+
+    ``["/bin/bash", "-c", stub, name, sCommand]`` leads with a constant,
+    so the argv[0] opacity rule read it as decodable and the site left
+    the ledger entirely — no row, no blind spot — when the host
+    gateway's gated stub moved off ``sys.executable`` (2026-08-20). The
+    text the shell will run is in the NON-constant elements, so a shell
+    launch that is not fully literal is an UNKNOWN-command row plus a
+    declared blind spot, exactly like a non-constant argv[0].
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnLaunchGated(sCommand):
+            subprocess.Popen(
+                ["/bin/bash", "-c", S_STUB, "stubName", sCommand],
+            )
+    """)
+    assert len(listRows) == 1, listRows
+    assert listRows[0]["sPrimitive"] == (
+        moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
+    )
+    assert listRows[0]["bMutationCapable"] is True
+
+
+def testAFullyLiteralShellCommandStaysUnrecorded(moduleGenerator):
+    """The shell rule keys on unreadable text, not on shells as such."""
+    assert _flistScanSource(moduleGenerator, """
+        def fnProbeQuietly():
+            subprocess.run(["/bin/bash", "-c", "true"])
+    """) == []
+
+
 def testADockerCommandBoundToALocalNameIsStillSeen(moduleGenerator):
     """``saCommand = [...]`` then ``run(saCommand)`` is the common shape.
 
@@ -1721,6 +1772,12 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # Pure argument/flag assembly for a later launch; no daemon call.
     "flistBuildRunArgs",
     "fnMountSecrets",
+    # A tarfile entry filter, closed over two integers. It is called by
+    # tarfile once per archive member to stamp the container user onto
+    # the entry, touches no container and makes no call; it is a nested
+    # function rather than a method only because it must capture the
+    # resolved uid/gid.
+    "finfoStampOwnership",
     # Validation and naming helpers.
     "fnValidateReservationIdOrRaise",
     # Reads that answer about the HOST or the client, not a container.

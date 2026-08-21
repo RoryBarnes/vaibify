@@ -221,6 +221,167 @@ def testKeepingTheSameNameStillGraduatesToProject(tmp_path):
     assert dictPromoted["bIsProject"] is True
 
 
+S_OWNER_LEASE = "lease-owning-tab"
+
+
+def _fsInstallOwningBrowserSession(app, sHostName=S_HOST_NAME):
+    """Install a REAL owner record bound to a real browser session.
+
+    Returns the session's credential. The record holds a real host
+    flock and a session-bound lease, so a promote presenting the right
+    headers exercises the actual lifecycle release -- never a stand-in
+    ``object()`` -- and "the flock was freed" can be observed by trying
+    to acquire it.
+    """
+    from vaibify.config import containerLock
+    from vaibify.gui import browserSession, containerOwnership
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    sSessionId, sCredential = browserSession.ftMintDetachedSessionRecord(
+        dictStore,
+    )
+    app.state.dictBrowserSessions = dictStore
+    app.state.dictSessionOwner = (
+        containerOwnership.fdictCreateSessionOwnerIndex()
+    )
+    app.state.dictSessionSockets = (
+        containerOwnership.fdictCreateSessionSocketIndex()
+    )
+    app.state.dictMutationSupervisors = {}
+    app.state.dictDurableTaskRecords = {}
+    app.state.dictTerminalExecutionRecords = {}
+    app.state.dictContainerOwners[sHostName] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId=S_OWNER_LEASE,
+            fileHandleLock=containerLock.ffileAcquireContainerLock(
+                sHostName, 8050,
+            ),
+            sAgentToken=containerOwnership.fsMintAgentToken(),
+            sContainerId=sHostName,
+            sBrowserSessionId=sSessionId,
+        )
+    )
+    app.state.dictSessionOwner[sSessionId] = sHostName
+    return sCredential
+
+
+def _fbFlockIsStillHeld(sName):
+    """Return True when the project's host flock cannot be acquired."""
+    from vaibify.config import containerLock
+    try:
+        fileHandle = containerLock.ffileAcquireContainerLock(sName, 8051)
+    except containerLock.ContainerLockedError:
+        return True
+    containerLock.fnReleaseContainerLock(fileHandle)
+    return False
+
+
+def _fdictOwnerHeaders(sCredential, sLeaseId=S_OWNER_LEASE):
+    return {"X-Vaibify-Lease": sLeaseId, "X-Session-Token": sCredential}
+
+
+@pytest.mark.falsification
+def testPromoteFromTheOwningBrowserSessionReleasesAndPromotes(tclient):
+    """The owning tab promotes its own open project in one request.
+
+    The route used to refuse ANY owned project, so promoting from
+    inside the browser was impossible -- the researcher was told to
+    close the project and had no in-browser way to finish. Now the
+    presenting session, when it IS the holder, is released through the
+    lifecycle authority and the promotion proceeds: registry flipped,
+    owner record gone, flock freed.
+
+    Kills: reinstating the unconditional owned-project refusal, and a
+    release that drops the owner record without freeing the flock.
+    """
+    client, app = tclient
+    sCredential = _fsInstallOwningBrowserSession(app)
+    response = client.post(
+        _sPromoteUrl(S_HOST_NAME), json=_fdictBody(),
+        headers=_fdictOwnerHeaders(sCredential),
+    )
+    assert response.status_code == 200, response.text
+    dictPromoted = registryManager.fdictGetProject(S_NEW_NAME)
+    assert dictPromoted is not None and dictPromoted["bIsProject"] is True
+    assert registryManager.fdictGetProject(S_HOST_NAME) is None
+    assert app.state.dictContainerOwners == {}
+    assert not _fbFlockIsStillHeld(S_HOST_NAME)
+
+
+@pytest.mark.falsification
+def testACopiedLeaseFromAnotherSessionStillRefuses(tclient):
+    """A second session replaying the owner's lease value releases nothing.
+
+    The lease is bound to the browser session that claimed it, so a
+    caller presenting the right lease STRING under a different session
+    credential must be refused exactly as before -- session retained,
+    flock held, registry unchanged.
+
+    Kills: authorizing the self-release on the lease value alone in
+    ``_fnReleaseCallerOwnedSessionForConversion``.
+    """
+    from vaibify.gui import browserSession
+    client, app = tclient
+    _fsInstallOwningBrowserSession(app)
+    _sForeignSessionId, sForeignCredential = (
+        browserSession.ftMintDetachedSessionRecord(
+            app.state.dictBrowserSessions,
+        )
+    )
+    response = client.post(
+        _sPromoteUrl(S_HOST_NAME), json=_fdictBody(),
+        headers=_fdictOwnerHeaders(sForeignCredential),
+    )
+    assert response.status_code == 409
+    assert "open in a browser session" in response.text
+    assert S_HOST_NAME in app.state.dictContainerOwners
+    assert _fbFlockIsStillHeld(S_HOST_NAME)
+    assert registryManager.fdictGetProject(S_NEW_NAME) is None
+
+
+def testAValidatorRefusalDoesNotCostTheCallerTheirSession(tclient):
+    """A refused new name leaves the caller's open session intact.
+
+    The validators run BEFORE the self-release, so a duplicate name
+    409s while the researcher's project view stays owned and usable.
+    """
+    client, app = tclient
+    sCredential = _fsInstallOwningBrowserSession(app)
+    response = client.post(
+        _sPromoteUrl(S_HOST_NAME), json=_fdictBody(S_OTHER_CONTAINER),
+        headers=_fdictOwnerHeaders(sCredential),
+    )
+    assert response.status_code == 409
+    assert S_HOST_NAME in app.state.dictContainerOwners
+    assert _fbFlockIsStillHeld(S_HOST_NAME)
+    assert not registryManager.fbIsProject(
+        registryManager.fdictGetProject(S_HOST_NAME))
+
+
+def testABusyOwnSessionIsRefusedWithTheLifecycleReason(tclient):
+    """A live run refuses the self-release, session retained.
+
+    The lifecycle authority's own busy arbitration governs: a live
+    durable task must never be released out from under, so the promote
+    is refused with the run named -- not with the stale "close it"
+    message -- and nothing mutates.
+    """
+    from types import SimpleNamespace
+    client, app = tclient
+    sCredential = _fsInstallOwningBrowserSession(app)
+    app.state.dictDurableTaskRecords[S_HOST_NAME] = SimpleNamespace(
+        sTaskId="task-live-run", sState="running", iOwnerGeneration=1,
+        taskAsync=SimpleNamespace(done=lambda: False),
+    )
+    response = client.post(
+        _sPromoteUrl(S_HOST_NAME), json=_fdictBody(),
+        headers=_fdictOwnerHeaders(sCredential),
+    )
+    assert response.status_code == 409
+    assert "run still in progress" in response.text
+    assert S_HOST_NAME in app.state.dictContainerOwners
+    assert registryManager.fdictGetProject(S_NEW_NAME) is None
+
+
 def testPromotedHostProjectCanStillBeContainerizedLater(tclient):
     """Promotion and containerization are independent axes.
 
@@ -234,8 +395,87 @@ def testPromotedHostProjectCanStillBeContainerizedLater(tclient):
     response = client.post(
         "/api/registry/" + S_NEW_NAME.replace(" ", "%20")
         + "/convert-to-container",
-        json={"sProjectName": "aiGreenhouseBox"},
+        json={"sProjectName": "ai-greenhouse-box"},
     )
     assert response.status_code == 200, response.text
-    dictConverted = registryManager.fdictGetProject("aiGreenhouseBox")
+    dictConverted = registryManager.fdictGetProject("ai-greenhouse-box")
     assert dictConverted["sMode"] == "container"
+
+
+def _fsScaffoldedWorkflowPath(tmp_path):
+    return str(
+        tmp_path / S_HOST_NAME / ".vaibify" / "projects" / "project.json"
+    )
+
+
+@pytest.mark.falsification
+def testPromotionScaffoldsTheWorkflowTheDashboardWillOpen(
+    tclient, tmp_path,
+):
+    """A promoted Project owns a workflow file, named after itself.
+
+    A sandbox scaffolds no workflow at all, so promotion is the moment
+    the first workflow file comes into being. Without it the dashboard's
+    post-promotion re-entry found zero workflow cards and stranded the
+    researcher on an empty picker with the birth animation firing over
+    nothing (live report, 2026-08-20). The file carries the PROMOTED
+    name — not the sandbox basename — so the picker card reads what the
+    researcher just typed.
+
+    Kills: dropping the _fnScaffoldEmptyWorkflowForPromotion call from
+    the promote route, which re-strands every promotion from a blank
+    sandbox.
+    """
+    import json as moduleJson
+    client, _ = tclient
+    response = client.post(_sPromoteUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    sWorkflowPath = _fsScaffoldedWorkflowPath(tmp_path)
+    assert os.path.isfile(sWorkflowPath), (
+        "promotion left the Project with no workflow file"
+    )
+    with open(sWorkflowPath) as fileWorkflow:
+        dictWorkflow = moduleJson.load(fileWorkflow)
+    assert dictWorkflow["sWorkflowName"] == S_NEW_NAME
+    assert dictWorkflow["listSteps"] == []
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize(
+    "sExistingRelativePath",
+    [".vaibify/projects/myAnalysis.json", "project.json"],
+    ids=["canonical", "legacyRoot"],
+)
+def testAnExistingWorkflowIsNeverOverwrittenByPromotion(
+    tclient, tmp_path, sExistingRelativePath,
+):
+    """The scaffold steps aside for a workflow the researcher created.
+
+    Both discovered locations count — the canonical directory and the
+    legacy repository root — because a scaffold that only checked one
+    would silently shadow a legacy-root workflow with an empty twin,
+    and the picker would offer two cards for one Project.
+
+    Kills: dropping the bWorkflowExists guard so the scaffold always
+    writes.
+    """
+    import json as moduleJson
+    client, _ = tclient
+    sExistingPath = str(tmp_path / S_HOST_NAME / sExistingRelativePath)
+    os.makedirs(os.path.dirname(sExistingPath), exist_ok=True)
+    dictExisting = {
+        "sWorkflowName": "My Analysis",
+        "listSteps": [{"sName": "First Step"}],
+    }
+    with open(sExistingPath, "w") as fileWorkflow:
+        moduleJson.dump(dictExisting, fileWorkflow)
+    response = client.post(_sPromoteUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    with open(sExistingPath) as fileWorkflow:
+        assert moduleJson.load(fileWorkflow) == dictExisting
+    sScaffoldPath = _fsScaffoldedWorkflowPath(tmp_path)
+    if sExistingPath != sScaffoldPath:
+        assert not os.path.exists(sScaffoldPath), (
+            "the scaffold wrote an empty twin beside an existing "
+            "workflow"
+        )

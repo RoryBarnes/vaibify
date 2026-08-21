@@ -154,6 +154,13 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     "connection": {"DockerConnection"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
+    # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by
+    # ast.walk and carried by ast.Import/ast.ImportFrom. It was already
+    # the codebase's live convention -- determinismGate.py's node,
+    # nodeArg and nodeChild predate this registry and sit in the frozen
+    # seed -- so registering it makes the existing practice official
+    # rather than introducing a spelling.
+    "node": {"AST", "stmt", "expr", "alias", "Module"},
     "container": {"Container"},
     "buffer": {"BytesIO"},
     "info": {"TarInfo"},
@@ -179,7 +186,15 @@ I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
 I_LEGACY_RETURN_ANNOTATION_BUDGET = 0
 I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
-I_LEGACY_VARIABLE_BUDGET = 385
+# 387 -> 376 (2026-08-21): registering the "node" prefix retired
+# eleven seeded bindings at a stroke -- determinismGate.py's node,
+# nodeArg and nodeChild and their neighbours were debt only because
+# the vocabulary had no word for an AST node, not because they were
+# badly named. The burn-down is the registry entry, not a rename.
+# 376 -> 374 (2026-08-21): the Agent Council branch retired two more
+# seeded bindings by name; the two burn-downs are disjoint, so the
+# merge composes them.
+I_LEGACY_VARIABLE_BUDGET = 374
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

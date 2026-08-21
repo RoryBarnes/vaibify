@@ -5,6 +5,13 @@ var VaibifyEventBindings = (function () {
 
     /* --- Delegated Click Handlers --- */
 
+    function _fnHandleEmptyStepStateClick(event, elMatch) {
+        /* The zero-step notice acts as well as informs: it opens the
+           same New Step modal as the header's "+" button, in the spot
+           the researcher is already looking at. */
+        VaibifyStepEditor.fnOpenCreateModal();
+    }
+
     function _fnHandleDiscoveredButton(event, elMatch) {
         event.stopPropagation();
         var elDiscItem = elMatch.closest(".discovered-item");
@@ -455,6 +462,7 @@ var VaibifyEventBindings = (function () {
     }
 
     var _DICT_CLICK_HANDLERS = {
+        ".step-empty-state": _fnHandleEmptyStepStateClick,
         ".btn-discovered": _fnHandleDiscoveredButton,
         ".remote-badge": _fnHandleRemoteBadge,
         ".row-overflow-btn": _fnHandleRowOverflow,

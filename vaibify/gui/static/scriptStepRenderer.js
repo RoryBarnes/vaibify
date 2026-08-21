@@ -173,6 +173,19 @@ var VaibifyStepRenderer = (function () {
         return _fsRenderLevelColumnHeaderRow();
     }
 
+    function fsRenderEmptyStepListNotice() {
+        /* A zero-step workflow used to render as the bare glyph
+           header, which read as a broken page. The notice says the
+           state and IS an affordance: clicking it opens the same New
+           Step modal as the header's "+" button (the delegated
+           .step-empty-state click handler). */
+        return (
+            '<div class="step-empty-state">' +
+            'No steps yet — click here to add the first one, ' +
+            'or ask your agent to build the pipeline.</div>'
+        );
+    }
+
     function _fdictGroupStaleArtifacts(listArtifacts) {
         var dictGrouped = {};
         for (var i = 0; i < listArtifacts.length; i++) {
@@ -1699,6 +1712,7 @@ var VaibifyStepRenderer = (function () {
         fsRenderStepItem: fsRenderStepItem,
         fsBuildLevelStrip: fsBuildLevelStrip,
         fsRenderStepColumnHeader: fsRenderStepColumnHeader,
+        fsRenderEmptyStepListNotice: fsRenderEmptyStepListNotice,
         fsRenderDetailItem: fsRenderDetailItem,
         fsRenderVerificationBlock: fsRenderVerificationBlock,
         fsRenderRunStepButton: fsRenderRunStepButton,
