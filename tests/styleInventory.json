@@ -316,17 +316,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/dataArchiver.py::_fnCleanupFailedDraft::clientZenodo", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/dataArchiver.py::_fnUploadAllFiles::clientZenodo", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/dataArchiver.py::fnUploadToZenodo.clientZenodo", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbAttributeIsClock.nodeValue", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbAttributeIsClock::nodeAttr", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom.nodeFn", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom.nodeValue", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom::nodeCall", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbCallIsSeedFunction.nodeFn", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbCallIsSeedFunction::nodeCall", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbExprUsesClock.nodeChild", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_fbExprUsesClock::nodeExpr", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.node", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.nodeArg", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.treeAst", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/githubAuth.py::_ftFetchLoginFresh.resp", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/githubAuth.py::ftParseOwnerRepoFromRemoteUrl.pattern", "sReason": ""},
@@ -406,7 +395,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 387,
+    "legacy-variable": 376,
     "legacy-yield": 0
   }
 }
