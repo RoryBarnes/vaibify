@@ -4484,7 +4484,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "project.json" to its repo's name in EVERY location, not only
     # the legacy root — after the canonical relocation, a card reading
     # "project.json" beside "Blank Project" named nothing.
-    "workflowManager.py": 2618,
+    # +24 (2026-08-21): fsDeriveRepoRootFromDirectory, which is the
+    # SECOND consumer folded back in — pipelineServer held a verbatim
+    # copy of the truncation, and the two copies were how the
+    # first-vs-last ``.vaibify`` bug could be fixed in one and left
+    # standing in the other. Both derivers stay in this module on
+    # purpose: a repo root derived in two places is the defect.
+    "workflowManager.py": 2642,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

@@ -219,6 +219,15 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
 # (2026-08-21). So the root follows the checkout when the checkout is
 # under $HOME, and otherwise falls back to a directory that is, keeping
 # the path guard genuinely exercised in both places.
+#
+# The fallback sits UNDER ~/.vaibify deliberately, and moving it out
+# would silently drop coverage. A host project rooted below a
+# ``.vaibify`` ancestor is the shape that exposed
+# fsDeriveRepoRootFromDirectory cutting the repo root at the FIRST
+# ``.vaibify`` instead of the project's own: every polled path landed
+# under an unrelated ancestor and the host path guard refused each one
+# as an escape. Nothing but this fallback drove that path, and it found
+# the bug on its first CI run.
 def _fpathBrowserLaneTempRoot():
     """Return a scratch root that is under $HOME in every checkout."""
     pathCheckout = pathlib.Path(__file__).resolve().parents[2]

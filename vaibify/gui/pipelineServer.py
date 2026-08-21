@@ -2672,11 +2672,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
             return projectRoots.fsResolveProjectRoot(
                 sContainerId, WORKSPACE_ROOT,
             )
-        sWorkflowDirectory = posixpath.dirname(sPath)
-        if "/.vaibify" in sWorkflowDirectory:
-            return sWorkflowDirectory[
-                :sWorkflowDirectory.index("/.vaibify")]
-        return sWorkflowDirectory
+        return workflowManager.fsDeriveRepoRootFromDirectory(
+            posixpath.dirname(sPath),
+        )
 
     def ffilesBuildRepoFiles(sContainerId):
         from vaibify.reproducibility.repoFiles import ContainerRepoFiles

@@ -57,6 +57,7 @@ __all__ = [
     "fsComputeSemanticWorkflowFingerprint",
     "fnStampFieldProducer",
     "fsDeriveProjectRepoPathFromWorkflow",
+    "fsDeriveRepoRootFromDirectory",
     "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
@@ -652,11 +653,14 @@ def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
     no markers, no proof level). Returns ``""`` when the path matches
     neither shape (callers should treat that as no migration context,
     not an error).
+
+    Cuts at the LAST occurrence for the reason given in
+    :func:`fsDeriveRepoRootFromDirectory`.
     """
     if not sWorkflowPath:
         return ""
     for sSuffix in T_VAIBIFY_PROJECT_SUFFIXES:
-        iSplit = sWorkflowPath.find(sSuffix)
+        iSplit = sWorkflowPath.rfind(sSuffix)
         if iSplit > 0:
             return sWorkflowPath[:iSplit]
     if fbWorkflowPathIsLegacyRootFile(sWorkflowPath):
@@ -948,12 +952,32 @@ def fsResolveVariables(sTemplate, dictVariables):
     return re.sub(r"\{([^}]+)\}", fsReplaceMatch, sTemplate)
 
 
+def fsDeriveRepoRootFromDirectory(sWorkflowDirectory):
+    """Return the repo root enclosing a workflow file's own directory.
+
+    The directory form of :func:`fsDeriveProjectRepoPathFromWorkflow`,
+    and the same last-occurrence rule for the same reason: the
+    ``.vaibify`` this must cut at is the project's own, which is the
+    LAST one on the path. Cutting at the first sent the whole file
+    poll to paths under an unrelated ancestor — every badge grey, and
+    the host path guard refusing each stat as an escape, because the
+    paths genuinely were outside the project (2026-08-21, found by the
+    host journey running from a checkout below a ``.vaibify``
+    ancestor). A directory carrying no ``.vaibify`` component IS its
+    own repo root, which is the legacy root-level ``project.json``
+    shape.
+    """
+    iSplit = sWorkflowDirectory.rfind("/.vaibify")
+    if iSplit < 0:
+        return sWorkflowDirectory
+    return sWorkflowDirectory[:iSplit]
+
+
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
     """Build the global variable dict from project.json top-level keys."""
-    sWorkflowDirectory = posixpath.dirname(sWorkflowPath)
-    sRepoRoot = sWorkflowDirectory
-    if "/.vaibify" in sRepoRoot:
-        sRepoRoot = sRepoRoot[:sRepoRoot.index("/.vaibify")]
+    sRepoRoot = fsDeriveRepoRootFromDirectory(
+        posixpath.dirname(sWorkflowPath),
+    )
     sPlotDirectory = dictWorkflow.get("sPlotDirectory", "Plot")
     if not posixpath.isabs(sPlotDirectory):
         sPlotDirectory = posixpath.join(sRepoRoot, sPlotDirectory)
