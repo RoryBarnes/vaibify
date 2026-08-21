@@ -761,6 +761,28 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Upload a file into the container. "
                      "Args: {sFileName, sBase64Content, sDestination}."},
+    # NOT agent-safe: it rewrites the git configuration of the
+    # researcher's OWN repository on the host. The handler additionally
+    # calls fnRejectAgentTokenLane; the catalog cannot express "writes
+    # host state" on its own.
+    {"sName": "set-project-git-remote", "sCategory": "registry",
+     "sMethod": "POST",
+     "sPath": "/api/registry/{sName}/git-remote",
+     "bAgentSafe": False,
+     "sDescription": "Point a project repository's origin remote at a "
+                     "URL. Args: {sRemoteUrl}."},
+    # NOT agent-safe: the arguments name paths on the RESEARCHER's own
+    # machine, and copying from there into a container is a capability
+    # the in-container agent must not hold. The handler additionally
+    # calls fnRejectAgentTokenLane, because a catalog entry cannot
+    # express "reads host filesystem state" on its own.
+    {"sName": "seed-workspace", "sCategory": "files",
+     "sMethod": "POST",
+     "sPath": "/api/files/{sContainerId}/seed-workspace",
+     "bAgentSafe": False,
+     "sDescription": "Copy selected files from the project's own host "
+                     "directory into the container workspace. "
+                     "Args: {saRelativePaths}."},
     {"sName": "write-file", "sCategory": "files",
      "sMethod": "PUT",
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",
@@ -823,6 +845,14 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # The dependency scan READS the researcher's own Python files on
+    # the host and reports what they import. It writes nothing -- it
+    # is a POST only because its input is a list -- but agent-invokable
+    # it would be an import oracle over host source: point it at a
+    # directory and learn what is in the files there. Same standing as
+    # the personal-layer hash below, and handled the same way:
+    # excluded here AND the handler rejects the agent token lane.
+    ("POST", "/api/registry/{sName}/scan-dependencies"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container
     # agent exfiltrate home-directory files into a public repository.
