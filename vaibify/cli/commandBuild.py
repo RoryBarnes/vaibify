@@ -13,7 +13,11 @@ import tempfile
 
 import click
 
-from .configLoader import fconfigResolveProject, fsDockerDir
+from .configLoader import (
+    fconfigResolveProject,
+    fsDockerDir,
+    fsResolveProjectConfigPath,
+)
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .preflightResult import PreflightResult, fnPrintPreflightReport
 from vaibify.resources import fnCopyPackagedTree
@@ -26,7 +30,7 @@ from vaibify.resources import fnCopyPackagedTree
 _S_BUILD_STAGING_DIRECTORY = os.path.expanduser("~/.vaibify/build")
 
 
-def fnBuildFromConfig(config, sDockerDir, bNoCache):
+def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
     """Invoke the Docker image builder with the loaded configuration.
 
     ``sDockerDir`` is the read-only context shipped with the package.
@@ -41,7 +45,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
     fnBuildImage = _ffnImportBuildOrExit()
     sStagedDir = fsStageBuildContext(config, sDockerDir)
     try:
-        fnPrepareBuildContext(config, sStagedDir)
+        fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
         bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
         fnWarnIfBaseImageFloating(config)
         fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
@@ -295,12 +299,12 @@ def fnPruneDanglingImages():
         pass
 
 
-def fnPrepareBuildContext(config, sDockerDir):
+def fnPrepareBuildContext(config, sDockerDir, sProjectDirectory=None):
     """Generate all config-derived files in the Docker build context."""
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
-    fnIncludeProjectRepo(config)
+    fnIncludeProjectRepo(config, sProjectDirectory)
     fnGenerateContainerConf(
         config, os.path.join(sDockerDir, "container.conf")
     )
@@ -478,14 +482,25 @@ def fnStageCuratedDocs(sDockerDir):
         shutil.copy2(str(pathSource), os.path.join(sStagedDir, sDestName))
 
 
-def fnIncludeProjectRepo(config):
+def fnIncludeProjectRepo(config, sProjectDirectory=None):
     """Add the project directory as a reference repo if not listed.
 
     Detects the git remote and branch of the project directory
     and appends it to the repository list so the entrypoint
     clones it into the container automatically.
+
+    ``sProjectDirectory`` is the directory of the project BEING BUILT.
+    It is a parameter rather than a re-derivation because the fallback
+    below answers "the current working directory", which is the right
+    answer only when the build was started from inside the project.
+    Neither of the two real callers satisfies that: the hub serves
+    every project from its own launch directory, and ``vaibify build
+    -p <name>`` resolves a project by name from anywhere. Both used to
+    reach this fallback, so a build could read the git remote of an
+    UNRELATED repository and hand the entrypoint that repository to
+    clone into the researcher's container (2026-08-21).
     """
-    sProjectDir = _fsProjectDirectory()
+    sProjectDir = sProjectDirectory or _fsProjectDirectory()
     sUrl = _fsGitRemoteUrl(sProjectDir)
     if not sUrl:
         return
@@ -963,8 +978,16 @@ def fnBuildCommand(bNoCache, sProjectName):
     sDockerDir = fsDockerDir()
     _fnEnforceBuildPreflight(config)
     click.echo(f"Building image {config.sProjectName}:latest ...")
+    # `-p <name>` resolves a project from ANYWHERE, so the directory
+    # must come from the same resolution the config did -- not from
+    # the working directory, which names a different project's repo.
+    sProjectDirectory = os.path.dirname(
+        fsResolveProjectConfigPath(sProjectName),
+    )
     try:
-        fnBuildFromConfig(config, sDockerDir, bNoCache)
+        fnBuildFromConfig(
+            config, sDockerDir, bNoCache, sProjectDirectory,
+        )
     except (RuntimeError, FileNotFoundError, OSError,
             ValueError) as error:
         _fnHandleBuildError(error)

@@ -54,8 +54,12 @@ class TestExecuteBuild:
             "vaibify.cli.commandBuild.fnBuildFromConfig",
         ) as mockBuild:
             _fnExecuteBuild(dictProject)
+            # The project's OWN directory rides along: the hub builds
+            # from its own launch directory, so a build left to resolve
+            # one for itself reads an unrelated repository's git remote.
             mockBuild.assert_called_once_with(
                 mockConfig, "/docker/dir", bNoCache=False,
+                sProjectDirectory="/fake",
             )
 
 
