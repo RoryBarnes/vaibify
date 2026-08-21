@@ -70,7 +70,7 @@ __all__ = [
     "fiClassifyInterruptedCampaignsOnStartup",
     "flistReadCampaignCommandLog",
     "fnAwaitControllerSettleOnShutdown",
-    "fnDrainControllerForResource",
+    "fdictDrainControllerForResource",
     "fnDrainControllerOnShutdown",
 ]
 
@@ -1087,7 +1087,7 @@ def fbControllerHasLiveDriveForResource(dictControllerState, sResourceName):
     return False
 
 
-async def fnDrainControllerForResource(dictControllerState, sResourceName):
+async def fdictDrainControllerForResource(dictControllerState, sResourceName):
     """Settle every runtime whose campaign is bound to one resource.
 
     The release path's second belt: the release route refuses while a
@@ -1102,7 +1102,17 @@ async def fnDrainControllerForResource(dictControllerState, sResourceName):
     a fresh council", and no proxy or network may outlive the lease.
     A drive that slipped live between the busy check and this drain
     still gets the cooperative stop as the last belt.
+
+    Returns ``{bAllSettled, listUnsettledCampaignIds}``. ``bAllSettled``
+    False means at least one campaign's egress boundary could not be
+    PROVEN gone, and the caller must not complete the release: a
+    lease dropped over an unproven proxy hands the container to the
+    next session while a council network may still be dialling out.
+    Retaining the runtime alone was not enough — it kept the retry
+    state but told the release authority nothing, so the release
+    proceeded anyway.
     """
+    listUnsettledCampaignIds = []
     for sCampaignId, dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].items()):
         dictIdentity = dictRuntime["dictCampaign"].get(
@@ -1111,6 +1121,7 @@ async def fnDrainControllerForResource(dictControllerState, sResourceName):
             continue
         if fbCampaignDriveIsLive(dictControllerState, sCampaignId):
             _fnRequestRuntimeStopQuietly(dictRuntime)
+            listUnsettledCampaignIds.append(sCampaignId)
             continue
         dictCampaign = dictRuntime["dictCampaign"]
         if dictCampaign["sState"] not in LIST_NO_FURTHER_TURN_STATES:
@@ -1124,10 +1135,14 @@ async def fnDrainControllerForResource(dictControllerState, sResourceName):
             _fbReleaseRunnerAccessResources, dictRuntime)
         if bAccessSettled:
             dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
-        # An unsettled teardown KEEPS the runtime: it is the in-process
-        # retry state, and the durable campaign record (which release
-        # never deletes) keeps the startup sweep able to compose the
-        # leftover's name.
+        else:
+            # An unsettled teardown KEEPS the runtime — it is the
+            # in-process retry state — AND reports itself, so the
+            # release refuses rather than dropping the lease over a
+            # boundary nobody proved gone.
+            listUnsettledCampaignIds.append(sCampaignId)
+    return {"bAllSettled": not listUnsettledCampaignIds,
+            "listUnsettledCampaignIds": listUnsettledCampaignIds}
 
 
 async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):

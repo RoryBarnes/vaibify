@@ -402,6 +402,12 @@ def _ftReserveForStartUnderLocks(
     fnMintReservation(recordOwner, containerOwnership.fidentityRecordOwnership(
         recordOwner, sPriorOwnerLeaseId,
     ))
+    # The OTHER door into ownership (§10b), and it must reopen council
+    # admission exactly as a claim does: a container released, stopped
+    # and freshly started under the same name would otherwise inherit
+    # the previous era's closed admission and never convene a council
+    # again.
+    _fnReopenCouncilAdmission(appState, sName)
     return (S_START_RESERVED, {}, recordOwner)
 
 
@@ -558,7 +564,11 @@ async def ftReleaseExplicit(
             # ANY exit that did not commit (a drain fault, a
             # cancellation, an ownership change), so a close can never
             # outlive an aborted release.
-            await _fnSettleCouncilStateBeforeRelease(appState, sName)
+            sCouncilSettlementMessage = (
+                await _fsSettleCouncilStateBeforeRelease(appState, sName))
+            if sCouncilSettlementMessage:
+                return (S_RELEASE_BUSY,
+                        {"sMessage": sCouncilSettlementMessage})
             await _fnDrainAndCloseBeforeRelease(appState, sName)
             async with _flockObtainSessionCardinality(dictLockStore):
                 bReleased = containerOwnership.fbReleaseOwnership(
@@ -577,15 +587,36 @@ async def ftReleaseExplicit(
     return (S_RELEASE_RELEASED, {})
 
 
-async def _fnSettleCouncilStateBeforeRelease(appState, sName):
-    """Settle every paused council runtime before ownership drops."""
+async def _fsSettleCouncilStateBeforeRelease(appState, sName):
+    """Settle every paused council runtime; return a refusal or ''.
+
+    A drain that could not PROVE every egress boundary gone refuses the
+    release: dropping the lease over an unproven proxy would hand the
+    container to the next session while a council network may still be
+    dialling out. The refusal returns BUSY, so ``bReleased`` stays
+    False and the caller's ``finally`` reopens admission — the
+    container keeps its owner, who can retry (the retry state is held
+    on the runtime) or stop the council and release again.
+    """
     from . import agentCouncilController
     dictCouncilControllerState = getattr(
         appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
         None)
-    if isinstance(dictCouncilControllerState, dict):
-        await agentCouncilController.fnDrainControllerForResource(
-            dictCouncilControllerState, sName)
+    if not isinstance(dictCouncilControllerState, dict):
+        return ""
+    dictSettlement = (
+        await agentCouncilController.fdictDrainControllerForResource(
+            dictCouncilControllerState, sName))
+    if dictSettlement["bAllSettled"]:
+        return ""
+    return (
+        f"Container '{sName}' still has Agent Council network resources "
+        "that could not be proven gone "
+        f"({len(dictSettlement['listUnsettledCampaignIds'])} campaign(s)); "
+        "it is retained rather than handed on with a council proxy that "
+        "may still be running. Retry the release, or stop the council "
+        "first."
+    )
 
 
 def _fsCloseCouncilAdmissionBeforeRelease(appState, sName):

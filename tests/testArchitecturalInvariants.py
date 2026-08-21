@@ -4984,7 +4984,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transaction (_fnSettleCouncilStateBeforeRelease under the
     # mutation lock, reopen-on-any-non-commit in finally) — the
     # post-release drain raced a new claim's admission reopen.
-    "sessionLifecycle.py": 1499,
+    # +31 (2026-08-21): the council settlement helper became a REFUSAL
+    # (busy when a boundary is unproven; the finally reopens and the
+    # owner is kept), and the start-reservation door reopens council
+    # admission exactly as a claim does — a released-then-restarted
+    # container inherited the previous era's closed admission.
+    "sessionLifecycle.py": 1530,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -5020,7 +5025,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reproduced late-registration leak — and the provisioner records
     # its tombstone BEFORE creating anything, keeping it when its own
     # in-line cleanup is indeterminate.
-    "agentCouncilController.py": 1199,
+    # +15 (2026-08-21): the resource drain returns a SETTLEMENT
+    # (bAllSettled + the campaigns whose boundaries are unproven) so
+    # the release authority can veto rather than drop a lease over a
+    # proxy nobody proved gone — retaining the runtime told the caller
+    # nothing.
+    "agentCouncilController.py": 1214,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

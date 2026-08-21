@@ -359,7 +359,7 @@ def testReleaseDrainSettlesAPausedRuntime(monkeypatch, tmp_path):
         "taskDrive": _FakeLiveTask(bDone=True),
         "bLaunchInProgress": False,
     }
-    asyncio.run(controller.fnDrainControllerForResource(
+    asyncio.run(controller.fdictDrainControllerForResource(
         dictControllerState, S_RESOURCE_NAME))
     assert dictCampaign["sState"] == (
         agentCouncilCampaign.S_STATE_INTERRUPTED)
@@ -633,7 +633,7 @@ def testIndeterminateTeardownKeepsTheRuntimeOnReleaseDrain(monkeypatch,
         "taskDrive": _FakeLiveTask(bDone=True),
         "bLaunchInProgress": False,
     }
-    asyncio.run(controller.fnDrainControllerForResource(
+    asyncio.run(controller.fdictDrainControllerForResource(
         dictControllerState, S_RESOURCE_NAME))
     assert sCampaignId in dictControllerState["dictCampaignRuntime"], (
         "popping the runtime on an indeterminate teardown discards the "
@@ -836,7 +836,7 @@ def testDrainFaultReopensAdmissionAndKeepsOwnership(monkeypatch, tmp_path):
         raise RuntimeError("drain fell over mid-settlement")
 
     monkeypatch.setattr(
-        controller, "fnDrainControllerForResource", _fnExplodeDrain)
+        controller, "fdictDrainControllerForResource", _fnExplodeDrain)
     app = FastAPI()
     app.state.dictContainerOwners = {}
     dictControllerState = controller.fdictCreateCouncilControllerState()
@@ -857,3 +857,96 @@ def testDrainFaultReopensAdmissionAndKeepsOwnership(monkeypatch, tmp_path):
         "a non-committing release left council admission closed for a "
         "container that is still owned")
     assert "demo" in app.state.dictContainerOwners
+
+
+def testUnsettledEgressVetoesTheReleaseAndKeepsOwnership(monkeypatch,
+                                                         tmp_path):
+    """The reviewer's second repro: an unproven boundary must veto.
+
+    The drain retained the runtime but told the release authority
+    nothing, so ownership dropped anyway — a proxy could outlive the
+    lease. The drain now reports its settlement and the release
+    answers BUSY, keeping the owner and reopening admission.
+    """
+    from fastapi import FastAPI
+    from vaibify.config import containerLock
+    from vaibify.gui import containerOwnership, sessionLifecycle
+
+    monkeypatch.setattr(containerLock, "_S_LOCK_DIRECTORY", str(tmp_path))
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sCampaignId: {
+            "bProxyAbsenceProven": False, "bNetworkAbsenceProven": True,
+            "saIndeterminateResources": ["vaibifyCouncilProxy-x"]})
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    dictCampaign["dictProjectIdentity"]["sResourceName"] = "demo"
+    app = FastAPI()
+    app.state.dictContainerOwners = {}
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    app.state.dictCouncilControllerState = dictControllerState
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "sCampaignId": "campaign-access-1",
+        "dictCampaign": dictCampaign,
+        "dictStore": dictStore,
+        "dictGateway": {"bFakeGateway": True},
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+        "taskDrive": _FakeLiveTask(bDone=True),
+        "bLaunchInProgress": False,
+    }
+
+    async def _fnDriveRelease():
+        iStatus, dictPayload = containerOwnership.ftClaim(
+            app.state.dictContainerOwners, "demo",
+            containerOwnership.fsMintLease(), 8050)
+        assert iStatus == 200
+        return await sessionLifecycle.ftReleaseExplicit(
+            app.state, "demo", dictPayload["sLeaseId"])
+
+    sOutcome, dictPayload = asyncio.run(_fnDriveRelease())
+    assert sOutcome == sessionLifecycle.S_RELEASE_BUSY, (
+        "the lease dropped while a council proxy may still be running")
+    assert "could not be proven gone" in dictPayload["sMessage"]
+    assert "demo" in app.state.dictContainerOwners, (
+        "the container must keep its owner when the release is vetoed")
+    assert "demo" not in dictControllerState[
+        "setClosedResourceAdmissions"], (
+        "a vetoed release must reopen admission for the retained owner")
+    assert sCampaignId in dictControllerState["dictCampaignRuntime"]
+
+
+def testStartReservationReopensCouncilAdmission(monkeypatch, tmp_path):
+    """The other door into ownership reopens admission, like a claim.
+
+    A container released (admission closed), stopped, then freshly
+    started under the same name took the reservation path, which never
+    reopened — leaving the new owner permanently unable to convene a
+    council.
+    """
+    from fastapi import FastAPI
+    from vaibify.config import containerLock
+    from vaibify.gui import sessionLifecycle
+
+    monkeypatch.setattr(containerLock, "_S_LOCK_DIRECTORY", str(tmp_path))
+    app = FastAPI()
+    app.state.dictContainerOwners = {}
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    app.state.dictCouncilControllerState = dictControllerState
+    dictControllerState["setClosedResourceAdmissions"].add("demo")
+
+    async def _ftDriveReservation():
+        return await sessionLifecycle.ftReserveContainerForStart(
+            app.state, "demo", "browser-session-1", 8050, None,
+            lambda recordOwner, identityOwnership: None)
+
+    sOutcome, dictPayload, recordOwner = asyncio.run(_ftDriveReservation())
+    assert sOutcome == sessionLifecycle.S_START_RESERVED, dictPayload
+    assert recordOwner is not None
+    assert "demo" not in dictControllerState[
+        "setClosedResourceAdmissions"], (
+        "a fresh start established ownership but left the previous "
+        "era's admission closed — the council can never convene")
