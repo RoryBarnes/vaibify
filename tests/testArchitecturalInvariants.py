@@ -4973,7 +4973,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # vetoes it behaves like (not force-overridable): paid provider
     # work no release should silently abandon. The predicate lives in
     # the controller; this is only the arbitration point reading it.
-    "sessionLifecycle.py": 1420,
+    # +56 (2026-08-20): council admission closes ATOMICALLY inside the
+    # release commit (close-then-recheck in one synchronous stretch
+    # under the mutation lock) and reopens on an aborted release or a
+    # fresh claim — the check-then-act race where a respond authorized
+    # in the same tick could start a paid turn after the busy check.
+    # The arbitration point lives here because the ordering against
+    # the flock is the whole point.
+    "sessionLifecycle.py": 1476,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -4996,7 +5003,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # gained resolved model provenance and the sealed content hash.
     # Still the one responsibility: every line is a campaign-lifecycle
     # transition only the sole state-writer may make.
-    "agentCouncilController.py": 1054,
+    # +98 (2026-08-20, third-review fixes): teardown returns a
+    # SETTLEMENT (indeterminate keeps the retry state; delete refuses
+    # rather than orphan what the startup sweep could no longer name),
+    # cancellation takes the same launch-settlement path as any fault,
+    # and the release authority's atomic admission close/reopen pair
+    # plus the command gate that enforces it. Same one responsibility.
+    "agentCouncilController.py": 1152,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

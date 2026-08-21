@@ -582,6 +582,9 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         self._listEvents = []
         self._dictTurnExecution = None
         self._dictDestroyOutcome = None
+        # Reset per turn: a failure before fnStartTurn must not let the
+        # engine stamp the PREVIOUS turn's resolved model onto this one.
+        self.dictModelIdentity = {}
         dictEnvironment = self._fdictComposeRunnerEnvironment()
         sNetworkName = (self.dictEgress["sNetworkName"]
                         if self.dictEgress else None)

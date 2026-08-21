@@ -317,7 +317,7 @@ async def ftClaimWithCardinality(
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return containerOwnership.ftClaim(
+            tClaimVerdict = containerOwnership.ftClaim(
                 dictContainerOwners, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=fbPipelineRunning,
@@ -325,6 +325,12 @@ async def ftClaimWithCardinality(
                 dictSessionOwner=dictSessionOwner,
                 connectionDocker=connectionDocker,
             )
+            if tClaimVerdict[0] == 200:
+                # A fresh lease reopens what the previous release
+                # closed: the council command gate refuses by resource
+                # name, and this name has an owner again.
+                _fnReopenCouncilAdmission(appState, sName)
+            return tClaimVerdict
 
 
 async def ftReserveContainerForStart(
@@ -531,6 +537,16 @@ async def ftReleaseExplicit(
         sBusyMessage = _fsReleaseBusyReason(appState, sName, bForce)
         if sBusyMessage:
             return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
+        # Council admission closes ATOMICALLY before anything awaits:
+        # the busy check alone is check-then-act — a respond authorized
+        # in the same tick could spawn a paid turn right after it. The
+        # close-then-recheck runs in one synchronous stretch on the
+        # loop, so a drive that slipped in is seen (release refuses)
+        # and one arriving later is refused at the command gate.
+        sCouncilAdmissionMessage = _fsCloseCouncilAdmissionBeforeRelease(
+            appState, sName)
+        if sCouncilAdmissionMessage:
+            return (S_RELEASE_BUSY, {"sMessage": sCouncilAdmissionMessage})
         await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
             bReleased = containerOwnership.fbReleaseOwnership(
@@ -539,11 +555,51 @@ async def ftReleaseExplicit(
                 dictSessionOwner=dictSessionOwner,
             )
     if not bReleased:
+        # The container is still owned, so the admission close must
+        # not outlive the aborted release.
+        _fnReopenCouncilAdmission(appState, sName)
         return (S_RELEASE_NOT_OWNER, {
             "sMessage": f"Container '{sName}' was not released; its "
                         "ownership changed during the request.",
         })
     return (S_RELEASE_RELEASED, {})
+
+
+def _fsCloseCouncilAdmissionBeforeRelease(appState, sName):
+    """Close council admission for a releasing container, atomically.
+
+    Returns the refusal message when a live drive is found AFTER the
+    close (the admission is reopened first — the container stays
+    owned), or the empty string when the close is clean and the
+    release may proceed.
+    """
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if not isinstance(dictCouncilControllerState, dict):
+        return ""
+    if agentCouncilController.fbCloseResourceAdmission(
+            dictCouncilControllerState, sName):
+        return ""
+    agentCouncilController.fnReopenResourceAdmission(
+        dictCouncilControllerState, sName)
+    return (
+        f"Container '{sName}' has an Agent Council still "
+        "deliberating — paid provider work that no release should "
+        "silently abandon. Stop the council first, then release."
+    )
+
+
+def _fnReopenCouncilAdmission(appState, sName):
+    """Reopen council admission when a close outlived its purpose."""
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if isinstance(dictCouncilControllerState, dict):
+        agentCouncilController.fnReopenResourceAdmission(
+            dictCouncilControllerState, sName)
 
 
 def _fsReleaseBusyReason(appState, sName, bForce):

@@ -570,3 +570,154 @@ def testReleaseRefusesWhileACouncilIsDeliberatingThenAllows(tmp_path,
     assert dictControllerState["dictCampaignRuntime"] == {}
     assert dictCampaign["sState"] == (
         agentCouncilCampaign.S_STATE_INTERRUPTED)
+    # And CLOSED council admission atomically, so a respond racing the
+    # release is refused at the command gate; a fresh claim reopens.
+    assert "demo" in dictControllerState["setClosedResourceAdmissions"]
+    with TestClient(app) as clientReclaim:
+        assert clientReclaim.post(
+            "/api/registry/demo/claim").status_code == 200
+    assert "demo" not in dictControllerState["setClosedResourceAdmissions"]
+
+
+def testIndeterminateTeardownRefusesTheDelete(monkeypatch):
+    """Delete cannot drop the record that names what may still exist.
+
+    The startup sweep composes leftover names from STORED campaign
+    ids; deleting the record while the daemon answers indeterminately
+    would orphan the very network nobody proved gone. The dispose
+    refuses (the route answers 409) and the runtime keeps its retry
+    state.
+    """
+    dictCalls = {}
+    dictRuntime = _fdictBuildProvisionedRuntime(
+        monkeypatch, dictCalls, agentCouncilCampaign.S_STATE_INTERRUPTED)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sCampaignId: {
+            "bProxyAbsenceProven": True, "bNetworkAbsenceProven": False,
+            "saIndeterminateResources": ["vaibifyCouncilEgress-x"]})
+    dictRuntime["taskDrive"] = _FakeLiveTask(bDone=True)
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"][
+        dictRuntime["sCampaignId"]] = dictRuntime
+    with pytest.raises(controller.CouncilCommandError) as errorInfo:
+        asyncio.run(controller.fdictDisposeCampaignRuntime(
+            dictControllerState, dictRuntime["sCampaignId"]))
+    assert "orphan" in str(errorInfo.value)
+    assert dictRuntime["sCampaignId"] in (
+        dictControllerState["dictCampaignRuntime"])
+    assert dictRuntime["dictRunnerAccess"] is not None
+
+
+def testIndeterminateTeardownKeepsTheRuntimeOnReleaseDrain(monkeypatch,
+                                                           tmp_path):
+    """The drain retains the retry state an unproven removal leaves."""
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sCampaignId: {
+            "bProxyAbsenceProven": False, "bNetworkAbsenceProven": True,
+            "saIndeterminateResources": ["vaibifyCouncilProxy-x"]})
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "sCampaignId": "campaign-access-1",
+        "dictCampaign": dictCampaign,
+        "dictStore": dictStore,
+        "dictGateway": {"bFakeGateway": True},
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+        "taskDrive": _FakeLiveTask(bDone=True),
+        "bLaunchInProgress": False,
+    }
+    asyncio.run(controller.fnDrainControllerForResource(
+        dictControllerState, S_RESOURCE_NAME))
+    assert sCampaignId in dictControllerState["dictCampaignRuntime"], (
+        "popping the runtime on an indeterminate teardown discards the "
+        "retry state while the proxy may still exist")
+    assert dictCampaign["sState"] == (
+        agentCouncilCampaign.S_STATE_INTERRUPTED)
+
+
+def testCancelledLaunchSettlesInsteadOfStrandingTheRuntime(tmp_path):
+    """Cancellation takes the same settlement path as any launch fault.
+
+    The reviewed hole: CancelledError was re-raised before cleanup, so
+    the runtime stayed registered with bLaunchInProgress True forever —
+    permanently busy to every predicate, with possibly-live egress
+    nobody would release.
+    """
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+
+    async def _fdictCancelCapture():
+        raise asyncio.CancelledError()
+
+    async def _fnDriveLaunch():
+        await controller.fdictLaunchCampaignDeliberation(
+            dictControllerState, dictStore, dictRegistry, sCampaignId,
+            _fdictCancelCapture, "sha256:" + "00" * 32)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(_fnDriveLaunch())
+    assert dictControllerState["dictCampaignRuntime"] == {}
+    dictStored = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    assert dictStored["sState"] == agentCouncilCampaign.S_STATE_INTERRUPTED
+    assert dictStored["listStateTransitions"][-1]["sReason"] == (
+        "launchCancelledBeforeDeliberation")
+
+
+def testClosedAdmissionRefusesTurnDrivingCommands(tmp_path):
+    """After the atomic close, no launch or continuation can pass."""
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    bClean = controller.fbCloseResourceAdmission(
+        dictControllerState, S_RESOURCE_NAME)
+    assert bClean is True
+
+    async def _fdictNeverCapture():
+        raise AssertionError("a closed resource must never reach capture")
+
+    async def _fnDriveLaunch():
+        await controller.fdictLaunchCampaignDeliberation(
+            dictControllerState, dictStore, dictRegistry, sCampaignId,
+            _fdictNeverCapture, "sha256:" + "00" * 32)
+
+    with pytest.raises(controller.CouncilCommandError) as errorInfo:
+        asyncio.run(_fnDriveLaunch())
+    assert "lease was released" in str(errorInfo.value)
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
+            dictStore, sCampaignId),
+        "taskDrive": _FakeLiveTask(bDone=True),
+        "bLaunchInProgress": False,
+    }
+    with pytest.raises(controller.CouncilCommandError):
+        asyncio.run(controller.fdictContinueCampaignAfterResponse(
+            dictControllerState, dictStore, dictRegistry, sCampaignId,
+            "an answer"))
+    controller.fnReopenResourceAdmission(
+        dictControllerState, S_RESOURCE_NAME)
+    assert S_RESOURCE_NAME not in dictControllerState[
+        "setClosedResourceAdmissions"]
+
+
+def testAdmissionCloseSeesADriveThatSlippedIn():
+    """The close-then-recheck: a live drive makes the close report dirty."""
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"]["campaign-slipped"] = {
+        "dictCampaign": {"dictProjectIdentity": {
+            "sResourceName": S_RESOURCE_NAME}},
+        "taskDrive": _FakeLiveTask(bDone=False),
+        "bLaunchInProgress": False,
+    }
+    assert controller.fbCloseResourceAdmission(
+        dictControllerState, S_RESOURCE_NAME) is False, (
+        "a drive that spawned before the close must be SEEN by the "
+        "re-check so the release refuses instead of proceeding")

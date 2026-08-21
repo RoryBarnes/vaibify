@@ -62,9 +62,11 @@ __all__ = [
     "fdictRejectCampaignCandidate",
     "fdictResolveCampaignObjections",
     "fsComposePlanMarkdown",
+    "fbCloseResourceAdmission",
     "fbControllerHasLiveDriveForResource",
     "fdictDisposeCampaignRuntime",
     "fgenericSubmitCampaignCommand",
+    "fnReopenResourceAdmission",
     "fiClassifyInterruptedCampaignsOnStartup",
     "flistReadCampaignCommandLog",
     "fnAwaitControllerSettleOnShutdown",
@@ -122,6 +124,12 @@ def fdictCreateCouncilControllerState():
         "dictCampaignLocks": {},
         "dictCommandLogByCampaign": {},
         "dictCampaignRuntime": {},
+        # Resource names whose council admission the release authority
+        # has CLOSED: no launch and no turn-driving continuation may
+        # pass while a name is here. Closed atomically before the
+        # lease is dropped; reopened on a successful claim (or when a
+        # refused release aborts).
+        "setClosedResourceAdmissions": set(),
     }
 
 
@@ -260,22 +268,24 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
     return dictRuntime["dictRunnerAccess"]
 
 
-def _fnReleaseRunnerAccessResources(dictRuntime):
-    """Tear down a campaign's provisioned egress boundary.
+def _fbReleaseRunnerAccessResources(dictRuntime):
+    """Tear down a campaign's egress boundary; report whether it SETTLED.
 
     Idempotent: a runtime that never provisioned (every patched-fake
-    lane) returns at once. The egress network and proxy are removed
+    lane) settles at once. The egress network and proxy are removed
     with absence proven by the gateway; an INDETERMINATE answer keeps
-    ``dictRunnerAccess`` in place — the retry state is the record that
-    something may still exist, so a later release attempt (or the
-    next hub start's egress sweep, which removes every council-named
-    leftover) can settle what this one could not. No credential file
-    is handled here: the login copy is staged per turn and deleted
-    the moment its delivery tarball is built.
+    ``dictRunnerAccess`` in place and answers False — the retry state
+    is the record that something may still exist, and every caller
+    must treat False as "not done": the release drain retains the
+    runtime, delete REFUSES to drop the durable record (the startup
+    sweep composes names from stored campaign ids, so deleting the
+    record would orphan the very resource nobody proved gone). No
+    credential file is handled here: the login copy is staged per turn
+    and deleted the moment its delivery tarball is built.
     """
     dictAccess = dictRuntime.get("dictRunnerAccess")
     if dictAccess is None:
-        return
+        return True
     from . import agentCouncilDockerGateway
     dictRemoved = (
         agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
@@ -287,8 +297,9 @@ def _fnReleaseRunnerAccessResources(dictRuntime):
             "resources (kept for retry; the startup egress sweep is "
             "the durable backstop): %s", dictRuntime["sCampaignId"],
             dictRemoved["saIndeterminateResources"])
-        return
+        return False
     dictRuntime["dictRunnerAccess"] = None
+    return True
 
 
 # The states in which a campaign will drive no further provider turn,
@@ -304,9 +315,15 @@ LIST_NO_FURTHER_TURN_STATES = [
 
 
 async def _fnReleaseRunnerAccessIfSettled(dictRuntime):
-    """Release runner access once the campaign can drive no more turns."""
+    """Release runner access once the campaign can drive no more turns.
+
+    An indeterminate teardown keeps the runtime's retry state; the
+    runtime itself stays registered on these paths, so the state
+    survives for a later attempt and the startup sweep remains the
+    durable backstop.
+    """
     if dictRuntime["dictCampaign"]["sState"] in LIST_NO_FURTHER_TURN_STATES:
-        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
+        await asyncio.to_thread(_fbReleaseRunnerAccessResources, dictRuntime)
 
 
 def _fdictEnsureRuntimeGateway(dictRuntime):
@@ -514,6 +531,8 @@ async def fdictLaunchCampaignDeliberation(
         raise CouncilCommandError(
             f"no stored campaign {sCampaignId!r} to deliberate")
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "start")
+    _fnRefuseWhenResourceAdmissionClosed(
+        dictControllerState, dictCampaign, "start")
     try:
         dictManifest = await ffnCaptureSnapshot()
         dictCampaign["dictProjectIdentity"]["sSnapshotIdentity"] = (
@@ -529,18 +548,31 @@ async def fdictLaunchCampaignDeliberation(
             dictRuntime,
             dictRuntime["engineCouncil"].fdictRunUntilBlocked)
         dictRuntime["bLaunchInProgress"] = False
-    except asyncio.CancelledError:
-        raise
     except BaseException as error:
-        dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].pop(
-            sCampaignId, None)
+        # Cancellation takes this SAME settlement path before
+        # re-raising: skipping it left a runtime permanently
+        # bLaunchInProgress (forever "busy" to every predicate) with
+        # possibly-live egress nobody would release. A cancelled
+        # coroutine may still await — the cleanup below runs before
+        # the CancelledError propagates.
+        dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId)
         if dictBuiltRuntime is not None:
-            await asyncio.to_thread(
-                _fnReleaseRunnerAccessResources, dictBuiltRuntime)
+            dictBuiltRuntime["bLaunchInProgress"] = False
+            bAccessSettled = await asyncio.to_thread(
+                _fbReleaseRunnerAccessResources, dictBuiltRuntime)
+            if bAccessSettled:
+                dictControllerState["dictCampaignRuntime"].pop(
+                    sCampaignId, None)
         if dictCampaign["sState"] == agentCouncilCampaign.S_STATE_PLANNING:
+            bCancelled = isinstance(error, asyncio.CancelledError)
             agentCouncilCampaign.fnTransitionCampaignState(
-                dictCampaign, agentCouncilCampaign.S_STATE_FAILED,
-                f"launchFailedBeforeDeliberation: {type(error).__name__}")
+                dictCampaign,
+                agentCouncilCampaign.S_STATE_INTERRUPTED if bCancelled
+                else agentCouncilCampaign.S_STATE_FAILED,
+                "launchCancelledBeforeDeliberation" if bCancelled
+                else f"launchFailedBeforeDeliberation: "
+                     f"{type(error).__name__}")
             agentCouncilStore.fnCheckpointStoredCampaign(
                 dictStore, sCampaignId, dictCampaign)
         raise
@@ -565,6 +597,8 @@ def _fdictRequireContinuationRuntime(dictControllerState, sCampaignId,
         raise CouncilCommandError(
             "this campaign has no live deliberation to continue — the "
             "hub restarted since it ran; convene a fresh council")
+    _fnRefuseWhenResourceAdmissionClosed(
+        dictControllerState, dictRuntime["dictCampaign"], sAction)
     return dictRuntime
 
 
@@ -841,6 +875,16 @@ def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan):
                 "- " + str(dictObjection.get("sObjectionText", ""))
                 for dictObjection in listObjections)
             listLines.append("")
+    listDecisions = dictCampaign.get("listResearcherDecisions") or []
+    if listDecisions:
+        listLines.append("## Researcher decisions during deliberation")
+        for dictDecision in listDecisions:
+            sDetailSuffix = (
+                f": {dictDecision['sText']}"
+                if dictDecision.get("sText") else "")
+            listLines.append(
+                f"- {dictDecision.get('sDecisionKind', '')}{sDetailSuffix}")
+        listLines.append("")
     return "\n".join(listLines)
 
 
@@ -941,6 +985,43 @@ def _fnRequestRuntimeStopQuietly(dictRuntime):
         taskDrive.cancel()
 
 
+def fbCloseResourceAdmission(dictControllerState, sResourceName):
+    """Close council admission for a resource; report the close CLEAN.
+
+    Called by the release authority under the container-mutation lock,
+    in the same synchronous stretch as its re-check of live drives —
+    close first, re-check after. On one event loop that ordering is
+    what makes close-then-release atomic: a respond whose admission
+    check passed before this close has already spawned its drive, so
+    the re-check sees it and the release refuses; one that arrives
+    after the close is refused at the command gate. Returns True when
+    no drive is live after the close (the release may proceed), False
+    when one is (the caller reopens and refuses).
+    """
+    dictControllerState.setdefault(
+        "setClosedResourceAdmissions", set()).add(sResourceName)
+    return not fbControllerHasLiveDriveForResource(
+        dictControllerState, sResourceName)
+
+
+def fnReopenResourceAdmission(dictControllerState, sResourceName):
+    """Reopen council admission: a claim succeeded or a release aborted."""
+    dictControllerState.setdefault(
+        "setClosedResourceAdmissions", set()).discard(sResourceName)
+
+
+def _fnRefuseWhenResourceAdmissionClosed(dictControllerState, dictCampaign,
+                                         sAction):
+    """Refuse a turn-driving command for a resource whose lease is gone."""
+    sResourceName = (dictCampaign.get("dictProjectIdentity")
+                     or {}).get("sResourceName")
+    if sResourceName in dictControllerState.get(
+            "setClosedResourceAdmissions", set()):
+        raise CouncilCommandError(
+            f"cannot {sAction}: the project lease was released; claim "
+            "the project again and convene a fresh council")
+
+
 def fbControllerHasLiveDriveForResource(dictControllerState, sResourceName):
     """Report whether any campaign bound to one resource is deliberating.
 
@@ -992,8 +1073,14 @@ async def fnDrainControllerForResource(dictControllerState, sResourceName):
                 "was paused")
             agentCouncilStore.fnCheckpointStoredCampaign(
                 dictRuntime["dictStore"], sCampaignId, dictCampaign)
-        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
-        dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
+        bAccessSettled = await asyncio.to_thread(
+            _fbReleaseRunnerAccessResources, dictRuntime)
+        if bAccessSettled:
+            dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
+        # An unsettled teardown KEEPS the runtime: it is the in-process
+        # retry state, and the durable campaign record (which release
+        # never deletes) keeps the startup sweep able to compose the
+        # leftover's name.
 
 
 async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):
@@ -1002,15 +1089,26 @@ async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):
     The delete route's controller half: durable storage removal must
     not strand the in-process runtime or its provisioned boundary.
     Refuses while the drive is live or launching (the route's registry
-    check cannot see either), and is a quiet no-op for a campaign that
-    never had a runtime this process lifetime.
+    check cannot see either), and REFUSES when the egress teardown
+    cannot prove absence — the startup sweep composes leftover names
+    from STORED campaign ids, so deleting the record while the daemon
+    answers indeterminately would orphan the very network or proxy
+    nobody proved gone. A quiet no-op for a campaign that never had a
+    runtime this process lifetime.
     """
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "delete")
-    dictRuntime = dictControllerState["dictCampaignRuntime"].pop(
-        sCampaignId, None)
-    if dictRuntime is not None:
-        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
-    return {"bDisposed": dictRuntime is not None}
+    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
+    if dictRuntime is None:
+        return {"bDisposed": False}
+    bAccessSettled = await asyncio.to_thread(
+        _fbReleaseRunnerAccessResources, dictRuntime)
+    if not bAccessSettled:
+        raise CouncilCommandError(
+            "the campaign's egress resources could not be proven gone "
+            "(the daemon answered indeterminately); retry the delete — "
+            "removing the record now would orphan what may still exist")
+    dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
+    return {"bDisposed": True}
 
 
 def fnDrainControllerOnShutdown(dictControllerState):
@@ -1051,4 +1149,4 @@ async def fnAwaitControllerSettleOnShutdown(dictControllerState,
                 taskDrive.cancel()
     for dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].values()):
-        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
+        await asyncio.to_thread(_fbReleaseRunnerAccessResources, dictRuntime)
