@@ -153,12 +153,12 @@ def testCreateScaffoldsTheProjectFileWhereDiscoveryLooks(
         "vaibify.gui.registryRoutes.os.path.expanduser",
         lambda _: str(tmp_path),
     )
-    sProjectDir = str(tmp_path / "bornCanonical")
+    sProjectDir = str(tmp_path / "born-canonical")
     response = fixtureClient.post(
         "/api/projects/create",
         json={
             "sDirectory": sProjectDir,
-            "sProjectName": "bornCanonical",
+            "sProjectName": "born-canonical",
             "sTemplateName": "workflow",
             "sPythonVersion": "3.12",
             "listRepositories": [],
@@ -190,12 +190,12 @@ def testASandboxScaffoldsNoWorkflowAtAll(
         "vaibify.gui.registryRoutes.os.path.expanduser",
         lambda _: str(tmp_path),
     )
-    sProjectDir = str(tmp_path / "blankSandbox")
+    sProjectDir = str(tmp_path / "blank-sandbox")
     response = fixtureClient.post(
         "/api/projects/create",
         json={
             "sDirectory": sProjectDir,
-            "sProjectName": "blankSandbox",
+            "sProjectName": "blank-sandbox",
             "sTemplateName": "sandbox",
             "sPythonVersion": "3.12",
             "listRepositories": [],

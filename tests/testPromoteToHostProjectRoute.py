@@ -395,10 +395,10 @@ def testPromotedHostProjectCanStillBeContainerizedLater(tclient):
     response = client.post(
         "/api/registry/" + S_NEW_NAME.replace(" ", "%20")
         + "/convert-to-container",
-        json={"sProjectName": "aiGreenhouseBox"},
+        json={"sProjectName": "ai-greenhouse-box"},
     )
     assert response.status_code == 200, response.text
-    dictConverted = registryManager.fdictGetProject("aiGreenhouseBox")
+    dictConverted = registryManager.fdictGetProject("ai-greenhouse-box")
     assert dictConverted["sMode"] == "container"
 
 
