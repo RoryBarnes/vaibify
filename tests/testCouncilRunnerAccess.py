@@ -721,3 +721,139 @@ def testAdmissionCloseSeesADriveThatSlippedIn():
         dictControllerState, S_RESOURCE_NAME) is False, (
         "a drive that spawned before the close must be SEEN by the "
         "re-check so the release refuses instead of proceeding")
+
+
+def testCancelledBuildThreadCannotRegisterALateRuntime(monkeypatch,
+                                                       tmp_path):
+    """The reviewer's reproduced race: the worker outlives the cancel.
+
+    Cancelling the awaiting future does not stop the build thread; the
+    old handler cleaned up BEFORE the thread registered the runtime,
+    which then appeared after cleanup found nothing. The launch now
+    shields the build and its failure handler waits the thread out, so
+    cleanup always sees what was actually built.
+    """
+    import threading
+    import time as moduleTime
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    eventBuildStarted = threading.Event()
+
+    def _fdictSlowBuild(dictControllerState, dictStoreArg, dictRegistryArg,
+                        sCampaignIdArg, dictCampaign, sImageReference,
+                        baSnapshotTar, fsStageRunnerCredential=None):
+        eventBuildStarted.set()
+        moduleTime.sleep(0.25)
+        dictRuntime = {
+            "sCampaignId": sCampaignIdArg,
+            "dictCampaign": dictCampaign,
+            "dictStore": dictStoreArg,
+            "dictGateway": {"bFakeGateway": True},
+            "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+            "bLaunchInProgress": True,
+            "taskDrive": None,
+        }
+        dictControllerState["dictCampaignRuntime"][
+            sCampaignIdArg] = dictRuntime
+        return dictRuntime
+
+    monkeypatch.setattr(
+        controller, "_fdictBuildCampaignRuntime", _fdictSlowBuild)
+
+    async def _fdictQuickCapture():
+        import tarfile as moduleTar
+        sDirectory = os.path.join(
+            dictStore["sDurableStoreRoot"], sCampaignId, "snapshot")
+        os.makedirs(sDirectory, exist_ok=True)
+        with moduleTar.open(
+                os.path.join(sDirectory, "snapshot.tar"), "w"):
+            pass
+        return {"sSnapshotSha256": "fixture-hash"}
+
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+
+    async def _fnDriveCancelledLaunch():
+        taskLaunch = asyncio.create_task(
+            controller.fdictLaunchCampaignDeliberation(
+                dictControllerState, dictStore, dictRegistry, sCampaignId,
+                _fdictQuickCapture, "sha256:" + "00" * 32))
+        while not eventBuildStarted.is_set():
+            await asyncio.sleep(0.01)
+        taskLaunch.cancel()
+        try:
+            await taskLaunch
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_fnDriveCancelledLaunch())
+    assert dictControllerState["dictCampaignRuntime"] == {}, (
+        "the build thread registered the runtime AFTER cleanup ran — "
+        "the handler must wait the worker out before cleaning")
+    assert dictCalls.get("listRemovals") == [sCampaignId], (
+        "the late-built egress boundary was never released")
+
+
+def testHalfProvisionedIndeterminateTeardownKeepsTheTombstone(monkeypatch):
+    """A fault mid-provisioning with an unproven cleanup keeps the record.
+
+    The earlier shape cleaned up in-line, ignored the settlement, and
+    left dictRunnerAccess None — the outer handler then read "nothing
+    to release" and dropped the runtime while the network may still
+    exist.
+    """
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fsLaunchAllowlistProxy",
+        lambda dictGateway, sCampaignId, saAllowedHostnames: (
+            (_ for _ in ()).throw(RuntimeError("proxy never listened"))))
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sCampaignId: {
+            "bProxyAbsenceProven": True, "bNetworkAbsenceProven": False,
+            "saIndeterminateResources": ["vaibifyCouncilEgress-x"]})
+    dictRuntime = _fdictBuildAccessRuntime(
+        fsStageRunnerCredential=lambda: "/tmp/stagedCredential.json")
+    with pytest.raises(RuntimeError, match="proxy never listened"):
+        controller.fconnectionBuildParticipantConnection(
+            dictRuntime, {"sRequestedModel": "opus"})
+    assert dictRuntime["dictRunnerAccess"] is not None, (
+        "an indeterminate half-provisioning cleanup must keep the "
+        "tombstone, or delete can drop the id the startup sweep needs")
+
+
+def testDrainFaultReopensAdmissionAndKeepsOwnership(monkeypatch, tmp_path):
+    """A release that does not commit can never leave admission closed."""
+    from fastapi import FastAPI
+    from vaibify.config import containerLock
+    from vaibify.gui import containerOwnership, sessionLifecycle
+
+    monkeypatch.setattr(containerLock, "_S_LOCK_DIRECTORY", str(tmp_path))
+
+    async def _fnExplodeDrain(dictControllerState, sResourceName):
+        raise RuntimeError("drain fell over mid-settlement")
+
+    monkeypatch.setattr(
+        controller, "fnDrainControllerForResource", _fnExplodeDrain)
+    app = FastAPI()
+    app.state.dictContainerOwners = {}
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    app.state.dictCouncilControllerState = dictControllerState
+
+    async def _fnDriveFailingRelease():
+        iStatus, dictPayload = containerOwnership.ftClaim(
+            app.state.dictContainerOwners, "demo",
+            containerOwnership.fsMintLease(), 8050)
+        assert iStatus == 200
+        with pytest.raises(RuntimeError, match="fell over"):
+            await sessionLifecycle.ftReleaseExplicit(
+                app.state, "demo", dictPayload["sLeaseId"])
+
+    asyncio.run(_fnDriveFailingRelease())
+    assert "demo" not in dictControllerState[
+        "setClosedResourceAdmissions"], (
+        "a non-committing release left council admission closed for a "
+        "container that is still owned")
+    assert "demo" in app.state.dictContainerOwners

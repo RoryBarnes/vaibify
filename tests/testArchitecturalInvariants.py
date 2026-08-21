@@ -4980,7 +4980,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # in the same tick could start a paid turn after the busy check.
     # The arbitration point lives here because the ordering against
     # the flock is the whole point.
-    "sessionLifecycle.py": 1476,
+    # +23 (2026-08-20): council settlement moved INSIDE the release
+    # transaction (_fnSettleCouncilStateBeforeRelease under the
+    # mutation lock, reopen-on-any-non-commit in finally) — the
+    # post-release drain raced a new claim's admission reopen.
+    "sessionLifecycle.py": 1499,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -5009,7 +5013,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cancellation takes the same launch-settlement path as any fault,
     # and the release authority's atomic admission close/reopen pair
     # plus the command gate that enforces it. Same one responsibility.
-    "agentCouncilController.py": 1152,
+    # +47 (2026-08-20, fourth-review fixes): the SHIELDED runtime
+    # build — cancelling the awaiting future never stops the worker
+    # thread, so the failure handler waits the thread out
+    # (_fnAwaitBuildWorkerCompletion) before cleaning, closing the
+    # reproduced late-registration leak — and the provisioner records
+    # its tombstone BEFORE creating anything, keeping it when its own
+    # in-line cleanup is indeterminate.
+    "agentCouncilController.py": 1199,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

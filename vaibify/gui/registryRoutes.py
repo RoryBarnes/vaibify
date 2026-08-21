@@ -568,21 +568,11 @@ def _fnRegisterReleaseContainer(app, dictCtx):
         dictBody = dict(dictPayload, sName=sName, bReleased=(
             sOutcome == sessionLifecycle.S_RELEASE_RELEASED
         ))
-        if sOutcome == sessionLifecycle.S_RELEASE_RELEASED:
-            # A LIVE council drive refused the release inside the
-            # lifecycle authority's busy check, so what remains here
-            # are PAUSED runtimes: each is settled — interrupted,
-            # checkpointed, its egress boundary released, its runtime
-            # dropped — because no council resource may outlive the
-            # lease it was provisioned under (remediation R1).
-            from vaibify.gui import agentCouncilController
-            dictControllerState = getattr(
-                app.state,
-                agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
-                None)
-            if isinstance(dictControllerState, dict):
-                await agentCouncilController.fnDrainControllerForResource(
-                    dictControllerState, sName)
+        # Council settlement is INSIDE ftReleaseExplicit's ownership
+        # transaction (admission closed atomically, paused runtimes
+        # settled under the container-mutation lock, reopened on any
+        # non-commit) — a post-release drain here would race a new
+        # claim's admission reopen against its own async cleanup.
         if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
             # The refusal reason rides `detail`, the shape the client's
             # error extractor reads — the same one the claim 409 uses.

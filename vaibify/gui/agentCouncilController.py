@@ -247,24 +247,39 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
     from . import agentCouncilProviders
     dictGateway = _fdictEnsureRuntimeGateway(dictRuntime)
     sCampaignId = dictRuntime["sCampaignId"]
-    sNetworkName = agentCouncilDockerGateway.fsCreateCampaignInternalNetwork(
-        dictGateway, sCampaignId)
+    # The tombstone is recorded BEFORE anything is created: a fault
+    # midway through provisioning leaves ``dictRunnerAccess`` in place
+    # unless the in-line cleanup POSITIVELY proved absence, so an
+    # indeterminate answer keeps its retry state exactly like a failed
+    # teardown after a successful launch — the earlier shape cleaned
+    # up in-line, ignored the settlement, and let the outer handler
+    # read the still-None access as "nothing to release".
+    dictEgress = {
+        "sNetworkName": "",
+        "sProxyInternalAddress": "",
+        "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT,
+    }
+    dictRuntime["dictRunnerAccess"] = {"dictEgress": dictEgress}
     try:
-        sProxyInternalAddress = (
+        dictEgress["sNetworkName"] = (
+            agentCouncilDockerGateway.fsCreateCampaignInternalNetwork(
+                dictGateway, sCampaignId))
+        dictEgress["sProxyInternalAddress"] = (
             agentCouncilDockerGateway.fsLaunchAllowlistProxy(
                 dictGateway, sCampaignId,
                 [agentCouncilProviders.S_ANTHROPIC_API_HOSTNAME]))
     except BaseException:
-        agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
-            dictGateway, sCampaignId)
+        dictRemoved = (
+            agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
+                dictGateway, sCampaignId))
+        if not dictRemoved["saIndeterminateResources"]:
+            dictRuntime["dictRunnerAccess"] = None
+        else:
+            logger.warning(
+                "council campaign %s half-provisioned egress teardown "
+                "left indeterminate resources (tombstone kept): %s",
+                sCampaignId, dictRemoved["saIndeterminateResources"])
         raise
-    dictRuntime["dictRunnerAccess"] = {
-        "dictEgress": {
-            "sNetworkName": sNetworkName,
-            "sProxyInternalAddress": sProxyInternalAddress,
-            "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT,
-        },
-    }
     return dictRuntime["dictRunnerAccess"]
 
 
@@ -533,6 +548,7 @@ async def fdictLaunchCampaignDeliberation(
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "start")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "start")
+    taskBuild = None
     try:
         dictManifest = await ffnCaptureSnapshot()
         dictCampaign["dictProjectIdentity"]["sSnapshotIdentity"] = (
@@ -540,15 +556,23 @@ async def fdictLaunchCampaignDeliberation(
         agentCouncilStore.fnCheckpointStoredCampaign(
             dictStore, sCampaignId, dictCampaign)
         baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
-        dictRuntime = await asyncio.to_thread(
+        # SHIELDED: cancelling this await cancels only the awaiting
+        # future, never the worker thread, which would otherwise keep
+        # registering the runtime and provisioning egress AFTER the
+        # cleanup below had already run and found nothing. The failure
+        # handler waits the thread out before cleaning, so cleanup
+        # always sees what the build actually built.
+        taskBuild = asyncio.ensure_future(asyncio.to_thread(
             _fdictBuildCampaignRuntime, dictControllerState, dictStore,
             dictRegistry, sCampaignId, dictCampaign, sImageReference,
-            baSnapshotTar, fsStageRunnerCredential)
+            baSnapshotTar, fsStageRunnerCredential))
+        dictRuntime = await asyncio.shield(taskBuild)
         sTurnId = _fsSpawnDriveTask(
             dictRuntime,
             dictRuntime["engineCouncil"].fdictRunUntilBlocked)
         dictRuntime["bLaunchInProgress"] = False
     except BaseException as error:
+        await _fnAwaitBuildWorkerCompletion(taskBuild)
         # Cancellation takes this SAME settlement path before
         # re-raising: skipping it left a runtime permanently
         # bLaunchInProgress (forever "busy" to every predicate) with
@@ -577,6 +601,29 @@ async def fdictLaunchCampaignDeliberation(
                 dictStore, sCampaignId, dictCampaign)
         raise
     return {"sTurnId": sTurnId}
+
+
+async def _fnAwaitBuildWorkerCompletion(taskBuild):
+    """Wait the runtime-build worker thread out, absorbing every outcome.
+
+    A worker thread cannot be interrupted, so the launch's failure
+    handler must not clean up until the thread has actually finished —
+    otherwise the thread registers the runtime and provisions egress
+    AFTER cleanup found nothing (reproduced by review: the runtime
+    appeared after the handler completed). Repeated cancellation of
+    this wait is tolerated: the shield is re-entered until the future
+    settles, and the worker's own exception (already handled by the
+    caller) is swallowed here.
+    """
+    if taskBuild is None:
+        return
+    while not taskBuild.done():
+        try:
+            await asyncio.shield(taskBuild)
+        except asyncio.CancelledError:
+            continue
+        except BaseException:
+            break
 
 
 def _fbaReadSealedSnapshot(dictStore, sCampaignId):

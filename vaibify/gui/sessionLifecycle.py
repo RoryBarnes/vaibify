@@ -547,22 +547,45 @@ async def ftReleaseExplicit(
             appState, sName)
         if sCouncilAdmissionMessage:
             return (S_RELEASE_BUSY, {"sMessage": sCouncilAdmissionMessage})
-        await _fnDrainAndCloseBeforeRelease(appState, sName)
-        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fbReleaseOwnership(
-                dictContainerOwners, sName, sLeaseId,
-                sBrowserSessionId=sBrowserSessionId,
-                dictSessionOwner=dictSessionOwner,
-            )
+        bReleased = False
+        try:
+            # Council state settles INSIDE the ownership transaction,
+            # still under the container-mutation lock: a concurrent
+            # claim serializes behind this lock, so it cannot reopen
+            # admission while paused campaigns are mid-settlement —
+            # the interleaving that let a second campaign continue
+            # from the previous lease era. The ``finally`` reopens on
+            # ANY exit that did not commit (a drain fault, a
+            # cancellation, an ownership change), so a close can never
+            # outlive an aborted release.
+            await _fnSettleCouncilStateBeforeRelease(appState, sName)
+            await _fnDrainAndCloseBeforeRelease(appState, sName)
+            async with _flockObtainSessionCardinality(dictLockStore):
+                bReleased = containerOwnership.fbReleaseOwnership(
+                    dictContainerOwners, sName, sLeaseId,
+                    sBrowserSessionId=sBrowserSessionId,
+                    dictSessionOwner=dictSessionOwner,
+                )
+        finally:
+            if not bReleased:
+                _fnReopenCouncilAdmission(appState, sName)
     if not bReleased:
-        # The container is still owned, so the admission close must
-        # not outlive the aborted release.
-        _fnReopenCouncilAdmission(appState, sName)
         return (S_RELEASE_NOT_OWNER, {
             "sMessage": f"Container '{sName}' was not released; its "
                         "ownership changed during the request.",
         })
     return (S_RELEASE_RELEASED, {})
+
+
+async def _fnSettleCouncilStateBeforeRelease(appState, sName):
+    """Settle every paused council runtime before ownership drops."""
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if isinstance(dictCouncilControllerState, dict):
+        await agentCouncilController.fnDrainControllerForResource(
+            dictCouncilControllerState, sName)
 
 
 def _fsCloseCouncilAdmissionBeforeRelease(appState, sName):
