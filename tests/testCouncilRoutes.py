@@ -181,6 +181,27 @@ def eventTurnGate(monkeypatch):
     return eventGate
 
 
+def _fnWaitForNoLiveCouncilWork(app, fDeadlineSeconds=10.0):
+    """Poll until every turn-in-flight retires, or fail loudly.
+
+    The store checkpoint that makes a terminal state VISIBLE lands
+    before the drive task's ``finally`` retires the turn — record
+    first, accounting second, deliberately — so a state-poll followed
+    by an instant registry assertion races the unwind (it lost on the
+    Python 3.14 CI lane). The guarantee is that live work retires; a
+    bounded wait asserts exactly that, and a turn that never retires
+    still fails here.
+    """
+    fDeadline = time.monotonic() + fDeadlineSeconds
+    while time.monotonic() < fDeadline:
+        if not agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
+            return
+        time.sleep(0.05)
+    raise AssertionError(
+        "council work never retired: "
+        f"{app.state.dictCouncilRegistry['setTurnsInFlight']}")
+
+
 def _fnWaitForCampaignState(app, sCampaignId, sExpectedState,
                             fDeadlineSeconds=15.0):
     """Poll the store until the campaign reaches a state, or fail."""
@@ -378,7 +399,7 @@ def test_request_stop_is_cooperative_then_settles(
     from vaibify.gui import agentCouncilCampaign
     _fnWaitForCampaignState(
         app, sCampaignId, agentCouncilCampaign.S_STATE_ARCHIVED)
-    assert agentCouncilRegistry.fbHubHasLiveCouncilWork(app) is False
+    _fnWaitForNoLiveCouncilWork(app)
 
 
 def test_deliberation_reaches_plan_ready_with_no_hand_patched_state(
@@ -401,7 +422,7 @@ def test_deliberation_reaches_plan_ready_with_no_hand_patched_state(
     assert dictRecord["dictCandidatePlan"] is not None
     assert dictRecord["dictProjectIdentity"]["sSnapshotIdentity"] == (
         "fixture-snapshot-hash")
-    assert agentCouncilRegistry.fbHubHasLiveCouncilWork(app) is False
+    _fnWaitForNoLiveCouncilWork(app)
 
 
 # ── accepting a plan writes host app-data, never the project ──────

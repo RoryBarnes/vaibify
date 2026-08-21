@@ -36,6 +36,7 @@ from tests.agentCouncilHarness import fdictDecideCompleted, fdictMakeTurnResult
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testCouncilRoutes import (
     MockDockerCouncil,
+    _fnWaitForNoLiveCouncilWork,
     S_AGENT_TOKEN,
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
@@ -136,9 +137,9 @@ def test_blocking_question_gate_suspends_then_a_response_continues(
         sCampaignId = response.json()["sCampaignId"]
         _fnWaitForCampaignState(
             app, sCampaignId, agentCouncilCampaign.S_STATE_NEEDS_HUMAN)
-        from vaibify.gui import agentCouncilRegistry
-        assert agentCouncilRegistry.fbHubHasLiveCouncilWork(app) is False, (
-            "a human gate must suspend with no live turn behind it")
+        # Bounded: the state checkpoint lands before the drive's
+        # finally retires the turn (record first, accounting second).
+        _fnWaitForNoLiveCouncilWork(app)
         responseAnswer = client.post(
             f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/respond",
             json={"sResponseText": "the tolerance is fixed; proceed"})
