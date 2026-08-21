@@ -377,7 +377,7 @@ def _fnRegisterCouncilLifecycle(app):
 
 
 def _fnReconcileCouncilRunners(app):
-    """Discover and settle labeled council runners left by a hub crash."""
+    """Discover and settle council runners and egress left by a crash."""
     dictRegistry = getattr(
         app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY, None)
     dockerCouncil = _fdockerCreateCouncilClientOrNone()
@@ -385,6 +385,25 @@ def _fnReconcileCouncilRunners(app):
         return
     agentCouncilRegistry.fdictReconcileLabeledRunnersOnRestart(
         dictRegistry, dockerCouncil)
+    # The egress backstop: no council drive survives a restart, so
+    # every stored campaign's proxy and network is a leftover —
+    # including one an earlier hub's teardown answered INDETERMINATE
+    # for and could only log. (A proxy whose campaign record is gone
+    # is caught by the labeled reconcile above instead — proxies wear
+    # the council label for exactly that.) Indeterminate again here
+    # stays in the log and the next start sweeps again.
+    dictStore = getattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
+        None)
+    if not isinstance(dictStore, dict):
+        return
+    from vaibify.gui import agentCouncilDockerGateway
+    dictSwept = agentCouncilDockerGateway.fdictSweepCouncilEgressLeftovers(
+        dockerCouncil, list(dictStore["listInsertionOrder"]))
+    if dictSwept["listIndeterminateResources"]:
+        logger.warning(
+            "startup council egress sweep could not settle: %s",
+            dictSwept["listIndeterminateResources"])
 
 
 def _fnDrainCouncilRunners(app):

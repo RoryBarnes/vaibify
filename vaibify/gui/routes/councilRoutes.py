@@ -342,17 +342,28 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
 
 
 def _ffnBuildImageResolver(dictCtx, sContainerId):
-    """Build the closure that resolves the project container's image."""
+    """Build the closure resolving the project container's IMMUTABLE image.
+
+    The content-addressed image id, never the display tag: a tag can be
+    repointed at a different image (a different CLI) without the
+    evidence record's key changing, so both the credential gate's
+    comparison and the runners' launches ride the id — which also
+    closes the tag-resolution race between the gate check and the
+    runner create.
+    """
 
     async def _fsResolveRunnerImage():
         listContainers = await asyncio.to_thread(
             dictCtx["docker"].flistGetRunningContainers)
         for dictContainer in listContainers:
             if dictContainer["sContainerId"] == sContainerId:
-                return dictContainer["sImage"]
+                sImageIdentity = dictContainer.get("sImageIdentity")
+                if sImageIdentity:
+                    return sImageIdentity
+                break
         raise HTTPException(
-            502, "cannot resolve the project container's image for the "
-            "council runners")
+            502, "cannot resolve the project container's immutable "
+            "image identity for the council runners")
 
     return _fsResolveRunnerImage
 
@@ -452,7 +463,7 @@ def _fnRegisterCapabilities(app, dictCtx):
         if fbIsHostProject(sName):
             return _fdictHostModeCapabilities()
         dictCtx["require"](sContainerId)
-        return _fdictContainerCapabilities()
+        return await _fdictContainerCapabilities(dictCtx, sContainerId)
 
 
 def _fdictHostModeCapabilities():
@@ -474,20 +485,31 @@ def _fdictHostModeCapabilities():
     }
 
 
-def _fdictContainerCapabilities():
+async def _fdictContainerCapabilities(dictCtx, sContainerId):
     """Report the real runner-backend availability (remediation R7/R10).
 
-    ``bAvailable`` is the credential-enablement evaluation, never an
-    unconditional True: the runner backend is disabled by default and
-    enabled only against the maintainer's machine-readable evidence
-    record. The reason travels with the answer so the toolbar can
-    explain itself instead of failing on click. Only Claude is
-    advertised — no adapter-less provider appears at all.
+    ``bAvailable`` is the credential-enablement evaluation AGAINST the
+    project's resolved immutable image identity — the same comparison
+    start makes — never an unconditional True and never an image-blind
+    optimism that start would immediately contradict. A project whose
+    image cannot be resolved reports disabled with that reason. The
+    reason travels with the answer so the toolbar can explain itself
+    instead of failing on click. Only Claude is advertised — no
+    adapter-less provider appears at all.
     """
     from .. import agentCouncilCredentialGate
-    dictEnablement = (
-        agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
-            "claude"))
+    try:
+        sImageIdentity = await _ffnBuildImageResolver(
+            dictCtx, sContainerId)()
+        dictEnablement = (
+            agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+                "claude", sImageIdentity))
+    except HTTPException as error:
+        dictEnablement = {
+            "bEnabled": False,
+            "sReason": str(error.detail),
+            "dictRecord": None,
+        }
     return {
         "bAvailable": dictEnablement["bEnabled"],
         "sUnavailableIn": "",
@@ -932,6 +954,12 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
             if _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
                 raise HTTPException(
                     409, "stop the council before deleting its campaign")
+            # The controller half first: refuse a live/launching drive
+            # the registry cannot see, release the campaign's egress
+            # boundary, and drop the runtime — durable deletion must
+            # not strand either.
+            await agentCouncilController.fdictDisposeCampaignRuntime(
+                _fdictControllerState(requestHttp), sCampaignId)
             agentCouncilStore.fbDeleteStoredCampaign(dictStore, sCampaignId)
             return {"bDeleted": True, "sCampaignId": sCampaignId}
 

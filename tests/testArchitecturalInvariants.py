@@ -4088,7 +4088,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the controller must not import the route context); and the
     # staleness producer gained its content axis (the per-path
     # identity digest the porcelain digest cannot see).
-    "routes/councilRoutes.py": 976,
+    # +28 (2026-08-20, second-review fixes): the resolver returns the
+    # IMMUTABLE image id (a repointable tag cannot pin the CLI the
+    # evidence record vouched for), capabilities resolves and compares
+    # that same id instead of evaluating the gate image-blind, and
+    # delete disposes the controller runtime before removing durable
+    # storage.
+    "routes/councilRoutes.py": 1004,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4107,6 +4113,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # staleness comparison rides. Same one responsibility: what makes
     # a sealed snapshot a snapshot.
     "agentCouncilContext.py": 916,
+    # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
+    # the default cap when the egress backstop joined it —
+    # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
+    # from the durable store and reuses the two existing removal
+    # probes, adding no new SDK blind spots) and the council label on
+    # the proxy create so the labeled reconcile can settle a proxy
+    # whose campaign record is gone. One responsibility: the sole
+    # council SDK authority, and the sweep is its crash-recovery leg.
+    "agentCouncilDockerGateway.py": 849,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4972,7 +4987,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transition it alone may make; a separate "provisioning module"
     # would move the access lifecycle away from the settlement points
     # that release it, which is how resources get stranded.
-    "agentCouncilController.py": 963,
+    # +91 (2026-08-20, second-review fixes): credential staging became
+    # per-turn (the provisioner owns egress only), the release drain
+    # SETTLES paused runtimes instead of merely flagging them, delete
+    # gained its controller half (fdictDisposeCampaignRuntime), the
+    # launch window counts as live for the busy predicates, an
+    # indeterminate egress teardown keeps its retry state, and plan.md
+    # gained resolved model provenance and the sealed content hash.
+    # Still the one responsibility: every line is a campaign-lifecycle
+    # transition only the sole state-writer may make.
+    "agentCouncilController.py": 1054,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

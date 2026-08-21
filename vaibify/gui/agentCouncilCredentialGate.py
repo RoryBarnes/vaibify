@@ -18,9 +18,15 @@ identity it ran in, the credential schema and source, the host
 platform, and the verification date. ANY mismatch — a missing record,
 an unreadable one, a missing key, a different image — evaluates to
 DISABLED with the mismatch named, never to a permissive default. The
-image identity is the pin that does the runtime work: the START path
-resolves the project image first and always passes it, and because the
-CLI binary ships inside that image, pinning the image identity is what
+image identity is the pin that does the runtime work, and it is the
+IMMUTABLE content-addressed image id (``sha256:...``), never a tag: a
+tag can be repointed at a different image — a different CLI — without
+anything about the record changing, so ``sImageIdentity`` in the
+evidence record must be the id ``docker inspect`` reports, the START
+path resolves that id first and always passes it, and the runners
+launch from the same id (which also closes the tag-resolution race
+between the gate check and the runner create). Because the CLI binary
+ships inside that content-addressed image, pinning the id is what
 holds the CLI version fixed between live checks — the recorded
 ``sCliVersion`` documents what was verified, while the image comparison
 enforces it (a CLI probe would itself need a runner turn). Even

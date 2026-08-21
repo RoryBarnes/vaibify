@@ -30,6 +30,7 @@ campaign state it serializes.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 
@@ -62,6 +63,7 @@ __all__ = [
     "fdictResolveCampaignObjections",
     "fsComposePlanMarkdown",
     "fbControllerHasLiveDriveForResource",
+    "fdictDisposeCampaignRuntime",
     "fgenericSubmitCampaignCommand",
     "fiClassifyInterruptedCampaignsOnStartup",
     "flistReadCampaignCommandLog",
@@ -206,28 +208,29 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         dictRuntime["baSnapshotTar"],
         dictParticipant["sRequestedModel"],
         dictEgress=dictAccess["dictEgress"],
-        sHostCredentialPath=dictAccess["sHostCredentialPath"],
+        fsStageRunnerCredential=dictRuntime["fsStageRunnerCredential"],
     )
 
 
 def _fdictProvisionRunnerAccessOnce(dictRuntime):
-    """Provision (once) the campaign's egress boundary and credential.
+    """Provision (once) the campaign's egress boundary.
 
-    A production runner is useless without both halves: the internal
-    network plus allowlisting proxy are the only path a runner may
-    speak to the provider through, and the staged access-token copy is
-    the only login it holds (design section 9.7). Memoized on the
-    runtime so every participant of a campaign shares one boundary,
-    and executed in the launch worker thread, never on the event loop
-    — the proxy launch blocks until its listening line appears. A
-    fault after the network exists tears the egress resources back
-    down before propagating, so a half-provisioned boundary never
-    outlives its failed launch.
+    A production runner is useless without its two halves: the
+    internal network plus allowlisting proxy provisioned here are the
+    only path a runner may speak to the provider through, and the
+    credential is staged PER TURN by the connection itself (staged at
+    runner creation, host file deleted the moment its tarball is
+    built) so no token copy sits at rest while a campaign waits on the
+    researcher. Memoized on the runtime so every participant of a
+    campaign shares one boundary, and executed in the launch worker
+    thread, never on the event loop — the proxy launch blocks until
+    its listening line appears. A fault after the network exists tears
+    the egress resources back down before propagating, so a
+    half-provisioned boundary never outlives its failed launch.
     """
     if dictRuntime.get("dictRunnerAccess") is not None:
         return dictRuntime["dictRunnerAccess"]
-    fsStageRunnerCredential = dictRuntime.get("fsStageRunnerCredential")
-    if fsStageRunnerCredential is None:
+    if dictRuntime.get("fsStageRunnerCredential") is None:
         raise CouncilCommandError(
             "no credential stager was supplied at launch; a production "
             "runner connection cannot be built without one")
@@ -243,7 +246,6 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
             agentCouncilDockerGateway.fsLaunchAllowlistProxy(
                 dictGateway, sCampaignId,
                 [agentCouncilProviders.S_ANTHROPIC_API_HOSTNAME]))
-        sHostCredentialPath = fsStageRunnerCredential()
     except BaseException:
         agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
             dictGateway, sCampaignId)
@@ -254,30 +256,27 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
             "sProxyInternalAddress": sProxyInternalAddress,
             "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT,
         },
-        "sHostCredentialPath": sHostCredentialPath,
     }
     return dictRuntime["dictRunnerAccess"]
 
 
 def _fnReleaseRunnerAccessResources(dictRuntime):
-    """Tear down a campaign's provisioned egress and staged credential.
+    """Tear down a campaign's provisioned egress boundary.
 
     Idempotent: a runtime that never provisioned (every patched-fake
-    lane) returns at once. The staged host login is removed through the
-    secret manager's cleanup, and the egress network and proxy are
-    removed with absence proven by the gateway — an indeterminate
-    answer is logged by name, never silently swallowed. Called when a
-    campaign reaches a state that drives no further provider turn, and
-    for every runtime at hub shutdown.
+    lane) returns at once. The egress network and proxy are removed
+    with absence proven by the gateway; an INDETERMINATE answer keeps
+    ``dictRunnerAccess`` in place — the retry state is the record that
+    something may still exist, so a later release attempt (or the
+    next hub start's egress sweep, which removes every council-named
+    leftover) can settle what this one could not. No credential file
+    is handled here: the login copy is staged per turn and deleted
+    the moment its delivery tarball is built.
     """
     dictAccess = dictRuntime.get("dictRunnerAccess")
     if dictAccess is None:
         return
     from . import agentCouncilDockerGateway
-    from ..config import secretManager
-    if dictAccess.get("sHostCredentialPath"):
-        secretManager.fnCleanupSecretFiles(
-            [dictAccess["sHostCredentialPath"]])
     dictRemoved = (
         agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
             _fdictEnsureRuntimeGateway(dictRuntime),
@@ -285,8 +284,10 @@ def _fnReleaseRunnerAccessResources(dictRuntime):
     if dictRemoved["saIndeterminateResources"]:
         logger.warning(
             "council campaign %s egress teardown left indeterminate "
-            "resources: %s", dictRuntime["sCampaignId"],
+            "resources (kept for retry; the startup egress sweep is "
+            "the durable backstop): %s", dictRuntime["sCampaignId"],
             dictRemoved["saIndeterminateResources"])
+        return
     dictRuntime["dictRunnerAccess"] = None
 
 
@@ -365,6 +366,11 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
         "fdictExecuteBaselineEvidence": None,
         "fsStageRunnerCredential": fsStageRunnerCredential,
         "dictRunnerAccess": None,
+        # True from registration until the first drive task is spawned:
+        # the provisioning window is live work the busy predicates must
+        # see, or a lease release could pass while the proxy is being
+        # created (taskDrive is still None then).
+        "bLaunchInProgress": True,
         "taskDrive": None,
         "sTurnId": "",
     }
@@ -400,9 +406,20 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
 
 
 def fbCampaignDriveIsLive(dictControllerState, sCampaignId):
-    """Report whether a campaign's drive task is currently running."""
+    """Report whether a campaign is driving or still launching.
+
+    The launch window counts: between runtime registration and the
+    first drive-task spawn the campaign is provisioning its egress
+    boundary, which is live work exactly like a turn — a release that
+    passed inside that window would pull the lease out from under a
+    proxy mid-creation.
+    """
     dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
-    if dictRuntime is None or dictRuntime.get("taskDrive") is None:
+    if dictRuntime is None:
+        return False
+    if dictRuntime.get("bLaunchInProgress"):
+        return True
+    if dictRuntime.get("taskDrive") is None:
         return False
     return not dictRuntime["taskDrive"].done()
 
@@ -511,6 +528,7 @@ async def fdictLaunchCampaignDeliberation(
         sTurnId = _fsSpawnDriveTask(
             dictRuntime,
             dictRuntime["engineCouncil"].fdictRunUntilBlocked)
+        dictRuntime["bLaunchInProgress"] = False
     except asyncio.CancelledError:
         raise
     except BaseException as error:
@@ -728,6 +746,26 @@ async def fdictRequestCampaignStop(dictControllerState, dictStore,
                 dictStore, sCampaignId)}
 
 
+def _fdictCollectResolvedModelsByParticipant(dictCampaign):
+    """Map participant id → last mechanically-recorded resolved model.
+
+    Read from the turn records the engine stamped (design 13.2); a
+    participant whose stream never reported a resolution stays absent,
+    so the renderer says "unrecorded" rather than laundering the
+    requested alias into a resolved identity.
+    """
+    dictResolvedModels = {}
+    for dictRound in dictCampaign.get("listRounds") or []:
+        for listTurns in (dictRound.get("dictTurnsByPhase") or {}).values():
+            for dictTurnRecord in listTurns:
+                sResolvedModel = (dictTurnRecord.get("dictModelIdentity")
+                                  or {}).get("sResolvedModel")
+                if sResolvedModel:
+                    dictResolvedModels[
+                        dictTurnRecord["sParticipantId"]] = sResolvedModel
+    return dictResolvedModels
+
+
 def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan):
     """Render the council's own candidate into the plan.md text.
 
@@ -751,20 +789,30 @@ def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan):
             f"`{sSnapshotIdentity}` — the plan speaks about the "
             "repository as it stood at capture, not as it stands now.",
             ""])
+    dictResolvedModels = _fdictCollectResolvedModelsByParticipant(
+        dictCampaign)
     listParticipants = dictCampaign.get("listParticipants") or []
     if listParticipants:
         listLines.append("## Participants")
         for dictParticipant in listParticipants:
             sRoleSuffix = (f" — {dictParticipant['sRole']}"
                            if dictParticipant.get("sRole") else "")
+            sResolvedModel = dictResolvedModels.get(
+                dictParticipant.get("sParticipantId", ""))
+            sResolvedSuffix = (
+                f", resolved {sResolvedModel}" if sResolvedModel
+                else ", resolved identity unrecorded")
             listLines.append(
                 f"- {dictParticipant.get('sProvider', '')} "
-                f"(requested model {dictParticipant.get('sRequestedModel', '')})"
-                f"{sRoleSuffix}")
+                f"(requested model {dictParticipant.get('sRequestedModel', '')}"
+                f"{sResolvedSuffix}){sRoleSuffix}")
         listLines.append("")
     listLines.extend([dictResult.get("sSummary", ""), ""])
     for sResultKey, sHeading, bNumbered in (
             ("listPlanItems", "Plan", True),
+            ("listAssumptions", "Assumptions", False),
+            ("listMathematicalClaims", "Mathematical claims", False),
+            ("listArchitectureClaims", "Architectural claims", False),
             ("listSecurityRisks", "Security risks the council weighed",
              False),
             ("listCounterexamplesAttempted", "Counterexamples attempted",
@@ -840,11 +888,20 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
         raise CouncilCommandError(str(error))
     if dictRuntime is not None:
         await _fnReleaseRunnerAccessIfSettled(dictRuntime)
+    sPlanMarkdown = fsComposePlanMarkdown(
+        dictHolder["dictCampaign"], dictAccepted["dictCandidatePlan"] or {})
     sLocalPlanPath = agentCouncilStore.fsAcceptCampaignPlanLocally(
+        dictStore, sCampaignId, sPlanMarkdown)
+    # The artifact's content identity, sealed into the event stream at
+    # acceptance: a later reader can prove the plan.md they hold is the
+    # one the researcher accepted, byte for byte.
+    sPlanSha256 = hashlib.sha256(sPlanMarkdown.encode("utf-8")).hexdigest()
+    agentCouncilStore.fdictAppendCampaignEvent(
         dictStore, sCampaignId,
-        fsComposePlanMarkdown(dictHolder["dictCampaign"],
-                              dictAccepted["dictCandidatePlan"] or {}))
+        {"sEventKind": "planArtifactSealed", "sTurnId": "",
+         "sDetail": f"sha256:{sPlanSha256}"})
     return {"bAccepted": True, "sLocalPlanPath": sLocalPlanPath,
+            "sPlanSha256": sPlanSha256,
             "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
                 dictStore, sCampaignId)}
 
@@ -902,24 +959,58 @@ def fbControllerHasLiveDriveForResource(dictControllerState, sResourceName):
     return False
 
 
-def fnDrainControllerForResource(dictControllerState, sResourceName):
-    """Stop every live drive whose campaign is bound to one resource.
+async def fnDrainControllerForResource(dictControllerState, sResourceName):
+    """Settle every runtime whose campaign is bound to one resource.
 
     The release path's second belt: the release route refuses while a
-    drive is LIVE (``fbControllerHasLiveDriveForResource``), so by the
-    time this runs the remaining stops are requests against runtimes
-    between turns — no council deliberation may keep running against a
-    project whose lease has just been released. Cooperative for real
-    engines (turns settle and runners are destroyed by the connection's
-    own completion path); the registry's reservations remain the
-    accounting authority either way.
+    drive is LIVE (``fbControllerHasLiveDriveForResource``), so what
+    this meets are PAUSED runtimes — a campaign waiting on the
+    researcher, or a settled one nobody deleted. Those are not merely
+    asked to stop (a stop request against a runtime with no future
+    drive settles nothing): each is transitioned to interrupted,
+    checkpointed, its egress boundary released, and its runtime
+    dropped, because a campaign cannot continue against a project
+    whose lease is gone — respond-after-release must answer "convene
+    a fresh council", and no proxy or network may outlive the lease.
+    A drive that slipped live between the busy check and this drain
+    still gets the cooperative stop as the last belt.
     """
-    for dictRuntime in list(
-            dictControllerState["dictCampaignRuntime"].values()):
+    for sCampaignId, dictRuntime in list(
+            dictControllerState["dictCampaignRuntime"].items()):
         dictIdentity = dictRuntime["dictCampaign"].get(
             "dictProjectIdentity") or {}
-        if dictIdentity.get("sResourceName") == sResourceName:
+        if dictIdentity.get("sResourceName") != sResourceName:
+            continue
+        if fbCampaignDriveIsLive(dictControllerState, sCampaignId):
             _fnRequestRuntimeStopQuietly(dictRuntime)
+            continue
+        dictCampaign = dictRuntime["dictCampaign"]
+        if dictCampaign["sState"] not in LIST_NO_FURTHER_TURN_STATES:
+            agentCouncilCampaign.fnTransitionCampaignState(
+                dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
+                "the project lease was released while the council "
+                "was paused")
+            agentCouncilStore.fnCheckpointStoredCampaign(
+                dictRuntime["dictStore"], sCampaignId, dictCampaign)
+        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
+        dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
+
+
+async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):
+    """Release a campaign's runtime and egress before its deletion.
+
+    The delete route's controller half: durable storage removal must
+    not strand the in-process runtime or its provisioned boundary.
+    Refuses while the drive is live or launching (the route's registry
+    check cannot see either), and is a quiet no-op for a campaign that
+    never had a runtime this process lifetime.
+    """
+    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "delete")
+    dictRuntime = dictControllerState["dictCampaignRuntime"].pop(
+        sCampaignId, None)
+    if dictRuntime is not None:
+        await asyncio.to_thread(_fnReleaseRunnerAccessResources, dictRuntime)
+    return {"bDisposed": dictRuntime is not None}
 
 
 def fnDrainControllerOnShutdown(dictControllerState):

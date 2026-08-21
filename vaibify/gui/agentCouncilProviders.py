@@ -482,7 +482,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
     def __init__(self, dictGateway, sCampaignId, sImageReference,
                  baSnapshotTar, sRequestedModel, dictEgress=None,
                  sHostCredentialPath="", dictLimits=None, saCliProgram=None,
-                 fWallClockSeconds=None, iOutputByteCap=None):
+                 fWallClockSeconds=None, iOutputByteCap=None,
+                 fsStageRunnerCredential=None):
         self.dictGateway = dictGateway
         self.sCampaignId = sCampaignId
         self.sImageReference = sImageReference
@@ -490,6 +491,13 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         self.sRequestedModel = sRequestedModel
         self.dictEgress = dictEgress
         self.sHostCredentialPath = sHostCredentialPath
+        # Per-TURN staging (the production lane): the login is staged
+        # when a runner is created and the host file is deleted the
+        # moment its tarball is built, so no token copy sits at rest
+        # while a campaign waits on the researcher. The static
+        # sHostCredentialPath lane remains for a caller that manages
+        # its own file lifetime (the maintainer's live-check harness).
+        self.fsStageRunnerCredential = fsStageRunnerCredential
         self.dictLimits = dictLimits
         self.saCliProgram = list(saCliProgram) if saCliProgram else None
         self.fWallClockSeconds = fWallClockSeconds
@@ -509,10 +517,31 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                     self.dictEgress["sProxyInternalAddress"],
                     self.dictEgress.get(
                         "iProxyPort", agentCouncilEgress.I_PROXY_LISTEN_PORT)))
-        if self.sHostCredentialPath:
+        if self.sHostCredentialPath or (
+                self.fsStageRunnerCredential is not None):
             dictEnvironment[S_CLAUDE_CONFIG_DIRECTORY_ENV] = (
                 S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
         return dictEnvironment
+
+    def _fbaBuildTurnCredentialTarball(self):
+        """Stage, tarball, and immediately delete this turn's login copy.
+
+        Returns the tarball bytes or ``None`` when no credential lane is
+        configured. The staged mode-600 host file lives only for the
+        milliseconds between materialization and this read: it is
+        removed in ``finally`` BEFORE the tarball is delivered, so a
+        fault anywhere downstream can never strand a token copy on the
+        researcher's disk.
+        """
+        if self.fsStageRunnerCredential is not None:
+            sStagedPath = self.fsStageRunnerCredential()
+            try:
+                return fbaBuildCredentialTarball(sStagedPath)
+            finally:
+                secretManager.fnCleanupSecretFiles([sStagedPath])
+        if self.sHostCredentialPath:
+            return fbaBuildCredentialTarball(self.sHostCredentialPath)
+        return None
 
     def _fdictComposeRunnerCost(self):
         """Declare the admission cost of one runner to the registry."""
@@ -572,11 +601,12 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             await asyncio.to_thread(
                 agentCouncilDockerGateway.fnCopySnapshotIntoRunner,
                 self.dictGateway, self._sHandle, self.baSnapshotTar)
-            if self.sHostCredentialPath:
+            baCredentialTar = await asyncio.to_thread(
+                self._fbaBuildTurnCredentialTarball)
+            if baCredentialTar is not None:
                 await asyncio.to_thread(
                     fnDeliverCredentialIntoRunner, self.dictGateway,
-                    self._sHandle,
-                    fbaBuildCredentialTarball(self.sHostCredentialPath))
+                    self._sHandle, baCredentialTar)
         except BaseException:
             await self._fnDestroyHandleAfterFailure()
             raise

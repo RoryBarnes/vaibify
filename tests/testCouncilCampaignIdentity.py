@@ -57,9 +57,11 @@ class MockDockerTwoContainers:
     def flistGetRunningContainers(self):
         return [
             {"sContainerId": S_CONTAINER_ID_A, "sShortId": "identa",
-             "sName": S_CONTAINER_NAME_A, "sImage": "ubuntu:24.04"},
+             "sName": S_CONTAINER_NAME_A, "sImage": "ubuntu:24.04",
+             "sImageIdentity": "sha256:" + "aa11" * 16},
             {"sContainerId": S_CONTAINER_ID_B, "sShortId": "identb",
-             "sName": S_CONTAINER_NAME_B, "sImage": "ubuntu:24.04"},
+             "sName": S_CONTAINER_NAME_B, "sImage": "ubuntu:24.04",
+             "sImageIdentity": "sha256:" + "bb22" * 16},
         ]
 
 

@@ -382,6 +382,13 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         dictTurnRecord = self._fdictBuildTurnRecord(
             dictRequest, dictRound, dictParticipant, sPhase, dictAttempt,
             bRepairAttempted)
+        # Requested-versus-resolved model identity, recorded
+        # mechanically from what the connection extracted out of the
+        # provider stream (design 13.2) — empty when the adapter
+        # reported none, never an alias echoed as a resolution.
+        dictTurnRecord["dictModelIdentity"] = dict(getattr(
+            self.dictConnections[dictParticipant["sParticipantId"]],
+            "dictModelIdentity", None) or {})
         if dictTurnRecord["sStatus"] == "failed":
             dictParticipant["bFailed"] = True
             dictParticipant["sFailureReason"] = (

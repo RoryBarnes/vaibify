@@ -67,6 +67,7 @@ __all__ = [
     "fsCreateCampaignInternalNetwork",
     "fsLaunchAllowlistProxy",
     "fdictRemoveCampaignEgressResources",
+    "fdictSweepCouncilEgressLeftovers",
 ]
 
 I_COUNCIL_DAEMON_TIMEOUT_SECONDS = 60
@@ -698,6 +699,15 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
             memswap_limit=I_PROXY_MEMORY_BYTES,
             nano_cpus=int(F_PROXY_CPU_COUNT * 1_000_000_000),
             pids_limit=I_PROXY_PIDS_LIMIT,
+            # The council label makes the proxy DISCOVERABLE by the
+            # same startup reconcile that settles crashed runners: an
+            # indeterminate in-process teardown cannot orphan a
+            # dual-homed proxy past the next hub start.
+            labels={
+                agentCouncilRunner.S_COUNCIL_LABEL:
+                    f"egress-{sCampaignId}",
+                agentCouncilRunner.S_COUNCIL_ROLE_LABEL: "egressProxy",
+            },
         )
     except Exception as error:
         raise agentCouncilEgress.EgressSetupError(
@@ -764,6 +774,48 @@ def _fsRemoveInternalNetwork(dockerCouncil, sNetworkName):
     except Exception:
         return agentCouncilRunner.S_ABSENCE_INDETERMINATE
     return agentCouncilRunner.S_ABSENCE_PRESENT
+
+
+def fdictSweepCouncilEgressLeftovers(dockerCouncil, listCampaignIds):
+    """Remove every known campaign's egress resources left by a crash.
+
+    The durable backstop for an indeterminate in-process teardown: a
+    hub that died (or answered indeterminately) can leave a dual-homed
+    CONNECT proxy and its internal network with nobody accounting for
+    them. At STARTUP no council drive can be live — drives do not
+    survive a restart — so every stored campaign's composed proxy and
+    network names are removed outright, absence proven by name; the
+    LABELED reconcile that runs beside this catches any proxy whose
+    campaign record is gone (the proxy wears the council label exactly
+    so a lost record cannot orphan it). Deliberately enumerates from
+    the durable store rather than asking the daemon for name-prefixed
+    resources: the two existing removal probes are reused verbatim, so
+    this backstop adds NO new untraceable SDK roots to the blind-spot
+    budget. Returns ``{listRemovedResources,
+    listIndeterminateResources}``; an indeterminate answer is reported
+    for the log and the NEXT start sweeps again — the record never
+    silently disappears.
+    """
+    listRemovedResources = []
+    listIndeterminateResources = []
+    for sCampaignId in listCampaignIds:
+        try:
+            agentCouncilEgress.fnValidateCampaignIdOrRaise(sCampaignId)
+        except Exception:
+            continue
+        for fsRemoveResource, sResourceName in (
+                (_fsRemoveProxyContainer,
+                 agentCouncilEgress.fsComposeProxyContainerName(
+                     sCampaignId)),
+                (_fsRemoveInternalNetwork,
+                 agentCouncilEgress.fsComposeNetworkName(sCampaignId))):
+            sAnswer = fsRemoveResource(dockerCouncil, sResourceName)
+            if sAnswer == agentCouncilRunner.S_ABSENCE_ABSENT:
+                listRemovedResources.append(sResourceName)
+            else:
+                listIndeterminateResources.append(sResourceName)
+    return {"listRemovedResources": listRemovedResources,
+            "listIndeterminateResources": listIndeterminateResources}
 
 
 def fdictRemoveCampaignEgressResources(dictGateway, sCampaignId):

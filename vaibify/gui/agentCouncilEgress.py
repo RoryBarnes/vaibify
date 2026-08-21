@@ -84,6 +84,8 @@ __all__ = [
     "S_BLACK_HOLE_NAMESERVER",
     "S_CONNECT_PROXY_SCRIPT",
     "S_PROXY_IMAGE",
+    "S_NETWORK_NAME_PREFIX",
+    "S_PROXY_NAME_PREFIX",
     "S_PROXY_READY_LINE",
     "fbaBuildProxyScriptTarball",
     "fdictBuildRunnerProxyEnvironment",
@@ -117,8 +119,8 @@ S_PROXY_SCRIPT_CONTAINER_PATH = (
 # resolver forwarding only to it can never receive an answer.
 S_BLACK_HOLE_NAMESERVER = "192.0.2.1"
 
-_S_NETWORK_NAME_PREFIX = "vaibifyCouncilEgress"
-_S_PROXY_NAME_PREFIX = "vaibifyCouncilProxy"
+S_NETWORK_NAME_PREFIX = "vaibifyCouncilEgress"
+S_PROXY_NAME_PREFIX = "vaibifyCouncilProxy"
 
 # A campaign id is server-minted. Validating it before it reaches a
 # resource name keeps a crafted value from smuggling a stray token.
@@ -312,13 +314,13 @@ def fnValidateCampaignIdOrRaise(sCampaignId):
 def fsComposeNetworkName(sCampaignId):
     """Return the per-campaign internal network name."""
     fnValidateCampaignIdOrRaise(sCampaignId)
-    return f"{_S_NETWORK_NAME_PREFIX}-{sCampaignId}"
+    return f"{S_NETWORK_NAME_PREFIX}-{sCampaignId}"
 
 
 def fsComposeProxyContainerName(sCampaignId):
     """Return the per-campaign proxy container name."""
     fnValidateCampaignIdOrRaise(sCampaignId)
-    return f"{_S_PROXY_NAME_PREFIX}-{sCampaignId}"
+    return f"{S_PROXY_NAME_PREFIX}-{sCampaignId}"
 
 
 def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,

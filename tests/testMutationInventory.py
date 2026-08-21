@@ -130,7 +130,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # conversion in the same change LOWERED it by one (its lone
 # `docker`-CLI UNKNOWN_COMMAND row became SDK-root blind spots, which
 # are not rows), so 287 already nets that reduction out.
-I_UNCLASSIFIED_ROW_BUDGET = 287
+# 287 -> 285 (2026-08-20): the two council rows that caused the rise
+# are now reviewed and classified (the capture's get_archive handle
+# fetch and the per-turn credential extraction read), so the council
+# contributes ZERO unclassified rows and the ratchet resumes falling.
+I_UNCLASSIFIED_ROW_BUDGET = 285
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

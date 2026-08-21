@@ -77,11 +77,23 @@ def _fnPatchEgressProvisioning(monkeypatch, dictCalls):
 
 
 def testProductionFactoryThreadsEgressAndCredentialAndMemoizes(monkeypatch):
-    """The reviewed defect: the enabled path must wear both halves."""
+    """The reviewed defect: the enabled path must wear both halves.
+
+    The credential half is the STAGER, not a staged path: staging is
+    per turn (the connection stages at runner creation and deletes the
+    host file the moment its tarball is built), so nothing is staged
+    at build time and no token sits at rest between turns.
+    """
     dictCalls = {}
     _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+
+    def _fsStageForTurn():
+        dictCalls.setdefault("iStagerCalls", 0)
+        dictCalls["iStagerCalls"] += 1
+        return "/tmp/stagedCredential.json"
+
     dictRuntime = _fdictBuildAccessRuntime(
-        fsStageRunnerCredential=lambda: "/tmp/stagedCredential.json")
+        fsStageRunnerCredential=_fsStageForTurn)
     dictParticipant = {"sRequestedModel": "opus"}
 
     connectionFirst = controller.fconnectionBuildParticipantConnection(
@@ -89,8 +101,9 @@ def testProductionFactoryThreadsEgressAndCredentialAndMemoizes(monkeypatch):
     connectionSecond = controller.fconnectionBuildParticipantConnection(
         dictRuntime, {"sRequestedModel": "sonnet"})
 
-    assert connectionFirst.sHostCredentialPath == (
-        "/tmp/stagedCredential.json")
+    assert connectionFirst.fsStageRunnerCredential is _fsStageForTurn
+    assert dictCalls.get("iStagerCalls", 0) == 0, (
+        "staging is per turn; building a connection must stage nothing")
     assert connectionFirst.dictEgress == {
         "sNetworkName": "vaibifyCouncilEgress-campaign-access-1",
         "sProxyInternalAddress": "172.30.0.2",
@@ -120,12 +133,15 @@ def testProvisioningFaultTearsTheEgressBackDown(monkeypatch):
     dictCalls = {}
     _fnPatchEgressProvisioning(monkeypatch, dictCalls)
 
-    def _fsExplodeStager():
-        raise RuntimeError("no persisted login")
+    def _fsExplodeProxyLaunch(dictGateway, sCampaignId, saAllowedHostnames):
+        raise RuntimeError("proxy never reached listening")
 
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fsLaunchAllowlistProxy",
+        _fsExplodeProxyLaunch)
     dictRuntime = _fdictBuildAccessRuntime(
-        fsStageRunnerCredential=_fsExplodeStager)
-    with pytest.raises(RuntimeError, match="no persisted login"):
+        fsStageRunnerCredential=lambda: "/tmp/stagedCredential.json")
+    with pytest.raises(RuntimeError, match="never reached listening"):
         controller.fconnectionBuildParticipantConnection(
             dictRuntime, {"sRequestedModel": "opus"})
     assert dictCalls["listRemovals"] == ["campaign-access-1"]
@@ -135,30 +151,39 @@ def testProvisioningFaultTearsTheEgressBackDown(monkeypatch):
 def _fdictBuildProvisionedRuntime(monkeypatch, dictCalls, sState):
     """A runtime holding provisioned access and a campaign in one state."""
     _fnPatchEgressProvisioning(monkeypatch, dictCalls)
-    listCleaned = dictCalls.setdefault("listCleanedCredentialPaths", [])
-    monkeypatch.setattr(
-        secretManager, "fnCleanupSecretFiles",
-        lambda listPaths: listCleaned.extend(listPaths))
     dictRuntime = _fdictBuildAccessRuntime()
     dictRuntime["dictRunnerAccess"] = {
         "dictEgress": {"sNetworkName": "net", "sProxyInternalAddress": "a",
                        "iProxyPort": 8888},
-        "sHostCredentialPath": "/tmp/stagedCredential.json",
     }
     dictRuntime["dictCampaign"] = {"sState": sState}
     return dictRuntime
 
 
-def testTerminalSettleReleasesCredentialAndEgress(monkeypatch):
+def testTerminalSettleReleasesTheEgressBoundary(monkeypatch):
     """A campaign that can drive no more turns strands nothing."""
     dictCalls = {}
     dictRuntime = _fdictBuildProvisionedRuntime(
         monkeypatch, dictCalls, agentCouncilCampaign.S_STATE_FAILED)
     asyncio.run(controller._fnReleaseRunnerAccessIfSettled(dictRuntime))
-    assert dictCalls["listCleanedCredentialPaths"] == [
-        "/tmp/stagedCredential.json"]
     assert dictCalls["listRemovals"] == ["campaign-access-1"]
     assert dictRuntime["dictRunnerAccess"] is None
+
+
+def testIndeterminateTeardownKeepsTheRetryState(monkeypatch):
+    """An unproven removal must not discard the record of what may exist."""
+    dictCalls = {}
+    dictRuntime = _fdictBuildProvisionedRuntime(
+        monkeypatch, dictCalls, agentCouncilCampaign.S_STATE_FAILED)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sCampaignId: {
+            "bProxyAbsenceProven": False, "bNetworkAbsenceProven": True,
+            "saIndeterminateResources": ["vaibifyCouncilProxy-x"]})
+    asyncio.run(controller._fnReleaseRunnerAccessIfSettled(dictRuntime))
+    assert dictRuntime["dictRunnerAccess"] is not None, (
+        "clearing the access on an indeterminate answer discards the "
+        "retry state while the proxy may still exist")
 
 
 def testContinuableStateKeepsRunnerAccess(monkeypatch):
@@ -167,9 +192,54 @@ def testContinuableStateKeepsRunnerAccess(monkeypatch):
     dictRuntime = _fdictBuildProvisionedRuntime(
         monkeypatch, dictCalls, agentCouncilCampaign.S_STATE_NEEDS_HUMAN)
     asyncio.run(controller._fnReleaseRunnerAccessIfSettled(dictRuntime))
-    assert dictCalls["listCleanedCredentialPaths"] == []
     assert "listRemovals" not in dictCalls
     assert dictRuntime["dictRunnerAccess"] is not None
+
+
+def testCredentialIsStagedPerTurnAndDeletedBeforeDelivery(monkeypatch,
+                                                          tmp_path):
+    """No token copy survives past the tarball build, even mid-turn.
+
+    The order is the contract: stage → read into the delivery tarball →
+    DELETE the host file → deliver. A fault after the build cannot
+    strand a token, and a paused campaign holds no file at all.
+    """
+    from vaibify.gui import agentCouncilProviders
+    listCallOrder = []
+    pathStaged = tmp_path / "stagedCredential.json"
+
+    def _fsStageForTurn():
+        pathStaged.write_text('{"claudeAiOauth": {"accessToken": "tok"}}')
+        listCallOrder.append("staged")
+        return str(pathStaged)
+
+    monkeypatch.setattr(
+        secretManager, "fnCleanupSecretFiles",
+        lambda listPaths: listCallOrder.append(("cleaned", list(listPaths))))
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictReserveAndCreateRunner",
+        lambda *tArguments, **dictKeywords: {
+            "bCreated": True, "sHandle": "handle-1",
+            "sReservationId": "reservation-1"})
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fnCopySnapshotIntoRunner",
+        lambda *tArguments, **dictKeywords: None)
+    monkeypatch.setattr(
+        agentCouncilProviders, "fnDeliverCredentialIntoRunner",
+        lambda dictGateway, sHandle, baTar: listCallOrder.append(
+            "delivered"))
+
+    connection = agentCouncilProviders.ClaudeRunnerConnection(
+        {"bFakeGateway": True}, "campaign-access-1", "sha256:" + "00" * 32,
+        b"tar", "opus", dictEgress=None,
+        fsStageRunnerCredential=_fsStageForTurn)
+    asyncio.run(connection.fdictPrepareImmutableContext({}))
+    assert listCallOrder == [
+        "staged", ("cleaned", [str(pathStaged)]), "delivered"], (
+        "the host copy must be deleted BEFORE delivery, not after")
+    assert connection._fdictComposeRunnerEnvironment()[
+        "CLAUDE_CONFIG_DIR"] == (
+        agentCouncilProviders.S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
 
 
 def _tBuildRegisteredPlanningCampaign(tmp_path):
@@ -251,7 +321,7 @@ def testLiveDrivePredicateSeesOnlyItsResource():
 
 
 def testShutdownSettleReleasesEveryCampaignsRunnerAccess(monkeypatch):
-    """Hub shutdown strands no token copy and no council network."""
+    """Hub shutdown strands no council network or proxy."""
     dictCalls = {}
     dictRuntime = _fdictBuildProvisionedRuntime(
         monkeypatch, dictCalls, agentCouncilCampaign.S_STATE_PLANNING)
@@ -260,9 +330,121 @@ def testShutdownSettleReleasesEveryCampaignsRunnerAccess(monkeypatch):
         dictRuntime["sCampaignId"]] = dictRuntime
     asyncio.run(controller.fnAwaitControllerSettleOnShutdown(
         dictControllerState, fDeadlineSeconds=0.1))
-    assert dictCalls["listCleanedCredentialPaths"] == [
-        "/tmp/stagedCredential.json"]
     assert dictCalls["listRemovals"] == ["campaign-access-1"]
+
+
+def testReleaseDrainSettlesAPausedRuntime(monkeypatch, tmp_path):
+    """A needsHuman campaign cannot outlive the lease it was built under.
+
+    The reviewed leak: release refused only LIVE drives, and the old
+    drain merely set bStopRequested on a paused runtime — nothing
+    transitioned, nothing released the boundary. The drain now settles
+    the paused runtime: interrupted, checkpointed, egress released,
+    runtime dropped.
+    """
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    dictCampaign["sState"] = agentCouncilCampaign.S_STATE_NEEDS_HUMAN
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "sCampaignId": "campaign-access-1",
+        "dictCampaign": dictCampaign,
+        "dictStore": dictStore,
+        "dictGateway": {"bFakeGateway": True},
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+        "taskDrive": _FakeLiveTask(bDone=True),
+        "bLaunchInProgress": False,
+    }
+    asyncio.run(controller.fnDrainControllerForResource(
+        dictControllerState, S_RESOURCE_NAME))
+    assert dictCampaign["sState"] == (
+        agentCouncilCampaign.S_STATE_INTERRUPTED)
+    assert dictCalls["listRemovals"] == ["campaign-access-1"]
+    assert dictControllerState["dictCampaignRuntime"] == {}
+    dictStored = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    assert dictStored["sState"] == agentCouncilCampaign.S_STATE_INTERRUPTED
+
+
+def testDisposeReleasesTheRuntimeAndRefusesWhileLive(monkeypatch):
+    """Delete's controller half: refuse live, release and drop paused."""
+    dictCalls = {}
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"]["campaign-access-1"] = {
+        "sCampaignId": "campaign-access-1",
+        "dictCampaign": {"dictProjectIdentity": {}},
+        "dictGateway": {"bFakeGateway": True},
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+        "taskDrive": _FakeLiveTask(bDone=False),
+        "bLaunchInProgress": False,
+    }
+    with pytest.raises(controller.CouncilCommandError):
+        asyncio.run(controller.fdictDisposeCampaignRuntime(
+            dictControllerState, "campaign-access-1"))
+    dictControllerState["dictCampaignRuntime"]["campaign-access-1"][
+        "taskDrive"] = _FakeLiveTask(bDone=True)
+    dictDisposed = asyncio.run(controller.fdictDisposeCampaignRuntime(
+        dictControllerState, "campaign-access-1"))
+    assert dictDisposed["bDisposed"] is True
+    assert dictCalls["listRemovals"] == ["campaign-access-1"]
+    assert dictControllerState["dictCampaignRuntime"] == {}
+
+
+def testLaunchWindowCountsAsLive():
+    """The provisioning race: taskDrive None but launching = busy."""
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+    dictControllerState["dictCampaignRuntime"]["campaign-access-1"] = {
+        "dictCampaign": {"dictProjectIdentity": {
+            "sResourceName": S_RESOURCE_NAME}},
+        "taskDrive": None,
+        "bLaunchInProgress": True,
+    }
+    assert controller.fbCampaignDriveIsLive(
+        dictControllerState, "campaign-access-1") is True
+    assert controller.fbControllerHasLiveDriveForResource(
+        dictControllerState, S_RESOURCE_NAME) is True
+
+
+def testStartupEgressSweepRemovesEveryStoredCampaignsResources():
+    """The durable backstop removes composed names, proving absence."""
+    import docker as moduleDocker
+
+    class _FakeLowLevelApi:
+        def __init__(self):
+            self.listRemoved = []
+
+        def remove_container(self, sName, force=False, v=False):
+            self.listRemoved.append(sName)
+
+        def inspect_container(self, sName):
+            raise moduleDocker.errors.NotFound("gone")
+
+        def remove_network(self, sName):
+            self.listRemoved.append(sName)
+
+        def inspect_network(self, sName):
+            raise moduleDocker.errors.NotFound("gone")
+
+    class _FakeCouncilClient:
+        def __init__(self):
+            self.api = _FakeLowLevelApi()
+
+    clientFake = _FakeCouncilClient()
+    dictSwept = agentCouncilDockerGateway.fdictSweepCouncilEgressLeftovers(
+        clientFake, ["campaign-one", "../hostile", "campaign-two"])
+    assert dictSwept["listIndeterminateResources"] == []
+    assert sorted(clientFake.api.listRemoved) == sorted([
+        "vaibifyCouncilProxy-campaign-one",
+        "vaibifyCouncilEgress-campaign-one",
+        "vaibifyCouncilProxy-campaign-two",
+        "vaibifyCouncilEgress-campaign-two"]), (
+        "a hostile campaign id must be skipped, never composed into a "
+        "resource name")
 
 
 def testStalenessMovesWhenADirtyFilesContentChanges(tmp_path):
@@ -332,13 +514,34 @@ def testReleaseRefusesWhileACouncilIsDeliberatingThenAllows(tmp_path,
         app, {"require": lambda *tArguments: None, "docker": None})
     dictControllerState = controller.fdictCreateCouncilControllerState()
     app.state.dictCouncilControllerState = dictControllerState
-    dictControllerState["dictCampaignRuntime"]["campaign-live"] = {
-        "dictCampaign": {
-            "dictProjectIdentity": {"sResourceName": "demo"},
-            "sState": agentCouncilCampaign.S_STATE_PLANNING,
-        },
+    # A REAL campaign record and store: the successful release drains
+    # the paused runtime through the settle path, which transitions
+    # and checkpoints — a bare stub dict would mask a drain that
+    # cannot actually settle what it meets.
+    dictStore = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=str(tmp_path / "councils"))
+    dictCampaign = agentCouncilCampaign.fdictCreateCampaign(
+        "Is the pipeline sound?",
+        [agentCouncilCampaign.fdictCreateParticipant("claude", "opus"),
+         agentCouncilCampaign.fdictCreateParticipant("claude", "sonnet")],
+        dictProjectIdentity={
+            "sResourceName": "demo",
+            "sProjectRepoPath": S_REPO_PATH,
+            "sSnapshotIdentity": "",
+        })
+    agentCouncilCampaign.fnTransitionCampaignState(
+        dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,
+        "test convened")
+    agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
+    dictControllerState["dictCampaignRuntime"][
+        dictCampaign["sCampaignId"]] = {
+        "sCampaignId": dictCampaign["sCampaignId"],
+        "dictCampaign": dictCampaign,
+        "dictStore": dictStore,
+        "dictGateway": {"bFakeGateway": True},
         "taskDrive": _FakeLiveTask(bDone=False),
         "dictRunnerAccess": None,
+        "bLaunchInProgress": False,
     }
     with TestClient(app) as client:
         sLeaseId = client.post(
@@ -354,10 +557,16 @@ def testReleaseRefusesWhileACouncilIsDeliberatingThenAllows(tmp_path,
             json={"bForce": True})
         assert responseForced.status_code == 409, (
             "force must not override the council-busy refusal")
-        dictControllerState["dictCampaignRuntime"]["campaign-live"][
+        dictControllerState["dictCampaignRuntime"][
+            dictCampaign["sCampaignId"]][
             "taskDrive"] = _FakeLiveTask(bDone=True)
         responseAfter = client.post(
             "/api/registry/demo/release",
             headers={"X-Vaibify-Lease": sLeaseId})
         assert responseAfter.status_code == 200, responseAfter.text
         assert responseAfter.json()["bReleased"] is True
+    # The successful release SETTLED the paused runtime: interrupted,
+    # runtime dropped — a campaign cannot continue past its lease.
+    assert dictControllerState["dictCampaignRuntime"] == {}
+    assert dictCampaign["sState"] == (
+        agentCouncilCampaign.S_STATE_INTERRUPTED)

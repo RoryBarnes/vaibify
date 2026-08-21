@@ -691,6 +691,12 @@ class DockerConnection:
                     "sImage": str(container.image.tags[0])
                     if container.image.tags
                     else str(container.image.id[:12]),
+                    # The immutable content-addressed id, beside the
+                    # display tag: a tag can be repointed without the
+                    # containers changing, so anything that PINS an
+                    # identity (the council credential gate, runner
+                    # launches) must read this field, never sImage.
+                    "sImageIdentity": str(container.image.id),
                 }
             )
             self._dictContainers[container.id] = container

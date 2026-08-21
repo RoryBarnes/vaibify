@@ -571,16 +571,17 @@ def _fnRegisterReleaseContainer(app, dictCtx):
         if sOutcome == sessionLifecycle.S_RELEASE_RELEASED:
             # A LIVE council drive refused the release inside the
             # lifecycle authority's busy check, so what remains here
-            # are runtimes between turns: they are asked to stop so no
-            # council deliberation can relaunch against a project
-            # whose lease was just released (remediation R1).
+            # are PAUSED runtimes: each is settled — interrupted,
+            # checkpointed, its egress boundary released, its runtime
+            # dropped — because no council resource may outlive the
+            # lease it was provisioned under (remediation R1).
             from vaibify.gui import agentCouncilController
             dictControllerState = getattr(
                 app.state,
                 agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
                 None)
             if isinstance(dictControllerState, dict):
-                agentCouncilController.fnDrainControllerForResource(
+                await agentCouncilController.fnDrainControllerForResource(
                     dictControllerState, sName)
         if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
             # The refusal reason rides `detail`, the shape the client's

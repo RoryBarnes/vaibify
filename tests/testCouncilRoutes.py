@@ -47,6 +47,9 @@ from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 S_CONTAINER_ID = "councilcontainerid"
 S_CONTAINER_NAME = "council-project"
+# The immutable content-addressed image id the fake reports beside the
+# display tag — the identity the credential gate and runners must read.
+S_IMAGE_IDENTITY = "sha256:" + "ab12" * 16
 S_HOST_PROJECT = "council-host-project"
 S_AGENT_TOKEN = "agent-token-for-council-container"
 S_PROJECT_REPO = "/workspace/project-repo"
@@ -78,6 +81,7 @@ class MockDockerCouncil:
             "sShortId": "council",
             "sName": S_CONTAINER_NAME,
             "sImage": "ubuntu:24.04",
+            "sImageIdentity": S_IMAGE_IDENTITY,
         }]
 
     def fnWriteFile(self, sContainerId, sPath, baContent, **kwargs):
@@ -419,6 +423,11 @@ def test_accept_plan_writes_local_only_not_the_project(
     assert os.path.isfile(sPlanPath), sPlanPath
     assert sPlanPath.startswith(
         app.state.dictCouncilCampaignStore["sDurableStoreRoot"])
+    # The sealed content identity matches the artifact byte for byte.
+    import hashlib
+    with open(sPlanPath, "rb") as filePlan:
+        sExpectedSha256 = hashlib.sha256(filePlan.read()).hexdigest()
+    assert response.json()["sPlanSha256"] == sExpectedSha256
 
 
 def test_accept_plan_does_not_write_the_container(tmp_path, eventTurnGate):
@@ -667,9 +676,9 @@ def test_start_hands_the_resolved_image_to_the_credential_gate(
         _fdictRecordingGate)
     client, app, docker = tOwnerClient
     _sStartOneCampaign(client)
-    assert listSeenImageIdentities == ["ubuntu:24.04"], (
-        "start must evaluate the gate with the resolved project image, "
-        "never blind")
+    assert listSeenImageIdentities == [S_IMAGE_IDENTITY], (
+        "start must evaluate the gate with the resolved IMMUTABLE "
+        "image identity — never blind, and never the repointable tag")
 
 
 def test_capture_refusal_leaves_a_failed_record_never_planning(
@@ -703,3 +712,33 @@ def test_capture_refusal_leaves_a_failed_record_never_planning(
 # tests/testCouncilRunnerAccess.py: the release route is a HUB route
 # (fnRegisterRegistryRoutes), not part of the viewer app this file
 # builds, so it is driven there over the hub-app fixture shape.
+
+
+def test_capabilities_compare_the_resolved_image_like_start_does(
+        tOwnerClient, monkeypatch):
+    """Capabilities can never advertise what start would refuse.
+
+    The reviewed optimism: the capabilities read evaluated the gate
+    image-blind, so an evidence record for a different image showed an
+    available council whose start 409'd. Both now compare the same
+    resolved immutable image identity.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    listSeenImageIdentities = []
+
+    def _fdictRecordingGate(sProvider, sImageIdentity=None):
+        listSeenImageIdentities.append(sImageIdentity)
+        return {"bEnabled": True, "sReason": "", "dictRecord": {}}
+
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        _fdictRecordingGate)
+    client, app, docker = tOwnerClient
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/capabilities")
+    assert response.status_code == 200, response.text
+    assert response.json()["bAvailable"] is True
+    assert listSeenImageIdentities == [S_IMAGE_IDENTITY], (
+        "the capabilities read must compare the same immutable image "
+        "identity start compares — image-blind optimism advertises a "
+        "council start will refuse")

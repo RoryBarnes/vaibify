@@ -174,6 +174,7 @@ class FailClosedDockerAdapter:
             "sShortId": S_CONTAINER_ID[:12],
             "sName": S_CONTAINER_NAME,
             "sImage": "ubuntu:24.04",
+            "sImageIdentity": "sha256:" + "fa4e" * 16,
         }]
 
     def _ftAnswerDirectoryProbe(self, sCommand):

@@ -108,8 +108,8 @@ _S_COUNCIL_EGRESS_RATIONALE = (
     "(testCouncilGatewayAuthority.py fails the build on any other) — "
     "operating only on a COUNCIL-created egress network and its "
     "CONNECT-proxy container, never the active project container. Both "
-    "are named from the server-minted _S_NETWORK_NAME_PREFIX / "
-    "_S_PROXY_NAME_PREFIX plus a campaign id that "
+    "are named from the server-minted S_NETWORK_NAME_PREFIX / "
+    "S_PROXY_NAME_PREFIX plus a campaign id that "
     "fnValidateCampaignIdOrRaise refuses unless it is 1-64 characters "
     "of [A-Za-z0-9-]; the proxy image is the DIGEST-PINNED "
     "S_PROXY_IMAGE, created with the runner's hardened posture "
@@ -132,8 +132,8 @@ _S_COUNCIL_EGRESS_RATIONALE = (
     "non-root, cap-dropped, bounded posture inspected live)."
 )
 _LIST_COUNCIL_EGRESS_SYMBOLS = [
-    "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX",
-    "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX",
+    "gui/agentCouncilEgress.py::S_NETWORK_NAME_PREFIX",
+    "gui/agentCouncilEgress.py::S_PROXY_NAME_PREFIX",
     "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise",
 ]
@@ -303,9 +303,13 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     # reach. Re-read 2026-08-19 for the R4 migration: S_PROXY_IMAGE's
     # hash moved because the image is now digest-pinned, and the moved
     # symbols' hashes are their gateway/runner forms after the split.
-    "gui/agentCouncilEgress.py::_S_NETWORK_NAME_PREFIX":
-        "8aaa3bf0a0e83395",
-    "gui/agentCouncilEgress.py::_S_PROXY_NAME_PREFIX": "129ae0023fac3690",
+    # Re-read 2026-08-20: the two name prefixes went PUBLIC so the
+    # startup egress sweep can compose leftover names from stored
+    # campaign ids; the values and every use are unchanged, so the
+    # ruling stands and only its anchors moved.
+    "gui/agentCouncilEgress.py::S_NETWORK_NAME_PREFIX":
+        "557a6a74745678bf",
+    "gui/agentCouncilEgress.py::S_PROXY_NAME_PREFIX": "b19a94061ae2d43f",
     "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "3af607254cf1d87f",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise":
         "87db3f8231c827f6",
