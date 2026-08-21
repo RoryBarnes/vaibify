@@ -1406,8 +1406,22 @@ def _fnodeResolveArgumentVector(nodeCall, dictLocalCommandLists):
     return None
 
 
+_SET_SHELL_PROGRAM_BASENAMES = {"sh", "bash", "zsh", "dash", "ksh"}
+
+
 def _fbArgumentIsOpaque(nodeCall, dictLocalCommandLists):
-    """Return True when the scan cannot read what a subprocess runs."""
+    """Return True when the scan cannot read what a subprocess runs.
+
+    A readable leading literal is not enough when that literal is a
+    SHELL: ``["/bin/bash", "-c", stub, name, sCommand]`` leads with a
+    constant, but the text the shell will run rides in the non-constant
+    elements — so judging by ``argv[0]`` alone let a launch dodge the
+    blind-spot declaration by prefixing a literal shell (found
+    2026-08-20, when the host gateway's gated stub moved from
+    ``sys.executable`` to ``/bin/bash`` and its site silently left the
+    ledger). A shell launch is readable only when EVERY element is a
+    constant; anything else is declared opaque.
+    """
     if not nodeCall.args:
         return False
     nodeVector = _fnodeResolveArgumentVector(
@@ -1415,8 +1429,22 @@ def _fbArgumentIsOpaque(nodeCall, dictLocalCommandLists):
     )
     if nodeVector is None:
         return not isinstance(nodeCall.args[0], ast.Constant)
-    return bool(nodeVector.elts) and not isinstance(
-        nodeVector.elts[0], ast.Constant,
+    if not nodeVector.elts:
+        return False
+    nodeProgram = nodeVector.elts[0]
+    if not isinstance(nodeProgram, ast.Constant):
+        return True
+    return _fbShellPayloadIsUnreadable(nodeProgram, nodeVector)
+
+
+def _fbShellPayloadIsUnreadable(nodeProgram, nodeVector):
+    """Return True for a shell launch whose vector is not fully literal."""
+    sProgramBasename = str(nodeProgram.value).rsplit("/", 1)[-1]
+    if sProgramBasename not in _SET_SHELL_PROGRAM_BASENAMES:
+        return False
+    return not all(
+        isinstance(nodeElement, ast.Constant)
+        for nodeElement in nodeVector.elts
     )
 
 

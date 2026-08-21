@@ -94,10 +94,17 @@ I_NEW_FILE_MODE = 0o644
 # identity, then becomes the command via exec — so the command's first
 # instruction cannot run before the record that names the process
 # exists. The host analogue of Docker's create -> journal -> start.
+# It is a /bin/bash script, not a python -c stub, deliberately: the
+# gate needs only "read a line, then exec", and a python interpreter
+# boot (~0.2s on a framework macOS build, vs ~0.01s for bash) taxed
+# EVERY host command with it — the promotion hand-off alone runs ~16
+# gated launches serially, and that tax was most of its multi-second
+# stall (2026-08-20). The command rides in as "$1", data the outer
+# bash never parses; exec keeps the pid, so the journaled identity
+# survives unchanged.
 _S_GATED_LAUNCH_STUB = (
-    "import os,sys\n"
-    "sys.stdin.readline()\n"
-    "os.execv('/bin/bash', ['/bin/bash', '-c', sys.argv[1]])\n"
+    "read -r _sGate\n"
+    "exec /bin/bash -c \"$1\"\n"
 )
 
 # The terminal's launch stub. The gate rides a dedicated pipe (its fd
@@ -660,7 +667,8 @@ class HostConnection:
         )
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "prepared")
         processChild = subprocess.Popen(
-            [sys.executable, "-c", _S_GATED_LAUNCH_STUB, sCommand],
+            ["/bin/bash", "-c", _S_GATED_LAUNCH_STUB,
+             "vaibifyGatedLaunch", sCommand],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, cwd=sEffectiveWorkdir,
             start_new_session=True,

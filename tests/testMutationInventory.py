@@ -205,7 +205,14 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # +1 (2026-08-18): the remote client's ssh launch. Same standing as
 # the helper's: it runs on the laptop before any project exists,
 # so there is no gateway it could be inside. Classified on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
+# +1 (2026-08-20): stateManager._fnEnsureStateDirectoryExists — a
+# `mkdir -p` on state.json's directory, composed locally from the
+# fsShellQuote'd state path. Added so a legacy root-layout repo (whose
+# Project file predates .vaibify/ existing at all) can bootstrap its
+# first state save instead of crashing the load; it sits in the same
+# persist tail as the checkpoint cp and install mv and rides the same
+# admissions. Classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 209
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -1380,6 +1387,40 @@ def testANonDockerSubprocessIsNotRecorded(moduleGenerator):
     assert _flistScanSource(moduleGenerator, """
         def fnRunGit():
             subprocess.run(["git", "status"], capture_output=True)
+    """) == []
+
+
+def testAShellWrapperWithAVariablePayloadIsDeclaredOpaque(
+    moduleGenerator,
+):
+    """A literal shell in argv[0] must not launder an unreadable command.
+
+    ``["/bin/bash", "-c", stub, name, sCommand]`` leads with a constant,
+    so the argv[0] opacity rule read it as decodable and the site left
+    the ledger entirely — no row, no blind spot — when the host
+    gateway's gated stub moved off ``sys.executable`` (2026-08-20). The
+    text the shell will run is in the NON-constant elements, so a shell
+    launch that is not fully literal is an UNKNOWN-command row plus a
+    declared blind spot, exactly like a non-constant argv[0].
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnLaunchGated(sCommand):
+            subprocess.Popen(
+                ["/bin/bash", "-c", S_STUB, "stubName", sCommand],
+            )
+    """)
+    assert len(listRows) == 1, listRows
+    assert listRows[0]["sPrimitive"] == (
+        moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
+    )
+    assert listRows[0]["bMutationCapable"] is True
+
+
+def testAFullyLiteralShellCommandStaysUnrecorded(moduleGenerator):
+    """The shell rule keys on unreadable text, not on shells as such."""
+    assert _flistScanSource(moduleGenerator, """
+        def fnProbeQuietly():
+            subprocess.run(["/bin/bash", "-c", "true"])
     """) == []
 
 
