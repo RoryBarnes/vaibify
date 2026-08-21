@@ -84,6 +84,19 @@ class MockDockerCouncil:
             "sImageIdentity": S_IMAGE_IDENTITY,
         }]
 
+    def fbaFetchFile(self, sContainerId, sPath):
+        """Answer the launch-time login-presence probe, and only it.
+
+        Fail-closed like every other double here: the ONE path the
+        council reads is the persisted Claude login, and anything else
+        raises rather than returning plausible bytes.
+        """
+        if sPath.endswith("/.claude/.credentials.json"):
+            return json.dumps({
+                "claudeAiOauth": {"accessToken": "fixture-access-token"},
+            }).encode("utf-8")
+        raise AssertionError(f"unmodelled container read: {sPath!r}")
+
     def fnWriteFile(self, sContainerId, sPath, baContent, **kwargs):
         self.listWrites.append((sContainerId, sPath))
 
@@ -763,3 +776,51 @@ def test_capabilities_compare_the_resolved_image_like_start_does(
         "the capabilities read must compare the same immutable image "
         "identity start compares — image-blind optimism advertises a "
         "council start will refuse")
+
+
+def test_start_refuses_a_project_with_no_claude_login(
+        tOwnerClient, monkeypatch):
+    """R10's presence probe: no login, no campaign, no runner.
+
+    The extraction used to discover an absent login only inside the
+    first turn's prepare — AFTER a runner had been created — so the
+    researcher read a failed turn instead of "log in". The probe now
+    runs at start, before anything registers.
+    """
+    from vaibify.gui import agentCouncilProviders
+    monkeypatch.setattr(
+        agentCouncilProviders, "fbRunnerCredentialIsPresent",
+        lambda connectionDocker, sContainerId, sPath: False)
+    client, app, _ = tOwnerClient
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=DICT_START_BODY)
+    assert response.status_code == 409, response.text
+    assert "log in to Claude" in response.json()["detail"]
+    assert app.state.dictCouncilCampaignStore["listInsertionOrder"] == [], (
+        "a login-less start must register no campaign at all")
+
+
+def test_login_presence_probe_holds_no_credential_material():
+    """The probe answers a boolean; the token never leaves the read."""
+    from vaibify.gui import agentCouncilProviders
+
+    class _FakeLoginConnection:
+        def fbaFetchFile(self, sContainerId, sPath):
+            return json.dumps({
+                "claudeAiOauth": {
+                    "accessToken": "the-secret-token",
+                    "refreshToken": "the-refresh-token"},
+            }).encode("utf-8")
+
+    bPresent = agentCouncilProviders.fbRunnerCredentialIsPresent(
+        _FakeLoginConnection(), "cid", "/workspace/x/.claude/.credentials.json")
+    assert bPresent is True
+    assert isinstance(bPresent, bool), (
+        "the probe must answer a boolean, never the credential itself")
+
+    class _FakeMissingLoginConnection:
+        def fbaFetchFile(self, sContainerId, sPath):
+            raise FileNotFoundError(sPath)
+
+    assert agentCouncilProviders.fbRunnerCredentialIsPresent(
+        _FakeMissingLoginConnection(), "cid", "/workspace/x/.claude/x") is False

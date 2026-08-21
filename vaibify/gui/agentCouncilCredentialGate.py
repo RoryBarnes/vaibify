@@ -30,10 +30,14 @@ ships inside that content-addressed image, pinning the id is what
 holds the CLI version fixed between live checks — the recorded
 ``sCliVersion`` documents what was verified, while the image comparison
 enforces it (a CLI probe would itself need a runner turn). Even
-with a match, login PRESENCE is probed live at launch (the extraction
-raises without a persisted login), and the first turn's failure
-classification is the live usable-model probe: an unusable credential
-lands as an authentication-classified failed turn, never a hang.
+with a match, login PRESENCE is probed live at START — before the
+campaign registers and before any runner exists
+(``fbRunnerCredentialIsPresent``, whose boolean answer holds no
+credential material) — and the first turn's failure classification is
+the live usable-model probe: an unusable credential lands as an
+authentication-classified failed turn, never a hang. The two are
+deliberately at different points, because presence is a file read and
+usability is only knowable by spending a turn.
 
 Enablement never weakens the disclosure: the residual
 token-exfiltration risk (a prompt-injected model reading its own

@@ -91,6 +91,18 @@ def tLiveProjectFixture():
         iExitCode, baOutput = container.exec_run(
             ["/bin/bash", "-c", sBuildScript], user="researcher")
         assert iExitCode == 0, baOutput.decode()
+        # The launch-time login-presence probe reads the workspace
+        # root's persisted login, so the live lane must model a project
+        # the researcher HAS logged in to — the precondition for an
+        # enabled runner backend. Written as root because /workspace is
+        # root-owned in this throwaway image. The token is a fixture
+        # string; nothing here ever authenticates to a provider.
+        iExitCode, baOutput = container.exec_run(
+            ["/bin/sh", "-c",
+             "mkdir -p /workspace/.claude && printf '%s' "
+             "'{\"claudeAiOauth\":{\"accessToken\":\"fixture-token\"}}' "
+             "> /workspace/.claude/.credentials.json"])
+        assert iExitCode == 0, baOutput.decode()
         yield (sName, container.id, container)
     finally:
         try:

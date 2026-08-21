@@ -4094,7 +4094,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that same id instead of evaluating the gate image-blind, and
     # delete disposes the controller runtime before removing durable
     # storage.
-    "routes/councilRoutes.py": 1004,
+    # +28 (2026-08-21): R10's launch-time login-presence probe — the
+    # gate says the maintainer's evidence permits paid work in this
+    # image, this says the project actually HAS a login to copy, and it
+    # refuses before the campaign registers or any runner exists.
+    "routes/councilRoutes.py": 1032,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

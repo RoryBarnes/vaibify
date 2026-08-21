@@ -64,6 +64,13 @@ class MockDockerTwoContainers:
              "sImageIdentity": "sha256:" + "bb22" * 16},
         ]
 
+    def fbaFetchFile(self, sContainerId, sPath):
+        """Answer the launch-time login-presence probe, and only it."""
+        if sPath.endswith("/.claude/.credentials.json"):
+            return (b'{"claudeAiOauth": '
+                    b'{"accessToken": "fixture-access-token"}}')
+        raise AssertionError(f"unmodelled container read: {sPath!r}")
+
 
 @pytest.fixture(autouse=True)
 def fixtureIsolateRegistry(tmp_path, monkeypatch):

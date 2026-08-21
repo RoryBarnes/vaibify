@@ -347,6 +347,12 @@ class FailClosedDockerAdapter:
             return self._dictFiles[sPath]
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
+        # The council's launch-time login-presence probe: the journey
+        # models a project the researcher has already logged in to.
+        if sPath.endswith("/.claude/.credentials.json"):
+            return json.dumps({
+                "claudeAiOauth": {"accessToken": "fixture-access-token"},
+            }).encode("utf-8")
         raise FileNotFoundError(sPath)
 
     def fnWriteFile(

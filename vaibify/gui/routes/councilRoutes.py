@@ -368,6 +368,32 @@ def _ffnBuildImageResolver(dictCtx, sContainerId):
     return _fsResolveRunnerImage
 
 
+def _fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
+    """Refuse a launch when the project holds no usable provider login.
+
+    R10's live presence probe, at the cheapest correct point: the
+    credential gate says the maintainer's evidence record permits paid
+    work in this image, and this says the project actually HAS a login
+    to copy. It runs before the campaign registers and before any
+    runner exists — the per-turn extraction would otherwise discover
+    the absence only after a runner had been created and destroyed,
+    and the researcher would read a failed turn instead of "log in".
+    The token is discarded inside the probe; only a boolean returns.
+    """
+    from .. import agentCouncilProviders
+    from .. import projectRoots
+    sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+        sContainerId, WORKSPACE_ROOT)
+    if not agentCouncilProviders.fbRunnerCredentialIsPresent(
+            dictCtx["docker"], sContainerId,
+            agentCouncilProviders.fsComposeCredentialContainerPath(
+                sWorkspaceRoot)):
+        raise HTTPException(
+            409, "this project has no usable Claude login for the "
+            "council runners to copy. Open the project's terminal and "
+            "log in to Claude, then convene the council again.")
+
+
 def _ffnBuildCredentialStager(dictCtx, sContainerId):
     """Build the closure that stages the runner's host credential copy.
 
@@ -700,6 +726,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
             sImageReference = await _ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             _fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            await asyncio.to_thread(
+                _fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(

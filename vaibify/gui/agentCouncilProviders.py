@@ -75,6 +75,7 @@ __all__ = [
     "fdictDiscoverClaudeModels",
     "fdictClaudeCapabilityContract",
     "fsComposeCredentialContainerPath",
+    "fbRunnerCredentialIsPresent",
     "fdictExtractRunnerCredential",
     "fsStageRunnerCredentialFile",
     "fbaBuildCredentialTarball",
@@ -414,6 +415,27 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
         raise RunnerCredentialError(
             "the persisted Claude login carries no access token to copy")
     return {"sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY]}
+
+
+def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
+                                sCredentialContainerPath):
+    """Report whether a usable provider login exists, holding nothing.
+
+    The launch-time presence probe (section 9.7): the same reviewed
+    read the extraction uses, with the token DISCARDED immediately —
+    the answer is a boolean, so no credential material outlives the
+    call. Runs before a campaign registers, so a project with no
+    persisted login is refused with that reason instead of failing its
+    first turn after a runner has already been created and destroyed.
+    An unreadable or token-less login answers False exactly like a
+    missing one: the researcher must log in either way.
+    """
+    try:
+        fdictExtractRunnerCredential(
+            connectionDocker, sContainerId, sCredentialContainerPath)
+    except RunnerCredentialError:
+        return False
+    return True
 
 
 def fsStageRunnerCredentialFile(sAccessToken):
