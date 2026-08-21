@@ -95,6 +95,9 @@ html, body {
 }
 
 .picker-content {
+    /* Relative so the project-birth overlay (absolute, inset 0) can
+       anchor here when the celebration fires on the picker. */
+    position: relative;
     width: 100%;
     min-width: 400px;
     max-width: 600px;
@@ -290,7 +293,6 @@ html, body {
     border: 1px solid var(--border-error-tint);
     color: var(--color-red-text);
 }
-
 .status-dot.status-missing {
     background: transparent;
     border: 2px solid var(--color-red);
@@ -1182,6 +1184,23 @@ body.proof-level-3 .toolbar-label {
     padding: 0;
     background: transparent;
     accent-color: var(--highlight-color);
+}
+
+/* Zero-step notice: the state and the affordance in one row. It
+   must LOOK clickable (the UX rule: clickable text acts, and the
+   context menu cannot anchor to a step row that does not exist). */
+.step-empty-state {
+    padding: 12px 14px;
+    color: var(--text-muted);
+    font-style: italic;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background var(--transition-speed);
+}
+
+.step-empty-state:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
 }
 
 /* Step item */
@@ -3978,6 +3997,39 @@ body.proof-level-2 .level-cell-favicon {
 
 .vaibify-glow-cascade {
     animation: panelBorderGlow 0.6s ease-out;
+}
+
+/* --- Promotion transition curtain --- */
+
+/* Above the hubs and modals (1000) so the hand-off's intermediate
+   screens never show; below the toasts (2000) so the promotion's
+   success toast stays readable over it. */
+.vaibify-promotion-curtain {
+    position: fixed;
+    inset: 0;
+    z-index: 1900;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--bg-primary);
+    opacity: 1;
+    transition: opacity 0.4s ease-in;
+}
+
+.vaibify-promotion-curtain.fading {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.vaibify-promotion-curtain .curtain-title {
+    font-size: 24px;
+    color: var(--text-primary);
+}
+
+.vaibify-promotion-curtain .curtain-subtitle {
+    color: var(--text-muted);
 }
 
 /* --- Project-birth outline trace (left column) --- */

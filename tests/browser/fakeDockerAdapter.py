@@ -125,6 +125,14 @@ LIST_MODELLED_COMMANDS = [
         "sLaneTwoAssertion": "testRealContainerCopiesAndRenamesFiles",
     },
     {
+        "sMatch": "mkdir -p",
+        "sPurpose": (
+            "state-directory bootstrap before a state.json save (a "
+            "legacy root-layout repo has no .vaibify directory yet)"
+        ),
+        "sLaneTwoAssertion": "testRealContainerMakesDirectories",
+    },
+    {
         "sMatch": "printenv CONTAINER_USER",
         "sPurpose": "resolving the unprivileged container user",
         "sLaneTwoAssertion": "testRealContainerReportsItsContainerUser",
@@ -175,6 +183,21 @@ class FailClosedDockerAdapter:
             "sName": S_CONTAINER_NAME,
             "sImage": "ubuntu:24.04",
         }]
+
+    def _ftAnswerDirectoryCreate(self, sCommand):
+        """Answer `mkdir -p`, but only for paths inside the workspace.
+
+        Same scoping rule as the directory probe below: a bare verb
+        match would answer 0 for a creation anywhere at all, including
+        outside the volume. A creation that has wandered surfaces as
+        an unmodelled call instead.
+        """
+        if S_WORKSPACE_ROOT not in sCommand:
+            raise UnmodelledContainerCall(
+                "Directory creation outside the workspace volume, "
+                f"which the lane never legitimately does: {sCommand}"
+            )
+        return (0, "")
 
     def _ftAnswerDirectoryProbe(self, sCommand):
         """Answer `test -d`, but only for paths inside the workspace.
@@ -227,6 +250,8 @@ class FailClosedDockerAdapter:
             return self._ftAnswerDirectoryProbe(sCommand)
         if "cp -f" in sCommand or "mv -f" in sCommand:
             return self._ftAnswerFileMove(sCommand)
+        if "mkdir -p" in sCommand:
+            return self._ftAnswerDirectoryCreate(sCommand)
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
         if "python3 -c" in sCommand:

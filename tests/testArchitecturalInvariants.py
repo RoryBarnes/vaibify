@@ -4469,7 +4469,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # path passing the current semantic fingerprint into the
     # revalidating merge, and the computed unresolved-marker list the
     # level gate reads.
-    "workflowManager.py": 2546,
+    # +56 (2026-08-20): legacy root-level project.json support in
+    # discovery — the name-match fallback in the find, the
+    # declares-steps content gate, the repo-name display fallback, and
+    # the deriver's root-file branch. All of it is the discovery/load
+    # responsibility this module already owns; a repo whose Project
+    # file predates .vaibify/ rendered as "no workflows" with no error
+    # anywhere.
+    # +11 (2026-08-20): the legacy-shape predicate promoted to the
+    # public fbWorkflowPathIsLegacyRootFile, single-sourcing the shape
+    # for discovery, the repo-path deriver, and the connect guard in
+    # pipelineServer — the third consumer is what forced the extraction.
+    # +5 (2026-08-20): the display-name fallback now maps a scaffold
+    # "project.json" to its repo's name in EVERY location, not only
+    # the legacy root — after the canonical relocation, a card reading
+    # "project.json" beside "Blank Project" named nothing.
+    "workflowManager.py": 2618,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4519,7 +4534,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (dictDefinitionProducers in the stateful fields), the run's
     # producer stamp at the completion merge, and the per-load
     # revalidation that marks superseded/unattested results.
-    "stateManager.py": 1184,
+    # +24 (2026-08-20): _fnEnsureStateDirectoryExists — mkdir -p on
+    # state.json's directory in the persist tail, so a legacy
+    # root-layout repo (no .vaibify/ yet) bootstraps its first state
+    # save instead of crashing the load. One helper beside the
+    # checkpoint and install steps it precedes.
+    "stateManager.py": 1208,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4715,7 +4735,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # which none of this module's other 2800 lines ask, and the domain
     # had been naming the concept with no home for it. What is left
     # here is the payload itself, which is this function's whole job.
-    "pipelineServer.py": 2885,
+    # +5 (2026-08-20): the connect-path guard's legacy-root admission —
+    # accept a repo-root project.json through the shared workflowManager
+    # predicate, in researcher language. Discovery began listing that
+    # shape; the guard bouncing the very card the researcher was shown
+    # was the live incident.
+    "pipelineServer.py": 2890,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5135,7 +5160,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sandbox can be promoted from inside the open project. One helper
     # shared by both conversion routes, cohesive with the busy-refusal
     # it sits beside.
-    "registryRoutes.py": 1909,
+    # +2 (2026-08-20): the create route maps templateManager's
+    # FileExistsError (refusing to scaffold over an existing Project)
+    # to a 409.
+    # +59 (2026-08-20): _fnScaffoldEmptyWorkflowForPromotion — a
+    # sandbox scaffolds no workflow, so promotion is the moment a
+    # Project's first workflow file comes into being; without it the
+    # post-promotion re-entry stranded the researcher on an empty
+    # picker. Lives beside the promote route it serves.
+    "registryRoutes.py": 1970,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

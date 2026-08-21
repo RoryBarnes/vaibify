@@ -13,6 +13,7 @@ __all__ = [
 ]
 
 import asyncio
+import json
 import logging
 import math
 import os
@@ -1604,7 +1605,14 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
             app, sName, requestHttp,
         )
         _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
-        # Config file FIRST, registry entry SECOND (the convert route's
+        # Workflow scaffold FIRST: if it fails, nothing has been
+        # renamed and the sandbox is untouched; if a later write fails,
+        # a sandbox carrying a workflow file re-runs safely because the
+        # scaffold steps aside for an existing one.
+        _fnScaffoldEmptyWorkflowForPromotion(
+            dictProject["sDirectory"], request.sProjectName,
+        )
+        # Config file next, registry entry LAST (the convert route's
         # ordering rationale): a failed registry write then leaves a host
         # sandbox whose config names the new name but whose entry is
         # unchanged, and re-running is safe.
@@ -1666,6 +1674,57 @@ def _fnRewriteConfigForPromotion(sConfigPath, sNewName):
             "must be a valid host-safe name.",
         )
     fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+
+
+def _fnScaffoldEmptyWorkflowForPromotion(sDirectory, sProjectName):
+    """Give the promoted Project the workflow its dashboard will open.
+
+    A sandbox scaffolds no workflow at all (2026-08-20), so promotion
+    is the moment a Project's first workflow file comes into being.
+    Without it the post-promotion re-entry found zero workflow cards
+    and stranded the researcher on an empty picker — the Project they
+    had just named was nowhere on screen. A workflow the researcher
+    already created is theirs: the scaffold steps aside when either
+    discovered location (canonical ``.vaibify/projects/`` or the
+    legacy repository root) already carries one. The directory is the
+    already-registered, home-rooted one, so this adds no traversal
+    vector.
+    """
+    from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
+    sProjectsDirectory = os.path.join(sDirectory, VAIBIFY_PROJECTS_DIR)
+    bWorkflowExists = (
+        os.path.isfile(os.path.join(sDirectory, "project.json"))
+        or any(
+            sEntry.endswith(".json")
+            for sEntry in _flistDirectoryEntries(sProjectsDirectory)
+        )
+    )
+    if bWorkflowExists:
+        return
+    try:
+        os.makedirs(sProjectsDirectory, exist_ok=True)
+        with open(
+            os.path.join(sProjectsDirectory, "project.json"), "w",
+        ) as fileWorkflow:
+            json.dump({
+                "sWorkflowName": sProjectName,
+                "sPlotDirectory": "Plot",
+                "listSteps": [],
+            }, fileWorkflow, indent=2)
+    except OSError as error:
+        raise HTTPException(500, (
+            "Could not create the Project's workflow file in "
+            "'.vaibify/projects/'. Nothing was renamed; fix the "
+            f"directory permissions and promote again. ({error})"
+        ))
+
+
+def _flistDirectoryEntries(sDirectory):
+    """Return a directory's entries, or [] when it does not exist."""
+    try:
+        return os.listdir(sDirectory)
+    except OSError:
+        return []
 
 
 def _fdictPromotionResult(sNewName):
@@ -1776,6 +1835,8 @@ def _fnScaffoldProject(request):
         fnCopyTemplate(request.sTemplateName, request.sDirectory)
     except FileNotFoundError as error:
         raise HTTPException(404, str(error))
+    except FileExistsError as error:
+        raise HTTPException(409, str(error))
 
 
 def _fnWriteProjectConfig(request):

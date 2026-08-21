@@ -159,7 +159,7 @@ var VaibifyContainerManager = (function () {
            terminal WebSockets can present; without the claim every WS
            closes 4403. The claim is keyed by name, the connect by id. */
         if (sName) {
-            var bClaimed = await _fbClaimContainer(sName);
+            var bClaimed = await fbClaimContainer(sName);
             if (!bClaimed) return;
         }
         fnConnectToContainer(sId);
@@ -669,7 +669,7 @@ var VaibifyContainerManager = (function () {
         if (!bRunning) {
             await fnStartContainer(sName);
         }
-        var bClaimed = await _fbClaimContainer(sName);
+        var bClaimed = await fbClaimContainer(sName);
         if (!bClaimed) {
             await fnLoadContainers();
             return;
@@ -712,7 +712,7 @@ var VaibifyContainerManager = (function () {
                 "remove the project from the list.", "error");
             return;
         }
-        var bClaimed = await _fbClaimContainer(sName);
+        var bClaimed = await fbClaimContainer(sName);
         if (!bClaimed) {
             await fnLoadContainers();
             return;
@@ -793,7 +793,7 @@ var VaibifyContainerManager = (function () {
         }
     }
 
-    async function _fbClaimContainer(sName) {
+    async function fbClaimContainer(sName) {
         /* Any re-claim lease rides the X-Vaibify-Lease header the
            authenticated-fetch wrapper attaches, never a query param. */
         try {
@@ -820,6 +820,13 @@ var VaibifyContainerManager = (function () {
 
     async function fnReleaseClaim(sName) {
         if (!sName) return;
+        /* No lease for this name means this tab cannot release it --
+           the server refuses a lease-less release -- and firing the
+           doomed request anyway races its fnForgetLease below against
+           a claim this tab may be making on ANOTHER name (the
+           promotion re-entry hit exactly that: the stray release's
+           completion wiped the freshly claimed lease). */
+        if (!VaibifyApp.fsGetLeaseForContainer(sName)) return;
         /* The owning lease rides the X-Vaibify-Lease header the
            authenticated-fetch wrapper attaches, never a query param. */
         try {
@@ -1935,7 +1942,7 @@ var VaibifyContainerManager = (function () {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
-        fnHandleContainerClick: fnHandleContainerClick,
+        fbClaimContainer: fbClaimContainer,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,
         fnOpenAddChoice: fnOpenAddChoice,

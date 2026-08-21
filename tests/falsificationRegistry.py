@@ -3232,8 +3232,13 @@ def _fdictEntry(sRel):
         # permissive behaviour this fake exists not to have.
         nodeid='tests/testBrowserLaneContract.py::testModelledCommandsValidateTheirArgumentsNotJustTheVerb',
         source='tests/browser/fakeDockerAdapter.py',
+        # Two copies since 2026-08-20: the directory PROBE's scope
+        # check and the directory CREATE's. The honest mutation is
+        # "this guard shape is gone", which means both -- disabling
+        # one copy alone must not read as the guard surviving.
         old='        if S_WORKSPACE_ROOT not in sCommand:',
         new='        if False:',
+        iExpectedOccurrences=2,
     ),
     Falsification(
         # Drops a build input from the fresh-build trigger while the
@@ -10362,12 +10367,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testLostClaimIsRecoverable.py::'
-            'testALostClaimSendsTheResearcherWhereTheyCanClaimAgain'
+            'testALostClaimIsReclaimedAndTheWorkflowOpens'
         ),
         source='vaibify/gui/static/scriptWorkflowManager.js',
-        # Report the refusal as a bare toast: the researcher stays on a
-        # screen with no claim control, which is what shipped.
-        old='            if (_fbRecoverFromLostClaim(error)) return;\n',
+        # Drop the reclaim-and-retry: a reaped claim bounces the
+        # researcher to the Environment hub again -- the three-click
+        # toast dance of the 2026-08-20 live report restored.
+        old=(
+            '                if (await _fbReclaimAndRetryOnce(\n'
+            '                    sId, sWorkflowPathArg, sWorkflowName,\n'
+            '                    iThisGeneration\n'
+            '                )) return;\n'
+        ),
         new='',
     ),
     Falsification(
@@ -10376,13 +10387,14 @@ def _fdictEntry(sRel):
             'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
         ),
         source='vaibify/gui/static/scriptWorkflowManager.js',
-        # Recover on any error, which sends a researcher refused
-        # for a reason they cannot fix back to be refused again.
+        # Treat any error as a lost claim: an in-use refusal then runs
+        # a doomed reclaim and walks a researcher who cannot fix it
+        # back to a tile that refuses them again.
         old=(
-            '        if (dictDetail.sRefusal !== '
-            '_S_REFUSAL_CLAIM_REQUIRED) {\n'
+            '        return dictDetail.sRefusal === '
+            '_S_REFUSAL_CLAIM_REQUIRED;\n'
         ),
-        new='        if (false) {\n',
+        new='        return true;\n',
     ),
     Falsification(
         nodeid=(
@@ -12750,6 +12762,73 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testWorkflowDiscoveryLegacyRoot.py::'
+            'testARootLevelProjectFileIsDiscovered'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Drop the name-match fallback: a legacy repo whose Project
+        # file sits at the root regresses to the empty Project hub the
+        # live incident reported (2026-08-20).
+        old=(
+            "        f\" -o -path '*/.vaibify/workflows/*.json'\"\n"
+            "        f\" -o -name 'project.json' \\\\)\"\n"
+        ),
+        new=(
+            "        f\" -o -path '*/.vaibify/workflows/*.json' \\\\)\"\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowDiscoveryLegacyRoot.py::'
+            'testAForeignProjectJsonIsNotListed'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        # Admit every name-matched candidate without the content gate:
+        # another ecosystem's project.json is offered as a vaibify
+        # workflow the researcher can "open".
+        old=(
+            '        if fbWorkflowPathIsLegacyRootFile(sPath) and not (\n'
+            '            dictMeta["bDeclaresSteps"]\n'
+            '        ):\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCreationWizardRoutes.py::'
+            'testCreateScaffoldsTheProjectFileWhereDiscoveryLooks'
+        ),
+        source='vaibify/config/templateManager.py',
+        # Skip the relocation: every GUI-created project is born with
+        # its Project file at the repo root again -- the legacy shape
+        # only the discovery fallback can reach, and the origin of the
+        # 2026-08-20 empty-Project-hub incident.
+        old=(
+            '    fnMoveProjectFileWhereDiscoveryLooks(str(pathDestination))'
+            '\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testALegacyRootProjectFileSurvivesTheConnectGuard'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Refuse the legacy root shape at connect again: the researcher
+        # is shown a project card discovery listed, and clicking it
+        # bounces 400 -- the 2026-08-20 live incident restored.
+        old=(
+            '    ) and not'
+            ' workflowManager.fbWorkflowPathIsLegacyRootFile(sNormalized):\n'
+        ),
+        new=(
+            '    ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testPromoteFromInsideJourney.py::'
             'testPromotingFromInsideTheOpenProjectSucceedsAndReenters'
         ),
@@ -12765,5 +12844,78 @@ def _fdictEntry(sRel):
         new=(
             '        return false;\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromoteToHostProjectRoute.py::'
+            'testPromotionScaffoldsTheWorkflowTheDashboardWillOpen'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Drop the scaffold call: promotion from a blank sandbox
+        # produces a Project with zero workflows, and the dashboard's
+        # re-entry strands the researcher on an empty picker (the
+        # 2026-08-20 live incident).
+        old=(
+            '        _fnScaffoldEmptyWorkflowForPromotion(\n'
+            '            dictProject["sDirectory"], request.sProjectName,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPromoteFromInsideJourney.py::'
+            'testPromotingABlankSandboxScaffoldsAndOpensTheEmptyProject'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Blind the re-entry's sole-workflow open: the promotion still
+        # scaffolds and commits server-side, but the tab is re-stranded
+        # on the picker -- the step viewer never activates and the
+        # empty-state row never renders.
+        old=(
+            '        var listCards = document.querySelectorAll(\n'
+            '            "#listWorkflows .container-card");\n'
+            '        if (listCards.length !== 1) return;\n'
+        ),
+        new=(
+            '        var listCards = document.querySelectorAll(\n'
+            '            "#listWorkflows .container-card");\n'
+            '        return;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPromoteFromInsideJourney.py::'
+            'testThePromotionHandOffStaysBehindTheCurtain'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Drop the curtain show: the promotion still completes and
+        # re-enters, but the researcher watches the Environment hub
+        # and Project hub flash by again -- the 2026-08-20 live report
+        # this cover exists to prevent.
+        old=(
+            '            VaibifyApp.fnShowPromotionCurtain(sNewName);\n'
+            '            try {\n'
+            '                await _fnReenterPromotedProject(sNewName);\n'
+        ),
+        new=(
+            '            try {\n'
+            '                await _fnReenterPromotedProject(sNewName);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromoteToHostProjectRoute.py::'
+            'testAnExistingWorkflowIsNeverOverwrittenByPromotion'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Scaffold unconditionally: a legacy-root workflow gains an
+        # empty canonical twin (two picker cards for one Project), and
+        # a canonical one is clobbered outright.
+        old=(
+            '    if bWorkflowExists:\n'
+            '        return\n'
+        ),
+        new='',
     ),
 ]

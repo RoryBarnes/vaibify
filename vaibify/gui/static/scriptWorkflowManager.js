@@ -126,7 +126,14 @@ var VaibifyWorkflowManager = (function () {
             fnCheckOriginDrift(sId, false);
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
-            if (_fbRecoverFromLostClaim(error)) return;
+            if (_fbClaimWasLost(error)) {
+                if (await _fbReclaimAndRetryOnce(
+                    sId, sWorkflowPathArg, sWorkflowName,
+                    iThisGeneration
+                )) return;
+                _fnReturnToProjectList(error);
+                return;
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -139,22 +146,54 @@ var VaibifyWorkflowManager = (function () {
 
     var _S_REFUSAL_CLAIM_REQUIRED = "claim-required";
 
-    function _fbRecoverFromLostClaim(error) {
-        /* A refusal that names an action must leave the researcher
-           somewhere they can perform it. This one said "claim this
-           container" from the workflow picker, which has no claim
-           control -- the project TILE is the claim control, one screen
-           back -- so the dashboard read as wedged. Returning to the
-           list is the whole recovery: selecting the project again
-           claims it. */
+    function _fbClaimWasLost(error) {
+        /* Keyed on the machine-readable code, never the prose: the
+           sibling 409 ("in use in another browser session") has no
+           recovery to offer, and a recovery keyed on the word "claim"
+           would fire for it too. */
         var dictDetail = (error && error.dictDetail) || {};
-        if (dictDetail.sRefusal !== _S_REFUSAL_CLAIM_REQUIRED) {
+        return dictDetail.sRefusal === _S_REFUSAL_CLAIM_REQUIRED;
+    }
+
+    async function _fbReclaimAndRetryOnce(
+        sId, sWorkflowPathArg, sWorkflowName, iThisGeneration
+    ) {
+        /* The refusal's named recovery is "select the project again to
+           claim it" -- a claim plus a retry, which the dashboard can
+           run itself. The reaper collects a claim after thirty
+           socket-less seconds and the workflow picker holds no socket,
+           so a researcher who paused to read the list met this refusal
+           on their very next click (live report, 2026-08-20).
+           Arbitration still governs the reclaim: a project another
+           vaibify process holds refuses it, and the caller then walks
+           back to the project list as before. */
+        var sName = VaibifyContainerManager.fsGetSelectedContainerName();
+        if (!sName) return false;
+        var bClaimed =
+            await VaibifyContainerManager.fbClaimContainer(sName);
+        if (!bClaimed) return false;
+        var dictResult;
+        try {
+            dictResult = await _fdictFetchWorkflow(
+                sId, sWorkflowPathArg);
+        } catch (errorRetry) {
             return false;
         }
+        if (iThisGeneration !== _iWorkflowGeneration) return true;
+        VaibifyApp.fnActivateWorkflow(sId, dictResult, sWorkflowName);
+        fnCheckOriginDrift(sId, false);
+        return true;
+    }
+
+    function _fnReturnToProjectList(error) {
+        /* A refusal that names an action must leave the researcher
+           somewhere they can perform it: the project TILE is the
+           claim control, one screen back. Reached only when the
+           automatic reclaim could not recover. */
+        var dictDetail = (error && error.dictDetail) || {};
         VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
         VaibifyApp.fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
-        return true;
     }
 
     var _bRefreshing = false;
@@ -1650,8 +1689,12 @@ var VaibifyWorkflowManager = (function () {
             await VaibifyApi.fdictPost(
                 "/api/projects/create", _dictWizardData);
             _fnCloseWizard();
+            /* The wizard registers an ENVIRONMENT on the hub; whether
+               it holds a Project depends on the template, and a blank
+               sandbox holds none — so the toast must not say
+               "Project" (live report, 2026-08-20). */
             VaibifyApp.fnShowToast(
-                "Project created successfully.");
+                "Environment added.");
             VaibifyContainerManager.fnLoadContainers();
         } catch (error) {
             VaibifyApp.fnShowToast(
@@ -1792,27 +1835,66 @@ var VaibifyWorkflowManager = (function () {
             return;
         }
         _fnCloseWizard();
-        VaibifyApp.fnAnimateProjectBirth();
         VaibifyApp.fnShowToast(
             "Promoted '" + sHostName + "' to the host Project '" +
             sNewName + "'.", "success");
         if (bHeldByThisTab) {
-            await _fnReenterPromotedProject(sNewName);
+            /* Curtain up before the teardown: the researcher stays
+               "in the dashboard" while the hand-off passes through
+               both hubs beneath it. The finally guarantees a failed
+               claim or connect drops the curtain onto the real
+               screen instead of a permanent blank. */
+            VaibifyApp.fnShowPromotionCurtain(sNewName);
+            try {
+                await _fnReenterPromotedProject(sNewName);
+            } finally {
+                VaibifyApp.fnHidePromotionCurtain();
+            }
             return;
         }
+        VaibifyApp.fnAnimateProjectBirth();
         VaibifyContainerManager.fnLoadContainers();
     }
 
     async function _fnReenterPromotedProject(sNewName) {
         /* The server released this tab's session as part of the
-           promotion, so the old lease is dead; forget it, tear the old
-           project view down, then re-enter through the same click path
-           a researcher would use -- claim, host warning if it is
-           unacknowledged, workflow picker -- under the new name. */
+           promotion, so the old lease is dead. Tear the old view down,
+           then carry the researcher straight back inside under the new
+           name: claim, connect, and -- when the project has exactly
+           one workflow -- open it, so the promotion ends in the step
+           viewer rather than at the Environment hub. The host warning
+           is deliberately NOT re-shown: the researcher accepted it to
+           enter this very session, and promotion changes the name and
+           the graduated flag, never the directory the warning is
+           about. */
         VaibifyApp.fnForgetLease();
         VaibifyApp.fnDisconnect();
         await VaibifyContainerManager.fnLoadContainers();
-        await VaibifyContainerManager.fnHandleContainerClick(sNewName);
+        var bClaimed =
+            await VaibifyContainerManager.fbClaimContainer(sNewName);
+        if (!bClaimed) return;
+        await VaibifyContainerManager.fnConnectToContainer(sNewName);
+        await _fnOpenSoleWorkflow(sNewName);
+        /* Drop the curtain before the birth trace so the researcher
+           actually sees it draw around the step viewer. */
+        VaibifyApp.fnHidePromotionCurtain();
+        VaibifyApp.fnAnimateProjectBirth();
+    }
+
+    async function _fnOpenSoleWorkflow(sNewName) {
+        /* The picker's cards carry the same data their click handler
+           reads. Exactly one workflow means there is no choice to
+           make, so the promotion completes in the step viewer; zero or
+           several leave the researcher on the picker, where the choice
+           is theirs. */
+        var listCards = document.querySelectorAll(
+            "#listWorkflows .container-card");
+        if (listCards.length !== 1) return;
+        var elCard = listCards[0];
+        await fnSelectWorkflow(
+            sNewName, elCard.dataset.path,
+            elCard.querySelector(".name").textContent,
+            parseInt(elCard.dataset.sizeBytes, 10) || 0);
     }
 
     return {

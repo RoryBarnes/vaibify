@@ -400,3 +400,82 @@ def testPromotedHostProjectCanStillBeContainerizedLater(tclient):
     assert response.status_code == 200, response.text
     dictConverted = registryManager.fdictGetProject("aiGreenhouseBox")
     assert dictConverted["sMode"] == "container"
+
+
+def _fsScaffoldedWorkflowPath(tmp_path):
+    return str(
+        tmp_path / S_HOST_NAME / ".vaibify" / "projects" / "project.json"
+    )
+
+
+@pytest.mark.falsification
+def testPromotionScaffoldsTheWorkflowTheDashboardWillOpen(
+    tclient, tmp_path,
+):
+    """A promoted Project owns a workflow file, named after itself.
+
+    A sandbox scaffolds no workflow at all, so promotion is the moment
+    the first workflow file comes into being. Without it the dashboard's
+    post-promotion re-entry found zero workflow cards and stranded the
+    researcher on an empty picker with the birth animation firing over
+    nothing (live report, 2026-08-20). The file carries the PROMOTED
+    name — not the sandbox basename — so the picker card reads what the
+    researcher just typed.
+
+    Kills: dropping the _fnScaffoldEmptyWorkflowForPromotion call from
+    the promote route, which re-strands every promotion from a blank
+    sandbox.
+    """
+    import json as moduleJson
+    client, _ = tclient
+    response = client.post(_sPromoteUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    sWorkflowPath = _fsScaffoldedWorkflowPath(tmp_path)
+    assert os.path.isfile(sWorkflowPath), (
+        "promotion left the Project with no workflow file"
+    )
+    with open(sWorkflowPath) as fileWorkflow:
+        dictWorkflow = moduleJson.load(fileWorkflow)
+    assert dictWorkflow["sWorkflowName"] == S_NEW_NAME
+    assert dictWorkflow["listSteps"] == []
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize(
+    "sExistingRelativePath",
+    [".vaibify/projects/myAnalysis.json", "project.json"],
+    ids=["canonical", "legacyRoot"],
+)
+def testAnExistingWorkflowIsNeverOverwrittenByPromotion(
+    tclient, tmp_path, sExistingRelativePath,
+):
+    """The scaffold steps aside for a workflow the researcher created.
+
+    Both discovered locations count — the canonical directory and the
+    legacy repository root — because a scaffold that only checked one
+    would silently shadow a legacy-root workflow with an empty twin,
+    and the picker would offer two cards for one Project.
+
+    Kills: dropping the bWorkflowExists guard so the scaffold always
+    writes.
+    """
+    import json as moduleJson
+    client, _ = tclient
+    sExistingPath = str(tmp_path / S_HOST_NAME / sExistingRelativePath)
+    os.makedirs(os.path.dirname(sExistingPath), exist_ok=True)
+    dictExisting = {
+        "sWorkflowName": "My Analysis",
+        "listSteps": [{"sName": "First Step"}],
+    }
+    with open(sExistingPath, "w") as fileWorkflow:
+        moduleJson.dump(dictExisting, fileWorkflow)
+    response = client.post(_sPromoteUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    with open(sExistingPath) as fileWorkflow:
+        assert moduleJson.load(fileWorkflow) == dictExisting
+    sScaffoldPath = _fsScaffoldedWorkflowPath(tmp_path)
+    if sExistingPath != sScaffoldPath:
+        assert not os.path.exists(sScaffoldPath), (
+            "the scaffold wrote an empty twin beside an existing "
+            "workflow"
+        )

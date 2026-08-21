@@ -15,11 +15,14 @@ The journey is real all the way down: a real claim, a real
 session-bound lease, a live pipeline socket the submit path must quiet
 deliberately (the server closes a leftover one with a refusal code the
 connection monitor reads as an outage), the real lifecycle release
-(flock and all), and the automatic re-entry through the same click path
-a researcher would use — including the host warning, which a fresh
-entry legitimately shows again.
+(flock and all), and the automatic re-entry that ends in the STEP
+VIEWER with the project's sole workflow open — no Environment-hub dead
+end, and no re-shown host warning, because the researcher accepted it
+to enter this very session and promotion never changes the directory
+the warning is about.
 """
 
+import os
 import time
 
 import pytest
@@ -69,7 +72,7 @@ def _fnOpenTheSandboxWorkflow(page, serverHub):
     )
 
 
-def _fnDrivePromoteWizardToSubmit(page):
+def _fnDrivePromoteWizardToSubmit(page, sNewName=S_NEW_PROJECT_NAME):
     """From the Files bar, choose Host Project, name it, click Promote."""
     page.click('.left-tab[data-panel="files"]')
     page.wait_for_selector(
@@ -82,7 +85,7 @@ def _fnDrivePromoteWizardToSubmit(page):
     page.wait_for_timeout(150)
     page.click("#btnWizardNext")
     page.wait_for_timeout(200)
-    page.fill("#inputWizardProjectName", S_NEW_PROJECT_NAME)
+    page.fill("#inputWizardProjectName", sNewName)
     page.click("#btnWizardNext")
     page.wait_for_timeout(200)
     assert page.text_content("#btnWizardNext").strip() == "Promote"
@@ -123,20 +126,18 @@ def testPromotingFromInsideTheOpenProjectSucceedsAndReenters(
     assert S_HOST_PROJECT_READY not in (
         serverHub.app.state.dictContainerOwners
     )
-    # The tab re-enters on its own. A fresh entry legitimately shows
-    # the host warning again; continue through it.
-    fDeadline = time.monotonic() + 15.0
-    while time.monotonic() < fDeadline:
-        if pageDashboard.is_visible("#modalConfirm"):
-            pageDashboard.click("#btnConfirmOk")
-        if pageDashboard.is_visible("#workflowPicker"):
-            break
-        pageDashboard.wait_for_timeout(200)
-    assert pageDashboard.is_visible("#workflowPicker"), (
-        "the tab never re-entered the promoted project"
+    # The tab re-enters on its own and, because the project has
+    # exactly one workflow, lands back in the STEP VIEWER -- the
+    # sandbox's file view transformed into the Project's dashboard,
+    # with no Environment-hub dead end and no re-shown host warning.
+    pageDashboard.wait_for_selector(
+        "#mainLayout.active", timeout=20000,
     )
-    assert pageDashboard.title() == S_NEW_PROJECT_NAME, (
-        "the re-entered view does not carry the promoted name"
+    pageDashboard.wait_for_selector(
+        f"text={S_HOST_STEP_NAME}", timeout=20000,
+    )
+    assert not pageDashboard.is_visible("#modalConfirm"), (
+        "the host warning was re-shown on an in-session promotion"
     )
     # Re-entry claimed the project under its NEW name.
     assert S_NEW_PROJECT_NAME in (
@@ -149,5 +150,157 @@ def testPromotingFromInsideTheOpenProjectSucceedsAndReenters(
         "() => VaibifyConnectionMonitor.fbHasSurfaced()",
     ) is False, (
         "the promotion made the connection monitor surface an outage"
+    )
+    assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+S_BLANK_SANDBOX = "blankLaneSandbox"
+S_BLANK_NEW_NAME = "Promoted From Blank"
+
+
+def _fnSeedBlankSandbox(serverHub, sSandboxName=S_BLANK_SANDBOX):
+    """Register a host sandbox that is a git repo with NO workflow.
+
+    This is the shape every fresh sandbox now has — the sandbox
+    template scaffolds no workflow at all — so the promotion itself
+    must bring the first workflow file into being.
+    """
+    import json as moduleJson
+    import subprocess
+    from vaibify.config import registryManager
+    sDirectory = os.path.join(serverHub.sHome, sSandboxName)
+    os.makedirs(sDirectory, exist_ok=True)
+    with open(
+        os.path.join(sDirectory, "vaibify.yml"), "w",
+    ) as fileConfig:
+        fileConfig.write(f"projectName: {sSandboxName}\n")
+    with open(
+        os.path.join(sDirectory, "analysis.py"), "w",
+    ) as fileScript:
+        fileScript.write("print('placeholder')\n")
+    for listCommand in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "lane@example.invalid"],
+        ["git", "config", "user.name", "Browser Lane"],
+        ["git", "add", "-A"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q",
+         "-m", "seed"],
+    ):
+        subprocess.run(
+            listCommand, cwd=sDirectory, check=True,
+            capture_output=True,
+        )
+    registryManager.fnAddProject(sDirectory, sMode="host")
+    return sDirectory
+
+
+def _fnEnterTheBlankProject(page, serverHub, sSandboxName=S_BLANK_SANDBOX):
+    """Warn, continue, and enter the workflow-less Blank Project view."""
+    page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    page.wait_for_selector(
+        f'.container-tile[data-name="{sSandboxName}"]',
+        timeout=15000,
+    )
+    page.click(
+        f'.container-tile[data-name="{sSandboxName}"] '
+        '.container-tile-main',
+    )
+    page.wait_for_selector("#modalConfirm", timeout=10000)
+    page.click("#btnConfirmOk")
+    page.wait_for_selector("#btnNoWorkflow", timeout=20000)
+    assert page.locator("#listWorkflows .container-card").count() == 0, (
+        "a blank sandbox offered a workflow card it should not have"
+    )
+    page.click("#btnNoWorkflow")
+    page.wait_for_selector("#mainLayout.active", timeout=20000)
+
+
+@pytest.mark.falsification
+def testPromotingABlankSandboxScaffoldsAndOpensTheEmptyProject(
+    pageDashboard, serverHub,
+):
+    """A blank sandbox's promotion ends in the empty step viewer.
+
+    The 2026-08-20 live report: with the sandbox template scaffolding
+    no workflow, clicking Promote flipped the registry, but the
+    re-entry found zero workflow cards, fired the birth animation over
+    an empty picker, and the Project the researcher had just named was
+    nowhere on screen. Promotion now scaffolds the Project's first
+    workflow file, so the sole-workflow re-entry opens it and the
+    researcher lands on the "No steps yet" row — the same end state a
+    promotion from a workflow-bearing sandbox reaches.
+
+    Kills: blinding the re-entry's sole-workflow open, which re-strands
+    this journey on the picker (the step viewer never activates and the
+    empty-state row never renders). The backend half — dropping the
+    scaffold itself — is killed by the promote route's own test.
+    """
+    import json as moduleJson
+    from vaibify.config import registryManager
+    sDirectory = _fnSeedBlankSandbox(serverHub)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnDrivePromoteWizardToSubmit(pageDashboard, S_BLANK_NEW_NAME)
+    fDeadline = time.monotonic() + 15.0
+    while time.monotonic() < fDeadline:
+        if registryManager.fdictGetProject(S_BLANK_NEW_NAME) is not None:
+            break
+        pageDashboard.wait_for_timeout(150)
+    assert registryManager.fdictGetProject(S_BLANK_NEW_NAME) is not None
+    # The scaffold is on disk, named after the PROMOTED Project.
+    sWorkflowPath = os.path.join(
+        sDirectory, ".vaibify", "projects", "project.json",
+    )
+    assert os.path.isfile(sWorkflowPath), (
+        "promotion left the blank sandbox with no workflow file"
+    )
+    with open(sWorkflowPath) as fileWorkflow:
+        dictWorkflow = moduleJson.load(fileWorkflow)
+    assert dictWorkflow["sWorkflowName"] == S_BLANK_NEW_NAME
+    # The re-entry opens the scaffolded workflow: step viewer, with
+    # the empty-state row offering the first step.
+    pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    pageDashboard.wait_for_selector(".step-empty-state", timeout=20000)
+    assert S_BLANK_NEW_NAME in (
+        serverHub.app.state.dictContainerOwners
+    ), "the re-entry never claimed the promoted Project"
+    assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+S_CURTAIN_SANDBOX = "curtainLaneSandbox"
+S_CURTAIN_NEW_NAME = "Promoted Behind Curtain"
+
+
+@pytest.mark.falsification
+def testThePromotionHandOffStaysBehindTheCurtain(
+    pageDashboard, serverHub,
+):
+    """The re-entry's hub screens are covered, and the cover comes off.
+
+    The hand-off necessarily tears down to the Environment hub,
+    reloads the tiles, and passes the Project hub before the step
+    viewer is ready. A researcher watching three screens flash by
+    reads it as being kicked out (live report, 2026-08-20), so an
+    opaque curtain carries the new Project's name across the
+    transition — and must then LEAVE, or the fix for a flash is a
+    permanently blank dashboard.
+
+    Kills: dropping the curtain show from the promote submit's
+    held-by-this-tab branch (the curtain never appears and the hubs
+    flash again).
+    """
+    _fnSeedBlankSandbox(serverHub, S_CURTAIN_SANDBOX)
+    _fnEnterTheBlankProject(pageDashboard, serverHub, S_CURTAIN_SANDBOX)
+    _fnDrivePromoteWizardToSubmit(pageDashboard, S_CURTAIN_NEW_NAME)
+    # The curtain is up during the hand-off, naming the new Project.
+    elCurtain = pageDashboard.wait_for_selector(
+        ".vaibify-promotion-curtain", timeout=15000,
+    )
+    assert S_CURTAIN_NEW_NAME in elCurtain.text_content()
+    # The hand-off completes in the step viewer...
+    pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    pageDashboard.wait_for_selector(".step-empty-state", timeout=20000)
+    # ...and the curtain comes off.
+    pageDashboard.wait_for_selector(
+        ".vaibify-promotion-curtain", state="detached", timeout=10000,
     )
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors

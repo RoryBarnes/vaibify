@@ -1060,3 +1060,59 @@ def testADegradedCompletionIsNotReportedClean(pageDashboard, serverHub):
         "is one the researcher learns to ignore"
     )
     assert pageDashboard.listPageErrors == []
+
+
+def testAnEmptyWorkflowSaysSoAndOffersTheFirstStep(
+    pageDashboard, serverHub,
+):
+    """A zero-step Project names its state and acts on a click.
+
+    A freshly created (or freshly promoted) Project with no steps used
+    to render as the bare glyph header — a page that read as broken
+    (live report, 2026-08-20). The notice row must appear, and
+    clicking it must open the same New Step modal as the header's "+"
+    button, because the researcher's eye is on the empty list, not the
+    toolbar.
+
+    Seeded as a REAL zero-step workflow file in the host repo, listed
+    by the real discovery and loaded by the real HostConnection.
+    """
+    import json as moduleJson
+    sEmptyWorkflowPath = os.path.join(
+        serverHub.sHome, S_HOST_PROJECT_READY,
+        ".vaibify", "projects", "emptyLaneProject.json",
+    )
+    os.makedirs(os.path.dirname(sEmptyWorkflowPath), exist_ok=True)
+    with open(sEmptyWorkflowPath, "w") as fileWorkflow:
+        moduleJson.dump({
+            "sWorkflowName": "emptyLaneProject",
+            "sPlotDirectory": "Plot",
+            "listSteps": [],
+        }, fileWorkflow)
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
+        timeout=15000,
+    )
+    pageDashboard.click(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+        '.container-tile-main',
+    )
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        "text=emptyLaneProject", timeout=20000,
+    )
+    pageDashboard.click("text=emptyLaneProject")
+    elNotice = pageDashboard.wait_for_selector(
+        ".step-empty-state", timeout=20000,
+    )
+    assert "No steps yet" in elNotice.text_content()
+    elNotice.click()
+    pageDashboard.wait_for_selector("#modalTitle", timeout=10000)
+    assert pageDashboard.text_content(
+        "#modalTitle",
+    ).strip() == "New Step", (
+        "the empty-state click did not open the New Step modal"
+    )
+    assert pageDashboard.listPageErrors == []
