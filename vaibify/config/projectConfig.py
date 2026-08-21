@@ -558,7 +558,17 @@ def _fnMergeReproducibility(dictMerged, dictReproUser):
 # admit a space. Container projects must satisfy it; it is enforced at
 # container creation (registryRoutes), not here, because only a
 # container turns the name into a Docker object.
-_RE_DOCKER_SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+#
+# LOWERCASE, and that is the strictest of the three uses rather than an
+# aesthetic preference: `docker run --name` accepts capitals, but an
+# IMAGE REPOSITORY NAME does not, and the name becomes one of those
+# too. This pattern admitted capitals until 2026-08-21, so vaibify
+# accepted names it could never build: a project called
+# "AI-Greenhouse" passed every validator, ran a conversion, rewrote its
+# config, re-registered itself, and then died at `docker build -t
+# AI-Greenhouse:base` with "repository name must be lowercase" -- after
+# the researcher had answered every question the wizard asked.
+_RE_DOCKER_SAFE_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,62}$")
 
 # The STORAGE rule every mode must satisfy: safe to persist in
 # vaibify.yml, to use as a host lock/keep-alive filename

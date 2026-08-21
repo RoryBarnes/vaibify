@@ -159,7 +159,7 @@ var VaibifyContainerManager = (function () {
            terminal WebSockets can present; without the claim every WS
            closes 4403. The claim is keyed by name, the connect by id. */
         if (sName) {
-            var bClaimed = await _fbClaimContainer(sName);
+            var bClaimed = await fbClaimContainer(sName);
             if (!bClaimed) return;
         }
         fnConnectToContainer(sId);
@@ -669,14 +669,14 @@ var VaibifyContainerManager = (function () {
         if (!bRunning) {
             await fnStartContainer(sName);
         }
-        var bClaimed = await _fbClaimContainer(sName);
+        var bClaimed = await fbClaimContainer(sName);
         if (!bClaimed) {
             await fnLoadContainers();
             return;
         }
         var sStoredId = elTile ? elTile.dataset.containerId : "";
         var sTargetId = sStoredId ||
-            await _fsResolveContainerId(sName);
+            await fsResolveContainerId(sName);
         if (!sTargetId) return;
         _fnShowInitializingOverlay();
         var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
@@ -712,7 +712,7 @@ var VaibifyContainerManager = (function () {
                 "remove the project from the list.", "error");
             return;
         }
-        var bClaimed = await _fbClaimContainer(sName);
+        var bClaimed = await fbClaimContainer(sName);
         if (!bClaimed) {
             await fnLoadContainers();
             return;
@@ -793,7 +793,7 @@ var VaibifyContainerManager = (function () {
         }
     }
 
-    async function _fbClaimContainer(sName) {
+    async function fbClaimContainer(sName) {
         /* Any re-claim lease rides the X-Vaibify-Lease header the
            authenticated-fetch wrapper attaches, never a query param. */
         try {
@@ -820,6 +820,13 @@ var VaibifyContainerManager = (function () {
 
     async function fnReleaseClaim(sName) {
         if (!sName) return;
+        /* No lease for this name means this tab cannot release it --
+           the server refuses a lease-less release -- and firing the
+           doomed request anyway races its fnForgetLease below against
+           a claim this tab may be making on ANOTHER name (the
+           promotion re-entry hit exactly that: the stray release's
+           completion wiped the freshly claimed lease). */
+        if (!VaibifyApp.fsGetLeaseForContainer(sName)) return;
         /* The owning lease rides the X-Vaibify-Lease header the
            authenticated-fetch wrapper attaches, never a query param. */
         try {
@@ -1061,7 +1068,17 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnBuildContainer(sName, bNoCache) {
+        /* Returns whether the container is now BUILT AND RUNNING. It
+           reports its own failures, so a caller has nothing to add --
+           but a caller with follow-on work needs to know not to
+           attempt it. Without this, a failed build was followed by an
+           attempt to copy files into a container that did not exist,
+           and the researcher was told their files were not copied
+           because it was "not reporting as running yet" -- true, and
+           useless, when the real answer was three lines up in the
+           build log (live report, 2026-08-21). */
         var elOverlay = document.getElementById("modalBuildProgress");
+        var bBuiltAndRunning = false;
         _fnResetBuildProgressTail();
         elOverlay.style.display = "flex";
         _fnStartBuildProgressPoll(sName);
@@ -1072,9 +1089,10 @@ var VaibifyContainerManager = (function () {
             await VaibifyApi.fdictPostRaw(sUrl);
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
+            bBuiltAndRunning = true;
         } catch (error) {
             if (error.iStatus === 409) {
-                await _fnWatchRunningBuild(sName);
+                bBuiltAndRunning = await _fnWatchRunningBuild(sName);
             } else {
                 _fnReportBuildFailure(error);
             }
@@ -1083,6 +1101,7 @@ var VaibifyContainerManager = (function () {
             elOverlay.style.display = "none";
             fnLoadContainers();
         }
+        return bBuiltAndRunning;
     }
 
     async function _fnWatchRunningBuild(sName) {
@@ -1101,7 +1120,7 @@ var VaibifyContainerManager = (function () {
                 VaibifyApp.fnShowToast(
                     "Lost contact with the running build; refresh " +
                     "to check its status.", "error");
-                return;
+                return false;
             }
             _fnRenderBuildProgress(dictProgress);
             if (!dictProgress.bLive) break;
@@ -1112,11 +1131,12 @@ var VaibifyContainerManager = (function () {
         if (dictProgress.sOutcome === "succeeded") {
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
-            return;
+            return true;
         }
         VaibifyApp.fnShowToast(
             "The running build failed; see the hub log for the " +
             "full output.", "error");
+        return false;
     }
 
     function _fnReportBuildFailure(error) {
@@ -1506,7 +1526,7 @@ var VaibifyContainerManager = (function () {
         return "/api/registry";
     }
 
-    async function _fsResolveContainerId(sName) {
+    async function fsResolveContainerId(sName) {
         try {
             var dictResult = await VaibifyApi.fdictGet(_fsRegistryUrl());
             var listAll = dictResult.listContainers || [];
@@ -1657,7 +1677,7 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnConnectToContainerByName(sName) {
-        var sContainerId = await _fsResolveContainerId(sName);
+        var sContainerId = await fsResolveContainerId(sName);
         if (!sContainerId) {
             VaibifyApp.fnShowToast(
                 "Container not found for " + sName, "error");
@@ -1935,6 +1955,8 @@ var VaibifyContainerManager = (function () {
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
+        fbClaimContainer: fbClaimContainer,
+        fsResolveContainerId: fsResolveContainerId,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,
         fnOpenAddChoice: fnOpenAddChoice,

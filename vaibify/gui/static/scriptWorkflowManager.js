@@ -126,7 +126,14 @@ var VaibifyWorkflowManager = (function () {
             fnCheckOriginDrift(sId, false);
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
-            if (_fbRecoverFromLostClaim(error)) return;
+            if (_fbClaimWasLost(error)) {
+                if (await _fbReclaimAndRetryOnce(
+                    sId, sWorkflowPathArg, sWorkflowName,
+                    iThisGeneration
+                )) return;
+                _fnReturnToProjectList(error);
+                return;
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -139,22 +146,54 @@ var VaibifyWorkflowManager = (function () {
 
     var _S_REFUSAL_CLAIM_REQUIRED = "claim-required";
 
-    function _fbRecoverFromLostClaim(error) {
-        /* A refusal that names an action must leave the researcher
-           somewhere they can perform it. This one said "claim this
-           container" from the workflow picker, which has no claim
-           control -- the project TILE is the claim control, one screen
-           back -- so the dashboard read as wedged. Returning to the
-           list is the whole recovery: selecting the project again
-           claims it. */
+    function _fbClaimWasLost(error) {
+        /* Keyed on the machine-readable code, never the prose: the
+           sibling 409 ("in use in another browser session") has no
+           recovery to offer, and a recovery keyed on the word "claim"
+           would fire for it too. */
         var dictDetail = (error && error.dictDetail) || {};
-        if (dictDetail.sRefusal !== _S_REFUSAL_CLAIM_REQUIRED) {
+        return dictDetail.sRefusal === _S_REFUSAL_CLAIM_REQUIRED;
+    }
+
+    async function _fbReclaimAndRetryOnce(
+        sId, sWorkflowPathArg, sWorkflowName, iThisGeneration
+    ) {
+        /* The refusal's named recovery is "select the project again to
+           claim it" -- a claim plus a retry, which the dashboard can
+           run itself. The reaper collects a claim after thirty
+           socket-less seconds and the workflow picker holds no socket,
+           so a researcher who paused to read the list met this refusal
+           on their very next click (live report, 2026-08-20).
+           Arbitration still governs the reclaim: a project another
+           vaibify process holds refuses it, and the caller then walks
+           back to the project list as before. */
+        var sName = VaibifyContainerManager.fsGetSelectedContainerName();
+        if (!sName) return false;
+        var bClaimed =
+            await VaibifyContainerManager.fbClaimContainer(sName);
+        if (!bClaimed) return false;
+        var dictResult;
+        try {
+            dictResult = await _fdictFetchWorkflow(
+                sId, sWorkflowPathArg);
+        } catch (errorRetry) {
             return false;
         }
+        if (iThisGeneration !== _iWorkflowGeneration) return true;
+        VaibifyApp.fnActivateWorkflow(sId, dictResult, sWorkflowName);
+        fnCheckOriginDrift(sId, false);
+        return true;
+    }
+
+    function _fnReturnToProjectList(error) {
+        /* A refusal that names an action must leave the researcher
+           somewhere they can perform it: the project TILE is the
+           claim control, one screen back. Reached only when the
+           automatic reclaim could not recover. */
+        var dictDetail = (error && error.dictDetail) || {};
         VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
         VaibifyApp.fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
-        return true;
     }
 
     var _bRefreshing = false;
@@ -475,6 +514,7 @@ var VaibifyWorkflowManager = (function () {
         "Packages",
         "Summary",
         "How to become a Project",
+        "Files to Copy",
     ];
     /* The wizard's pages are a CATALOGUE; which of them a project
        needs depends on its mode. A host project has no image to
@@ -488,7 +528,7 @@ var VaibifyWorkflowManager = (function () {
     var _DICT_WIZARD_PAGE = {
         DIRECTORY: 0, TEMPLATE: 1, NAME: 2, PYTHON: 3,
         REPOSITORIES: 4, FEATURES: 5, PACKAGES: 6, SUMMARY: 7,
-        DESTINATION: 8,
+        DESTINATION: 8, FILES: 9,
     };
     var _T_CONTAINER_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
@@ -509,10 +549,21 @@ var VaibifyWorkflowManager = (function () {
        ENUM, so this new LIST needs no reindexing. This container-only
        list is what a host PROJECT (already graduated) sees when it is
        containerized -- there is no destination to choose. */
+    /* FILES sits before PACKAGES, not after: the files chosen there
+       are what the package page scans for imports, so asking for
+       packages first would ask the researcher to answer a question
+       vaibify is about to answer for them. A container's workspace is
+       a fresh Docker volume, NOT the
+       container's workspace is a fresh Docker volume, NOT the
+       researcher's directory, so converting is also where they decide
+       which of their own files cross over. Only the CONTAINER branches
+       ask -- a host Project's files already live where the project
+       runs, so the promote branch below has no such page. */
     var _T_CONVERT_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.PYTHON,
         _DICT_WIZARD_PAGE.REPOSITORIES, _DICT_WIZARD_PAGE.FEATURES,
-        _DICT_WIZARD_PAGE.PACKAGES, _DICT_WIZARD_PAGE.SUMMARY,
+        _DICT_WIZARD_PAGE.FILES, _DICT_WIZARD_PAGE.PACKAGES,
+        _DICT_WIZARD_PAGE.SUMMARY,
     ];
     /* A host SANDBOX becoming a Project first chooses its destination.
        Both branches open on the same Destination page (position 0), so
@@ -686,21 +737,39 @@ var VaibifyWorkflowManager = (function () {
         'collects container settings and runs a build (minutes to ' +
         'hours). Choose this when you want the work isolated and ' +
         'exactly reproducible.</p>',
+
+        '<p>Which of this directory&rsquo;s files and folders to copy ' +
+        'into the container.</p>' +
+        '<p><strong>Why you have to choose:</strong> a container does ' +
+        'not share your folder. Its <code>/workspace</code> is a ' +
+        'separate Docker volume, so nothing of yours is in there ' +
+        'unless it is copied in or cloned from a git remote. Anything ' +
+        'you leave unticked simply stays on your machine.</p>' +
+        '<p>The copy is <strong>one way and one time</strong>, made ' +
+        'when the container first starts. Editing a file on your ' +
+        'machine afterwards does not change the container&rsquo;s ' +
+        'copy, and editing it in the container does not touch yours.</p>' +
+        '<p>Your originals are never moved or deleted &mdash; this ' +
+        'only ever copies.</p>' +
+        '<p><code>.git</code> is included automatically when the ' +
+        'directory is a repository, so your history comes along and ' +
+        'the container&rsquo;s copy is a real git repo, which vaibify ' +
+        'workflows require.</p>',
     ];
     var _LIST_FEATURE_DEFINITIONS = [
-        {sKey: "claude", sLabel: "Claude Code CLI",
+        {bIsAgent: true, sKey: "claude", sLabel: "Claude Code CLI",
          sHint: "Install the Claude Code agent inside the container."},
-        {sKey: "codex", sLabel: "Codex CLI",
+        {bIsAgent: true, sKey: "codex", sLabel: "Codex CLI",
          sHint: "Install the OpenAI Codex agent inside the container."},
-        {sKey: "gemini", sLabel: "Gemini CLI",
+        {bIsAgent: true, sKey: "gemini", sLabel: "Gemini CLI",
          sHint: "Install the Google Gemini agent inside the container."},
-        {sKey: "opencode", sLabel: "OpenCode",
+        {bIsAgent: true, sKey: "opencode", sLabel: "OpenCode",
          sHint: "Install the OpenCode agent inside the container."},
-        {sKey: "cline", sLabel: "Cline",
+        {bIsAgent: true, sKey: "cline", sLabel: "Cline",
          sHint: "Install the Cline agent inside the container."},
-        {sKey: "openhands", sLabel: "OpenHands",
+        {bIsAgent: true, sKey: "openhands", sLabel: "OpenHands",
          sHint: "Install the OpenHands agent inside the container."},
-        {sKey: "pi", sLabel: "Pi",
+        {bIsAgent: true, sKey: "pi", sLabel: "Pi",
          sHint: "Install the Pi coding agent inside the container."},
         {sKey: "jupyter", sLabel: "JupyterLab",
          sHint: "Install JupyterLab for notebook-based work."},
@@ -799,13 +868,16 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsDockerSafeSuggestion(sName) {
         /* Sanitize a host basename into a valid Docker identifier so
-           the Name page opens on something acceptable: illegal runs
-           collapse to a hyphen, leading non-alphanumerics and trailing
-           separators are trimmed, and the length is capped at 63. The
-           researcher can still type anything; the backend is the
-           authority (fbIsDockerSafeName). */
+           the Name page opens on something acceptable: it is
+           LOWERCASED (an image repository name may not contain
+           capitals), illegal runs collapse to a hyphen, leading
+           non-alphanumerics and trailing separators are trimmed, and
+           the length is capped at 63. The researcher can still type
+           anything; the backend is the authority
+           (fbIsDockerSafeName). */
         var sCleaned = (sName || "")
-            .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+            .toLowerCase()
+            .replace(/[^a-z0-9_.-]+/g, "-")
             .replace(/^[^a-zA-Z0-9]+/, "")
             .replace(/[-._]+$/, "");
         if (sCleaned.length > 63) sCleaned = sCleaned.substring(0, 63);
@@ -832,6 +904,7 @@ var VaibifyWorkflowManager = (function () {
             sDirectory: "",
             sTemplateName: "",
             sProjectName: "",
+            sWorkflowName: "",
             sPythonVersion: "3.12",
             listRepositories: [],
         };
@@ -902,6 +975,59 @@ var VaibifyWorkflowManager = (function () {
         if (!_fbValidateWizardStep(_fiWizardPageAt(_iWizardStep))) {
             return;
         }
+        /* An agentless container is legal but almost never intended:
+           running an AI agent against a contained workspace is what
+           vaibify is FOR, so leaving every agent unticked is far more
+           likely a slip than a decision. Asked once, remembered, and
+           never a refusal. */
+        if (_fbLeavingFeaturesWithNoAgent()) {
+            _fnConfirmNoAgentThenAdvance();
+            return;
+        }
+        _fnAdvanceOrSubmit();
+    }
+
+    function _fbLeavingFeaturesWithNoAgent() {
+        if (_fiWizardPageAt(_iWizardStep) !==
+                _DICT_WIZARD_PAGE.FEATURES) {
+            return false;
+        }
+        if (_dictWizardData.bAcknowledgedNoAgent) return false;
+        return !_fbAnyAgentSelected();
+    }
+
+    function _fbAnyAgentSelected() {
+        var listSelected = _dictWizardData.listFeatures || [];
+        return _LIST_FEATURE_DEFINITIONS.some(function (dictFeature) {
+            return dictFeature.bIsAgent &&
+                listSelected.indexOf(dictFeature.sKey) !== -1;
+        });
+    }
+
+    function _fnConfirmNoAgentThenAdvance() {
+        VaibifyApp.fnShowConfirmModal(
+            "No coding agent selected",
+            "This container will have no AI coding agent installed. " +
+            "Running an agent against a contained, reproducible " +
+            "workspace is what vaibify is for, so this is usually a " +
+            "slip rather than a choice.",
+            function () {
+                _dictWizardData.bAcknowledgedNoAgent = true;
+                _fnAdvanceOrSubmit();
+            },
+            {
+                sConfirmLabel: "Continue without one",
+                sCancelLabel: "Go back and choose",
+                sDetails:
+                    "You can install an agent later by editing " +
+                    "vaibify.yml and rebuilding the image, but that " +
+                    "is another full build -- picking one now is much " +
+                    "quicker.",
+            }
+        );
+    }
+
+    function _fnAdvanceOrSubmit() {
         if (_iWizardStep >= _flistWizardPages().length - 1) {
             if (_dictWizardData.sMode === "convert") {
                 if (_fbPromotingToHostProject()) {
@@ -936,6 +1062,7 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderStepPackages,
             _fnRenderStepSummary,
             _fnRenderStepDestination,
+            _fnRenderStepFilesToCopy,
         ];
         listRenderers[iPage](elContent);
     }
@@ -1124,21 +1251,112 @@ var VaibifyWorkflowManager = (function () {
            researcher is not told a host name must look like a container
            one. */
         var bHostProject = _fbPromotingToHostProject();
-        var sPlaceholder = bHostProject ? "My Project" : "my-project";
-        var sNote = bHostProject
-            ? '<p class="muted-text">Spaces are allowed. This project ' +
-              'stays on this machine &mdash; no container is built.</p>'
-            : "";
+        if (!bHostProject) {
+            _fnRenderContainerNamePage(elContent, sDefault);
+            return;
+        }
         elContent.innerHTML =
             '<div class="form-group">' +
             '<label>Project Name</label>' +
             '<input type="text" id="inputWizardProjectName" ' +
-            'placeholder="' + sPlaceholder + '">' +
-            sNote +
+            'placeholder="My Project">' +
+            '<p class="muted-text">Spaces are allowed. This project ' +
+            'stays on this machine &mdash; no container is built.</p>' +
             '</div>';
         document.getElementById(
             "inputWizardProjectName").value =
             _dictWizardData.sProjectName;
+    }
+
+    function _fnRenderContainerNamePage(elContent, sDefault) {
+        /* TWO names, because there are two things being created and
+           they obey different rules. The Project is what the
+           researcher reads on the Project hub and may be called "AI
+           Greenhouse"; the container is a Docker identifier and may
+           not contain a space. Collapsing them into one field meant a
+           researcher typed a perfectly good Project name and was
+           refused for Docker's reasons at the END of the wizard, after
+           choosing packages and files (live report, 2026-08-21). */
+        if (!_dictWizardData.sWorkflowName) {
+            _dictWizardData.sWorkflowName = sDefault;
+        }
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Project name</label>' +
+            '<input type="text" id="inputWizardWorkflowName" ' +
+            'placeholder="My Project">' +
+            '<p class="muted-text">What you will see on the Project ' +
+            'hub. Spaces are fine.</p></div>' +
+            '<div class="form-group">' +
+            '<label>Container name</label>' +
+            '<input type="text" id="inputWizardProjectName" ' +
+            'placeholder="my-project">' +
+            '<p class="wizard-name-problem" ' +
+            'id="wizardNameProblem"></p>' +
+            '<p class="muted-text">Docker&rsquo;s name for the image ' +
+            'and container. Lowercase letters, digits, dots, hyphens ' +
+            'and ' +
+            'underscores only.</p></div>';
+        document.getElementById("inputWizardWorkflowName").value =
+            _dictWizardData.sWorkflowName;
+        document.getElementById("inputWizardProjectName").value =
+            _dictWizardData.sProjectName;
+        _fnBindNameFields();
+    }
+
+    function _fnBindNameFields() {
+        var elWorkflow = document.getElementById(
+            "inputWizardWorkflowName");
+        var elContainer = document.getElementById(
+            "inputWizardProjectName");
+        /* The container name follows the Project name until the
+           researcher edits it themselves, at which point it is theirs
+           and stops being overwritten. */
+        elWorkflow.addEventListener("input", function () {
+            if (elContainer.dataset.bEditedByHand === "true") return;
+            elContainer.value = _fsDockerSafeSuggestion(elWorkflow.value);
+            _fnShowNameProblem(elContainer.value);
+        });
+        elContainer.addEventListener("input", function () {
+            elContainer.dataset.bEditedByHand = "true";
+            _fnShowNameProblem(elContainer.value);
+        });
+        _fnShowNameProblem(elContainer.value);
+    }
+
+    var _RE_DOCKER_SAFE_NAME = /^[a-z0-9][a-z0-9_.-]*$/;
+
+    function _fsContainerNameProblem(sName) {
+        /* Mirrors the backend's fbIsDockerSafeName. The backend stays
+           the authority -- this only moves the SAME refusal to the
+           moment of typing, where it is actionable. */
+        if (!sName) return "A container name is required.";
+        if (sName.indexOf(" ") !== -1) {
+            return "A container name cannot contain spaces.";
+        }
+        /* Named before the general rule below, because "must be
+           lowercase" is a far more useful sentence than a recital of
+           the whole character class when the only problem is a
+           capital letter. */
+        if (sName !== sName.toLowerCase()) {
+            return "A container name must be lowercase — Docker image "
+                + "names cannot contain capitals.";
+        }
+        if (!_RE_DOCKER_SAFE_NAME.test(sName)) {
+            return "Use only lowercase letters, digits, dots, " +
+                "hyphens and underscores, starting with a letter or " +
+                "digit.";
+        }
+        if (sName.length > 63) {
+            return "A container name is at most 63 characters.";
+        }
+        return "";
+    }
+
+    function _fnShowNameProblem(sName) {
+        var elProblem = document.getElementById("wizardNameProblem");
+        if (!elProblem) return;
+        elProblem.textContent = _fsContainerNameProblem(sName);
     }
 
     function _fsProjectNameFromDirectory() {
@@ -1205,6 +1423,164 @@ var VaibifyWorkflowManager = (function () {
             '</div>';
         document.getElementById("inputWizardRepos").value =
             _dictWizardData.listRepositories.join("\n");
+    }
+
+    /* Always copied, never offered as a choice: a vaibify workflow must
+       live inside a git repository, so a container whose copy of the
+       project is not one cannot run a pipeline at all. Listing it as a
+       tickbox would offer a choice whose "no" breaks the product. */
+    var _S_ALWAYS_COPIED_ENTRY = ".git";
+
+    function _fnRenderStepFilesToCopy(elContent) {
+        elContent.innerHTML =
+            '<div class="form-group">' +
+            '<label>Copy into the container</label>' +
+            '<p class="wizard-hint">A container does not share this ' +
+            'folder &mdash; tick what should be copied in. Your ' +
+            'originals stay where they are.</p>' +
+            '<div id="wizardSeedRemoteNotice"></div>' +
+            '<div id="wizardSeedList" class="wizard-feature-list">' +
+            '<p class="muted-text">Reading the folder&hellip;</p>' +
+            '</div></div>';
+        _fnLoadSeedCandidates();
+    }
+
+    async function _fnLoadSeedCandidates() {
+        var elList = document.getElementById("wizardSeedList");
+        var sDirectory = _dictWizardData.sDirectory || "";
+        if (!sDirectory) {
+            elList.innerHTML = '<p class="muted-text">' +
+                'This project has no directory on record.</p>';
+            return;
+        }
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/host-directories?bIncludeFiles=true&sPath=" +
+                encodeURIComponent(sDirectory));
+            _fnRenderSeedCandidates(dictResult.listEntries || []);
+        } catch (error) {
+            elList.innerHTML = '<p style="color:var(--color-red-text);">' +
+                VaibifyUtilities.fnEscapeHtml(
+                    VaibifyUtilities.fsSanitizeErrorForUser(
+                        error.message)) + '</p>';
+        }
+        _fnLoadSeedRemoteNotice();
+    }
+
+    function _fnRenderSeedCandidates(listEntries) {
+        /* Everything is ticked on arrival: a researcher converting
+           their own directory wants their own work, and the page is
+           there to let them EXCLUDE something, not to make them
+           re-choose what they already have. */
+        var listOffered = listEntries.filter(function (dictEntry) {
+            return dictEntry.sName !== _S_ALWAYS_COPIED_ENTRY;
+        });
+        var elList = document.getElementById("wizardSeedList");
+        if (listOffered.length === 0) {
+            elList.innerHTML = '<p class="muted-text">' +
+                'This folder is empty.</p>';
+            return;
+        }
+        elList.innerHTML =
+            '<label class="wizard-feature-row wizard-seed-all">' +
+            '<input type="checkbox" id="wizardSeedSelectAll" checked>' +
+            '<span><strong>Select all</strong></span></label>' +
+            listOffered.map(_fsRenderSeedRow).join("");
+        _fnBindSeedSelectAll();
+    }
+
+    function _fsRenderSeedRow(dictEntry) {
+        var bChecked = !_dictWizardData.saSeedPaths ||
+            _dictWizardData.saSeedPaths.indexOf(dictEntry.sName) !== -1;
+        return '<label class="wizard-feature-row">' +
+            '<input type="checkbox" class="wizard-seed-input" ' +
+            'data-seed-name="' +
+            VaibifyUtilities.fnEscapeHtml(dictEntry.sName) + '"' +
+            (bChecked ? " checked" : "") + '>' +
+            '<span>' +
+            VaibifyUtilities.fnEscapeHtml(dictEntry.sName) +
+            (dictEntry.bIsDirectory ? "/" : "") + '</span></label>';
+    }
+
+    function _fnBindSeedSelectAll() {
+        var elAll = document.getElementById("wizardSeedSelectAll");
+        var listRows = document.querySelectorAll(".wizard-seed-input");
+        elAll.addEventListener("change", function () {
+            listRows.forEach(function (elRow) {
+                elRow.checked = elAll.checked;
+            });
+        });
+        listRows.forEach(function (elRow) {
+            elRow.addEventListener("change", function () {
+                elAll.checked = Array.prototype.every.call(
+                    listRows, function (el) { return el.checked; });
+            });
+        });
+    }
+
+    async function _fnLoadSeedRemoteNotice() {
+        /* A project with no remote is not an error, so this is a
+           notice and never a block -- but it is worth saying HERE,
+           because converting is the moment the container's copy
+           becomes the only copy that is not on the researcher's own
+           disk. */
+        var elNotice = document.getElementById("wizardSeedRemoteNotice");
+        if (!elNotice) return;
+        try {
+            var dictRemote = await VaibifyApi.fdictGet(
+                "/api/registry/" +
+                encodeURIComponent(_dictWizardData.sHostName) +
+                "/git-remote");
+            if (dictRemote.sRemoteUrl) {
+                elNotice.innerHTML = "";
+                return;
+            }
+        } catch (error) {
+            elNotice.innerHTML = "";
+            return;
+        }
+        elNotice.innerHTML = _fsRenderNoRemoteNotice();
+        _fnBindAddRemote();
+    }
+
+    function _fsRenderNoRemoteNotice() {
+        return '<div class="wizard-remote-notice">' +
+            '<p><strong>This folder has no git remote.</strong> ' +
+            'Copying puts your files in the container, but nothing ' +
+            'pushes them anywhere &mdash; so they exist only on this ' +
+            'machine and in the container.</p>' +
+            '<div class="wizard-remote-row">' +
+            '<input type="text" id="inputWizardRemoteUrl" ' +
+            'placeholder="https://github.com/you/project.git">' +
+            '<button type="button" class="btn" ' +
+            'id="btnWizardAddRemote">Add remote</button></div>' +
+            '<p class="muted-text">Optional &mdash; you can add one ' +
+            'later and keep going without it.</p></div>';
+    }
+
+    function _fnBindAddRemote() {
+        var elButton = document.getElementById("btnWizardAddRemote");
+        if (!elButton) return;
+        elButton.addEventListener("click", async function () {
+            var elInput = document.getElementById(
+                "inputWizardRemoteUrl");
+            var sUrl = (elInput.value || "").trim();
+            if (!sUrl) return;
+            elButton.disabled = true;
+            try {
+                await VaibifyApi.fdictPost(
+                    "/api/registry/" +
+                    encodeURIComponent(_dictWizardData.sHostName) +
+                    "/git-remote", {sRemoteUrl: sUrl});
+                VaibifyApp.fnShowToast("Remote added.", "success");
+                _fnLoadSeedRemoteNotice();
+            } catch (error) {
+                VaibifyApp.fnShowToast(
+                    VaibifyUtilities.fsSanitizeErrorForUser(
+                        error.message), "error");
+                elButton.disabled = false;
+            }
+        });
     }
 
     function _fnRenderStepFeatures(elContent) {
@@ -1298,16 +1674,80 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnRenderStepPackages(elContent) {
+        /* A conversion carries the researcher's OWN scripts, so their
+           imports are known and asking the researcher to transcribe
+           them is clerical work vaibify can do. Two fields, not one:
+           what was detected stays separable from what the researcher
+           added, so they can see what vaibify concluded and correct
+           it rather than having their own list silently rewritten. */
+        var sDetected = _dictWizardData.sMode === "convert"
+            ? _fsRenderDetectedPackagesField() : "";
         elContent.innerHTML =
             _fsRenderPackageTextarea(
                 "wizardSystemPackages", "System packages (apt)",
                 "gfortran\nlibhdf5-dev\ncmake",
                 _dictWizardData.listSystemPackages) +
+            sDetected +
             _fsRenderPackageTextarea(
-                "wizardPythonPackages", "Python packages (pip)",
+                "wizardPythonPackages",
+                sDetected ? "Additional Python packages (pip)"
+                    : "Python packages (pip)",
                 "numpy\nmatplotlib\npandas",
                 _dictWizardData.listPythonPackages) +
             _fsRenderPackagesAdvancedSection();
+        if (sDetected) _fnLoadDetectedPackages();
+    }
+
+    function _fsRenderDetectedPackagesField() {
+        return '<div class="form-group">' +
+            '<label>Detected in your scripts (pip)</label>' +
+            '<textarea id="wizardDetectedPackages" rows="4" ' +
+            'placeholder="Reading your scripts...">' +
+            VaibifyUtilities.fnEscapeHtml(
+                (_dictWizardData.listDetectedPackages || []).join("\n")) +
+            '</textarea><div class="wizard-helper-text" ' +
+            'id="wizardDetectedNote">One per line. Read from the ' +
+            'imports in the files you chose &mdash; edit freely, ' +
+            'nothing is installed until you convert.</div></div>';
+    }
+
+    async function _fnLoadDetectedPackages() {
+        var elArea = document.getElementById("wizardDetectedPackages");
+        var elNote = document.getElementById("wizardDetectedNote");
+        if (!elArea) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/registry/" +
+                encodeURIComponent(_dictWizardData.sHostName) +
+                "/scan-dependencies",
+                {saRelativePaths: _dictWizardData.saSeedPaths || []});
+            _fnApplyDetectedPackages(dictResult, elArea, elNote);
+        } catch (error) {
+            elArea.placeholder = "";
+            elNote.textContent =
+                "Your scripts could not be read, so nothing was " +
+                "detected. Add any packages you need below.";
+        }
+    }
+
+    function _fnApplyDetectedPackages(dictResult, elArea, elNote) {
+        var saDetected = dictResult.saDetectedPackages || [];
+        _dictWizardData.listDetectedPackages = saDetected;
+        elArea.value = saDetected.join("\n");
+        elArea.placeholder = "";
+        if (saDetected.length === 0) {
+            elNote.textContent =
+                "No third-party imports found in the " +
+                dictResult.iScannedFileCount +
+                " Python file(s) you chose.";
+            return;
+        }
+        /* Names, never versions: a version constraint is a scientific
+           decision and guessing one would be inventing provenance. */
+        elNote.textContent =
+            "Read from the imports in the " +
+            dictResult.iScannedFileCount + " Python file(s) you " +
+            "chose. Versions are not guessed. Edit freely.";
     }
 
     function _fsRenderPackageTextarea(sId, sLabel, sPlaceholder, listValues) {
@@ -1421,10 +1861,21 @@ var VaibifyWorkflowManager = (function () {
             '<div class="wizard-summary-block">' +
             _fsSummaryHeadBlock() +
             _fsSummaryRow("Python", _dictWizardData.sPythonVersion) +
-            _fsSummaryReposLine() +
+            _fsSummaryReposLine() + _fsSummarySeedLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
             _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
             '</div>';
+    }
+
+    function _fsSummarySeedLine() {
+        /* Only a conversion copies anything: a freshly created project
+           scaffolds its directory from a template, so there is no
+           pre-existing content to carry across. */
+        if (_dictWizardData.sMode !== "convert") return "";
+        var saSeedPaths = _dictWizardData.saSeedPaths || [];
+        var sValue = saSeedPaths.length > 0
+            ? saSeedPaths.join(", ") : "Nothing";
+        return _fsSummaryRow("Copied into the container", sValue);
     }
 
     function _fsSummaryHeadBlock() {
@@ -1433,8 +1884,16 @@ var VaibifyWorkflowManager = (function () {
            NEW container name it will carry -- not a template it never
            chose. */
         if (_dictWizardData.sMode === "convert") {
+            /* Both names, because the conversion creates both: the
+               Project the researcher will open, and the container it
+               runs in. Stating only the container name is what left a
+               researcher expecting a Project and finding none. */
             return _fsSummaryRow(
                 "Directory", _dictWizardData.sDirectory) +
+                _fsSummaryRow(
+                    "New Project name",
+                    _dictWizardData.sWorkflowName ||
+                    _dictWizardData.sProjectName) +
                 _fsSummaryRow(
                     "New container name",
                     _dictWizardData.sProjectName);
@@ -1478,8 +1937,12 @@ var VaibifyWorkflowManager = (function () {
     function _fsSummaryPackagesLines() {
         var sSystem = (_dictWizardData.listSystemPackages || [])
             .join(", ") || "(template defaults)";
-        var sPython = (_dictWizardData.listPythonPackages || [])
-            .join(", ") || "None";
+        /* The MERGED list, because that is what gets installed. A
+           summary showing only what the researcher typed would omit
+           everything vaibify detected and understate the image. */
+        var sPython = (
+            _fdictWizardDataWithMergedPackages().listPythonPackages || []
+        ).join(", ") || "None";
         return _fsSummaryRow("System packages", sSystem) +
             _fsSummaryRow("Python packages", sPython) +
             _fsSummaryRow("Package manager",
@@ -1511,6 +1974,18 @@ var VaibifyWorkflowManager = (function () {
         _fnSaveBasicStepFields();
         _fnSaveFeaturesAndToggles();
         _fnSavePackagesAndAdvanced();
+        _fnSaveSeedSelection();
+    }
+
+    function _fnSaveSeedSelection() {
+        /* Only read when the page is actually on screen: a blank list
+           saved from some other page would read as "the researcher
+           unticked everything" and silently copy nothing. */
+        var listRows = document.querySelectorAll(".wizard-seed-input");
+        if (listRows.length === 0) return;
+        _dictWizardData.saSeedPaths = Array.prototype.filter.call(
+            listRows, function (elRow) { return elRow.checked; }
+        ).map(function (elRow) { return elRow.dataset.seedName; });
     }
 
     function _fnSaveBasicStepFields() {
@@ -1518,6 +1993,12 @@ var VaibifyWorkflowManager = (function () {
             "inputWizardProjectName");
         if (elName) {
             _dictWizardData.sProjectName = elName.value.trim();
+        }
+        var elWorkflowName = document.getElementById(
+            "inputWizardWorkflowName");
+        if (elWorkflowName) {
+            _dictWizardData.sWorkflowName =
+                elWorkflowName.value.trim();
         }
         var elPython = document.getElementById(
             "selectWizardPython");
@@ -1581,6 +2062,8 @@ var VaibifyWorkflowManager = (function () {
         _fnReadTextareaIntoList(
             "wizardPythonPackages", "listPythonPackages");
         _fnReadTextareaIntoList(
+            "wizardDetectedPackages", "listDetectedPackages");
+        _fnReadTextareaIntoList(
             "wizardCondaPackages", "listCondaPackages");
         _fnReadInputInto("wizardPackageManager", "sPackageManager");
         _fnReadInputInto("wizardPipFlags", "sPipInstallFlags");
@@ -1632,6 +2115,19 @@ var VaibifyWorkflowManager = (function () {
                 "Project name is required.", "warning");
             return false;
         }
+        /* Refuse an unusable container name HERE rather than letting
+           the wizard run to its end and be refused by the server after
+           the researcher has chosen packages and files. */
+        if (iPage === _DICT_WIZARD_PAGE.NAME &&
+                !_fbPromotingToHostProject() &&
+                _dictWizardData.sMode !== "host") {
+            var sProblem = _fsContainerNameProblem(
+                _dictWizardData.sProjectName);
+            if (sProblem) {
+                VaibifyApp.fnShowToast(sProblem, "warning");
+                return false;
+            }
+        }
         if (iPage === _DICT_WIZARD_PAGE.REPOSITORIES && _fbIsToolkit() &&
             _dictWizardData.listRepositories.length === 0) {
             VaibifyApp.fnShowToast(
@@ -1650,8 +2146,12 @@ var VaibifyWorkflowManager = (function () {
             await VaibifyApi.fdictPost(
                 "/api/projects/create", _dictWizardData);
             _fnCloseWizard();
+            /* The wizard registers an ENVIRONMENT on the hub; whether
+               it holds a Project depends on the template, and a blank
+               sandbox holds none — so the toast must not say
+               "Project" (live report, 2026-08-20). */
             VaibifyApp.fnShowToast(
-                "Project created successfully.");
+                "Environment added.");
             VaibifyContainerManager.fnLoadContainers();
         } catch (error) {
             VaibifyApp.fnShowToast(
@@ -1665,12 +2165,13 @@ var VaibifyWorkflowManager = (function () {
 
     function _fnSubmitConvertProject() {
         /* One confirm modal before the irreversible-ish step: it
-           re-registers the project under a new name, the project must
-           be closed first, a build runs next (minutes to hours), and
-           the vaibify.yml is rewritten with container fields. A failed
-           build does NOT revert to host -- it leaves a registered,
-           not-yet-built container, exactly the normal post-create
-           state. */
+           re-registers the project under a new name, a build runs next
+           (minutes to hours), and the vaibify.yml is rewritten with
+           container fields. A project open in THIS tab is released by
+           the server as part of the conversion; only another session's
+           hold refuses. A failed build does NOT revert to host -- it
+           leaves a registered, not-yet-built container, exactly the
+           normal post-create state. */
         VaibifyApp.fnShowConfirmModal(
             "Convert to a containerized Project",
             _fsConversionConfirmBody(),
@@ -1679,11 +2180,13 @@ var VaibifyWorkflowManager = (function () {
                 sConfirmLabel: "Convert and build",
                 sCancelLabel: "Go back",
                 sDetails:
-                    "The project must be closed (released) first. If " +
-                    "the build fails, the project stays registered as " +
-                    "a container that has not been built yet -- it does " +
-                    "not revert to a host sandbox -- and you can retry " +
-                    "the build from its tile.",
+                    "If the project is open in this tab it is closed " +
+                    "automatically; a project open in another session " +
+                    "must be closed there first. If the build fails, " +
+                    "the project stays registered as a container that " +
+                    "has not been built yet -- it does not revert to a " +
+                    "host sandbox -- and you can retry the build from " +
+                    "its tile.",
             }
         );
     }
@@ -1697,28 +2200,147 @@ var VaibifyWorkflowManager = (function () {
             "take minutes to hours).";
     }
 
+    function _fbWizardTargetsTheOpenProject() {
+        /* True when the wizard's host project is the one THIS tab
+           holds the lease for. The promote/convert routes then release
+           this tab's own session server-side as part of the
+           conversion, so the submit paths must quiet their channels
+           first and leave (or re-enter) afterwards. */
+        return Boolean(VaibifyApp.fsGetLeaseForContainer(
+            _dictWizardData.sHostName));
+    }
+
     async function _fnExecuteConversion() {
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
+        var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
+        /* Converting from inside the open project: the server releases
+           this tab's own session before re-registering, closing its
+           sockets with a refusal code the connection monitor would
+           surface as an outage. Disconnect deliberately first, the way
+           a workflow switch does, so the close reads as intentional. */
+        var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
+        if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sHostName) +
-                "/convert-to-container", _dictWizardData);
+                "/convert-to-container",
+                _fdictWizardDataWithMergedPackages());
         } catch (error) {
+            /* Validators run server-side BEFORE the release, so a
+               refusal leaves this tab still owning the project --
+               reopen the socket it closed and stay in place. */
+            if (bSocketWasOpen) {
+                VaibifyPipelineRunner.fnConnectPipelineWebSocket();
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
         _fnCloseWizard();
+        if (bHeldByThisTab) {
+            /* The conversion released this tab's session, and the
+               project is now an unbuilt container -- there is no host
+               view to return to. Drop the dead lease and tear down to
+               the picker before the build starts. */
+            VaibifyApp.fnForgetLease();
+            VaibifyApp.fnDisconnect();
+        }
         VaibifyApp.fnShowToast(
             "Converted '" + sHostName + "' to '" + sNewName +
             "'. Building the image now.", "success");
         /* Reuse the tile build path: it opens the build-progress
            modal, polls .../build/progress, and reloads the container
            list (flipping the tile host -> container) in its finally. */
-        await VaibifyContainerManager.fnBuildContainer(sNewName);
+        var bBuiltAndRunning =
+            await VaibifyContainerManager.fnBuildContainer(sNewName);
+        /* A failed build has already said so, with the builder's own
+           output. Attempting the copy anyway would bury that behind a
+           second, vaguer message about a container that was never
+           created. */
+        if (bBuiltAndRunning) {
+            await _fnCopySelectedFilesIntoContainer(sNewName);
+        }
         VaibifyContainerManager.fnLoadContainers();
+    }
+
+    function _fdictWizardDataWithMergedPackages() {
+        /* The two fields are separate on screen so the researcher can
+           see what vaibify concluded apart from what they asked for,
+           but the container installs one list. Detected first, then
+           anything they added that is not already there -- de-duped,
+           because a researcher who types a package vaibify also found
+           should not cause it to be installed twice. */
+        var listMerged = (_dictWizardData.listDetectedPackages ||
+            []).slice();
+        (_dictWizardData.listPythonPackages || []).forEach(
+            function (sPackage) {
+                if (listMerged.indexOf(sPackage) === -1) {
+                    listMerged.push(sPackage);
+                }
+            });
+        return Object.assign({}, _dictWizardData, {
+            listPythonPackages: listMerged,
+        });
+    }
+
+    async function _fnCopySelectedFilesIntoContainer(sNewName) {
+        /* After the build AND the start it performs: the workspace is
+           a Docker volume that does not exist until the container
+           runs, so there is nowhere to copy to before this point. A
+           failure is reported and never swallowed -- a container the
+           researcher believes holds their files but does not is the
+           dashboard lying about state. */
+        var saSeedPaths = _dictWizardData.saSeedPaths || [];
+        if (saSeedPaths.length === 0) return;
+        /* Claim first. Copying into a container is a container
+           mutation, so it is refused unless this session holds the
+           lease -- and nobody holds one on a container that came into
+           existence thirty seconds ago. Claiming is honest here rather
+           than a workaround: this tab created the container and is
+           about to put the researcher's files in it, which is exactly
+           what owning it means. */
+        if (!await VaibifyContainerManager.fbClaimContainer(sNewName)) {
+            VaibifyApp.fnShowToast(
+                "The container was built, but your files were not " +
+                "copied in: it is in use in another session.", "error");
+            return;
+        }
+        /* The route is container-SCOPED, so its path segment must be
+           the container id the authority resolves against the owner
+           map -- the name the wizard has been carrying is not
+           interchangeable there. */
+        var sContainerId =
+            await VaibifyContainerManager.fsResolveContainerId(sNewName);
+        if (!sContainerId) {
+            /* Name the recovery, not just the symptom: the originals
+               are untouched on the host, so the researcher needs to
+               know nothing was lost and what to do next. Drag-and-drop
+               onto the Files panel is the affordance that actually
+               exists (scriptFiles.js); do not promise a re-copy
+               button here until there is one. */
+            VaibifyApp.fnShowToast(
+                "Your files were not copied in: '" + sNewName +
+                "' is not running yet. Your originals are untouched " +
+                "— start it from its tile, then drag them onto the " +
+                "Files panel.", "error");
+            return;
+        }
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/files/" + encodeURIComponent(sContainerId) +
+                "/seed-workspace", {saRelativePaths: saSeedPaths});
+            VaibifyApp.fnShowToast(
+                "Copied " + dictResult.iCopiedCount +
+                " item(s) into " + dictResult.sDestination + ".",
+                "success");
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                "The container was built, but copying your files in " +
+                "failed: " + VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+        }
     }
 
     async function _fnSubmitPromoteHostProject() {
@@ -1729,6 +2351,12 @@ var VaibifyWorkflowManager = (function () {
            too. */
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
+        var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
+        /* Same channel discipline as the conversion path: the server
+           releases this tab's own session before re-registering, so
+           quiet the socket deliberately first. */
+        var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
+        if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
         var elButton = document.getElementById("btnWizardNext");
         elButton.disabled = true;
         elButton.textContent = "Promoting...";
@@ -1737,6 +2365,12 @@ var VaibifyWorkflowManager = (function () {
                 "/api/registry/" + encodeURIComponent(sHostName) +
                 "/promote-to-host-project", {sProjectName: sNewName});
         } catch (error) {
+            /* Validators run server-side BEFORE the release, so a
+               refusal leaves this tab still owning the project --
+               reopen the socket it closed and stay in place. */
+            if (bSocketWasOpen) {
+                VaibifyPipelineRunner.fnConnectPipelineWebSocket();
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -1745,11 +2379,66 @@ var VaibifyWorkflowManager = (function () {
             return;
         }
         _fnCloseWizard();
-        VaibifyApp.fnAnimateProjectBirth();
         VaibifyApp.fnShowToast(
             "Promoted '" + sHostName + "' to the host Project '" +
             sNewName + "'.", "success");
+        if (bHeldByThisTab) {
+            /* Curtain up before the teardown: the researcher stays
+               "in the dashboard" while the hand-off passes through
+               both hubs beneath it. The finally guarantees a failed
+               claim or connect drops the curtain onto the real
+               screen instead of a permanent blank. */
+            VaibifyApp.fnShowPromotionCurtain(sNewName);
+            try {
+                await _fnReenterPromotedProject(sNewName);
+            } finally {
+                VaibifyApp.fnHidePromotionCurtain();
+            }
+            return;
+        }
+        VaibifyApp.fnAnimateProjectBirth();
         VaibifyContainerManager.fnLoadContainers();
+    }
+
+    async function _fnReenterPromotedProject(sNewName) {
+        /* The server released this tab's session as part of the
+           promotion, so the old lease is dead. Tear the old view down,
+           then carry the researcher straight back inside under the new
+           name: claim, connect, and -- when the project has exactly
+           one workflow -- open it, so the promotion ends in the step
+           viewer rather than at the Environment hub. The host warning
+           is deliberately NOT re-shown: the researcher accepted it to
+           enter this very session, and promotion changes the name and
+           the graduated flag, never the directory the warning is
+           about. */
+        VaibifyApp.fnForgetLease();
+        VaibifyApp.fnDisconnect();
+        await VaibifyContainerManager.fnLoadContainers();
+        var bClaimed =
+            await VaibifyContainerManager.fbClaimContainer(sNewName);
+        if (!bClaimed) return;
+        await VaibifyContainerManager.fnConnectToContainer(sNewName);
+        await _fnOpenSoleWorkflow(sNewName);
+        /* Drop the curtain before the birth trace so the researcher
+           actually sees it draw around the step viewer. */
+        VaibifyApp.fnHidePromotionCurtain();
+        VaibifyApp.fnAnimateProjectBirth();
+    }
+
+    async function _fnOpenSoleWorkflow(sNewName) {
+        /* The picker's cards carry the same data their click handler
+           reads. Exactly one workflow means there is no choice to
+           make, so the promotion completes in the step viewer; zero or
+           several leave the researcher on the picker, where the choice
+           is theirs. */
+        var listCards = document.querySelectorAll(
+            "#listWorkflows .container-card");
+        if (listCards.length !== 1) return;
+        var elCard = listCards[0];
+        await fnSelectWorkflow(
+            sNewName, elCard.dataset.path,
+            elCard.querySelector(".name").textContent,
+            parseInt(elCard.dataset.sizeBytes, 10) || 0);
     }
 
     return {

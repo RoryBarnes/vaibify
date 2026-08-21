@@ -94,10 +94,17 @@ I_NEW_FILE_MODE = 0o644
 # identity, then becomes the command via exec — so the command's first
 # instruction cannot run before the record that names the process
 # exists. The host analogue of Docker's create -> journal -> start.
+# It is a /bin/bash script, not a python -c stub, deliberately: the
+# gate needs only "read a line, then exec", and a python interpreter
+# boot (~0.2s on a framework macOS build, vs ~0.01s for bash) taxed
+# EVERY host command with it — the promotion hand-off alone runs ~16
+# gated launches serially, and that tax was most of its multi-second
+# stall (2026-08-20). The command rides in as "$1", data the outer
+# bash never parses; exec keeps the pid, so the journaled identity
+# survives unchanged.
 _S_GATED_LAUNCH_STUB = (
-    "import os,sys\n"
-    "sys.stdin.readline()\n"
-    "os.execv('/bin/bash', ['/bin/bash', '-c', sys.argv[1]])\n"
+    "read -r _sGate\n"
+    "exec /bin/bash -c \"$1\"\n"
 )
 
 # The terminal's launch stub. The gate rides a dedicated pipe (its fd
@@ -387,6 +394,28 @@ class HostConnection:
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteTreeViaTar(
+        self, sResourceId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None,
+    ):
+        """Refuse: a host project's files are already where they run.
+
+        The Docker leg's tree copy exists to carry host content across
+        into a workspace volume. A host project HAS no such volume --
+        its workspace IS the researcher's directory -- so there is no
+        crossing to make, and every plausible reading of "copy these
+        into the project" would either duplicate the tree onto itself
+        or overwrite the originals. The refusal names that rather than
+        silently succeeding, which is what an alias to a host-side
+        copy would do.
+        """
+        del sDestinationDirectory, listHostPaths, iUid, iGid
+        raise HostPathOutsideProjectError(
+            f"'{sResourceId}' is a host project: its files already live "
+            "where the project runs, so there is no container workspace "
+            "to copy them into."
+        )
+
     # -----------------------------------------------------------------
     # The exec primitive: gated, journaled, group-bounded (plan §4).
     # -----------------------------------------------------------------
@@ -660,7 +689,8 @@ class HostConnection:
         )
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "prepared")
         processChild = subprocess.Popen(
-            [sys.executable, "-c", _S_GATED_LAUNCH_STUB, sCommand],
+            ["/bin/bash", "-c", _S_GATED_LAUNCH_STUB,
+             "vaibifyGatedLaunch", sCommand],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, cwd=sEffectiveWorkdir,
             start_new_session=True,

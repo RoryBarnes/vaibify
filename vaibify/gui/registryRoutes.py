@@ -13,6 +13,7 @@ __all__ = [
 ]
 
 import asyncio
+import json
 import logging
 import math
 import os
@@ -23,9 +24,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
     fnRefuseContainerOnlyForHostProject,
     fnRefuseHostOnlyForContainerProject,
+    fnRejectAgentTokenLane,
 )
 from vaibify.gui.routeScope import (
     S_CARRIER_LIFECYCLE_TRANSACTION,
@@ -115,6 +118,12 @@ class ConvertToContainerRequest(BaseModel):
     # separate model rather than a reused CreateProjectRequest, so a
     # field that does not apply to a conversion cannot arrive at all.
     sProjectName: str
+    # The PROJECT's own name, which is not the container's: a container
+    # name is a Docker identifier and may not contain spaces, while the
+    # Project is what the researcher reads on the Project hub and is
+    # free to call "AI Greenhouse". Optional so an older client that
+    # sends only a container name still gets a Project, named after it.
+    sWorkflowName: str = ""
     sPythonVersion: str = "3.12"
     listRepositories: List[str] = []
     listFeatures: List[str] = []
@@ -149,6 +158,22 @@ class PromoteHostProjectRequest(BaseModel):
     sProjectName: str
 
 
+class ProjectGitRemoteRequest(BaseModel):
+    """The ``origin`` URL to point a project's own repository at."""
+
+    sRemoteUrl: str
+
+
+class ScanDependenciesRequest(BaseModel):
+    """Which of a project's own entries to read imports from.
+
+    Relative to the project's registered directory, like the workspace
+    seed's paths and validated the same way.
+    """
+
+    saRelativePaths: List[str] = []
+
+
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: Optional[bool] = None
     bClaudeAutoUpdate: Optional[bool] = None
@@ -177,6 +202,8 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterContainerSettings(app, dictCtx)
     _fnRegisterHostDirectories(app, dictCtx)
+    _fnRegisterProjectGitRemote(app, dictCtx)
+    _fnRegisterScanDependencies(app, dictCtx)
     _fnRegisterGetTemplates(app, dictCtx)
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
@@ -1183,6 +1210,145 @@ def _fnRegisterHostDirectories(app, dictCtx):
         }
 
 
+def _fnRegisterProjectGitRemote(app, dictCtx):
+    """Register GET/POST /api/registry/{sName}/git-remote.
+
+    A project directory with no ``origin`` is the ordinary state of a
+    directory somebody has been working in locally, and it is not an
+    error -- but it IS worth saying out loud at the moment the project
+    becomes a container, because the container's copy is then the only
+    copy that is not on the researcher's own disk. The wizard reads
+    the remote to decide whether to say so, and writes one when the
+    researcher chooses to add it there and then.
+
+    Both refuse the agent lane: they read and write the researcher's
+    own repository, which no in-container agent may reach.
+    """
+
+    @app.get("/api/registry/{sName}/git-remote")
+    async def fdictReadProjectGitRemote(sName: str, requestHttp: Request):
+        fnRejectAgentTokenLane(requestHttp)
+        from vaibify.gui import gitStatus
+        sDirectory = _fsRequireProjectDirectory(sName)
+        return {
+            "sRemoteUrl": gitStatus.fsReadOriginUrl(sDirectory),
+            "sDirectory": sDirectory,
+        }
+
+    # separate-authority: the write lands in the researcher's own git
+    # config on the host. No container is opened or touched.
+    @ffnAgentAction("set-project-git-remote")
+    @app.post("/api/registry/{sName}/git-remote")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictSetProjectGitRemote(
+        sName: str, request: ProjectGitRemoteRequest,
+        requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        from vaibify.gui import gitStatus
+        sDirectory = _fsRequireProjectDirectory(sName)
+        if not gitStatus.fbUrlIsSafeGitArgument(request.sRemoteUrl):
+            raise HTTPException(400, (
+                "That does not look like a repository URL. It must not "
+                "be empty or begin with '-'."
+            ))
+        if not gitStatus.fbAddOriginUrl(sDirectory, request.sRemoteUrl):
+            raise HTTPException(500, (
+                f"Could not set the remote for '{sName}'. Check that "
+                "the directory is a git repository."
+            ))
+        return {
+            "bSuccess": True,
+            "sRemoteUrl": gitStatus.fsReadOriginUrl(sDirectory),
+        }
+
+
+def _fnRegisterScanDependencies(app, dictCtx):
+    """Register POST /api/registry/{sName}/scan-dependencies.
+
+    Reads the imports of the Python files the researcher selected and
+    suggests the distributions they imply, so the packages page opens
+    already carrying what the project's own scripts declare instead of
+    asking the researcher to transcribe them.
+
+    A POST because the selection is a list, not because anything
+    changes: the scan writes nothing. It refuses the agent lane, which
+    is what the read actually needs guarding for -- the paths name the
+    researcher's own filesystem.
+    """
+
+    @app.post("/api/registry/{sName}/scan-dependencies")
+    async def fdictScanDependencies(
+        sName: str, request: ScanDependenciesRequest,
+        requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        from vaibify.gui import dependencyScan
+        sDirectory = os.path.realpath(_fsRequireProjectDirectory(sName))
+        listSourcePaths = _flistSelectPythonFilesWithin(
+            sDirectory, request.saRelativePaths,
+        )
+        return {
+            "saDetectedPackages": (
+                dependencyScan.flistDetectImportedDistributions(
+                    listSourcePaths, sDirectory,
+                )
+            ),
+            "iScannedFileCount": len(listSourcePaths),
+        }
+
+
+def _flistSelectPythonFilesWithin(sDirectory, saRelativePaths):
+    """Return the .py files among the selection, each proven contained.
+
+    Same containment discipline as the workspace seed, for the same
+    reason and with the same failure mode if it were skipped: the
+    paths arrive from a request, so a resolved path that leaves the
+    project would let the scan read -- and report the imports of --
+    any file the hub's user can open. Silent skipping rather than a
+    refusal is right HERE and wrong there: this answers "what do your
+    scripts need", so a directory or a data file in the selection is
+    simply not a Python file to read, not an error.
+    """
+    listSourcePaths = []
+    for sRelativePath in saRelativePaths:
+        sCandidate = os.path.realpath(
+            os.path.join(sDirectory, sRelativePath),
+        )
+        if not sCandidate.startswith(sDirectory + os.sep):
+            continue
+        listSourcePaths.extend(_flistPythonFilesUnder(sCandidate))
+    return listSourcePaths
+
+
+def _flistPythonFilesUnder(sPath):
+    """Return the .py files at a path, walking it when it is a directory."""
+    if os.path.isfile(sPath):
+        return [sPath] if sPath.endswith(".py") else []
+    listFound = []
+    for sDirectory, listDirectories, listFiles in os.walk(sPath):
+        listDirectories[:] = [
+            s for s in listDirectories if not s.startswith(".")
+        ]
+        listFound.extend(
+            os.path.join(sDirectory, sFile)
+            for sFile in listFiles if sFile.endswith(".py")
+        )
+    return listFound
+
+
+def _fsRequireProjectDirectory(sName):
+    """Return a registered project's existing directory, or raise."""
+    _fnRejectInvalidProjectName(sName)
+    dictProject = _fdictRequireProject(sName)
+    sDirectory = dictProject.get("sDirectory", "")
+    if not sDirectory or not os.path.isdir(sDirectory):
+        raise HTTPException(404, (
+            f"The directory registered for '{sName}' no longer exists."
+        ))
+    return sDirectory
+
+
 def _fnRegisterCreateHostDirectory(app, dictCtx):
     """Register POST /api/host-directories/create."""
 
@@ -1376,7 +1542,8 @@ def _fnRegisterConvertToContainer(app, dictCtx):
     @app.post("/api/registry/{sName}/convert-to-container")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictConvertToContainer(
-        sName: str, request: ConvertToContainerRequest,
+        requestHttp: Request, sName: str,
+        request: ConvertToContainerRequest,
     ):
         from vaibify.config import registryManager
         _fnRejectInvalidProjectName(sName)
@@ -1387,17 +1554,34 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         fnRefuseHostOnlyForContainerProject(
             sName, "Converting to a container",
         )
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         _fnRequireValidProjectName(request.sProjectName, "container")
         _fnRejectUninstallablePackages(request.listCondaPackages)
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,
         )
-        # Duplicate-name check last: it is the one validator that reaches
-        # `docker ps`, so the cheap local checks refuse first. It skips
-        # the project being converted, so a host sandbox whose basename
-        # is already Docker-safe may keep its name.
+        # Duplicate-name check after the cheap local validators: it is
+        # the one validator that reaches `docker ps`. It skips the
+        # project being converted, so a host sandbox whose basename is
+        # already Docker-safe may keep its name.
         _fnRejectDuplicateForConversion(request.sProjectName, sName)
+        # Every validator runs BEFORE the caller's own session is
+        # released: a refused name must never cost the researcher the
+        # project view they are converting from.
+        await _fnReleaseCallerOwnedSessionForConversion(
+            app, sName, requestHttp,
+        )
+        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
+        # A container IS a Project, so containerizing has to bring one
+        # into being exactly as promotion does -- otherwise the
+        # researcher waits out an image build and arrives at a Project
+        # hub offering only "Blank Project" (live report, 2026-08-21).
+        # It is written on the HOST, before the build, so the workspace
+        # seed carries it into the container with the rest of the
+        # project's own files.
+        _fnScaffoldWorkflowIfAbsent(
+            dictProject["sDirectory"],
+            request.sWorkflowName or request.sProjectName,
+        )
         # Config file FIRST, registry entry SECOND. If the registry write
         # then fails, the config names a container but the entry is still
         # host, so re-running is safe; the reverse order would drift
@@ -1416,15 +1600,52 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         return _fdictConversionResult(request.sProjectName)
 
 
+async def _fnReleaseCallerOwnedSessionForConversion(app, sName, requestHttp):
+    """Release the caller's own open session on the project, if any.
+
+    Conversion renames the lock/lease/journal key, so it must run only
+    when nobody holds the project. Refusing the researcher's OWN open
+    tab made promoting from inside the browser impossible -- the toast
+    said "close it, then convert it", which only the command line could
+    finish. Instead, when the presenting lease and browser session are
+    the very ones holding the project, the session is released through
+    the single lifecycle authority (terminals drained and proven,
+    channels closed, flock freed) before the conversion proceeds; the
+    frontend then re-enters under the new name. A caller presenting no
+    lease, or a lease a DIFFERENT session bound, releases nothing and
+    falls through to the busy refusal. A busy own session -- a live
+    run, a live guarded mutation, a live in-container agent -- is
+    refused with the lifecycle's own reason, session retained.
+    """
+    from vaibify.gui import browserSession, sessionLifecycle
+    if not app.state.dictContainerOwners.get(sName):
+        return
+    sLeaseId = fsLeaseFromRequest(requestHttp)
+    if not sLeaseId:
+        return
+    sBrowserSessionId = browserSession.fsSessionIdForCredential(
+        getattr(app.state, "dictBrowserSessions", {}),
+        requestHttp.headers.get("x-session-token", ""),
+    )
+    sOutcome, dictPayload = await sessionLifecycle.ftReleaseExplicit(
+        app.state, sName, sLeaseId, sBrowserSessionId=sBrowserSessionId,
+    )
+    if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
+        raise HTTPException(409, detail={"sMessage": dictPayload["sMessage"]})
+
+
 def _fnRefuseBusyProjectForConversion(app, sName, dictCtx):
     """409 when the project is open, locked, or has unsettled operations.
 
     Conversion renames the lock/lease/journal key, so it must run only
-    when nobody holds the project -- the confirm modal already tells the
-    researcher to close it first. All three axes are checked: the
-    in-process owner map (this hub's live session), the host flock
-    (another vaibify process), and the operation journal (an unsettled
-    or quarantined operation on the current name).
+    when nobody holds the project. The caller's own open session has
+    already been released by
+    :func:`_fnReleaseCallerOwnedSessionForConversion`, so an owner
+    record surviving to this check belongs to some OTHER session -- the
+    refusal tells the researcher to close it there. All three axes are
+    checked: the in-process owner map (this hub's live session), the
+    host flock (another vaibify process), and the operation journal (an
+    unsettled or quarantined operation on the current name).
     """
     from vaibify.config import operationJournal
     from vaibify.config.containerLock import fdictReadLockHolder
@@ -1534,7 +1755,8 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
     @app.post("/api/registry/{sName}/promote-to-host-project")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictPromoteToHostProject(
-        sName: str, request: PromoteHostProjectRequest,
+        requestHttp: Request, sName: str,
+        request: PromoteHostProjectRequest,
     ):
         from vaibify.config import registryManager
         _fnRejectInvalidProjectName(sName)
@@ -1547,13 +1769,26 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
         # Idempotency: a host sandbox already promoted is refused (409)
         # rather than re-registered a second time.
         _fnRefuseAlreadyHostProject(dictProject)
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
         # Host-safe name: spaces allowed, path separators and control
         # chars forbidden. Docker-safety is NOT required -- the name
         # never becomes a Docker object in host mode.
         _fnRequireValidProjectName(request.sProjectName, "host")
         _fnRejectDuplicateForConversion(request.sProjectName, sName)
-        # Config file FIRST, registry entry SECOND (the convert route's
+        # Every validator runs BEFORE the caller's own session is
+        # released: a refused name must never cost the researcher the
+        # project view they are promoting from.
+        await _fnReleaseCallerOwnedSessionForConversion(
+            app, sName, requestHttp,
+        )
+        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
+        # Workflow scaffold FIRST: if it fails, nothing has been
+        # renamed and the sandbox is untouched; if a later write fails,
+        # a sandbox carrying a workflow file re-runs safely because the
+        # scaffold steps aside for an existing one.
+        _fnScaffoldWorkflowIfAbsent(
+            dictProject["sDirectory"], request.sProjectName,
+        )
+        # Config file next, registry entry LAST (the convert route's
         # ordering rationale): a failed registry write then leaves a host
         # sandbox whose config names the new name but whose entry is
         # unchanged, and re-running is safe.
@@ -1615,6 +1850,59 @@ def _fnRewriteConfigForPromotion(sConfigPath, sNewName):
             "must be a valid host-safe name.",
         )
     fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+
+
+def _fnScaffoldWorkflowIfAbsent(sDirectory, sProjectName):
+    """Give a new Project the workflow its dashboard will open.
+
+    A sandbox scaffolds no workflow at all (2026-08-20), so becoming
+    a Project -- by promotion OR by containerization -- is the moment
+    the first workflow file comes into being. Without it the
+    researcher lands on a Project hub offering only 'Blank Project':
+    they named something, waited out an image build, and arrived
+    somewhere that shows no Project at all (live report, 2026-08-21;
+    the promotion half was the same defect, found a day earlier). A workflow the researcher
+    already created is theirs: the scaffold steps aside when either
+    discovered location (canonical ``.vaibify/projects/`` or the
+    legacy repository root) already carries one. The directory is the
+    already-registered, home-rooted one, so this adds no traversal
+    vector.
+    """
+    from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
+    sProjectsDirectory = os.path.join(sDirectory, VAIBIFY_PROJECTS_DIR)
+    bWorkflowExists = (
+        os.path.isfile(os.path.join(sDirectory, "project.json"))
+        or any(
+            sEntry.endswith(".json")
+            for sEntry in _flistDirectoryEntries(sProjectsDirectory)
+        )
+    )
+    if bWorkflowExists:
+        return
+    try:
+        os.makedirs(sProjectsDirectory, exist_ok=True)
+        with open(
+            os.path.join(sProjectsDirectory, "project.json"), "w",
+        ) as fileWorkflow:
+            json.dump({
+                "sWorkflowName": sProjectName,
+                "sPlotDirectory": "Plot",
+                "listSteps": [],
+            }, fileWorkflow, indent=2)
+    except OSError as error:
+        raise HTTPException(500, (
+            "Could not create the Project's workflow file in "
+            "'.vaibify/projects/'. Nothing was renamed; fix the "
+            f"directory permissions and promote again. ({error})"
+        ))
+
+
+def _flistDirectoryEntries(sDirectory):
+    """Return a directory's entries, or [] when it does not exist."""
+    try:
+        return os.listdir(sDirectory)
+    except OSError:
+        return []
 
 
 def _fdictPromotionResult(sNewName):
@@ -1725,6 +2013,8 @@ def _fnScaffoldProject(request):
         fnCopyTemplate(request.sTemplateName, request.sDirectory)
     except FileNotFoundError as error:
         raise HTTPException(404, str(error))
+    except FileExistsError as error:
+        raise HTTPException(409, str(error))
 
 
 def _fnWriteProjectConfig(request):

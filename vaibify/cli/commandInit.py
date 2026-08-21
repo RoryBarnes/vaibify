@@ -100,21 +100,16 @@ def fnRefuseIfProjectFileExists(pathDestination):
 def fnMoveProjectFileWhereDiscoveryLooks(pathDestination):
     """Relocate a scaffolded project.json into the discovered directory.
 
-    Templates keep their Project file at the tree root, where it is the
-    first thing a reader opens. Discovery scans only
-    ``.vaibify/projects`` and the legacy ``.vaibify/workflows``, so a
-    Project left at the root is one the dashboard cannot list and
-    ``vaibify run`` cannot resolve: ``vaibify init --template`` scaffolded
-    a project that nothing could open, and said it had succeeded.
+    Delegates to the ONE implementation in ``templateManager``, which
+    also serves the GUI create. This relocation used to live only
+    here: the same fix had landed in one of two template-copy paths,
+    and every dashboard-created project was born in the legacy root
+    layout the dashboard could not list (2026-08-20).
     """
-    pathSource = pathDestination / S_PROJECT_FILE_NAME
-    if not pathSource.is_file():
-        return
-    pathTarget = (
-        pathDestination / VAIBIFY_PROJECTS_DIR / S_PROJECT_FILE_NAME
+    from vaibify.config.templateManager import (
+        fnMoveProjectFileWhereDiscoveryLooks as fnSharedRelocation,
     )
-    pathTarget.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(pathSource), str(pathTarget))
+    fnSharedRelocation(str(pathDestination))
 
 
 def fnCopyDirectoryContents(sSourceDir, sDestDir):

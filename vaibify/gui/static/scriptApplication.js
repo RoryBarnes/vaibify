@@ -2062,6 +2062,9 @@ const VaibifyApp = (function () {
         elList, listSteps, dictVars, dictContext, sBoundary
     ) {
         var sHtml = VaibifyStepRenderer.fsRenderStepColumnHeader();
+        if (listSteps.length === 0) {
+            sHtml += VaibifyStepRenderer.fsRenderEmptyStepListNotice();
+        }
         var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
@@ -4297,8 +4300,16 @@ const VaibifyApp = (function () {
            along its edges and meet at the bottom-right, then the
            overlay fades and removes itself. pathLength="1" normalizes
            both paths so a single dash-offset keyframe draws them
-           regardless of the panel's pixel size. */
-        var elPanel = document.querySelector("#panelLeft");
+           regardless of the panel's pixel size. The overlay attaches
+           to whichever surface the researcher is actually looking at
+           -- the step viewer's left column when the main layout is
+           up, the picker's content column otherwise -- because a
+           celebration drawn on a hidden panel celebrates nothing. */
+        var bMainLayoutActive = document.getElementById("mainLayout")
+            .classList.contains("active");
+        var elPanel = bMainLayoutActive
+            ? document.querySelector("#panelLeft")
+            : document.querySelector("#workflowPicker .picker-content");
         if (!elPanel) return;
         var S_SVG_NAMESPACE = "http://www.w3.org/2000/svg";
         var elOutline = document.createElementNS(
@@ -4322,6 +4333,42 @@ const VaibifyApp = (function () {
                 elOutline.parentNode.removeChild(elOutline);
             }
         }, 2400);
+    }
+
+    function fnShowPromotionCurtain(sProjectName) {
+        /* An opaque cover for the promotion hand-off: the re-entry
+           necessarily tears down to the Environment hub, reloads the
+           tiles, and passes the Project hub before the step viewer is
+           ready, and a researcher watching three screens flash by
+           reads it as being kicked out (live report, 2026-08-20). The
+           curtain is a transition, never a state: every exit path of
+           the hand-off removes it, so a refusal mid-way still lands
+           the researcher on the real screen underneath, and the
+           toasts (z 2000) stay readable above it. */
+        fnHidePromotionCurtain();
+        var elCurtain = document.createElement("div");
+        elCurtain.className = "vaibify-promotion-curtain";
+        var elTitle = document.createElement("div");
+        elTitle.className = "curtain-title";
+        elTitle.textContent = sProjectName;
+        var elSubtitle = document.createElement("div");
+        elSubtitle.className = "curtain-subtitle";
+        elSubtitle.textContent = "Opening your new Project...";
+        elCurtain.appendChild(elTitle);
+        elCurtain.appendChild(elSubtitle);
+        document.body.appendChild(elCurtain);
+    }
+
+    function fnHidePromotionCurtain() {
+        var elCurtain = document.querySelector(
+            ".vaibify-promotion-curtain");
+        if (!elCurtain) return;
+        elCurtain.classList.add("fading");
+        setTimeout(function () {
+            if (elCurtain.parentNode) {
+                elCurtain.parentNode.removeChild(elCurtain);
+            }
+        }, 450);
     }
 
     function fnDeleteDetailItem(iStep, sArray, iIdx) {
@@ -5188,6 +5235,8 @@ const VaibifyApp = (function () {
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
         fnAnimateProjectBirth: fnAnimateProjectBirth,
+        fnShowPromotionCurtain: fnShowPromotionCurtain,
+        fnHidePromotionCurtain: fnHidePromotionCurtain,
         fnRefreshWorkflowData: fnRefreshWorkflowData,
         fiGetWorkflowEpoch: function () {
             return _dictWorkflowState.iWorkflowEpoch;

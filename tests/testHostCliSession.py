@@ -86,20 +86,22 @@ def _fnWaitUntilServing(iPort, fTimeoutSeconds=15.0):
     raise TimeoutError(f"the test hub never served port {iPort}")
 
 
-def _fsSeedHostProject(sHome):
-    """Create a real host project: git repo, workflow, one step."""
+def _fsSeedHostProject(sHome, sWorkflowRelativePath):
+    """Create a real host project: git repo, workflow, one step.
+
+    ``sWorkflowRelativePath`` places the Project file — the canonical
+    ``.vaibify/projects/`` home, or the legacy repo ROOT that early
+    scaffolds used — so the live-hub journeys prove the whole
+    claim/connect/act/release chain for both layouts.
+    """
     sProjectRoot = os.path.join(sHome, S_HOST_PROJECT)
     sStepDirectory = os.path.join(sProjectRoot, "MakeNumbers")
     os.makedirs(sStepDirectory, exist_ok=True)
     with open(os.path.join(sStepDirectory, "makeNumbers.py"), "w") as f:
         f.write("print('host cli step')\n")
-    sProjectsDirectory = os.path.join(
-        sProjectRoot, ".vaibify", "projects",
-    )
-    os.makedirs(sProjectsDirectory, exist_ok=True)
-    with open(
-        os.path.join(sProjectsDirectory, "hostCliProject.json"), "w",
-    ) as fileWorkflow:
+    sWorkflowFullPath = os.path.join(sProjectRoot, sWorkflowRelativePath)
+    os.makedirs(os.path.dirname(sWorkflowFullPath), exist_ok=True)
+    with open(sWorkflowFullPath, "w") as fileWorkflow:
         json.dump({
             "sPlotDirectory": "Plot",
             "listSteps": [{
@@ -127,9 +129,19 @@ def _fsSeedHostProject(sHome):
     return sProjectRoot
 
 
-@pytest.fixture
-def tLiveHostHub(tmp_path):
-    """Yield ``(app, iPort, sWorkflowPath)`` — a hub with NO Docker leg."""
+@pytest.fixture(params=[
+    os.path.join(".vaibify", "projects", "hostCliProject.json"),
+    "project.json",
+], ids=["canonical", "legacyRoot"])
+def tLiveHostHub(request, tmp_path):
+    """Yield ``(app, iPort, sWorkflowPath)`` — a hub with NO Docker leg.
+
+    Parametrized over the Project file's two admitted homes, because
+    the connect guard once refused the legacy repo-root layout AFTER
+    discovery began listing it — the researcher was shown a project
+    card whose click bounced with a 400 (live incident, 2026-08-20).
+    Every journey through this fixture now proves both layouts.
+    """
     import uvicorn
     from vaibify.config import registryManager
     from vaibify.gui import pipelineServer
@@ -137,10 +149,8 @@ def tLiveHostHub(tmp_path):
     iPort = _fiFreeLoopbackPort()
     sHome = str(tmp_path / "home")
     os.makedirs(sHome, exist_ok=True)
-    sProjectRoot = _fsSeedHostProject(sHome)
-    sWorkflowPath = os.path.join(
-        sProjectRoot, ".vaibify", "projects", "hostCliProject.json",
-    )
+    sProjectRoot = _fsSeedHostProject(sHome, request.param)
+    sWorkflowPath = os.path.join(sProjectRoot, request.param)
     pathRegistry = tmp_path / "registry.json"
     pathRegistry.write_text(json.dumps({"listProjects": [{
         "sName": S_HOST_PROJECT,

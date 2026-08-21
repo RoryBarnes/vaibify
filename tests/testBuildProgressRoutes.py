@@ -37,8 +37,21 @@ def fixtureClient():
     return TestClient(app)
 
 
-def _fnFakeBuildEmittingLines(configProject, sDockerDir, bNoCache=False):
-    """Stand in for fnBuildFromConfig: emit two lines through the sink."""
+def _fnFakeBuildEmittingLines(
+    configProject, sDockerDir, bNoCache=False, sProjectDirectory=None,
+):
+    """Stand in for fnBuildFromConfig: emit two lines through the sink.
+
+    ``sProjectDirectory`` is asserted, not merely accepted: the hub
+    serves projects from its own launch directory, so a build left to
+    resolve the directory itself reads an unrelated repository's git
+    remote (2026-08-21). A double that swallowed the argument would
+    keep passing after the route stopped sending it.
+    """
+    assert sProjectDirectory, (
+        "the route must tell the build which project directory it is "
+        "building; without it the build reads the hub's own directory"
+    )
     del configProject, sDockerDir, bNoCache
     sinkLocal = imageBuilder._threadLocalBuildSink
     fnLineSink = getattr(sinkLocal, "fnLineSink", None)

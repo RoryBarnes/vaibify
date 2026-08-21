@@ -151,6 +151,13 @@ DICT_TIER_TWO_REGISTRY = {
     "connection": {"DockerConnection"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
+    # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by
+    # ast.walk and carried by ast.Import/ast.ImportFrom. It was already
+    # the codebase's live convention -- determinismGate.py's node,
+    # nodeArg and nodeChild predate this registry and sit in the frozen
+    # seed -- so registering it makes the existing practice official
+    # rather than introducing a spelling.
+    "node": {"AST", "stmt", "expr", "alias", "Module"},
     "container": {"Container"},
     "buffer": {"BytesIO"},
     "info": {"TarInfo"},

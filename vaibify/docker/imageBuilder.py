@@ -27,9 +27,25 @@ def fbBuildxAvailable():
 
 
 def _flistBuildPrefix():
-    """Return the docker build command prefix, preferring buildx."""
+    """Return the docker build command prefix, preferring buildx.
+
+    When buildx is absent the fallback is the legacy builder, and
+    Docker itself prints a deprecation warning about it -- with no
+    indication of whose decision it was or what to do. A researcher
+    reasonably reads that as vaibify shipping something deprecated
+    (live report, 2026-08-21), so the fallback announces itself and
+    names the fix.
+    """
     if fbBuildxAvailable():
         return ["docker", "buildx", "build"]
+    fnEmitBuildLine(
+        "[vaib] docker buildx is not installed on this machine, so "
+        "this build uses Docker's legacy builder -- that is where the "
+        "DEPRECATED warning below comes from. Vaibify prefers buildx "
+        "whenever it is present. To install it: brew install "
+        "docker-buildx (then link it into ~/.docker/cli-plugins/), or "
+        "install Docker Desktop, which bundles it.\n"
+    )
     return ["docker", "build"]
 
 
@@ -386,6 +402,21 @@ def _fnOfferLineToSink(fnLineSink, sLine):
             f"[vaib] build progress sink error (build continues): "
             f"{error}\n"
         )
+
+
+def fnEmitBuildLine(sLine):
+    """Write one vaibify-authored line to wherever build output goes.
+
+    Docker's own output reaches the researcher through two places at
+    once -- stderr for the CLI, the thread-local sink for the
+    dashboard's live pane -- and a line vaibify writes ABOUT the build
+    is useless in only one of them. Reuses the same sink discipline, so
+    a failing sink never fails a build.
+    """
+    sys.stderr.write(sLine)
+    fnLineSink = getattr(_threadLocalBuildSink, "fnLineSink", None)
+    if fnLineSink is not None:
+        _fnOfferLineToSink(fnLineSink, sLine)
 
 
 def _fsStreamAndCaptureStderr(procBuild):

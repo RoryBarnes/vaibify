@@ -316,6 +316,36 @@ def testEscapingTheHostProjectDirectoryIsStillRefused(tmp_path):
     assert excInfo.value.status_code == 403
 
 
+@pytest.mark.falsification
+def testALegacyRootProjectFileSurvivesTheConnectGuard(tmp_path):
+    """The shape discovery lists is the shape connect admits.
+
+    Discovery began offering the legacy repo-root ``project.json``
+    (2026-08-20); the connect guard then bounced the very card the
+    researcher had just been shown, with a 400 naming a directory the
+    file is not in. Any OTHER root-level .json stays refused — the
+    legacy admission is one file name, not an open door.
+
+    Kills: dropping the ``fbWorkflowPathIsLegacyRootFile`` clause from
+    ``_fsValidateConnectWorkflowPath``, which restores the bounce.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui.pipelineServer import _fsValidateConnectWorkflowPath
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sRoot = projectRoots.fsResolveProjectRoot(
+        S_HOST_PROJECT, S_CONTAINER_ROOT,
+    )
+    sLegacyPath = os.path.join(sDirectory, "project.json")
+    assert _fsValidateConnectWorkflowPath(
+        sLegacyPath, sRoot,
+    ) == sLegacyPath
+    with pytest.raises(HTTPException) as excInfo:
+        _fsValidateConnectWorkflowPath(
+            os.path.join(sDirectory, "arbitrary.json"), sRoot,
+        )
+    assert excInfo.value.status_code == 400
+
+
 def testASiblingDirectorySharingThePrefixIsRefused(tmp_path):
     """``projectXY`` must not pass as inside ``projectX``."""
     from fastapi import HTTPException

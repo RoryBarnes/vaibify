@@ -51,11 +51,13 @@ __all__ = [
     "fbDeriveUnnecessaryVerification",
     "fbStepRequiresTests",
     "fbValidateWorkflow",
+    "fbWorkflowPathIsLegacyRootFile",
     "fsDescribeValidationFailure",
     "fsComputeWorkflowFingerprint",
     "fsComputeSemanticWorkflowFingerprint",
     "fnStampFieldProducer",
     "fsDeriveProjectRepoPathFromWorkflow",
+    "fsDeriveRepoRootFromDirectory",
     "fnAttachComputedTrackedPaths",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
@@ -153,9 +155,14 @@ def _flistDiscoverCandidatePaths(
 ):
     """Run find inside the container, return candidate Project-file paths.
 
-    Scans both the canonical ``.vaibify/projects`` directory and the
-    legacy ``.vaibify/workflows`` directory so existing repos keep
-    loading after the rename.
+    Scans the canonical ``.vaibify/projects`` directory, the legacy
+    ``.vaibify/workflows`` directory, and any file NAMED
+    ``project.json`` — early scaffolds left the Project file at the
+    repo root, and a researcher who registered such a repo saw an
+    empty Project list with no error anywhere. The name-match casts a
+    wider net than the directory matches, so the caller gates those
+    extra candidates on actually declaring a step list before listing
+    them.
 
     The search root is QUOTED. It was a module constant until host
     mode, and a host project's root is the directory the researcher
@@ -166,7 +173,8 @@ def _flistDiscoverCandidatePaths(
     sCommand = (
         f"find {shlex.quote(sSearchRoot)} -maxdepth 4"
         f" \\( -path '*/.vaibify/projects/*.json'"
-        f" -o -path '*/.vaibify/workflows/*.json' \\)"
+        f" -o -path '*/.vaibify/workflows/*.json'"
+        f" -o -name 'project.json' \\)"
         f" -type f 2>/dev/null"
     )
     _iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -185,8 +193,13 @@ def flistFindWorkflowsInContainer(
 
     Candidates outside a git work tree are dropped — every valid
     vaibify workflow must live inside the project repo it belongs to.
-    Each returned entry carries the auto-detected
-    ``sProjectRepoPath`` so downstream code never has to re-probe.
+    A candidate found by file NAME rather than by living in a
+    ``.vaibify`` directory (the legacy root-level ``project.json``) is
+    additionally required to declare a step list, because the name is
+    shared with other ecosystems' files and a repo may legitimately
+    carry one that has nothing to do with vaibify. Each returned entry
+    carries the auto-detected ``sProjectRepoPath`` so downstream code
+    never has to re-probe.
     """
     if sSearchRoot is None:
         sSearchRoot = DEFAULT_SEARCH_ROOT
@@ -206,6 +219,10 @@ def flistFindWorkflowsInContainer(
         dictMeta = _fdictReadWorkflowMeta(
             connectionDocker, sContainerId, sPath,
         )
+        if fbWorkflowPathIsLegacyRootFile(sPath) and not (
+            dictMeta["bDeclaresSteps"]
+        ):
+            continue
         listResults.append({
             "sPath": sPath,
             "sName": dictMeta["sName"],
@@ -214,6 +231,27 @@ def flistFindWorkflowsInContainer(
             "sProjectRepoPath": sRepo,
         })
     return sorted(listResults, key=lambda d: d["sName"])
+
+
+def fbWorkflowPathIsLegacyRootFile(sWorkflowPath):
+    """Return True for the legacy repo-root ``project.json`` shape.
+
+    The ONE shape outside the ``.vaibify`` directories that names a
+    vaibify workflow: early scaffolds left the Project file at the
+    repository root. It was matched by NAME alone, so it carries none
+    of the intent that placing a file under ``.vaibify/projects``
+    expresses — discovery makes it prove itself by declaring a step
+    list. The repo-path deriver and the connect-path validator read
+    the same predicate, so the three cannot drift about what the
+    legacy shape is.
+    """
+    return (
+        posixpath.basename(sWorkflowPath) == "project.json"
+        and not any(
+            sSuffix in sWorkflowPath
+            for sSuffix in T_VAIBIFY_PROJECT_SUFFIXES
+        )
+    )
 
 
 def _fdictDetectReposForCandidates(
@@ -257,26 +295,54 @@ def _fdictDetectReposForCandidates(
 
 
 def _fdictReadWorkflowMeta(connectionDocker, sContainerId, sPath):
-    """Return ``{"sName", "iSizeBytes"}`` for a workflow JSON in the container.
+    """Return name, size, and step-declaration truth for a workflow JSON.
 
     Size is the raw byte count of the JSON file; the frontend uses it
     to decide whether to surface a "loading large workflow" banner
-    when the researcher selects the workflow.
+    when the researcher selects the workflow. ``bDeclaresSteps`` is
+    what admits a legacy root-level candidate: only a JSON object
+    carrying a ``listSteps`` list is a vaibify workflow.
     """
     try:
         baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
         dictWorkflow = json.loads(baContent.decode("utf-8"))
+        bDeclaresSteps = isinstance(dictWorkflow, dict) and isinstance(
+            dictWorkflow.get("listSteps"), list,
+        )
+        sName = (
+            dictWorkflow.get("sWorkflowName")
+            if isinstance(dictWorkflow, dict) else None
+        )
         return {
-            "sName": dictWorkflow.get(
-                "sWorkflowName", posixpath.basename(sPath),
-            ),
+            "sName": sName or _fsFallbackWorkflowName(sPath),
             "iSizeBytes": len(baContent),
+            "bDeclaresSteps": bDeclaresSteps,
         }
     except Exception:
         return {
-            "sName": posixpath.basename(sPath),
+            "sName": _fsFallbackWorkflowName(sPath),
             "iSizeBytes": 0,
+            "bDeclaresSteps": False,
         }
+
+
+def _fsFallbackWorkflowName(sPath):
+    """Return the display name for a workflow that names itself nothing.
+
+    A file the researcher named keeps its file name. The scaffold name
+    ``project.json`` names nothing in ANY location — the legacy repo
+    root and the canonical ``.vaibify/projects/`` both — so its repo
+    speaks for it; a card reading "project.json" beside "Blank
+    Project" tells the researcher nothing about what they would open.
+    """
+    sBaseName = posixpath.basename(sPath)
+    if sBaseName == "project.json":
+        sRepoName = posixpath.basename(
+            fsDeriveProjectRepoPathFromWorkflow(sPath),
+        )
+        if sRepoName:
+            return sRepoName
+    return sBaseName
 
 
 def _fsResolveWorkflowPathOrDefault(
@@ -580,15 +646,25 @@ def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
     By contract every Project file lives at
     ``<sProjectRepoPath>/.vaibify/projects/<name>.json`` (or the legacy
     ``.vaibify/workflows/`` directory). Stripping that suffix yields the
-    repo root. Returns ``""`` when the path does not match (callers
-    should treat that as no migration context, not an error).
+    repo root. A legacy root-level ``project.json`` — the shape
+    discovery's name-match fallback admits — lives directly in its
+    repo, so its dirname IS the repo; without this branch such a
+    workflow loaded but silently recorded nothing (no state.json home,
+    no markers, no proof level). Returns ``""`` when the path matches
+    neither shape (callers should treat that as no migration context,
+    not an error).
+
+    Cuts at the LAST occurrence for the reason given in
+    :func:`fsDeriveRepoRootFromDirectory`.
     """
     if not sWorkflowPath:
         return ""
     for sSuffix in T_VAIBIFY_PROJECT_SUFFIXES:
-        iSplit = sWorkflowPath.find(sSuffix)
+        iSplit = sWorkflowPath.rfind(sSuffix)
         if iSplit > 0:
             return sWorkflowPath[:iSplit]
+    if fbWorkflowPathIsLegacyRootFile(sWorkflowPath):
+        return posixpath.dirname(sWorkflowPath)
     return ""
 
 
@@ -876,12 +952,32 @@ def fsResolveVariables(sTemplate, dictVariables):
     return re.sub(r"\{([^}]+)\}", fsReplaceMatch, sTemplate)
 
 
+def fsDeriveRepoRootFromDirectory(sWorkflowDirectory):
+    """Return the repo root enclosing a workflow file's own directory.
+
+    The directory form of :func:`fsDeriveProjectRepoPathFromWorkflow`,
+    and the same last-occurrence rule for the same reason: the
+    ``.vaibify`` this must cut at is the project's own, which is the
+    LAST one on the path. Cutting at the first sent the whole file
+    poll to paths under an unrelated ancestor — every badge grey, and
+    the host path guard refusing each stat as an escape, because the
+    paths genuinely were outside the project (2026-08-21, found by the
+    host journey running from a checkout below a ``.vaibify``
+    ancestor). A directory carrying no ``.vaibify`` component IS its
+    own repo root, which is the legacy root-level ``project.json``
+    shape.
+    """
+    iSplit = sWorkflowDirectory.rfind("/.vaibify")
+    if iSplit < 0:
+        return sWorkflowDirectory
+    return sWorkflowDirectory[:iSplit]
+
+
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
     """Build the global variable dict from project.json top-level keys."""
-    sWorkflowDirectory = posixpath.dirname(sWorkflowPath)
-    sRepoRoot = sWorkflowDirectory
-    if "/.vaibify" in sRepoRoot:
-        sRepoRoot = sRepoRoot[:sRepoRoot.index("/.vaibify")]
+    sRepoRoot = fsDeriveRepoRootFromDirectory(
+        posixpath.dirname(sWorkflowPath),
+    )
     sPlotDirectory = dictWorkflow.get("sPlotDirectory", "Plot")
     if not posixpath.isabs(sPlotDirectory):
         sPlotDirectory = posixpath.join(sRepoRoot, sPlotDirectory)

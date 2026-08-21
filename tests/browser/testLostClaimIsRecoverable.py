@@ -8,13 +8,16 @@ of any kind: the project TILE is the claim control, and it is one
 screen back. There was no kebab, no button, nothing. The dashboard was
 not wedged, but it was indistinguishable from wedged.
 
-So the refusal now carries a machine-readable code and the dashboard
-answers it by going back to the project list, where selecting the
-project claims it again. Asserting on the code rather than the prose is
-deliberate: the sibling 409 on this route ("in use in another browser
-session") has no recovery to offer, and a recovery keyed on the word
-"claim" would fire for it too and send a researcher to re-click a tile
-that will refuse them again.
+So the refusal carries a machine-readable code, and the dashboard now
+performs the named recovery itself: it re-claims the project and
+retries the selection, so a reaped claim costs one silent round trip
+instead of a three-click toast dance (2026-08-20). Only a reclaim that
+FAILS — another vaibify process holds the flock — walks back to the
+project list, where the tile is the claim control. Keying on the code
+rather than the prose is deliberate: the sibling 409 on this route
+("in use in another browser session") has no recovery to offer, and a
+recovery keyed on the word "claim" would fire for it too and send a
+researcher to re-click a tile that will refuse them again.
 
 The claim is dropped here the way the reaper drops one — the owner
 record is removed from the live hub — rather than by waiting out a
@@ -82,24 +85,30 @@ def _fnTakeTheClaimAway(serverHub):
 
 
 @pytest.mark.falsification
-def testALostClaimSendsTheResearcherWhereTheyCanClaimAgain(
+def testALostClaimIsReclaimedAndTheWorkflowOpens(
     pageDashboard, serverHub,
 ):
-    """The dead end, and the way out of it.
+    """A reaped claim is re-taken silently and the click just works.
 
-    Kills: reporting the refusal as a bare toast and leaving the
-    researcher on a screen with no claim control — which is what
-    shipped, and read as a hung dashboard.
+    The reaper collects a claim after thirty socket-less seconds, and
+    the workflow picker holds no socket — so a researcher who paused
+    to read the list lost their claim by their very next click and was
+    walked through a three-click toast dance to get back in (live
+    report, 2026-08-20). The refusal's named recovery is a claim plus
+    a retry, which the dashboard now performs itself: the record is
+    unowned, so arbitration grants it back to this session and the
+    workflow opens.
+
+    Kills: dropping the reclaim-and-retry from the claim-required
+    branch, which restores the bounce to the Environment hub.
     """
     _fnReachTheWorkflowPicker(pageDashboard, serverHub)
     _fnTakeTheClaimAway(serverHub)
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        state="visible", timeout=20000,
-    )
-    sToastText = pageDashboard.text_content("#toastContainer")
-    assert "claim" in sToastText.lower(), sToastText
+    pageDashboard.wait_for_selector("#hostModeBadge", timeout=20000)
+    assert S_HOST_PROJECT_READY in (
+        serverHub.app.state.dictContainerOwners
+    ), "the workflow opened without re-claiming the project"
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
 
 

@@ -531,6 +531,9 @@ def _fnPersistStateDocument(
     sJson = json.dumps(dictPersisted, indent=2) + "\n"
     sTempPath = _fsTmpPathFor(sStatePath)
     sBakPath = _fsBakPathFor(sStatePath)
+    _fnEnsureStateDirectoryExists(
+        connectionDocker, sContainerId, sStatePath,
+    )
     connectionDocker.fnWriteFile(
         sContainerId, sTempPath, sJson.encode("utf-8"),
     )
@@ -623,6 +626,27 @@ def fdictMergeRunResultsIntoState(
             connectionDocker, sContainerId, sStatePath, dictPersisted,
         )
     return {"bPersisted": True, "sDetail": ""}
+
+
+def _fnEnsureStateDirectoryExists(
+    connectionDocker, sContainerId, sStatePath,
+):
+    """``mkdir -p`` state.json's directory before the first write.
+
+    Every canonical layout carries ``.vaibify/`` already — project.json
+    lives under it — but a legacy repo whose Project file sits at the
+    ROOT has no ``.vaibify`` directory at all, and both write legs
+    (host mkstemp-and-rename, Docker put_archive) require the parent
+    to exist. Without this, the first state save after discovery
+    admitted such a repo crashed instead of bootstrapping.
+    """
+    from .pipelineUtils import fsShellQuote
+    sDirectory = posixpath.dirname(sStatePath)
+    if not sDirectory:
+        return
+    connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"mkdir -p {fsShellQuote(sDirectory)}",
+    )
 
 
 def _fnCheckpointPriorState(

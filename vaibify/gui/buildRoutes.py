@@ -21,6 +21,7 @@ __all__ = ["fnRegisterAll"]
 
 import asyncio
 import logging
+import os
 from collections import deque
 
 from fastapi import HTTPException
@@ -157,8 +158,15 @@ def _fnExecuteBuild(dictProject, bNoCache=False, dictProgress=None):
                 lambda sLine: _fnRecordBuildLine(dictProgress, sLine)
             )
         try:
+            # The hub serves every project from its OWN launch
+            # directory, so the build must be told which project it is
+            # building; left to resolve for itself it reads the git
+            # remote of whatever directory the hub was started in.
             fnBuildFromConfig(
                 configProject, sDockerDir, bNoCache=bNoCache,
+                sProjectDirectory=os.path.dirname(
+                    dictProject["sConfigPath"],
+                ),
             )
         finally:
             if dictProgress is not None:

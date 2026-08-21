@@ -43,6 +43,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "ftRunInContainerStreamedWithChunks",
     "fnWriteFile",
     "fnWriteFileViaTar",
+    "fnWriteTreeViaTar",
     "fbaFetchFile",
     "flistDirectoryEntries",
     "fbContainerPathIsFile",
@@ -120,6 +121,12 @@ class ConnectionRouter:
     def fnWriteFileViaTar(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         self.fconnectionForResource(sResourceId).fnWriteFileViaTar(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fnWriteTreeViaTar(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        self.fconnectionForResource(sResourceId).fnWriteTreeViaTar(
             sResourceId, *tArguments, **dictKeywords,
         )
 

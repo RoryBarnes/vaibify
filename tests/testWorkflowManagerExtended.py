@@ -1676,3 +1676,49 @@ def test_fsJoinRepoRelPath_joins_relative_file_to_step_dir():
     assert _fsJoinRepoRelPath(
         "step01", "out.dat",
     ) == "step01/out.dat"
+
+
+# A host project is an arbitrary directory on the researcher's machine,
+# so a ``.vaibify`` component may sit ABOVE the project as well as
+# inside it. These pin the last-occurrence rule that keeps the two
+# apart; cutting at the first sent every polled path to an unrelated
+# ancestor, where the host path guard correctly refused it as an
+# escape and the dashboard showed nothing (2026-08-21).
+S_ANCESTOR_WORKFLOW_PATH = (
+    "/home/researcher/.vaibify/scratch/study/.vaibify/projects/p.json"
+)
+
+
+def test_fdictBuildGlobalVariables_cuts_at_the_projects_own_vaibify():
+    dictVars = fdictBuildGlobalVariables(
+        {"sPlotDirectory": "Plot"}, S_ANCESTOR_WORKFLOW_PATH,
+    )
+    assert dictVars["sRepoRoot"] == "/home/researcher/.vaibify/scratch/study"
+    assert dictVars["sPlotDirectory"] == (
+        "/home/researcher/.vaibify/scratch/study/Plot"
+    )
+
+
+def test_fsDeriveProjectRepoPath_cuts_at_the_projects_own_vaibify():
+    from vaibify.gui.workflowManager import (
+        fsDeriveProjectRepoPathFromWorkflow,
+    )
+    assert fsDeriveProjectRepoPathFromWorkflow(
+        S_ANCESTOR_WORKFLOW_PATH,
+    ) == "/home/researcher/.vaibify/scratch/study"
+
+
+def test_fsDeriveRepoRootFromDirectory_without_vaibify_is_identity():
+    """The legacy root-level project.json shape: the dirname IS the repo."""
+    from vaibify.gui.workflowManager import fsDeriveRepoRootFromDirectory
+    assert fsDeriveRepoRootFromDirectory(
+        "/workspace/study",
+    ) == "/workspace/study"
+
+
+def test_fsDeriveRepoRootFromDirectory_container_path_is_unchanged():
+    """The container shape carries one .vaibify and must not move."""
+    from vaibify.gui.workflowManager import fsDeriveRepoRootFromDirectory
+    assert fsDeriveRepoRootFromDirectory(
+        "/workspace/study/.vaibify/projects",
+    ) == "/workspace/study"

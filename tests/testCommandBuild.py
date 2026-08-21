@@ -87,6 +87,12 @@ def test_fnWriteBinariesEnv_empty():
 # -------------------------------------------------------------------
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
+# `new=` rather than a plain patch: supplying the replacement
+# explicitly stops mock injecting an extra positional argument,
+# so the build command's second resolver is stubbed without
+# rewriting the signature of every test below.
+@patch("vaibify.cli.commandBuild.fsResolveProjectConfigPath",
+       new=lambda sProjectName=None: "/projects/thisProject/vaibify.yml")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
@@ -106,6 +112,12 @@ def test_build_catches_runtime_error(
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
+# `new=` rather than a plain patch: supplying the replacement
+# explicitly stops mock injecting an extra positional argument,
+# so the build command's second resolver is stubbed without
+# rewriting the signature of every test below.
+@patch("vaibify.cli.commandBuild.fsResolveProjectConfigPath",
+       new=lambda sProjectName=None: "/projects/thisProject/vaibify.yml")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
@@ -124,6 +136,12 @@ def test_build_catches_file_not_found(
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
+# `new=` rather than a plain patch: supplying the replacement
+# explicitly stops mock injecting an extra positional argument,
+# so the build command's second resolver is stubbed without
+# rewriting the signature of every test below.
+@patch("vaibify.cli.commandBuild.fsResolveProjectConfigPath",
+       new=lambda sProjectName=None: "/projects/thisProject/vaibify.yml")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")
@@ -142,6 +160,12 @@ def test_build_catches_value_error(
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
+# `new=` rather than a plain patch: supplying the replacement
+# explicitly stops mock injecting an extra positional argument,
+# so the build command's second resolver is stubbed without
+# rewriting the signature of every test below.
+@patch("vaibify.cli.commandBuild.fsResolveProjectConfigPath",
+       new=lambda sProjectName=None: "/projects/thisProject/vaibify.yml")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir",
        return_value="/docker")

@@ -146,6 +146,13 @@ def _fnMountUnixAdapter(sessionDocker):
 _I_CONTAINER_DEFAULT_UID = 1000
 _I_CONTAINER_DEFAULT_GID = 1000
 
+# Where ``fnWriteTreeViaTar`` stops holding the archive in memory and
+# starts spilling to disk. A tree copy carries a researcher's whole
+# directory, whose size nothing bounds, so the archive is spooled; the
+# threshold only decides where the bytes live, never how many are
+# allowed.
+_I_TREE_TAR_SPOOL_BYTES = 32 * 1024 * 1024
+
 
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
@@ -1257,6 +1264,91 @@ class DockerConnection:
         infoTar.uid = iUid if iUid is not None else _I_CONTAINER_DEFAULT_UID
         infoTar.gid = iGid if iGid is not None else _I_CONTAINER_DEFAULT_GID
         return infoTar
+
+    def fnWriteTreeViaTar(
+        self, sContainerId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None,
+    ):
+        """Copy host files and directories into a container directory.
+
+        The bulk sibling of :meth:`fnWriteFileViaTar`, and the only way
+        host-side content reaches a workspace volume: until this
+        existed, a container was populated exclusively by the
+        entrypoint's git clones, so a researcher converting a local
+        directory to a container got an empty workspace and no
+        indication anything was missing (2026-08-21).
+
+        One archive, one round trip, whatever the tree's shape --
+        ``tarfile`` walks a directory natively. The destination
+        directory must already exist; ``put_archive`` does not create
+        it. Symlinks are archived AS symlinks (tarfile's default), so
+        a link pointing outside the project copies the link and never
+        the host bytes it names.
+
+        Ownership is stamped, never inherited. ``tar.add`` would carry
+        the HOST's uid/gid onto every entry, which lands the files
+        foreign-owned inside the container and silently unwritable by
+        the in-container agent, which has no sudo by design -- the
+        same defect ``_finfoBuildTarEntry`` exists to prevent for
+        single writes.
+        """
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteTreeViaTar",
+        )
+        fileTar = self._ffileBuildTreeTar(listHostPaths, iUid, iGid)
+        try:
+            container = self.fcontainerGetById(sContainerId)
+            container.put_archive(sDestinationDirectory, fileTar)
+        finally:
+            fileTar.close()
+
+    @staticmethod
+    def _ffileBuildTreeTar(listHostPaths, iUid, iGid):
+        """Return a rewound tar of the host paths, owned by the container user.
+
+        Spooled rather than held in a ``BytesIO``: a researcher's
+        directory is arbitrarily large, and the single-file path's
+        in-memory buffer is only safe because its caller already holds
+        the bytes.
+        """
+        import os
+        import tarfile
+        import tempfile
+        ffnStampOwnership = DockerConnection._ffnBuildOwnershipFilter(
+            iUid, iGid,
+        )
+        fileTar = tempfile.SpooledTemporaryFile(
+            max_size=_I_TREE_TAR_SPOOL_BYTES,
+        )
+        with tarfile.open(fileobj=fileTar, mode="w") as fileArchive:
+            for sHostPath in listHostPaths:
+                fileArchive.add(
+                    sHostPath, arcname=os.path.basename(sHostPath),
+                    filter=ffnStampOwnership,
+                )
+        fileTar.seek(0)
+        return fileTar
+
+    @staticmethod
+    def _ffnBuildOwnershipFilter(iUid, iGid):
+        """Return a tarfile filter stamping the container user on every entry.
+
+        The NAME fields are cleared alongside the numeric ids: tar
+        readers that find a ``uname``/``gname`` resolve ownership by
+        name in preference to the number, so leaving the host's login
+        name on the entry would re-open the defect the numbers close.
+        """
+        iOwnerUid = iUid if iUid is not None else _I_CONTAINER_DEFAULT_UID
+        iOwnerGid = iGid if iGid is not None else _I_CONTAINER_DEFAULT_GID
+
+        def finfoStampOwnership(infoTar):
+            infoTar.uid = iOwnerUid
+            infoTar.gid = iOwnerGid
+            infoTar.uname = ""
+            infoTar.gname = ""
+            return infoTar
+
+        return finfoStampOwnership
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
