@@ -130,7 +130,21 @@ def test_provider_availability_is_rendered_from_capabilities():
 
 def test_models_come_from_capabilities_never_a_hardcoded_table():
     sSource = _fsCouncilSource()
-    assert "_flistProviderModels" in sSource
+    # The NESTED shape the backend actually sends. The picker used to
+    # read dictProvider.listModels — a key no payload ever carried — so
+    # it silently fell through to free text while the discovery result
+    # rode over the wire unread.
+    assert "_fdictProviderDiscovery" in sSource
+    assert "dictModelDiscovery" in sSource
+    assert "listModelIds" in sSource
+    assert "_flistProviderModels" not in sSource, (
+        "the old flat-key lookup is back; it reads a key the backend "
+        "does not send")
+    # Provenance is SHOWN, not merely carried: an un-verified alias set
+    # presented without saying so reads as a discovered list.
+    assert "_fsDiscoveryProvenance" in sSource
+    assert "un-verified aliases" in sSource
+    assert "bVerified" in sSource
     # No stale alias/model table lives in this source (sections 6.3.1,
     # 8.2). Guard against the known provider alias vocabulary leaking in.
     sLower = sSource.lower()

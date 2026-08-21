@@ -458,11 +458,15 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsModelField(dictParticipant, iIndex) {
-        /* Live from the capabilities endpoint, never a hardcoded table
-           (section 8.2): if the provider entry carries a discovered
-           model list, present it; otherwise a free-text id field so no
-           stale alias table lives in this source. */
-        var listModels = _flistProviderModels(dictParticipant.sProvider);
+        /* From the capabilities endpoint's discovery payload, never a
+           hardcoded table in this source (section 8.2). The payload
+           says where the list came from, and the picker SHOWS that:
+           an un-verified alias set is labelled as one, so a researcher
+           picking an entry knows nothing enumerated it. Free text
+           remains only when a provider offers no list at all. */
+        var dictDiscovery = _fdictProviderDiscovery(
+            dictParticipant.sProvider);
+        var listModels = dictDiscovery.listModelIds || [];
         if (listModels.length) {
             var sOptions = listModels.map(function (sModel) {
                 return "<option value=\"" + _fsEscape(sModel) + "\"" +
@@ -472,20 +476,39 @@ var VaibifyAgentCouncil = (function () {
             }).join("");
             return "<select class=\"council-model\" data-index=\"" +
                 iIndex + "\"><option value=\"\">Choose a model…" +
-                "</option>" + sOptions + "</select>";
+                "</option>" + sOptions + "</select>" +
+                _fsDiscoveryProvenance(dictDiscovery);
         }
         return "<input type=\"text\" class=\"council-model\" " +
             "data-index=\"" + iIndex + "\" placeholder=\"Model id\" " +
             "value=\"" + _fsEscape(dictParticipant.sRequestedModel) + "\">";
     }
 
-    function _flistProviderModels(sProvider) {
+    function _fdictProviderDiscovery(sProvider) {
+        /* The nested shape the backend actually sends. This read used
+           to be dictProvider.listModels — a key no payload ever
+           carried — so the picker silently fell through to free text
+           while the discovery result rode over the wire unread. */
         var dictCapabilities = _dictState.dictCapabilities || {};
         var listProviders = dictCapabilities.listProviders || [];
         var dictMatch = listProviders.filter(function (dictProvider) {
             return dictProvider.sProvider === sProvider;
         })[0];
-        return (dictMatch && dictMatch.listModels) || [];
+        return (dictMatch && dictMatch.dictModelDiscovery) || {};
+    }
+
+    function _fsDiscoveryProvenance(dictDiscovery) {
+        /* Where the list came from, in the researcher's words. A
+           labelled un-verified alias set is honest; an unlabelled one
+           would read as a discovered list, which is the claim the
+           design amendment exists to avoid making. */
+        if (dictDiscovery.bVerified) {
+            return "<span class=\"council-model-source\">live from the " +
+                "provider API</span>";
+        }
+        return "<span class=\"council-model-source council-unverified\">" +
+            "un-verified aliases — the subscription backend cannot " +
+            "enumerate models without spending a paid turn</span>";
     }
 
     function _fsProviderAvailability(sProvider) {

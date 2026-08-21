@@ -4136,7 +4136,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # already owns every other credential-lane rule. One cohesive
     # responsibility: what the runner backend may read, copy, and
     # claim about a login.
-    "agentCouncilProviders.py": 817,
+    # +7 (2026-08-21): the credential read moved to the BOUNDED
+    # adapter and maps an over-ceiling answer to RunnerCredentialError,
+    # so the launch probe answers 409 instead of letting a ValueError
+    # surface as a 500.
+    "agentCouncilProviders.py": 824,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

@@ -25,6 +25,9 @@ import uuid
 __all__ = [
     "DICT_PHASE_INSTRUCTIONS",
     "LIST_TURN_RESULT_ARRAY_KEYS",
+    "TUPLE_TURN_VERDICTS",
+    "fsComposeExactResultSchema",
+    "fsComposeRepairInstruction",
     "LIST_TURN_RESULT_STRING_KEYS",
     "S_CHARTER_TEXT",
     "S_CHARTER_VERSION",
@@ -55,8 +58,15 @@ S_PHASE_VETO = "veto"
 # requirements, stop conditions. A campaign records its charter version
 # and text immutably, so a plan produced under 1.0.0 stays readable as
 # what it was: an artifact whose participants were never asked for them.
-S_CHARTER_VERSION = "1.1.0"
-S_CHARTER_TEXT = """\
+# 1.2.0 (2026-08-21): the EXACT result schema became part of the
+# charter text rather than a section appended at composition time.
+# Appending it left two materially different instruction contracts both
+# recorded as 1.1.0 — the campaign persists version and text, so a
+# contract change that lives outside the text is a change no record
+# can show. The schema now travels inside the artifact it belongs to,
+# and any future change to the field table moves this version.
+S_CHARTER_VERSION = "1.2.0"
+_S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
 1. Role and its limits. You are one of several independent models
@@ -141,6 +151,61 @@ S_REPAIR_INSTRUCTION = (
     "schema. Return the complete structured result again, correcting the "
     "problems listed in the request. This is the only repair attempt.")
 
+# The verdict vocabulary as the SCHEMA states it to a model. Spelled
+# here rather than imported from agentCouncilCampaign, which imports
+# this module; the campaign module's S_VERDICT_* constants remain the
+# authority the protocol compares against, and
+# testTheSchemaTemplateNamesEveryRealVerdict pins the two together.
+TUPLE_TURN_VERDICTS = ("accept", "blockingObjection", "needsHuman")
+
+# The evidence claim shape the engine actually consumes
+# (agentCouncilEvidence.EvidenceDisciplineMixin). A model told
+# "array of strings" here returns strings, and every one of them is
+# silently skipped by `if not isinstance(dictClaim, dict): continue` —
+# the claim never reaches the ledger and nothing reports the loss.
+# The fake evidence tests manufacture dictionaries directly, so no
+# fake lane could have surfaced it.
+S_EVIDENCE_KEY = "listEvidence"
+# Spelled here for the same reason TUPLE_TURN_VERDICTS is: the
+# campaign module imports this one. testEvidenceVocabularyMatches
+# TheEngine pins them together.
+S_EVIDENCE_STATUS_CONFIRMED = "confirmed"
+S_EVIDENCE_STATE_MODIFIED = "modifiedState"
+TUPLE_EVIDENCE_CLAIM_STATUSES = (
+    "confirmed", "supportedBySourceInspection", "asserted",
+    "blockedForWantOfEvidence",
+)
+TUPLE_EVIDENCE_STATE_FORMS = ("baseline", "modifiedState")
+# The claim fields EVERY entry carries. Deliberately only what the
+# evidence engine CONSUMES: an earlier draft of this contract also
+# required an 'sClaimText', which production reads nowhere — asking a
+# model for a field that goes nowhere spends its tokens and fails its
+# turns for nothing. Requiring exactly the consumed set is what makes
+# "exact" true in both directions.
+TUPLE_EVIDENCE_BASE_FIELDS = ("sStatus",)
+# A confirmed claim names the command its confirmation rests on. The
+# two state forms then diverge, and the divergence is the whole point:
+# a BASELINE claim is re-run by the engine itself against the sealed
+# snapshot (agentCouncilEvidence._fnRecordBaselineClaim), so the model
+# supplies only the command; a MODIFIED-STATE claim is accepted on the
+# model's own provenance, so it must carry that provenance or the
+# ledger records a confirmation with empty fields.
+TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS = (
+    "sSnapshotHash", "sExecutionImageIdentity", "iExitCode",
+    "sOutputDigest", "dictChangeManifest",
+)
+DICT_EVIDENCE_CLAIM_TEMPLATE = {
+    "sStatus": "<one of " + "|".join(TUPLE_EVIDENCE_CLAIM_STATUSES) + ">",
+    "sStateForm": "<when sStatus is confirmed: one of "
+                  + "|".join(TUPLE_EVIDENCE_STATE_FORMS) + ">",
+    "sCommandText": "<when sStatus is confirmed: the exact command>",
+    "sSnapshotHash": "<modifiedState only: the snapshot it ran against>",
+    "sExecutionImageIdentity": "<modifiedState only: the image identity>",
+    "iExitCode": "<modifiedState only: integer exit code>",
+    "sOutputDigest": "<modifiedState only: digest of the output>",
+    "dictChangeManifest": "<modifiedState only: object of changed paths>",
+}
+
 LIST_TURN_RESULT_STRING_KEYS = ["sSummary", "sVerdict"]
 LIST_TURN_RESULT_ARRAY_KEYS = [
     "listAssumptions", "listEvidence", "listMathematicalClaims",
@@ -171,18 +236,167 @@ def fdictValidateTurnResult(dictCandidate):
         jsonValue = dictCandidate.get(sKeyName)
         if not isinstance(jsonValue, str) or not jsonValue:
             listProblems.append(f"'{sKeyName}' must be a non-empty string")
+    if dictCandidate.get("sVerdict") not in TUPLE_TURN_VERDICTS:
+        listProblems.append(
+            f"'sVerdict' must be one of {list(TUPLE_TURN_VERDICTS)}, not "
+            f"{dictCandidate.get('sVerdict')!r}")
     for sKeyName in LIST_TURN_RESULT_ARRAY_KEYS:
-        if not isinstance(dictCandidate.get(sKeyName), list):
-            listProblems.append(f"'{sKeyName}' must be an array")
+        listProblems.extend(
+            _flistFindArrayProblems(sKeyName, dictCandidate.get(sKeyName)))
+    listUnknownKeys = sorted(
+        set(dictCandidate) - set(LIST_TURN_RESULT_STRING_KEYS)
+        - set(LIST_TURN_RESULT_ARRAY_KEYS))
+    if listUnknownKeys:
+        listProblems.append(
+            f"unknown keys are not part of the schema: {listUnknownKeys}")
     return {"bValid": not listProblems, "listProblems": listProblems}
 
 
+def _flistFindArrayProblems(sKeyName, jsonValue):
+    """Report one array field's problems: shape, then element type.
+
+    The schema the model is shown and the schema enforced here come
+    from the same definition, so "exact" is a claim the validator
+    actually backs. Element types matter: a dict inside listPlanItems
+    renders as a Python repr in plan.md, and a STRING inside
+    listEvidence is silently discarded by the evidence engine.
+    """
+    if not isinstance(jsonValue, list):
+        return [f"'{sKeyName}' must be an array"]
+    if sKeyName == S_EVIDENCE_KEY:
+        listProblems = []
+        for iIndex, jsonEntry in enumerate(jsonValue):
+            listProblems.extend(
+                _flistFindEvidenceClaimProblems(iIndex, jsonEntry))
+        return listProblems
+    listProblems = []
+    for iIndex, jsonEntry in enumerate(jsonValue):
+        if not isinstance(jsonEntry, str):
+            listProblems.append(
+                f"'{sKeyName}' entry {iIndex} must be a string, not "
+                f"{type(jsonEntry).__name__}")
+        elif not jsonEntry.strip():
+            # Empty-string padding satisfies "array of strings" while
+            # saying nothing; the charter's "never padded" is a rule
+            # the validator has to hold up.
+            listProblems.append(
+                f"'{sKeyName}' entry {iIndex} is empty; an array with "
+                "nothing to say is [], never padded")
+    return listProblems
+
+
+def _flistFindEvidenceClaimProblems(iIndex, jsonEntry):
+    """Validate ONE evidence claim against its discriminated shape.
+
+    `isinstance(entry, dict)` alone accepted ``{}``, an invented
+    status, and a modifiedState confirmation with no provenance — all
+    of which the evidence engine then drops or records with empty
+    fields, silently. A claim the ledger cannot use is a claim the
+    model should be told to fix on its one repair attempt.
+    """
+    sWhere = f"'{S_EVIDENCE_KEY}' entry {iIndex}"
+    if not isinstance(jsonEntry, dict):
+        return [f"{sWhere} must be an object with "
+                f"{list(TUPLE_EVIDENCE_BASE_FIELDS)}, not "
+                f"{type(jsonEntry).__name__}"]
+    listProblems = [
+        f"{sWhere} needs a non-empty '{sField}'"
+        for sField in TUPLE_EVIDENCE_BASE_FIELDS
+        if not isinstance(jsonEntry.get(sField), str)
+        or not jsonEntry.get(sField, "").strip()]
+    sStatus = jsonEntry.get("sStatus")
+    if isinstance(sStatus, str) and sStatus not in (
+            TUPLE_EVIDENCE_CLAIM_STATUSES):
+        listProblems.append(
+            f"{sWhere} has status {sStatus!r}, which is not one of "
+            f"{list(TUPLE_EVIDENCE_CLAIM_STATUSES)}; the engine ignores "
+            "a status it does not know, so the claim would vanish")
+    if sStatus != S_EVIDENCE_STATUS_CONFIRMED:
+        return listProblems
+    sStateForm = jsonEntry.get("sStateForm")
+    if sStateForm not in TUPLE_EVIDENCE_STATE_FORMS:
+        listProblems.append(
+            f"{sWhere} is confirmed, so 'sStateForm' must be one of "
+            f"{list(TUPLE_EVIDENCE_STATE_FORMS)}; a confirmed claim "
+            "with any other value is reverted as unprovenanced")
+    if not str(jsonEntry.get("sCommandText") or "").strip():
+        listProblems.append(
+            f"{sWhere} is confirmed, so it needs the 'sCommandText' its "
+            "confirmation rests on")
+    if sStateForm == S_EVIDENCE_STATE_MODIFIED:
+        listProblems.extend(
+            f"{sWhere} is a confirmed modifiedState claim, so it needs "
+            f"'{sField}' — the ledger records this provenance verbatim "
+            "and cannot recover it later"
+            for sField in TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
+            if jsonEntry.get(sField) in (None, "", {}))
+    return listProblems
+
+
+def fsComposeExactResultSchema():
+    """Render the EXACT JSON template a turn must return.
+
+    Prose is not a schema. The charter describes the fields, and a
+    real model has to guess their spelling from that description —
+    while ``fdictValidateTurnResult`` rejects anything whose keys do
+    not match exactly. Only the fake provider ever saw the Python
+    request object, so the fake lanes could never expose the gap. The
+    template is generated FROM the same key lists validation enforces,
+    so the two cannot drift: adding a key to the schema adds it here.
+    """
+    dictTemplate = {sKeyName: "<one sentence>"
+                    for sKeyName in LIST_TURN_RESULT_STRING_KEYS}
+    dictTemplate["sVerdict"] = "<one of " + "|".join(
+        TUPLE_TURN_VERDICTS) + ">"
+    dictTemplate.update({sKeyName: ["<zero or more strings>"]
+                         for sKeyName in LIST_TURN_RESULT_ARRAY_KEYS})
+    dictTemplate[S_EVIDENCE_KEY] = [dict(DICT_EVIDENCE_CLAIM_TEMPLATE)]
+    return (
+        "REQUIRED RESULT SCHEMA. Your final message must be exactly one "
+        "JSON object with these keys and no others, spelled exactly as "
+        "shown. Every key must be present; an array with nothing to say "
+        "is [] — never omitted, never padded. Every array holds strings "
+        f"EXCEPT '{S_EVIDENCE_KEY}', whose entries are objects of the "
+        "shown shape — an evidence entry returned as a bare string is "
+        "discarded and your claim is lost.\n"
+        + json.dumps(dictTemplate, indent=2, sort_keys=True)
+    )
+
+
+def fsComposeRepairInstruction(listSchemaProblems):
+    """Render the repair instruction WITH the problems it refers to.
+
+    ``S_REPAIR_INSTRUCTION`` tells the model to correct "the problems
+    listed in the request", and until now no channel carried them: the
+    validator's findings lived in the Python request dict that only a
+    fake provider could read. A real repair attempt was therefore told
+    to fix an unstated list.
+    """
+    listLines = [S_REPAIR_INSTRUCTION]
+    if listSchemaProblems:
+        listLines.append(
+            "The validator reported exactly these problems:\n"
+            + "\n".join(f"- {sProblem}" for sProblem in listSchemaProblems))
+    return "\n\n".join(listLines)
+
+
+# The charter artifact = the clauses PLUS the exact result schema.
+# Assembled here because the renderer must be defined first; the
+# result is a plain string constant, recorded verbatim in every
+# campaign, so the contract a turn received is always reconstructable
+# from its own record.
+S_CHARTER_TEXT = _S_CHARTER_CLAUSES + "\n" + fsComposeExactResultSchema()
+
+
 def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
-                             bRepairRequest=False):
-    """Compose charter + role overlay + phase instruction (section 5.6).
+                             bRepairRequest=False, listSchemaProblems=None):
+    """Compose charter + role + phase + exact schema (section 5.6).
 
     The composition happens here in the engine, never in an adapter,
-    and quoted untrusted material is never part of this channel.
+    and quoted untrusted material is never part of this channel. The
+    exact result schema rides here too: it is server-owned text, and
+    the adapter must not be the thing that decides what a valid result
+    looks like.
     """
     listSections = [dictCampaign["sCharterText"]]
     if dictParticipant["sRole"]:
@@ -192,7 +406,7 @@ def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
             "never relaxes the charter.")
     listSections.append(DICT_PHASE_INSTRUCTIONS[sPhase])
     if bRepairRequest:
-        listSections.append(S_REPAIR_INSTRUCTION)
+        listSections.append(fsComposeRepairInstruction(listSchemaProblems))
     return "\n\n".join(listSections)
 
 
@@ -243,7 +457,8 @@ def fdictComposeTurnRequest(dictCampaign, dictParticipant, sPhase,
         "iRoundNumber": iRoundNumber,
         "sInstructionChannel": fsComposeTurnInstruction(
             dictCampaign, dictParticipant, sPhase,
-            bRepairRequest=bRepairRequest),
+            bRepairRequest=bRepairRequest,
+            listSchemaProblems=listSchemaProblems),
         "listQuotedMaterial": copy.deepcopy(listQuotedMaterial),
         "bRepairRequest": bRepairRequest,
         "listSchemaProblems": list(listSchemaProblems or []),

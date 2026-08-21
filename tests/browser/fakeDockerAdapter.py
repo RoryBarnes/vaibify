@@ -342,6 +342,10 @@ class FailClosedDockerAdapter:
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)
 
+    def fbaFetchCredentialFile(self, sContainerId, sPath):
+        """The council's bounded credential read, same modelled paths."""
+        return self.fbaFetchFile(sContainerId, sPath)
+
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]

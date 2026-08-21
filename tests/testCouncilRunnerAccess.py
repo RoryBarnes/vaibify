@@ -35,6 +35,7 @@ from vaibify.gui import agentCouncilDockerGateway
 from vaibify.gui import agentCouncilRegistry
 from vaibify.gui import agentCouncilStore
 from vaibify.config import secretManager
+from tests.agentCouncilHarness import fdictMakeTurnResult
 
 
 S_RESOURCE_NAME = "vaibify-council-project"
@@ -963,12 +964,16 @@ def testTheAcceptedPlanFormatFieldsAreAskedForAndRendered():
     participants actually returned.
     """
     from vaibify.gui import agentCouncilCharter
+    sSchemaTemplate = agentCouncilCharter.fsComposeExactResultSchema()
     for sRequiredKey in ("listRejectedAlternatives",
                          "listVerificationRequirements",
                          "listStopConditions"):
         assert sRequiredKey in (
             agentCouncilCharter.LIST_TURN_RESULT_ARRAY_KEYS), sRequiredKey
-        assert sRequiredKey in agentCouncilCharter.S_CHARTER_TEXT or True
+        # The model is told the EXACT key, not a prose paraphrase: the
+        # earlier version of this line ended in `or True` and could
+        # never fail, which is its own kind of green.
+        assert sRequiredKey in sSchemaTemplate, sRequiredKey
     # A result missing them is INVALID: the artifact can only state
     # what the schema compels participants to produce.
     dictIncomplete = {
@@ -1002,23 +1007,273 @@ def testTheAcceptedPlanFormatFieldsAreAskedForAndRendered():
     assert "halt if the benchmark regresses" in sMarkdown
 
 
-def testCredentialReadCarriesItsOwnSmallCap():
-    """A hostile workspace file at the credential path cannot be huge.
+def testCredentialReadUsesTheBoundedAdapterNotTheGeneralOne():
+    """The credential lane must not ride the general 64 MB file read.
 
-    The read used to inherit dockerConnection's generic 64 MB cap while
-    running inside an HTTP request worker.
+    A host-side cap on the general read rejects an oversized payload
+    only after receiving and decoding it; the bounded adapter stops in
+    the container. This pins WHICH adapter the extraction calls, so a
+    revert to fbaFetchFile fails here rather than silently restoring
+    the unbounded transfer.
     """
     from vaibify.gui import agentCouncilProviders
-    dictSeen = {}
+    listCalls = []
 
-    class _FakeCappedConnection:
-        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
-            dictSeen["iMaxBytes"] = iMaxBytes
+    class _FakeBoundedConnection:
+        def fbaFetchCredentialFile(self, sContainerId, sPath):
+            listCalls.append("bounded")
             return b'{"claudeAiOauth": {"accessToken": "t"}}'
 
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+            raise AssertionError(
+                "the credential lane must use the bounded adapter")
+
     agentCouncilProviders.fdictExtractRunnerCredential(
-        _FakeCappedConnection(), "cid", "/workspace/x/.claude/x.json")
-    assert dictSeen["iMaxBytes"] == (
-        agentCouncilProviders.I_MAX_CREDENTIAL_FILE_BYTES)
-    assert dictSeen["iMaxBytes"] < 1024 * 1024, (
-        "a login document is kilobytes; the cap must be small")
+        _FakeBoundedConnection(), "cid", "/workspace/x/.claude/x.json")
+    assert listCalls == ["bounded"]
+    assert agentCouncilProviders.I_MAX_CREDENTIAL_FILE_BYTES < 1024 * 1024, (
+        "a login document is kilobytes; the ceiling must be small")
+
+
+def testTheInstructionChannelCarriesTheExactSchemaAndRepairProblems():
+    """A REAL turn is told the keys and, on repair, what was wrong.
+
+    The instruction channel is everything a production CLI receives
+    besides quoted material; the request dict's listSchemaProblems is
+    visible only to a fake that reads the Python object. So the schema
+    template and the validator's findings must be IN the channel, or a
+    real model is guessing key spellings and repairing an unstated
+    list.
+    """
+    from vaibify.gui import agentCouncilCampaign, agentCouncilCharter
+    dictCampaign = agentCouncilCampaign.fdictCreateCampaign(
+        "Is it sound?",
+        [agentCouncilCampaign.fdictCreateParticipant("claude", "opus"),
+         agentCouncilCampaign.fdictCreateParticipant("claude", "sonnet")])
+    dictParticipant = dictCampaign["listParticipants"][0]
+    dictRequest = agentCouncilCharter.fdictComposeTurnRequest(
+        dictCampaign, dictParticipant,
+        agentCouncilCharter.S_PHASE_PROPOSAL, 1, [],
+        bRepairRequest=True,
+        listSchemaProblems=["'listStopConditions' must be an array"])
+    sChannel = dictRequest["sInstructionChannel"]
+    for sKeyName in (agentCouncilCharter.LIST_TURN_RESULT_STRING_KEYS
+                     + agentCouncilCharter.LIST_TURN_RESULT_ARRAY_KEYS):
+        assert sKeyName in sChannel, (
+            f"{sKeyName} is validated but never named to the model")
+    assert "'listStopConditions' must be an array" in sChannel, (
+        "the repair instruction refers to problems the model is never "
+        "shown")
+    # And a NON-repair turn carries the schema without repair noise.
+    sPlainChannel = agentCouncilCharter.fdictComposeTurnRequest(
+        dictCampaign, dictParticipant,
+        agentCouncilCharter.S_PHASE_PROPOSAL, 1, [],
+    )["sInstructionChannel"]
+    assert "listStopConditions" in sPlainChannel
+    assert "REPAIR:" not in sPlainChannel
+
+
+def testTheSchemaTemplateNamesEveryRealVerdict():
+    """The template's verdict vocabulary cannot drift from the protocol."""
+    from vaibify.gui import agentCouncilCampaign, agentCouncilCharter
+    setProtocolVerdicts = {
+        agentCouncilCampaign.S_VERDICT_ACCEPT,
+        agentCouncilCampaign.S_VERDICT_BLOCKING_OBJECTION,
+        agentCouncilCampaign.S_VERDICT_NEEDS_HUMAN,
+    }
+    assert set(agentCouncilCharter.TUPLE_TURN_VERDICTS) == (
+        setProtocolVerdicts)
+
+
+def testTheCredentialReadIsBoundedInsideTheContainer():
+    """The ceiling is enforced by the program, not after the transfer.
+
+    The old shape read the whole file, base64'd it, shipped it, decoded
+    it, and only then compared against a cap — so a hostile
+    multi-gigabyte file was materialized twice before rejection. The
+    declared program now stops one byte past the ceiling.
+    """
+    from vaibify.docker import dockerConnection
+    sProgram = dockerConnection.fsRenderBatchedTypedReadProgram(
+        dockerConnection.S_TYPED_READ_CREDENTIAL_FILE, ["/x/.credentials"])
+    assert str(dockerConnection.I_MAX_CREDENTIAL_FILE_BYTES + 1) in sProgram
+    assert ".read(" in sProgram
+    assert ".read()" not in sProgram, (
+        "an unbounded read means the cap cannot prevent materialization")
+
+
+def testAnOversizedCredentialRefusesRatherThanRaisingValueError():
+    """Oversize is a refusal the launch probe can answer 409 with."""
+    from vaibify.gui import agentCouncilProviders
+
+    class _FakeOversizeConnection:
+        def fbaFetchCredentialFile(self, sContainerId, sPath):
+            raise ValueError("Credential file exceeds the ceiling")
+
+    with pytest.raises(agentCouncilProviders.RunnerCredentialError) as info:
+        agentCouncilProviders.fdictExtractRunnerCredential(
+            _FakeOversizeConnection(), "cid", "/workspace/x/.credentials")
+    assert "too large" in str(info.value)
+    # And the presence probe answers False rather than propagating a
+    # ValueError that the HTTP lane would render as a 500.
+    assert agentCouncilProviders.fbRunnerCredentialIsPresent(
+        _FakeOversizeConnection(), "cid", "/workspace/x/.credentials"
+    ) is False
+
+
+def testEvidenceIsTypedAsObjectsNotStrings():
+    """The evidence engine consumes dicts; the schema must say so.
+
+    A model told "array of strings" returns strings, and every one is
+    dropped by the evidence mixin's `if not isinstance(dictClaim,
+    dict): continue` — the claim never reaches the ledger and nothing
+    reports the loss. The fake evidence tests manufacture dictionaries
+    directly, so no fake lane could have caught it.
+    """
+    from vaibify.gui import agentCouncilCharter
+    sSchema = agentCouncilCharter.fsComposeExactResultSchema()
+    # The template shows the claim OBJECT, with the fields the engine
+    # actually reads.
+    for sClaimField in ("sStatus", "sStateForm", "sCommandText",
+                        "sSnapshotHash", "dictChangeManifest"):
+        assert sClaimField in sSchema, sClaimField
+    assert "confirmed" in sSchema and "baseline" in sSchema
+    # And validation refuses a string where a claim object belongs.
+    dictResult = fdictMakeTurnResult()
+    dictResult["listEvidence"] = ["I ran the tests and they passed"]
+    dictVerdict = agentCouncilCharter.fdictValidateTurnResult(dictResult)
+    assert dictVerdict["bValid"] is False
+    assert any("listEvidence" in sProblem
+               for sProblem in dictVerdict["listProblems"])
+    # A real claim object validates.
+    dictResult["listEvidence"] = [{
+        "sStatus": "confirmed", "sStateForm": "baseline",
+        "sCommandText": "pytest -q"}]
+    assert agentCouncilCharter.fdictValidateTurnResult(
+        dictResult)["bValid"] is True
+
+
+def testTheAdvertisedSchemaIsTheEnforcedSchema():
+    """"Exact" is a claim the validator has to back, or it is marketing."""
+    from vaibify.gui import agentCouncilCharter
+    dictResult = fdictMakeTurnResult()
+    dictResult["sVerdict"] = "typo"
+    assert agentCouncilCharter.fdictValidateTurnResult(
+        dictResult)["bValid"] is False, "an arbitrary verdict was accepted"
+
+    dictResult = fdictMakeTurnResult()
+    dictResult["listPlanItems"] = [{"nested": "object"}]
+    assert agentCouncilCharter.fdictValidateTurnResult(
+        dictResult)["bValid"] is False, (
+        "a dict inside a string array was accepted; it renders as a "
+        "Python repr in plan.md")
+
+    dictResult = fdictMakeTurnResult()
+    dictResult["sSomethingElse"] = "smuggled"
+    assert agentCouncilCharter.fdictValidateTurnResult(
+        dictResult)["bValid"] is False, "an unknown key was accepted"
+
+
+def testTheRecordedCharterCarriesTheContractItWasComposedUnder():
+    """A campaign's record must reconstruct the contract its turns saw.
+
+    The schema used to be appended at composition time, outside the
+    charter text a campaign persists — so two materially different
+    instruction contracts could both be recorded as the same version.
+    """
+    from vaibify.gui import agentCouncilCampaign, agentCouncilCharter
+    dictCampaign = agentCouncilCampaign.fdictCreateCampaign(
+        "Is it sound?",
+        [agentCouncilCampaign.fdictCreateParticipant("claude", "opus"),
+         agentCouncilCampaign.fdictCreateParticipant("claude", "sonnet")])
+    for sKeyName in agentCouncilCharter.LIST_TURN_RESULT_ARRAY_KEYS:
+        assert sKeyName in dictCampaign["sCharterText"], (
+            f"{sKeyName} is enforced but absent from the RECORDED "
+            "charter, so the record cannot show what the turn was told")
+    assert "sStateForm" in dictCampaign["sCharterText"]
+    # The composed instruction adds no second copy of the schema.
+    sChannel = agentCouncilCharter.fsComposeTurnInstruction(
+        dictCampaign, dictCampaign["listParticipants"][0],
+        agentCouncilCharter.S_PHASE_PROPOSAL)
+    assert sChannel.count("REQUIRED RESULT SCHEMA") == 1
+    assert agentCouncilCharter.S_CHARTER_VERSION == (
+        dictCampaign["sCharterVersion"])
+
+
+def testEveryUnusableEvidenceClaimIsRefusedNotSilentlyDropped():
+    """The four shapes a dict-only check waved through.
+
+    Each of these validates as an object and is then discarded or
+    recorded hollow by the evidence engine — a claim the ledger cannot
+    use, lost without a word. The one repair attempt exists for exactly
+    this, so the validator has to name them.
+    """
+    from vaibify.gui import agentCouncilCharter
+
+    def _fbIsValid(jsonEvidence, sArrayKey="listEvidence"):
+        dictResult = fdictMakeTurnResult()
+        dictResult[sArrayKey] = jsonEvidence
+        return agentCouncilCharter.fdictValidateTurnResult(
+            dictResult)["bValid"]
+
+    assert _fbIsValid([{}]) is False, "an empty claim object was accepted"
+    assert _fbIsValid([
+        {"sStatus": "definitelyConfirmed"}]) is False, (
+        "an invented status was accepted; the engine ignores what it "
+        "does not know, so the claim would vanish")
+    assert _fbIsValid([{
+        "sStatus": "confirmed", "sStateForm": "modifiedState",
+        "sCommandText": "pytest -q"}]) is False, (
+        "a modifiedState confirmation with no provenance was accepted; "
+        "the ledger would record empty provenance fields")
+    assert _fbIsValid([""], sArrayKey="listPlanItems") is False, (
+        "empty-string padding was accepted")
+
+    # The shapes the engine CAN use still validate.
+    assert _fbIsValid([{"sStatus": "asserted"}]) is True
+    assert _fbIsValid([{
+        "sStatus": "confirmed", "sStateForm": "baseline",
+        "sCommandText": "pytest -q"}]) is True
+    assert _fbIsValid([{
+        "sStatus": "confirmed", "sStateForm": "modifiedState",
+        "sCommandText": "pytest -q", "sSnapshotHash": "abc",
+        "sExecutionImageIdentity": "sha256:x", "iExitCode": 0,
+        "sOutputDigest": "d", "dictChangeManifest": {"a.py": "modified"}}]
+    ) is True
+
+
+def testTheEvidenceVocabularyMatchesTheEngine():
+    """The schema's statuses and state forms are the engine's own."""
+    from vaibify.gui import agentCouncilCampaign, agentCouncilCharter
+    assert set(agentCouncilCharter.TUPLE_EVIDENCE_CLAIM_STATUSES) == {
+        agentCouncilCampaign.S_CLAIM_CONFIRMED,
+        agentCouncilCampaign.S_CLAIM_SOURCE_SUPPORTED,
+        agentCouncilCampaign.S_CLAIM_ASSERTED,
+        agentCouncilCampaign.S_CLAIM_BLOCKED,
+    }
+    assert agentCouncilCharter.S_EVIDENCE_STATUS_CONFIRMED == (
+        agentCouncilCampaign.S_CLAIM_CONFIRMED)
+    # Every field the modified-state ledger entry copies is required.
+    for sField in ("sSnapshotHash", "sExecutionImageIdentity",
+                   "iExitCode", "sOutputDigest", "dictChangeManifest"):
+        assert sField in (
+            agentCouncilCharter.TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS), sField
+
+
+def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
+    """The contract asks for nothing production ignores.
+
+    The mirror of the test above, and the reason it exists: an earlier
+    draft required an 'sClaimText' that no production code reads, which
+    would have failed real turns over a field going nowhere.
+    """
+    import pathlib
+    from vaibify.gui import agentCouncilCharter
+    sEvidenceSource = pathlib.Path(
+        "vaibify/gui/agentCouncilEvidence.py").read_text()
+    for sField in (agentCouncilCharter.TUPLE_EVIDENCE_BASE_FIELDS
+                   + agentCouncilCharter.TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
+                   + ("sStateForm", "sCommandText")):
+        assert sField in sEvidenceSource, (
+            f"the schema requires {sField}, which the evidence engine "
+            "never reads")

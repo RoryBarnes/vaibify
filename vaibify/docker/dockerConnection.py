@@ -264,12 +264,37 @@ S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
+S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
+
+# A provider login document is kilobytes. The council's credential read
+# bounds itself IN the container at this ceiling rather than inheriting
+# the 64 MB general-file cap, which can only reject after the bytes
+# have already crossed the socket and been decoded.
+I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
         "import base64,sys; "
         "sys.stdout.buffer.write(base64.b64encode(open("
         + _S_TYPED_READ_PATH_SLOT + ",'rb').read()))"
+    ),
+    # A credential document read with the bound enforced IN THE
+    # CONTAINER. The general file read above materializes the whole
+    # file and base64s it before the host can check any cap, so a
+    # host-side cap rejects a hostile multi-gigabyte file only AFTER
+    # paying for it twice — which is what the council's credential
+    # read used to do. This program reads one byte past the ceiling
+    # and stops: an oversized file costs the ceiling, never its size,
+    # and the extra byte is what lets the host tell "at the limit"
+    # from "over it". The ceiling is server-owned text, never a
+    # caller's value, so the typed-read seam still takes only an
+    # operation name and a path.
+    S_TYPED_READ_CREDENTIAL_FILE: (
+        "import base64,sys\n"
+        "with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
+        "    baHead=fileIn.read(" + str(I_MAX_CREDENTIAL_FILE_BYTES + 1)
+        + ")\n"
+        "sys.stdout.buffer.write(base64.b64encode(baHead))\n"
     ),
     S_TYPED_READ_DIRECTORY: (
         "import os,sys; "
@@ -973,6 +998,35 @@ class DockerConnection:
             return self.ftRunInContainerStreamed(sContainerId, sCommand)
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
+
+    def fbaFetchCredentialFile(self, sContainerId, sFilePath):
+        """Fetch a provider login, bounded IN the container.
+
+        The council's credential read. Unlike :meth:`fbaFetchFile`,
+        whose cap can only reject a payload the host has already
+        received and decoded, this one stops reading at
+        :data:`I_MAX_CREDENTIAL_FILE_BYTES` inside the container — so a
+        hostile multi-gigabyte file planted at the credential path
+        costs the ceiling rather than its own size. Over-ceiling
+        raises ``ValueError`` (the program returned the one extra byte
+        that distinguishes "at the limit" from "over" it); an
+        unreadable path raises ``FileNotFoundError``, as the general
+        read does.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_CREDENTIAL_FILE, sFilePath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot read credential file from container: {sFilePath}"
+            )
+        baContent = base64.b64decode(tExecResult.sStdout.strip())
+        if len(baContent) > I_MAX_CREDENTIAL_FILE_BYTES:
+            raise ValueError(
+                f"Credential file exceeds the {I_MAX_CREDENTIAL_FILE_BYTES} "
+                f"byte ceiling: {sFilePath}"
+            )
+        return baContent
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,

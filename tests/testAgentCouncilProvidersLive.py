@@ -396,3 +396,74 @@ def test_credential_lands_owned_by_the_unprivileged_user_in_the_runner(
     assert "OWNER 1000 1000" in dictProbe["sOutput"], dictProbe["sOutput"]
     assert "TOKEN FAKE-ACCESS-TOKEN-XYZ" in dictProbe["sOutput"]
     moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
+
+
+def testTheCredentialCeilingHoldsAtTheExactBoundaryLive():
+    """A real container, at the ceiling and one byte over it.
+
+    The bound is enforced by the declared program INSIDE the container,
+    so only a real read proves it: source-inspecting for ``.read(N)``
+    shows the intent, not the behaviour. Exactly
+    ``I_MAX_CREDENTIAL_FILE_BYTES`` must come back whole; one byte more
+    must refuse — and refuse as ``RunnerCredentialError`` through the
+    extraction, so the launch probe answers 409 rather than 500.
+    """
+    fnRequireDaemonReachable()
+    import docker as moduleDocker
+    from vaibify.docker import dockerConnection as moduleTransport
+    from vaibify.gui import agentCouncilProviders as moduleProviders
+
+    iCeiling = moduleTransport.I_MAX_CREDENTIAL_FILE_BYTES
+    clientDocker = moduleDocker.from_env()
+    sName = f"vaibifyCouncilCap{secrets.token_hex(4)}"
+    container = clientDocker.containers.run(
+        S_RUNNER_TEST_IMAGE, ["sleep", "120"], name=sName, detach=True)
+    try:
+        # A login document padded to EXACTLY the ceiling, and a second
+        # one byte longer. The padding rides a JSON field so the
+        # at-ceiling file is still a parseable login.
+        sBuild = (
+            "import json\n"
+            f"iCeiling = {iCeiling}\n"
+            "for sPath, iTarget in ((\"/at.json\", iCeiling),"
+            " (\"/over.json\", iCeiling + 1)):\n"
+            "    dictLogin = {'claudeAiOauth': {'accessToken': 'tok',"
+            " 'sPad': ''}}\n"
+            "    iPad = iTarget - len(json.dumps(dictLogin))\n"
+            "    dictLogin['claudeAiOauth']['sPad'] = 'x' * iPad\n"
+            "    baOut = json.dumps(dictLogin).encode()\n"
+            "    assert len(baOut) == iTarget, (len(baOut), iTarget)\n"
+            "    open(sPath, 'wb').write(baOut)\n")
+        iExitCode, baOutput = container.exec_run(
+            ["python3", "-c", sBuild])
+        assert iExitCode == 0, baOutput.decode()
+        # The transport execs as the unprivileged container user this
+        # bare image lacks; create it and make the fixtures readable,
+        # so the read under test runs exactly as production runs it.
+        iExitCode, baOutput = container.exec_run(
+            ["/bin/sh", "-c",
+             "useradd -m researcher && chmod 0644 /at.json /over.json"])
+        assert iExitCode == 0, baOutput.decode()
+
+        connectionDocker = moduleTransport.DockerConnection()
+        baAtCeiling = connectionDocker.fbaFetchCredentialFile(
+            container.id, "/at.json")
+        assert len(baAtCeiling) == iCeiling, (
+            "a login exactly at the ceiling must come back whole")
+        assert moduleProviders.fdictExtractRunnerCredential(
+            connectionDocker, container.id, "/at.json",
+        )["sAccessToken"] == "tok"
+
+        with pytest.raises(ValueError):
+            connectionDocker.fbaFetchCredentialFile(
+                container.id, "/over.json")
+        with pytest.raises(moduleProviders.RunnerCredentialError):
+            moduleProviders.fdictExtractRunnerCredential(
+                connectionDocker, container.id, "/over.json")
+        assert moduleProviders.fbRunnerCredentialIsPresent(
+            connectionDocker, container.id, "/over.json") is False
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass

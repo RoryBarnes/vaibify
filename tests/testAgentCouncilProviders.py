@@ -172,6 +172,9 @@ class _FakeCredentialConnection:
     def __init__(self, baContentOrError):
         self._baContentOrError = baContentOrError
 
+    def fbaFetchCredentialFile(self, sContainerId, sFilePath):
+        return self.fbaFetchFile(sContainerId, sFilePath)
+
     def fbaFetchFile(self, sContainerId, sFilePath, iMaxBytes=None):
         if isinstance(self._baContentOrError, Exception):
             raise self._baContentOrError

@@ -172,6 +172,7 @@ DICT_PRIMITIVE_ACCESS = {
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
+    "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,

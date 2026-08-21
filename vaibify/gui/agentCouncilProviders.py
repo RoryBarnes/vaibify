@@ -51,6 +51,7 @@ from .agentCouncilCampaign import (
     S_COMPLETION_TERMINAL,
 )
 from ..config import secretManager
+from ..docker import dockerConnection
 
 __all__ = [
     "S_PROVIDER_CLAUDE",
@@ -114,11 +115,11 @@ S_CLAUDE_CONFIG_COMPONENT = ".claude"
 S_OAUTH_BLOCK_KEY = "claudeAiOauth"
 S_ACCESS_TOKEN_KEY = "accessToken"
 
-# A login document is kilobytes. Capping the credential read here —
-# rather than inheriting dockerConnection's generic 64 MB file cap —
-# bounds what a hostile workspace file at the credential path can make
-# an HTTP request worker materialize.
-I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
+# Re-exported from the transport, which owns the ceiling because its
+# typed-read program is what enforces it INSIDE the container. A cap
+# applied only on the host can reject an oversized payload but cannot
+# avoid receiving it, which is the defect this replaced.
+I_MAX_CREDENTIAL_FILE_BYTES = dockerConnection.I_MAX_CREDENTIAL_FILE_BYTES
 
 # The default CLI program vector and its fixed, allowlisted flags. The
 # only interpolated values are the resolved model id and the composed
@@ -410,13 +411,19 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
     rather than materialized in memory.
     """
     try:
-        baContent = connectionDocker.fbaFetchFile(
-            sContainerId, sCredentialContainerPath,
-            iMaxBytes=I_MAX_CREDENTIAL_FILE_BYTES)
+        baContent = connectionDocker.fbaFetchCredentialFile(
+            sContainerId, sCredentialContainerPath)
     except FileNotFoundError as errorMissing:
         raise RunnerCredentialError(
             "no persisted Claude login was found on the workspace volume "
             f"at {sCredentialContainerPath}") from errorMissing
+    except ValueError as errorOversize:
+        # Over the in-container ceiling: a refusal the researcher can
+        # act on, never a ValueError escaping as a 500 from the launch
+        # probe's HTTP lane.
+        raise RunnerCredentialError(
+            "the file at the Claude login path is too large to be a "
+            f"login document ({errorOversize})") from errorOversize
     try:
         dictCredentials = json.loads(baContent.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as errorParse:

@@ -106,6 +106,12 @@ def _fdictDecideJourneyTurn(sHandle, dictTurnRequest):
     return fdictDecideCompleted(fdictMakeTurnResult(
         sVerdict="accept",
         listPlanItems=["add a content-hash cache to the slow step"],
+        listRejectedAlternatives=[
+            "a time-based cache — wrong answers after an edit"],
+        listVerificationRequirements=[
+            "pytest tests/testCacheLayer.py, then one manual rerun"],
+        listStopConditions=[
+            "halt if a cached run disagrees with a cold run"],
         sSummary="Cache the slow step keyed on content hashes."))
 
 
@@ -210,8 +216,20 @@ def _fnConveneThroughTheForm(page):
     page.wait_for_selector("#councilQuestion", timeout=5000)
     page.fill("#councilQuestion",
               "Should the slow pipeline step gain a caching layer?")
-    page.fill('.council-model[data-index="0"]', "planner-one")
-    page.fill('.council-model[data-index="1"]', "planner-two")
+    # The picker is populated from the capabilities discovery payload
+    # (section 8.2). It is a <select>: page.fill would raise here, and
+    # the journey filling free text is precisely how the unread
+    # discovery result went unnoticed.
+    listOptions = page.eval_on_selector(
+        '.council-model[data-index="0"]',
+        "el => Array.from(el.options).map(o => o.value).filter(v => v)")
+    assert listOptions, "the model picker was never populated"
+    page.select_option('.council-model[data-index="0"]', listOptions[0])
+    page.select_option('.council-model[data-index="1"]', listOptions[1])
+    # The provenance label must be visible: an un-verified alias set
+    # presented without saying so reads as a discovered list.
+    sProvenance = page.inner_text(".council-model-source")
+    assert "un-verified aliases" in sProvenance, sProvenance
     page.click("#btnCouncilConvene")
     page.wait_for_selector("#agentCouncilWorkspaceBody .council-summary",
                            timeout=8000)
@@ -269,6 +287,18 @@ def _fnAcceptTheCandidatePlan(page, serverHub, sCampaignId):
     page.wait_for_selector('.council-tab[data-tab="plan"]', timeout=16000)
     page.click('.council-tab[data-tab="plan"]')
     page.wait_for_selector("#btnCouncilAcceptPlan", timeout=16000)
+    # The design 7.1 sections must be ON SCREEN, not merely in the
+    # record: the renderer prints them only when populated, and until
+    # this journey scripted them nothing ever exercised that branch in
+    # a browser.
+    sPlanText = page.inner_text(".council-plan")
+    for sExpected in ("Rejected alternatives",
+                      "a time-based cache — wrong answers after an edit",
+                      "Required verification",
+                      "pytest tests/testCacheLayer.py, then one manual rerun",
+                      "Stop conditions",
+                      "halt if a cached run disagrees with a cold run"):
+        assert sExpected in sPlanText, sExpected
     page.click("#btnCouncilAcceptPlan")
     _fnWaitForState(page, serverHub, sCampaignId, "awaitingImplementation")
     page.wait_for_function(
