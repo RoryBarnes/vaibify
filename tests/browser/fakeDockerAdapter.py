@@ -128,7 +128,9 @@ LIST_MODELLED_COMMANDS = [
         "sMatch": "mkdir -p",
         "sPurpose": (
             "state-directory bootstrap before a state.json save (a "
-            "legacy root-layout repo has no .vaibify directory yet)"
+            "legacy root-layout repo has no .vaibify directory yet), "
+            "and the workspace seed's destination, which put_archive "
+            "requires to exist before it will unpack into it"
         ),
         "sLaneTwoAssertion": "testRealContainerMakesDirectories",
     },
@@ -158,6 +160,14 @@ class FailClosedDockerAdapter:
     def __init__(self):
         self._dictFiles = {}
         self.listSeenCommands = []
+        # Container paths a workspace seed landed, in the order they
+        # crossed. A journey asserts against this to prove the
+        # researcher's SELECTION reached the container, not merely that
+        # the route answered 200.
+        self.listSeededPaths = []
+        # Containers a journey started after conversion; see
+        # fnRecordContainerStarted.
+        self.listStartedContainers = []
         # Modification times the file-status poll reports, keyed by
         # container path. Mutable on purpose: the stale-state journey
         # ages an upstream artifact by bumping its stamp here, which is
@@ -182,7 +192,24 @@ class FailClosedDockerAdapter:
             "sShortId": S_CONTAINER_ID[:12],
             "sName": S_CONTAINER_NAME,
             "sImage": "ubuntu:24.04",
-        }]
+        }] + list(self.listStartedContainers)
+
+    def fnRecordContainerStarted(self, sName, sContainerId):
+        """Make a container the lane just STARTED report as running.
+
+        A journey that converts a project and then acts on the result
+        needs the world to agree that the new container exists: the
+        start executor is patched to avoid a real daemon, so without
+        this the lane would insist the container it just started is
+        not running, and every follow-on route would 404 for a reason
+        that has nothing to do with the behaviour under test.
+        """
+        self.listStartedContainers.append({
+            "sContainerId": sContainerId,
+            "sShortId": sContainerId[:12],
+            "sName": sName,
+            "sImage": "ubuntu:24.04",
+        })
 
     def _ftAnswerDirectoryCreate(self, sCommand):
         """Answer `mkdir -p`, but only for paths inside the workspace.
@@ -365,6 +392,24 @@ class FailClosedDockerAdapter:
         iMode=None, iUid=None, iGid=None,
     ):
         self._dictFiles[sPath] = baContent
+
+    def fnWriteTreeViaTar(
+        self, sContainerId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None,
+    ):
+        """Record the tree copy as one entry per archived top-level path.
+
+        Recorded rather than ignored so a journey can assert WHAT
+        crossed into the container. The real primitive walks each
+        directory; the lane only ever asserts the selection it passed,
+        so the top level is the honest granularity to model -- pretending
+        to expand a host tree here would be inventing content the fake
+        never read.
+        """
+        import os
+        for sHostPath in listHostPaths:
+            sLanded = f"{sDestinationDirectory}/{os.path.basename(sHostPath)}"
+            self.listSeededPaths.append(sLanded)
 
     def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,

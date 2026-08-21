@@ -17,8 +17,10 @@ from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
     fdictStampDockerIdForJournal,
+    fnRejectAgentTokenLane,
     fsHashContainerFileOrEmpty,
 )
+from vaibify.config.mutationAdmission import ControlPlaneRefusalError
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -46,6 +48,17 @@ I_MAX_EXISTENCE_BATCH = 1000
 
 class FileExistenceRequest(BaseModel):
     """Payload for batched file-existence checks."""
+
+    saRelativePaths: List[str]
+
+
+class WorkspaceSeedRequest(BaseModel):
+    """Payload naming which of a project's own files to copy in.
+
+    The paths are relative to the project's REGISTERED host directory,
+    never absolute, so the request cannot nominate a location outside
+    it; the handler proves containment again after resolving each one.
+    """
 
     saRelativePaths: List[str]
 
@@ -495,6 +508,162 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         return {"bSuccess": True, "sHostPath": sLandedPath}
 
 
+def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
+    """Register POST /api/files/{id}/seed-workspace.
+
+    Carries selected content from the researcher's own directory into a
+    freshly converted container's workspace volume. Until this existed
+    there was NO path by which host content reached a container: the
+    volume is populated only by the entrypoint's git clones, so
+    converting a local directory produced an empty workspace and said
+    nothing about it (2026-08-21).
+
+    Not agent-safe, and refused at the handler as well as in the
+    catalog: the paths name the researcher's OWN filesystem, and the
+    catalog cannot express "reads host state" on its own.
+    """
+
+    @ffnAgentAction("seed-workspace")
+    @app.post("/api/files/{sContainerId}/seed-workspace")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictSeedWorkspace(
+        sContainerId: str, request: WorkspaceSeedRequest,
+        requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        dictCtx["require"](sContainerId)
+        dictLaneTuple = fdictRequireLaneTupleForCommit(
+            requestHttp, sContainerId, "The workspace seed",
+        )
+        sHostDirectory = _fsRequireHostDirectoryForSeed(
+            dictLaneTuple["sContainerName"],
+        )
+        listHostPaths = _flistResolveSeedPaths(
+            sHostDirectory,
+            _flistAppendAlwaysSeededEntries(
+                sHostDirectory, request.saRelativePaths,
+            ),
+        )
+        sDestination = posixpath.join(
+            sWorkspaceRoot, os.path.basename(sHostDirectory),
+        )
+        _fnCommitWorkspaceSeed(
+            dictCtx, sContainerId, sDestination, listHostPaths,
+            dictLaneTuple, requestHttp,
+        )
+        return {
+            "bSuccess": True, "sDestination": sDestination,
+            "iCopiedCount": len(listHostPaths),
+        }
+
+
+def _fsRequireHostDirectoryForSeed(sContainerName):
+    """Return the registered host directory, refusing a host project."""
+    from vaibify.config.registryManager import (
+        fbIsHostProject, fdictGetProject,
+    )
+    dictProject = fdictGetProject(sContainerName)
+    if not dictProject:
+        raise HTTPException(
+            404, f"'{sContainerName}' is not a registered project.")
+    if fbIsHostProject(sContainerName):
+        raise HTTPException(409, (
+            f"'{sContainerName}' runs on this machine, so its files "
+            "already live where the project runs; there is no "
+            "container workspace to copy them into."
+        ))
+    sDirectory = dictProject.get("sDirectory", "")
+    if not sDirectory or not os.path.isdir(sDirectory):
+        raise HTTPException(404, (
+            f"The directory registered for '{sContainerName}' no "
+            "longer exists, so there is nothing to copy."
+        ))
+    return os.path.realpath(sDirectory)
+
+
+# Infrastructure that always crosses with the project, whatever the
+# researcher ticked. ".git" because a vaibify workflow must live inside
+# a git repository, so a container whose copy is not one cannot run a
+# pipeline; ".vaibify" because the Project file is written into it
+# during the conversion itself -- AFTER the researcher chose from a
+# list that therefore could not have offered it.
+_T_ALWAYS_SEEDED_ENTRIES = (".git", ".vaibify")
+
+
+def _flistAppendAlwaysSeededEntries(sHostDirectory, listRelativePaths):
+    """Return the selection plus any infrastructure it did not name."""
+    listComplete = list(listRelativePaths)
+    for sEntry in _T_ALWAYS_SEEDED_ENTRIES:
+        if sEntry in listComplete:
+            continue
+        if os.path.exists(os.path.join(sHostDirectory, sEntry)):
+            listComplete.append(sEntry)
+    return listComplete
+
+
+def _flistResolveSeedPaths(sHostDirectory, saRelativePaths):
+    """Return absolute host paths, each proven inside the project.
+
+    HOST paths, so ``os.path`` throughout -- the container-path helper
+    beside it is ``posixpath`` and would mis-validate on any host whose
+    separator is not "/". Each entry is resolved and required to sit
+    under the project directory, so neither ``..`` nor an absolute
+    path nor a symlink pointing out of the tree can nominate a file
+    the researcher never offered.
+    """
+    if not saRelativePaths:
+        raise HTTPException(400, "No files were selected to copy.")
+    listResolved = []
+    for sRelativePath in saRelativePaths:
+        sCandidate = os.path.realpath(
+            os.path.join(sHostDirectory, sRelativePath),
+        )
+        if sCandidate != sHostDirectory and not sCandidate.startswith(
+            sHostDirectory + os.sep,
+        ):
+            raise HTTPException(
+                403, f"'{sRelativePath}' is outside the project.")
+        if not os.path.exists(sCandidate):
+            raise HTTPException(
+                404, f"'{sRelativePath}' no longer exists.")
+        listResolved.append(sCandidate)
+    return listResolved
+
+
+def _fnCommitWorkspaceSeed(
+    dictCtx, sContainerId, sDestination, listHostPaths,
+    dictLaneTuple, requestHttp,
+):
+    """Commit the tree copy through carrier mode (a) (design §8)."""
+    from .. import commitCarrier
+
+    def fnSeedTheWorkspace():
+        try:
+            dictCtx["docker"].ftResultExecuteCommand(
+                sContainerId, f"mkdir -p {fsShellQuote(sDestination)}",
+            )
+            dictCtx["docker"].fnWriteTreeViaTar(
+                sContainerId, sDestination, listHostPaths,
+            )
+        except ControlPlaneRefusalError:
+            raise
+        except Exception as error:
+            raise HTTPException(500, str(error))
+
+    # Journalled as a file-write, the kind it actually is, rather than
+    # a "workspace-seed" kind of its own: the journal's allowlist is
+    # the set of kinds `vaibify reconcile` knows how to settle, so a
+    # new kind is a promise the reconciler has to keep. The seed writes
+    # files into the workspace and settles exactly like the upload
+    # route beside it.
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sDestination,
+        fnSeedTheWorkspace,
+        fdictStampDockerIdForJournal(sContainerId),
+    )
+
+
 def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
     """Return the active workflow's project-repo path or raise HTTP 400."""
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -665,6 +834,7 @@ def fnRegisterAll(app, dictCtx, sWorkspaceRoot):
     _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot)
+    _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFiles(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot)

@@ -212,7 +212,17 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # first state save instead of crashing the load; it sits in the same
 # persist tail as the checkpoint cp and install mv and rides the same
 # admissions. Classified on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 209
+# +3 (2026-08-21): the workspace seed. Two are the route's own carrier
+# worker (the `mkdir -p` that put_archive requires, and the tree write
+# itself) and one is the connection router's pass-through delegate.
+# They are the first path by which host content reaches a container at
+# all -- before this, a converted project's workspace could only be
+# filled by the entrypoint's git clones, so a researcher converting a
+# local directory got an empty container. Every source path is proven
+# to sit under the project's registered directory before the worker
+# opens, and the destination is composed, never accepted. Classified
+# on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -1737,6 +1747,12 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # Pure argument/flag assembly for a later launch; no daemon call.
     "flistBuildRunArgs",
     "fnMountSecrets",
+    # A tarfile entry filter, closed over two integers. It is called by
+    # tarfile once per archive member to stamp the container user onto
+    # the entry, touches no container and makes no call; it is a nested
+    # function rather than a method only because it must capture the
+    # resolved uid/gid.
+    "finfoStampOwnership",
     # Validation and naming helpers.
     "fnValidateReservationIdOrRaise",
     # Reads that answer about the HOST or the client, not a container.

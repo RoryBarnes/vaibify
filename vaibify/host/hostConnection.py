@@ -394,6 +394,28 @@ class HostConnection:
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteTreeViaTar(
+        self, sResourceId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None,
+    ):
+        """Refuse: a host project's files are already where they run.
+
+        The Docker leg's tree copy exists to carry host content across
+        into a workspace volume. A host project HAS no such volume --
+        its workspace IS the researcher's directory -- so there is no
+        crossing to make, and every plausible reading of "copy these
+        into the project" would either duplicate the tree onto itself
+        or overwrite the originals. The refusal names that rather than
+        silently succeeding, which is what an alias to a host-side
+        copy would do.
+        """
+        del sDestinationDirectory, listHostPaths, iUid, iGid
+        raise HostPathOutsideProjectError(
+            f"'{sResourceId}' is a host project: its files already live "
+            "where the project runs, so there is no container workspace "
+            "to copy them into."
+        )
+
     # -----------------------------------------------------------------
     # The exec primitive: gated, journaled, group-bounded (plan §4).
     # -----------------------------------------------------------------

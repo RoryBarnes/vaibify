@@ -209,9 +209,26 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
 # (that is how tmpu2uv9b_9/ shipped into history). Confining the temp
 # dirs to a gitignored directory keeps that litter uncommittable while
 # still exercising the real path guard.
-PATH_BROWSER_LANE_TMP_ROOT = (
-    pathlib.Path(__file__).resolve().parents[2] / ".browserLaneTmp"
-)
+#
+# "the checkout is beneath it" is an ASSUMPTION, and the falsification
+# harness breaks it: it runs every mutation inside a disposable git
+# worktree under the system temp directory, which is not under $HOME on
+# macOS. Any journey touching a $HOME-jailed route then fails there for
+# an environment reason rather than a real one — which reports a
+# falsification as unconfirmed and reads as an undefended guard
+# (2026-08-21). So the root follows the checkout when the checkout is
+# under $HOME, and otherwise falls back to a directory that is, keeping
+# the path guard genuinely exercised in both places.
+def _fpathBrowserLaneTempRoot():
+    """Return a scratch root that is under $HOME in every checkout."""
+    pathCheckout = pathlib.Path(__file__).resolve().parents[2]
+    pathHome = pathlib.Path.home().resolve()
+    if pathCheckout == pathHome or pathHome in pathCheckout.parents:
+        return pathCheckout / ".browserLaneTmp"
+    return pathHome / ".vaibify" / "browserLaneTmp"
+
+
+PATH_BROWSER_LANE_TMP_ROOT = _fpathBrowserLaneTempRoot()
 
 
 @contextlib.contextmanager
@@ -235,7 +252,7 @@ def _fnIsolateProjectRegistry():
     # Beneath the user's home (so the wizard exercises the real path
     # guard) but inside a gitignored subdir (so a killed run's leftover
     # can never be committed) — see PATH_BROWSER_LANE_TMP_ROOT.
-    PATH_BROWSER_LANE_TMP_ROOT.mkdir(exist_ok=True)
+    PATH_BROWSER_LANE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         dir=str(PATH_BROWSER_LANE_TMP_ROOT),
     ) as sHome:

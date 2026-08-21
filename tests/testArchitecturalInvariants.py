@@ -5168,7 +5168,29 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Project's first workflow file comes into being; without it the
     # post-promotion re-entry stranded the researcher on an empty
     # picker. Lives beside the promote route it serves.
-    "registryRoutes.py": 1970,
+    # +73 (2026-08-21): the project git-remote pair (read + set) and
+    # the directory resolver they share. A project with no remote is
+    # the ordinary state of a local directory, and the conversion
+    # wizard says so at the moment the container becomes the only copy
+    # not on the researcher's disk. It belongs with the other
+    # project-scoped registry operations — it resolves a project the
+    # same way convert and promote do, and splitting it out would
+    # separate two small routes from the registry lookup and the
+    # name validator they depend on.
+    # +19 (2026-08-21): containerizing now creates the PROJECT too,
+    # not just the container — a container IS a Project in vaibify's
+    # model, and a conversion that made only the container left the
+    # researcher at a Project hub offering nothing but "Blank
+    # Project". The scaffold helper it shares with promotion was
+    # generalized rather than duplicated.
+    # +85 (2026-08-21): the dependency-scan route and the two helpers
+    # that select which of the researcher's selected entries are
+    # Python files, walking a chosen directory and proving each
+    # resolved path stays inside the project. It sits with the other
+    # project-scoped registry operations because it resolves a project
+    # exactly as they do; the analysis itself is a separate module
+    # (dependencyScan.py) precisely so this one only routes.
+    "registryRoutes.py": 2148,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -5224,7 +5246,26 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the figure is the merged file's real size. Taking either side's
     # number alone would have re-armed the ratchet below the module it
     # governs, which fails closed but for a reason nobody could read.
-    "actionCatalog.py": 991,
+    # +6 (2026-08-21): the seed's journal-kind rationale — it is
+    # journalled as a file-write rather than a bespoke kind, because
+    # the journal's allowlist is the set of kinds `vaibify reconcile`
+    # knows how to settle, and that is worth stating where somebody
+    # would otherwise add one.
+    # +12 (2026-08-21): seed-workspace, the one action carrying content
+    # from the researcher's own directory into a container. Its entry
+    # is long because it is NOT agent-safe and the comment has to say
+    # why — a catalog entry cannot express "reads host filesystem
+    # state", so the handler refuses the agent lane as well.
+    # +10 (2026-08-21): set-project-git-remote, on the same terms — it
+    # rewrites the researcher's own git config, so it too is excluded
+    # from the agent lane and its entry carries the reason.
+    # +8 (2026-08-21): the dependency scan's exclusion entry. It reads
+    # host source and writes nothing, so it is excluded from the agent
+    # lane rather than advertised — an agent-invokable version would
+    # be an import oracle over the researcher's own files. The comment
+    # carries that reasoning because the exclusion set is where a
+    # future reader will ask why this route is not offered.
+    "actionCatalog.py": 1021,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5268,6 +5309,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a fifth line inside it -- the reason it costs a round trip is
     # the whole point and belongs where a reader will find it.
     "routes/gitRoutes.py": 1120,
+    # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
+    # content from the researcher's own directory into a container's
+    # volume. Justified here rather than split: this module's
+    # responsibility is already moving files ACROSS the host/container
+    # boundary in both directions -- the pull route sends them the
+    # other way -- and a module holding one route would separate the
+    # seed from the containment helpers and denylist it shares with
+    # its neighbours. The added lines are the route, the two host-side
+    # validators (registry lookup and per-path containment), and the
+    # carrier commit.
+    # +23 (2026-08-21): the always-seeded infrastructure list (.git and
+    # .vaibify) and its helper. The Project file is written into
+    # .vaibify DURING the conversion, i.e. after the researcher chose
+    # from a list that could not have offered it, so the selection
+    # alone cannot carry it.
+    "routes/fileRoutes.py": 840,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -5380,7 +5437,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # grew the module and only the module-size ratchet noticed. It is one
     # more row in DICT_CONTROL_PLANE_SCOPES, which is the table's whole
     # job, so the seam has not moved.
-    "routeScope.py": 953,
+    # +7 (2026-08-21): the git-remote route's authorization-scope entry
+    # and the reason it is browser-hub rather than container-scoped —
+    # it writes the researcher's own repository and opens no container.
+    # The scope table is the default-deny gate's data, so an entry
+    # growing it is the table doing its job, not a module accreting a
+    # second concern.
+    # +9 (2026-08-21): the dependency scan's scope entry and the note
+    # that it writes nothing — a POST only because its input is a
+    # list, still gated because it reads the researcher's own files.
+    "routeScope.py": 969,
 }
 
 

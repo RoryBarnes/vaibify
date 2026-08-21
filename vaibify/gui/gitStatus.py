@@ -26,8 +26,11 @@ from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 
 __all__ = [
     "LIST_GIT_HARDENING_CONFIG",
+    "fbAddOriginUrl",
+    "fbUrlIsSafeGitArgument",
     "fdictGitStatusForWorkspace",
     "fdictEmptyStatus",
+    "fsReadOriginUrl",
     "fsRunGit",
 ]
 
@@ -84,6 +87,62 @@ def fsRunGit(listArgs, sCwd):
             stdout="",
             stderr=str(error),
         )
+
+
+def fsReadOriginUrl(sDirectory):
+    """Return the directory's ``origin`` URL, or "" when it has none.
+
+    A repository with no remote is not an error -- it is the ordinary
+    state of a directory a researcher has been working in locally, and
+    the whole reason the conversion wizard asks about it.
+    """
+    if not sDirectory or not os.path.isdir(sDirectory):
+        return ""
+    processGit = fsRunGit(
+        ["remote", "get-url", "origin"], sCwd=sDirectory,
+    )
+    if processGit.returncode != 0:
+        return ""
+    return (processGit.stdout or "").strip()
+
+
+def fbAddOriginUrl(sDirectory, sRemoteUrl):
+    """Point the directory's ``origin`` at a URL; return whether it took.
+
+    Adds the remote, falling back to ``set-url`` when one already
+    exists, so re-running is safe rather than an error the researcher
+    has to interpret. The URL is passed as its own argv element and is
+    refused above if it could be read as an option -- see
+    ``fbUrlIsSafeGitArgument``.
+    """
+    if not fbUrlIsSafeGitArgument(sRemoteUrl):
+        return False
+    processGit = fsRunGit(
+        ["remote", "add", "origin", sRemoteUrl], sCwd=sDirectory,
+    )
+    if processGit.returncode == 0:
+        return True
+    processGit = fsRunGit(
+        ["remote", "set-url", "origin", sRemoteUrl], sCwd=sDirectory,
+    )
+    return processGit.returncode == 0
+
+
+def fbUrlIsSafeGitArgument(sRemoteUrl):
+    """Return True when the URL cannot be mistaken for a git OPTION.
+
+    ``fsRunGit`` passes argv as a list, so there is no shell and no
+    quoting to get wrong -- but a value beginning with "-" is still
+    read by git as a flag rather than a URL, which is argument
+    injection without a shell anywhere in sight. Everything else about
+    the URL is git's business, not vaibify's: refusing schemes here
+    would only teach researchers that vaibify guesses at what a valid
+    remote looks like.
+    """
+    sCandidate = (sRemoteUrl or "").strip()
+    if not sCandidate or sCandidate.startswith("-"):
+        return False
+    return not any(sChar in sCandidate for sChar in ("\n", "\r", "\0"))
 
 
 def _fbIsGitRepo(sWorkspaceRoot):

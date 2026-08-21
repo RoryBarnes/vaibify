@@ -162,6 +162,11 @@ DICT_PRIMITIVE_ACCESS = {
     "ftResultExecuteCommand": S_ACCESS_ARBITRARY_COMMAND,
     "fnWriteFile": S_ACCESS_ARCHIVE_WRITE,
     "fnWriteFileViaTar": S_ACCESS_ARCHIVE_WRITE,
+    # The bulk sibling: one put_archive carrying a whole host tree into
+    # a container. Same access as the single-file writes and recorded
+    # on the same terms -- a write primitive the vocabulary does not
+    # know is a write the ledger cannot count.
+    "fnWriteTreeViaTar": S_ACCESS_ARCHIVE_WRITE,
     "fsExecCreate": S_ACCESS_EXEC_CREATE,
     "fsocketExecStart": S_ACCESS_EXEC_CREATE,
     "fnExecResize": S_ACCESS_EXEC_STATE,

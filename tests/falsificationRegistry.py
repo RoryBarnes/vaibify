@@ -12847,6 +12847,143 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testConvertToProjectJourney.py::'
+            'testASpacedNameIsRefusedAtTheNamingStepNotAtTheEnd'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Let the wizard advance past a container name Docker will
+        # refuse: the researcher walks the remaining pages, chooses
+        # packages and files, and meets the refusal at the final click.
+        old=(
+            '            if (sProblem) {\n'
+            '                VaibifyApp.fnShowToast(sProblem, "warning");\n'
+            '                return false;\n'
+            '            }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testConvertToProjectJourney.py::'
+            'testThePackagesPageIsPrefilledFromTheChosenScripts'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Never render the detected field: the packages page opens
+        # blank again and the researcher is back to re-reading their
+        # own scripts and transcribing the imports by hand.
+        old=(
+            '        var sDetected = _dictWizardData.sMode === "convert"\n'
+            '            ? _fsRenderDetectedPackagesField() : "";\n'
+        ),
+        new=(
+            '        var sDetected = "";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testConvertToProjectJourney.py::'
+            'testLeavingEveryAgentUntickedAsksBeforeContinuing'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Never ask: the wizard walks straight past an agentless
+        # configuration, and the researcher discovers the omission
+        # after an image build they now have to repeat.
+        old=(
+            '        if (_fbLeavingFeaturesWithNoAgent()) {\n'
+            '            _fnConfirmNoAgentThenAdvance();\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConvertToContainerRoute.py::'
+            'testAnUppercaseContainerNameIsRefusedBeforeAnythingIsWritten'
+        ),
+        source='vaibify/config/projectConfig.py',
+        # Readmit capitals: vaibify again accepts container names it
+        # cannot build, and the researcher meets the failure at
+        # `docker build -t Name:base` after the whole wizard.
+        old=(
+            '_RE_DOCKER_SAFE_NAME = re.compile'
+            '(r"^[a-z0-9][a-z0-9_.-]{0,62}$")\n'
+        ),
+        new=(
+            '_RE_DOCKER_SAFE_NAME = re.compile'
+            '(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyScan.py::'
+            'testTheStandardLibraryIsNeverSuggested'
+        ),
+        source='vaibify/gui/dependencyScan.py',
+        # Suggest every imported name: the researcher is offered
+        # `json`, `os` and `pathlib` as packages to pip-install, which
+        # is asking them to install parts of Python.
+        old=(
+            '            if sModule in setStandardLibrary or sModule '
+            'in setProjectOwn:\n'
+            '                continue\n'
+        ),
+        new=(
+            '            if sModule in setProjectOwn:\n'
+            '                continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyScan.py::'
+            'testTheProjectsOwnModulesAreNeverSuggested'
+        ),
+        source='vaibify/gui/dependencyScan.py',
+        # Forget that the project provides its own modules: every
+        # local helper becomes a package the container tries, and
+        # fails, to install.
+        old=(
+            '    setProjectOwn = _fsetReadProjectOwnModuleNames'
+            '(sProjectDirectory)\n'
+        ),
+        new=(
+            '    setProjectOwn = set()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyScan.py::'
+            'testTheRouteCannotBeAskedToReadOutsideTheProject'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Read whatever the request names: the scan reports the
+        # imports of a file the researcher never offered, echoing its
+        # contents back into the dashboard.
+        old=(
+            '        if not sCandidate.startswith(sDirectory + os.sep):\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConvertToContainerRoute.py::'
+            'testConversionCreatesTheProjectAndNotOnlyTheContainer'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Name the scaffolded workflow after the CONTAINER instead of
+        # the Project: the researcher's own name is discarded and the
+        # Project hub shows the Docker-safe identifier they never
+        # chose.
+        old=(
+            '            request.sWorkflowName or request.sProjectName,\n'
+        ),
+        new=(
+            '            request.sProjectName,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testPromoteToHostProjectRoute.py::'
             'testPromotionScaffoldsTheWorkflowTheDashboardWillOpen'
         ),
@@ -12856,11 +12993,90 @@ def _fdictEntry(sRel):
         # re-entry strands the researcher on an empty picker (the
         # 2026-08-20 live incident).
         old=(
-            '        _fnScaffoldEmptyWorkflowForPromotion(\n'
+            '        _fnScaffoldWorkflowIfAbsent(\n'
             '            dictProject["sDirectory"], request.sProjectName,\n'
             '        )\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testConvertToProjectJourney.py::'
+            'testOnlyTheTickedFilesAreCopiedIntoTheContainer'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Ignore the researcher's ticks and seed every entry the page
+        # offered: files they deliberately excluded cross into the
+        # container anyway, and the summary they approved was a
+        # different set from the one that was copied.
+        old=(
+            '        _dictWizardData.saSeedPaths = Array.prototype.filter'
+            '.call(\n'
+            '            listRows, function (elRow) { return elRow.checked; }\n'
+            '        ).map(function (elRow) { return elRow.dataset.seedName; });\n'
+        ),
+        new=(
+            '        _dictWizardData.saSeedPaths = Array.prototype.map.call(\n'
+            '            listRows,\n'
+            '            function (elRow) { return elRow.dataset.seedName; });\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceSeedPaths.py::'
+            'testARelativeEscapeIsRefused'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # Admit every resolved path without proving containment: a
+        # relative escape from the seed request reads any file the hub's
+        # user can reach and copies it into the container.
+        old=(
+            '        if sCandidate != sHostDirectory and not '
+            'sCandidate.startswith(\n'
+            '            sHostDirectory + os.sep,\n'
+            '        ):\n'
+            '            raise HTTPException(\n'
+            '                403, f"\'{sRelativePath}\' is outside the '
+            'project.")\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceSeedPaths.py::'
+            'testASymlinkPointingOutOfTheProjectIsRefused'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # Judge the path's TEXT instead of where it resolves to: a
+        # symlink out of the project contains no ".." and is not
+        # absolute, so a textual guard admits it and the link's target
+        # is archived.
+        old=(
+            '        sCandidate = os.path.realpath(\n'
+            '            os.path.join(sHostDirectory, sRelativePath),\n'
+            '        )\n'
+        ),
+        new=(
+            '        sCandidate = os.path.join(\n'
+            '            sHostDirectory, sRelativePath,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceSeedPaths.py::'
+            'testAHostProjectIsRefusedRatherThanSeeded'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # Drop the host-project refusal: the seed proceeds against a
+        # project whose workspace IS the researcher's own directory,
+        # running a copy over their live files.
+        old=(
+            '    if fbIsHostProject(sContainerName):\n'
+        ),
+        new=(
+            '    if False:\n'
+        ),
     ),
     Falsification(
         nodeid=(

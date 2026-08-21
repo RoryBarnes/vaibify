@@ -3999,6 +3999,48 @@ body.proof-level-2 .level-cell-favicon {
     animation: panelBorderGlow 0.6s ease-out;
 }
 
+.wizard-name-problem {
+    color: var(--color-red-text, #ff8080);
+    font-size: 12px;
+    margin-top: 4px;
+    min-height: 1em;
+}
+
+/* --- Conversion file-selection step --- */
+
+.wizard-seed-all {
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 4px;
+    padding-bottom: 6px;
+}
+
+.wizard-remote-notice {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 10px;
+    padding: 10px;
+}
+
+.wizard-remote-notice p {
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.wizard-remote-row {
+    display: flex;
+    gap: 6px;
+}
+
+.wizard-remote-row input {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    flex: 1;
+    padding: 5px 8px;
+}
+
 /* --- Promotion transition curtain --- */
 
 /* Above the hubs and modals (1000) so the hand-off's intermediate

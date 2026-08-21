@@ -20,7 +20,7 @@ from vaibify.config.projectConfig import fconfigLoadFromFile
 
 
 S_HOST_NAME = "greenhouse sandbox"
-S_NEW_NAME = "greenhouseBox"
+S_NEW_NAME = "greenhouse-box"
 S_OTHER_CONTAINER = "occupied"
 
 
@@ -127,7 +127,7 @@ def testRepeatCallAfterSuccessIsRefusedNotReRegistered(tclient):
     # The project is now a container under the NEW name; converting it
     # again is refused as host-only.
     response = client.post(
-        _sConvertUrl(S_NEW_NAME), json=_fdictBody("greenhouseBoxTwo"),
+        _sConvertUrl(S_NEW_NAME), json=_fdictBody("greenhouse-box-two"),
     )
     assert response.status_code == 409
     assert "already a containerized project" in response.text
@@ -246,3 +246,94 @@ def testNonDockerSafeNewNameIs400AndDoesNotMutate(tclient):
     configHost = fconfigLoadFromFile(dictHost["sConfigPath"])
     assert configHost.sProjectName == S_HOST_NAME
     assert registryManager.fbIsHostProject(S_HOST_NAME)
+
+
+def _fsScaffoldedWorkflowPath(tmp_path):
+    return str(
+        tmp_path / S_HOST_NAME / ".vaibify" / "projects" / "project.json"
+    )
+
+
+@pytest.mark.falsification
+def testConversionCreatesTheProjectAndNotOnlyTheContainer(
+    tclient, tmp_path,
+):
+    """Containerizing brings a PROJECT into being, under its own name.
+
+    A container is already a Project in vaibify's model, so a
+    conversion that produced only a container left the researcher
+    waiting out an image build and arriving at a Project hub offering
+    nothing but "Blank Project" (live report, 2026-08-21). The
+    workflow is named by sWorkflowName -- the researcher's own name,
+    which may hold spaces -- and NOT by the Docker-safe container name,
+    so the two are kept distinct here on purpose.
+
+    Kills: dropping the scaffold call from the convert route, and
+    naming the workflow after the container instead of the Project.
+    """
+    import json as moduleJson
+    client, _ = tclient
+    dictBody = dict(_fdictBody(), sWorkflowName="AI Greenhouse")
+    response = client.post(_sConvertUrl(S_HOST_NAME), json=dictBody)
+    assert response.status_code == 200, response.text
+    sWorkflowPath = _fsScaffoldedWorkflowPath(tmp_path)
+    assert os.path.isfile(sWorkflowPath), (
+        "the conversion produced a container but no Project"
+    )
+    with open(sWorkflowPath) as fileWorkflow:
+        dictWorkflow = moduleJson.load(fileWorkflow)
+    assert dictWorkflow["sWorkflowName"] == "AI Greenhouse"
+    assert dictWorkflow["listSteps"] == []
+
+
+def testAConversionWithNoProjectNameFallsBackToTheContainerName(
+    tclient, tmp_path,
+):
+    """An older client sending only a container name still gets a Project."""
+    import json as moduleJson
+    client, _ = tclient
+    response = client.post(_sConvertUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    with open(_fsScaffoldedWorkflowPath(tmp_path)) as fileWorkflow:
+        assert moduleJson.load(
+            fileWorkflow,
+        )["sWorkflowName"] == S_NEW_NAME
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize(
+    "sRejectedName",
+    ["AI-Greenhouse", "aiGreenhouse", "Greenhouse"],
+    ids=["allCaps", "camelCase", "leadingCapital"],
+)
+def testAnUppercaseContainerNameIsRefusedBeforeAnythingIsWritten(
+    tclient, sRejectedName,
+):
+    """A name Docker cannot build an image for is refused up front.
+
+    Docker's own rules are not uniform: `docker run --name` accepts
+    capitals and an IMAGE REPOSITORY NAME does not, and a container
+    project's name becomes both. Vaibify's validator mirrored the
+    laxer rule, so "AI-Greenhouse" passed every check, rewrote the
+    project's config, re-registered it, started an image build, and
+    died on `docker build -t AI-Greenhouse:base` with "repository name
+    must be lowercase" -- after the researcher had answered every
+    question the wizard asked (live report, 2026-08-21).
+
+    The refusal must also leave the project UNTOUCHED. A validator that
+    rejected late, after the config rewrite, would still strand a host
+    sandbox holding a container's configuration.
+
+    Kills: readmitting capitals to _RE_DOCKER_SAFE_NAME.
+    """
+    client, _ = tclient
+    response = client.post(
+        _sConvertUrl(S_HOST_NAME), json=_fdictBody(sRejectedName),
+    )
+    assert response.status_code == 400, response.text
+    assert registryManager.fdictGetProject(sRejectedName) is None
+    dictHost = registryManager.fdictGetProject(S_HOST_NAME)
+    assert dictHost is not None, "the refusal cost the project its entry"
+    assert registryManager.fbIsHostProject(S_HOST_NAME)
+    configHost = fconfigLoadFromFile(dictHost["sConfigPath"])
+    assert configHost.sProjectName == S_HOST_NAME

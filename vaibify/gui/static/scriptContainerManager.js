@@ -676,7 +676,7 @@ var VaibifyContainerManager = (function () {
         }
         var sStoredId = elTile ? elTile.dataset.containerId : "";
         var sTargetId = sStoredId ||
-            await _fsResolveContainerId(sName);
+            await fsResolveContainerId(sName);
         if (!sTargetId) return;
         _fnShowInitializingOverlay();
         var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
@@ -1068,7 +1068,17 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnBuildContainer(sName, bNoCache) {
+        /* Returns whether the container is now BUILT AND RUNNING. It
+           reports its own failures, so a caller has nothing to add --
+           but a caller with follow-on work needs to know not to
+           attempt it. Without this, a failed build was followed by an
+           attempt to copy files into a container that did not exist,
+           and the researcher was told their files were not copied
+           because it was "not reporting as running yet" -- true, and
+           useless, when the real answer was three lines up in the
+           build log (live report, 2026-08-21). */
         var elOverlay = document.getElementById("modalBuildProgress");
+        var bBuiltAndRunning = false;
         _fnResetBuildProgressTail();
         elOverlay.style.display = "flex";
         _fnStartBuildProgressPoll(sName);
@@ -1079,9 +1089,10 @@ var VaibifyContainerManager = (function () {
             await VaibifyApi.fdictPostRaw(sUrl);
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
+            bBuiltAndRunning = true;
         } catch (error) {
             if (error.iStatus === 409) {
-                await _fnWatchRunningBuild(sName);
+                bBuiltAndRunning = await _fnWatchRunningBuild(sName);
             } else {
                 _fnReportBuildFailure(error);
             }
@@ -1090,6 +1101,7 @@ var VaibifyContainerManager = (function () {
             elOverlay.style.display = "none";
             fnLoadContainers();
         }
+        return bBuiltAndRunning;
     }
 
     async function _fnWatchRunningBuild(sName) {
@@ -1108,7 +1120,7 @@ var VaibifyContainerManager = (function () {
                 VaibifyApp.fnShowToast(
                     "Lost contact with the running build; refresh " +
                     "to check its status.", "error");
-                return;
+                return false;
             }
             _fnRenderBuildProgress(dictProgress);
             if (!dictProgress.bLive) break;
@@ -1119,11 +1131,12 @@ var VaibifyContainerManager = (function () {
         if (dictProgress.sOutcome === "succeeded") {
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
-            return;
+            return true;
         }
         VaibifyApp.fnShowToast(
             "The running build failed; see the hub log for the " +
             "full output.", "error");
+        return false;
     }
 
     function _fnReportBuildFailure(error) {
@@ -1513,7 +1526,7 @@ var VaibifyContainerManager = (function () {
         return "/api/registry";
     }
 
-    async function _fsResolveContainerId(sName) {
+    async function fsResolveContainerId(sName) {
         try {
             var dictResult = await VaibifyApi.fdictGet(_fsRegistryUrl());
             var listAll = dictResult.listContainers || [];
@@ -1664,7 +1677,7 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnConnectToContainerByName(sName) {
-        var sContainerId = await _fsResolveContainerId(sName);
+        var sContainerId = await fsResolveContainerId(sName);
         if (!sContainerId) {
             VaibifyApp.fnShowToast(
                 "Container not found for " + sName, "error");
@@ -1943,6 +1956,7 @@ var VaibifyContainerManager = (function () {
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
         fbClaimContainer: fbClaimContainer,
+        fsResolveContainerId: fsResolveContainerId,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,
         fnOpenAddChoice: fnOpenAddChoice,
