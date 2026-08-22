@@ -85,15 +85,30 @@ _S_COUNCIL_RUNNER_RATIONALE = (
     "testCouncilGatewayLive.py (failure-after-create settles; forced "
     "indeterminate teardown quarantines with budget held) and "
     "testAgentCouncilProvidersLive.py (shutdown drain and restart "
-    "reconcile settle only labelled runners)."
+    "reconcile settle only labelled runners). "
+    "Re-reviewed 2026-08-21 when the create and discovery fingerprints "
+    "moved: every council container now also carries "
+    "S_COUNCIL_RESOURCE_LABEL, the project container name that owns it, "
+    "and the startup reconcile SPARES a survivor whose project is held "
+    "by a live peer hub. Neither widens SDK reach. The label is inert "
+    "metadata read only by the reconcile, and sparing strictly REDUCES "
+    "what may be destroyed — the direction that cannot turn a "
+    "council-scoped call into a project-scoped one. The failure mode "
+    "worth naming is the opposite one, a survivor spared forever "
+    "against a lock nobody really holds; fdictReadLockHolder answers "
+    "only for a live foreign process and reaps a stale holder on the "
+    "spot, and an unlabeled survivor is swept rather than spared, so "
+    "both roads lead back to sweeping."
 )
 _LIST_COUNCIL_RUNNER_SYMBOLS = [
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL",
+    "gui/agentCouncilRunner.py::S_COUNCIL_RESOURCE_LABEL",
     "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification",
     "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner",
     "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle",
     "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners",
     "gui/agentCouncilDockerGateway.py::fdictDestroyRunnerAndProveAbsence",
+    "gui/agentCouncilRegistry.py::_fbSurvivorBelongsToALivePeerHub",
 ]
 _DICT_COUNCIL_RUNNER_DISPOSITION = {
     "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
@@ -129,13 +144,22 @@ _S_COUNCIL_EGRESS_RATIONALE = (
     "forbidden host, raw-IP, non-CONNECT, direct-dial, external-DNS, "
     "IPv6 and no-network are all refused -- and teardown proves "
     "absence idempotently) and testCouncilGatewayLive.py (the pinned, "
-    "non-root, cap-dropped, bounded posture inspected live)."
+    "non-root, cap-dropped, bounded posture inspected live). "
+    "Re-reviewed 2026-08-21 when the proxy-launch fingerprint moved: "
+    "the proxy now also carries S_COUNCIL_RESOURCE_LABEL, the owning "
+    "project container's name, so a peer hub's startup reconcile can "
+    "recognise whose proxy it is instead of sweeping every "
+    "council-labelled container on the daemon. It is one more label "
+    "value composed from a server-owned name — no new SDK reach, no "
+    "new caller text, and nothing about the proxy's posture or its "
+    "prove-absence teardown changes."
 )
 _LIST_COUNCIL_EGRESS_SYMBOLS = [
     "gui/agentCouncilEgress.py::S_NETWORK_NAME_PREFIX",
     "gui/agentCouncilEgress.py::S_PROXY_NAME_PREFIX",
     "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise",
+    "gui/agentCouncilRunner.py::S_COUNCIL_RESOURCE_LABEL",
 ]
 _DICT_COUNCIL_EGRESS_DISPOSITION = {
     "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
@@ -314,14 +338,27 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise":
         "87db3f8231c827f6",
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL": "a5575a22df9e26bf",
+    # Re-read 2026-08-21 and the ruling SURVIVES, for the three symbols
+    # below plus the two new ones. What changed is ownership
+    # ATTRIBUTION, not reach: creation stamps a second label naming the
+    # project container, and discovery reads it back. The reconcile then
+    # spares a survivor whose project a live peer hub holds — a
+    # restriction on what may be destroyed, never an extension of what
+    # may be touched. Two hubs on one daemon were destroying each
+    # other's live runners because a daemon-wide label was the only
+    # thing either could see.
+    "gui/agentCouncilRunner.py::S_COUNCIL_RESOURCE_LABEL":
+        "eba896746fc73000",
     "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification":
-        "2f637bbd2a9ad36f",
+        "5e83fd78e4730736",
+    "gui/agentCouncilRegistry.py::_fbSurvivorBelongsToALivePeerHub":
+        "f1b55d856901cb27",
     "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner":
-        "1890cb0e081d815d",
+        "a24871a501bf8d6b",
     "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle":
         "51560bacb4682048",
     "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners":
-        "5ef01ac0709ce6a9",
+        "be05651320b3051d",
     "gui/agentCouncilDockerGateway.py::fdictDestroyRunnerAndProveAbsence":
         "05d83409bc4a9f16",
     "gui/commitCarrier.py::S_GATED_HELPER_STUB": "2bd6936769eb618c",

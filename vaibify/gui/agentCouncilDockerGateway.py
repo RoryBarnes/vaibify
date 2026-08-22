@@ -101,17 +101,25 @@ def fdockerCreateCouncilClient(iTimeoutSeconds=None):
     return _fmoduleGetDocker().from_env(timeout=iTimeoutSeconds)
 
 
-def fdictCreateCouncilDockerGateway(dockerCouncil, dictRegistry):
+def fdictCreateCouncilDockerGateway(dockerCouncil, dictRegistry,
+                                    sResourceName=""):
     """Create the gateway state: one client, one registry, its handles.
 
     ``dockerCouncil`` may be None for a registry-only view (the routes
     read quarantined reservations through the gateway without ever
     needing a daemon); every SDK-touching operation requires a real
     client and will fail loudly on a None one.
+
+    ``sResourceName`` is the project container this gateway's council
+    work belongs to, and it lives HERE rather than on each create call
+    because a gateway already serves exactly one campaign's project.
+    Every container the gateway creates is stamped with it, so there is
+    one place it can be forgotten instead of one per call site.
     """
     return {
         "dockerCouncil": dockerCouncil,
         "dictRegistry": dictRegistry,
+        "sResourceName": sResourceName,
         "dictHandlesById": {},
     }
 
@@ -169,7 +177,8 @@ def fdictReserveAndCreateRunner(
         dictSpecification = (
             agentCouncilRunner.fdictComposeRunnerCreateSpecification(
                 sImageReference, sReservationId, dictLimits, sNetworkName,
-                bSandbox, dictEnvironment, listDnsServers, listDnsOptions))
+                bSandbox, dictEnvironment, listDnsServers, listDnsOptions,
+                dictGateway.get("sResourceName", "")))
         containerRunner = dictGateway["dockerCouncil"].containers.create(
             sImageReference, **dictSpecification["dictCreateKeywords"])
         containerRunner.start()
@@ -549,6 +558,8 @@ def flistDiscoverLabeledRunners(dockerCouncil):
                 agentCouncilRunner.S_COUNCIL_LABEL, ""),
             "sRole": dictLabels.get(
                 agentCouncilRunner.S_COUNCIL_ROLE_LABEL, ""),
+            "sResourceName": dictLabels.get(
+                agentCouncilRunner.S_COUNCIL_RESOURCE_LABEL, ""),
             "sStatus": containerFound.status,
         })
     return listDiscovered
@@ -707,6 +718,8 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
                 agentCouncilRunner.S_COUNCIL_LABEL:
                     f"egress-{sCampaignId}",
                 agentCouncilRunner.S_COUNCIL_ROLE_LABEL: "egressProxy",
+                agentCouncilRunner.S_COUNCIL_RESOURCE_LABEL:
+                    dictGateway.get("sResourceName", ""),
             },
         )
     except Exception as error:

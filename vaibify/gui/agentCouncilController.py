@@ -342,13 +342,20 @@ async def _fnReleaseRunnerAccessIfSettled(dictRuntime):
 
 
 def _fdictEnsureRuntimeGateway(dictRuntime):
-    """Create (once) and return the campaign runtime's Docker gateway."""
+    """Create (once) and return the campaign runtime's Docker gateway.
+
+    The gateway carries the campaign's project container name, so every
+    container it creates is stamped with the owner a peer hub's startup
+    reconcile has to recognise.
+    """
     if dictRuntime.get("dictGateway") is None:
         from . import agentCouncilDockerGateway
         dictRuntime["dictGateway"] = (
             agentCouncilDockerGateway.fdictCreateCouncilDockerGateway(
                 agentCouncilDockerGateway.fdockerCreateCouncilClient(),
-                dictRuntime["dictRegistry"]))
+                dictRuntime["dictRegistry"],
+                (dictRuntime["dictCampaign"].get("dictProjectIdentity")
+                 or {}).get("sResourceName", "")))
     return dictRuntime["dictGateway"]
 
 

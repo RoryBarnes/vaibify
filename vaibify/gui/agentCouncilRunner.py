@@ -57,6 +57,7 @@ from vaibify.docker.dockerConnection import (
 __all__ = [
     "S_COUNCIL_LABEL",
     "S_COUNCIL_ROLE_LABEL",
+    "S_COUNCIL_RESOURCE_LABEL",
     "S_ROLE_RUNNER",
     "S_ROLE_SANDBOX",
     "S_RUNNER_SNAPSHOT_ROOT",
@@ -80,6 +81,13 @@ __all__ = [
 # removes anything.
 S_COUNCIL_LABEL = "vaibify-council"
 S_COUNCIL_ROLE_LABEL = "vaibify-council-role"
+# The project container this council serves, by the NAME that is the
+# lease principal — the same key ``containerLock`` flocks and
+# ``dictContainerOwners`` uses. Without it the startup reconcile can
+# only sweep by the bare council label, which is daemon-wide: a second
+# hub booting on the same daemon destroyed a live peer's runners
+# because nothing on the container said whose they were (2026-08-21).
+S_COUNCIL_RESOURCE_LABEL = "vaibify-council-resource"
 S_ROLE_RUNNER = "runner"
 S_ROLE_SANDBOX = "sandbox"
 
@@ -166,6 +174,7 @@ def fdictComposeRunnerCreateSpecification(
     sImageReference, sReservationId,
     dictLimits=None, sNetworkName=None, bSandbox=False,
     dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
+    sResourceName="",
 ):
     """Compose the SDK create keywords for one disposable council container.
 
@@ -178,7 +187,13 @@ def fdictComposeRunnerCreateSpecification(
     tmpfs mounts as the entire writable surface, and no mounts of any
     host path. ``sNetworkName`` is the egress-proxy seam; the
     fail-closed default is no network, and a sandbox refuses any
-    network, environment or resolver by contract.
+    network, environment or resolver by contract. ``sResourceName``
+    names the project container this runner serves; it is stamped as a
+    label so a peer hub's startup reconcile can tell whose runner it is
+    rather than sweeping by the daemon-wide council label. An empty
+    name is permitted and degrades to exactly the old behaviour — the
+    survivor is unattributable, so a reconcile sweeps it — which is the
+    fail-closed direction, because it preserves crash recovery.
     """
     if dictLimits is None:
         dictLimits = fdictBuildDefaultRunnerLimits()
@@ -221,6 +236,7 @@ def fdictComposeRunnerCreateSpecification(
             "labels": {
                 S_COUNCIL_LABEL: sReservationId,
                 S_COUNCIL_ROLE_LABEL: sRole,
+                S_COUNCIL_RESOURCE_LABEL: sResourceName,
             },
             "environment": dictEnvironment or None,
             "dns": list(listDnsServers) if listDnsServers else None,

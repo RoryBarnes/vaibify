@@ -4130,7 +4130,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the proxy create so the labeled reconcile can settle a proxy
     # whose campaign record is gone. One responsibility: the sole
     # council SDK authority, and the sweep is its crash-recovery leg.
-    "agentCouncilDockerGateway.py": 849,
+    # +13 (2026-08-21): the gateway carries the project container its
+    # council work belongs to, and stamps it onto every runner and
+    # proxy it creates. It lives on the gateway rather than on each
+    # create call precisely so there is ONE place the owner can be
+    # forgotten — the alternative threaded a new argument through four
+    # signatures and four call sites, which is more surface for the
+    # same fact. Still one responsibility.
+    "agentCouncilDockerGateway.py": 862,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -5089,7 +5096,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sections the turn schema now asks participants to produce
     # (rejected alternatives, verification requirements, stop
     # conditions) — the artifact half of the charter 1.1.0 change.
-    "agentCouncilController.py": 1221,
+    # +7 (2026-08-21): the runtime gateway is handed the campaign's own
+    # project container name, so the containers it creates say whose
+    # they are. This is the production join for the peer-hub isolation
+    # fix; the reconcile logic itself lives in the registry, which is
+    # where survivor settlement already lived.
+    "agentCouncilController.py": 1228,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

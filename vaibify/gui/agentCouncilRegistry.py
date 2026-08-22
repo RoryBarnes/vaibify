@@ -38,6 +38,8 @@ class-instance identity has to be threaded through the protocol records
 (section 9.8 forbids Docker ids and SDK objects in those).
 """
 
+from vaibify.config import containerLock
+
 from . import agentCouncilRunner
 
 __all__ = [
@@ -392,13 +394,22 @@ def fdictReconcileLabeledRunnersOnRestart(dictRegistry, dockerCouncil):
     survivors and drives each through the same stop/remove/prove
     transaction. A destroyed survivor is done; a quarantined one is
     recorded so it stays visible. Returns the reconciliation report.
+
+    A survivor whose project container is held by a LIVE PEER is spared
+    (see :func:`_fbSurvivorBelongsToALivePeerHub`). The council label is
+    daemon-wide, so without that test a second hub booting beside a
+    working one destroyed its runners mid-deliberation.
     """
     moduleGateway = _fmoduleImportCouncilGateway()
     listSurvivors = moduleGateway.flistDiscoverLabeledRunners(
         dockerCouncil)
     listDestroyed = []
     listQuarantined = []
+    listSpared = []
     for dictSurvivor in listSurvivors:
+        if _fbSurvivorBelongsToALivePeerHub(dictSurvivor):
+            listSpared.append(dictSurvivor["sReservationId"])
+            continue
         dictDestroyed = moduleGateway.fdictDestroyRunnerAndProveAbsence(
             dockerCouncil, dictSurvivor["sContainerId"])
         if dictDestroyed["sOutcome"] == agentCouncilRunner.S_OUTCOME_DESTROYED:
@@ -409,4 +420,32 @@ def fdictReconcileLabeledRunnersOnRestart(dictRegistry, dockerCouncil):
         "iSurvivorsDiscovered": len(listSurvivors),
         "listDestroyed": listDestroyed,
         "listQuarantined": listQuarantined,
+        "listSparedToLivePeer": listSpared,
     }
+
+
+def _fbSurvivorBelongsToALivePeerHub(dictSurvivor):
+    """Report whether another live hub owns this survivor's project.
+
+    The council label is daemon-wide, so "I found a council container"
+    never meant "this container is mine". The lease does: a project
+    container is held by an exclusive ``fcntl.flock`` at
+    ``~/.vaibify/locks/<name>.lock``, and ``fdictReadLockHolder``
+    answers with a holder ONLY when a different live process holds it —
+    it returns empty for an absent lock, for a stale holder (reaping it
+    on the spot), and for this very process. So the three cases that
+    must still be swept all sweep:
+
+    - a crashed hub's orphan (the kernel dropped its flock when it died)
+    - a survivor this process itself owns
+    - an unlabeled survivor, which is unattributable and therefore
+      cannot be shown to belong to anyone living
+
+    Only the fourth case — a peer that is demonstrably alive and holding
+    the lease — is spared, which is the case that was destroying live
+    deliberations.
+    """
+    sResourceName = dictSurvivor.get("sResourceName", "")
+    if not sResourceName:
+        return False
+    return bool(containerLock.fdictReadLockHolder(sResourceName))
