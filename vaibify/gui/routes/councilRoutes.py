@@ -422,7 +422,7 @@ def _ffnBuildCredentialStager(dictCtx, sContainerId):
             agentCouncilProviders.fsComposeCredentialContainerPath(
                 sWorkspaceRoot))
         return agentCouncilProviders.fsStageRunnerCredentialFile(
-            dictCredential["sAccessToken"])
+            dictCredential["sAccessToken"], dictCredential["listScopes"])
 
     return _fsStageRunnerCredential
 

@@ -357,13 +357,30 @@ def test_credential_lands_owned_by_the_unprivileged_user_in_the_runner(
     """A staged credential is delivered 1000-owned under CLAUDE_CONFIG_DIR.
 
     This proves the DELIVERY structure (ownership, path, env) with a
-    FAKE credential. Whether a real copied access token authenticates
-    the CLI headless, and non-interference with the project login, are
-    the empirical items documented as unrun in the report — they need a
-    real subscription credential and a real project image.
+    FAKE credential, and that is ALL it proves — the distinction is
+    load-bearing. A fake token is delivered identically whether or not
+    the document would authenticate, so this test passed for weeks
+    against a staged document the CLI rejects outright.
+
+    The two empirics it cannot reach were run by hand on 2026-08-22
+    against a real Max account, and both now have answers:
+
+    - a copied ACCESS token DOES authenticate the CLI headless, but
+      only when the document also carries ``scopes``; with the token
+      alone the CLI answers "Not logged in · Please run /login" and
+      never reaches the API. ``fsStageRunnerCredentialFile`` was fixed
+      to include it.
+    - non-interference HOLDS: five copies and three real inferences
+      left the project login byte-identical (access token, refresh
+      token and expiry all unchanged), so Claude passes the section 9.7
+      runner gate rather than falling back to the API backend.
+
+    Neither can live in CI — they cost money and need a real login —
+    so they stay a maintainer ceremony, recorded in the evidence file.
     """
     dictGateway, listCreatedContainerIds = tCouncilLiveHarness
-    sHostCredentialPath = fsStageRunnerCredentialFile("FAKE-ACCESS-TOKEN-XYZ")
+    sHostCredentialPath = fsStageRunnerCredentialFile(
+        "FAKE-ACCESS-TOKEN-XYZ", ["user:inference"])
     try:
         dictCreated = moduleGateway.fdictReserveAndCreateRunner(
             dictGateway, "campCredential", "claude",

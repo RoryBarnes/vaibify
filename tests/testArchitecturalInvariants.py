@@ -4152,7 +4152,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # adapter and maps an over-ceiling answer to RunnerCredentialError,
     # so the launch probe answers 409 instead of letting a ValueError
     # surface as a 500.
-    "agentCouncilProviders.py": 824,
+    # +36 (2026-08-22): the staged login carries the token's SCOPES, and
+    # the two docstrings explain why at length. The prose is most of the
+    # growth and it is the point: the previous docstring asserted the
+    # access token alone was the narrowest document the CLI can read,
+    # which was never measured and was false — the CLI answers "Not
+    # logged in" without scopes. A measured field table beats a
+    # confident sentence, and it belongs where the next reader will
+    # otherwise re-derive it from a failed paid turn.
+    "agentCouncilProviders.py": 860,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

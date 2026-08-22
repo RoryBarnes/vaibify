@@ -114,6 +114,10 @@ S_CLAUDE_CONFIG_COMPONENT = ".claude"
 # copied (section 9.7).
 S_OAUTH_BLOCK_KEY = "claudeAiOauth"
 S_ACCESS_TOKEN_KEY = "accessToken"
+# Carried alongside the token because the CLI will not treat the
+# document as a login without it (2026-08-22 ceremony). A list of
+# capability names — no secret, mints nothing.
+S_SCOPES_KEY = "scopes"
 
 # Re-exported from the transport, which owns the ceiling because its
 # typed-read program is what enforces it INSIDE the container. A cap
@@ -396,13 +400,24 @@ def fsComposeCredentialContainerPath(sWorkspaceRoot):
 
 def fdictExtractRunnerCredential(connectionDocker, sContainerId,
                                  sCredentialContainerPath):
-    """Extract the narrowest authenticating field from the login file.
+    """Extract the narrowest AUTHENTICATING document from the login file.
 
     Reads the persisted ``.credentials.json`` through the reviewed
     named-secret-file read (``fbaFetchFile`` — a typed read over a fixed
     program and a path, never a general container command) and returns
-    only the access token. The refresh token is never read out, so a
-    leaked runner copy cannot mint new sessions (section 9.7).
+    the access token plus its ``scopes``. The refresh token is never
+    read out, so a leaked runner copy cannot mint new sessions
+    (section 9.7).
+
+    ``scopes`` is here because the CLI requires it, established
+    empirically during the 2026-08-22 credential ceremony and not
+    before: with the access token ALONE the CLI answers "Not logged in
+    · Please run /login" and never reaches the API, which is what the
+    ceremony's first run actually produced. Adding ``scopes`` does not
+    widen the blast radius — it is a list of capability names, carries
+    no secret, and cannot mint anything — so section 9.7's
+    "access token, never the refresh token" survives unchanged. See
+    :func:`fsStageRunnerCredentialFile` for the field-by-field result.
 
     The read is capped at :data:`I_MAX_CREDENTIAL_FILE_BYTES` rather
     than inheriting the generic 64 MB file cap: a login document is a
@@ -434,7 +449,10 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
             S_ACCESS_TOKEN_KEY):
         raise RunnerCredentialError(
             "the persisted Claude login carries no access token to copy")
-    return {"sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY]}
+    return {
+        "sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY],
+        "listScopes": list(dictOauth.get(S_SCOPES_KEY) or []),
+    }
 
 
 def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
@@ -465,19 +483,37 @@ def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
     return True
 
 
-def fsStageRunnerCredentialFile(sAccessToken):
-    """Materialize a minimal, access-token-only login to a host file.
+def fsStageRunnerCredentialFile(sAccessToken, listScopes=None):
+    """Materialize the narrowest WORKING login document to a host file.
 
-    The value is reconstructed as the narrowest credentials document the
-    CLI can read — the OAuth block with the access token alone, never the
-    refresh token — and written through the existing ephemeral-file
+    The OAuth block with the access token and its scopes — never the
+    refresh token — written through the existing ephemeral-file
     machinery (mode 600 under ``~/.vaibify/tmp``). Cleanup is the
     caller's, via ``secretManager.fnCleanupSecretFiles`` (section 9.7).
+
+    This docstring used to claim the access token ALONE was "the
+    narrowest credentials document the CLI can read". That was asserted,
+    never measured, and it was false: the 2026-08-22 credential ceremony
+    bisected the field set against a real paid account and found the CLI
+    answers "Not logged in · Please run /login" for every document
+    without ``scopes``, whatever else it contains.
+
+        accessToken                      -> Not logged in
+        accessToken + expiresAt          -> Not logged in
+        accessToken + scopes             -> authenticates
+        everything except refreshToken   -> authenticates
+
+    So ``scopes`` is load-bearing and ``expiresAt`` is not, and the
+    narrowest working document is the two fields below. It is also
+    still section-9.7-compliant: scopes is a list of capability names,
+    carrying no secret and able to mint nothing, so the copied
+    credential's blast radius is unchanged.
     """
-    sMinimalCredentials = json.dumps(
-        {S_OAUTH_BLOCK_KEY: {S_ACCESS_TOKEN_KEY: sAccessToken}})
+    dictOauth = {S_ACCESS_TOKEN_KEY: sAccessToken,
+                 S_SCOPES_KEY: list(listScopes or [])}
     return secretManager.fsMaterializeSecretValue(
-        "claudeCouncilAccessToken", sMinimalCredentials)
+        "claudeCouncilAccessToken",
+        json.dumps({S_OAUTH_BLOCK_KEY: dictOauth}))
 
 
 def fbaBuildCredentialTarball(sHostCredentialPath):

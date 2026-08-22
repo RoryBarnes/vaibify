@@ -181,16 +181,27 @@ class _FakeCredentialConnection:
         return self._baContentOrError
 
 
-def testCredentialExtractionCopiesAccessTokenNeverRefresh():
+def testCredentialExtractionCopiesAccessTokenAndScopesNeverRefresh():
+    """Both halves of the section 9.7 contract, in both directions.
+
+    Scopes MUST come across — without them the staged document is one
+    the CLI refuses outright, which is the defect the 2026-08-22
+    ceremony found. The refresh token MUST NOT, because it can mint new
+    sessions. Asserting the exact dict pins both: dropping scopes or
+    admitting the refresh token each fails here.
+    """
     dictLogin = {"claudeAiOauth": {
         "accessToken": "ACCESS-TOKEN-KEEP",
         "refreshToken": "REFRESH-TOKEN-NEVER-COPY",
-        "expiresAt": 123, "scopes": ["a"]}}
+        "expiresAt": 123, "scopes": ["user:inference"]}}
     connectionFake = _FakeCredentialConnection(
         json.dumps(dictLogin).encode("utf-8"))
     dictCredential = providers.fdictExtractRunnerCredential(
         connectionFake, "container-abc", "/root/.claude/.credentials.json")
-    assert dictCredential == {"sAccessToken": "ACCESS-TOKEN-KEEP"}
+    assert dictCredential == {
+        "sAccessToken": "ACCESS-TOKEN-KEEP",
+        "listScopes": ["user:inference"],
+    }
     assert "REFRESH-TOKEN-NEVER-COPY" not in json.dumps(dictCredential)
 
 
@@ -208,12 +219,31 @@ def testCredentialExtractionRefusesMissingFileAndMissingToken():
 
 
 def testStageCredentialFileIsNarrowModeSixHundredAndCleansUp():
-    sPath = providers.fsStageRunnerCredentialFile("ACCESS-ONLY")
+    """Narrow, mode 600, cleaned up — and CARRYING THE SCOPES.
+
+    The scopes assertion is the one with history. This test previously
+    demanded ``{"accessToken": ...}`` and nothing else, so it PASSED
+    against a document the CLI refuses outright ("Not logged in ·
+    Please run /login"), and would have gone on passing forever. The
+    defect was invisible to it because it checked the shape the code
+    produced rather than the shape the CLI accepts — which no unit test
+    can know, and which the 2026-08-22 credential ceremony measured.
+
+    So the direction matters: scopes MUST be present (or the login does
+    not work at all) and refreshToken MUST be absent (section 9.7's
+    blast-radius rule). Asserting the whole document pins both, and
+    fails if either half is quietly changed.
+    """
+    sPath = providers.fsStageRunnerCredentialFile(
+        "ACCESS-ONLY", ["user:inference", "user:profile"])
     try:
         assert os.path.exists(sPath)
         assert stat.S_IMODE(os.stat(sPath).st_mode) == 0o600
         dictWritten = json.loads(open(sPath).read())
-        assert dictWritten == {"claudeAiOauth": {"accessToken": "ACCESS-ONLY"}}
+        assert dictWritten == {"claudeAiOauth": {
+            "accessToken": "ACCESS-ONLY",
+            "scopes": ["user:inference", "user:profile"],
+        }}
         assert "refreshToken" not in dictWritten["claudeAiOauth"]
     finally:
         secretManager.fnCleanupSecretFiles([sPath])
