@@ -132,21 +132,40 @@ var VaibifyAgentCouncil = (function () {
         elButton.classList.toggle(
             "council-attention", dictState.bAttention);
         elButton.classList.toggle("council-running", dictState.bRunning);
+        elButton.classList.toggle("council-blocked", dictState.bBlocked);
     }
 
     function _fdictToolbarState() {
         if (!_dictState.sContainerId) {
-            return _fdictDisabled("Open a project to convene a council.");
+            /* Explainable, not disabled. fnActivate runs from
+               _fnActivateWorkflow — opening a WORKFLOW, not merely a
+               container — so a researcher sitting in a project with no
+               workflow open has a live-looking button and no container
+               id behind it. Left disabled, that is the second silent
+               dead click reported from the same button (2026-08-22). */
+            return _fdictUnavailableButExplainable(
+                "Open a workflow in this project to convene a council. " +
+                "A campaign is bound to one workflow's project repo, so " +
+                "there is nothing to convene against until one is open.");
         }
         var dictCapabilities = _dictState.dictCapabilities;
         if (!dictCapabilities) {
             return _fdictDisabled("Checking council availability…");
         }
+        /* Unavailable is CLICKABLE, not disabled. A disabled button
+           swallows its own click, so fnHandleToolbarClick below -- which
+           exists precisely to explain the refusal -- could never run, and
+           the researcher got a button that did nothing at all. The
+           hover title still carries the reason for anyone who finds it;
+           the click is for everyone who does not. Kept disabled only
+           for the two states where there is nothing to say yet: no
+           project open, and capabilities still loading. */
         if (!dictCapabilities.bAvailable) {
-            return _fdictDisabled(_fsUnavailableExplanation(dictCapabilities));
+            return _fdictUnavailableButExplainable(
+                _fsUnavailableExplanation(dictCapabilities));
         }
         if (_fiSupportedParticipantCount(dictCapabilities) < 1) {
-            return _fdictDisabled(
+            return _fdictUnavailableButExplainable(
                 "No provider with a reviewed council adapter is " +
                 "available on this project — a council needs at least " +
                 "two supported participants, drawn from two distinct " +
@@ -158,7 +177,16 @@ var VaibifyAgentCouncil = (function () {
     function _fdictDisabled(sTitle) {
         return {
             bDisabled: true, sTitle: sTitle,
-            bAttention: false, bRunning: false,
+            bAttention: false, bRunning: false, bBlocked: false,
+        };
+    }
+
+    function _fdictUnavailableButExplainable(sTitle) {
+        /* Dimmed so it still reads as "not usable right now", but live
+           so the click can say WHY and what to do about it. */
+        return {
+            bDisabled: false, sTitle: sTitle,
+            bAttention: false, bRunning: false, bBlocked: true,
         };
     }
 
@@ -188,6 +216,19 @@ var VaibifyAgentCouncil = (function () {
                 "no container to build a runner from. " +
                 "Convert this project to a container to convene a council.";
         }
+        /* The one refusal that is a SHUT GATE rather than a wrong
+           project, so it is the one that earns instructions. The
+           backend's reason says which way it is shut (no record, a key
+           missing, an image that does not match); this adds where to
+           act, which the backend deliberately does not hardcode. */
+        if (dictCapabilities.sUnavailableIn === "credential-evidence") {
+            return (dictCapabilities.sReason || "") +
+                " To open it: run the live credential check on a paid " +
+                "account, then record the result at " +
+                "~/.vaibify/agentCouncils/credentialEvidence.json. The " +
+                "record must name this project's own image by its " +
+                "sha256 id — a tag is refused.";
+        }
         return dictCapabilities.sReason
             || "Convening a council is unavailable on this project.";
     }
@@ -204,11 +245,29 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function fnHandleToolbarClick() {
-        if (!_dictState.sContainerId) return;
+        /* Every early return below MUST say something. A click that
+           returns in silence is the defect this handler exists to
+           prevent, and it has now been reported twice. */
+        if (!_dictState.sContainerId) {
+            VaibifyApp.fnShowToast(_fdictToolbarState().sTitle, "warning");
+            return;
+        }
         var dictCapabilities = _dictState.dictCapabilities;
         if (!dictCapabilities || !dictCapabilities.bAvailable) {
+            /* "warning", not "info": an info toast self-destructs after
+               four seconds, which is not long enough to read a refusal
+               and act on it. A warning stays until dismissed. */
             VaibifyApp.fnShowToast(
-                _fsUnavailableExplanation(dictCapabilities || {}), "info");
+                _fsUnavailableExplanation(dictCapabilities || {}),
+                "warning");
+            return;
+        }
+        /* Available but unusable: the toolbar makes this case clickable
+           too, so the handler has to answer it. Falling through here
+           would open the convene form with nobody to convene. */
+        if (_fiSupportedParticipantCount(dictCapabilities) < 1) {
+            VaibifyApp.fnShowToast(
+                _fdictToolbarState().sTitle, "warning");
             return;
         }
         if (_dictState.sActiveCampaignId) {

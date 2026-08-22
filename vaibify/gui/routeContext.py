@@ -17,6 +17,7 @@ __all__ = [
     "I_REJECT_CONTAINER_ONLY",
     "S_UNAVAILABLE_IN_HOST_MODE",
     "S_UNAVAILABLE_IN_CONTAINER_MODE",
+    "S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fnRefuseContainerOnlyForHostProject",
@@ -83,6 +84,12 @@ S_UNAVAILABLE_IN_HOST_MODE = "host-mode"
 # "this needs a container" is the opposite diagnosis from "this project
 # already IS one".
 S_UNAVAILABLE_IN_CONTAINER_MODE = "container-mode"
+# Not a mode at all: the capability fits this project, but a gate the
+# researcher can OPEN is currently shut. The two markers above say "this
+# will never work here"; this one says "here is the thing to go and do",
+# and a panel must be able to tell those apart, because only the third
+# deserves instructions.
+S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE = "credential-evidence"
 
 
 def fnRefuseContainerOnlyForHostProject(sName, sCapability):

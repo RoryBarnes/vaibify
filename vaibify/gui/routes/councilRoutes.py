@@ -53,6 +53,7 @@ from ..routeContext import (
     fnRefuseContainerOnlyForHostProject,
     fnRejectAgentTokenLane,
     S_UNAVAILABLE_IN_HOST_MODE,
+    S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE,
 )
 from ..routeScope import (
     ffnDeclareCarrierMode,
@@ -553,7 +554,13 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
         bRunnerBackendEnabled=dictEnablement["bEnabled"])
     return {
         "bAvailable": dictEnablement["bEnabled"],
-        "sUnavailableIn": "",
+        # A shut gate the researcher can OPEN, marked as such. The two
+        # mode markers mean "never here"; this one means "here is the
+        # thing to go and do", and only that third case earns
+        # instructions in the toolbar's explanation.
+        "sUnavailableIn": (
+            "" if dictEnablement["bEnabled"]
+            else S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE),
         "sReason": dictEnablement["sReason"],
         "listProviders": [
             {"sProvider": "claude", "sBackend": "runner",

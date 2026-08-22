@@ -4103,7 +4103,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # for the subscription backend, live enumeration for the API one)
     # so the picker stops being free text and the discovery code stops
     # being unreachable.
-    "routes/councilRoutes.py": 1048,
+    # +7 (2026-08-22): capabilities marks a SHUT GATE distinctly from a
+    # wrong project type, so the toolbar can offer instructions for the
+    # one case that has any. The marker is a route-shaped fact — what
+    # this payload means to a client — so it belongs with the payload
+    # rather than in a new module.
+    "routes/councilRoutes.py": 1055,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

@@ -6689,6 +6689,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--highlight-color);
 }
 
+/* Blocked, not disabled: dimmed so it still reads as "not usable right
+   now", but live so its click can explain itself. A truly disabled
+   button swallows the click and the researcher learns nothing. */
+#btnAgentCouncil.council-blocked {
+    opacity: 0.55;
+    cursor: help;
+}
+
 .council-modal {
     max-width: 720px;
     width: 90%;
