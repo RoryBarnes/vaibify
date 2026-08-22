@@ -4108,7 +4108,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one case that has any. The marker is a route-shaped fact — what
     # this payload means to a client — so it belongs with the payload
     # rather than in a new module.
-    "routes/councilRoutes.py": 1055,
+    # +38 (2026-08-22): the capabilities pre-flight — one call and the
+    # helper that downgrades the capability through the SAME
+    # bAvailable/sReason pair every other refusal uses, rather than
+    # growing a second unavailable-shaped concept for the toolbar to
+    # learn.
+    "routes/councilRoutes.py": 1093,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4126,7 +4131,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # change-then-revert hole; plus the per-path identity digest the
     # staleness comparison rides. Same one responsibility: what makes
     # a sealed snapshot a snapshot.
-    "agentCouncilContext.py": 916,
+    # +49 (2026-08-22): fdictAssessSnapshotFeasibility — the same
+    # bounds this module already enforces mid-capture, answered from
+    # metadata so a council can be refused BEFORE a researcher writes
+    # a question. It belongs here precisely because the bounds do: a
+    # pre-flight living anywhere else is a second opinion about what
+    # a snapshot accepts, and the two would drift.
+    "agentCouncilContext.py": 965,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates

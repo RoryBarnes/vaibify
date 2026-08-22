@@ -271,6 +271,13 @@ S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
+S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
+# The probe stops counting past this many files. Comfortably above the
+# council's own 20,000-member bound, so a repository that the snapshot
+# would accept is always counted exactly; only one that is already
+# refused gets a truncated answer, and "too many to count" is the same
+# verdict as "too many".
+I_MAX_REPOSITORY_WEIGHT_PROBE_FILES = 50000
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
 # A provider login document is kilobytes. The council's credential read
@@ -319,6 +326,30 @@ _DICT_TYPED_READ_PROGRAMS = {
         "'iTotalBytes': st.f_blocks*st.f_frsize, "
         "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
         "'iFreeBytes': st.f_bavail*st.f_frsize}))"
+    ),
+    # The council snapshot pre-flight: how many files a repository holds
+    # and how many bytes, so the dashboard can say "this will not fit"
+    # BEFORE the researcher composes a question. Walking metadata is
+    # cheap where streaming 30 GB through get_archive to discover the
+    # same refusal is not, and the alternative — finding out at convene
+    # — throws away the researcher's actual thinking (live report,
+    # 2026-08-22). It stops counting once BOTH declared bounds are
+    # exceeded, so an enormous tree cannot make the probe itself the
+    # slow thing it exists to prevent.
+    S_TYPED_READ_REPOSITORY_WEIGHT: (
+        "import json,os,sys; "
+        "root=" + _S_TYPED_READ_PATH_SLOT + "; "
+        "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "; "
+        "n=0; b=0; truncated=False\n"
+        "for dirpath,dirnames,filenames in os.walk(root):\n"
+        "    for name in filenames:\n"
+        "        try: b+=os.lstat(os.path.join(dirpath,name)).st_size\n"
+        "        except OSError: pass\n"
+        "        n+=1\n"
+        "    if n>cap:\n"
+        "        truncated=True; break\n"
+        "sys.stdout.write(json.dumps({"
+        "'iFileCount': n, 'iTotalBytes': b, 'bTruncated': truncated}))"
     ),
     # Existence probes, replacing `test -f` / `test -d` assembled by a
     # repo-files adapter and run through the general exec primitive.
@@ -1326,6 +1357,28 @@ class DockerConnection:
         if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot stat filesystem in container: {sPath}"
+            )
+        return json.loads(tExecResult.sStdout.strip())
+
+    def fdictWeighRepository(self, sContainerId, sRepositoryPath):
+        """Return ``{iFileCount, iTotalBytes, bTruncated}`` for a repo.
+
+        An audited adapter on the same terms as its neighbours: the
+        caller supplies a PATH and this supplies the NAME of a declared
+        read, so a path cannot become program text.
+
+        It exists so the council can answer "would a snapshot of this
+        repository be accepted?" from metadata, before a researcher
+        composes a question. ``bTruncated`` means the walk stopped at
+        its own cap — an answer of "more files than we will ever
+        accept", which is the same verdict as an exact count too large.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_REPOSITORY_WEIGHT, sRepositoryPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot weigh repository in container: {sRepositoryPath}"
             )
         return json.loads(tExecResult.sStdout.strip())
 

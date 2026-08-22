@@ -170,6 +170,71 @@ def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
         f"the toast never says to open a workflow: {sToast!r}")
 
 
+def testCancellingAComposedCouncilAsksBeforeDiscardingIt(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """A written question must survive a stray click on Cancel.
+
+    Choosing participants and writing the question is the researcher's
+    real investment in convening, and Cancel used to discard it with no
+    prompt. Drives the REAL form: opens the modal with the gate
+    permitting, types a question, clicks Cancel, and asserts the modal
+    is still there behind a confirmation.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.click("#btnAgentCouncil")
+    # The chooser stands between the toolbar and the convene form.
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector("#councilQuestion", timeout=8000)
+    pageDashboard.fill("#councilQuestion", "Which sampler converges fastest?")
+
+    pageDashboard.click("#btnCouncilCancel")
+
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=8000)
+    assert pageDashboard.locator("#councilQuestion").count() == 1, (
+        "the convene form was torn down before the researcher answered "
+        "the confirmation"
+    )
+    assert "lost" in pageDashboard.inner_text("#modalConfirm").lower()
+
+
+def testCancellingAnUntouchedCouncilDoesNotNagTheResearcher(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The other half: no prompt when there is nothing to lose.
+
+    A confirmation that fires on an empty form is one researchers learn
+    to dismiss unread, which would cost the protection above its value.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.click("#btnAgentCouncil")
+    # The chooser stands between the toolbar and the convene form.
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector("#councilQuestion", timeout=8000)
+
+    pageDashboard.click("#btnCouncilCancel")
+
+    pageDashboard.wait_for_timeout(500)
+    assert pageDashboard.locator("#modalConfirm").count() == 0, (
+        "an untouched convene form asked for confirmation it did not need"
+    )
+    assert pageDashboard.locator("#agentCouncilModal").is_visible() is False
+
+
 def testTheExplanationDoesNotSelfDestructBeforeItCanBeRead(
     pageDashboard, serverHub,
 ):

@@ -18,6 +18,7 @@ __all__ = [
     "S_UNAVAILABLE_IN_HOST_MODE",
     "S_UNAVAILABLE_IN_CONTAINER_MODE",
     "S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE",
+    "S_UNAVAILABLE_SNAPSHOT_TOO_LARGE",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fnRefuseContainerOnlyForHostProject",
@@ -90,6 +91,10 @@ S_UNAVAILABLE_IN_CONTAINER_MODE = "container-mode"
 # and a panel must be able to tell those apart, because only the third
 # deserves instructions.
 S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE = "credential-evidence"
+# Also not a mode, and also openable — but by changing the PROJECT
+# rather than the machine. Its own marker so the panel can offer the
+# repository advice instead of the credential ceremony.
+S_UNAVAILABLE_SNAPSHOT_TOO_LARGE = "snapshot-too-large"
 
 
 def fnRefuseContainerOnlyForHostProject(sName, sCapability):

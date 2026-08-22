@@ -181,11 +181,35 @@ class FailClosedDockerAdapter:
             f"{S_PROJECT_REPO}/Generate/output.dat": 1000,
             f"{S_PROJECT_REPO}/Analyze/summary.json": 2000,
         }
+        # What the council's snapshot pre-flight measures. Comfortably
+        # inside the capture bounds so a council is convenable; a
+        # journey may raise it to drive the refusal.
+        self.dictRepositoryWeight = {
+            "iFileCount": 120,
+            "iTotalBytes": 2 * 1024 * 1024,
+            "bTruncated": False,
+        }
         # What the Repos panel's discovery finds under the workspace
         # root: the lane's one project repository.
         self.setWorkspaceRepositories = {
             S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
         }
+
+    def fdictWeighRepository(self, sContainerId, sRepositoryPath):
+        """Answer the council's snapshot pre-flight: a small repository.
+
+        Modelled rather than left to raise, because the lane's project
+        repo IS small and a council must be convenable in the browser
+        journey. A journey wanting the too-large refusal raises
+        dictRepositoryWeight, exactly as a researcher's output tree does
+        to the real probe.
+        """
+        if not sRepositoryPath.startswith(S_WORKSPACE_ROOT):
+            raise UnmodelledContainerCall(
+                "Repository weigh outside the workspace volume, which "
+                f"this fake does not speak for: {sRepositoryPath}"
+            )
+        return dict(self.dictRepositoryWeight)
 
     def fnTouchFile(self, sPath, iModifiedTime):
         """Age or freshen one watched path, as an in-container edit would."""

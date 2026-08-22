@@ -221,6 +221,18 @@ var VaibifyAgentCouncil = (function () {
            backend's reason says which way it is shut (no record, a key
            missing, an image that does not match); this adds where to
            act, which the backend deliberately does not hardcode. */
+        /* The repository is too big to snapshot. Its own branch because
+           the fix is to the PROJECT, not to this machine — pointing the
+           researcher at the credential ceremony here would send them to
+           do something entirely unrelated. The backend's reason already
+           names the counts and the bounds, so this only adds the
+           practical way out. */
+        if (dictCapabilities.sUnavailableIn === "snapshot-too-large") {
+            return (dictCapabilities.sReason || "") +
+                " Convene from a smaller repository, or move the bulk " +
+                "output out of this one — a council reasons about your " +
+                "code and inputs, not your generated results.";
+        }
         if (dictCapabilities.sUnavailableIn === "credential-evidence") {
             return (dictCapabilities.sReason || "") +
                 " To open it: run the live credential check on a paid " +
@@ -475,7 +487,7 @@ var VaibifyAgentCouncil = (function () {
         _fnRenderParticipantCards();
         _fnBindElement("btnCouncilAddParticipant", _fnAddParticipant);
         _fnBindElement("btnCouncilConvene", _fnConveneCouncil);
-        _fnBindElement("btnCouncilCancel", _fnHideModal);
+        _fnBindElement("btnCouncilCancel", _fnHideModalConfirmingLoss);
     }
 
     function _fnRenderParticipantCards() {
@@ -1553,6 +1565,36 @@ var VaibifyAgentCouncil = (function () {
         if (elModal) elModal.style.display = "none";
     }
 
+    function _fbConveneFormHasWork() {
+        /* Only the QUESTION counts as work worth protecting. The
+           participant rows are pre-populated and the settings have
+           defaults, so treating those as "work" would prompt on a
+           modal the researcher merely opened and thought better of --
+           a confirm that fires when there is nothing to lose is the
+           kind users learn to dismiss without reading. */
+        var elQuestion = document.getElementById("councilQuestion");
+        return !!(elQuestion && elQuestion.value.trim());
+    }
+
+    function _fnHideModalConfirmingLoss() {
+        /* Composing the question is the expensive part of convening --
+           it is the researcher's actual thinking — and before this a
+           stray click on Cancel or the X discarded it silently.
+
+           Through VaibifyApp.fnShowConfirmModal, not window.confirm:
+           the dashboard already has one confirmation idiom and a
+           second would look like a different application. */
+        if (!_fbConveneFormHasWork()) {
+            _fnHideModal();
+            return;
+        }
+        VaibifyApp.fnShowConfirmModal(
+            "Discard this council?",
+            "The question you have written will be lost. Your "
+            + "participants and settings will reset to their defaults.",
+            _fnHideModal);
+    }
+
     function _fnShowWorkspaceModalClose() {
         _fnHideWorkspace();
     }
@@ -1576,7 +1618,8 @@ var VaibifyAgentCouncil = (function () {
 
     function fnInitialize() {
         _fnBindElement("btnAgentCouncil", fnHandleToolbarClick);
-        _fnBindElement("btnAgentCouncilModalClose", _fnHideModal);
+        _fnBindElement(
+            "btnAgentCouncilModalClose", _fnHideModalConfirmingLoss);
         _fnBindElement(
             "btnAgentCouncilWorkspaceClose", _fnShowWorkspaceModalClose);
         _fnRenderToolbarButton();

@@ -54,6 +54,7 @@ from ..routeContext import (
     fnRejectAgentTokenLane,
     S_UNAVAILABLE_IN_HOST_MODE,
     S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE,
+    S_UNAVAILABLE_SNAPSHOT_TOO_LARGE,
 )
 from ..routeScope import (
     ffnDeclareCarrierMode,
@@ -494,7 +495,44 @@ def _fnRegisterCapabilities(app, dictCtx):
         if fbIsHostProject(sName):
             return _fdictHostModeCapabilities()
         dictCtx["require"](sContainerId)
-        return await _fdictContainerCapabilities(dictCtx, sContainerId)
+        dictCapabilities = await _fdictContainerCapabilities(
+            dictCtx, sContainerId)
+        # The snapshot pre-flight runs LAST and only when everything
+        # else already permits a council: it costs a metadata walk, and
+        # there is no sense weighing a repository for a project whose
+        # runner backend is disabled anyway.
+        if dictCapabilities["bAvailable"]:
+            _fnApplySnapshotFeasibility(
+                dictCtx, requestHttp, sContainerId, dictCapabilities)
+        return dictCapabilities
+
+
+def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
+                                dictCapabilities):
+    """Downgrade capabilities when the repo could never be snapshotted.
+
+    Reported through the SAME bAvailable/sReason pair every other
+    refusal uses, so the toolbar explains it with the machinery it
+    already has rather than growing a second unavailable-shaped
+    concept. A probe failure is NOT a refusal — the authoritative
+    bounds still run at capture — so an unreadable repo leaves the
+    capability as it was rather than blocking a council over a probe.
+    """
+    from .. import agentCouncilContext
+    try:
+        sProjectRepoPath = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId).get("sProjectRepoPath", "")
+        if not sProjectRepoPath:
+            return
+        dictFeasibility = agentCouncilContext.fdictAssessSnapshotFeasibility(
+            dictCtx["docker"], sContainerId, sProjectRepoPath)
+    except (HTTPException, OSError, ValueError, KeyError):
+        return
+    dictCapabilities["dictSnapshotFeasibility"] = dictFeasibility
+    if not dictFeasibility["bFits"]:
+        dictCapabilities["bAvailable"] = False
+        dictCapabilities["sUnavailableIn"] = S_UNAVAILABLE_SNAPSHOT_TOO_LARGE
+        dictCapabilities["sReason"] = dictFeasibility["sReason"]
 
 
 def _fdictHostModeCapabilities():

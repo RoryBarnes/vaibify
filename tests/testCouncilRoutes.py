@@ -74,6 +74,17 @@ class MockDockerCouncil:
 
     def __init__(self):
         self.listWrites = []
+        # A repository comfortably inside the snapshot bounds, so the
+        # capabilities pre-flight permits a council. Mutable on purpose:
+        # the too-large journey raises it, which is what a researcher's
+        # 30 GB output tree does to the real probe.
+        self.dictRepositoryWeight = {
+            "iFileCount": 120, "iTotalBytes": 2 * 1024 * 1024,
+            "bTruncated": False,
+        }
+
+    def fdictWeighRepository(self, sContainerId, sRepositoryPath):
+        return dict(self.dictRepositoryWeight)
 
     def flistGetRunningContainers(self):
         return [{
@@ -580,6 +591,49 @@ def test_capabilities_reports_container_providers(tOwnerClient):
     dictCapabilities = response.json()
     assert dictCapabilities["bAvailable"] is True
     assert dictCapabilities["listProviders"]
+
+
+def test_capabilities_refuse_a_repository_too_large_to_snapshot(
+    tmp_path,
+):
+    """The pre-flight, and it must run BEFORE the researcher invests.
+
+    Every turn ships an immutable snapshot of the repository, and the
+    capture bounds are enforced mid-stream — so without this the
+    refusal arrives only after participants are chosen and a question
+    is written, and the question is the expensive part. A researcher
+    hit exactly that on a 30 GB output tree (2026-08-22).
+
+    Asserts the REASON names the real numbers, not merely that
+    something was refused: "unavailable" with no figures sends someone
+    hunting for a permission problem they do not have.
+    """
+    docker = MockDockerCouncil()
+    docker.dictRepositoryWeight = {
+        "iFileCount": 22342,
+        "iTotalBytes": 30 * 1024 * 1024 * 1024,
+        "bTruncated": False,
+    }
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", lambda: docker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser")
+    app.state.dictRouteContext["workflows"][S_CONTAINER_ID] = {
+        "sProjectRepoPath": S_PROJECT_REPO}
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        dictCapabilities = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/capabilities").json()
+
+    assert dictCapabilities["bAvailable"] is False
+    assert dictCapabilities["sUnavailableIn"] == "snapshot-too-large"
+    assert "22342" in dictCapabilities["sReason"]
+    assert "30720 MB" in dictCapabilities["sReason"]
+    assert dictCapabilities["dictSnapshotFeasibility"]["bFits"] is False
 
 
 def test_delete_removes_a_stopped_campaign(tOwnerClient, eventTurnGate):

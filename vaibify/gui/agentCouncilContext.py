@@ -914,3 +914,52 @@ def _fnRemovePartialSnapshot(sSnapshotDirectory):
         os.rmdir(os.path.dirname(sSnapshotDirectory))
     except OSError:
         pass
+
+
+def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
+                                   sProjectRepoPath):
+    """Report, from METADATA, whether this repo could be snapshotted.
+
+    The capture bounds are enforced mid-stream, so a repository that
+    breaches them is refused only after the researcher has chosen
+    participants and written a question — and the question is the
+    expensive part, the researcher's actual thinking. This answers the
+    same question from a metadata walk instead, cheaply enough to run
+    when a project is opened.
+
+    It is deliberately ADVISORY and deliberately not authoritative: the
+    bounds are re-enforced during the real capture, because a walk is a
+    different reading of the tree than a tar stream (a member can grow
+    between them, and the per-file bound is only knowable member by
+    member). A "fits" answer here is "nothing obvious stops you", never
+    a promise; a "does not fit" answer is reliable, because the two
+    totals it compares only grow as the capture proceeds.
+    """
+    dictWeight = connectionDocker.fdictWeighRepository(
+        sContainerId, sProjectRepoPath)
+    listReasons = []
+    if dictWeight["bTruncated"] or (
+            dictWeight["iFileCount"] > I_MAX_SNAPSHOT_FILE_COUNT):
+        listReasons.append(
+            f"it holds {'over ' if dictWeight['bTruncated'] else ''}"
+            f"{dictWeight['iFileCount']} files, above the "
+            f"{I_MAX_SNAPSHOT_FILE_COUNT} a council snapshot accepts")
+    if dictWeight["iTotalBytes"] > I_MAX_SNAPSHOT_TOTAL_BYTES:
+        listReasons.append(
+            f"it holds {dictWeight['iTotalBytes'] // (1024 * 1024)} MB, "
+            f"above the {I_MAX_SNAPSHOT_TOTAL_BYTES // (1024 * 1024)} MB "
+            "a council snapshot accepts")
+    return {
+        "bFits": not listReasons,
+        "iFileCount": dictWeight["iFileCount"],
+        "iTotalBytes": dictWeight["iTotalBytes"],
+        "bTruncated": dictWeight["bTruncated"],
+        "sReason": (
+            "" if not listReasons else
+            "This project cannot be snapshotted for a council because "
+            + "; and ".join(listReasons)
+            + ". A council ships an immutable copy of the repository to "
+            "each participant, so the whole directory has to fit — "
+            "including files git ignores, which is usually what makes "
+            "a research repository too large."),
+    }
