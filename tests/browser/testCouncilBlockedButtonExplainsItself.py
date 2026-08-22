@@ -166,14 +166,56 @@ def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
     pageDashboard.wait_for_selector(".toast", timeout=8000)
     sToast = pageDashboard.inner_text(".toast")
 
-    # Deliberately asserts only that the click SPEAKS, not the wording.
-    # This test used to demand the word "workflow", and that became
-    # wrong the moment a Blank Project could convene without one — the
-    # message is no longer "open a workflow" and should not be. What
-    # must never regress is the silence.
+    # NOT merely "a toast appeared". An earlier version of this asserted
+    # only that the click SPEAKS, and that passed while the council
+    # panel was never activated in this state at all — the toast said
+    # "Open this project to convene a council" to a researcher who had
+    # already opened it. Asserting the absence of that specific wrong
+    # answer is what makes this test about the Blank Project.
+    assert "open this project" not in sToast.lower(), (
+        "the council panel was never activated in the Blank Project "
+        f"state, so the click answered with the state we are in: {sToast!r}")
     assert sToast.strip().strip("×").strip(), (
         f"the click produced an empty toast: {sToast!r}")
-    assert "council" in sToast.lower()
+
+
+def testABlankProjectCanActuallyConveneNotMerelyExplainItself(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The positive form, and the one that proves the feature.
+
+    Every other test in this file asserts a REFUSAL is explained. This
+    one asserts there is no refusal at all: in the Blank Project state,
+    with the credential gate open and the lane's single tracked
+    directory, the button is live and unblocked.
+
+    It exists because the negative tests could not see the real defect.
+    The backend admitted Blank Projects while the frontend never
+    activated the council panel without a workflow, and a test that
+    only asked "does the click say something" was satisfied by the
+    panel saying "open this project" to someone who already had.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    sState = pageDashboard.evaluate(
+        """() => {
+            const el = document.getElementById('btnAgentCouncil');
+            return JSON.stringify({
+                bDisabled: el.disabled,
+                bBlocked: el.classList.contains('council-blocked'),
+                sTitle: el.title});
+        }"""
+    )
+
+    assert '"bDisabled":false' in sState, sState
+    assert '"bBlocked":false' in sState, (
+        f"a Blank Project that can convene still looks blocked: {sState}")
+    assert "convene" in sState.lower()
 
 
 def testCancellingAComposedCouncilAsksBeforeDiscardingIt(
