@@ -845,6 +845,29 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Agent Council actions are HUMAN-ONLY (design section 10.2):
+    # starting paid provider work, answering a council's question,
+    # stopping a running council, accepting a plan and deleting a
+    # retained campaign are researcher decisions the in-container agent
+    # must never make on its own. Each handler also rejects the agent
+    # token lane explicitly, so the fail-closed catalog exclusion and
+    # the per-handler refusal agree.
+    ("POST", "/api/agent-councils/{sContainerId}/start"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/respond"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/grant-resolution-round"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/resolve-objections"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/reject-candidate"),
+    ("DELETE", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     # The dependency scan READS the researcher's own Python files on
     # the host and reports what they import. It writes nothing -- it
     # is a POST only because its input is a list -- but agent-invokable

@@ -900,12 +900,15 @@ session) beside the journal, appended and fsynced **before** the marker
 is unlinked and idempotent by marker hash, so "a marker abandoned with
 no record of who abandoned it" is unreachable rather than unlikely.
 
-**Three capabilities are given up by name.** PROOF Level 3 is defined
+**Four capabilities are given up by name.** PROOF Level 3 is defined
 by a pinned image; Supervised attribution is only honest when vaibify
 mediates every path to the files; the agent lane does not exist,
 because on the host the agent *is* the user and `bAgentSafe` has no
-discriminator left. Each is refused at its own door with a message
-naming the mode, rather than degrading into a misleading cascade.
+discriminator left; and the Agent Council is refused, because it
+grounds its claims by building a disposable container and proving it
+gone, which a host project has none to create. Each is refused at its
+own door with a message naming the mode, rather than degrading into a
+misleading cascade.
 
 **Which root, asked per resource.** `/workspace` was written as a
 constant wherever code needed "the root this project's files live

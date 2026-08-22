@@ -4301,23 +4301,27 @@ def _fdictEntry(sRel):
     ),
     # Case 17, ordering half: the channels close while the flock is
     # still held, never after the container has been handed back.
+    # Re-anchored 2026-08-20: the block moved inside the release
+    # transaction's try (council admission close + settle precede it);
+    # the mutation and its discriminator are unchanged, only the
+    # indentation of the anchor moved.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testPermittedReleaseClosesChannelsBeforeFreeingTheFlock',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''        await _fnDrainAndCloseBeforeRelease(appState, sName)
-        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fbReleaseOwnership(
-                dictContainerOwners, sName, sLeaseId,
-                sBrowserSessionId=sBrowserSessionId,
-                dictSessionOwner=dictSessionOwner,
-            )''',
-        new='''        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fbReleaseOwnership(
-                dictContainerOwners, sName, sLeaseId,
-                sBrowserSessionId=sBrowserSessionId,
-                dictSessionOwner=dictSessionOwner,
-            )
-        await _fnDrainAndCloseBeforeRelease(appState, sName)''',
+        old='''            await _fnDrainAndCloseBeforeRelease(appState, sName)
+            async with _flockObtainSessionCardinality(dictLockStore):
+                bReleased = containerOwnership.fbReleaseOwnership(
+                    dictContainerOwners, sName, sLeaseId,
+                    sBrowserSessionId=sBrowserSessionId,
+                    dictSessionOwner=dictSessionOwner,
+                )''',
+        new='''            async with _flockObtainSessionCardinality(dictLockStore):
+                bReleased = containerOwnership.fbReleaseOwnership(
+                    dictContainerOwners, sName, sLeaseId,
+                    sBrowserSessionId=sBrowserSessionId,
+                    dictSessionOwner=dictSessionOwner,
+                )
+            await _fnDrainAndCloseBeforeRelease(appState, sName)''',
     ),
 
     # ------------------------------------------------------------------

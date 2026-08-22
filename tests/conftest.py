@@ -197,6 +197,42 @@ def fnStubTheDockerBinaryStatusProbes(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fnKeepCouncilStartupOffTheRealDaemon(request, monkeypatch):
+    """A non-live test's app startup must not reach a real daemon.
+
+    ``appFactory``'s council startup reconcile builds its OWN Docker
+    client rather than using the connection the test injected, so a
+    route test that context-manages a TestClient runs
+    ``fdictReconcileLabeledRunnersOnRestart`` against whatever daemon
+    the machine has — and that function DESTROYS every container
+    carrying the council label, by design, because a restarted hub
+    cannot account for survivors.
+
+    On a developer machine with Docker up, that reaches across the
+    process and kills the runner a live test is using at that moment.
+    Reproduced directly: a labelled runner reported Running True, and
+    one reconcile later the daemon answered NotFound. It surfaced as a
+    409 Conflict on exec start in exactly one full-suite run, in a
+    test that passes alone and passes beside its neighbours — the
+    shape that gets written off as flake.
+
+    The live lanes are left alone: they carry the markers, they own
+    real containers on purpose, and stubbing them would be the
+    skip-reports-success failure this repository has already shipped.
+    """
+    if any(
+        request.node.get_closest_marker(sMarker) is not None
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest")
+    ):
+        yield
+        return
+    from vaibify.gui import appFactory
+    monkeypatch.setattr(
+        appFactory, "_fdockerCreateCouncilClientOrNone", lambda: None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fnClearPushDedupeCache():
     """Reset the syncRoutes push idempotency cache between tests.
 

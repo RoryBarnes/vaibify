@@ -177,6 +177,7 @@ DICT_PRIMITIVE_ACCESS = {
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
+    "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
@@ -190,6 +191,7 @@ DICT_PRIMITIVE_ACCESS = {
     # module, which the boundary had to read as an arbitrary command
     # because a primitive cannot tell a df from an rm -rf.
     "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
+    "fdictWeighRepository": S_ACCESS_TYPED_READ,
     # The two existence probes, on the same terms again. They replaced
     # `test -f`/`test -d` assembled by ContainerRepoFiles and run
     # through the general exec primitive -- which the boundary had to
@@ -220,6 +222,15 @@ DICT_PRIMITIVE_ACCESS = {
     # interpolated raw -- the last exec keeping that route outside the
     # commit-guard boundary.
     "flistReadGitRepoStatuses": S_ACCESS_TYPED_READ,
+    # The council snapshot's coherence observation (remediation R5):
+    # the declared ``gitWorktreeIdentities`` program enumerates every
+    # changed worktree path with git and computes each one's blob
+    # identity over the raw bytes, in the container. Same property as
+    # the poll read above: what the caller varies is only the repo
+    # path literal, and the argv around it is fixed text in the
+    # program table. It replaced a bash while-loop the caller
+    # assembled and ran through the general exec primitive.
+    "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,

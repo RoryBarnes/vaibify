@@ -191,7 +191,10 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # nodeArg and nodeChild and their neighbours were debt only because
 # the vocabulary had no word for an AST node, not because they were
 # badly named. The burn-down is the registry entry, not a rename.
-I_LEGACY_VARIABLE_BUDGET = 376
+# 376 -> 374 (2026-08-21): the Agent Council branch retired two more
+# seeded bindings by name; the two burn-downs are disjoint, so the
+# merge composes them.
+I_LEGACY_VARIABLE_BUDGET = 374
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

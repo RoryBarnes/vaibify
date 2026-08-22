@@ -317,7 +317,7 @@ async def ftClaimWithCardinality(
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return containerOwnership.ftClaim(
+            tClaimVerdict = containerOwnership.ftClaim(
                 dictContainerOwners, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=fbPipelineRunning,
@@ -325,6 +325,12 @@ async def ftClaimWithCardinality(
                 dictSessionOwner=dictSessionOwner,
                 connectionDocker=connectionDocker,
             )
+            if tClaimVerdict[0] == 200:
+                # A fresh lease reopens what the previous release
+                # closed: the council command gate refuses by resource
+                # name, and this name has an owner again.
+                _fnReopenCouncilAdmission(appState, sName)
+            return tClaimVerdict
 
 
 async def ftReserveContainerForStart(
@@ -396,6 +402,12 @@ def _ftReserveForStartUnderLocks(
     fnMintReservation(recordOwner, containerOwnership.fidentityRecordOwnership(
         recordOwner, sPriorOwnerLeaseId,
     ))
+    # The OTHER door into ownership (§10b), and it must reopen council
+    # admission exactly as a claim does: a container released, stopped
+    # and freshly started under the same name would otherwise inherit
+    # the previous era's closed admission and never convene a council
+    # again.
+    _fnReopenCouncilAdmission(appState, sName)
     return (S_START_RESERVED, {}, recordOwner)
 
 
@@ -531,19 +543,117 @@ async def ftReleaseExplicit(
         sBusyMessage = _fsReleaseBusyReason(appState, sName, bForce)
         if sBusyMessage:
             return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
-        await _fnDrainAndCloseBeforeRelease(appState, sName)
-        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fbReleaseOwnership(
-                dictContainerOwners, sName, sLeaseId,
-                sBrowserSessionId=sBrowserSessionId,
-                dictSessionOwner=dictSessionOwner,
-            )
+        # Council admission closes ATOMICALLY before anything awaits:
+        # the busy check alone is check-then-act — a respond authorized
+        # in the same tick could spawn a paid turn right after it. The
+        # close-then-recheck runs in one synchronous stretch on the
+        # loop, so a drive that slipped in is seen (release refuses)
+        # and one arriving later is refused at the command gate.
+        sCouncilAdmissionMessage = _fsCloseCouncilAdmissionBeforeRelease(
+            appState, sName)
+        if sCouncilAdmissionMessage:
+            return (S_RELEASE_BUSY, {"sMessage": sCouncilAdmissionMessage})
+        bReleased = False
+        try:
+            # Council state settles INSIDE the ownership transaction,
+            # still under the container-mutation lock: a concurrent
+            # claim serializes behind this lock, so it cannot reopen
+            # admission while paused campaigns are mid-settlement —
+            # the interleaving that let a second campaign continue
+            # from the previous lease era. The ``finally`` reopens on
+            # ANY exit that did not commit (a drain fault, a
+            # cancellation, an ownership change), so a close can never
+            # outlive an aborted release.
+            sCouncilSettlementMessage = (
+                await _fsSettleCouncilStateBeforeRelease(appState, sName))
+            if sCouncilSettlementMessage:
+                return (S_RELEASE_BUSY,
+                        {"sMessage": sCouncilSettlementMessage})
+            await _fnDrainAndCloseBeforeRelease(appState, sName)
+            async with _flockObtainSessionCardinality(dictLockStore):
+                bReleased = containerOwnership.fbReleaseOwnership(
+                    dictContainerOwners, sName, sLeaseId,
+                    sBrowserSessionId=sBrowserSessionId,
+                    dictSessionOwner=dictSessionOwner,
+                )
+        finally:
+            if not bReleased:
+                _fnReopenCouncilAdmission(appState, sName)
     if not bReleased:
         return (S_RELEASE_NOT_OWNER, {
             "sMessage": f"Container '{sName}' was not released; its "
                         "ownership changed during the request.",
         })
     return (S_RELEASE_RELEASED, {})
+
+
+async def _fsSettleCouncilStateBeforeRelease(appState, sName):
+    """Settle every paused council runtime; return a refusal or ''.
+
+    A drain that could not PROVE every egress boundary gone refuses the
+    release: dropping the lease over an unproven proxy would hand the
+    container to the next session while a council network may still be
+    dialling out. The refusal returns BUSY, so ``bReleased`` stays
+    False and the caller's ``finally`` reopens admission — the
+    container keeps its owner, who can retry (the retry state is held
+    on the runtime) or stop the council and release again.
+    """
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if not isinstance(dictCouncilControllerState, dict):
+        return ""
+    dictSettlement = (
+        await agentCouncilController.fdictDrainControllerForResource(
+            dictCouncilControllerState, sName))
+    if dictSettlement["bAllSettled"]:
+        return ""
+    return (
+        f"Container '{sName}' still has Agent Council network resources "
+        "that could not be proven gone "
+        f"({len(dictSettlement['listUnsettledCampaignIds'])} campaign(s)); "
+        "it is retained rather than handed on with a council proxy that "
+        "may still be running. Retry the release, or stop the council "
+        "first."
+    )
+
+
+def _fsCloseCouncilAdmissionBeforeRelease(appState, sName):
+    """Close council admission for a releasing container, atomically.
+
+    Returns the refusal message when a live drive is found AFTER the
+    close (the admission is reopened first — the container stays
+    owned), or the empty string when the close is clean and the
+    release may proceed.
+    """
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if not isinstance(dictCouncilControllerState, dict):
+        return ""
+    if agentCouncilController.fbCloseResourceAdmission(
+            dictCouncilControllerState, sName):
+        return ""
+    agentCouncilController.fnReopenResourceAdmission(
+        dictCouncilControllerState, sName)
+    return (
+        f"Container '{sName}' has an Agent Council still "
+        "deliberating — paid provider work that no release should "
+        "silently abandon. Stop the council first, then release."
+    )
+
+
+def _fnReopenCouncilAdmission(appState, sName):
+    """Reopen council admission when a close outlived its purpose."""
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if isinstance(dictCouncilControllerState, dict):
+        agentCouncilController.fnReopenResourceAdmission(
+            dictCouncilControllerState, sName)
 
 
 def _fsReleaseBusyReason(appState, sName, bForce):
@@ -567,6 +677,20 @@ def _fsReleaseBusyReason(appState, sName, bForce):
         return (
             f"Container '{sName}' has a guarded operation still "
             "running. It is retained until that operation settles."
+        )
+    from . import agentCouncilController
+    dictCouncilControllerState = getattr(
+        appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        None)
+    if isinstance(dictCouncilControllerState, dict) and (
+        agentCouncilController.fbControllerHasLiveDriveForResource(
+            dictCouncilControllerState, sName,
+        )
+    ):
+        return (
+            f"Container '{sName}' has an Agent Council still "
+            "deliberating — paid provider work that no release should "
+            "silently abandon. Stop the council first, then release."
         )
     if bForce:
         return ""

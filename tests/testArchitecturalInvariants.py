@@ -1224,12 +1224,34 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
             listTarBuilders.append(
                 str(pathFile.relative_to(REPO_ROOT))
             )
-    assert listTarBuilders == ["vaibify/docker/dockerConnection.py"], (
-        f"tar entries are built in {listTarBuilders}; this invariant "
-        f"pins the uid-1000 default of the ONE builder in the Docker "
-        f"gateway. A new tar-building write path is outside its reach "
-        f"— either route the write through the gateway or give the new "
-        f"path its own ownership invariant before extending this list."
+    # agentCouncilContext builds HOST-side snapshot archives that never
+    # reach ``put_archive``, so the uid-1000 contract does not apply to
+    # it; its own ownership invariants are
+    # ``testSnapshotTarEntriesCarryNeutralOwnership`` and
+    # ``testSnapshotModuleNeverWritesIntoTheContainer`` in
+    # ``tests/testAgentCouncilContext.py``.
+    #
+    # agentCouncilRunner builds the credential-delivery tarball
+    # (``fbaBuildStampedFileTarball``, section 9.7). It stamps BOTH
+    # entries to the unprivileged council user through the same
+    # ``_finfoStampCouncilOwnership`` discipline as the snapshot repack,
+    # so the tarfile default of 0 never leaks; its own ownership
+    # invariant is
+    # ``testStampedFileTarballCarriesCouncilUserOwnership`` in
+    # ``tests/testAgentCouncilProviders.py``, and the live copy-in path
+    # re-stamps every member besides.
+    assert sorted(listTarBuilders) == [
+        "vaibify/docker/dockerConnection.py",
+        "vaibify/gui/agentCouncilContext.py",
+        "vaibify/gui/agentCouncilRunner.py",
+    ], (
+        f"tar entries are built in {sorted(listTarBuilders)}; this "
+        f"invariant pins the uid-1000 default of the ONE builder in the "
+        f"Docker gateway (the council snapshot builder is host-side and "
+        f"carries its own invariant). A new tar-building write path is "
+        f"outside its reach — either route the write through the "
+        f"gateway or give the new path its own ownership invariant "
+        f"before extending this list."
     )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
@@ -4045,6 +4067,111 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # undelivered, and the branch lives inside the mint so no caller
     # can forget it.
     "containerOwnership.py": 907,
+    # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
+    # default cap when the three exhausted-round exit routes and the
+    # credential-gate refusal joined it. One cohesive responsibility —
+    # every route is a campaign-lifecycle action over the same
+    # principal/identity guards; splitting the exits into a second
+    # module would scatter the guard ordering the module docstring
+    # states, which is the drift the R2/R3 fixes exist to prevent.
+    # +96 (2026-08-20, remediation R10/R12/R1): the credential-gate
+    # refusal helper, the real stale-baseline producer (a typed read —
+    # a declared lane may make no general exec), and the mode-(b)
+    # carrier admission around the snapshot capture, which the live
+    # controller lane demanded (an unadmitted capture exec refused at
+    # the funnel, exactly as designed). All read at the same
+    # principal/identity guard points as every other campaign action.
+    # +58 (2026-08-20, review fixes): start resolves the project image
+    # BEFORE the credential gate so the evidence record's image pin is
+    # always compared; the credential-stager closure the production
+    # factory stages the runner login through (route-built, because
+    # the controller must not import the route context); and the
+    # staleness producer gained its content axis (the per-path
+    # identity digest the porcelain digest cannot see).
+    # +28 (2026-08-20, second-review fixes): the resolver returns the
+    # IMMUTABLE image id (a repointable tag cannot pin the CLI the
+    # evidence record vouched for), capabilities resolves and compares
+    # that same id instead of evaluating the gate image-blind, and
+    # delete disposes the controller runtime before removing durable
+    # storage.
+    # +28 (2026-08-21): R10's launch-time login-presence probe — the
+    # gate says the maintainer's evidence permits paid work in this
+    # image, this says the project actually HAS a login to copy, and it
+    # refuses before the campaign registers or any runner exists.
+    # +16 (2026-08-21): capabilities carries the adapter's model
+    # discovery (design 8.2 amendment — labelled un-verified aliases
+    # for the subscription backend, live enumeration for the API one)
+    # so the picker stops being free text and the discovery code stops
+    # being unreachable.
+    # +7 (2026-08-22): capabilities marks a SHUT GATE distinctly from a
+    # wrong project type, so the toolbar can offer instructions for the
+    # one case that has any. The marker is a route-shaped fact — what
+    # this payload means to a client — so it belongs with the payload
+    # rather than in a new module.
+    # +38 (2026-08-22): the capabilities pre-flight — one call and the
+    # helper that downgrades the capability through the SAME
+    # bAvailable/sReason pair every other refusal uses, rather than
+    # growing a second unavailable-shaped concept for the toolbar to
+    # learn.
+    "routes/councilRoutes.py": 1093,
+    # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
+    # crossed the cap when the coherence check became a real algorithm —
+    # two independent pre/post per-path observations plus archive-member
+    # matching by git blob identity. Capture and coherence are ONE
+    # responsibility: the coherence refusal is what makes a sealed
+    # snapshot a snapshot, and a separate "coherence module" would split
+    # the refusal from the stream it judges, inviting the drift the
+    # check exists to catch.
+    # +16 (2026-08-20, remediation R11): the recorded
+    # agent-instruction-file policy decision in the module docstring —
+    # a decision that must live beside the exclusion table it governs.
+    # +47 (2026-08-20, review fix): the observation widened to EVERY
+    # present path and the archive match became total (an unobserved
+    # file or symlink member refuses), closing the clean-file
+    # change-then-revert hole; plus the per-path identity digest the
+    # staleness comparison rides. Same one responsibility: what makes
+    # a sealed snapshot a snapshot.
+    # +49 (2026-08-22): fdictAssessSnapshotFeasibility — the same
+    # bounds this module already enforces mid-capture, answered from
+    # metadata so a council can be refused BEFORE a researcher writes
+    # a question. It belongs here precisely because the bounds do: a
+    # pre-flight living anywhere else is a second opinion about what
+    # a snapshot accepts, and the two would drift.
+    "agentCouncilContext.py": 965,
+    # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
+    # the default cap when the egress backstop joined it —
+    # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
+    # from the durable store and reuses the two existing removal
+    # probes, adding no new SDK blind spots) and the council label on
+    # the proxy create so the labeled reconcile can settle a proxy
+    # whose campaign record is gone. One responsibility: the sole
+    # council SDK authority, and the sweep is its crash-recovery leg.
+    # +13 (2026-08-21): the gateway carries the project container its
+    # council work belongs to, and stamps it onto every runner and
+    # proxy it creates. It lives on the gateway rather than on each
+    # create call precisely so there is ONE place the owner can be
+    # forgotten — the alternative threaded a new argument through four
+    # signatures and four call sites, which is more surface for the
+    # same fact. Still one responsibility.
+    "agentCouncilDockerGateway.py": 862,
+    # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
+    # probe and the credential-specific read cap join the adapter that
+    # already owns every other credential-lane rule. One cohesive
+    # responsibility: what the runner backend may read, copy, and
+    # claim about a login.
+    # +7 (2026-08-21): the credential read moved to the BOUNDED
+    # adapter and maps an over-ceiling answer to RunnerCredentialError,
+    # so the launch probe answers 409 instead of letting a ValueError
+    # surface as a 500.
+    # +36 (2026-08-22): the staged login carries the token's SCOPES, and
+    # the two docstrings explain why at length. The prose is most of the
+    # growth and it is the point: the previous docstring asserted the
+    # access token alone was the narrowest document the CLI can read,
+    # which was never measured and was false — the CLI answers "Not
+    # logged in" without scopes. A measured field table beats a
+    # confident sentence, and it belongs where the next reader will
+    # otherwise re-derive it from a failed paid turn.
+    "agentCouncilProviders.py": 860,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4243,7 +4370,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
     # the definition producer (R8) — the stamp lives at the
     # producer's own seam, never at save time.
-    "routes/testRoutes.py": 817,
+    # +61 (2026-08-19, agent-council phase 0): the sApiKey raw-key lane
+    # is retired. The generate-test route resolves the stored provider
+    # key through secretManager BEFORE any carrier opens (a missing key
+    # must refuse an untouched container, so the pre-flight belongs
+    # beside the other pre-carrier refusals in this module), and the
+    # browser-only /api/provider-key/{sProvider} capability route
+    # reports bConfigured for the same consumer — the test-generation
+    # modal. Both sit at this module's existing seam: routes serving
+    # test generation.
+    "routes/testRoutes.py": 878,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4746,6 +4882,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # predicate, in researcher language. Discovery began listing that
     # shape; the guard bouncing the very card the researcher was shown
     # was the live incident.
+    # +1 (2026-08-19): the Agent Council route module joined the route
+    # loader — one line, the unavoidable registration of a new route
+    # group through the existing path.
+    # 2026-08-21 (on merge): the figure is the merged file's REAL line
+    # count, not the sum of the two sides' recorded numbers. Both sides
+    # had already recorded a line or two of slack, and adding them
+    # together would have compounded it into a ceiling nothing reaches
+    # — a ratchet with slack is green for growth nobody justified.
     "pipelineServer.py": 2890,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
@@ -4910,7 +5054,78 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # session decides which applies. Same responsibility, and the
     # alternative -- a second module owning one constant -- would
     # put the pair somewhere they could drift apart.
-    "sessionLifecycle.py": 1406,
+    # +14 (2026-08-20): a live Agent Council drive joins the release
+    # busy-refusals, beside the durable-task and guarded-mutation
+    # vetoes it behaves like (not force-overridable): paid provider
+    # work no release should silently abandon. The predicate lives in
+    # the controller; this is only the arbitration point reading it.
+    # +56 (2026-08-20): council admission closes ATOMICALLY inside the
+    # release commit (close-then-recheck in one synchronous stretch
+    # under the mutation lock) and reopens on an aborted release or a
+    # fresh claim — the check-then-act race where a respond authorized
+    # in the same tick could start a paid turn after the busy check.
+    # The arbitration point lives here because the ordering against
+    # the flock is the whole point.
+    # +23 (2026-08-20): council settlement moved INSIDE the release
+    # transaction (_fnSettleCouncilStateBeforeRelease under the
+    # mutation lock, reopen-on-any-non-commit in finally) — the
+    # post-release drain raced a new claim's admission reopen.
+    # +31 (2026-08-21): the council settlement helper became a REFUSAL
+    # (busy when a boundary is unproven; the finally reopens and the
+    # owner is kept), and the start-reservation door reopens council
+    # admission exactly as a claim does — a released-then-restarted
+    # container inherited the previous era's closed admission.
+    "sessionLifecycle.py": 1530,
+    # NEW at 963 (2026-08-20, review fixes): the controller crossed the
+    # default cap when the enabled launch path became real — the
+    # once-per-campaign runner-access provisioner (egress boundary +
+    # staged credential) the production connection factory wears, its
+    # release on every no-further-turn settlement path, the
+    # transactional launch (a failed start leaves a failed record,
+    # never a phantom planning one), the release busy-predicate, the
+    # bounded shutdown settle, and the fuller plan.md composition. One
+    # cohesive responsibility: the controller is the sole writer of
+    # campaign state, and every one of these is a campaign-lifecycle
+    # transition it alone may make; a separate "provisioning module"
+    # would move the access lifecycle away from the settlement points
+    # that release it, which is how resources get stranded.
+    # +91 (2026-08-20, second-review fixes): credential staging became
+    # per-turn (the provisioner owns egress only), the release drain
+    # SETTLES paused runtimes instead of merely flagging them, delete
+    # gained its controller half (fdictDisposeCampaignRuntime), the
+    # launch window counts as live for the busy predicates, an
+    # indeterminate egress teardown keeps its retry state, and plan.md
+    # gained resolved model provenance and the sealed content hash.
+    # Still the one responsibility: every line is a campaign-lifecycle
+    # transition only the sole state-writer may make.
+    # +98 (2026-08-20, third-review fixes): teardown returns a
+    # SETTLEMENT (indeterminate keeps the retry state; delete refuses
+    # rather than orphan what the startup sweep could no longer name),
+    # cancellation takes the same launch-settlement path as any fault,
+    # and the release authority's atomic admission close/reopen pair
+    # plus the command gate that enforces it. Same one responsibility.
+    # +47 (2026-08-20, fourth-review fixes): the SHIELDED runtime
+    # build — cancelling the awaiting future never stops the worker
+    # thread, so the failure handler waits the thread out
+    # (_fnAwaitBuildWorkerCompletion) before cleaning, closing the
+    # reproduced late-registration leak — and the provisioner records
+    # its tombstone BEFORE creating anything, keeping it when its own
+    # in-line cleanup is indeterminate.
+    # +15 (2026-08-21): the resource drain returns a SETTLEMENT
+    # (bAllSettled + the campaigns whose boundaries are unproven) so
+    # the release authority can veto rather than drop a lease over a
+    # proxy nobody proved gone — retaining the runtime told the caller
+    # nothing.
+    # +7 (2026-08-21): the plan renderer gained the three design 7.1
+    # sections the turn schema now asks participants to produce
+    # (rejected alternatives, verification requirements, stop
+    # conditions) — the artifact half of the charter 1.1.0 change.
+    # +7 (2026-08-21): the runtime gateway is handed the campaign's own
+    # project container name, so the containers it creates say whose
+    # they are. This is the production join for the peer-hub isolation
+    # fix; the reconcile logic itself lives in the registry, which is
+    # where survivor settlement already lived.
+    "agentCouncilController.py": 1228,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5160,6 +5375,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module's own busy-refusal, name validator, and self-skipping
     # duplicate check rather than duplicating them, so a separate module
     # would only scatter the registry surface it belongs with.
+    # +15 (2026-08-20, remediation R1): a successful release drains the
+    # council controller's live drives for the released resource — no
+    # deliberation may keep running against a project whose lease is
+    # gone. Cohesive with the release route it extends.
     # +51 (2026-08-20): _fnReleaseCallerOwnedSessionForConversion — the
     # convert/promote routes now release the CALLER'S OWN open session
     # through the lifecycle authority instead of refusing it, so a
@@ -5196,7 +5415,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # project-scoped registry operations because it resolves a project
     # exactly as they do; the analysis itself is a separate module
     # (dependencyScan.py) precisely so this one only routes.
-    "registryRoutes.py": 2148,
+    # 2026-08-21 (on merge): as with pipelineServer above, this is the
+    # merged file's real size. The council entry had carried ten lines
+    # of slack since it was written; the merge is where that gets
+    # returned rather than added to main's.
+    "registryRoutes.py": 2153,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -5252,6 +5475,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the figure is the merged file's real size. Taking either side's
     # number alone would have re-armed the ratchet below the module it
     # governs, which fails closed but for a reason nobody could read.
+    # +14 (2026-08-19): the Agent Council's five human-only mutating
+    # routes joined SET_INTENTIONALLY_EXCLUDED_PATHS with their
+    # rationale — registering a new route module inherently touches the
+    # exclusion set, and the alternative (splitting the catalog) is the
+    # premature-abstraction failure the ratchet exists to prevent.
+    # +9 (2026-08-20, remediation R6): the three exhausted-round exit
+    # routes (grant-resolution-round / resolve-objections /
+    # reject-candidate) joined the same human-only exclusion block.
     # +6 (2026-08-21): the seed's journal-kind rationale — it is
     # journalled as a file-write rather than a bespoke kind, because
     # the journal's allowlist is the set of kinds `vaibify reconcile`
@@ -5271,7 +5502,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # be an import oracle over the researcher's own files. The comment
     # carries that reasoning because the exclusion set is where a
     # future reader will ask why this route is not offered.
-    "actionCatalog.py": 1021,
+    "actionCatalog.py": 1044,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5443,6 +5674,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # grew the module and only the module-size ratchet noticed. It is one
     # more row in DICT_CONTROL_PLANE_SCOPES, which is the table's whole
     # job, so the seam has not moved.
+    # +4 (2026-08-19): the Agent Council's four container-read GET routes
+    # joined SET_CONTAINER_READ_ROUTES — the frozen ratchet REQUIRES every
+    # owned-container GET to be listed there, so a new read module cannot
+    # avoid the four rows; the table is the module's job, not a new seam.
     # +7 (2026-08-21): the git-remote route's authorization-scope entry
     # and the reason it is browser-hub rather than container-scoped —
     # it writes the researcher's own repository and opens no container.
@@ -5452,7 +5687,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-21): the dependency scan's scope entry and the note
     # that it writes nothing — a POST only because its input is a
     # list, still gated because it reads the researcher's own files.
-    "routeScope.py": 969,
+    "routeScope.py": 973,
 }
 
 
@@ -5797,4 +6032,43 @@ def testFixedTemporaryNamesDoNotSpread():
         "pipelineUtils.fsBuildUniqueTemporaryPath, or lower "
         "I_FIXED_TEMPORARY_NAME_BUDGET if you removed one:\n  "
         + "\n  ".join(listSites)
+    )
+
+
+_REGEX_PROVIDER_CLIENT_CONSTRUCTION = re.compile(
+    r"\b(?:AsyncAnthropic|Anthropic|AsyncOpenAI|OpenAI)\s*\("
+)
+
+
+def testProviderClientConstructionOnlyInProviderApiTransport():
+    """Provider API clients are constructed only in the transport authority.
+
+    Agent-council design 8.3: one narrow low-level provider transport
+    (``vaibify/gui/providerApiTransport.py``) owns lazy SDK loading,
+    fixed official-endpoint client construction, and credential-safe
+    error wrapping. A second construction site would be a second
+    independent broker whose endpoint and error text nobody audits —
+    the exact defect the council design forbids. High-level callers
+    (``llmInvoker`` today, council adapters later) keep their own
+    prompt/response contracts and delegate the client to the transport.
+    """
+    listOffenders = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        if pathFile.name == "providerApiTransport.py":
+            continue
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        for iLine, sLine in enumerate(
+            fsReadSource(pathFile).splitlines(), 1
+        ):
+            if _REGEX_PROVIDER_CLIENT_CONSTRUCTION.search(sLine):
+                listOffenders.append(
+                    f"{pathFile.relative_to(REPO_ROOT)}:{iLine}"
+                    f"  {sLine.strip()}"
+                )
+    assert listOffenders == [], (
+        "Provider API client construction outside "
+        "vaibify/gui/providerApiTransport.py. Delegate to the "
+        "transport authority instead of constructing a second "
+        "client:\n  " + "\n  ".join(listOffenders)
     )

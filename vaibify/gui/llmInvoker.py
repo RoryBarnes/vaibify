@@ -337,23 +337,22 @@ def ftResultGenerateViaClaude(
 
 
 def fsGenerateViaApi(sPrompt, sApiKey):
-    """Call the Anthropic API directly, return generated text."""
-    try:
-        import anthropic
-    except ImportError:
-        raise RuntimeError(
-            "The 'anthropic' package is not installed. "
-            "Install with: pip install anthropic"
-        )
-    from vaibify.config.modelIdentity import fsResolveApiModelId
+    """Call the Anthropic API via the shared transport, return generated text.
 
-    client = anthropic.Anthropic(api_key=sApiKey)
-    message = client.messages.create(
-        model=fsResolveApiModelId(),
-        max_tokens=4096,
-        messages=[{"role": "user", "content": sPrompt}],
-    )
-    return message.content[0].text
+    Client construction, lazy SDK loading, and credential-safe error
+    wrapping live in ``providerApiTransport`` (the single provider
+    transport authority); this function keeps only the test-generation
+    prompt/result contract.
+    """
+    from vaibify.config.modelIdentity import fsResolveApiModelId
+    from .providerApiTransport import flistCreateAnthropicMessageContent
+
+    return flistCreateAnthropicMessageContent(
+        sApiKey,
+        fsResolveApiModelId(),
+        4096,
+        [{"role": "user", "content": sPrompt}],
+    )[0].text
 
 
 def _fbOutputLooksValid(sOutput):

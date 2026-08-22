@@ -6674,3 +6674,357 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     border-left: 3px solid #cb2431;
     padding-left: 6px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Agent Council (design/agentCouncil.md section 6)                   */
+/* ------------------------------------------------------------------ */
+
+#btnAgentCouncil.council-attention {
+    border-color: var(--color-orange);
+    color: var(--color-orange);
+}
+
+#btnAgentCouncil.council-running {
+    border-color: var(--highlight-color);
+    color: var(--highlight-color);
+}
+
+/* Blocked, not disabled: dimmed so it still reads as "not usable right
+   now", but live so its click can explain itself. A truly disabled
+   button swallows the click and the researcher learns nothing. */
+#btnAgentCouncil.council-blocked {
+    opacity: 0.55;
+    cursor: help;
+}
+
+.council-modal {
+    max-width: 720px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    background: var(--bg-modal);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 24px;
+    position: relative;
+}
+
+.council-chooser {
+    display: flex;
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.council-choice {
+    flex: 1;
+}
+
+.council-summaries {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+}
+
+.council-open-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+.council-open-state {
+    color: var(--highlight-color);
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.council-field {
+    display: block;
+    margin: 12px 0;
+    color: var(--text-secondary);
+}
+
+.council-field textarea,
+.council-field select,
+.council-field input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.council-participant-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.council-participant-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.council-available {
+    color: var(--highlight-color);
+    font-size: 0.85em;
+}
+
+.council-unavailable {
+    color: var(--color-red-text);
+    font-size: 0.85em;
+}
+
+.council-settings {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+}
+
+.council-settings label {
+    display: block;
+    margin: 8px 0;
+    color: var(--text-secondary);
+}
+
+.council-hint {
+    color: var(--text-muted);
+    font-size: 0.88em;
+    margin: 8px 0;
+}
+
+.council-disclosure {
+    background: var(--bg-error-tint);
+    border: 1px solid var(--color-orange);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 16px 0;
+}
+
+.council-disclosure h3 {
+    margin-top: 0;
+}
+
+.council-remote-note {
+    color: var(--color-orange);
+}
+
+.council-form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.council-error {
+    color: var(--color-red-text);
+    margin-top: 8px;
+}
+
+.council-workspace {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 45vh;
+    background: var(--bg-panel);
+    border-top: 2px solid var(--highlight-color);
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.council-workspace.council-collapsed .council-workspace-body {
+    display: none;
+}
+
+.council-workspace-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-modal);
+}
+
+.council-workspace-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.council-workspace-body {
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.council-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.council-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.council-tab:hover {
+    color: var(--text-primary);
+    border-bottom-color: var(--highlight-color);
+}
+
+.council-console-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.council-event-log,
+.council-participant-states,
+.council-decisions {
+    list-style: none;
+    padding: 0;
+}
+
+.council-event {
+    font-family: monospace;
+    font-size: 0.85em;
+    padding: 2px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.council-seq {
+    color: var(--text-muted);
+}
+
+.council-event-kind {
+    color: var(--highlight-color);
+}
+
+.council-eviction {
+    color: var(--color-orange);
+    font-size: 0.85em;
+}
+
+.council-chip {
+    display: inline-block;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 0.8em;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.council-chip-deliberating {
+    color: var(--highlight-color);
+}
+
+.council-chip-verifiedStopped {
+    color: var(--color-pale-blue);
+}
+
+.council-chip-failed {
+    color: var(--color-red-text);
+    background: var(--bg-error-tint);
+}
+
+.council-chip-quarantined {
+    color: var(--color-orange);
+    border: 1px solid var(--color-orange);
+}
+
+.council-chair {
+    color: var(--color-purple);
+    font-weight: 600;
+}
+
+.council-verdict {
+    border-radius: 6px;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+.council-verdict-pending {
+    color: var(--text-muted);
+}
+
+.council-verdict-confirmed {
+    color: var(--highlight-color);
+}
+
+.council-verdict-asserted {
+    color: var(--color-orange);
+}
+
+.council-verdict-blockedForWantOfEvidence {
+    color: var(--color-red-text);
+}
+
+.council-composer textarea,
+.council-needs-human textarea {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.council-needs-human {
+    background: var(--bg-modal);
+    border: 1px solid var(--color-orange);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.council-exits {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.council-plan-text {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    white-space: pre-wrap;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+.council-plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.council-plan-accepted {
+    color: var(--highlight-color);
+}
