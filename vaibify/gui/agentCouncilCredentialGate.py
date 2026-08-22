@@ -116,9 +116,61 @@ def fdictEvaluateCredentialEnablement(sProvider, sImageIdentity=None):
             "the credential-verification evidence record is unreadable "
             f"({type(error).__name__}); the runner backend stays "
             "disabled.")
-    if not isinstance(jsonRecord, dict):
+    listRecords = _flistNormaliseEvidenceDocument(jsonRecord)
+    if listRecords is None:
         return _fdictDisable(
             "the credential-verification evidence record is not a "
+            "mapping or a list of them; the runner backend stays "
+            "disabled.")
+    if not listRecords:
+        return _fdictDisable(
+            "the credential-verification evidence file holds no "
+            "records; the runner backend stays disabled.")
+    dictLastRefusal = None
+    for jsonCandidate in listRecords:
+        dictOutcome = _fdictEvaluateOneRecord(
+            jsonCandidate, sProvider, sImageIdentity)
+        if dictOutcome["bEnabled"]:
+            return dictOutcome
+        dictLastRefusal = dictOutcome
+    if sImageIdentity is not None and not any(
+            isinstance(jsonCandidate, dict)
+            and jsonCandidate.get("sImageIdentity") == sImageIdentity
+            for jsonCandidate in listRecords):
+        return _fdictDisable(
+            "no credential-verification evidence exists for the image "
+            f"this project runs ({sImageIdentity!r}); the runner "
+            "backend stays disabled until the live check is re-run "
+            "there. Evidence for other images does not carry over — "
+            "each image is verified on its own.")
+    return dictLastRefusal
+
+
+def _flistNormaliseEvidenceDocument(jsonDocument):
+    """Return the records a v1 or v2 evidence file holds, or None.
+
+    v1 was ONE record, so exactly one image could be enabled on a
+    machine at a time and verifying a second project silently disabled
+    the first (2026-08-22). A list is not a weakening — every record
+    still has to carry its own live check for its own image — it just
+    stops one fact from evicting another. The single-object form is
+    still read, so an existing record keeps working untouched.
+    """
+    if isinstance(jsonDocument, dict):
+        listRecords = jsonDocument.get("listRecords")
+        if isinstance(listRecords, list):
+            return listRecords
+        return [jsonDocument]
+    if isinstance(jsonDocument, list):
+        return jsonDocument
+    return None
+
+
+def _fdictEvaluateOneRecord(jsonRecord, sProvider, sImageIdentity):
+    """Evaluate ONE evidence record, unchanged from the v1 rules."""
+    if not isinstance(jsonRecord, dict):
+        return _fdictDisable(
+            "a credential-verification evidence record is not a "
             "mapping; the runner backend stays disabled.")
     for sRequiredKey in LIST_EVIDENCE_REQUIRED_KEYS:
         if not jsonRecord.get(sRequiredKey):

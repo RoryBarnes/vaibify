@@ -233,3 +233,69 @@ def test_capability_contract_defaults_unavailable():
     dictEnabled = agentCouncilProviders.fdictClaudeCapabilityContract(
         bRunnerBackendEnabled=True)
     assert dictEnabled["bAvailable"] is True
+
+# ── several images on one machine (2026-08-22) ────────────────────────
+
+def test_verifying_a_second_image_does_not_disable_the_first(pathEvidence):
+    """The eviction bug: one record meant one enabled project, ever.
+
+    A researcher who ran the ceremony for a second project found the
+    first silently disabled, because the document held a single record
+    with a single image identity. Per-image verification is the
+    security property and it is kept — what was broken is that the
+    file could only remember one image at a time, which made the
+    property unusable rather than strict.
+    """
+    dictFirst = _fdictBuildValidRecord()
+    dictFirst["sImageIdentity"] = "sha256:" + "11" * 32
+    dictSecond = _fdictBuildValidRecord()
+    dictSecond["sImageIdentity"] = "sha256:" + "22" * 32
+    pathEvidence.write_text(json.dumps(
+        {"listRecords": [dictFirst, dictSecond]}))
+
+    for sImageIdentity in (dictFirst["sImageIdentity"],
+                           dictSecond["sImageIdentity"]):
+        dictAnswer = (
+            agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+                "claude", sImageIdentity))
+        assert dictAnswer["bEnabled"] is True, (
+            f"{sImageIdentity} was disabled by the presence of the "
+            f"other record: {dictAnswer['sReason']}")
+
+
+def test_an_unverified_image_is_still_refused_beside_verified_ones(
+    pathEvidence,
+):
+    """The property that must NOT loosen with several records.
+
+    Holding more facts must not make the gate generous: an image nobody
+    ran the check for is refused even when its neighbours are verified,
+    and the refusal says evidence does not carry over.
+    """
+    dictVerified = _fdictBuildValidRecord()
+    dictVerified["sImageIdentity"] = "sha256:" + "33" * 32
+    pathEvidence.write_text(json.dumps({"listRecords": [dictVerified]}))
+
+    dictAnswer = (
+        agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+            "claude", "sha256:" + "44" * 32))
+
+    assert dictAnswer["bEnabled"] is False
+    assert "does not carry over" in dictAnswer["sReason"]
+
+
+def test_a_single_record_document_still_works_untouched(pathEvidence):
+    """Back-compat: the v1 shape is a machine's existing attestation.
+
+    Rewriting it would ask the researcher to redo a ceremony they have
+    already performed, which is exactly the friction this change exists
+    to remove.
+    """
+    dictRecord = _fdictBuildValidRecord()
+    pathEvidence.write_text(json.dumps(dictRecord))
+
+    dictAnswer = (
+        agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+            "claude", dictRecord["sImageIdentity"]))
+
+    assert dictAnswer["bEnabled"] is True
