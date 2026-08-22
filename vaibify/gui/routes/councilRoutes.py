@@ -35,6 +35,7 @@ THREE THINGS THIS MODULE ENFORCES, each an invariant named in section 21:
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import posixpath
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -55,6 +56,7 @@ from ..routeContext import (
     S_UNAVAILABLE_IN_HOST_MODE,
     S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE,
     S_UNAVAILABLE_SNAPSHOT_TOO_LARGE,
+    S_UNAVAILABLE_NO_DOMINANT_DIRECTORY,
 )
 from ..routeScope import (
     ffnDeclareCarrierMode,
@@ -198,17 +200,68 @@ def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId):
 
     The canonical identity a campaign is bound to and matched against
     (remediation R2): the lease principal is the container NAME, and the
-    repo is the open workflow's validated project repo — one container
-    can host several repos, and a campaign belongs to exactly one.
+    repo is one validated project repo — a container can host several,
+    and a campaign belongs to exactly one.
+
+    That invariant is UNCHANGED by the Blank Project work (2026-08-22).
+    What widened is only where the repo half is resolved FROM. It used
+    to come exclusively from an open workflow, which refused a project
+    with no steps defined yet — and a project at that stage is arguably
+    the one a planning council helps most. When no workflow is open the
+    repo is resolved from the tracked-repos sidecar instead, which is
+    the researcher's own already-recorded statement about which
+    directories matter.
     """
     sName = _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
-    dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId) or {}
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if not sProjectRepoPath:
+    if sProjectRepoPath:
+        return sName, sProjectRepoPath
+    return sName, _fsResolveDominantRepositoryPath(dictCtx, sContainerId)
+
+
+def _fsResolveDominantRepositoryPath(dictCtx, sContainerId):
+    """Return the Blank Project's directory, or refuse and say why.
+
+    A Blank Project — no steps defined yet — is still tied to a
+    directory, so this answers "which one" rather than inventing a
+    repo-less campaign kind. Two flavours of Blank Project both land
+    here and neither needs special handling: a true greenfield
+    directory snapshots to almost nothing, and a slightly-brownfield
+    one (files, no steps) snapshots like any other repo.
+
+    The tracked-repos sidecar is REUSED rather than a council-specific
+    setting added: it already records which directories the researcher
+    considers part of this project, it is already editable in the Repos
+    panel, and a second copy of that judgement would be one more thing
+    to disagree with the first.
+
+    Exactly one tracked repo is unambiguous. Several is a real choice —
+    guessing would silently snapshot the wrong codebase, so it refuses
+    and names them, and the researcher settles it by tracking one in the
+    Repos panel or opening its workflow.
+    """
+    from .. import projectRoots
+    from .. import trackedReposManager
+    dictSidecar = trackedReposManager.fdictReadOrSeedSidecar(
+        dictCtx["docker"], sContainerId)
+    listTracked = [dictEntry.get("sName", "")
+                   for dictEntry in (dictSidecar or {}).get("listTracked", [])
+                   if dictEntry.get("sName")]
+    sRoot = projectRoots.fsResolveProjectRoot(
+        sContainerId, WORKSPACE_ROOT).rstrip("/")
+    if len(listTracked) == 1:
+        return posixpath.join(sRoot, listTracked[0])
+    if not listTracked:
         raise HTTPException(
-            409, "the open workflow is not inside a project repository; "
-            "a council campaign is scoped to one")
-    return sName, sProjectRepoPath
+            409, "this project has no tracked directory for a council to "
+            "reason about. Track the directory this project lives in "
+            "from the Repos panel, then convene.")
+    raise HTTPException(
+        409, "this project tracks several directories ("
+        + ", ".join(sorted(listTracked))
+        + "), so a council cannot tell which one it is about. Open the "
+        "workflow you mean, or track only that directory, then convene.")
 
 
 def _fdictBuildEvent(sEventKind, sTurnId="", sDetail=""):
@@ -519,14 +572,28 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
     capability as it was rather than blocking a council over a probe.
     """
     from .. import agentCouncilContext
-    try:
-        sProjectRepoPath = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId).get("sProjectRepoPath", "")
-        if not sProjectRepoPath:
+    # Resolving WHICH repository is not part of the probe, so its
+    # refusals are not swallowed with the probe's. "I cannot tell which
+    # directory this project is about" must reach the toolbar — caught
+    # here, it left the button enabled and the researcher discovered it
+    # at convene, which is the failure this whole pre-flight exists to
+    # prevent.
+    sProjectRepoPath = (dictCtx.get("workflows") or {}).get(
+        sContainerId, {}).get("sProjectRepoPath", "")
+    if not sProjectRepoPath:
+        try:
+            sProjectRepoPath = _fsResolveDominantRepositoryPath(
+                dictCtx, sContainerId)
+        except HTTPException as errorRefusal:
+            dictCapabilities["bAvailable"] = False
+            dictCapabilities["sUnavailableIn"] = (
+                S_UNAVAILABLE_NO_DOMINANT_DIRECTORY)
+            dictCapabilities["sReason"] = str(errorRefusal.detail)
             return
+    try:
         dictFeasibility = agentCouncilContext.fdictAssessSnapshotFeasibility(
             dictCtx["docker"], sContainerId, sProjectRepoPath)
-    except (HTTPException, OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError):
         return
     dictCapabilities["dictSnapshotFeasibility"] = dictFeasibility
     if not dictFeasibility["bFits"]:

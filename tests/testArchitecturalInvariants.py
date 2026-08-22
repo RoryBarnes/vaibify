@@ -4113,7 +4113,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # bAvailable/sReason pair every other refusal uses, rather than
     # growing a second unavailable-shaped concept for the toolbar to
     # learn.
-    "routes/councilRoutes.py": 1093,
+    # +67 (2026-08-22): _fsResolveDominantRepositoryPath and the
+    # principal branch that uses it, so a Blank Project — no steps
+    # defined yet, arguably the state a planning council helps most —
+    # can convene against its tracked directory. Resolving WHICH repo
+    # a campaign is about belongs beside the principal that carries
+    # it; a separate module would put the identity and its resolution
+    # a call hop apart for one caller.
+    "routes/councilRoutes.py": 1160,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

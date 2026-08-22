@@ -137,16 +137,18 @@ var VaibifyAgentCouncil = (function () {
 
     function _fdictToolbarState() {
         if (!_dictState.sContainerId) {
-            /* Explainable, not disabled. fnActivate runs from
-               _fnActivateWorkflow — opening a WORKFLOW, not merely a
-               container — so a researcher sitting in a project with no
-               workflow open has a live-looking button and no container
-               id behind it. Left disabled, that is the second silent
-               dead click reported from the same button (2026-08-22). */
+            /* No container id means fnActivate has not run: it fires
+               from _fnActivateWorkflow, so the toolbar can be visible
+               with nothing behind it. Explainable rather than disabled
+               — a disabled button swallows its own click and says
+               nothing, which was the reported defect.
+
+               Note this is NOT "you must open a workflow": a Blank
+               Project convenes against its tracked directory, and the
+               backend resolves that without one. This branch is only
+               the window before the panel has a container at all. */
             return _fdictUnavailableButExplainable(
-                "Open a workflow in this project to convene a council. " +
-                "A campaign is bound to one workflow's project repo, so " +
-                "there is nothing to convene against until one is open.");
+                "Open this project to convene a council.");
         }
         var dictCapabilities = _dictState.dictCapabilities;
         if (!dictCapabilities) {
@@ -227,6 +229,14 @@ var VaibifyAgentCouncil = (function () {
            do something entirely unrelated. The backend's reason already
            names the counts and the bounds, so this only adds the
            practical way out. */
+        /* The project has not said which directory it is about. The
+           backend's reason already names the candidates and the action,
+           so this branch exists to keep it OUT of the size branch
+           below: one asks you to shrink a repository, the other to name
+           one, and offering the wrong advice is worse than none. */
+        if (dictCapabilities.sUnavailableIn === "no-dominant-directory") {
+            return dictCapabilities.sReason;
+        }
         if (dictCapabilities.sUnavailableIn === "snapshot-too-large") {
             return (dictCapabilities.sReason || "") +
                 " Convene from a smaller repository, or move the bulk " +

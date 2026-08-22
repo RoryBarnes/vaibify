@@ -166,8 +166,14 @@ def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
     pageDashboard.wait_for_selector(".toast", timeout=8000)
     sToast = pageDashboard.inner_text(".toast")
 
-    assert "workflow" in sToast.lower(), (
-        f"the toast never says to open a workflow: {sToast!r}")
+    # Deliberately asserts only that the click SPEAKS, not the wording.
+    # This test used to demand the word "workflow", and that became
+    # wrong the moment a Blank Project could convene without one — the
+    # message is no longer "open a workflow" and should not be. What
+    # must never regress is the silence.
+    assert sToast.strip().strip("×").strip(), (
+        f"the click produced an empty toast: {sToast!r}")
+    assert "council" in sToast.lower()
 
 
 def testCancellingAComposedCouncilAsksBeforeDiscardingIt(

@@ -273,6 +273,31 @@ class _MockDockerCouncilRefusals:
             "sImage": "ubuntu:24.04",
         }]
 
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Answer the tracked-repos sidecar read, and only it.
+
+        These cases open no workflow, so a container project now
+        resolves its directory from the sidecar — the Blank Project
+        path. That read is incidental to what this file asserts (the
+        host/container refusal split), but it is a real read the routes
+        now make, so the double answers it rather than the tests
+        passing on a mock that has drifted from the product.
+        """
+        if sPath.endswith("tracked_repos.json"):
+            raise FileNotFoundError(sPath)
+        if sPath.endswith("container.conf"):
+            raise FileNotFoundError(sPath)
+        raise AssertionError(f"unmodelled container read: {sPath!r}")
+
+    def flistDirectoryEntries(self, sContainerId, sPath):
+        """No repositories discovered: the sidecar seeds to empty.
+
+        With no sidecar on disk the seed runs discovery, so the council's
+        directory resolution reaches here too. Empty keeps these cases
+        about the refusal split they exist to test.
+        """
+        return []
+
 
 # (method, path-after-the-id, body) for every council route that REFUSES a
 # host project. Capabilities is excluded: it REPORTS the marker at 200

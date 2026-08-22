@@ -19,6 +19,7 @@ __all__ = [
     "S_UNAVAILABLE_IN_CONTAINER_MODE",
     "S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE",
     "S_UNAVAILABLE_SNAPSHOT_TOO_LARGE",
+    "S_UNAVAILABLE_NO_DOMINANT_DIRECTORY",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fnRefuseContainerOnlyForHostProject",
@@ -95,6 +96,11 @@ S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE = "credential-evidence"
 # rather than the machine. Its own marker so the panel can offer the
 # repository advice instead of the credential ceremony.
 S_UNAVAILABLE_SNAPSHOT_TOO_LARGE = "snapshot-too-large"
+# The third openable one: the capability fits and the machine is
+# ready, but the PROJECT has not said which directory it is about.
+# Distinct from the size marker because the action differs — one
+# shrinks a repository, the other names one.
+S_UNAVAILABLE_NO_DOMINANT_DIRECTORY = "no-dominant-directory"
 
 
 def fnRefuseContainerOnlyForHostProject(sName, sCapability):

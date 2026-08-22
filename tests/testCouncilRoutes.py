@@ -636,6 +636,133 @@ def test_capabilities_refuse_a_repository_too_large_to_snapshot(
     assert dictCapabilities["dictSnapshotFeasibility"]["bFits"] is False
 
 
+def _fdictBlankProjectApp(tmp_path, listTrackedNames):
+    """An app whose container has NO workflow open, tracking these repos."""
+    docker = MockDockerCouncil()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", lambda: docker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser")
+    # The Blank Project state: a container is open, no workflow is.
+    app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
+    app.state.dictCouncilCampaignStore = (
+        agentCouncilStore.fdictCreateCampaignStore(
+            sDurableStoreRoot=str(tmp_path / "councils")))
+    return app, docker, listTrackedNames
+
+
+def _fdictCapabilitiesForBlankProject(tmp_path, monkeypatch,
+                                      listTrackedNames):
+    """Drive capabilities in the Blank Project state; return the payload."""
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": sName} for sName in listTrackedNames],
+            "listIgnored": [],
+        })
+    app, _, _ = _fdictBlankProjectApp(tmp_path, listTrackedNames)
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        return client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/capabilities").json()
+
+
+def test_a_blank_project_convenes_against_its_one_tracked_directory(
+    tmp_path, monkeypatch,
+):
+    """The point of the whole change: no steps defined is not a refusal.
+
+    A project with no steps yet is arguably the one a PLANNING council
+    helps most, and it was refused outright because the campaign's repo
+    half came only from an open workflow. It now comes from the
+    tracked-repos sidecar — the researcher's own recorded statement
+    about which directories are part of this project.
+
+    Note what is NOT special-cased: whether that directory is empty
+    (true greenfield) or holds files with no steps (slightly
+    brownfield). Both are just a directory, and the snapshot machinery
+    already handles either.
+
+    Drives the START route, not merely capabilities. Capabilities
+    resolves the directory through its own call, so a version of this
+    test that only read capabilities passed with the principal
+    resolver's Blank Project branch DELETED — green while the feature
+    was broken. Convening is the behaviour; asserting it is the test.
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "theOnlyRepo"}], "listIgnored": [],
+        })
+    app, _, _ = _fdictBlankProjectApp(tmp_path, ["theOnlyRepo"])
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=DICT_START_BODY)
+
+        assert response.status_code == 200, (
+            "a Blank Project with one tracked directory could not "
+            f"convene: {response.text}")
+        dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore,
+            response.json()["sCampaignId"])
+        assert dictCampaign["dictProjectIdentity"]["sProjectRepoPath"] == (
+            "/workspace/theOnlyRepo"), (
+            "the campaign bound to the wrong directory: "
+            f"{dictCampaign['dictProjectIdentity']}")
+
+
+def test_a_blank_project_capabilities_agree_with_convening(
+    tmp_path, monkeypatch,
+):
+    """The toolbar must not promise what the start route would refuse."""
+    dictCapabilities = _fdictCapabilitiesForBlankProject(
+        tmp_path, monkeypatch, ["theOnlyRepo"])
+
+    assert dictCapabilities["bAvailable"] is True, (
+        "a Blank Project with one tracked directory was refused a "
+        f"council: {dictCapabilities.get('sReason')}")
+
+
+def test_a_blank_project_with_no_tracked_directory_says_what_to_do(
+    tmp_path, monkeypatch,
+):
+    """Refused, but with the action that fixes it."""
+    dictCapabilities = _fdictCapabilitiesForBlankProject(
+        tmp_path, monkeypatch, [])
+
+    assert dictCapabilities["bAvailable"] is False
+    assert "Repos panel" in dictCapabilities["sReason"]
+
+
+def test_a_blank_project_tracking_several_directories_refuses_to_guess(
+    tmp_path, monkeypatch,
+):
+    """Ambiguity is refused and NAMED, never guessed.
+
+    Picking one silently would snapshot the wrong codebase and every
+    participant would reason about the wrong thing — a failure the
+    researcher would have no way to see in the resulting plan.
+    """
+    dictCapabilities = _fdictCapabilitiesForBlankProject(
+        tmp_path, monkeypatch, ["alpha", "beta"])
+
+    assert dictCapabilities["bAvailable"] is False
+    assert "alpha" in dictCapabilities["sReason"]
+    assert "beta" in dictCapabilities["sReason"]
+
+
 def test_delete_removes_a_stopped_campaign(tOwnerClient, eventTurnGate):
     """Deleting a settled campaign removes it from the store and disk."""
     client, app, _ = tOwnerClient
