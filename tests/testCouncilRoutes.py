@@ -746,21 +746,25 @@ def test_a_blank_project_with_no_tracked_directory_says_what_to_do(
     assert "Repos panel" in dictCapabilities["sReason"]
 
 
-def test_a_blank_project_tracking_several_directories_refuses_to_guess(
+def test_several_tracked_directories_are_offered_not_refused(
     tmp_path, monkeypatch,
 ):
-    """Ambiguity is refused and NAMED, never guessed.
+    """Ambiguity is a QUESTION, and the first version got this wrong.
 
-    Picking one silently would snapshot the wrong codebase and every
-    participant would reason about the wrong thing — a failure the
-    researcher would have no way to see in the resulting plan.
+    A toolkit container tracks many repositories by design — one live
+    project tracks nine — so refusing until only one is tracked told
+    the researcher to break the Repos panel's actual purpose. The
+    candidates are published instead, and the convene form asks.
+
+    Still never GUESSED: silently picking one would snapshot the wrong
+    codebase and every participant would reason about the wrong thing,
+    with nothing in the plan to show it.
     """
     dictCapabilities = _fdictCapabilitiesForBlankProject(
         tmp_path, monkeypatch, ["alpha", "beta"])
 
-    assert dictCapabilities["bAvailable"] is False
-    assert "alpha" in dictCapabilities["sReason"]
-    assert "beta" in dictCapabilities["sReason"]
+    assert dictCapabilities["bAvailable"] is True
+    assert dictCapabilities["listCandidateDirectories"] == ["alpha", "beta"]
 
 
 def test_delete_removes_a_stopped_campaign(tOwnerClient, eventTurnGate):
@@ -1008,3 +1012,66 @@ def test_login_presence_probe_holds_no_credential_material():
 
     assert agentCouncilProviders.fbRunnerCredentialIsPresent(
         _FakeMissingLoginConnection(), "cid", "/workspace/x/.claude/x") is False
+
+
+def test_the_chosen_directory_binds_the_campaign(tmp_path, monkeypatch):
+    """The researcher's pick is what the campaign is about.
+
+    Publishing candidates is only useful if choosing one works, and the
+    choice has to reach dictProjectIdentity — the snapshot and every
+    participant follow from it.
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "alpha"}, {"sName": "beta"}],
+            "listIgnored": [],
+        })
+    app, _, _ = _fdictBlankProjectApp(tmp_path, ["alpha", "beta"])
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=dict(DICT_START_BODY, sProjectDirectory="beta"))
+
+        assert response.status_code == 200, response.text
+        dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+            app.state.dictCouncilCampaignStore,
+            response.json()["sCampaignId"])
+        assert dictCampaign["dictProjectIdentity"]["sProjectRepoPath"] == (
+            "/workspace/beta")
+
+
+def test_a_directory_outside_the_tracked_set_is_refused(
+    tmp_path, monkeypatch,
+):
+    """The choice is validated, never trusted.
+
+    It becomes a container path, so a basename the project does not
+    track must not be joined onto the workspace root just because a
+    client asked. Kills a version that took the field at its word.
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "alpha"}], "listIgnored": [],
+        })
+    app, _, _ = _fdictBlankProjectApp(tmp_path, ["alpha"])
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json=dict(DICT_START_BODY, sProjectDirectory="../etc"))
+
+        assert response.status_code == 400, response.text
+        assert "tracked directories" in response.text

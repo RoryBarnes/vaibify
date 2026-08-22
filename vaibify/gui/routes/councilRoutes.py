@@ -114,6 +114,10 @@ class CouncilStartRequest(BaseModel):
         min_length=I_MIN_PARTICIPANTS, max_length=I_MAX_PARTICIPANTS)
     iChairbotIndex: int = Field(default=0, ge=0, lt=I_MAX_PARTICIPANTS)
     dictSettings: dict = Field(default_factory=dict)
+    # Which tracked directory this council is about, when the project
+    # tracks several and no workflow pins one. A BASENAME, validated
+    # against the tracked set server-side; never a path from a client.
+    sProjectDirectory: str = Field(default="", max_length=255)
 
 
 class CouncilRespondRequest(BaseModel):
@@ -195,7 +199,8 @@ def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
     return sName
 
 
-def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId):
+def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
+                               sChosenDirectory=""):
     """Guard the route and resolve the (resource name, project repo) pair.
 
     The canonical identity a campaign is bound to and matched against
@@ -217,10 +222,12 @@ def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId):
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if sProjectRepoPath:
         return sName, sProjectRepoPath
-    return sName, _fsResolveDominantRepositoryPath(dictCtx, sContainerId)
+    return sName, _fsResolveDominantRepositoryPath(
+        dictCtx, sContainerId, sChosenDirectory)
 
 
-def _fsResolveDominantRepositoryPath(dictCtx, sContainerId):
+def _fsResolveDominantRepositoryPath(dictCtx, sContainerId,
+                                     sChosenDirectory=""):
     """Return the Blank Project's directory, or refuse and say why.
 
     A Blank Project — no steps defined yet — is still tied to a
@@ -236,20 +243,28 @@ def _fsResolveDominantRepositoryPath(dictCtx, sContainerId):
     panel, and a second copy of that judgement would be one more thing
     to disagree with the first.
 
-    Exactly one tracked repo is unambiguous. Several is a real choice —
-    guessing would silently snapshot the wrong codebase, so it refuses
-    and names them, and the researcher settles it by tracking one in the
-    Repos panel or opening its workflow.
+    Exactly one tracked repo is unambiguous. Several is a real CHOICE,
+    and the researcher makes it: a toolkit container tracks many
+    repositories by design — one live project tracks nine — so the
+    first version of this, which refused until only one was tracked,
+    was telling researchers to break the Repos panel's actual purpose.
+    The candidates are offered at convene time instead. Still never
+    guessed: silently picking one would snapshot the wrong codebase and
+    every participant would reason about the wrong thing.
     """
     from .. import projectRoots
-    from .. import trackedReposManager
-    dictSidecar = trackedReposManager.fdictReadOrSeedSidecar(
-        dictCtx["docker"], sContainerId)
-    listTracked = [dictEntry.get("sName", "")
-                   for dictEntry in (dictSidecar or {}).get("listTracked", [])
-                   if dictEntry.get("sName")]
+    listTracked = _flistTrackedDirectoryNames(dictCtx, sContainerId)
     sRoot = projectRoots.fsResolveProjectRoot(
         sContainerId, WORKSPACE_ROOT).rstrip("/")
+    if sChosenDirectory:
+        # Validated against the tracked set, never trusted: the value
+        # becomes a container path, so a basename this project does not
+        # track is refused rather than joined onto the workspace root.
+        if sChosenDirectory not in listTracked:
+            raise HTTPException(
+                400, f"{sChosenDirectory!r} is not one of this project's "
+                "tracked directories")
+        return posixpath.join(sRoot, sChosenDirectory)
     if len(listTracked) == 1:
         return posixpath.join(sRoot, listTracked[0])
     if not listTracked:
@@ -260,8 +275,18 @@ def _fsResolveDominantRepositoryPath(dictCtx, sContainerId):
     raise HTTPException(
         409, "this project tracks several directories ("
         + ", ".join(sorted(listTracked))
-        + "), so a council cannot tell which one it is about. Open the "
-        "workflow you mean, or track only that directory, then convene.")
+        + "), so a council needs to be told which one it is about. "
+        "Choose it when you convene, or open the workflow you mean.")
+
+
+def _flistTrackedDirectoryNames(dictCtx, sContainerId):
+    """Return the basenames the tracked-repos sidecar records."""
+    from .. import trackedReposManager
+    dictSidecar = trackedReposManager.fdictReadOrSeedSidecar(
+        dictCtx["docker"], sContainerId)
+    return [dictEntry.get("sName", "")
+            for dictEntry in (dictSidecar or {}).get("listTracked", [])
+            if dictEntry.get("sName")]
 
 
 def _fdictBuildEvent(sEventKind, sTurnId="", sDetail=""):
@@ -581,6 +606,15 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
     sProjectRepoPath = (dictCtx.get("workflows") or {}).get(
         sContainerId, {}).get("sProjectRepoPath", "")
     if not sProjectRepoPath:
+        # Several tracked directories is a QUESTION, not a refusal: the
+        # candidates are published so the convene form can ask. The
+        # pre-flight is skipped in that case because there is no single
+        # repository to weigh yet.
+        listCandidates = sorted(
+            _flistTrackedDirectoryNames(dictCtx, sContainerId))
+        if len(listCandidates) > 1:
+            dictCapabilities["listCandidateDirectories"] = listCandidates
+            return
         try:
             sProjectRepoPath = _fsResolveDominantRepositoryPath(
                 dictCtx, sContainerId)
@@ -832,8 +866,12 @@ def _fnRegisterStartCouncil(app, dictCtx):
         sContainerId: str, request: CouncilStartRequest,
         requestHttp: Request,
     ):
+        # The ONLY route that passes a chosen directory: convening is
+        # where the campaign's repo is decided. Every other council
+        # route resolves the same principal to MATCH an existing
+        # campaign, and must not be able to re-point one.
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, request.sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictCampaign = _fdictCreateCampaignFromRequest(request, {

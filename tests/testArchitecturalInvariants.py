@@ -4120,7 +4120,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a campaign is about belongs beside the principal that carries
     # it; a separate module would put the identity and its resolution
     # a call hop apart for one caller.
-    "routes/councilRoutes.py": 1160,
+    # +38 (2026-08-22): the directory CHOICE — the request field, its
+    # server-side validation against the tracked set, and publishing
+    # the candidates for the convene form. The first cut demanded
+    # exactly one tracked directory, which told a researcher whose
+    # toolkit container legitimately tracks nine to untrack eight.
+    # Asking belongs with the principal it resolves.
+    "routes/councilRoutes.py": 1198,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

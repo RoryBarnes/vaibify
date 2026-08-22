@@ -379,8 +379,29 @@ var VaibifyAgentCouncil = (function () {
             function (dictProvider) { return dictProvider.sProvider; });
     }
 
+    function _fsDirectoryChoiceMarkup() {
+        /* Only when the project tracks SEVERAL directories and no
+           workflow pins one. A toolkit container tracks many by
+           design, so this asks rather than demanding the researcher
+           untrack the rest. Absent entirely in the common case, so the
+           form does not grow a control that answers nothing. */
+        var listCandidates = (_dictState.dictCapabilities || {})
+            .listCandidateDirectories || [];
+        if (listCandidates.length < 2) return "";
+        return "<label class=\"council-field\">Directory this council " +
+            "is about" +
+            "<select id=\"councilDirectory\">" +
+            listCandidates.map(function (sName) {
+                var sSafe = VaibifyUtilities.fnEscapeHtml(sName);
+                return "<option value=\"" + sSafe + "\">" + sSafe +
+                    "</option>";
+            }).join("") +
+            "</select></label>";
+    }
+
     function _fsPlanningFormMarkup() {
         return "<h2>Plan a change</h2>" +
+            _fsDirectoryChoiceMarkup() +
             "<label class=\"council-field\">Question" +
             "<textarea id=\"councilQuestion\" rows=\"4\" " +
             "placeholder=\"What change should the council plan?\">" +
@@ -690,6 +711,7 @@ var VaibifyAgentCouncil = (function () {
             listParticipants: _flistBuildParticipantPayload(),
             iChairbotIndex: _dictState.iChairbotIndex,
             dictSettings: _fdictReadSettingsForm(),
+            sProjectDirectory: _fsReadValue("councilDirectory"),
         };
         try {
             var dictResult = await VaibifyApi.fdictPost(
