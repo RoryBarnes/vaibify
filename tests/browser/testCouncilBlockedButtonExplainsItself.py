@@ -300,3 +300,88 @@ def testTheExplanationDoesNotSelfDestructBeforeItCanBeRead(
     assert pageDashboard.locator(".toast").count() == 1, (
         "the refusal vanished before it could be read or acted on"
     )
+
+
+def testAnOversizedFileIsOfferedForExclusionNotJustRefused(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The convene form must let the researcher ACT on the size bound.
+
+    The live report: a repository with one 85 MB data file was refused
+    at "Convene council", after the participants were chosen and the
+    question written. The pre-flight now catches it earlier, but
+    catching it earlier is only half — a researcher told "this file is
+    too big" and given no way past it is still stuck.
+
+    Drives the REAL form against the REAL pre-flight with the lane's
+    repository reporting one oversized member, then asserts the file is
+    named on screen, pre-ticked for exclusion, and that convening sends
+    it. A Python-side assertion cannot see any of that: the checkbox,
+    its default, and the request body are all frontend behaviour.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+    serverHub.adapterDocker.dictRepositoryWeight = {
+        "iFileCount": 120,
+        "iTotalBytes": 200 * 1024 * 1024,
+        "bTruncated": False,
+        "bLargestFilesTruncated": False,
+        "listLargestFiles": [
+            {"sPath": "data/marshnb/4.inv", "iSizeBytes": 85912419},
+            {"sPath": "README.md", "iSizeBytes": 2048},
+        ],
+    }
+
+    dictState = _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    assert dictState["bDisabled"] is False, (
+        "an oversized FILE blocked the button, which hides the only "
+        "place the exclusion can be offered")
+
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector(
+        ".council-snapshot-scope", timeout=8000)
+
+    sScope = pageDashboard.inner_text(".council-snapshot-scope")
+    assert "4.inv" in sScope, (
+        f"the offending file is not named on screen: {sScope!r}")
+    assert "81 MB" in sScope, (
+        f"the size the researcher must judge is missing: {sScope!r}")
+    assert pageDashboard.locator(
+        "[data-oversized-path='data/marshnb/4.inv']").is_checked(), (
+        "the exclusion is not ticked by default, so a researcher who "
+        "writes a question and convenes is refused anyway")
+    assert pageDashboard.locator(
+        "[data-oversized-path='README.md']").count() == 0, (
+        "a file well inside the bound was offered for exclusion; the "
+        "list would become a general curation switch")
+
+    listSentBodies = pageDashboard.evaluate(
+        """() => {
+            window._listCouncilStartBodies = [];
+            const fnRealPost = VaibifyApi.fdictPost;
+            VaibifyApi.fdictPost = function (sPath, dictBody) {
+                if (sPath.indexOf('/start') !== -1) {
+                    window._listCouncilStartBodies.push(dictBody);
+                    return Promise.reject(new Error('intercepted'));
+                }
+                return fnRealPost(sPath, dictBody);
+            };
+            return window._listCouncilStartBodies;
+        }"""
+    )
+    assert listSentBodies == []
+    pageDashboard.fill("#councilQuestion", "Which sampler converges fastest?")
+    pageDashboard.click("#btnCouncilConvene")
+    pageDashboard.wait_for_function(
+        "() => window._listCouncilStartBodies.length > 0", timeout=8000)
+    listExcluded = pageDashboard.evaluate(
+        "() => window._listCouncilStartBodies[0].listExcludedPaths")
+
+    assert listExcluded == ["data/marshnb/4.inv"], (
+        "the convene request did not carry the researcher's exclusion, "
+        f"so the capture would refuse exactly as before: {listExcluded!r}")

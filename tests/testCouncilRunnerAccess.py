@@ -256,6 +256,7 @@ def _tBuildRegisteredPlanningCampaign(tmp_path):
             "sResourceName": S_RESOURCE_NAME,
             "sProjectRepoPath": S_REPO_PATH,
             "sSnapshotIdentity": "",
+            "sSnapshotScopeNote": "",
         })
     agentCouncilCampaign.fnTransitionCampaignState(
         dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,
@@ -529,6 +530,7 @@ def testReleaseRefusesWhileACouncilIsDeliberatingThenAllows(tmp_path,
             "sResourceName": "demo",
             "sProjectRepoPath": S_REPO_PATH,
             "sSnapshotIdentity": "",
+            "sSnapshotScopeNote": "",
         })
     agentCouncilCampaign.fnTransitionCampaignState(
         dictCampaign, agentCouncilCampaign.S_STATE_PLANNING,

@@ -4126,7 +4126,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exactly one tracked directory, which told a researcher whose
     # toolkit container legitimately tracks nine to untrack eight.
     # Asking belongs with the principal it resolves.
-    "routes/councilRoutes.py": 1198,
+    # 1198 -> 1267 (2026-08-22): the snapshot pre-flight became a
+    # decision rather than a verdict. A repository whose only problem
+    # is named oversized files now stays convenable, the offending
+    # files travel to the form, and a per-candidate feasibility route
+    # answers one directory at a time — because weighing all nine of a
+    # toolkit container's repositories on every capabilities poll would
+    # spend a metadata walk each on a question nobody asked. All three
+    # are the same responsibility this module already owns: resolving
+    # WHICH repository a council is about and what it may carry.
+    "routes/councilRoutes.py": 1267,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4150,7 +4159,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a question. It belongs here precisely because the bounds do: a
     # pre-flight living anywhere else is a second opinion about what
     # a snapshot accepts, and the two would drift.
-    "agentCouncilContext.py": 965,
+    # 965 -> 1124 (2026-08-22): the snapshot bounds became per-capture
+    # and machine-scaled, and the researcher gained a reviewed way to
+    # omit a file the bounds would refuse. Both belong here: the module
+    # that ENFORCES a bound is the one that must state it, and an
+    # exclusion honoured anywhere else would be a second authority on
+    # what a snapshot contains. The arithmetic of what this machine
+    # allows is split out to agentCouncilCapacity, which is a genuinely
+    # different question with a different reason to change.
+    "agentCouncilContext.py": 1124,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5138,7 +5155,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # they are. This is the production join for the peer-hub isolation
     # fix; the reconcile logic itself lives in the registry, which is
     # where survivor settlement already lived.
-    "agentCouncilController.py": 1228,
+    # 1228 -> 1232 (2026-08-22): the launch records the snapshot's
+    # SCOPE beside its identity, so a partial snapshot travels to the
+    # participants as a statement rather than as silence.
+    "agentCouncilController.py": 1232,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

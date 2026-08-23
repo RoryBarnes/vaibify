@@ -1396,6 +1396,45 @@ Snapshot capture may briefly block project work. After it seals, pipeline work
 may continue. Later project changes make the displayed baseline stale and do
 not silently alter council context.
 
+**Amendment (2026-08-22): the bounds are per-machine, and a refused member is
+the researcher's decision.** The file-count, per-file and total-byte limits
+above shipped as fixed constants chosen for the smallest supported machine,
+which refused repositories a larger machine could hold many times over. They
+are now floors, raised by `agentCouncilCapacity` from what the machine
+actually has, and the distinction that matters is *whose* memory holds the
+bytes:
+
+- the **per-file** bound is a HOST bound — the hub materialises each member
+  once, in its own process, to hash and re-archive it;
+- the **total** bound and the runner's limits are DAEMON bounds — the copy
+  lands in a tmpfs inside each runner and tmpfs pages are charged to that
+  container's memory cgroup.
+
+On Linux the daemon shares the host kernel and the two readings coincide; on
+macOS they differ by whatever the researcher gave Docker Desktop, so this is
+one of the few places where a Linux-only test cannot distinguish a correct
+implementation from one that conflates them.
+
+Scaling alone does not answer a repository carrying a single large data file,
+so the convene form offers those files for exclusion by name, pre-ticked, and
+records each omission in the manifest alongside the reviewed policy
+exclusions. Two properties keep that from becoming a way to curate what a
+council may see:
+
+- an exclusion is honoured **only** for a member the bounds would otherwise
+  have refused outright; a request naming an ordinary file is ignored and the
+  file is captured normally; and
+- nothing is excluded by default — a repository with an oversized file and no
+  exclusion still refuses, so a partial snapshot is always something a human
+  chose.
+
+A partial snapshot is declared to every participant in the turn instruction,
+naming the excluded files and stating that they exist and are unreadable
+rather than absent. Silence there would be the worse failure: a participant
+that finds a referenced data file missing will otherwise conclude the
+repository is broken, or assert what the file must contain, and nothing in the
+snapshot contradicts either.
+
 ### 9.3 Council registry: runner reservations and API requests
 
 Runner turns and outbound API requests are both paid, long-running work the

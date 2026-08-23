@@ -128,24 +128,34 @@ import tarfile
 from datetime import datetime, timezone
 
 from vaibify.docker import dockerConnection
-from vaibify.gui import containerGit
+from vaibify.gui import agentCouncilCapacity, containerGit
 
+
+# The three bounds below are FLOORS, not the bounds a capture actually
+# enforces. What a given machine allows is resolved by
+# agentCouncilCapacity and threaded in as ``dictBounds``; these are what
+# a caller gets when nothing was resolved, and what every supported
+# machine is guaranteed. They are re-exported from the capacity module
+# rather than re-typed, so the two can never disagree.
 
 # A research repository with more members than this is carrying bulk
 # data that belongs in data storage, not in a council context window;
 # the cap also bounds the manifest and the runner copy-in time. Counts
 # every included member (files, directories, symlinks).
-I_MAX_SNAPSHOT_FILE_COUNT = 20000
+I_MAX_SNAPSHOT_FILE_COUNT = agentCouncilCapacity.I_FLOOR_SNAPSHOT_FILE_COUNT
 
-# Matches I_MAX_FETCH_FILE_BYTES in dockerConnection, for the same
-# reason: each included file is materialised in memory once while it is
-# hashed and re-archived, so the per-member cap is also the RAM bound.
-# Larger files are datasets, not context.
-I_MAX_SNAPSHOT_MEMBER_BYTES = 64 * 1024 * 1024
+# Each included file is materialised in memory once while it is hashed
+# and re-archived, so the per-member cap is a HOST RAM bound and scales
+# with the researcher's own machine, never with the daemon's.
+I_MAX_SNAPSHOT_MEMBER_BYTES = (
+    agentCouncilCapacity.I_FLOOR_SNAPSHOT_MEMBER_BYTES)
 
 # Bounds the host disk a single campaign can claim under ~/.vaibify and
 # the bytes copied into every disposable runner (design section 9.6).
-I_MAX_SNAPSHOT_TOTAL_BYTES = 512 * 1024 * 1024
+# A DAEMON bound: the copy lands in a tmpfs charged to the runner's
+# memory cgroup.
+I_MAX_SNAPSHOT_TOTAL_BYTES = (
+    agentCouncilCapacity.I_FLOOR_SNAPSHOT_TOTAL_BYTES)
 
 S_SNAPSHOT_ARCHIVE_BASENAME = "snapshot.tar"
 S_SNAPSHOT_MANIFEST_BASENAME = "manifest.json"
@@ -224,7 +234,7 @@ class SnapshotRefusedError(Exception):
 
 def fdictCaptureProjectContextSnapshot(
     connectionDocker, sContainerId, sProjectRepoPath, sCampaignId,
-    sSnapshotStoreRoot=None,
+    sSnapshotStoreRoot=None, dictBounds=None, listExcludedPaths=None,
 ):
     """Capture one bounded, validated, immutable project snapshot.
 
@@ -237,6 +247,16 @@ def fdictCaptureProjectContextSnapshot(
 
     ``sSnapshotStoreRoot`` overrides the application-data root
     (``~/.vaibify/agentCouncils``) so tests never touch real state.
+
+    ``dictBounds`` is this machine's resolved capacity; omitting it
+    uses the guaranteed floors, which is what every caller got before
+    the bounds were machine-scaled.
+
+    ``listExcludedPaths`` is the researcher's reviewed decision to omit
+    named oversized files. It can only ever omit a member the bounds
+    would have REFUSED outright (see ``_fbExcludeOversizedByRequest``),
+    so it converts a dead end into a recorded partial snapshot and can
+    never be used to hide an ordinary file from a council.
     """
     _fnValidateCampaignIdentifier(sCampaignId)
     sRepoRoot = _fsValidateProjectRepositoryRoot(
@@ -252,6 +272,8 @@ def fdictCaptureProjectContextSnapshot(
     try:
         dictCapture = _fdictStreamValidatedArchive(
             connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+            dictBounds or agentCouncilCapacity.fdictFloorCouncilCapacity(),
+            _fsetValidateExclusionRequest(listExcludedPaths),
         )
         dictIdentityAfter = _fdictReadRepositoryIdentity(
             connectionDocker, sContainerId, sRepoRoot,
@@ -403,8 +425,36 @@ def _fsCreateSnapshotDirectory(sCampaignId, sSnapshotStoreRoot):
     return sSnapshotDirectory
 
 
+def _fsetValidateExclusionRequest(listExcludedPaths):
+    """Return the requested exclusions as a set of repo-relative paths.
+
+    The values arrive from an HTTP body, so they are validated on the
+    same terms as an archive member: relative, normalized, no ``..``.
+    A malformed entry is REFUSED rather than dropped -- silently
+    ignoring one would produce a snapshot the researcher did not ask
+    for, and the capture is the one place that mistake becomes
+    permanent.
+    """
+    setExcluded = set()
+    for sRequestedPath in listExcludedPaths or []:
+        if not isinstance(sRequestedPath, str) or not sRequestedPath:
+            raise SnapshotRefusedError(
+                "An exclusion request must be a non-empty path; capture "
+                "refused."
+            )
+        if sRequestedPath.startswith("/") or ".." in sRequestedPath.split(
+                "/"):
+            raise SnapshotRefusedError(
+                f"Exclusion request {sRequestedPath!r} is refused: it "
+                "must be a relative in-project path."
+            )
+        setExcluded.add(posixpath.normpath(sRequestedPath))
+    return setExcluded
+
+
 def _fdictStreamValidatedArchive(
     connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+    dictBounds, setExcludedPaths,
 ):
     """Stream get_archive into a validated tar; return the accounting.
 
@@ -424,6 +474,9 @@ def _fdictStreamValidatedArchive(
         "listIncludedEntries": [],
         "iIncludedMemberCount": 0,
         "iTotalContentBytes": 0,
+        "dictBounds": dictBounds,
+        "setExcludedPaths": setExcludedPaths,
+        "setHonouredExclusions": set(),
     }
     filePipe = dockerConnection._BytesGeneratorPipe(iterTarStream)
     fileArchiveOutput = os.fdopen(
@@ -461,6 +514,8 @@ def _fnAppendValidatedMember(
     if tExclusion is not None:
         sOmissionPath, sReason = tExclusion
         dictCapture["dictOmissionReasons"].setdefault(sOmissionPath, sReason)
+        return
+    if _fbExcludeOversizedByRequest(dictCapture, infoMember, sRelativePath):
         return
     _fnEnforceCaptureLimits(dictCapture, infoMember, sRelativePath)
     if infoMember.issym():
@@ -544,28 +599,62 @@ def _ftFindExcludedComponent(sRelativePath):
     return None
 
 
+def _fbExcludeOversizedByRequest(dictCapture, infoMember, sRelativePath):
+    """Honour a researcher's exclusion, but ONLY for a refusing member.
+
+    The size test is what keeps this feature what it says it is. An
+    exclusion list that omitted any named path would be a general "hide
+    this from the council" switch, and a council that can be shown a
+    curated subset of a repository is worth less than no council: the
+    one thing a participant cannot check is what it was not given. So a
+    request for a member the capture would have accepted anyway is
+    IGNORED, not honoured, and the member is captured normally.
+
+    The bound is re-read from ``dictBounds`` rather than from the
+    pre-flight's answer, so the file that is dropped is exactly the
+    file that would otherwise have refused, on this machine, in this
+    capture.
+    """
+    if not infoMember.isfile():
+        return False
+    if sRelativePath not in dictCapture["setExcludedPaths"]:
+        return False
+    iMemberBound = dictCapture["dictBounds"]["iMaxSnapshotMemberBytes"]
+    if infoMember.size <= iMemberBound:
+        return False
+    dictCapture["dictOmissionReasons"].setdefault(
+        sRelativePath,
+        f"excluded by the researcher at convene time: {infoMember.size} "
+        f"bytes, over this machine's {iMemberBound}-byte per-file limit",
+    )
+    dictCapture["setHonouredExclusions"].add(sRelativePath)
+    return True
+
+
 def _fnEnforceCaptureLimits(dictCapture, infoMember, sRelativePath):
     """Refuse the capture the moment any declared bound is exceeded."""
+    dictBounds = dictCapture["dictBounds"]
     iMemberCount = dictCapture["iIncludedMemberCount"] + 1
-    if iMemberCount > I_MAX_SNAPSHOT_FILE_COUNT:
+    if iMemberCount > dictBounds["iMaxSnapshotFileCount"]:
         raise SnapshotRefusedError(
             f"The repository exceeds the snapshot member limit "
-            f"({I_MAX_SNAPSHOT_FILE_COUNT}); capture refused."
+            f"({dictBounds['iMaxSnapshotFileCount']}); capture refused."
         )
     if infoMember.isfile():
-        if infoMember.size > I_MAX_SNAPSHOT_MEMBER_BYTES:
+        if infoMember.size > dictBounds["iMaxSnapshotMemberBytes"]:
             raise SnapshotRefusedError(
                 f"File {sRelativePath!r} is {infoMember.size} bytes, "
                 f"over the per-file limit "
-                f"({I_MAX_SNAPSHOT_MEMBER_BYTES}); capture refused."
+                f"({dictBounds['iMaxSnapshotMemberBytes']}); capture "
+                "refused."
             )
         if (
             dictCapture["iTotalContentBytes"] + infoMember.size
-            > I_MAX_SNAPSHOT_TOTAL_BYTES
+            > dictBounds["iMaxSnapshotTotalBytes"]
         ):
             raise SnapshotRefusedError(
                 f"The repository exceeds the total snapshot size limit "
-                f"({I_MAX_SNAPSHOT_TOTAL_BYTES} bytes); capture "
+                f"({dictBounds['iMaxSnapshotTotalBytes']} bytes); capture "
                 "refused."
             )
     dictCapture["iIncludedMemberCount"] = iMemberCount
@@ -718,6 +807,16 @@ def _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture):
     outright. The old changed-paths-only match left clean tracked
     files pinned by nothing an archive could contradict; the full
     present-path observation closes that.
+
+    A researcher-excluded oversized file is observed and deliberately
+    absent, so it is exempted from the first direction only. The
+    exemption is narrow by construction: a path reaches
+    ``setHonouredExclusions`` only after the stream saw a member that
+    genuinely breached the per-file bound, so this cannot be widened
+    from the outside into "any path the caller names may go missing".
+    The reverse direction is NOT relaxed — an excluded path that
+    somehow appeared in the archive would still have to match its
+    observed identity.
     """
     dictEntriesByPath = {
         dictEntry["sPath"]: dictEntry
@@ -726,6 +825,8 @@ def _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture):
     dictObservedPaths = dictIdentityBefore["dictPathIdentities"]
     for sPath, dictObserved in sorted(dictObservedPaths.items()):
         if dictObserved["sType"] == "missing":
+            continue
+        if sPath in dictCapture["setHonouredExclusions"]:
             continue
         sMismatch = _fsDescribeArchiveEntryMismatch(
             sPath, dictObserved, dictEntriesByPath.get(sPath),
@@ -875,6 +976,21 @@ def _fdictWriteSnapshotManifest(
         "sCaptureEndIso": datetime.now(timezone.utc).isoformat(),
         "iIncludedMemberCount": dictCapture["iIncludedMemberCount"],
         "iTotalContentBytes": dictCapture["iTotalContentBytes"],
+        # What the researcher chose to leave out, recorded separately
+        # from the policy omissions above it: a reader asking "was this
+        # council shown the whole repository?" must not have to tell a
+        # standing policy exclusion from a one-off human decision.
+        "listResearcherExcludedPaths": sorted(
+            dictCapture["setHonouredExclusions"]),
+        # The bounds ENFORCED, not the machine that produced them: they
+        # explain why a member was refused or excluded, where the host's
+        # RAM would only describe the laptop.
+        "dictBoundsApplied": {
+            sBoundName: dictCapture["dictBounds"][sBoundName]
+            for sBoundName in (
+                "iMaxSnapshotFileCount", "iMaxSnapshotMemberBytes",
+                "iMaxSnapshotTotalBytes")
+        },
         "sSnapshotSha256": _fsComputeSnapshotContentHash(
             dictCapture["listIncludedEntries"],
         ),
@@ -917,7 +1033,7 @@ def _fnRemovePartialSnapshot(sSnapshotDirectory):
 
 
 def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
-                                   sProjectRepoPath):
+                                   sProjectRepoPath, dictBounds=None):
     """Report, from METADATA, whether this repo could be snapshotted.
 
     The capture bounds are enforced mid-stream, so a repository that
@@ -935,25 +1051,52 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
     a promise; a "does not fit" answer is reliable, because the two
     totals it compares only grow as the capture proceeds.
     """
+    dictBounds = dictBounds or agentCouncilCapacity.fdictResolveCouncilCapacity(
+        connectionDocker)
     dictWeight = connectionDocker.fdictWeighRepository(
         sContainerId, sProjectRepoPath)
+    listOversizedFiles = [
+        dictFile for dictFile in dictWeight.get("listLargestFiles", [])
+        if dictFile["iSizeBytes"] > dictBounds["iMaxSnapshotMemberBytes"]
+    ]
     listReasons = []
     if dictWeight["bTruncated"] or (
-            dictWeight["iFileCount"] > I_MAX_SNAPSHOT_FILE_COUNT):
+            dictWeight["iFileCount"] > dictBounds["iMaxSnapshotFileCount"]):
         listReasons.append(
             f"it holds {'over ' if dictWeight['bTruncated'] else ''}"
             f"{dictWeight['iFileCount']} files, above the "
-            f"{I_MAX_SNAPSHOT_FILE_COUNT} a council snapshot accepts")
-    if dictWeight["iTotalBytes"] > I_MAX_SNAPSHOT_TOTAL_BYTES:
+            f"{dictBounds['iMaxSnapshotFileCount']} a council snapshot "
+            "accepts")
+    if dictWeight["iTotalBytes"] > dictBounds["iMaxSnapshotTotalBytes"]:
         listReasons.append(
             f"it holds {dictWeight['iTotalBytes'] // (1024 * 1024)} MB, "
-            f"above the {I_MAX_SNAPSHOT_TOTAL_BYTES // (1024 * 1024)} MB "
+            f"above the "
+            f"{dictBounds['iMaxSnapshotTotalBytes'] // (1024 * 1024)} MB "
             "a council snapshot accepts")
+    # The per-file bound was MISSING from the first pre-flight, which
+    # checked two of the three bounds the capture enforces. A research
+    # repository comfortably inside the count and the total still hit
+    # the member cap at convene time on one 85 MB data file — exactly
+    # the late refusal this pre-flight exists to prevent (2026-08-22).
+    if listOversizedFiles:
+        listReasons.append(_fsDescribeOversizedFiles(
+            listOversizedFiles, dictWeight, dictBounds))
     return {
         "bFits": not listReasons,
+        # Every reason is an oversized FILE, so the researcher has a
+        # move: exclude them and convene anyway. Distinguished from the
+        # count and total bounds, where no per-file choice helps and the
+        # honest answer is that the repository is the wrong shape.
+        "bResolvableByExcludingFiles": bool(
+            listOversizedFiles) and len(listReasons) == 1,
+        "listOversizedFiles": listOversizedFiles,
+        "bOversizedListTruncated": bool(
+            dictWeight.get("bLargestFilesTruncated")) and bool(
+                listOversizedFiles),
         "iFileCount": dictWeight["iFileCount"],
         "iTotalBytes": dictWeight["iTotalBytes"],
         "bTruncated": dictWeight["bTruncated"],
+        "iMaxSnapshotMemberBytes": dictBounds["iMaxSnapshotMemberBytes"],
         "sReason": (
             "" if not listReasons else
             "This project cannot be snapshotted for a council because "
@@ -963,3 +1106,27 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
             "including files git ignores, which is usually what makes "
             "a research repository too large."),
     }
+
+
+def _fsDescribeOversizedFiles(listOversizedFiles, dictWeight, dictBounds):
+    """Name the files over the per-member bound, or count them.
+
+    Naming the file is the difference between a researcher who can act
+    and one who cannot: the bound is a number, but "which file" is the
+    question they actually have. Past a handful, the names stop helping
+    and the count is the information.
+    """
+    iLimitMegabytes = dictBounds["iMaxSnapshotMemberBytes"] // (1024 * 1024)
+    sSuffix = (
+        f", above the {iLimitMegabytes} MB a single snapshot member "
+        "accepts on this machine")
+    if len(listOversizedFiles) > 3:
+        return (
+            f"{'at least ' if dictWeight.get('bLargestFilesTruncated') else ''}"
+            f"{len(listOversizedFiles)} of its files are individually over "
+            f"{iLimitMegabytes} MB, the most a single snapshot member "
+            "accepts on this machine")
+    return "; and ".join(
+        f"its file {dictFile['sPath']} is "
+        f"{dictFile['iSizeBytes'] // (1024 * 1024)} MB{sSuffix}"
+        for dictFile in listOversizedFiles)

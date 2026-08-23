@@ -53,6 +53,7 @@ from vaibify.docker.dockerConnection import (
     _I_CONTAINER_DEFAULT_UID,
     _I_CONTAINER_DEFAULT_GID,
 )
+from vaibify.gui import agentCouncilCapacity
 
 __all__ = [
     "S_COUNCIL_LABEL",
@@ -121,7 +122,7 @@ S_OUTCOME_DESTROYED = "destroyed"
 S_OUTCOME_QUARANTINED = "quarantined"
 
 
-def fdictBuildDefaultRunnerLimits():
+def fdictBuildDefaultRunnerLimits(dictCapacity=None):
     """Build the default hard resource limits for one council container.
 
     The tmpfs sizes deliberately sum to well under the memory limit:
@@ -129,13 +130,24 @@ def fdictBuildDefaultRunnerLimits():
     working tree as large as the memory limit would turn the disk bound
     into an out-of-memory kill and falsify the "disk-filling script hits
     the disk bound" claim.
+
+    ``dictCapacity`` is what THIS daemon can give (see
+    agentCouncilCapacity). Omitting it yields the floors — the fixed
+    limits these were before they were machine-scaled — so a caller
+    with no daemon to measure is never worse off. The working tree is
+    taken from the capacity rather than recomputed, because it IS the
+    largest snapshot the snapshot bounds will admit: two derivations of
+    that number would be two chances for the copy-in to overflow the
+    tmpfs it was sized against.
     """
+    dictResolved = (
+        dictCapacity or agentCouncilCapacity.fdictFloorCouncilCapacity())
     return {
         "fCpuCount": 1.0,
-        "iMemoryBytes": 1024 * 1024 * 1024,
+        "iMemoryBytes": dictResolved["iRunnerMemoryBytes"],
         "iPidsLimit": 256,
-        "iWorkingTreeBytes": 512 * 1024 * 1024,
-        "iScratchBytes": 64 * 1024 * 1024,
+        "iWorkingTreeBytes": dictResolved["iRunnerWorkingTreeBytes"],
+        "iScratchBytes": dictResolved["iRunnerScratchBytes"],
     }
 
 

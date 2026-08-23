@@ -67,6 +67,14 @@ var VaibifyAgentCouncil = (function () {
         bPollInFlight: false,
         listDraftParticipants: [],
         iChairbotIndex: 0,
+        /* Per-directory snapshot feasibility, keyed by directory
+           basename, filled on demand when the convene form opens. The
+           empty string keys the project's own resolved repository — the
+           common single-directory case, whose answer the capabilities
+           poll already carried. Mutated in place, never reassigned
+           (the IIFE state trap). */
+        dictFeasibilityByDirectory: {},
+        setExcludedPaths: new Set(),
     };
 
     /* ------------------------------------------------------------------ */
@@ -93,6 +101,7 @@ var VaibifyAgentCouncil = (function () {
         _dictState.sRenderSignature = "";
         _dictState.listDraftParticipants = [];
         _dictState.iChairbotIndex = 0;
+        _fnResetSnapshotScope();
         _setKnownEventSequences.clear();
         _fnHideWorkspace();
         _fnHideModal();
@@ -358,8 +367,81 @@ var VaibifyAgentCouncil = (function () {
         _fnSeedDraftParticipants();
         var elBody = document.getElementById("agentCouncilModalBody");
         if (!elBody) return;
+        _fnResetSnapshotScope();
         elBody.innerHTML = _fsPlanningFormMarkup();
         _fnBindPlanningForm();
+        _fnWeighCandidateDirectories();
+    }
+
+    function _fnResetSnapshotScope() {
+        /* Cleared in place, never reassigned: the Set is held by the
+           render context (the IIFE state trap in AGENTS.md). The
+           project's own resolved repository is seeded from the
+           capabilities poll, which already weighed it — a second
+           request for the same answer would only be slower. */
+        Object.keys(_dictState.dictFeasibilityByDirectory).forEach(
+            function (sKey) {
+                delete _dictState.dictFeasibilityByDirectory[sKey];
+            });
+        _dictState.setExcludedPaths.clear();
+        var dictOwn = (_dictState.dictCapabilities || {})
+            .dictSnapshotFeasibility;
+        if (dictOwn) {
+            _dictState.dictFeasibilityByDirectory[""] = dictOwn;
+            _fnExcludeEveryOversizedFile(dictOwn);
+        }
+    }
+
+    function _fnExcludeEveryOversizedFile(dictFeasibility) {
+        /* Ticked BY DEFAULT. The researcher opened the form to ask a
+           question, not to adjudicate file sizes; the default that
+           lets them proceed is the one that excludes, and the list
+           stays visible so the choice is never silent. */
+        (dictFeasibility.listOversizedFiles || []).forEach(
+            function (dictFile) {
+                _dictState.setExcludedPaths.add(dictFile.sPath);
+            });
+    }
+
+    async function _fnWeighCandidateDirectories() {
+        /* One request per candidate, in parallel, only when the form is
+           open. The capabilities poll deliberately does NOT do this: a
+           toolkit container tracks many repositories and weighing all
+           of them every few seconds would spend a metadata walk each to
+           answer a question nobody asked. */
+        var listCandidates = (_dictState.dictCapabilities || {})
+            .listCandidateDirectories || [];
+        if (listCandidates.length < 2) {
+            _fnRenderSnapshotScope();
+            return;
+        }
+        await Promise.all(listCandidates.map(async function (sName) {
+            try {
+                _dictState.dictFeasibilityByDirectory[sName] =
+                    await VaibifyApi.fdictGet(
+                        _fsRoute("/snapshot-feasibility?sProjectDirectory=" +
+                            encodeURIComponent(sName)));
+            } catch (error) {
+                /* An unweighable directory is UNKNOWN, never "fine".
+                   The capture enforces the bounds regardless, so the
+                   honest render is a question mark rather than a tick
+                   the researcher would read as a promise. */
+                _dictState.dictFeasibilityByDirectory[sName] = null;
+            }
+        }));
+        _fnRenderDirectoryOptions();
+        _fnAdoptChosenDirectoryScope();
+    }
+
+    function _fnAdoptChosenDirectoryScope() {
+        /* The exclusions belong to the CHOSEN directory, so switching
+           directories discards them: a path ticked for one repository
+           means nothing in another, and carrying it over would send an
+           exclusion the capture silently ignores. */
+        _dictState.setExcludedPaths.clear();
+        var dictFeasibility = _fdictChosenFeasibility();
+        if (dictFeasibility) _fnExcludeEveryOversizedFile(dictFeasibility);
+        _fnRenderSnapshotScope();
     }
 
     function _fnSeedDraftParticipants() {
@@ -391,17 +473,120 @@ var VaibifyAgentCouncil = (function () {
         return "<label class=\"council-field\">Directory this council " +
             "is about" +
             "<select id=\"councilDirectory\">" +
-            listCandidates.map(function (sName) {
-                var sSafe = VaibifyUtilities.fnEscapeHtml(sName);
-                return "<option value=\"" + sSafe + "\">" + sSafe +
-                    "</option>";
-            }).join("") +
+            _fsDirectoryOptionsMarkup(listCandidates) +
             "</select></label>";
+    }
+
+    function _fsDirectoryOptionsMarkup(listCandidates) {
+        /* Each option carries its own verdict, because the choice IS
+           the moment the researcher can act on it: a directory whose
+           snapshot would refuse outright is marked, and one that only
+           needs oversized files excluded is marked differently. An
+           unweighed or unweighable directory says so rather than
+           looking clean. */
+        return listCandidates.map(function (sName) {
+            var sSafe = VaibifyUtilities.fnEscapeHtml(sName);
+            return "<option value=\"" + sSafe + "\">" + sSafe +
+                _fsFeasibilityGlyph(sName) + "</option>";
+        }).join("");
+    }
+
+    function _fsFeasibilityGlyph(sName) {
+        if (!(sName in _dictState.dictFeasibilityByDirectory)) return " …";
+        var dictFeasibility = _dictState.dictFeasibilityByDirectory[sName];
+        if (!dictFeasibility) return " (could not be weighed)";
+        if (dictFeasibility.bFits) return "";
+        if (dictFeasibility.bResolvableByExcludingFiles) {
+            return " ⚠ (" +
+                (dictFeasibility.listOversizedFiles || []).length +
+                " oversized file(s))";
+        }
+        return " ⛔ (too large to snapshot)";
+    }
+
+    function _fnRenderDirectoryOptions() {
+        var elSelect = document.getElementById("councilDirectory");
+        if (!elSelect) return;
+        var sChosen = elSelect.value;
+        var listCandidates = (_dictState.dictCapabilities || {})
+            .listCandidateDirectories || [];
+        elSelect.innerHTML = _fsDirectoryOptionsMarkup(listCandidates);
+        elSelect.value = sChosen;
+    }
+
+    function _fdictChosenFeasibility() {
+        var elSelect = document.getElementById("councilDirectory");
+        var sChosen = elSelect ? elSelect.value : "";
+        return _dictState.dictFeasibilityByDirectory[sChosen] || null;
+    }
+
+    function _fnRenderSnapshotScope() {
+        /* The offending files, named, each with the tick that leaves it
+           out. Rendered into the form rather than raised as an error,
+           because it is a decision the researcher is making, not a
+           failure they are being told about. */
+        var elScope = document.getElementById("councilSnapshotScope");
+        if (!elScope) return;
+        var dictFeasibility = _fdictChosenFeasibility();
+        var listOversized = dictFeasibility
+            ? (dictFeasibility.listOversizedFiles || []) : [];
+        if (!listOversized.length) {
+            elScope.innerHTML = "";
+            return;
+        }
+        elScope.innerHTML =
+            "<fieldset class=\"council-snapshot-scope\">" +
+            "<legend>⚠ Files too large for a snapshot</legend>" +
+            "<p class=\"council-hint\">A council ships a copy of the " +
+            "repository to every participant, and no single file in it " +
+            "may exceed " +
+            _fsMegabytes(dictFeasibility.iMaxSnapshotMemberBytes) +
+            " on this machine. Leave these out to convene; the " +
+            "participants are told by name which files they were not " +
+            "shown.</p>" +
+            listOversized.map(_fsOversizedFileRow).join("") +
+            (dictFeasibility.bOversizedListTruncated
+                ? "<p class=\"council-hint\">Only the largest " +
+                  listOversized.length + " are listed; there may be " +
+                  "more.</p>"
+                : "") +
+            "</fieldset>";
+        _fnBindOversizedCheckboxes();
+    }
+
+    function _fsOversizedFileRow(dictFile, iIndex) {
+        var sSafePath = VaibifyUtilities.fnEscapeHtml(dictFile.sPath);
+        return "<label class=\"council-oversized-file\">" +
+            "<input type=\"checkbox\" data-oversized-index=\"" + iIndex +
+            "\" data-oversized-path=\"" + sSafePath + "\"" +
+            (_dictState.setExcludedPaths.has(dictFile.sPath)
+                ? " checked" : "") +
+            "> Leave out <code>" + sSafePath + "</code> (" +
+            _fsMegabytes(dictFile.iSizeBytes) + ")</label>";
+    }
+
+    function _fsMegabytes(iBytes) {
+        return Math.floor((iBytes || 0) / (1024 * 1024)) + " MB";
+    }
+
+    function _fnBindOversizedCheckboxes() {
+        var listBoxes = document.querySelectorAll("[data-oversized-path]");
+        Array.prototype.forEach.call(listBoxes, function (elBox) {
+            elBox.addEventListener("change", function () {
+                var sPath = elBox.getAttribute("data-oversized-path");
+                if (elBox.checked) {
+                    _dictState.setExcludedPaths.add(sPath);
+                } else {
+                    _dictState.setExcludedPaths.delete(sPath);
+                }
+            });
+        });
     }
 
     function _fsPlanningFormMarkup() {
         return "<h2>Plan a change</h2>" +
             _fsDirectoryChoiceMarkup() +
+            "<div id=\"councilSnapshotScope\"></div>" +
             "<label class=\"council-field\">Question" +
             "<textarea id=\"councilQuestion\" rows=\"4\" " +
             "placeholder=\"What change should the council plan?\">" +
@@ -519,6 +704,12 @@ var VaibifyAgentCouncil = (function () {
         _fnBindElement("btnCouncilAddParticipant", _fnAddParticipant);
         _fnBindElement("btnCouncilConvene", _fnConveneCouncil);
         _fnBindElement("btnCouncilCancel", _fnHideModalConfirmingLoss);
+        var elDirectory = document.getElementById("councilDirectory");
+        if (elDirectory) {
+            elDirectory.addEventListener(
+                "change", _fnAdoptChosenDirectoryScope);
+        }
+        _fnRenderSnapshotScope();
     }
 
     function _fnRenderParticipantCards() {
@@ -712,6 +903,7 @@ var VaibifyAgentCouncil = (function () {
             iChairbotIndex: _dictState.iChairbotIndex,
             dictSettings: _fdictReadSettingsForm(),
             sProjectDirectory: _fsReadValue("councilDirectory"),
+            listExcludedPaths: Array.from(_dictState.setExcludedPaths),
         };
         try {
             var dictResult = await VaibifyApi.fdictPost(

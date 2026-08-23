@@ -245,3 +245,27 @@ def fnClearPushDedupeCache():
     syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
     yield
     syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
+
+
+@pytest.fixture(autouse=True)
+def fnPinCouncilCapacityToTheDeclaredFloors(request, monkeypatch):
+    """Make the council's machine-scaled bounds machine-INDEPENDENT.
+
+    The snapshot bounds scale with host RAM and daemon memory, which
+    means an unpinned assertion about them is an assertion about the
+    developer's laptop: the same test would pass on a 16 GB machine and
+    fail on an 8 GB runner, and the failure would look like a bug in
+    the code under test. Pinning the host reading to "unknown" makes
+    every test see the declared floors -- the bounds the design was
+    reviewed against -- unless it asks otherwise.
+
+    ``councilCapacity`` opts out, for the tests whose whole subject IS
+    the scaling.
+    """
+    if request.node.get_closest_marker("councilCapacity") is not None:
+        yield
+        return
+    from vaibify.gui import agentCouncilCapacity
+    monkeypatch.setattr(
+        agentCouncilCapacity, "fiReadHostMemoryBytes", lambda: 0)
+    yield

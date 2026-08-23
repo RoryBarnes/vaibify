@@ -16,6 +16,7 @@ into a blinded prompt, or a proposal that began seeing peer output would
 each flip an assertion here.
 """
 
+from vaibify.gui import agentCouncilCharter
 from vaibify.gui.agentCouncilCampaign import (
     fdictCreateCampaign,
     fdictCreateParticipant,
@@ -219,3 +220,46 @@ def testComposeTurnRequestSeparatesInstructionFromQuotedChannels():
     assert dictRequest["listQuotedMaterial"] is not listQuoted
     assert dictRequest["listQuotedMaterial"][0]["sContent"] == "content"
     assert dictRequest["sParticipantId"] == dictParticipant["sParticipantId"]
+
+
+def testAPartialSnapshotIsDeclaredToEveryParticipant():
+    """A participant must be told what it was not shown, by name.
+
+    Kills: composing a turn instruction without the scope note.
+
+    The excluded file exists in the researcher's repository; only the
+    council's copy lacks it. A participant that is not told will read
+    the absence as evidence — concluding the repository is broken, or
+    asserting what the missing file must contain — and the charter's
+    own evidence discipline gives it no way to notice, because nothing
+    in the snapshot contradicts either conclusion.
+    """
+    sNote = agentCouncilCharter.fsDescribeSnapshotScope(["data/huge.bin"])
+    assert "data/huge.bin" in sNote
+    dictCampaign = {
+        "sCharterText": agentCouncilCharter.S_CHARTER_TEXT,
+        "dictProjectIdentity": {"sSnapshotScopeNote": sNote},
+    }
+    sInstruction = agentCouncilCharter.fsComposeTurnInstruction(
+        dictCampaign, {"sRole": ""}, agentCouncilCharter.S_PHASE_PROPOSAL)
+    assert "data/huge.bin" in sInstruction
+    assert "PARTIAL" in sInstruction
+    assert "never as absent" in sInstruction
+
+
+def testAWholeSnapshotAddsNothingToTheTurnInstruction():
+    """The ordinary case must not grow a paragraph about nothing.
+
+    The other half of the pair: a scope note that always fired would
+    make the assertion above pass while telling every council its
+    snapshot was partial, which is a false statement in the common
+    case and trains participants to ignore the notice in the rare one.
+    """
+    assert agentCouncilCharter.fsDescribeSnapshotScope([]) == ""
+    dictCampaign = {
+        "sCharterText": agentCouncilCharter.S_CHARTER_TEXT,
+        "dictProjectIdentity": {"sSnapshotScopeNote": ""},
+    }
+    sInstruction = agentCouncilCharter.fsComposeTurnInstruction(
+        dictCampaign, {"sRole": ""}, agentCouncilCharter.S_PHASE_PROPOSAL)
+    assert "PARTIAL" not in sInstruction

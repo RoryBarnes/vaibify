@@ -278,6 +278,13 @@ S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
 # refused gets a truncated answer, and "too many to count" is the same
 # verdict as "too many".
 I_MAX_REPOSITORY_WEIGHT_PROBE_FILES = 50000
+# The probe names its largest files so the dashboard can offer the
+# oversized ones for exclusion by NAME rather than saying only "too
+# big". Bounded because the list is an interactive checklist: past this
+# many, ticking them individually is not the action a researcher wants
+# anyway, and the answer becomes "exclude them all" or "this repository
+# is the wrong shape for a council".
+I_REPOSITORY_WEIGHT_LARGEST_FILES = 64
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
 # A provider login document is kilobytes. The council's credential read
@@ -337,19 +344,29 @@ _DICT_TYPED_READ_PROGRAMS = {
     # exceeded, so an enormous tree cannot make the probe itself the
     # slow thing it exists to prevent.
     S_TYPED_READ_REPOSITORY_WEIGHT: (
-        "import json,os,sys; "
+        "import heapq,json,os,sys; "
         "root=" + _S_TYPED_READ_PATH_SLOT + "; "
         "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "; "
-        "n=0; b=0; truncated=False\n"
+        "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "; "
+        "n=0; b=0; truncated=False; heap=[]\n"
         "for dirpath,dirnames,filenames in os.walk(root):\n"
         "    for name in filenames:\n"
-        "        try: b+=os.lstat(os.path.join(dirpath,name)).st_size\n"
-        "        except OSError: pass\n"
-        "        n+=1\n"
+        "        p=os.path.join(dirpath,name)\n"
+        "        try: size=os.lstat(p).st_size\n"
+        "        except OSError: size=0\n"
+        "        b+=size; n+=1\n"
+        "        if len(heap)<top:\n"
+        "            heapq.heappush(heap,(size,os.path.relpath(p,root)))\n"
+        "        elif size>heap[0][0]:\n"
+        "            heapq.heapreplace("
+        "heap,(size,os.path.relpath(p,root)))\n"
         "    if n>cap:\n"
         "        truncated=True; break\n"
         "sys.stdout.write(json.dumps({"
-        "'iFileCount': n, 'iTotalBytes': b, 'bTruncated': truncated}))"
+        "'iFileCount': n, 'iTotalBytes': b, 'bTruncated': truncated, "
+        "'bLargestFilesTruncated': len(heap)>=top, "
+        "'listLargestFiles': [{'sPath': q, 'iSizeBytes': s} "
+        "for s,q in sorted(heap,reverse=True)]}))"
     ),
     # Existence probes, replacing `test -f` / `test -d` assembled by a
     # repo-files adapter and run through the general exec primitive.
@@ -1359,6 +1376,33 @@ class DockerConnection:
                 f"Cannot stat filesystem in container: {sPath}"
             )
         return json.loads(tExecResult.sStdout.strip())
+
+    def fdictReadDaemonCapacity(self):
+        """Return ``{iMemoryBytes, iCpuCount}`` the DAEMON has to give.
+
+        Not a container read: a daemon-API query, so no typed-read seam
+        applies. It exists because the host's memory is the wrong
+        number for anything that runs in a container. On Linux the
+        daemon shares the host's kernel and the two agree; on macOS and
+        Windows the daemon lives in a virtual machine with its own,
+        usually much smaller, allocation -- 16 GB of host RAM over a
+        7.7 GB Docker VM on the machine this was measured on. Sizing a
+        container from host RAM would over-provision it by 2x there and
+        the kill would arrive at run time.
+
+        A daemon that will not answer yields zeroes rather than an
+        exception: every caller has a declared floor to fall back to,
+        and refusing a council because ``docker info`` hiccuped would
+        be a worse answer than using the conservative bound.
+        """
+        try:
+            dictInfo = self._clientDocker.info()
+        except Exception:
+            return {"iMemoryBytes": 0, "iCpuCount": 0}
+        return {
+            "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
+            "iCpuCount": int(dictInfo.get("NCPU") or 0),
+        }
 
     def fdictWeighRepository(self, sContainerId, sRepositoryPath):
         """Return ``{iFileCount, iTotalBytes, bTruncated}`` for a repo.

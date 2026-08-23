@@ -22,7 +22,7 @@ import tarfile
 
 import pytest
 
-from vaibify.gui import agentCouncilContext
+from vaibify.gui import agentCouncilCapacity, agentCouncilContext
 from vaibify.gui.agentCouncilContext import (
     SnapshotRefusedError,
     fdictCaptureProjectContextSnapshot,
@@ -210,12 +210,27 @@ class _FakeRefusingConnection:
         )
 
 
-def _fdictCapture(connection, pathStoreRoot, sCampaignId="campaign-one"):
+def _fdictCapture(connection, pathStoreRoot, sCampaignId="campaign-one",
+                  dictBounds=None, listExcludedPaths=None):
     """Run one capture against the fake with the test's store root."""
     return fdictCaptureProjectContextSnapshot(
         connection, S_CONTAINER_ID, S_REPO_ROOT, sCampaignId,
-        sSnapshotStoreRoot=str(pathStoreRoot),
+        sSnapshotStoreRoot=str(pathStoreRoot), dictBounds=dictBounds,
+        listExcludedPaths=listExcludedPaths,
     )
+
+
+def _fdictTinyBounds(**dictOverrides):
+    """A capacity whose bounds a three-file fixture can actually breach.
+
+    Passed as an ARGUMENT rather than monkeypatched onto the module.
+    The bounds became per-capture when they became machine-scaled, so a
+    patched module constant is read by nothing: the test would go green
+    while proving that no bound was enforced at all.
+    """
+    dictBounds = agentCouncilCapacity.fdictFloorCouncilCapacity()
+    dictBounds.update(dictOverrides)
+    return dictBounds
 
 
 def _fnAssertStoreIsEmpty(pathStoreRoot):
@@ -444,44 +459,41 @@ def testInRootSymlinkIsCapturedAsASymlink(tmp_path):
 # ---------------------------------------------------------------------
 
 
-def testMemberCountLimitRefuses(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        agentCouncilContext, "I_MAX_SNAPSHOT_FILE_COUNT", 2,
-    )
+def testMemberCountLimitRefuses(tmp_path):
+    dictBounds = _fdictTinyBounds(iMaxSnapshotFileCount=2)
     baArchive = _fbaBuildArchive([
         {"sName": f"{S_ROOT_COMPONENT}/one.txt", "baContent": b"1"},
         {"sName": f"{S_ROOT_COMPONENT}/two.txt", "baContent": b"2"},
         {"sName": f"{S_ROOT_COMPONENT}/three.txt", "baContent": b"3"},
     ])
     with pytest.raises(SnapshotRefusedError) as errorInfo:
-        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path,
+                      dictBounds=dictBounds)
     assert "member limit" in str(errorInfo.value)
     _fnAssertStoreIsEmpty(tmp_path)
 
 
-def testPerFileByteLimitRefuses(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        agentCouncilContext, "I_MAX_SNAPSHOT_MEMBER_BYTES", 4,
-    )
+def testPerFileByteLimitRefuses(tmp_path):
+    dictBounds = _fdictTinyBounds(iMaxSnapshotMemberBytes=4)
     baArchive = _fbaBuildArchive([
         {"sName": f"{S_ROOT_COMPONENT}/big.txt", "baContent": b"12345"},
     ])
     with pytest.raises(SnapshotRefusedError) as errorInfo:
-        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path,
+                      dictBounds=dictBounds)
     assert "per-file limit" in str(errorInfo.value)
     _fnAssertStoreIsEmpty(tmp_path)
 
 
-def testTotalByteLimitRefuses(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        agentCouncilContext, "I_MAX_SNAPSHOT_TOTAL_BYTES", 6,
-    )
+def testTotalByteLimitRefuses(tmp_path):
+    dictBounds = _fdictTinyBounds(iMaxSnapshotTotalBytes=6)
     baArchive = _fbaBuildArchive([
         {"sName": f"{S_ROOT_COMPONENT}/one.txt", "baContent": b"1234"},
         {"sName": f"{S_ROOT_COMPONENT}/two.txt", "baContent": b"5678"},
     ])
     with pytest.raises(SnapshotRefusedError) as errorInfo:
-        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path,
+                      dictBounds=dictBounds)
     assert "total snapshot size" in str(errorInfo.value)
     _fnAssertStoreIsEmpty(tmp_path)
 
@@ -929,3 +941,120 @@ def testHostileAgentDocsAreExcludedAtEveryDepth(tmp_path):
     pathArchive = (tmp_path / "campaign-one" / "snapshot" / "snapshot.tar")
     assert b"hostile" not in pathArchive.read_bytes()
     assert b"exfiltrate" not in pathArchive.read_bytes()
+
+
+# ---------------------------------------------------------------------
+# The researcher's reviewed exclusion of an oversized file.
+# ---------------------------------------------------------------------
+
+
+def _fbaBuildOversizedFixture():
+    """One file over a four-byte member bound, and one under it."""
+    return _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/small.txt", "baContent": b"ab"},
+        {"sName": f"{S_ROOT_COMPONENT}/huge.bin", "baContent": b"123456789"},
+    ])
+
+
+def testAnExcludedOversizedFileIsOmittedAndRecorded(tmp_path):
+    """The whole point: a dead end becomes a recorded partial snapshot.
+
+    A researcher whose repository carries one 85 MB data file was
+    refused at convene time after choosing participants and writing a
+    question (live report, 2026-08-22). Leaving that file out is a
+    decision they are allowed to make; leaving it out SILENTLY is not,
+    which is why the omission is asserted in the manifest rather than
+    merely the absence asserted in the archive.
+    """
+    baArchive = _fbaBuildOversizedFixture()
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(baArchive), tmp_path,
+        dictBounds=_fdictTinyBounds(iMaxSnapshotMemberBytes=4),
+        listExcludedPaths=["huge.bin"])
+    setIncluded = {dictEntry["sPath"]
+                   for dictEntry in dictManifest["listIncludedEntries"]}
+    assert setIncluded == {"small.txt"}
+    assert dictManifest["listResearcherExcludedPaths"] == ["huge.bin"]
+    dictOmissions = {dictRow["sPath"]: dictRow["sReason"]
+                     for dictRow in dictManifest["listOmissions"]}
+    assert "huge.bin" in dictOmissions
+    assert "researcher" in dictOmissions["huge.bin"]
+    assert "9 bytes" in dictOmissions["huge.bin"]
+
+
+def testAnExclusionCannotHideAnOrdinaryFile(tmp_path):
+    """The guard that keeps this feature from becoming a curation switch.
+
+    Kills: honouring an exclusion without testing the member's size.
+
+    A council that can be shown a hand-picked subset of a repository is
+    worth less than no council, because the one thing a participant
+    cannot check is what it was not given. So an exclusion request for
+    a file the bounds would have accepted is IGNORED and the file is
+    captured normally — the request is not an error, it simply has no
+    power over anything that was not already refusing.
+    """
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/small.txt", "baContent": b"ab"},
+    ])
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(baArchive), tmp_path,
+        dictBounds=_fdictTinyBounds(iMaxSnapshotMemberBytes=4),
+        listExcludedPaths=["small.txt"])
+    setIncluded = {dictEntry["sPath"]
+                   for dictEntry in dictManifest["listIncludedEntries"]}
+    assert "small.txt" in setIncluded, (
+        "an ordinary file was dropped on the caller's say-so; the "
+        "exclusion list is a curation switch, not a size escape hatch")
+    assert dictManifest["listResearcherExcludedPaths"] == []
+
+
+def testAnExcludedFileStillFailsTheCaptureWhenNotRequested(tmp_path):
+    """Nothing is excluded by DEFAULT; the refusal stands until asked.
+
+    Kills: excluding every oversized member automatically.
+
+    Dropping oversized files unasked would silently ship a partial
+    snapshot to a researcher who believes they sent the whole
+    repository — the same defect as the curation switch, arrived at
+    from the other side.
+    """
+    baArchive = _fbaBuildOversizedFixture()
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(
+            _FakeCouncilConnection(baArchive), tmp_path,
+            dictBounds=_fdictTinyBounds(iMaxSnapshotMemberBytes=4))
+    assert "per-file limit" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testAnExcludedPathDoesNotTripTheCoherenceCheck(tmp_path):
+    """The archive-versus-observation match must tolerate the omission.
+
+    Kills: removing the honoured-exclusion exemption from the
+    observation match.
+
+    git observes the excluded file — it is a tracked file in the
+    researcher's repository — so the pre-capture observation lists a
+    path the archive deliberately lacks. Without the narrow exemption
+    the capture refuses with "observed path is absent from the
+    archive", which is the correct refusal for a repository that
+    changed mid-capture and the wrong one here.
+    """
+    baArchive = _fbaBuildOversizedFixture()
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(baArchive), tmp_path,
+        dictBounds=_fdictTinyBounds(iMaxSnapshotMemberBytes=4),
+        listExcludedPaths=["huge.bin"])
+    assert dictManifest["sSnapshotSha256"]
+
+
+def testAnEscapingExclusionPathIsRefused(tmp_path):
+    """An exclusion request is caller input and is validated as such."""
+    baArchive = _fbaBuildOversizedFixture()
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(
+            _FakeCouncilConnection(baArchive), tmp_path,
+            listExcludedPaths=["../../etc/passwd"])
+    assert "relative in-project path" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)

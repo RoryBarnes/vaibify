@@ -35,6 +35,7 @@ import logging
 import os
 
 from . import agentCouncilCampaign
+from . import agentCouncilCharter
 from . import agentCouncilRegistry
 from . import agentCouncilStore
 
@@ -560,6 +561,9 @@ async def fdictLaunchCampaignDeliberation(
         dictManifest = await ffnCaptureSnapshot()
         dictCampaign["dictProjectIdentity"]["sSnapshotIdentity"] = (
             dictManifest["sSnapshotSha256"])
+        dictCampaign["dictProjectIdentity"]["sSnapshotScopeNote"] = (
+            agentCouncilCharter.fsDescribeSnapshotScope(
+                dictManifest.get("listResearcherExcludedPaths") or []))
         agentCouncilStore.fnCheckpointStoredCampaign(
             dictStore, sCampaignId, dictCampaign)
         baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)

@@ -149,14 +149,23 @@ LIST_CAMPAIGN_REQUIRED_KEYS = [
 # by NAME, never the raw docker id), the validated project-repo path the
 # campaign deliberates over (one container can host several repos), and
 # the snapshot identity recorded when the immutable context is captured.
+# ``sSnapshotScopeNote`` is empty for a whole-repository snapshot and
+# carries a server-composed sentence when the researcher excluded named
+# oversized files. It lives in the project IDENTITY because that is
+# what it is: two councils given different subsets of the same
+# repository at the same commit were not shown the same thing, and a
+# participant that is not told so will reason about an absent file as
+# though it does not exist.
 LIST_PROJECT_IDENTITY_KEYS = [
     "sResourceName", "sProjectRepoPath", "sSnapshotIdentity",
+    "sSnapshotScopeNote",
 ]
 
 DICT_EMPTY_PROJECT_IDENTITY = {
     "sResourceName": "",
     "sProjectRepoPath": "",
     "sSnapshotIdentity": "",
+    "sSnapshotScopeNote": "",
 }
 
 

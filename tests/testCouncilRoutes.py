@@ -80,11 +80,20 @@ class MockDockerCouncil:
         # 30 GB output tree does to the real probe.
         self.dictRepositoryWeight = {
             "iFileCount": 120, "iTotalBytes": 2 * 1024 * 1024,
-            "bTruncated": False,
+            "bTruncated": False, "bLargestFilesTruncated": False,
+            "listLargestFiles": [{"sPath": "README.md", "iSizeBytes": 1024}],
         }
+        # A daemon whose memory is BELOW the floor, so these tests read
+        # the declared floors and never this machine's real capacity: a
+        # bound assertion that changed with the developer's RAM would be
+        # a test of the laptop, not of the code.
+        self.dictDaemonCapacity = {"iMemoryBytes": 0, "iCpuCount": 0}
 
     def fdictWeighRepository(self, sContainerId, sRepositoryPath):
         return dict(self.dictRepositoryWeight)
+
+    def fdictReadDaemonCapacity(self):
+        return dict(self.dictDaemonCapacity)
 
     def flistGetRunningContainers(self):
         return [{
@@ -163,7 +172,8 @@ class _GatedFakeConnection:
 
 def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
                                sProjectRepoPath, sCampaignId,
-                               sSnapshotStoreRoot=None):
+                               sSnapshotStoreRoot=None, dictBounds=None,
+                               listExcludedPaths=None):
     """Write a minimal sealed snapshot the way the real capture would."""
     sDirectory = os.path.join(sSnapshotStoreRoot, sCampaignId, "snapshot")
     os.makedirs(sDirectory, exist_ok=True)
@@ -1075,3 +1085,186 @@ def test_a_directory_outside_the_tracked_set_is_refused(
 
         assert response.status_code == 400, response.text
         assert "tracked directories" in response.text
+
+
+def test_one_oversized_file_is_caught_by_the_preflight(tmp_path, monkeypatch):
+    """The bound the first pre-flight forgot.
+
+    It checked the file COUNT and the TOTAL and silently ignored the
+    per-member cap, so a repository comfortably inside both still hit
+    the capture's third bound after the researcher had chosen
+    participants and written a question — one 85 MB data file in an
+    otherwise ordinary research repo (live report, 2026-08-22).
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "theOnlyRepo"}], "listIgnored": [],
+        })
+    app, docker, _ = _fdictBlankProjectApp(tmp_path, ["theOnlyRepo"])
+    docker.dictRepositoryWeight = {
+        "iFileCount": 400,
+        "iTotalBytes": 100 * 1024 * 1024,
+        "bTruncated": False,
+        "bLargestFilesTruncated": False,
+        "listLargestFiles": [
+            {"sPath": "examples/SSDistOrbDistRot/marshnb/4.inv",
+             "iSizeBytes": 85912419},
+            {"sPath": "README.md", "iSizeBytes": 2048},
+        ],
+    }
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        dictCapabilities = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/capabilities").json()
+
+    dictFeasibility = dictCapabilities["dictSnapshotFeasibility"]
+    assert dictFeasibility["bFits"] is False, (
+        "a repository whose largest file exceeds the member cap was "
+        "reported as fitting; the refusal would arrive at convene time")
+    assert [dictFile["sPath"] for dictFile in
+            dictFeasibility["listOversizedFiles"]] == [
+        "examples/SSDistOrbDistRot/marshnb/4.inv"], (
+        "the pre-flight must name the offending file, and only it: the "
+        "researcher's move is to exclude it by name")
+    assert "4.inv" in dictFeasibility["sReason"]
+    assert "81 MB" in dictFeasibility["sReason"]
+    # Oversized files alone do NOT block the button. Blocking it would
+    # hide the convene form, which is the only place the exclusion can
+    # be offered — the researcher would be told what is wrong and given
+    # no way to act on it.
+    assert dictFeasibility["bResolvableByExcludingFiles"] is True
+    assert dictCapabilities["bAvailable"] is True
+
+
+def test_each_candidate_directory_can_be_weighed_on_its_own(
+    tmp_path, monkeypatch,
+):
+    """The per-directory pre-flight, and why it is not the poll.
+
+    A toolkit container tracks many repositories — one live project
+    tracks nine — so the capabilities poll deliberately publishes the
+    candidates without weighing them: nine metadata walks every few
+    seconds to answer a question nobody asked. The convene form asks
+    per candidate instead, and this is that route.
+
+    Asserted with the two directories answering DIFFERENTLY, because a
+    route that returned one repository's verdict for every path would
+    pass any single-directory assertion.
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "tidyRepo"}, {"sName": "hugeRepo"}],
+            "listIgnored": [],
+        })
+    app, docker, _ = _fdictBlankProjectApp(
+        tmp_path, ["tidyRepo", "hugeRepo"])
+    dictWeightByPath = {
+        "/workspace/tidyRepo": {
+            "iFileCount": 12, "iTotalBytes": 4096, "bTruncated": False,
+            "bLargestFilesTruncated": False,
+            "listLargestFiles": [{"sPath": "a.py", "iSizeBytes": 512}],
+        },
+        "/workspace/hugeRepo": {
+            "iFileCount": 900, "iTotalBytes": 200 * 1024 * 1024,
+            "bTruncated": False, "bLargestFilesTruncated": False,
+            "listLargestFiles": [
+                {"sPath": "data/cube.npy", "iSizeBytes": 90 * 1024 * 1024}],
+        },
+    }
+    docker.fdictWeighRepository = (
+        lambda sContainerId, sPath: dict(dictWeightByPath[sPath]))
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        sRoute = f"/api/agent-councils/{S_CONTAINER_ID}/snapshot-feasibility"
+        dictTidy = client.get(
+            sRoute, params={"sProjectDirectory": "tidyRepo"}).json()
+        dictHuge = client.get(
+            sRoute, params={"sProjectDirectory": "hugeRepo"}).json()
+        responseForeign = client.get(
+            sRoute, params={"sProjectDirectory": "notTracked"})
+
+    assert dictTidy["bFits"] is True
+    assert dictTidy["listOversizedFiles"] == []
+    assert dictHuge["bFits"] is False
+    assert dictHuge["bResolvableByExcludingFiles"] is True
+    assert [dictFile["sPath"] for dictFile
+            in dictHuge["listOversizedFiles"]] == ["data/cube.npy"]
+    assert responseForeign.status_code == 400, (
+        "a directory this project does not track was weighed; the "
+        "basename becomes a container path and must be validated")
+
+
+def test_convene_forwards_the_researchers_exclusions_to_the_capture(
+    tmp_path, monkeypatch,
+):
+    """The exclusions must actually REACH the capture.
+
+    Kills: dropping listExcludedPaths between the request body and
+    fdictCaptureProjectContextSnapshot.
+
+    Every layer of this feature can be correct and the researcher still
+    blocked, if the one wire between the form and the capture is not
+    connected — and no unit test of either end can see that.
+    """
+    from vaibify.gui import trackedReposManager
+    monkeypatch.setattr(
+        trackedReposManager, "fdictReadOrSeedSidecar",
+        lambda connectionDocker, sContainerId: {
+            "listTracked": [{"sName": "theOnlyRepo"}], "listIgnored": [],
+        })
+    app, _, _ = _fdictBlankProjectApp(tmp_path, ["theOnlyRepo"])
+    listSeenExclusions = []
+
+    def _fdictRecordingCapture(*tArguments, **dictKeywords):
+        listSeenExclusions.append(dictKeywords.get("listExcludedPaths"))
+        return _fdictWriteFixtureSnapshot(*tArguments, **dictKeywords)
+
+    monkeypatch.setattr(
+        agentCouncilContext, "fdictCaptureProjectContextSnapshot",
+        _fdictRecordingCapture)
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/start",
+            json={**DICT_START_BODY,
+                  "listExcludedPaths": ["data/cube.npy"]})
+        assert response.status_code == 200, response.text
+
+    assert listSeenExclusions == [["data/cube.npy"]], (
+        "the researcher's exclusions never reached the capture; the "
+        "convene form would tick a box that does nothing")
+
+
+def test_snapshot_feasibility_refuses_the_agent_token_lane(tmp_path):
+    """It reads the project's repository shape, so the agent is refused.
+
+    Same reasoning as the capabilities read beside it: an in-container
+    agent that can enumerate what a project holds and how large it is
+    has been handed a survey of the researcher's machine it was never
+    granted, and the catalog cannot express that capability on its own.
+    """
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    _tEstablishOwnership(app, S_CONTAINER_NAME, S_CONTAINER_ID)
+    clientAgent = TestClient(app, headers={
+        actionCatalog.S_SESSION_HEADER_NAME: S_AGENT_TOKEN,
+        "Host": "host.docker.internal:8050",
+    })
+    response = clientAgent.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/snapshot-feasibility")
+    assert response.status_code == 403, response.text

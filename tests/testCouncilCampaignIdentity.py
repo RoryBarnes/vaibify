@@ -64,6 +64,10 @@ class MockDockerTwoContainers:
              "sImageIdentity": "sha256:" + "bb22" * 16},
         ]
 
+    def fdictReadDaemonCapacity(self):
+        """Report an unmeasurable daemon, so the bounds are the floors."""
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
+
     def fbaFetchCredentialFile(self, sContainerId, sPath):
         return self.fbaFetchFile(sContainerId, sPath)
 

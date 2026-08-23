@@ -42,6 +42,7 @@ __all__ = [
     "flistBlindQuotedMaterial",
     "flistBuildQuotedMaterial",
     "fsComposeTurnInstruction",
+    "fsDescribeSnapshotScope",
 ]
 
 S_PHASE_PROPOSAL = "independentProposals"
@@ -388,6 +389,31 @@ def fsComposeRepairInstruction(listSchemaProblems):
 S_CHARTER_TEXT = _S_CHARTER_CLAUSES + "\n" + fsComposeExactResultSchema()
 
 
+def fsDescribeSnapshotScope(listExcludedPaths):
+    """Return the sentence a participant needs about a PARTIAL snapshot.
+
+    Empty for a whole-repository snapshot, so the ordinary case adds
+    nothing to the prompt. When files were excluded, the participants
+    are told WHICH ones by name: a participant that finds a referenced
+    data file missing will otherwise conclude the repository is broken,
+    or worse, reason confidently about what the file must contain. The
+    names are the honest minimum — the contents genuinely are not
+    available to it, and saying so is the only thing that keeps the
+    absence from being read as evidence.
+    """
+    if not listExcludedPaths:
+        return ""
+    return (
+        "SNAPSHOT SCOPE: this copy of the repository is PARTIAL. The "
+        "researcher excluded the following file(s) because each is "
+        "larger than a single snapshot member may be: "
+        + ", ".join(sorted(listExcludedPaths))
+        + ". They exist in the real repository and their contents are "
+        "not available to you. Treat them as present-but-unreadable, "
+        "never as absent, and never assert what they contain."
+    )
+
+
 def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
                              bRepairRequest=False, listSchemaProblems=None):
     """Compose charter + role + phase + exact schema (section 5.6).
@@ -399,6 +425,10 @@ def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
     looks like.
     """
     listSections = [dictCampaign["sCharterText"]]
+    sScopeNote = (dictCampaign.get("dictProjectIdentity") or {}).get(
+        "sSnapshotScopeNote", "")
+    if sScopeNote:
+        listSections.append(sScopeNote)
     if dictParticipant["sRole"]:
         listSections.append(
             "ROLE PERSPECTIVE: scrutinize hardest through this lens — "

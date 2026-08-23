@@ -40,6 +40,8 @@ import posixpath
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from vaibify.docker import dockerConnection
+
 from .. import agentCouncilCampaign
 from .. import agentCouncilController
 from .. import agentCouncilDockerGateway
@@ -118,6 +120,13 @@ class CouncilStartRequest(BaseModel):
     # tracks several and no workflow pins one. A BASENAME, validated
     # against the tracked set server-side; never a path from a client.
     sProjectDirectory: str = Field(default="", max_length=255)
+    # Oversized files the researcher reviewed and chose to leave out of
+    # the snapshot. Bounded by the number the pre-flight can name, and
+    # honoured by the capture ONLY for a member that would otherwise
+    # have refused, so this list can never quietly curate a repository.
+    listExcludedPaths: list[str] = Field(
+        default_factory=list,
+        max_length=dockerConnection.I_REPOSITORY_WEIGHT_LARGEST_FILES)
 
 
 class CouncilRespondRequest(BaseModel):
@@ -371,7 +380,8 @@ def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
 
 
 def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
-                             sProjectRepoPath, sCampaignId, sName):
+                             sProjectRepoPath, sCampaignId, sName,
+                             listExcludedPaths=None):
     """Build the closure that captures the snapshot under the project lock.
 
     The bounded project lock (design section 9.2) is the commit
@@ -385,8 +395,16 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
     outside the carrier — never through the failed-worker settlement
     that would quarantine a working container.
     """
+    from .. import agentCouncilCapacity
     from .. import agentCouncilContext
     from .. import commitCarrier
+
+    # Resolved ONCE, here, so the capture enforces exactly the bounds
+    # the pre-flight advertised. Resolving it again inside the worker
+    # would let a daemon restart between the two make the button's
+    # promise and the capture's refusal disagree.
+    dictBounds = agentCouncilCapacity.fdictResolveCouncilCapacity(
+        dictCtx.get("docker"))
 
     async def _fdictCaptureUnderProjectLock():
         dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
@@ -405,7 +423,9 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
                             dictCtx["docker"], sContainerId,
                             sProjectRepoPath, sCampaignId,
                             _fdictCampaignStore(requestHttp)[
-                                "sDurableStoreRoot"]),
+                                "sDurableStoreRoot"],
+                            dictBounds=dictBounds,
+                            listExcludedPaths=listExcludedPaths),
                 }
             except agentCouncilContext.SnapshotRefusedError as error:
                 return {"bRefused": True, "sRefusalReason": str(error)}
@@ -630,10 +650,57 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
     except (OSError, ValueError, KeyError):
         return
     dictCapabilities["dictSnapshotFeasibility"] = dictFeasibility
-    if not dictFeasibility["bFits"]:
+    # A repository whose ONLY problem is named oversized files is not
+    # unavailable — it is a choice the researcher has not made yet, and
+    # blocking the button would hide the modal that offers the choice.
+    # The count and total bounds stay hard: no per-file decision helps
+    # a repository that is simply the wrong shape for a council.
+    if not dictFeasibility["bFits"] and not dictFeasibility[
+            "bResolvableByExcludingFiles"]:
         dictCapabilities["bAvailable"] = False
         dictCapabilities["sUnavailableIn"] = S_UNAVAILABLE_SNAPSHOT_TOO_LARGE
         dictCapabilities["sReason"] = dictFeasibility["sReason"]
+
+
+def _fnRegisterSnapshotFeasibility(app, dictCtx):
+    """Register GET /api/agent-councils/{sContainerId}/snapshot-feasibility."""
+
+    @app.get("/api/agent-councils/{sContainerId}/snapshot-feasibility")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictReportSnapshotFeasibility(
+        sContainerId: str, requestHttp: Request, sProjectDirectory: str = "",
+    ):
+        """Weigh ONE candidate directory, on demand.
+
+        Separate from the capabilities poll on purpose. A toolkit
+        container tracks many repositories — one live project tracks
+        nine — and weighing all of them on every poll would spend a
+        metadata walk per repository per few seconds to answer a
+        question nobody asked. The convene form asks this once per
+        candidate when it opens, so the cost is paid where the
+        researcher is actually choosing.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
+        from vaibify.config.registryManager import fbIsHostProject
+        if fbIsHostProject(sName):
+            raise HTTPException(
+                409, "host projects have no container to snapshot")
+        dictCtx["require"](sContainerId)
+        from .. import agentCouncilContext
+        sProjectRepoPath = _fsResolveDominantRepositoryPath(
+            dictCtx, sContainerId, sProjectDirectory)
+        try:
+            return agentCouncilContext.fdictAssessSnapshotFeasibility(
+                dictCtx["docker"], sContainerId, sProjectRepoPath)
+        except (OSError, ValueError, KeyError) as errorProbe:
+            # A probe failure is NOT a refusal — the authoritative
+            # bounds still run at capture — so it answers "unknown"
+            # rather than blocking a council over an unreadable walk.
+            raise HTTPException(
+                503, "this directory could not be weighed "
+                f"({errorProbe.__class__.__name__}); the snapshot bounds "
+                "are still enforced when you convene") from errorProbe
 
 
 def _fdictHostModeCapabilities():
@@ -875,9 +942,9 @@ def _fnRegisterStartCouncil(app, dictCtx):
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictCampaign = _fdictCreateCampaignFromRequest(request, {
+            **agentCouncilCampaign.DICT_EMPTY_PROJECT_IDENTITY,
             "sResourceName": sName,
             "sProjectRepoPath": sProjectRepoPath,
-            "sSnapshotIdentity": "",
         })
 
         dictControllerState = _fdictControllerState(requestHttp)
@@ -907,7 +974,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     sCampaignId,
                     _ffnBuildSnapshotCapture(
                         dictCtx, requestHttp, sContainerId,
-                        sProjectRepoPath, sCampaignId, sName),
+                        sProjectRepoPath, sCampaignId, sName,
+                        request.listExcludedPaths),
                     sImageReference,
                     fsStageRunnerCredential=_ffnBuildCredentialStager(
                         dictCtx, sContainerId)))
@@ -1187,6 +1255,7 @@ def fnRegisterAll(app, dictCtx):
     campaign id.
     """
     _fnRegisterCapabilities(app, dictCtx)
+    _fnRegisterSnapshotFeasibility(app, dictCtx)
     _fnRegisterListCouncils(app, dictCtx)
     _fnRegisterStartCouncil(app, dictCtx)
     _fnRegisterPollEvents(app, dictCtx)

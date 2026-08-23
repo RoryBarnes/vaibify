@@ -188,12 +188,28 @@ class FailClosedDockerAdapter:
             "iFileCount": 120,
             "iTotalBytes": 2 * 1024 * 1024,
             "bTruncated": False,
+            "bLargestFilesTruncated": False,
+            "listLargestFiles": [
+                {"sPath": "README.md", "iSizeBytes": 2048},
+            ],
         }
         # What the Repos panel's discovery finds under the workspace
         # root: the lane's one project repository.
         self.setWorkspaceRepositories = {
             S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
         }
+
+    def fdictReadDaemonCapacity(self):
+        """Report an unmeasurable daemon, so the bounds are the floors.
+
+        A daemon reading is not a container call, so it has no
+        container assertion to make — but it must be MODELLED rather
+        than left to the fail-closed default, because the council's
+        snapshot bounds ask for it on every pre-flight. Zero means
+        "unknown", which pins the lane to the declared floors instead
+        of to whatever machine is running the suite.
+        """
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
 
     def fdictWeighRepository(self, sContainerId, sRepositoryPath):
         """Answer the council's snapshot pre-flight: a small repository.
