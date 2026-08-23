@@ -212,3 +212,53 @@ def testTheHostReadingAnswersOnThisMachine():
         "the host memory reading failed on this interpreter/platform; "
         "every scaled bound silently collapses to its floor")
     assert iHostMemoryBytes < 1024 * I_GIGABYTE
+
+
+def testTheProbePrunesExactlyWhatTheSnapshotExcludes():
+    """The two copies of the exclusion policy must not drift.
+
+    Kills: removing a component from the probe's pruned set.
+
+    ``agentCouncilContext`` owns the policy; the probe carries a second
+    copy because a program that runs INSIDE a container cannot import
+    from the host environment — the same boundary that makes
+    introspectionScript duplicate dataLoaders. Spelled twice, pinned
+    here.
+
+    Drift in either direction is a real defect and neither is
+    hypothetical. Under-pruning was measured: before the probe pruned
+    anything, a real research repository weighed 463 MB and its largest
+    "file" was a 315 MB git pack, so a council was refused over an
+    object store the snapshot never carries and the pack was offered to
+    the researcher for exclusion. Over-pruning is the mirror: the
+    pre-flight would promise a council that the capture then refuses.
+    """
+    from vaibify.docker import dockerConnection
+    from vaibify.gui.agentCouncilContext import (
+        DICT_EXCLUDED_COMPONENT_REASONS,
+    )
+    assert set(
+        dockerConnection._TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS,
+    ) == set(DICT_EXCLUDED_COMPONENT_REASONS), (
+        "the pre-flight probe and the snapshot capture disagree about "
+        "what a snapshot contains; the pre-flight's answer is about a "
+        "different repository than the one that would be captured")
+
+
+def testThePrunedComponentsReachTheProbeProgram():
+    """The pinned set must actually be IN the program that runs.
+
+    Kills: pinning the constant while the program ignores it.
+
+    The test above compares two Python constants, which stays green if
+    the program text never mentions either — and the program is a
+    string, so nothing else would notice. This asserts the walk really
+    prunes.
+    """
+    from vaibify.docker import dockerConnection
+    sProgram = dockerConnection._DICT_TYPED_READ_PROGRAMS[
+        dockerConnection.S_TYPED_READ_REPOSITORY_WEIGHT]
+    assert "dirnames[:]" in sProgram, (
+        "the probe program does not prune directories at all")
+    assert "'.git'" in sProgram or '".git"' in sProgram, (
+        "the pruned set never reached the program text")

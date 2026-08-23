@@ -285,6 +285,26 @@ I_MAX_REPOSITORY_WEIGHT_PROBE_FILES = 50000
 # anyway, and the answer becomes "exclude them all" or "this repository
 # is the wrong shape for a council".
 I_REPOSITORY_WEIGHT_LARGEST_FILES = 64
+
+# Path components the probe does not count, because the council
+# snapshot does not capture them. A DELIBERATE MIRROR of
+# agentCouncilContext.DICT_EXCLUDED_COMPONENT_REASONS, which owns the
+# policy: a container program cannot import from the host environment
+# (the same boundary that makes introspectionScript duplicate
+# dataLoaders), so the names are spelled twice and pinned together by
+# testTheProbePrunesExactlyWhatTheSnapshotExcludes.
+#
+# Not cosmetic. Measured on a real research repository (2026-08-22):
+# without pruning, the probe reported 463 MB and named a 315 MB git
+# pack as the largest file — refusing a council over an object store
+# the snapshot never carries, and offering the pack for "exclusion".
+# The same repository weighs 148 MB of actual content.
+_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
+    ".claude", ".cline", ".clinerules", ".codex", ".gemini", ".git",
+    ".git-credentials", ".ipynb_checkpoints", ".netrc", ".opencode",
+    ".openhands", ".pi", ".pytest_cache", ".ssh", ".vaibify",
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
+)
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
 # A provider login document is kilobytes. The council's credential read
@@ -342,15 +362,21 @@ _DICT_TYPED_READ_PROGRAMS = {
     # — throws away the researcher's actual thinking (live report,
     # 2026-08-22). It stops counting once BOTH declared bounds are
     # exceeded, so an enormous tree cannot make the probe itself the
-    # slow thing it exists to prevent.
+    # slow thing it exists to prevent. It prunes exactly what the
+    # snapshot excludes, so it weighs what would actually be captured
+    # rather than the directory that happens to contain it.
     S_TYPED_READ_REPOSITORY_WEIGHT: (
         "import heapq,json,os,sys; "
         "root=" + _S_TYPED_READ_PATH_SLOT + "; "
         "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "; "
         "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "; "
+        "skip=" + repr(set(_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS))
+        + "; "
         "n=0; b=0; truncated=False; heap=[]\n"
         "for dirpath,dirnames,filenames in os.walk(root):\n"
+        "    dirnames[:]=[d for d in dirnames if d not in skip]\n"
         "    for name in filenames:\n"
+        "        if name in skip: continue\n"
         "        p=os.path.join(dirpath,name)\n"
         "        try: size=os.lstat(p).st_size\n"
         "        except OSError: size=0\n"
