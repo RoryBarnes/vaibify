@@ -70,7 +70,8 @@ def _fnIsolateCouncilStore(serverHub):
 
 def _fdictWriteLaneSnapshot(connectionDocker, sContainerId,
                             sProjectRepoPath, sCampaignId,
-                            sSnapshotStoreRoot=None):
+                            sSnapshotStoreRoot=None, dictBounds=None,
+                            listExcludedPaths=None):
     """Write a minimal sealed snapshot the way the real capture would.
 
     The browser lane's fake Docker adapter cannot serve get_archive or

@@ -4167,7 +4167,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # what a snapshot contains. The arithmetic of what this machine
     # allows is split out to agentCouncilCapacity, which is a genuinely
     # different question with a different reason to change.
-    "agentCouncilContext.py": 1124,
+    "agentCouncilContext.py": 1132,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5720,7 +5720,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-21): the dependency scan's scope entry and the note
     # that it writes nothing — a POST only because its input is a
     # list, still gated because it reads the researcher's own files.
-    "routeScope.py": 973,
+    # +1 (2026-08-22): the council's per-directory snapshot pre-flight
+    # joins the container-read allowlist. One line of table data.
+    "routeScope.py": 974,
 }
 
 

@@ -270,6 +270,7 @@ _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
 SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/agent-councils/{sContainerId}"),
     ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
+    ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events"),
     ("GET", "/api/containers/{sContainerId}/isolation"),

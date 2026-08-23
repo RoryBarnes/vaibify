@@ -192,6 +192,14 @@ DICT_PRIMITIVE_ACCESS = {
     # because a primitive cannot tell a df from an rm -rf.
     "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
     "fdictWeighRepository": S_ACCESS_TYPED_READ,
+    # A DAEMON-info query, not a container call: it runs no program
+    # anywhere, takes no caller value, and reads only how much memory
+    # and CPU the daemon has to give. Classified as a typed read
+    # because that is the narrowest kind this vocabulary has and it
+    # over-states rather than under-states what the call can do; the
+    # council sizes a runner's limits from the answer, because host RAM
+    # is the wrong number for anything that runs in a container.
+    "fdictReadDaemonCapacity": S_ACCESS_TYPED_READ,
     # The two existence probes, on the same terms again. They replaced
     # `test -f`/`test -d` assembled by ContainerRepoFiles and run
     # through the general exec primitive -- which the boundary had to
