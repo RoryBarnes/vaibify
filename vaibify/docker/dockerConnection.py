@@ -366,20 +366,75 @@ _DICT_TYPED_READ_PROGRAMS = {
     # snapshot excludes, so it weighs what would actually be captured
     # rather than the directory that happens to contain it.
     S_TYPED_READ_REPOSITORY_WEIGHT: (
-        "import heapq,json,os,sys; "
-        "root=" + _S_TYPED_READ_PATH_SLOT + "; "
-        "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "; "
-        "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "; "
+        "import heapq,json,os,stat,subprocess,sys\n"
+        "root=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "\n"
+        "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "\n"
         "skip=" + repr(set(_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS))
-        + "; "
+        + "\n"
+        # The ignored set, from the same git enumeration the capture's
+        # observation uses. Best-effort ON PURPOSE: this is an advisory
+        # pre-flight, and a git that will not answer must leave it
+        # OVER-reporting the weight rather than under-reporting it. An
+        # over-report costs a needless warning; an under-report would
+        # promise a council the capture then refuses.
+        "ignored=set()\n"
+        "try:\n"
+        "    processGit=subprocess.run(\n"
+        "        ['git','-c','core.fsmonitor=false','-C',root,'ls-files',\n"
+        "         '--others','--ignored','--exclude-standard','-z'],\n"
+        "        capture_output=True,text=True,timeout=60)\n"
+        "    if processGit.returncode==0:\n"
+        "        ignored={q for q in processGit.stdout.split(chr(0)) if q}\n"
+        "except Exception:\n"
+        "    pass\n"
         "n=0; b=0; truncated=False; heap=[]\n"
+        "escaping=[]; special=[]; submodules=[]\n"
         "for dirpath,dirnames,filenames in os.walk(root):\n"
         "    dirnames[:]=[d for d in dirnames if d not in skip]\n"
+        # A checked-out submodule's files are enumerated by no
+        # superproject git command, so every one of them is an
+        # unobserved member and the capture refuses. Its marker is a
+        # .git that is a FILE rather than a directory — and .git is
+        # pruned above, so this looks for it before the prune applies
+        # to the next level down.
+        "    if dirpath!=root and os.path.isfile(\n"
+        "            os.path.join(dirpath,'.git')):\n"
+        "        submodules.append(os.path.relpath(dirpath,root))\n"
+        "        dirnames[:]=[]\n"
+        "        continue\n"
         "    for name in filenames:\n"
         "        if name in skip: continue\n"
         "        p=os.path.join(dirpath,name)\n"
-        "        try: size=os.lstat(p).st_size\n"
-        "        except OSError: size=0\n"
+        "        if os.path.relpath(p,root) in ignored: continue\n"
+        # A symlink contributes NO content bytes, because the snapshot
+        # stores it as a link rather than following it. os.lstat would
+        # report the length of the target NAME, which is neither the
+        # link's cost nor the target's — a live comparison against the
+        # capture caught the probe over-reporting by exactly
+        # len('dataFile.txt').
+        "        try:\n"
+        "            st=os.lstat(p)\n"
+        "            size=0 if stat.S_ISLNK(st.st_mode) else st.st_size\n"
+        "        except OSError: st=None; size=0\n"
+        # The capture's NON-SIZE refusals, spotted on the same walk.
+        # They are all properties of the tree as it sits, so a
+        # researcher can be told about them while choosing a directory
+        # instead of after writing a question — the same complaint the
+        # size bounds answered. A symlink out of the repository and an
+        # unrepresentable special file each refuse the whole capture.
+        "        if st is not None and stat.S_ISLNK(st.st_mode):\n"
+        "            try: target=os.readlink(p)\n"
+        "            except OSError: target=''\n"
+        "            resolved=os.path.normpath(os.path.join(\n"
+        "                os.path.dirname(p),target))\n"
+        "            if (not target or os.path.isabs(target)\n"
+        "                    or os.path.relpath(\n"
+        "                        resolved,root).startswith(os.pardir)):\n"
+        "                escaping.append({'sPath':os.path.relpath(p,root),\n"
+        "                    'sTarget':target})\n"
+        "        elif st is not None and not stat.S_ISREG(st.st_mode):\n"
+        "            special.append(os.path.relpath(p,root))\n"
         "        b+=size; n+=1\n"
         "        if len(heap)<top:\n"
         "            heapq.heappush(heap,(size,os.path.relpath(p,root)))\n"
@@ -391,6 +446,9 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps({"
         "'iFileCount': n, 'iTotalBytes': b, 'bTruncated': truncated, "
         "'bLargestFilesTruncated': len(heap)>=top, "
+        "'listEscapingSymlinks': escaping[:top], "
+        "'listSpecialFiles': special[:top], "
+        "'listSubmodules': submodules[:top], "
         "'listLargestFiles': [{'sPath': q, 'iSizeBytes': s} "
         "for s,q in sorted(heap,reverse=True)]}))"
     ),
@@ -608,6 +666,21 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        setPresent.update(\n"
         "            sPath for sPath in processGit.stdout.split(chr(0))\n"
         "            if sPath)\n"
+        # The IGNORED set, enumerated separately and never merged into
+        # setPresent. A caller needs to tell "git does not carry this
+        # file" from "nothing knows about this file": the first is a
+        # build artifact or a deliberately-uncommitted secret and is
+        # omitted, the second means the tree changed while the daemon
+        # was serializing it and must refuse. Merging them would make
+        # the mid-capture race unobservable.
+        "    processIgnored=fprocessRunGit(\n"
+        "        ['ls-files','--others','--ignored','--exclude-standard',\n"
+        "         '-z'])\n"
+        "    if processIgnored.returncode!=0:\n"
+        "        fnFail('ignored enumeration failed')\n"
+        "    listIgnored=sorted(\n"
+        "        sPath for sPath in processIgnored.stdout.split(chr(0))\n"
+        "        if sPath)\n"
         "    for sRelative in sorted(setPresent):\n"
         "        sAbsolute=os.path.join(sRepo,sRelative)\n"
         "        if os.path.islink(sAbsolute):\n"
@@ -643,6 +716,7 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    fnFail(type(error).__name__+': '+str(error))\n"
         "sys.stdout.write(json.dumps({'bSuccess':True,'sReason':'',\n"
         "    'sHeadSha':sHeadSha,'sPorcelainDigest':sPorcelainDigest,\n"
+        "    'listIgnoredPaths':listIgnored,\n"
         "    'dictPathIdentities':dictIdentities}))\n"
     ),
 }

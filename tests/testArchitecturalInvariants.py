@@ -4167,7 +4167,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # what a snapshot contains. The arithmetic of what this machine
     # allows is split out to agentCouncilCapacity, which is a genuinely
     # different question with a different reason to change.
-    "agentCouncilContext.py": 1132,
+    # 1132 -> 1164 (2026-08-24): a .gitignore'd path is omitted and
+    # recorded rather than refusing the whole capture. It belongs to
+    # this module's existing responsibility — what a snapshot contains
+    # and why — and the reason it is here rather than in the exclusion
+    # POLICY table is that the answer comes from git per repository,
+    # not from a fixed component list.
+    "agentCouncilContext.py": 1199,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates

@@ -48,10 +48,22 @@ printf 'beta payload\\n' > analysis/results.txt
 ln -s dataFile.txt linkToData
 mkdir -p .claude
 printf 'topSecretTokenValue' > .claude/credentials.json
+printf 'build/\\n*.secretlocal\\n' > .gitignore
 git add -A
 git commit -q -m 'initial fixture state'
 printf 'uncommitted scratch\\n' > scratch.txt
+mkdir -p build
+printf 'generated artifact\\n' > build/artifact.txt
+printf 'localApiKeyValue\\n' > apiKey.secretlocal
 """
+
+# The ignored paths the fixture above creates, relative to the repo
+# root. They exist ON DISK, so the daemon's archive carries them, and
+# git's enumeration does not — which is exactly the shape that refused
+# every real repository until 2026-08-24. The fixture carried none of
+# these before that: it does `git add -A` with no .gitignore, so every
+# file it had was tracked and the whole class was invisible here.
+TUPLE_IGNORED_FIXTURE_PATHS = ("build/artifact.txt", "apiKey.secretlocal")
 
 # One digest over every file's content plus the full path listing,
 # .git included: if the capture writes, touches ownership, or leaves
@@ -169,10 +181,18 @@ def test_live_capture_is_coherent_excluding_and_nonmutating(
             == b"uncommitted scratch\n"
         )
         assert dictMembers["linkToData"].issym()
+        # COMPONENT-wise, not a bare string prefix. The exclusion
+        # policy matches path components, so `.gitignore` — a tracked
+        # source file that is part of the project — must ship, and a
+        # `startswith(".git")` test would forbid it along with the
+        # `.git` directory. Same for `.gitattributes`, `.gitmodules`.
         assert not any(
-            sMemberName.startswith((".git", ".claude"))
+            sMemberName.split("/")[0] in (".git", ".claude")
             for sMemberName in dictMembers
         )
+        assert ".gitignore" in dictMembers, (
+            "a tracked .gitignore was excluded; it is source, not "
+            "repository internals")
     assert b"topSecretTokenValue" not in pathArchive.read_bytes()
 
     assert _fsReadContainerContentDigest(sContainerId) == sDigestBefore, (
@@ -482,3 +502,148 @@ def test_live_change_then_revert_refuses_deterministically(
     assert list(tmp_path.iterdir()) == [], (
         "the refused capture left a partial snapshot behind"
     )
+
+
+@pytest.mark.docker
+def testALiveIgnoredFileIsOmittedAndItsBytesNeverShip(
+    tLiveProjectContainer, tmp_path,
+):
+    """The live half of the defect a researcher hit on a real repository.
+
+    The unit suite drives synthetic tar streams, so it can only assert
+    what a HAND-BUILT observation says git ignores. This drives the
+    real ``git ls-files --others --ignored`` inside a real container
+    against a real ``get_archive``, which is where the disagreement
+    lived: the daemon serializes the filesystem and git does not.
+
+    Asserts both halves, because they fail differently. Capture must
+    SUCCEED (before the fix, one ignored file refused the whole
+    repository), and the ignored bytes must be ABSENT from the sealed
+    tar — .gitignore is where a researcher keeps the local key that the
+    reviewed credential-path policy cannot name, and this snapshot is
+    copied to third-party providers.
+    """
+    from vaibify.gui import agentCouncilContext
+
+    sName, sContainerId, connectionDocker = tLiveProjectContainer
+    dictManifest = agentCouncilContext.fdictCaptureProjectContextSnapshot(
+        connectionDocker, sContainerId, S_REPO_ROOT, "live-ignored",
+        sSnapshotStoreRoot=str(tmp_path))
+
+    setIncluded = {dictEntry["sPath"]
+                   for dictEntry in dictManifest["listIncludedEntries"]}
+    assert "dataFile.txt" in setIncluded, (
+        "the tracked content is missing, so this proves nothing about "
+        "ignored files")
+    dictOmissions = {dictRow["sPath"]: dictRow["sReason"]
+                     for dictRow in dictManifest["listOmissions"]}
+    for sIgnoredPath in TUPLE_IGNORED_FIXTURE_PATHS:
+        assert sIgnoredPath not in setIncluded, sIgnoredPath
+        assert dictOmissions.get(sIgnoredPath) == (
+            agentCouncilContext.S_IGNORED_OMISSION_REASON), (
+            f"{sIgnoredPath} was dropped without a recorded reason; an "
+            "unexplained omission is indistinguishable from a bug")
+
+    baSealed = (tmp_path / "live-ignored" / "snapshot"
+                / "snapshot.tar").read_bytes()
+    assert b"localApiKeyValue" not in baSealed, (
+        "a git-ignored local credential shipped in the snapshot")
+    assert b"generated artifact" not in baSealed
+    assert b"alpha payload" in baSealed, (
+        "the tracked payload is absent too, so the assertions above "
+        "would pass for a capture that shipped nothing at all")
+
+
+@pytest.mark.docker
+def testTheLivePreflightWeighsWhatTheLiveCaptureKeeps(
+    tLiveProjectContainer, tmp_path,
+):
+    """The pre-flight and the capture must agree about the repository.
+
+    Two independent walks — a metadata probe and a validated tar
+    stream — and nothing but this test binds them. They have already
+    disagreed twice: the probe counted ``.git`` (refusing a council
+    over a 315 MB pack the snapshot never carries), then counted
+    ignored files. Both were found by running against a real
+    repository, neither by a fixture.
+    """
+    from vaibify.gui import agentCouncilContext
+
+    sName, sContainerId, connectionDocker = tLiveProjectContainer
+    dictFeasibility = agentCouncilContext.fdictAssessSnapshotFeasibility(
+        connectionDocker, sContainerId, S_REPO_ROOT)
+    dictManifest = agentCouncilContext.fdictCaptureProjectContextSnapshot(
+        connectionDocker, sContainerId, S_REPO_ROOT, "live-agreement",
+        sSnapshotStoreRoot=str(tmp_path))
+
+    assert dictFeasibility["bFits"] is True
+    assert dictFeasibility["iTotalBytes"] == dictManifest[
+        "iTotalContentBytes"], (
+        "the pre-flight and the capture disagree about how many bytes "
+        f"this repository holds ({dictFeasibility['iTotalBytes']} vs "
+        f"{dictManifest['iTotalContentBytes']}); one of them is "
+        "weighing files the other does not")
+
+
+S_BUILD_UNSNAPSHOTTABLE_REPO_SCRIPT = """
+set -e
+mkdir -p /home/researcher/awkwardRepo
+cd /home/researcher/awkwardRepo
+git init -q
+git config user.email fixture@example.invalid
+git config user.name Fixture
+printf 'content\\n' > tracked.txt
+ln -s /etc/passwd escapingLink
+mkfifo namedPipe
+git add -A
+git commit -q -m 'awkward fixture state'
+"""
+
+
+@pytest.mark.docker
+def testThePreflightForeseesTheStructuralRefusalsTheCaptureMakes(
+    tLiveProjectContainer, tmp_path,
+):
+    """Predict, then confirm — the two must agree on the same repository.
+
+    A pre-flight that only checked SIZE left every other refusal to
+    arrive at convene time, which is the complaint the size check
+    existed to answer, just narrower. These refusals are properties of
+    the tree as it sits, so they are foreseeable.
+
+    The test is a PAIR on one repository, and both halves are load-
+    bearing. The pre-flight must NAME each problem (a warning that says
+    only "cannot snapshot" sends a researcher hunting), and the capture
+    must actually refuse — a pre-flight predicting a refusal that never
+    comes is its own defect, and asserting only the prediction would
+    pass for a detector that flags healthy repositories.
+    """
+    import docker
+
+    from vaibify.gui import agentCouncilContext
+
+    _, sContainerId, connectionDocker = tLiveProjectContainer
+    container = docker.from_env().containers.get(sContainerId)
+    iExitCode, baOutput = container.exec_run(
+        ["/bin/bash", "-c", S_BUILD_UNSNAPSHOTTABLE_REPO_SCRIPT],
+        user="researcher")
+    if iExitCode != 0:
+        pytest.skip(f"cannot build the awkward fixture: {baOutput.decode()}")
+    sAwkwardRoot = "/home/researcher/awkwardRepo"
+
+    dictFeasibility = agentCouncilContext.fdictAssessSnapshotFeasibility(
+        connectionDocker, sContainerId, sAwkwardRoot)
+
+    assert dictFeasibility["bFits"] is False
+    assert dictFeasibility["bResolvableByExcludingFiles"] is False, (
+        "a structural refusal was offered as an oversized-file "
+        "exclusion; ticking a box cannot fix a symlink out of the repo")
+    assert "escapingLink" in dictFeasibility["sReason"], (
+        f"the escaping symlink is not named: {dictFeasibility['sReason']!r}")
+    assert "namedPipe" in dictFeasibility["sReason"], (
+        f"the named pipe is not named: {dictFeasibility['sReason']!r}")
+
+    with pytest.raises(agentCouncilContext.SnapshotRefusedError):
+        agentCouncilContext.fdictCaptureProjectContextSnapshot(
+            connectionDocker, sContainerId, sAwkwardRoot, "awkward",
+            sSnapshotStoreRoot=str(tmp_path))

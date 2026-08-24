@@ -111,6 +111,7 @@ __all__ = [
     "I_MAX_SNAPSHOT_MEMBER_BYTES",
     "I_MAX_SNAPSHOT_TOTAL_BYTES",
     "DICT_EXCLUDED_COMPONENT_REASONS",
+    "S_IGNORED_OMISSION_REASON",
     "S_SNAPSHOT_ARCHIVE_BASENAME",
     "S_SNAPSHOT_MANIFEST_BASENAME",
     "fdictCaptureProjectContextSnapshot",
@@ -156,6 +157,22 @@ I_MAX_SNAPSHOT_MEMBER_BYTES = (
 # memory cgroup.
 I_MAX_SNAPSHOT_TOTAL_BYTES = (
     agentCouncilCapacity.I_FLOOR_SNAPSHOT_TOTAL_BYTES)
+
+# Why a .gitignore'd file never ships, recorded per path in the
+# manifest. The reason is SECURITY before tidiness: .gitignore is where
+# researchers keep the things they have decided not to distribute —
+# local .env files, API keys, an institution's unreleased data — and a
+# council snapshot is copied to third-party model providers. The
+# reviewed credential-path policy above catches the conventional
+# stores; only the researcher's own ignore rules catch a
+# project-specific one. Build artifacts and virtualenvs going too is
+# the welcome side effect, not the argument. `git add -f` is the
+# escape hatch for a file that IS wanted.
+S_IGNORED_OMISSION_REASON = (
+    "git ignores this path, so it is not part of the project the "
+    "researcher publishes; a snapshot ships to third-party providers "
+    "and never carries deliberately-uncommitted files"
+)
 
 S_SNAPSHOT_ARCHIVE_BASENAME = "snapshot.tar"
 S_SNAPSHOT_MANIFEST_BASENAME = "manifest.json"
@@ -274,6 +291,7 @@ def fdictCaptureProjectContextSnapshot(
             connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
             dictBounds or agentCouncilCapacity.fdictFloorCouncilCapacity(),
             _fsetValidateExclusionRequest(listExcludedPaths),
+            set(dictIdentityBefore["listIgnoredPaths"]),
         )
         dictIdentityAfter = _fdictReadRepositoryIdentity(
             connectionDocker, sContainerId, sRepoRoot,
@@ -398,6 +416,15 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
         "sObservedPorcelainDigest": dictObservation.get(
             "sPorcelainDigest", ""),
         "dictPathIdentities": dictPathIdentities,
+        # A LIST, not a set, because this dict is json.dumps'd into the
+        # observation digest the manifest records. Carrying it there
+        # rather than beside it means the ignore decision is pinned by
+        # the same digest as everything else: a .gitignore rewritten
+        # mid-capture changes the observation, and the pre/post
+        # comparison refuses instead of sealing a snapshot whose
+        # omissions nobody can reconstruct.
+        "listIgnoredPaths": sorted(
+            dictObservation.get("listIgnoredPaths") or []),
     }
 
 
@@ -454,7 +481,7 @@ def _fsetValidateExclusionRequest(listExcludedPaths):
 
 def _fdictStreamValidatedArchive(
     connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
-    dictBounds, setExcludedPaths,
+    dictBounds, setExcludedPaths, setIgnoredPaths,
 ):
     """Stream get_archive into a validated tar; return the accounting.
 
@@ -477,6 +504,7 @@ def _fdictStreamValidatedArchive(
         "dictBounds": dictBounds,
         "setExcludedPaths": setExcludedPaths,
         "setHonouredExclusions": set(),
+        "setIgnoredPaths": setIgnoredPaths,
     }
     filePipe = dockerConnection._BytesGeneratorPipe(iterTarStream)
     fileArchiveOutput = os.fdopen(
@@ -514,6 +542,10 @@ def _fnAppendValidatedMember(
     if tExclusion is not None:
         sOmissionPath, sReason = tExclusion
         dictCapture["dictOmissionReasons"].setdefault(sOmissionPath, sReason)
+        return
+    if sRelativePath in dictCapture["setIgnoredPaths"]:
+        dictCapture["dictOmissionReasons"].setdefault(
+            sRelativePath, S_IGNORED_OMISSION_REASON)
         return
     if _fbExcludeOversizedByRequest(dictCapture, infoMember, sRelativePath):
         return
@@ -1081,6 +1113,7 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
     if listOversizedFiles:
         listReasons.append(_fsDescribeOversizedFiles(
             listOversizedFiles, dictWeight, dictBounds))
+    listReasons.extend(_flistDescribeStructuralRefusals(dictWeight))
     return {
         "bFits": not listReasons,
         # Every reason is an oversized FILE, so the researcher has a
@@ -1106,6 +1139,40 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
             "including files git ignores, which is usually what makes "
             "a research repository too large."),
     }
+
+
+def _flistDescribeStructuralRefusals(dictWeight):
+    """Describe the capture's NON-SIZE refusals the walk can foresee.
+
+    The pre-flight began as a size check, which left the researcher to
+    discover every other refusal at convene time — the exact complaint
+    the size check existed to answer, just narrower. These three are
+    properties of the tree as it sits, so they can be told in advance:
+    a symlink out of the repository, a file type a tar snapshot cannot
+    represent, and a checked-out submodule (whose files no superproject
+    git command enumerates, so every one of them refuses as an
+    unobserved member).
+
+    What deliberately remains undetectable is the coherence tear: the
+    repository changing WHILE the daemon serializes it is a race, and a
+    pre-flight that claimed to foresee it would be lying.
+    """
+    listReasons = []
+    for dictLink in dictWeight.get("listEscapingSymlinks") or []:
+        listReasons.append(
+            f"its symlink {dictLink['sPath']} points outside the "
+            f"repository (at {dictLink['sTarget'] or 'nothing'}), and a "
+            "council snapshot must be self-contained")
+    for sSpecialPath in dictWeight.get("listSpecialFiles") or []:
+        listReasons.append(
+            f"{sSpecialPath} is a device, socket or pipe, which a "
+            "snapshot cannot represent")
+    for sSubmodulePath in dictWeight.get("listSubmodules") or []:
+        listReasons.append(
+            f"{sSubmodulePath} is a git submodule, and a submodule's "
+            "files are enumerated by no superproject git command, so "
+            "their contents cannot be pinned to an observation")
+    return listReasons
 
 
 def _fsDescribeOversizedFiles(listOversizedFiles, dictWeight, dictBounds):

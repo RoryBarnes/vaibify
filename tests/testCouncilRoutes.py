@@ -82,6 +82,8 @@ class MockDockerCouncil:
             "iFileCount": 120, "iTotalBytes": 2 * 1024 * 1024,
             "bTruncated": False, "bLargestFilesTruncated": False,
             "listLargestFiles": [{"sPath": "README.md", "iSizeBytes": 1024}],
+            "listEscapingSymlinks": [], "listSpecialFiles": [],
+            "listSubmodules": [],
         }
         # A daemon whose memory is BELOW the floor, so these tests read
         # the declared floors and never this machine's real capacity: a

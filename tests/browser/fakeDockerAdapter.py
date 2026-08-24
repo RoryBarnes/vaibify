@@ -192,6 +192,8 @@ class FailClosedDockerAdapter:
             "listLargestFiles": [
                 {"sPath": "README.md", "iSizeBytes": 2048},
             ],
+            "listEscapingSymlinks": [], "listSpecialFiles": [],
+            "listSubmodules": [],
         }
         # What the Repos panel's discovery finds under the workspace
         # root: the lane's one project repository.

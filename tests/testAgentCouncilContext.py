@@ -79,18 +79,26 @@ def _fsBuildStatusOutput(sHeadSha=S_DEFAULT_HEAD_SHA, sPorcelainBody=""):
 S_ALPHA_PAYLOAD_BLOB_SHA = "865bed5670d16db9134717fd4a5402c6f16e53ae"
 
 
-def _fdictBuildObservationAnswer(listRecords=()):
+def _fdictBuildObservationAnswer(listRecords=(), listIgnoredPaths=()):
     """Return an identity observation shaped like the typed read's answer.
 
     ``listRecords`` holds ``(sType, sIdentity, sPath)`` tuples, exactly
     the per-path records the ``gitWorktreeIdentities`` typed read
     reports back through ``fdictFetchWorktreeIdentities``.
+
+    ``listIgnoredPaths`` is git's separate ignored enumeration. It is a
+    DIFFERENT list from the identity records on purpose, and the
+    distinction is the whole point: an ignored path is one git knows
+    about and declines to carry, while a path in neither list is one
+    nothing knows about — a member that appeared while the daemon was
+    serializing the tree.
     """
     return {
         "bSuccess": True,
         "sReason": "",
         "sHeadSha": S_DEFAULT_HEAD_SHA,
         "sPorcelainDigest": "porcelaindigest0001",
+        "listIgnoredPaths": list(listIgnoredPaths),
         "dictPathIdentities": {
             sPath: {"sType": sType, "sIdentity": sIdentity}
             for sType, sIdentity, sPath in listRecords
@@ -1058,3 +1066,138 @@ def testAnEscapingExclusionPathIsRefused(tmp_path):
             listExcludedPaths=["../../etc/passwd"])
     assert "relative in-project path" in str(errorInfo.value)
     _fnAssertStoreIsEmpty(tmp_path)
+
+
+# ---------------------------------------------------------------------
+# Ignored paths: omitted and recorded, never confused with a race.
+# ---------------------------------------------------------------------
+
+
+def _tBuildIgnoredFixture():
+    """An archive holding one tracked file and one git-ignored file."""
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/source.py", "baContent": b"tracked\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/build.egg-info",
+         "baTypeFlag": tarfile.DIRTYPE, "iMode": 0o755},
+        {"sName": f"{S_ROOT_COMPONENT}/build.egg-info/PKG-INFO",
+         "baContent": b"generated metadata\n"},
+    ])
+    dictObservation = _fdictBuildObservationAnswer(
+        listRecords=[(
+            "file",
+            agentCouncilContext._fsComputeGitBlobIdentity(b"tracked\n"),
+            "source.py")],
+        listIgnoredPaths=["build.egg-info/PKG-INFO"])
+    return baArchive, dictObservation
+
+
+def testAGitIgnoredFileIsOmittedRatherThanRefusingTheCapture(tmp_path):
+    """The defect a live researcher hit: every real repository refused.
+
+    Kills: dropping the ignored branch from the member walk.
+
+    ``container.get_archive`` serializes the filesystem, so it carries
+    ignored files; the observation enumerates tracked plus
+    untracked-NOT-ignored, so it does not. Every such file was
+    therefore an "unobserved member" and refused the whole capture —
+    which means any repository with a .gitignore matching anything
+    present could not be snapshotted at all. The live fixture never
+    caught it because it does ``git add -A`` with no .gitignore, so
+    every file it has is tracked (2026-08-24).
+    """
+    baArchive, dictObservation = _tBuildIgnoredFixture()
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(
+            baArchive, listObservationAnswers=[dictObservation]),
+        tmp_path)
+    setIncluded = {dictEntry["sPath"]
+                   for dictEntry in dictManifest["listIncludedEntries"]}
+    assert "source.py" in setIncluded
+    assert "build.egg-info/PKG-INFO" not in setIncluded
+    dictOmissions = {dictRow["sPath"]: dictRow["sReason"]
+                     for dictRow in dictManifest["listOmissions"]}
+    assert dictOmissions["build.egg-info/PKG-INFO"] == (
+        agentCouncilContext.S_IGNORED_OMISSION_REASON)
+
+
+def testAnIgnoredFilesBytesNeverReachTheArchive(tmp_path):
+    """The security half: .gitignore is where secrets live.
+
+    Kills: recording the omission while still writing the member.
+
+    A snapshot is copied to third-party model providers, and a
+    researcher's .gitignore is the one place vaibify can learn about a
+    project-specific ``secrets.yaml`` that the reviewed credential-path
+    policy does not name. Asserting the manifest alone would pass for
+    an implementation that recorded the omission and shipped the bytes
+    anyway, so this reads the sealed tar.
+    """
+    baArchive, dictObservation = _tBuildIgnoredFixture()
+    _fdictCapture(
+        _FakeCouncilConnection(
+            baArchive, listObservationAnswers=[dictObservation]),
+        tmp_path)
+    baSealed = (tmp_path / "campaign-one" / "snapshot"
+                / "snapshot.tar").read_bytes()
+    assert b"generated metadata" not in baSealed, (
+        "an ignored file's CONTENT reached the snapshot; the omission "
+        "record is describing a file that shipped anyway")
+
+
+def testAnUnobservedMemberThatGitDoesNotIgnoreStillRefuses(tmp_path):
+    """The race protection must survive the fix that unblocked capture.
+
+    Kills: treating every unobserved member as ignorable.
+
+    This is the guarantee the ignored branch could have destroyed. A
+    member in neither enumeration is one that appeared while the daemon
+    was serializing the tree — the mid-capture tear the whole coherence
+    algorithm exists to catch — and the easy version of the fix
+    (skipping anything the observation lacks) would silently seal it.
+    The fixture differs from the one above by ONE thing: the file is
+    not in git's ignored list.
+    """
+    baArchive, _ = _tBuildIgnoredFixture()
+    dictObservationWithoutIgnores = _fdictBuildObservationAnswer(
+        listRecords=[(
+            "file",
+            agentCouncilContext._fsComputeGitBlobIdentity(b"tracked\n"),
+            "source.py")],
+        listIgnoredPaths=[])
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(
+            _FakeCouncilConnection(
+                baArchive,
+                listObservationAnswers=[dictObservationWithoutIgnores]),
+            tmp_path)
+    assert "never saw" in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+def testTheIgnoredSetIsPinnedByTheObservationDigest(tmp_path):
+    """A .gitignore rewritten mid-capture must not seal quietly.
+
+    Kills: carrying the ignored set outside the digested observation.
+
+    The manifest records digests, not observation content, so the
+    ignore decision is only auditable if it is INSIDE the digested
+    identity. Two captures of the same archive differing only in what
+    git ignores must therefore carry different pre-observation digests.
+    """
+    baArchive, dictObservation = _tBuildIgnoredFixture()
+    dictManifestOne = _fdictCapture(
+        _FakeCouncilConnection(
+            baArchive, listObservationAnswers=[dictObservation]),
+        tmp_path, sCampaignId="campaign-one")
+    baArchiveTwo, dictObservationTwo = _tBuildIgnoredFixture()
+    dictObservationTwo["listIgnoredPaths"] = [
+        "build.egg-info/PKG-INFO", "somethingElse.log"]
+    dictManifestTwo = _fdictCapture(
+        _FakeCouncilConnection(
+            baArchiveTwo, listObservationAnswers=[dictObservationTwo]),
+        tmp_path, sCampaignId="campaign-two")
+    assert (dictManifestOne["sPreObservationDigest"]
+            != dictManifestTwo["sPreObservationDigest"]), (
+        "the ignored set does not affect the observation digest, so a "
+        "snapshot's omissions are unpinned by the record that is "
+        "supposed to attest to them")
