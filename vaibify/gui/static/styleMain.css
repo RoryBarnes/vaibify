@@ -6904,6 +6904,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 0.9em;
 }
 
+.council-stale {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border-left: 3px solid var(--error-color, #c62828);
+    color: var(--error-color, #c62828);
+    font-size: 0.9em;
+}
+
 .council-rounds {
     margin: 10px 0;
 }

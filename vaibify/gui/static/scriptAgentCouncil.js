@@ -67,6 +67,12 @@ var VaibifyAgentCouncil = (function () {
         bPollInFlight: false,
         listDraftParticipants: [],
         iChairbotIndex: 0,
+        /* Poll health. The panel renders backend truth, so when the
+           poll itself is the thing that is broken the panel must say
+           so rather than keep displaying its last good answer. */
+        iConsecutivePollFailures: 0,
+        sLastPollError: "",
+        iLastPollSucceededAt: 0,
         /* Per-directory snapshot feasibility, keyed by directory
            basename, filled on demand when the convene form opens. The
            empty string keys the project's own resolved repository — the
@@ -1091,16 +1097,31 @@ var VaibifyAgentCouncil = (function () {
             return;
         }
         if (!_fbWorkspaceVisible() || !_dictState.sActiveCampaignId) {
+            /* Reschedule rather than return. This used to fall out of
+               the loop entirely, so ONE tick arriving while the panel
+               was momentarily not visible stopped polling for the rest
+               of the session — and a stopped poll is indistinguishable
+               from a council doing nothing. _fnStopPolling is the only
+               thing that should end the loop. */
+            _fnScheduleNextPoll(_fiPollInterval());
             return;
         }
         _dictState.bPollInFlight = true;
         try {
             await _fnPollEventsOnce();
             await _fnLoadCampaignQuietly();
+            _dictState.iConsecutivePollFailures = 0;
+            _dictState.sLastPollError = "";
+            _dictState.iLastPollSucceededAt = Date.now();
         } catch (error) {
-            /* A transient poll error is not ground truth; the next tick
-               retries. Never mask it as success. */
-            void error;
+            /* A transient poll error is not ground truth and the next
+               tick retries — but it must not be INVISIBLE. This was
+               `void error`, so a poll failing every three seconds
+               looked exactly like a council making no progress, and a
+               researcher watched a frozen panel with no way to tell
+               which (live report, 2026-08-24). */
+            _dictState.iConsecutivePollFailures += 1;
+            _dictState.sLastPollError = error.message || String(error);
         } finally {
             _dictState.bPollInFlight = false;
         }
@@ -1183,6 +1204,11 @@ var VaibifyAgentCouncil = (function () {
                ago still shows as deliberating — the live report this
                whole block exists to answer (2026-08-24). */
             _fsTurnProgressSignature(dictCampaign),
+            /* So the stale banner can APPEAR. Without it the only
+               thing that changes when polling breaks is the failure
+               count, and the panel would keep showing its last good
+               answer forever — which is the state being warned about. */
+            _dictState.iConsecutivePollFailures > 0 ? "stale" : "fresh",
         ].join("|");
     }
 
@@ -1354,6 +1380,7 @@ var VaibifyAgentCouncil = (function () {
     function _fsCouncilTab(dictCampaign) {
         return "<div class=\"council-summary\">" +
             "<h3>" + _fsEscape(dictCampaign.sQuestion) + "</h3>" +
+            _fsPollHealth() +
             "<p>Phase: <strong>" + _fsEscape(dictCampaign.sState) +
             "</strong></p>" +
             _fsQuarantineWarning(dictCampaign) +
@@ -1403,6 +1430,26 @@ var VaibifyAgentCouncil = (function () {
         synthesis: "synthesis",
         veto: "veto",
     };
+
+    function _fsPollHealth() {
+        /* Silence about a broken poll is the same defect as an
+           optimistic status: both leave the researcher reading a panel
+           that no longer reflects the backend. */
+        if (!_dictState.iConsecutivePollFailures) {
+            if (!_dictState.iLastPollSucceededAt) return "";
+            var iAgo = Math.round(
+                (Date.now() - _dictState.iLastPollSucceededAt) / 1000);
+            return "<p class=\"council-hint\">Updated " +
+                (iAgo < 5 ? "just now" : iAgo + "s ago") + ".</p>";
+        }
+        return "<div class=\"council-stale\">⚠ This panel is NOT " +
+            "updating. " + _dictState.iConsecutivePollFailures +
+            " consecutive refresh attempts failed" +
+            (_dictState.sLastPollError
+                ? " (" + _fsEscape(_dictState.sLastPollError) + ")" : "") +
+            ". What you see below is the last answer the server gave, " +
+            "not its current state.</div>";
+    }
 
     function _fsRoundProgress(dictCampaign) {
         /* Per-TURN truth, which the panel showed nowhere. The
@@ -2100,9 +2147,21 @@ var VaibifyAgentCouncil = (function () {
            live multi-model deliberation, and the defect being guarded
            is precisely that the renderer is not re-entered when only
            turn state changes. */
+        fnSetPollHealthForTest: function (iFailures, sError) {
+            _dictState.iConsecutivePollFailures = iFailures;
+            _dictState.sLastPollError = sError;
+            _dictState.iLastPollSucceededAt = Date.now();
+        },
         fnSetCampaignForTest: function (dictCampaign) {
             _dictState.dictCampaign = dictCampaign;
+            _dictState.sActiveCampaignId = dictCampaign.sCampaignId || "";
             _fnRenderIfChanged();
+        },
+        /* Runs ONE real poll tick against the real routes. The seam
+           supplies no answer of its own, so a test using it exercises
+           the actual fetch, the actual catch, and the actual render. */
+        fnPollOnceForTest: function () {
+            return _fnPollTick();
         },
     };
 })();

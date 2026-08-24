@@ -713,3 +713,53 @@ def testSettledTurnsAppearInThePanelWithoutAReload(pageDashboard, serverHub):
     assert "independent proposals" in sAfter, (
         "the phase is unlabelled, so the researcher cannot tell a "
         f"proposal from a veto: {sAfter!r}")
+
+
+def testTheStaleBannerRendersWhenPollFailuresAreRecorded(
+    pageDashboard, serverHub,
+):
+    """RENDERER-ONLY, and labelled as such.
+
+    Drives the banner from injected counters, so it proves the panel
+    SHOWS a broken poll — not that a broken poll is detected. The
+    detection half is deliberately unproven: a version of this test
+    that drove real ticks observed nothing at all, because the loop
+    reaches neither its success nor its failure branch under
+    conditions I have not yet reproduced. That open thread is recorded
+    in the commit rather than papered over with a green test.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sText = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetPollHealthForTest(4, 'HTTP 404');
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'planning',
+                sQuestion: 'Q', listParticipants: [], listRounds: []});
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "NOT updating" in sText, sText
+    assert "4 consecutive" in sText, sText
+    assert "HTTP 404" in sText, (
+        f"the reason is hidden, so the researcher cannot act: {sText!r}")
+
+
+def testAHealthyPollDoesNotCryWolf(pageDashboard, serverHub):
+    """The other half: no warning when refreshing works.
+
+    A banner that showed unconditionally would be ignored within a day
+    and would cost the warning above all of its value.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sText = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetPollHealthForTest(0, '');
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'planning',
+                sQuestion: 'Q', listParticipants: [], listRounds: []});
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "NOT updating" not in sText, sText
