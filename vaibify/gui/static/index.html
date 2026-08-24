@@ -1129,6 +1129,13 @@
      backend registry's truth. -->
 <div id="agentCouncilWorkspace" class="council-workspace"
      style="display: none;">
+    <!-- Drag the top edge to resize. The panel is a fixed-position
+         overlay, so without an explicit height it sizes to its content
+         and re-fits on every tab switch, and it covers whatever sits
+         beneath it — the terminal included. -->
+    <div id="councilResizeHandle" class="council-resize-handle"
+         role="separator" aria-orientation="horizontal"
+         aria-label="Resize the Agent Council panel"></div>
     <div class="council-workspace-header">
         <span class="council-workspace-title">Agent Council</span>
         <button type="button" id="btnAgentCouncilWorkspaceClose"

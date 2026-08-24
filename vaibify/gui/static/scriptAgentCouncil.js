@@ -1119,11 +1119,20 @@ var VaibifyAgentCouncil = (function () {
     /* Workspace (section 6.4)                                            */
     /* ------------------------------------------------------------------ */
 
+    /* The researcher's chosen panel height, in pixels. Persisted so it
+       survives a reload: a height re-chosen on every visit is barely
+       better than one that cannot be chosen at all. */
+    var S_HEIGHT_STORAGE_KEY = "vaibifyCouncilWorkspaceHeight";
+    var I_MIN_WORKSPACE_HEIGHT = 120;
+
     function _fnShowWorkspace() {
         var elWorkspace = document.getElementById("agentCouncilWorkspace");
         if (!elWorkspace) return;
         elWorkspace.classList.remove("council-collapsed");
         elWorkspace.style.display = "";
+        _fnApplyStoredWorkspaceHeight(elWorkspace);
+        document.body.classList.add("council-workspace-open");
+        _fnBindWorkspaceResize(elWorkspace);
         _fnRenderWorkspace();
         _fnStartPolling();
     }
@@ -1131,7 +1140,75 @@ var VaibifyAgentCouncil = (function () {
     function _fnHideWorkspace() {
         var elWorkspace = document.getElementById("agentCouncilWorkspace");
         if (elWorkspace) elWorkspace.style.display = "none";
+        /* The layout's reserved space goes with it. Leaving the class on
+           would strand a band of padding under a panel that is gone. */
+        document.body.classList.remove("council-workspace-open");
         _fnStopPolling();
+    }
+
+    function _fnApplyStoredWorkspaceHeight(elWorkspace) {
+        var iStored = parseInt(
+            window.localStorage.getItem(S_HEIGHT_STORAGE_KEY) || "", 10);
+        if (!isNaN(iStored) && iStored >= I_MIN_WORKSPACE_HEIGHT) {
+            _fnSetWorkspaceHeight(elWorkspace, iStored);
+        } else {
+            /* No stored choice: publish the CSS default as a concrete
+               pixel value so the layout reserves the SAME space the
+               panel occupies. A percentage here and a percentage there
+               drift as the window resizes. */
+            _fnPublishWorkspaceHeight(elWorkspace.offsetHeight);
+        }
+    }
+
+    function _fnSetWorkspaceHeight(elWorkspace, iHeightPixels) {
+        var iMaximum = Math.round(window.innerHeight * 0.85);
+        var iClamped = Math.max(
+            I_MIN_WORKSPACE_HEIGHT, Math.min(iHeightPixels, iMaximum));
+        elWorkspace.style.height = iClamped + "px";
+        _fnPublishWorkspaceHeight(iClamped);
+        return iClamped;
+    }
+
+    function _fnPublishWorkspaceHeight(iHeightPixels) {
+        document.documentElement.style.setProperty(
+            "--council-workspace-height", iHeightPixels + "px");
+    }
+
+    function _fnBindWorkspaceResize(elWorkspace) {
+        var elHandle = document.getElementById("councilResizeHandle");
+        /* Bound once. _fnShowWorkspace runs on every workspace entry,
+           and a listener added per call would apply the drag delta once
+           per past visit. */
+        if (!elHandle || elHandle.dataset.bBound === "true") return;
+        elHandle.dataset.bBound = "true";
+        var iStartY = 0;
+        var iStartHeight = 0;
+
+        function _fnOnPointerMove(eventMove) {
+            /* Dragging the TOP edge upward grows the panel, so the
+               delta is inverted against the pointer's Y. */
+            _fnSetWorkspaceHeight(
+                elWorkspace, iStartHeight + (iStartY - eventMove.clientY));
+        }
+
+        function _fnOnPointerUp() {
+            document.removeEventListener("pointermove", _fnOnPointerMove);
+            document.removeEventListener("pointerup", _fnOnPointerUp);
+            document.body.style.userSelect = "";
+            window.localStorage.setItem(
+                S_HEIGHT_STORAGE_KEY, String(elWorkspace.offsetHeight));
+        }
+
+        elHandle.addEventListener("pointerdown", function (eventDown) {
+            eventDown.preventDefault();
+            iStartY = eventDown.clientY;
+            iStartHeight = elWorkspace.offsetHeight;
+            /* Without this a drag selects the page text it passes over,
+               which makes the resize feel broken even when it works. */
+            document.body.style.userSelect = "none";
+            document.addEventListener("pointermove", _fnOnPointerMove);
+            document.addEventListener("pointerup", _fnOnPointerUp);
+        });
     }
 
     function _fbWorkspaceVisible() {
@@ -1857,5 +1934,10 @@ var VaibifyAgentCouncil = (function () {
         fnTeardown: fnTeardown,
         fnHandleToolbarClick: fnHandleToolbarClick,
         fnRefreshCapabilities: fnRefreshCapabilities,
+        /* Exported so the panel can be opened without first convening a
+           real council — the browser lane drives the resize against the
+           REAL panel, and a test-only alias would be a second name for
+           a behaviour the module already owns. */
+        fnShowWorkspace: _fnShowWorkspace,
     };
 })();

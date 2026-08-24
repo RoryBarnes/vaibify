@@ -987,17 +987,55 @@ def test_start_refuses_a_project_with_no_claude_login(
     researcher read a failed turn instead of "log in". The probe now
     runs at start, before anything registers.
     """
-    from vaibify.gui import agentCouncilProviders
-    monkeypatch.setattr(
-        agentCouncilProviders, "fbRunnerCredentialIsPresent",
-        lambda connectionDocker, sContainerId, sPath: False)
     client, app, _ = tOwnerClient
+    # The absence is driven at the SOURCE — the container read fails —
+    # rather than by patching the probe's return value. A patched
+    # boolean stops exercising the route the moment the route calls a
+    # different helper, which is exactly what happened when the probe
+    # learned to explain itself in prose (2026-08-24): the test kept
+    # patching a function nothing called and started passing a start it
+    # was written to refuse.
+    dockerFake = app.state.dictRouteContext["docker"]
+    monkeypatch.setattr(
+        dockerFake, "fbaFetchCredentialFile",
+        lambda sContainerId, sPath: (_ for _ in ()).throw(
+            FileNotFoundError(sPath)))
     response = client.post(
         f"/api/agent-councils/{S_CONTAINER_ID}/start", json=DICT_START_BODY)
     assert response.status_code == 409, response.text
-    assert "log in to Claude" in response.json()["detail"]
+    assert "no persisted Claude login" in response.json()["detail"]
     assert app.state.dictCouncilCampaignStore["listInsertionOrder"] == [], (
         "a login-less start must register no campaign at all")
+
+
+def test_start_refuses_a_project_whose_claude_login_has_expired(
+        tOwnerClient, monkeypatch):
+    """An EXPIRED login is a different refusal with a different remedy.
+
+    A live council spent two runners on this and reported it as a
+    schema-validation failure: the token had expired 38 hours earlier,
+    the runner is given no refresh token, so the CLI exited without
+    calling the API and every schema field was reported missing
+    (2026-08-24). Asserting the remedy text, not merely the 409 —
+    telling a researcher with an expired login to "log in" sends them
+    somewhere that looks already done.
+    """
+    client, app, _ = tOwnerClient
+    dockerFake = app.state.dictRouteContext["docker"]
+    baExpired = json.dumps({"claudeAiOauth": {
+        "accessToken": "fixture-access-token",
+        "scopes": ["user:inference"],
+        "expiresAt": int((time.time() - 3600) * 1000)}}).encode("utf-8")
+    monkeypatch.setattr(
+        dockerFake, "fbaFetchCredentialFile",
+        lambda sContainerId, sPath: baExpired)
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=DICT_START_BODY)
+    assert response.status_code == 409, response.text
+    sDetail = response.json()["detail"]
+    assert "expired" in sDetail and "refresh" in sDetail, sDetail
+    assert app.state.dictCouncilCampaignStore["listInsertionOrder"] == [], (
+        "an expired-login start must register no campaign at all")
 
 
 def test_login_presence_probe_holds_no_credential_material():

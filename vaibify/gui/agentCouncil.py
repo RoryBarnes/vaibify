@@ -152,6 +152,31 @@ __all__ = [
     "fsComposeTurnInstruction",
 ]
 
+# A rejected payload is a diagnostic, not evidence, so it is bounded
+# hard. The failures worth diagnosing are short — an empty result, a
+# CLI error line, a refusal sentence — and a model that returned
+# megabytes of prose already has its own recorded byte-budget failure.
+I_MAX_REJECTED_PAYLOAD_CHARACTERS = 2000
+
+
+def _fsSummarizeRejectedPayload(dictRawResult):
+    """Render what a participant returned, for a turn that was rejected.
+
+    Serialized rather than stored as a mapping because the point is to
+    show the SHAPE the validator saw — ``{}`` and
+    ``{"sRawResultText": ""}`` are different diagnoses (nothing parsed
+    versus nothing said) and a record that normalized them would lose
+    the distinction that matters.
+    """
+    try:
+        sPayload = json.dumps(dictRawResult, default=str, sort_keys=True)
+    except (TypeError, ValueError) as errorSerialize:
+        sPayload = f"<unserializable: {errorSerialize}>"
+    if len(sPayload) <= I_MAX_REJECTED_PAYLOAD_CHARACTERS:
+        return sPayload
+    return (sPayload[:I_MAX_REJECTED_PAYLOAD_CHARACTERS]
+            + f"… [truncated from {len(sPayload)} characters]")
+
 
 class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
     """Drives the Standard planning protocol over one campaign record.
@@ -424,6 +449,17 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             dictTurnRecord["sFailureReason"] = (
                 "invalidStructuredResultAfterRepair: "
                 + "; ".join(dictAttempt["listProblems"]))
+            # WHAT the participant actually returned, not merely which
+            # fields were missing. Without it a failed turn records a
+            # list of absent keys and nothing else, which reads as "the
+            # model formatted its answer badly" for the case that
+            # matters most: a model that said nothing at all. A live
+            # council failed with every field listed as missing and
+            # zero input AND output tokens — the CLI never called the
+            # API — and the record could not distinguish the two
+            # (2026-08-24).
+            dictTurnRecord["sRejectedPayload"] = dictAttempt.get(
+                "sRejectedPayload", "")
         else:
             dictTurnRecord["sFailureReason"] = dictAttempt["sFailureReason"]
         return dictTurnRecord
@@ -455,7 +491,9 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         dictValidation = fdictValidateTurnResult(dictRawResult)
         if not dictValidation["bValid"]:
             return {"sOutcome": "invalid", "sCompletion": sCompletion,
-                    "listProblems": dictValidation["listProblems"]}
+                    "listProblems": dictValidation["listProblems"],
+                    "sRejectedPayload": _fsSummarizeRejectedPayload(
+                        dictRawResult)}
         return {"sOutcome": "completed", "sCompletion": sCompletion,
                 "dictResult": copy.deepcopy(dictRawResult)}
 

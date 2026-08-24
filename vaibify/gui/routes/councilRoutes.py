@@ -488,14 +488,12 @@ def _fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
     from .. import projectRoots
     sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
         sContainerId, WORKSPACE_ROOT)
-    if not agentCouncilProviders.fbRunnerCredentialIsPresent(
-            dictCtx["docker"], sContainerId,
-            agentCouncilProviders.fsComposeCredentialContainerPath(
-                sWorkspaceRoot)):
-        raise HTTPException(
-            409, "this project has no Claude login for the council "
-            "runners to copy. Open the project's terminal and log in "
-            "to Claude, then convene the council again.")
+    sUnusable = agentCouncilProviders.fsExplainUnusableRunnerCredential(
+        dictCtx["docker"], sContainerId,
+        agentCouncilProviders.fsComposeCredentialContainerPath(
+            sWorkspaceRoot))
+    if sUnusable:
+        raise HTTPException(409, sUnusable)
 
 
 def _ffnBuildCredentialStager(dictCtx, sContainerId):

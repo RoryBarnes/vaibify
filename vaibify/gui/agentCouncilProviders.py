@@ -40,6 +40,7 @@ import asyncio
 import hashlib
 import json
 import posixpath
+import time
 
 from . import agentCouncilDockerGateway
 from . import agentCouncilEgress
@@ -77,6 +78,7 @@ __all__ = [
     "fdictClaudeCapabilityContract",
     "fsComposeCredentialContainerPath",
     "fbRunnerCredentialIsPresent",
+    "fsExplainUnusableRunnerCredential",
     "fdictExtractRunnerCredential",
     "fsStageRunnerCredentialFile",
     "fbaBuildCredentialTarball",
@@ -118,6 +120,11 @@ S_ACCESS_TOKEN_KEY = "accessToken"
 # document as a login without it (2026-08-22 ceremony). A list of
 # capability names — no secret, mints nothing.
 S_SCOPES_KEY = "scopes"
+# Milliseconds since the epoch, the shape the CLI writes. Read only to
+# REFUSE a dead token before a runner is built; never staged into one,
+# because the 2026-08-22 ceremony measured it as not load-bearing for
+# authentication.
+S_EXPIRES_AT_KEY = "expiresAt"
 
 # Re-exported from the transport, which owns the ceiling because its
 # typed-read program is what enforces it INSIDE the container. A cap
@@ -449,10 +456,50 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
             S_ACCESS_TOKEN_KEY):
         raise RunnerCredentialError(
             "the persisted Claude login carries no access token to copy")
+    _fnRefuseAnExpiredAccessToken(dictOauth)
     return {
         "sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY],
         "listScopes": list(dictOauth.get(S_SCOPES_KEY) or []),
     }
+
+
+def _fnRefuseAnExpiredAccessToken(dictOauth):
+    """Refuse a token that has already expired, naming the remedy.
+
+    A runner CANNOT recover from this on its own. Section 9.7 stages
+    the access token and its scopes and deliberately never the refresh
+    token, so a runner handed an expired token has no way to mint a
+    live one: the CLI reports itself logged out and exits without ever
+    calling the API. That failure is invisible in the obvious places —
+    a resolved model, a clean exit, a usage block of zeroes — and a
+    live council spent two runners discovering it, then recorded the
+    result as a schema-validation problem listing every absent field
+    (2026-08-24).
+
+    Expiry is the one usability property that IS knowable without
+    spending a turn: it is a timestamp in the document. Revocation
+    still is not, and the first turn's authentication-classified
+    failure remains the only report of that.
+
+    A login with no ``expiresAt`` is ACCEPTED. Absence means the
+    provider's document shape changed or the field was never written,
+    and refusing on a field we cannot read would ground every council
+    on a guess; spending one turn to learn the truth is the better
+    failure.
+    """
+    jsonExpiresAt = dictOauth.get(S_EXPIRES_AT_KEY)
+    if not isinstance(jsonExpiresAt, (int, float)) or jsonExpiresAt <= 0:
+        return
+    fSecondsRemaining = jsonExpiresAt / 1000.0 - time.time()
+    if fSecondsRemaining > 0:
+        return
+    raise RunnerCredentialError(
+        "the project's Claude login expired "
+        f"{abs(fSecondsRemaining) / 3600:.1f} hours ago, and a council "
+        "runner is given the access token WITHOUT the refresh token, so "
+        "it cannot renew it. Run `claude` in this project's container "
+        "to refresh the login, then convene."
+    )
 
 
 def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
@@ -475,12 +522,31 @@ def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
     token-less login answers False exactly like a missing one: the
     researcher must log in either way.
     """
+    return not fsExplainUnusableRunnerCredential(
+        connectionDocker, sContainerId, sCredentialContainerPath)
+
+
+def fsExplainUnusableRunnerCredential(connectionDocker, sContainerId,
+                                      sCredentialContainerPath):
+    """Return WHY the login cannot be copied, or "" when it can.
+
+    The same probe as the boolean above and the same discard — only
+    the answer is wider. A boolean forces every caller to invent a
+    reason, and the reason a launch reported was "this project has no
+    Claude login", which is the wrong instruction for the common case:
+    a login that is present, parses, and has simply expired. The
+    remedy differs (log in versus refresh), so the message must.
+
+    The credential is discarded here exactly as before: only prose
+    about it returns, and the prose is server-composed, never the
+    token or any part of it.
+    """
     try:
         fdictExtractRunnerCredential(
             connectionDocker, sContainerId, sCredentialContainerPath)
-    except RunnerCredentialError:
-        return False
-    return True
+    except RunnerCredentialError as errorCredential:
+        return str(errorCredential)
+    return ""
 
 
 def fsStageRunnerCredentialFile(sAccessToken, listScopes=None):

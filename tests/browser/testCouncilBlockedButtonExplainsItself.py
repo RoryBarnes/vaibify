@@ -385,3 +385,115 @@ def testAnOversizedFileIsOfferedForExclusionNotJustRefused(
     assert listExcluded == ["data/marshnb/4.inv"], (
         "the convene request did not carry the researcher's exclusion, "
         f"so the capture would refuse exactly as before: {listExcluded!r}")
+
+
+def testTheCouncilPanelResizesByDragAndReservesItsSpace(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """Drag the top edge; the panel resizes and stops covering the page.
+
+    Two reported symptoms, one cause: the panel is a fixed-position
+    overlay with no height, so it sized to its content (re-fitting on
+    every tab switch) and covered whatever sat beneath it — the
+    terminal included.
+
+    Both halves are asserted because fixing one alone is worse than
+    useless: a panel that resizes but still overlays just covers MORE
+    of the terminal. Drives a real pointer drag rather than calling the
+    handler, because "can the researcher grab that 6px strip" is the
+    part a unit test cannot answer.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyAgentCouncil.fnShowWorkspace()")
+    pageDashboard.wait_for_selector("#councilResizeHandle", timeout=8000)
+
+    dictBefore = pageDashboard.evaluate(
+        """() => {
+            const el = document.getElementById('agentCouncilWorkspace');
+            return {
+                iHeight: el.offsetHeight,
+                bReserved: document.body.classList.contains(
+                    'council-workspace-open'),
+                sReservedPx: getComputedStyle(
+                    document.documentElement).getPropertyValue(
+                        '--council-workspace-height').trim(),
+            };
+        }"""
+    )
+    assert dictBefore["bReserved"] is True, (
+        "the layout reserves no space for the panel, so the panel is "
+        "covering whatever is under it — the terminal complaint")
+    assert dictBefore["sReservedPx"].endswith("px"), dictBefore
+    assert abs(int(dictBefore["sReservedPx"][:-2])
+               - dictBefore["iHeight"]) <= 2, (
+        f"the reserved space and the panel disagree: {dictBefore}")
+
+    dictHandle = pageDashboard.locator("#councilResizeHandle").bounding_box()
+    pageDashboard.mouse.move(
+        dictHandle["x"] + dictHandle["width"] / 2,
+        dictHandle["y"] + dictHandle["height"] / 2)
+    pageDashboard.mouse.down()
+    pageDashboard.mouse.move(
+        dictHandle["x"] + dictHandle["width"] / 2,
+        dictHandle["y"] - 120, steps=8)
+    pageDashboard.mouse.up()
+
+    dictAfter = pageDashboard.evaluate(
+        """() => {
+            const el = document.getElementById('agentCouncilWorkspace');
+            return {
+                iHeight: el.offsetHeight,
+                sReservedPx: getComputedStyle(
+                    document.documentElement).getPropertyValue(
+                        '--council-workspace-height').trim(),
+                sStored: window.localStorage.getItem(
+                    'vaibifyCouncilWorkspaceHeight'),
+            };
+        }"""
+    )
+    assert dictAfter["iHeight"] > dictBefore["iHeight"] + 50, (
+        "dragging the top edge upward did not grow the panel: "
+        f"{dictBefore['iHeight']} -> {dictAfter['iHeight']}")
+    assert abs(int(dictAfter["sReservedPx"][:-2])
+               - dictAfter["iHeight"]) <= 2, (
+        "the reserved space did not follow the resize, so a taller "
+        f"panel covers more of the page: {dictAfter}")
+    assert dictAfter["sStored"], (
+        "the chosen height was not persisted, so it is lost on reload")
+
+
+def testClosingTheCouncilPanelGivesTheSpaceBack(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The other half of reserving space: releasing it.
+
+    A reservation that outlives the panel strands a band of dead
+    padding at the bottom of the layout — the same occlusion bug
+    wearing the opposite sign.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        "() => VaibifyAgentCouncil.fnShowWorkspace()")
+    pageDashboard.wait_for_selector("#councilResizeHandle", timeout=8000)
+    assert pageDashboard.evaluate(
+        "() => document.body.classList.contains('council-workspace-open')")
+
+    pageDashboard.click("#btnAgentCouncilWorkspaceClose")
+
+    assert pageDashboard.evaluate(
+        "() => !document.body.classList.contains("
+        "'council-workspace-open')"), (
+        "the layout still reserves space for a closed panel")

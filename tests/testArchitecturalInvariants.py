@@ -4207,7 +4207,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # logged in" without scopes. A measured field table beats a
     # confident sentence, and it belongs where the next reader will
     # otherwise re-derive it from a failed paid turn.
-    "agentCouncilProviders.py": 860,
+    # 860 -> 926 (2026-08-24): the credential lane learned to refuse an
+    # EXPIRED login before a runner is built, and to say why in prose
+    # rather than a boolean. Both belong to the responsibility this
+    # module already owns — turning the project's persisted login into a
+    # runner credential — and the expiry check must live beside the
+    # extraction it guards, or a second caller would extract without it.
+    "agentCouncilProviders.py": 926,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

@@ -6868,7 +6868,12 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     left: 0;
     right: 0;
     bottom: 0;
-    max-height: 45vh;
+    /* The height is set inline by the drag handle and persisted; this
+       is only the first-open default. max-height stays as the ceiling
+       so a dragged panel can never swallow the whole window. */
+    height: 45vh;
+    max-height: 85vh;
+    min-height: 120px;
     background: var(--bg-panel);
     border-top: 2px solid var(--highlight-color);
     z-index: 900;
@@ -6879,6 +6884,39 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .council-workspace.council-collapsed .council-workspace-body {
     display: none;
+}
+
+/* Collapsed, the panel is its header — a fixed height would leave a
+   tall empty box, and the whole point of collapsing is to give the
+   terminal the room back. */
+.council-workspace.council-collapsed {
+    height: auto;
+    min-height: 0;
+}
+
+.council-resize-handle {
+    height: 6px;
+    flex: 0 0 6px;
+    cursor: row-resize;
+    background: transparent;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.council-resize-handle:hover,
+.council-resize-handle:active {
+    background: var(--highlight-color);
+}
+
+.council-workspace.council-collapsed .council-resize-handle {
+    display: none;
+}
+
+/* The panel is a fixed overlay, so nothing in the document flow knows
+   it is there and it covers the terminal. The body carries its live
+   height as a custom property while it is open, and this reserves the
+   same space at the bottom of the layout. */
+body.council-workspace-open #mainLayout {
+    padding-bottom: var(--council-workspace-height, 45vh);
 }
 
 .council-workspace-header {

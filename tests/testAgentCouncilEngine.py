@@ -497,6 +497,56 @@ def testTwiceInvalidOutputFailsVisiblyNeverSilentAgreement():
     assert dictOut["listParticipants"][1]["bFailed"] is True
 
 
+def testAFailedTurnRecordsWhatTheParticipantActuallyReturned():
+    """A list of absent fields is not a diagnosis.
+
+    Kills: discarding the rejected payload on an invalid turn.
+
+    A live council failed with every schema field reported missing, and
+    the record could not distinguish "the model formatted its answer
+    badly" from "the model said nothing at all" — which is what had
+    happened: an expired token, a CLI that never called the API, and a
+    usage block of zeroes. The adapter produced the raw text under
+    sRawResultText and the engine dropped it, so the one field that
+    would have named the cause was the one not kept (2026-08-24).
+    """
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted({"sRawResultText": ""})
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(LIST_THREE_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictRecord = _fdictProposalRecordOf(fixture, dictOut, "B")
+    assert dictRecord["sStatus"] == "failed"
+    assert "sRawResultText" in dictRecord["sRejectedPayload"], (
+        "the rejected payload was not recorded, so a turn that said "
+        f"nothing is indistinguishable from a malformed one: {dictRecord}")
+
+
+def testTheRejectedPayloadIsBoundedRatherThanStoredWhole():
+    """A diagnostic must not become an unbounded field in the record.
+
+    The campaign record is written to disk on every checkpoint, so an
+    enormous rejected payload would be paid for repeatedly for the life
+    of the campaign.
+    """
+    sHuge = "x" * 50000
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted({"sRawResultText": sHuge})
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(LIST_THREE_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictRecord = _fdictProposalRecordOf(fixture, dictOut, "B")
+    sPayload = dictRecord["sRejectedPayload"]
+    assert len(sPayload) < 3000, len(sPayload)
+    assert "truncated from" in sPayload, (
+        "the payload was cut without saying so, which reads as a short "
+        "answer rather than a long one")
+
+
 # ----- output cap ------------------------------------------------------
 
 def testOutputByteCapFailsTheTurnVisibly():

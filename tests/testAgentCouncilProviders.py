@@ -13,6 +13,7 @@ import json
 import os
 import stat
 import tarfile
+import time
 
 import pytest
 
@@ -166,6 +167,11 @@ def testCapabilityContractDeclaresSeparableInstructionChannel():
     assert dictContract["bExtractsUsage"] is True
 
 
+def _fiEpochMillisecondsFromNow(fSecondsAhead):
+    """Return an epoch-millisecond stamp offset from now."""
+    return int((time.time() + fSecondsAhead) * 1000)
+
+
 class _FakeCredentialConnection:
     """A minimal connection exposing only the typed named-file read."""
 
@@ -193,7 +199,12 @@ def testCredentialExtractionCopiesAccessTokenAndScopesNeverRefresh():
     dictLogin = {"claudeAiOauth": {
         "accessToken": "ACCESS-TOKEN-KEEP",
         "refreshToken": "REFRESH-TOKEN-NEVER-COPY",
-        "expiresAt": 123, "scopes": ["user:inference"]}}
+        # A LIVE expiry. This read 123 (epoch 1970) until the expiry
+        # guard landed, which refused it correctly — this test is about
+        # scopes and the refresh token, so it needs a token that is not
+        # independently rejected.
+        "expiresAt": _fiEpochMillisecondsFromNow(3600),
+        "scopes": ["user:inference"]}}
     connectionFake = _FakeCredentialConnection(
         json.dumps(dictLogin).encode("utf-8"))
     dictCredential = providers.fdictExtractRunnerCredential(
@@ -300,3 +311,88 @@ def test_charter_rides_the_instruction_flag_never_a_snapshot_file():
     sSource = inspect.getsource(agentCouncilProviders)
     assert ".md" not in sSource.replace("agentCouncil.md", ""), (
         "the adapter must never write or reference an agent-doc file")
+
+
+def _fconnectionLoginExpiringIn(fSecondsAhead, bIncludeExpiry=True):
+    """A fake connection serving a login with the given expiry."""
+    dictOauth = {"accessToken": "ACCESS-TOKEN",
+                 "scopes": ["user:inference"]}
+    if bIncludeExpiry:
+        dictOauth["expiresAt"] = _fiEpochMillisecondsFromNow(fSecondsAhead)
+    return _FakeCredentialConnection(
+        json.dumps({"claudeAiOauth": dictOauth}).encode("utf-8"))
+
+
+def testAnExpiredLoginIsRefusedBeforeAnyRunnerIsBuilt():
+    """The defect that cost a live council two runners and said nothing.
+
+    Kills: extracting a credential without checking its expiry.
+
+    Section 9.7 stages the access token WITHOUT the refresh token, so a
+    runner handed an expired token cannot renew it: the CLI reports
+    itself logged out and exits without calling the API. Nothing in the
+    obvious places shows it — the model resolves, the exit is clean,
+    the usage block is all zeroes — and the recorded failure was a
+    schema complaint listing every absent field (2026-08-24). Expiry is
+    a timestamp in the document, so it is knowable before a runner
+    exists.
+    """
+    with pytest.raises(providers.RunnerCredentialError) as errorInfo:
+        providers.fdictExtractRunnerCredential(
+            _fconnectionLoginExpiringIn(-3600), "container-abc",
+            "/root/.claude/.credentials.json")
+    sMessage = str(errorInfo.value)
+    assert "expired" in sMessage
+    assert "refresh" in sMessage, (
+        "the message does not say WHY the runner cannot recover, so it "
+        "reads as a vaibify bug rather than a login to refresh")
+    assert "claude" in sMessage, (
+        f"the message names no remedy: {sMessage!r}")
+
+
+def testALiveLoginIsAcceptedSoTheGuardIsNotJustRefusingEverything():
+    """The other half of the pair.
+
+    Kills: refusing every credential regardless of expiry.
+
+    A guard that always refused would satisfy the assertion above and
+    ground every council permanently.
+    """
+    dictCredential = providers.fdictExtractRunnerCredential(
+        _fconnectionLoginExpiringIn(3600), "container-abc",
+        "/root/.claude/.credentials.json")
+    assert dictCredential["sAccessToken"] == "ACCESS-TOKEN"
+
+
+def testALoginWithoutAnExpiryFieldIsAcceptedRatherThanGuessedAt():
+    """Absence of the field is not evidence of expiry.
+
+    Refusing on a field we cannot read would ground every council on a
+    guess if the provider's document shape ever changed. Spending one
+    turn to learn the truth is the better failure.
+    """
+    dictCredential = providers.fdictExtractRunnerCredential(
+        _fconnectionLoginExpiringIn(0, bIncludeExpiry=False),
+        "container-abc", "/root/.claude/.credentials.json")
+    assert dictCredential["sAccessToken"] == "ACCESS-TOKEN"
+
+
+def testTheExpiryRefusalReachesTheLaunchProbeAsProse():
+    """A boolean probe would report the wrong remedy.
+
+    Kills: collapsing the credential refusal back to a boolean.
+
+    The launch refusal used to say "this project has no Claude login",
+    which is the wrong instruction for a login that is present, parses,
+    and has merely expired: the researcher is told to log in when the
+    remedy is to refresh.
+    """
+    sExplanation = providers.fsExplainUnusableRunnerCredential(
+        _fconnectionLoginExpiringIn(-3600), "container-abc",
+        "/root/.claude/.credentials.json")
+    assert "expired" in sExplanation
+    assert providers.fsExplainUnusableRunnerCredential(
+        _fconnectionLoginExpiringIn(3600), "container-abc",
+        "/root/.claude/.credentials.json") == "", (
+        "a usable login produced an explanation, so the launch probe "
+        "would refuse a project that can convene")
