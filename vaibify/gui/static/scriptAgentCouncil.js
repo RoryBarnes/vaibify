@@ -603,6 +603,9 @@ var VaibifyAgentCouncil = (function () {
             "class=\"btn btn-primary\">Convene council</button>" +
             "<button type=\"button\" id=\"btnCouncilCancel\" " +
             "class=\"btn\">Cancel</button></div>" +
+            "<div id=\"councilConveneStatus\" " +
+            "class=\"council-convening\" role=\"status\" " +
+            "aria-live=\"polite\"></div>" +
             "<div id=\"councilFormError\" class=\"council-error\"></div>";
     }
 
@@ -905,18 +908,70 @@ var VaibifyAgentCouncil = (function () {
             sProjectDirectory: _fsReadValue("councilDirectory"),
             listExcludedPaths: Array.from(_dictState.setExcludedPaths),
         };
+        /* Convening is a SINGLE request that does a great deal before
+           it answers: resolve the image, check the credential gate and
+           the login, capture the repository snapshot, build one runner
+           per participant, copy the snapshot into each, provision
+           egress, and spawn the drive task. On a real project that is
+           5-10 seconds with two participants and longer with more —
+           and until now the form simply sat there, which reads as a
+           click that missed (live report, 2026-08-24). */
+        var fnFinishBusy = _ffnEnterConveningState(dictBody);
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 _fsRoute("/start"), dictBody);
+            fnFinishBusy();
             _fnAdoptCampaign(dictResult.sCampaignId, dictResult.dictCampaign);
             _fnHideModal();
             _fnShowWorkspace();
         } catch (error) {
+            fnFinishBusy();
             if (elError) {
                 elError.textContent = "Could not convene: " +
                     (error.message || String(error));
             }
         }
+    }
+
+    function _ffnEnterConveningState(dictBody) {
+        /* Returns the undo. A busy state that cannot be left is worse
+           than none: a refused convene would strand the form disabled
+           with the researcher's question inside it.
+
+           The status text does NOT narrate server-side stages. The
+           convene is one HTTP request and the browser is told nothing
+           until it answers, so a "Capturing snapshot…  Building
+           runners…" sequence driven by a timer would be inventing
+           progress it cannot see. What it shows instead is true: the
+           work being waited on, the participant count that scales it,
+           and a running clock proving the page is alive. */
+        var elConvene = document.getElementById("btnCouncilConvene");
+        var elStatus = document.getElementById("councilConveneStatus");
+        var iParticipants = (dictBody.listParticipants || []).length;
+        var iStartedAt = Date.now();
+        if (elConvene) {
+            elConvene.disabled = true;
+            elConvene.textContent = "Convening…";
+        }
+        function _fnTick() {
+            if (!elStatus) return;
+            var iSeconds = Math.round((Date.now() - iStartedAt) / 1000);
+            elStatus.textContent =
+                "Convening a council of " + iParticipants +
+                ": copying the repository snapshot into " + iParticipants +
+                " disposable container" + (iParticipants === 1 ? "" : "s") +
+                " and starting the first turn — " + iSeconds + "s";
+        }
+        _fnTick();
+        var iTimer = window.setInterval(_fnTick, 1000);
+        return function _fnLeaveConveningState() {
+            window.clearInterval(iTimer);
+            if (elStatus) elStatus.textContent = "";
+            if (elConvene) {
+                elConvene.disabled = false;
+                elConvene.textContent = "Convene council";
+            }
+        };
     }
 
     function _fdictReadSettingsForm() {

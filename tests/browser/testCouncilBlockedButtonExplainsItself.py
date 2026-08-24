@@ -387,6 +387,40 @@ def testAnOversizedFileIsOfferedForExclusionNotJustRefused(
         f"so the capture would refuse exactly as before: {listExcluded!r}")
 
 
+def _fnOpenCouncilWorkspace(page, serverHub):
+    """Open the council panel from a KNOWN state, not an inherited one.
+
+    The page is shared across this module's tests, so the panel arrives
+    carrying whatever the previous test left: display:none, a bound
+    handle, and a persisted height in localStorage. Two tests passed
+    alone and failed in file order on exactly that. Clearing the stored
+    height also keeps the drag assertion meaningful — a panel restored
+    near its 85vh ceiling cannot grow by the amount the test drags.
+    """
+    _fdictActivateCouncilToolbar(page, serverHub)
+    page.evaluate(
+        "() => window.localStorage.removeItem("
+        "'vaibifyCouncilWorkspaceHeight')")
+    # Opened inside the poll, not once before it. Entering a workflow
+    # kicks off async work that re-hides the workspace, so a single
+    # call races it — and the race resolves differently depending on
+    # what ran before, which is why these two tests passed alone and
+    # failed in file order.
+    #
+    # The condition is a real, grabbable BOX rather than Playwright's
+    # visibility heuristic, which classes this 6px strip as hidden and
+    # would fail a handle that works: width and height are exactly what
+    # a pointer drag needs.
+    page.wait_for_function(
+        """() => {
+            VaibifyAgentCouncil.fnShowWorkspace();
+            const el = document.getElementById('councilResizeHandle');
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        }""", timeout=10000)
+
+
 def testTheCouncilPanelResizesByDragAndReservesItsSpace(
     pageDashboard, serverHub, monkeypatch,
 ):
@@ -409,10 +443,7 @@ def testTheCouncilPanelResizesByDragAndReservesItsSpace(
         lambda sProvider, sImageIdentity=None: {
             "bEnabled": True, "sReason": "", "dictRecord": {}})
 
-    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
-    pageDashboard.evaluate(
-        "() => VaibifyAgentCouncil.fnShowWorkspace()")
-    pageDashboard.wait_for_selector("#councilResizeHandle", timeout=8000)
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
 
     dictBefore = pageDashboard.evaluate(
         """() => {
@@ -484,10 +515,7 @@ def testClosingTheCouncilPanelGivesTheSpaceBack(
         lambda sProvider, sImageIdentity=None: {
             "bEnabled": True, "sReason": "", "dictRecord": {}})
 
-    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
-    pageDashboard.evaluate(
-        "() => VaibifyAgentCouncil.fnShowWorkspace()")
-    pageDashboard.wait_for_selector("#councilResizeHandle", timeout=8000)
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
     assert pageDashboard.evaluate(
         "() => document.body.classList.contains('council-workspace-open')")
 
@@ -497,3 +525,120 @@ def testClosingTheCouncilPanelGivesTheSpaceBack(
         "() => !document.body.classList.contains("
         "'council-workspace-open')"), (
         "the layout still reserves space for a closed panel")
+
+
+def testConveningShowsItIsWorkingAndCannotBeDoubleSubmitted(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The click must visibly land during the 5-10s convene.
+
+    A convene resolves the image, checks the gate and the login,
+    captures the repository snapshot, builds one runner per
+    participant, copies the snapshot into each and spawns the drive
+    task — all inside one HTTP request that says nothing until it
+    answers. The form used to sit unchanged throughout, which reads as
+    a click that missed (live report, 2026-08-24).
+
+    Holds the backend request open so the busy state can be observed
+    while it is genuinely in flight, rather than asserting against a
+    state that has already been torn down. Also asserts the button
+    cannot be pressed twice: a second convene during the wait is a
+    second campaign.
+    """
+    import threading
+
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    eventRelease = threading.Event()
+    from vaibify.gui.routes import councilRoutes
+    fnRealProbe = councilRoutes._fnRefuseStartWithoutAProjectLogin
+
+    def _fnSlowLoginProbe(*tArguments, **dictKeywords):
+        """Hold the START request open, and only that request.
+
+        The login probe runs on the start path alone, inside
+        asyncio.to_thread — so blocking here holds the convene without
+        stalling the event loop. An earlier version blocked
+        _ftResolveCouncilPrincipal, which the campaign-LIST route also
+        calls: that hung the page itself and the modal never opened.
+        """
+        eventRelease.wait(timeout=20)
+        return fnRealProbe(*tArguments, **dictKeywords)
+
+    monkeypatch.setattr(
+        councilRoutes, "_fnRefuseStartWithoutAProjectLogin",
+        _fnSlowLoginProbe)
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector("#councilQuestion", timeout=8000)
+    pageDashboard.fill("#councilQuestion", "Which sampler converges fastest?")
+    # Models must be chosen or the body is rejected 422 before the
+    # request reaches anything slow — and a convene that fails instantly
+    # has no busy state to observe, which is a green test asserting
+    # nothing.
+    listOptions = pageDashboard.eval_on_selector(
+        '.council-model[data-index="0"]',
+        "el => Array.from(el.options).map(o => o.value).filter(v => v)")
+    assert listOptions, "the model picker was never populated"
+    pageDashboard.select_option(
+        '.council-model[data-index="0"]', listOptions[0])
+    # DISTINCT models: the campaign validator refuses a one-model
+    # council, and that refusal is instant — so a duplicate here would
+    # leave nothing slow to observe.
+    pageDashboard.select_option(
+        '.council-model[data-index="1"]', listOptions[1])
+    pageDashboard.click("#btnCouncilConvene")
+
+    try:
+        pageDashboard.wait_for_function(
+            "() => document.getElementById('councilConveneStatus')"
+            " && document.getElementById('councilConveneStatus')"
+            ".textContent.trim().length > 0", timeout=8000)
+        sStatus = pageDashboard.inner_text("#councilConveneStatus")
+        assert "Convening" in sStatus, sStatus
+        assert pageDashboard.locator("#btnCouncilConvene").is_disabled(), (
+            "the Convene button stayed live during the convene, so a "
+            "second click starts a second campaign")
+    finally:
+        eventRelease.set()
+
+    # The busy state must be LEAVABLE. A refused convene that stranded
+    # the form disabled would trap the researcher's question inside it.
+    pageDashboard.wait_for_function(
+        "() => { const el = document.getElementById('btnCouncilConvene');"
+        " return !el || !el.disabled; }", timeout=15000)
+
+
+def testTheBrowserLaneNeverTouchesTheResearchersCouncilStore(serverHub):
+    """Running this suite must not disturb a real, live council.
+
+    The council's durable store root is derived from $HOME and this
+    lane does not override $HOME, so the test hub used to share the
+    researcher's ~/.vaibify/agentCouncils. Its startup reconcile
+    classifies any campaign still in `planning` as `interrupted` — so
+    merely STARTING this suite killed a researcher's in-flight council
+    mid-turn, and did it with a reason string that reads like their own
+    hub restarting (2026-08-24).
+
+    A no-side-effects property cannot be asserted by observing that
+    nothing broke, so this asserts the mechanism instead: the store
+    root is somewhere else.
+    """
+    import os
+
+    sStoreRoot = serverHub.app.state.dictCouncilCampaignStore[
+        "sDurableStoreRoot"]
+    sRealRoot = os.path.join(os.path.expanduser("~"), ".vaibify",
+                             "agentCouncils")
+    assert os.path.realpath(sStoreRoot) != os.path.realpath(sRealRoot), (
+        f"the browser lane's council store IS the researcher's: "
+        f"{sStoreRoot}")
+    assert not os.path.realpath(sStoreRoot).startswith(
+        os.path.realpath(sRealRoot) + os.sep), sStoreRoot

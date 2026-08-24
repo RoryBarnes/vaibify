@@ -362,6 +362,18 @@ def serverHub():
         lambda *args, **kwargs: adapterDocker,
     ):
         app = fappCreateHubApplication(iExpectedPort=iPort)
+        # The council's durable store root is derived from $HOME, which
+        # this lane does NOT override — so without this the test hub
+        # shares the RESEARCHER's ~/.vaibify/agentCouncils, and its
+        # startup reconcile classifies their in-flight campaign as
+        # `interrupted`. That is not hypothetical: running this suite
+        # killed a live council mid-turn (2026-08-24). Re-rooted BEFORE
+        # uvicorn starts, because the reconcile runs in the lifespan
+        # startup hook.
+        from vaibify.gui import agentCouncilStore
+        app.state.dictCouncilCampaignStore = (
+            agentCouncilStore.fdictCreateCampaignStore(
+                sDurableStoreRoot=os.path.join(sHome, "agentCouncils")))
         configServer = uvicorn.Config(
             app, host="127.0.0.1", port=iPort, log_level="warning",
         )

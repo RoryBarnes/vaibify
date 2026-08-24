@@ -6894,6 +6894,16 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     min-height: 0;
 }
 
+/* The convening wait. Not an error colour: nothing has gone wrong, the
+   researcher is being told the click landed and what it is waiting on. */
+.council-convening:not(:empty) {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border-left: 3px solid var(--highlight-color);
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
 .council-resize-handle {
     height: 6px;
     flex: 0 0 6px;
