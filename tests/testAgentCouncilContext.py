@@ -1069,41 +1069,57 @@ def testAnEscapingExclusionPathIsRefused(tmp_path):
 
 
 # ---------------------------------------------------------------------
-# Ignored paths: omitted and recorded, never confused with a race.
+# Git-ignored paths: CARRIED, and pinned like everything else.
 # ---------------------------------------------------------------------
 
 
-def _tBuildIgnoredFixture():
-    """An archive holding one tracked file and one git-ignored file."""
+def _tBuildIgnoredFixture(bObserveTheIgnoredPath=True):
+    """An archive with one tracked file and one git-ignored file.
+
+    ``bObserveTheIgnoredPath`` models the two shapes production can
+    produce, and the difference between them is the whole point. The
+    real identity program merges git's ignored enumeration into the
+    observed set, so an ignored file arrives WITH an identity — which
+    is what lets the snapshot carry it and still coherence-pin it.
+    Passing ``False`` models the other case: a member in neither
+    enumeration, i.e. one that appeared while the daemon was
+    serializing the tree.
+    """
+    baIgnoredContent = b"generated artifact\n"
     baArchive = _fbaBuildArchive([
         {"sName": f"{S_ROOT_COMPONENT}/source.py", "baContent": b"tracked\n"},
-        {"sName": f"{S_ROOT_COMPONENT}/build.egg-info",
+        {"sName": f"{S_ROOT_COMPONENT}/derived",
          "baTypeFlag": tarfile.DIRTYPE, "iMode": 0o755},
-        {"sName": f"{S_ROOT_COMPONENT}/build.egg-info/PKG-INFO",
-         "baContent": b"generated metadata\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/derived/expensive.forward",
+         "baContent": baIgnoredContent},
     ])
-    dictObservation = _fdictBuildObservationAnswer(
-        listRecords=[(
+    listRecords = [(
+        "file",
+        agentCouncilContext._fsComputeGitBlobIdentity(b"tracked\n"),
+        "source.py")]
+    if bObserveTheIgnoredPath:
+        listRecords.append((
             "file",
-            agentCouncilContext._fsComputeGitBlobIdentity(b"tracked\n"),
-            "source.py")],
-        listIgnoredPaths=["build.egg-info/PKG-INFO"])
+            agentCouncilContext._fsComputeGitBlobIdentity(baIgnoredContent),
+            "derived/expensive.forward"))
+    dictObservation = _fdictBuildObservationAnswer(
+        listRecords=listRecords,
+        listIgnoredPaths=["derived/expensive.forward"])
     return baArchive, dictObservation
 
 
-def testAGitIgnoredFileIsOmittedRatherThanRefusingTheCapture(tmp_path):
-    """The defect a live researcher hit: every real repository refused.
+def testAGitIgnoredFileIsCarriedIntoTheSnapshot(tmp_path):
+    """The researcher's ruling: ignored does not mean unwanted.
 
-    Kills: dropping the ignored branch from the member walk.
+    Kills: excluding a path because git ignores it.
 
-    ``container.get_archive`` serializes the filesystem, so it carries
-    ignored files; the observation enumerates tracked plus
-    untracked-NOT-ignored, so it does not. Every such file was
-    therefore an "unobserved member" and refused the whole capture —
-    which means any repository with a .gitignore matching anything
-    present could not be snapshotted at all. The live fixture never
-    caught it because it does ``git add -A`` with no .gitignore, so
-    every file it has is tracked (2026-08-24).
+    A derived artifact that costs an hour to regenerate is worth
+    carrying, and a researcher opening a shadow container expects the
+    repository they have, not the subset git tracks (ruling
+    2026-08-24). The manifest still says WHICH included paths are
+    untracked, because a build artifact and a source file are
+    indistinguishable once copied and a participant reasoning about
+    reproducibility needs the difference.
     """
     baArchive, dictObservation = _tBuildIgnoredFixture()
     dictManifest = _fdictCapture(
@@ -1112,25 +1128,23 @@ def testAGitIgnoredFileIsOmittedRatherThanRefusingTheCapture(tmp_path):
         tmp_path)
     setIncluded = {dictEntry["sPath"]
                    for dictEntry in dictManifest["listIncludedEntries"]}
-    assert "source.py" in setIncluded
-    assert "build.egg-info/PKG-INFO" not in setIncluded
-    dictOmissions = {dictRow["sPath"]: dictRow["sReason"]
-                     for dictRow in dictManifest["listOmissions"]}
-    assert dictOmissions["build.egg-info/PKG-INFO"] == (
-        agentCouncilContext.S_IGNORED_OMISSION_REASON)
+    assert {"source.py", "derived/expensive.forward"} <= setIncluded
+    assert dictManifest["listGitIgnoredPaths"] == [
+        "derived/expensive.forward"]
+    setOmitted = {dictRow["sPath"] for dictRow in
+                  dictManifest["listOmissions"]}
+    assert "derived/expensive.forward" not in setOmitted
 
 
-def testAnIgnoredFilesBytesNeverReachTheArchive(tmp_path):
-    """The security half: .gitignore is where secrets live.
+def testTheIgnoredFilesBytesActuallyReachTheArchive(tmp_path):
+    """Manifest bookkeeping is not delivery.
 
-    Kills: recording the omission while still writing the member.
+    Kills: listing the path while writing no member for it.
 
-    A snapshot is copied to third-party model providers, and a
-    researcher's .gitignore is the one place vaibify can learn about a
-    project-specific ``secrets.yaml`` that the reviewed credential-path
-    policy does not name. Asserting the manifest alone would pass for
-    an implementation that recorded the omission and shipped the bytes
-    anyway, so this reads the sealed tar.
+    A snapshot that named the file in listIncludedEntries and shipped
+    nothing would satisfy the assertions above and hand a participant
+    a dangling reference — the failure would surface as a model
+    reasoning about a file it cannot open.
     """
     baArchive, dictObservation = _tBuildIgnoredFixture()
     _fdictCapture(
@@ -1139,36 +1153,66 @@ def testAnIgnoredFilesBytesNeverReachTheArchive(tmp_path):
         tmp_path)
     baSealed = (tmp_path / "campaign-one" / "snapshot"
                 / "snapshot.tar").read_bytes()
-    assert b"generated metadata" not in baSealed, (
-        "an ignored file's CONTENT reached the snapshot; the omission "
-        "record is describing a file that shipped anyway")
+    assert b"generated artifact" in baSealed
 
 
-def testAnUnobservedMemberThatGitDoesNotIgnoreStillRefuses(tmp_path):
-    """The race protection must survive the fix that unblocked capture.
+def testAReviewedCredentialStoreIsStillExcludedThoughIgnoredFilesShip(
+    tmp_path,
+):
+    """The policy that did NOT relax when the ignore rule did.
 
-    Kills: treating every unobserved member as ignorable.
+    Kills: treating the reviewed exclusion list as subordinate to git.
 
-    This is the guarantee the ignored branch could have destroyed. A
-    member in neither enumeration is one that appeared while the daemon
-    was serializing the tree — the mid-capture tear the whole coherence
-    algorithm exists to catch — and the easy version of the fix
-    (skipping anything the observation lacks) would silently seal it.
-    The fixture differs from the one above by ONE thing: the file is
-    not in git's ignored list.
+    Until 2026-08-24, .gitignore incidentally kept a project's dotenv
+    out of a snapshot bound for third-party model providers. Now that
+    ignored files ship, the reviewed credential list is the only thing
+    that does — so it is checked BEFORE the ignore question, and .env
+    was added to it in the same commit that made ignored files ship.
     """
-    baArchive, _ = _tBuildIgnoredFixture()
-    dictObservationWithoutIgnores = _fdictBuildObservationAnswer(
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/source.py", "baContent": b"tracked\n"},
+        {"sName": f"{S_ROOT_COMPONENT}/.env",
+         "baContent": b"API_TOKEN=topSecretTokenValue\n"},
+    ])
+    dictObservation = _fdictBuildObservationAnswer(
         listRecords=[(
             "file",
             agentCouncilContext._fsComputeGitBlobIdentity(b"tracked\n"),
             "source.py")],
-        listIgnoredPaths=[])
+        listIgnoredPaths=[".env"])
+    dictManifest = _fdictCapture(
+        _FakeCouncilConnection(
+            baArchive, listObservationAnswers=[dictObservation]),
+        tmp_path)
+    setIncluded = {dictEntry["sPath"]
+                   for dictEntry in dictManifest["listIncludedEntries"]}
+    assert ".env" not in setIncluded
+    baSealed = (tmp_path / "campaign-one" / "snapshot"
+                / "snapshot.tar").read_bytes()
+    assert b"topSecretTokenValue" not in baSealed, (
+        "a dotenv shipped to third-party providers; the reviewed "
+        "credential policy is the only thing standing between a "
+        "project secret and a council now that ignored files ship")
+
+
+def testAnUnobservedMemberStillRefusesTheWholeCapture(tmp_path):
+    """The mid-capture race must stay detectable.
+
+    Kills: skipping any member the observation lacks.
+
+    The fixture differs from the carried-ignored case by ONE thing:
+    the identity program did not observe the path. Production merges
+    git's ignored set INTO the observed set, so in a quiet repository
+    that cannot happen — a member with no identity means the tree
+    changed while the daemon was serializing it, which is the tear the
+    whole coherence algorithm exists to catch.
+    """
+    baArchive, _ = _tBuildIgnoredFixture()
+    _, dictUnobserved = _tBuildIgnoredFixture(bObserveTheIgnoredPath=False)
     with pytest.raises(SnapshotRefusedError) as errorInfo:
         _fdictCapture(
             _FakeCouncilConnection(
-                baArchive,
-                listObservationAnswers=[dictObservationWithoutIgnores]),
+                baArchive, listObservationAnswers=[dictUnobserved]),
             tmp_path)
     assert "never saw" in str(errorInfo.value)
     _fnAssertStoreIsEmpty(tmp_path)
@@ -1179,10 +1223,11 @@ def testTheIgnoredSetIsPinnedByTheObservationDigest(tmp_path):
 
     Kills: carrying the ignored set outside the digested observation.
 
-    The manifest records digests, not observation content, so the
-    ignore decision is only auditable if it is INSIDE the digested
-    identity. Two captures of the same archive differing only in what
-    git ignores must therefore carry different pre-observation digests.
+    The manifest records digests, not observation content, so which
+    paths git ignores is only auditable if it is INSIDE the digested
+    identity — and it matters more now that those paths ship: the
+    digest is what ties "this file was untracked" to the snapshot that
+    carries it.
     """
     baArchive, dictObservation = _tBuildIgnoredFixture()
     dictManifestOne = _fdictCapture(
@@ -1191,7 +1236,7 @@ def testTheIgnoredSetIsPinnedByTheObservationDigest(tmp_path):
         tmp_path, sCampaignId="campaign-one")
     baArchiveTwo, dictObservationTwo = _tBuildIgnoredFixture()
     dictObservationTwo["listIgnoredPaths"] = [
-        "build.egg-info/PKG-INFO", "somethingElse.log"]
+        "derived/expensive.forward", "somethingElse.log"]
     dictManifestTwo = _fdictCapture(
         _FakeCouncilConnection(
             baArchiveTwo, listObservationAnswers=[dictObservationTwo]),
@@ -1199,5 +1244,5 @@ def testTheIgnoredSetIsPinnedByTheObservationDigest(tmp_path):
     assert (dictManifestOne["sPreObservationDigest"]
             != dictManifestTwo["sPreObservationDigest"]), (
         "the ignored set does not affect the observation digest, so a "
-        "snapshot's omissions are unpinned by the record that is "
-        "supposed to attest to them")
+        "snapshot's untracked content is unpinned by the record that "
+        "is supposed to attest to it")

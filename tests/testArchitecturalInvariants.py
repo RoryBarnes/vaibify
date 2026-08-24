@@ -4173,7 +4173,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and why — and the reason it is here rather than in the exclusion
     # POLICY table is that the answer comes from git per repository,
     # not from a fixed component list.
-    "agentCouncilContext.py": 1199,
+    "agentCouncilContext.py": 1191,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates

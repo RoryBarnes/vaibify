@@ -300,10 +300,10 @@ I_REPOSITORY_WEIGHT_LARGEST_FILES = 64
 # the snapshot never carries, and offering the pack for "exclusion".
 # The same repository weighs 148 MB of actual content.
 _TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
-    ".claude", ".cline", ".clinerules", ".codex", ".gemini", ".git",
-    ".git-credentials", ".ipynb_checkpoints", ".netrc", ".opencode",
-    ".openhands", ".pi", ".pytest_cache", ".ssh", ".vaibify",
-    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
+    ".claude", ".cline", ".clinerules", ".codex", ".env", ".gemini",
+    ".git", ".git-credentials", ".ipynb_checkpoints", ".netrc",
+    ".opencode", ".openhands", ".pi", ".pytest_cache", ".ssh",
+    ".vaibify", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
 )
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
@@ -366,28 +366,12 @@ _DICT_TYPED_READ_PROGRAMS = {
     # snapshot excludes, so it weighs what would actually be captured
     # rather than the directory that happens to contain it.
     S_TYPED_READ_REPOSITORY_WEIGHT: (
-        "import heapq,json,os,stat,subprocess,sys\n"
+        "import heapq,json,os,stat,sys\n"
         "root=" + _S_TYPED_READ_PATH_SLOT + "\n"
         "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "\n"
         "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "\n"
         "skip=" + repr(set(_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS))
         + "\n"
-        # The ignored set, from the same git enumeration the capture's
-        # observation uses. Best-effort ON PURPOSE: this is an advisory
-        # pre-flight, and a git that will not answer must leave it
-        # OVER-reporting the weight rather than under-reporting it. An
-        # over-report costs a needless warning; an under-report would
-        # promise a council the capture then refuses.
-        "ignored=set()\n"
-        "try:\n"
-        "    processGit=subprocess.run(\n"
-        "        ['git','-c','core.fsmonitor=false','-C',root,'ls-files',\n"
-        "         '--others','--ignored','--exclude-standard','-z'],\n"
-        "        capture_output=True,text=True,timeout=60)\n"
-        "    if processGit.returncode==0:\n"
-        "        ignored={q for q in processGit.stdout.split(chr(0)) if q}\n"
-        "except Exception:\n"
-        "    pass\n"
         "n=0; b=0; truncated=False; heap=[]\n"
         "escaping=[]; special=[]; submodules=[]\n"
         "for dirpath,dirnames,filenames in os.walk(root):\n"
@@ -406,7 +390,6 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    for name in filenames:\n"
         "        if name in skip: continue\n"
         "        p=os.path.join(dirpath,name)\n"
-        "        if os.path.relpath(p,root) in ignored: continue\n"
         # A symlink contributes NO content bytes, because the snapshot
         # stores it as a link rather than following it. os.lstat would
         # report the length of the target NAME, which is neither the
@@ -666,13 +649,18 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        setPresent.update(\n"
         "            sPath for sPath in processGit.stdout.split(chr(0))\n"
         "            if sPath)\n"
-        # The IGNORED set, enumerated separately and never merged into
-        # setPresent. A caller needs to tell "git does not carry this
-        # file" from "nothing knows about this file": the first is a
-        # build artifact or a deliberately-uncommitted secret and is
-        # omitted, the second means the tree changed while the daemon
-        # was serializing it and must refuse. Merging them would make
-        # the mid-capture race unobservable.
+        # The IGNORED set. Enumerated on its own AND merged into
+        # setPresent, which are two different jobs. Merging is what
+        # makes an ignored file a first-class observed path: the
+        # snapshot carries it (ruling 2026-08-24 — a derived artifact
+        # that costs an hour to regenerate is worth carrying, and a
+        # researcher expects the whole repository in the shadow
+        # container), so it must be coherence-pinned like any other
+        # file, or shipping it would be the one unpinned thing in an
+        # otherwise fully pinned snapshot. Keeping the separate list is
+        # what lets the manifest say WHICH included paths git does not
+        # track, which is information a participant reasoning about
+        # reproducibility needs and cannot recover from the tree.
         "    processIgnored=fprocessRunGit(\n"
         "        ['ls-files','--others','--ignored','--exclude-standard',\n"
         "         '-z'])\n"
@@ -681,6 +669,7 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    listIgnored=sorted(\n"
         "        sPath for sPath in processIgnored.stdout.split(chr(0))\n"
         "        if sPath)\n"
+        "    setPresent.update(listIgnored)\n"
         "    for sRelative in sorted(setPresent):\n"
         "        sAbsolute=os.path.join(sRepo,sRelative)\n"
         "        if os.path.islink(sAbsolute):\n"

@@ -48,22 +48,26 @@ printf 'beta payload\\n' > analysis/results.txt
 ln -s dataFile.txt linkToData
 mkdir -p .claude
 printf 'topSecretTokenValue' > .claude/credentials.json
-printf 'build/\\n*.secretlocal\\n' > .gitignore
+printf 'derived/\\n*.dotenvlocal\\n' > .gitignore
 git add -A
 git commit -q -m 'initial fixture state'
 printf 'uncommitted scratch\\n' > scratch.txt
-mkdir -p build
-printf 'generated artifact\\n' > build/artifact.txt
-printf 'localApiKeyValue\\n' > apiKey.secretlocal
+mkdir -p derived
+printf 'hours of compute went into this\\n' > derived/expensive.forward
+mkdir -p .env
+printf 'API_TOKEN=topSecretDotenvValue\\n' > .env/settings
 """
 
-# The ignored paths the fixture above creates, relative to the repo
-# root. They exist ON DISK, so the daemon's archive carries them, and
-# git's enumeration does not — which is exactly the shape that refused
-# every real repository until 2026-08-24. The fixture carried none of
-# these before that: it does `git add -A` with no .gitignore, so every
-# file it had was tracked and the whole class was invisible here.
-TUPLE_IGNORED_FIXTURE_PATHS = ("build/artifact.txt", "apiKey.secretlocal")
+# The git-ignored path the fixture creates. It exists ON DISK, so the
+# daemon's archive carries it, and `git ls-files` does not — the shape
+# that refused every real repository until 2026-08-24. The fixture
+# carried nothing like it before then: it does `git add -A` with no
+# .gitignore, so every file it had was tracked and the whole class was
+# structurally invisible here.
+#
+# Named for the case that decided the policy: a derived artifact that
+# cost an hour to produce, which a council must not have to regenerate.
+S_IGNORED_FIXTURE_PATH = "derived/expensive.forward"
 
 # One digest over every file's content plus the full path listing,
 # .git included: if the capture writes, touches ownership, or leaves
@@ -505,23 +509,24 @@ def test_live_change_then_revert_refuses_deterministically(
 
 
 @pytest.mark.docker
-def testALiveIgnoredFileIsOmittedAndItsBytesNeverShip(
+def testALiveGitIgnoredFileIsCarriedButAReviewedStoreIsNot(
     tLiveProjectContainer, tmp_path,
 ):
-    """The live half of the defect a researcher hit on a real repository.
+    """The live half of the ruling, and of the policy that outlived it.
 
     The unit suite drives synthetic tar streams, so it can only assert
-    what a HAND-BUILT observation says git ignores. This drives the
-    real ``git ls-files --others --ignored`` inside a real container
-    against a real ``get_archive``, which is where the disagreement
-    lived: the daemon serializes the filesystem and git does not.
+    what a HAND-BUILT observation claims git ignores. This drives the
+    real ``git ls-files`` enumerations inside a real container against
+    a real ``get_archive``, which is where the two disagreed: the
+    daemon serializes the filesystem and git did not enumerate the
+    ignored files, so every one of them refused the whole capture until
+    they became observed paths.
 
-    Asserts both halves, because they fail differently. Capture must
-    SUCCEED (before the fix, one ignored file refused the whole
-    repository), and the ignored bytes must be ABSENT from the sealed
-    tar — .gitignore is where a researcher keeps the local key that the
-    reviewed credential-path policy cannot name, and this snapshot is
-    copied to third-party providers.
+    Both halves matter and they pull opposite ways. The derived
+    artifact MUST ship — regenerating it can cost hours, and a
+    researcher expects the repository they have. The reviewed
+    credential store must STILL not, because it is now the only thing
+    between a project secret and a third-party provider.
     """
     from vaibify.gui import agentCouncilContext
 
@@ -533,25 +538,22 @@ def testALiveIgnoredFileIsOmittedAndItsBytesNeverShip(
     setIncluded = {dictEntry["sPath"]
                    for dictEntry in dictManifest["listIncludedEntries"]}
     assert "dataFile.txt" in setIncluded, (
-        "the tracked content is missing, so this proves nothing about "
-        "ignored files")
-    dictOmissions = {dictRow["sPath"]: dictRow["sReason"]
-                     for dictRow in dictManifest["listOmissions"]}
-    for sIgnoredPath in TUPLE_IGNORED_FIXTURE_PATHS:
-        assert sIgnoredPath not in setIncluded, sIgnoredPath
-        assert dictOmissions.get(sIgnoredPath) == (
-            agentCouncilContext.S_IGNORED_OMISSION_REASON), (
-            f"{sIgnoredPath} was dropped without a recorded reason; an "
-            "unexplained omission is indistinguishable from a bug")
+        "the tracked content is missing, so this proves nothing")
+    assert S_IGNORED_FIXTURE_PATH in setIncluded, (
+        "a git-ignored derived artifact was dropped; regenerating it "
+        "is exactly the cost a council must not impose")
+    assert dictManifest["listGitIgnoredPaths"] == [S_IGNORED_FIXTURE_PATH], (
+        "the manifest does not record which included paths git leaves "
+        "untracked, so a participant cannot tell derived from source")
 
     baSealed = (tmp_path / "live-ignored" / "snapshot"
                 / "snapshot.tar").read_bytes()
-    assert b"localApiKeyValue" not in baSealed, (
-        "a git-ignored local credential shipped in the snapshot")
-    assert b"generated artifact" not in baSealed
-    assert b"alpha payload" in baSealed, (
-        "the tracked payload is absent too, so the assertions above "
-        "would pass for a capture that shipped nothing at all")
+    assert b"hours of compute went into this" in baSealed
+    assert b"topSecretDotenvValue" not in baSealed, (
+        "a dotenv shipped to third-party model providers; .gitignore "
+        "no longer keeps one out, so the reviewed credential list is "
+        "the whole defence")
+    assert b"topSecretTokenValue" not in baSealed
 
 
 @pytest.mark.docker

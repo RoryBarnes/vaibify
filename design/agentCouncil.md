@@ -1435,6 +1435,34 @@ that finds a referenced data file missing will otherwise conclude the
 repository is broken, or assert what the file must contain, and nothing in the
 snapshot contradicts either.
 
+**Amendment (2026-08-24): git-IGNORED files are part of the snapshot.** The
+per-path observation enumerates tracked, untracked and ignored paths alike,
+and the archive carries all three. This is a researcher's ruling and the
+reasoning is domain-specific: a `.forward` file is git-ignored and costs an
+hour to regenerate, so requiring a council to rebuild it would make the
+council the expensive step; and a researcher opening a shadow container
+expects the repository they have, not the subset git tracks. The manifest
+records `listGitIgnoredPaths` so a participant reasoning about
+reproducibility can still tell derived content from source, which the tree
+alone cannot say.
+
+Ignored files were briefly OMITTED instead (earlier the same day), for a
+security reason that has not gone away: `.gitignore` is also where a
+researcher keeps what they have decided not to distribute, and a snapshot is
+copied to third-party model providers. The reviewed credential-path policy is
+now the whole defence rather than a backstop, and `.env` joined it in the same
+commit — before that, `.gitignore` had been keeping the conventional dotenv
+out incidentally. Any future credential convention has to be added there; git
+will not catch it.
+
+The enumeration and the merge are separate steps on purpose. Merging ignored
+paths into the observed set is what lets the snapshot carry them AND
+coherence-pin them; keeping the separate list is what lets the manifest name
+them. What must not be merged away is the distinction between "git declines to
+carry this" and "nothing knows about this": the second still refuses the whole
+capture, because it means the tree changed while the daemon was serializing
+it.
+
 ### 9.3 Council registry: runner reservations and API requests
 
 Runner turns and outbound API requests are both paid, long-running work the
