@@ -642,3 +642,74 @@ def testTheBrowserLaneNeverTouchesTheResearchersCouncilStore(serverHub):
         f"{sStoreRoot}")
     assert not os.path.realpath(sStoreRoot).startswith(
         os.path.realpath(sRealRoot) + os.sep), sStoreRoot
+
+
+def testSettledTurnsAppearInThePanelWithoutAReload(pageDashboard, serverHub):
+    """A finished turn must be visible, and must arrive on its own.
+
+    The panel rendered campaign state and runner lifecycle only, so a
+    participant that had produced a 20,000-token proposal still read
+    "deliberating" and a researcher watching saw nothing happen for
+    minutes (live report, 2026-08-24). Two independent defects had to
+    be fixed for that: listRounds was rendered nowhere, and the
+    re-render signature ignored turn state, so even a correct renderer
+    would not have been called.
+
+    Drives the REAL renderer against a REAL campaign payload, then
+    mutates only the turn state and re-renders — which is what a poll
+    does. Asserting the first render alone would pass with the
+    signature bug fully intact.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+
+    sBefore = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-x', sState: 'planning',
+                sQuestion: 'Refactor the integrator?',
+                sChairbotParticipantId: 'p-opus',
+                listParticipants: [
+                    {sParticipantId: 'p-opus', sProvider: 'claude',
+                     sRequestedModel: 'opus'},
+                    {sParticipantId: 'p-sonn', sProvider: 'claude',
+                     sRequestedModel: 'sonnet'}],
+                listRounds: [{iRoundNumber: 1, dictTurnsByPhase: {
+                    independentProposals: [
+                        {sParticipantId: 'p-sonn', sStatus: 'inFlight'}]}}],
+            });
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "sonnet" in sBefore
+
+    sAfter = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-x', sState: 'planning',
+                sQuestion: 'Refactor the integrator?',
+                sChairbotParticipantId: 'p-opus',
+                listParticipants: [
+                    {sParticipantId: 'p-opus', sProvider: 'claude',
+                     sRequestedModel: 'opus'},
+                    {sParticipantId: 'p-sonn', sProvider: 'claude',
+                     sRequestedModel: 'sonnet'}],
+                listRounds: [{iRoundNumber: 1, dictTurnsByPhase: {
+                    independentProposals: [
+                        {sParticipantId: 'p-sonn', sStatus: 'completed',
+                         dictModelIdentity: {dictUsage: {
+                             output_tokens: 20478}}},
+                        {sParticipantId: 'p-opus', sStatus: 'failed',
+                         sFailureReason: 'noResultEvent'}]}}],
+            });
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "20,478" in sAfter, (
+        f"a settled turn's output never reached the panel: {sAfter!r}")
+    assert "✓" in sAfter and "✗" in sAfter, sAfter
+    assert "failed" in sAfter
+    assert "independent proposals" in sAfter, (
+        "the phase is unlabelled, so the researcher cannot tell a "
+        f"proposal from a veto: {sAfter!r}")

@@ -4213,7 +4213,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module already owns — turning the project's persisted login into a
     # runner credential — and the expiry check must live beside the
     # extraction it guards, or a second caller would extract without it.
-    "agentCouncilProviders.py": 926,
+    # 926 -> 957 (2026-08-24): an empty structured result now says
+    # WHICH empty it is — a stream that ended with no result event, or
+    # a result event carrying no text. The diagnosis belongs beside the
+    # extraction that produces it; anywhere else it would be a second
+    # reading of the same event list.
+    "agentCouncilProviders.py": 957,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

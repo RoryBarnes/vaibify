@@ -1150,6 +1150,22 @@ var VaibifyAgentCouncil = (function () {
         }
     }
 
+    function _fsTurnProgressSignature(dictCampaign) {
+        /* One token per turn: round, phase, and settled status. Counts
+           alone would miss a turn moving from in-flight to failed, and
+           the whole payload would redraw the panel on every poll. */
+        return (dictCampaign.listRounds || []).map(function (dictRound) {
+            var dictByPhase = dictRound.dictTurnsByPhase || {};
+            return Object.keys(dictByPhase).sort().map(function (sPhase) {
+                return sPhase + ":" + dictByPhase[sPhase].map(
+                    function (dictTurn) {
+                        return (dictTurn.sParticipantId || "").slice(-4) +
+                            "=" + (dictTurn.sStatus || "");
+                    }).join(",");
+            }).join(";");
+        }).join("/");
+    }
+
     function _fsWorkspaceSignature() {
         var dictCampaign = _dictState.dictCampaign || {};
         var dictGate = dictCampaign.dictPendingHumanGate || {};
@@ -1161,6 +1177,12 @@ var VaibifyAgentCouncil = (function () {
             dictGate.sGateKind || "",
             dictCampaign.dictCandidatePlan ? 1 : 0,
             dictCampaign.bPlanningBaselineStale ? 1 : 0,
+            /* TURN progress. Without it a settled turn changes
+               listRounds and nothing the signature reads, so the panel
+               does not redraw and a participant that finished minutes
+               ago still shows as deliberating — the live report this
+               whole block exists to answer (2026-08-24). */
+            _fsTurnProgressSignature(dictCampaign),
         ].join("|");
     }
 
@@ -1338,6 +1360,7 @@ var VaibifyAgentCouncil = (function () {
             _fsBaselineWarning(dictCampaign) +
             _fsVerdictBanner(dictCampaign) +
             _fsParticipantStates(dictCampaign) +
+            _fsRoundProgress(dictCampaign) +
             _fsResearcherDecisions(dictCampaign) +
             "</div>" +
             _fsHumanSurface(dictCampaign);
@@ -1372,6 +1395,84 @@ var VaibifyAgentCouncil = (function () {
         return "<p class=\"council-verdict council-verdict-" +
             _fsEscape(sVerdict) + "\">Current result: " +
             _fsEscape(sVerdict) + "</p>";
+    }
+
+    var DICT_PHASE_LABELS = {
+        independentProposals: "independent proposals",
+        crossReview: "adversarial cross-review",
+        synthesis: "synthesis",
+        veto: "veto",
+    };
+
+    function _fsRoundProgress(dictCampaign) {
+        /* Per-TURN truth, which the panel showed nowhere. The
+           participant chips above report the RUNNER lifecycle and the
+           campaign state, so a participant that had finished a 20,000
+           token proposal still read "deliberating" and a researcher
+           watching saw no sign anything had happened for minutes
+           (live report, 2026-08-24).
+
+           Rendered from listRounds — already in the payload, and
+           previously referenced nowhere in this file. */
+        var listRounds = dictCampaign.listRounds || [];
+        if (!listRounds.length) {
+            return "<p class=\"council-hint\">No turn has settled yet. " +
+                "The first proposals are being written; each is a full " +
+                "model turn, so this takes minutes rather than " +
+                "seconds.</p>";
+        }
+        var dictModelById = {};
+        (dictCampaign.listParticipants || []).forEach(
+            function (dictParticipant) {
+                dictModelById[dictParticipant.sParticipantId] =
+                    dictParticipant.sRequestedModel ||
+                    dictParticipant.sProvider;
+            });
+        return "<div class=\"council-rounds\">" +
+            listRounds.map(function (dictRound) {
+                return _fsOneRound(dictRound, dictModelById);
+            }).join("") + "</div>";
+    }
+
+    function _fsOneRound(dictRound, dictModelById) {
+        var dictByPhase = dictRound.dictTurnsByPhase || {};
+        var sBody = Object.keys(dictByPhase).filter(
+            function (sPhase) { return dictByPhase[sPhase].length; }
+        ).map(function (sPhase) {
+            return "<li>" +
+                _fsEscape(DICT_PHASE_LABELS[sPhase] || sPhase) + ": " +
+                dictByPhase[sPhase].map(function (dictTurn) {
+                    return _fsOneTurn(dictTurn, dictModelById);
+                }).join(" ") + "</li>";
+        }).join("");
+        return "<div class=\"council-round\">" +
+            "<strong>Round " + _fsEscape(String(dictRound.iRoundNumber)) +
+            "</strong><ul>" + (sBody ||
+                "<li class=\"council-hint\">turns in flight</li>") +
+            "</ul></div>";
+    }
+
+    function _fsOneTurn(dictTurn, dictModelById) {
+        var sModel = dictModelById[dictTurn.sParticipantId] || "participant";
+        var dictUsage = (dictTurn.dictModelIdentity || {}).dictUsage || {};
+        if (dictTurn.sStatus === "completed") {
+            /* The token count is the honest proof a turn did real work.
+               A "complete" with no output is the zero-token failure
+               this council has already produced once. */
+            var iOut = dictUsage.output_tokens;
+            return "<span class=\"council-turn council-turn-done\">" +
+                _fsEscape(sModel) + " ✓" +
+                (typeof iOut === "number"
+                    ? " (" + iOut.toLocaleString() + " tokens out)" : "") +
+                "</span>";
+        }
+        if (dictTurn.sStatus === "failed") {
+            return "<span class=\"council-turn council-turn-failed\" " +
+                "title=\"" + _fsEscape(dictTurn.sFailureReason || "") +
+                "\">" + _fsEscape(sModel) + " ✗ failed</span>";
+        }
+        return "<span class=\"council-turn\">" + _fsEscape(sModel) +
+            " …</span>";
     }
 
     function _fsParticipantStates(dictCampaign) {
@@ -1994,5 +2095,14 @@ var VaibifyAgentCouncil = (function () {
            REAL panel, and a test-only alias would be a second name for
            a behaviour the module already owns. */
         fnShowWorkspace: _fnShowWorkspace,
+        /* Renders a supplied campaign through the REAL render path,
+           signature check included. The browser lane cannot drive a
+           live multi-model deliberation, and the defect being guarded
+           is precisely that the renderer is not re-entered when only
+           turn state changes. */
+        fnSetCampaignForTest: function (dictCampaign) {
+            _dictState.dictCampaign = dictCampaign;
+            _fnRenderIfChanged();
+        },
     };
 })();

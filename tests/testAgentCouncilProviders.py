@@ -102,7 +102,12 @@ def testStructuredResultExtractionSurfacesUnparseableForRepair():
     listProse = [{"type": "result", "result": "here is my plan, no JSON"}]
     dictExtracted = providers.fdictExtractStructuredResult(listProse)
     assert dictExtracted == {"sRawResultText": "here is my plan, no JSON"}
-    assert providers.fdictExtractStructuredResult([]) == {"sRawResultText": ""}
+    # An empty stream still yields an empty raw text — the validator's
+    # trigger — but now carries its diagnosis alongside, so this asserts
+    # the contract rather than the exact dict.
+    dictEmpty = providers.fdictExtractStructuredResult([])
+    assert dictEmpty["sRawResultText"] == ""
+    assert dictEmpty["sEmptyResultReason"] == "noResultEvent"
 
 
 def testModelIdentityRecordsResolvedNeverLaundersAlias():
@@ -396,3 +401,52 @@ def testTheExpiryRefusalReachesTheLaunchProbeAsProse():
         "/root/.claude/.credentials.json") == "", (
         "a usable login produced an explanation, so the launch probe "
         "would refuse a project that can convene")
+
+
+def testAnEmptyResultSaysWhichKindOfEmptyItIs():
+    """Two causes, two diagnoses — they used to be one blank record.
+
+    Kills: returning a bare empty result without its reason.
+
+    A stream that ended with no result event and a result event
+    carrying no text both produced {"sRawResultText": ""}, so the
+    engine recorded "every schema field is missing" and the two — a CLI
+    that died before answering, and one that answered with nothing —
+    were indistinguishable. A live opus turn hit the first (2026-08-24).
+    """
+    dictNoEvent = providers.fdictExtractStructuredResult([
+        {"type": "system"}, {"type": "assistant"}])
+    assert dictNoEvent["sEmptyResultReason"] == "noResultEvent"
+    assert dictNoEvent["dictEventTypeCounts"] == {
+        "system": 1, "assistant": 1}
+
+    dictNoText = providers.fdictExtractStructuredResult([
+        {"type": "result", "is_error": True, "subtype": "error_max_turns"}])
+    assert dictNoText["sEmptyResultReason"] == "resultEventCarriedNoText"
+    assert dictNoText["bResultEventReportedError"] is True
+    assert dictNoText["sResultEventSubtype"] == "error_max_turns"
+
+
+def testTheDiagnosisNeverCopiesModelOutputIntoTheRecord():
+    """The diagnostic must stay metadata about the stream.
+
+    It rides into the campaign record, which is rewritten on every
+    checkpoint, so a field that grew to carry participant text would be
+    paid for repeatedly — and an empty result has no output worth
+    carrying anyway.
+    """
+    dictEmpty = providers.fdictExtractStructuredResult([
+        {"type": "assistant",
+         "message": {"content": "SENSITIVE-MODEL-PROSE"}},
+        {"type": "result", "result": None}])
+    assert "SENSITIVE-MODEL-PROSE" not in json.dumps(dictEmpty)
+
+
+def testAUsableResultIsUnaffectedByTheDiagnosis():
+    """The other half: a good turn must not grow diagnostic fields.
+
+    Kills: attaching the diagnosis unconditionally.
+    """
+    dictGood = providers.fdictExtractStructuredResult([
+        {"type": "result", "result": json.dumps({"sSummary": "ok"})}])
+    assert dictGood == {"sSummary": "ok"}

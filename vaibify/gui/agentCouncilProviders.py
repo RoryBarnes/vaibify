@@ -251,14 +251,45 @@ def fdictExtractStructuredResult(listEvents):
     """
     dictResultEvent = _fdictFindFinalResultEvent(listEvents)
     if dictResultEvent is None:
-        return {"sRawResultText": ""}
+        return _fdictDiagnoseEmptyResult("noResultEvent", listEvents, {})
     sResultText = dictResultEvent.get("result")
     if not isinstance(sResultText, str):
-        return {"sRawResultText": ""}
+        return _fdictDiagnoseEmptyResult(
+            "resultEventCarriedNoText", listEvents, dictResultEvent)
     jsonParsed = _fjsonParseResultText(sResultText)
     if isinstance(jsonParsed, dict):
         return jsonParsed
     return {"sRawResultText": sResultText}
+
+
+def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent):
+    """Return an empty result that says WHY it is empty.
+
+    Both empty cases used to return a bare ``{"sRawResultText": ""}``,
+    so the engine recorded "every schema field is missing" for a
+    participant that produced nothing — and the two causes, a stream
+    that ended without a result event and a result event carrying no
+    text, are different diagnoses with different remedies. A live opus
+    turn hit the first and the record could not say so (2026-08-24).
+
+    Everything here is metadata ABOUT the stream — reason, event-type
+    tally, the CLI's own error flags. No model output is copied in: an
+    empty result has none, and a diagnostic that grew to carry
+    participant text would become an unbounded field in a record
+    written on every checkpoint.
+    """
+    dictTally = {}
+    for dictEvent in listEvents:
+        sType = str(dictEvent.get("type", "?"))
+        dictTally[sType] = dictTally.get(sType, 0) + 1
+    return {
+        "sRawResultText": "",
+        "sEmptyResultReason": sReason,
+        "iEventCount": len(listEvents),
+        "dictEventTypeCounts": dictTally,
+        "bResultEventReportedError": bool(dictResultEvent.get("is_error")),
+        "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
+    }
 
 
 def _fjsonParseResultText(sResultText):
