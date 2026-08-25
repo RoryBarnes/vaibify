@@ -3359,8 +3359,8 @@ def _fdictBuildLevelCell(
     """Return one wire cell with state, counts, and regression flag.
 
     State precedence: the inactivity override (``not-started`` /
-    ``unassessed``) > ``not-applicable`` > ``unknown`` > the
-    count-derived states. ``bRegression`` is True when the level holds
+    ``unassessed``) > ``not-applicable`` > ``attained`` > ``partial``
+    > ``unknown`` > ``none``. ``bRegression`` is True when the level holds
     a high-water stamp (the add-only ratchet recorded a first
     attainment) but the current state is not ``attained``; a
     ``not-applicable`` cell never regresses — there is no requirement
@@ -3391,17 +3391,31 @@ def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
     per-step L1 on an ai-declaration step (whose sign-off is a Level
     2 requirement). It renders as ``not-applicable`` so an empty
     requirement set never reads as a vacuous attainment.
+
+    ``bUnknown`` ranks BELOW ``partial`` (2026-08-25 ruling). It used
+    to short-circuit ahead of the counts, so a single unknowable
+    requirement erased every requirement that was positively
+    satisfied — a researcher whose GitHub mirror verified and whose
+    Zenodo deposit had never been verified saw "?" rather than the
+    partial credit they had earned. That short-circuit was never what
+    kept an unknown cell out of ``attained``: ``iSatisfied`` counts
+    only ``bMet is True``, so any unknown requirement already forces
+    ``iSatisfied < iTotal``. It only ever converted ``partial`` (or
+    ``none``) into ``unknown``. ``unknown`` therefore now means what
+    it says — nothing is known to be satisfied and something is
+    unknowable — and ``none`` stays reserved for a positive
+    all-failed reading rather than for ignorance.
     """
     if sInactivityState:
         return sInactivityState
     if iTotal == 0:
         return "not-applicable"
-    if bUnknown:
-        return "unknown"
-    if iTotal > 0 and iSatisfied >= iTotal:
+    if iSatisfied >= iTotal and not bUnknown:
         return "attained"
     if iSatisfied > 0:
         return "partial"
+    if bUnknown:
+        return "unknown"
     return "none"
 
 

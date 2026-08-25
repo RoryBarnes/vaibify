@@ -345,24 +345,69 @@ def testAttestationAloneCountsAsActivity():
 
 
 # ------------------------------------------------------------------------
-# unknown: only from a stale sync-verify cache, only at L2
+# unknown: only from a stale sync-verify cache, only at L2, and only
+# when NOTHING at that level is known to be satisfied.
+#
+# These three tests asserted plain "unknown" until 2026-08-25, when a
+# researcher whose GitHub mirror had verified and whose Zenodo deposit
+# had never been verified was shown "?" and read it as "vaibify lost
+# my passing result". It had: `bUnknown` short-circuited ahead of the
+# counts, so ONE unknowable requirement erased every requirement that
+# was positively satisfied. The property those tests were really
+# defending -- a stale cache can never produce "attained" -- is not
+# supplied by that short-circuit at all: `iSatisfied` counts only
+# `bMet is True`, so an unknown requirement already forces
+# `iSatisfied < iTotal`. Each test below therefore keeps asserting the
+# never-attained property explicitly, and asserts partial credit where
+# credit is known.
 # ------------------------------------------------------------------------
 
 
-def testGithubVerifyStaleMakesLevelTwoUnknownNeverAttained():
+def testGithubVerifyStaleNeverAttainsAndKeepsKnownCredit():
     listLevel2 = [_fdictWorkflowBlocker(2, "github-verify-stale")]
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithCleanSteps(1), [], listLevel2, [],
     )
-    assert dictStates[0]["s2"] == _fdictCell("unknown", 1, 2)
+    assert dictStates[0]["s2"] == _fdictCell("partial", 1, 2)
 
 
-def testZenodoVerifyStaleAlsoMakesLevelTwoUnknown():
+def testZenodoVerifyStaleNeverAttainsAndKeepsKnownCredit():
     listLevel2 = [_fdictWorkflowBlocker(2, "zenodo-verify-stale")]
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithCleanSteps(1), [], listLevel2, [],
     )
-    assert dictStates[0]["s2"]["sState"] == "unknown"
+    assert dictStates[0]["s2"] == _fdictCell("partial", 1, 2)
+
+
+def testAStaleCacheStillCannotProduceAttained():
+    """The property the old short-circuit was credited with.
+
+    Asserted directly rather than inferred from the "?" mark, so it
+    survives the precedence change that retired that mark here.
+    """
+    for sCriterion in ("github-verify-stale", "zenodo-verify-stale"):
+        dictStates = fdictComputeStepLevelStates(
+            _fdictWorkflowWithCleanSteps(1), [],
+            [_fdictWorkflowBlocker(2, sCriterion)], [],
+        )
+        assert dictStates[0]["s2"]["sState"] != "attained", sCriterion
+
+
+def testUnknownStillHoldsWhenNothingIsKnownSatisfied():
+    """"?" survives where it means what it says.
+
+    GitHub unknowable and Zenodo known-absent: nothing at L2 is known
+    to be satisfied, so the cell must not claim the positive
+    all-failed reading of "none" either.
+    """
+    listLevel2 = [
+        _fdictWorkflowBlocker(2, "github-verify-stale"),
+        _fdictStepBlocker(2, 0, "not-in-zenodo-deposit"),
+    ]
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithCleanSteps(1), [], listLevel2, [],
+    )
+    assert dictStates[0]["s2"] == _fdictCell("unknown", 0, 2)
 
 
 def testStaleCacheDoesNotTouchLevelsOneAndThree():
@@ -375,10 +420,15 @@ def testStaleCacheDoesNotTouchLevelsOneAndThree():
     assert dictStates[0]["s3"]["sState"] == "attained"
 
 
-def testStaleCacheDominatesOwnLevel2Blocker():
-    """A stale cache makes the whole L2 cell unknown even when one
-    criterion (figure freeze) is known to fail — never attained, and
-    never a false-precision partial from an untrustworthy cache."""
+def testStaleCacheCoexistsWithAKnownFailureAndAKnownPass():
+    """Three L2 criteria, one of each kind, on one cell.
+
+    GitHub unknowable, Zenodo known-satisfied, figure freeze
+    known-failed. The cell is partial on the strength of the one
+    positive result; the unknowable one keeps it out of attained by
+    the counting alone (1 of 3), which is the only thing the old
+    ``unknown`` short-circuit was ever needed for.
+    """
     dictWorkflow = _fdictWorkflowWithCleanSteps(1)
     dictWorkflow["dictRemotes"] = {"overleaf": {"sProjectId": "abc"}}
     dictWorkflow["listSteps"][0]["saPlotFiles"] = ["plot.pdf"]
@@ -389,7 +439,7 @@ def testStaleCacheDominatesOwnLevel2Blocker():
     dictStates = fdictComputeStepLevelStates(
         dictWorkflow, [], listLevel2, [],
     )
-    assert dictStates[0]["s2"] == _fdictCell("unknown", 1, 3)
+    assert dictStates[0]["s2"] == _fdictCell("partial", 1, 3)
 
 
 def testPerStepLevel2BlockerAloneIsPartialNotUnknown():

@@ -1260,13 +1260,28 @@ therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.
 
-Honesty floors inside the cell projection: a stale sync cache renders
-"unknown", never attained; a step to which no L3 criterion applies
+Honesty floors inside the cell projection: a stale sync cache never
+renders attained; a step to which no L3 criterion applies
 (no declared paths, scripts, binary invocations, or randomness flag)
 renders "not-applicable", never a vacuous attained; and per-step L3
 counts every applicable criterion — the dominant-glyph design of the
 blocker list does not flatten five failures into a 4-of-5 partial,
 because the dominant entry carries `listFailingCriteria`.
+
+"unknown" ranks BELOW "partial" (2026-08-25). It used to short-circuit
+ahead of the counts, so one unknowable requirement erased every
+requirement that was positively satisfied — a researcher whose GitHub
+mirror had verified and whose Zenodo deposit never had was shown "?"
+and read it as a lost result. Nothing was lost by moving it: the
+never-attained floor above comes from the arithmetic, not from that
+short-circuit, because `iSatisfied` counts only `bMet is True` and so
+an unknown requirement already forces `iSatisfied < iTotal`. What the
+short-circuit uniquely did was suppress known credit. "unknown" now
+means what it says — nothing at this level is known to be satisfied
+and something is unknowable — and the ⓘ breakdown distinguishes the
+three marks per requirement (check / ⚠ / hollow circle = not
+verifiable right now), so an orange cell never hides which of its
+requirements is merely unchecked.
 
 A step with no recorded activity splits on material evidence: when
 none of its declared outputs exist on disk it renders "not-started"
