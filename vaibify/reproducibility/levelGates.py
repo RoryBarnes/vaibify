@@ -1070,12 +1070,28 @@ def fbStepIsAtLeastLevel1(
     """
     if not isinstance(dictStep, dict):
         return False
-    if not fbStepIsAiDeclaration(dictStep) and (
-        _fbStepInputDataUndeclared(dictStep)
-    ):
+    if fbStepIsAiDeclaration(dictStep):
+        # L1-NOT-APPLICABLE, in full. The declaration is a publication
+        # artifact, so its sign-off is a LEVEL 2 criterion
+        # (``ai-declaration-unattested``) — which is exactly what
+        # ``flistLevel1Blockers`` and ``_flistStepLevel1Requirements``
+        # already say by emitting no blocker and no requirement for
+        # this kind.
+        #
+        # This predicate used to carve the kind out of the input-data
+        # rule only, and then demand ``fbStepUserApproved`` of it like
+        # any other step — so it answered False for a step the gate
+        # itself treats as not-applicable, and the disagreement was
+        # invisible because nothing in the package calls it. The JS
+        # mirror shipped this same bug once and the comment there
+        # records the symptom: the level sat at 0 forever while every
+        # step showed its check. A researcher was told an unapproved
+        # declaration blocked Level 1; it does not.
+        return True
+    if _fbStepInputDataUndeclared(dictStep):
         # A step whose input contract is unstated is not
         # self-consistent — the same rule the L1 blocker and cell
-        # enforce. ai-declaration steps are L1-not-applicable.
+        # enforce.
         return False
     if not fbStepUserApproved(dictStep):
         return False

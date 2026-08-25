@@ -2,6 +2,7 @@
 
 __all__ = [
     "S_CONFTEST_VERSION",
+    "T_GENERATED_TEST_CATEGORIES",
     "fbContainerHasClaude",
     "fbValidatePythonSyntax",
     "fdictGenerateAllTests",
@@ -51,6 +52,12 @@ import posixpath
 import re
 
 logger = logging.getLogger("vaibify")
+
+# The category names a caller may ask the deterministic generator for,
+# spelled as the run/verify lanes spell them (``run-test-category``
+# takes the same words), so a researcher or an agent uses ONE
+# vocabulary across generating, running and reading a category.
+T_GENERATED_TEST_CATEGORIES = ("integrity", "qualitative", "quantitative")
 
 _LIST_STOCHASTIC_PATTERNS = [
     r"np\.random",
@@ -681,8 +688,16 @@ def _fnWarnIfAllUnloadable(listdictReports):
 def fdictGenerateAllTestsDeterministic(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bForceOverwrite=False,
+    setCategories=None,
 ):
-    """Generate all three test categories deterministically."""
+    """Generate the requested test categories deterministically.
+
+    ``setCategories`` defaults to all three, preserving every existing
+    caller. The introspection runs once regardless of how many
+    categories are wanted: it reads the step's declared outputs, and
+    reading them three times would be three container round-trips for
+    one answer.
+    """
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     listDataFiles = dictStep.get("saOutputDataFiles", [])
@@ -710,7 +725,7 @@ def fdictGenerateAllTestsDeterministic(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
         dictWorkflow.get("sProjectRepoPath", ""),
-        sClassification,
+        sClassification, setCategories,
     )
 
 
@@ -723,30 +738,45 @@ def _fnRecordIfNeedsOverwrite(dictCategoryResult, listModified):
 def _fdictWriteAllDeterministicTests(
     connectionDocker, sContainerId, sDirectory,
     listdictReports, fTolerance, bForceOverwrite, sProjectRepoPath,
-    sClassification="deterministic",
+    sClassification="deterministic", setCategories=None,
 ):
-    """Write all three deterministic test files and return result dict."""
+    """Write the requested deterministic test files; return result dict.
+
+    ``setCategories`` names the short category names to write; None
+    means all three, which is what every pre-existing caller wants. A
+    category left out is absent from the result rather than empty in
+    it, so ``_fnApplyGeneratedTests`` -- which copies only the keys it
+    finds -- leaves that category's existing declaration untouched. A
+    researcher asking for one tier must not have the other two
+    silently rewritten underneath them.
+    """
+    if setCategories is None:
+        setCategories = set(T_GENERATED_TEST_CATEGORIES)
     fnWriteConftestMarker(
         connectionDocker, sContainerId, sDirectory, sProjectRepoPath,
     )
     dictResult = {}
     listModified = []
-    dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
-        connectionDocker, sContainerId, sDirectory,
-        listdictReports, bForceOverwrite,
-    )
-    _fnRecordIfNeedsOverwrite(dictResult["dictIntegrity"], listModified)
-    dictResult["dictQualitative"] = _fdictWriteQualitativeTests(
-        connectionDocker, sContainerId, sDirectory,
-        listdictReports, bForceOverwrite,
-    )
-    _fnRecordIfNeedsOverwrite(dictResult["dictQualitative"], listModified)
-    dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
-        connectionDocker, sContainerId, sDirectory,
-        listdictReports, fTolerance, bForceOverwrite,
-        sClassification,
-    )
-    _fnRecordIfNeedsOverwrite(dictResult["dictQuantitative"], listModified)
+    if "integrity" in setCategories:
+        dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
+            connectionDocker, sContainerId, sDirectory,
+            listdictReports, bForceOverwrite,
+        )
+        _fnRecordIfNeedsOverwrite(dictResult["dictIntegrity"], listModified)
+    if "qualitative" in setCategories:
+        dictResult["dictQualitative"] = _fdictWriteQualitativeTests(
+            connectionDocker, sContainerId, sDirectory,
+            listdictReports, bForceOverwrite,
+        )
+        _fnRecordIfNeedsOverwrite(dictResult["dictQualitative"], listModified)
+    if "quantitative" in setCategories:
+        dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
+            connectionDocker, sContainerId, sDirectory,
+            listdictReports, fTolerance, bForceOverwrite,
+            sClassification,
+        )
+        _fnRecordIfNeedsOverwrite(
+            dictResult["dictQuantitative"], listModified)
     if listModified:
         dictResult["bNeedsOverwriteConfirm"] = True
         dictResult["listModifiedFiles"] = listModified

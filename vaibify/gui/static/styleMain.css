@@ -2045,6 +2045,15 @@ body.proof-level-3 .toolbar-label {
     color: var(--highlight-color);
 }
 
+/* Grey, never green: a category with no commands proved nothing. It
+   counts toward Level 1 in the backend derivation, but the badge must
+   not read as a passing test — same honesty rule the falsification
+   rows follow for "not applicable". */
+.verification-badge.state-unnecessary {
+    background: rgba(128, 128, 160, 0.18);
+    color: var(--text-muted);
+}
+
 .verification-badge.state-outputs-changed {
     background: rgba(230, 180, 40, 0.2);
     color: var(--color-orange);
@@ -2513,7 +2522,8 @@ body.proof-level-3 .toolbar-label {
     overflow-x: auto;
 }
 
-.terminal-pane-add {
+.terminal-pane-add,
+.terminal-pane-copy {
     padding: 2px 8px;
     font-size: 14px;
     color: var(--highlight-color);
@@ -2522,8 +2532,19 @@ body.proof-level-3 .toolbar-label {
     background: transparent;
 }
 
-.terminal-pane-add:hover {
+/* Always visible, never hover-revealed: it is the one copy path that
+   works while a program is holding the mouse, so a researcher who
+   cannot select text must be able to SEE it. */
+.terminal-pane-copy {
+    font-size: 11px;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.terminal-pane-add:hover,
+.terminal-pane-copy:hover {
     color: var(--highlight-color);
+    text-decoration: underline;
 }
 
 .terminal-pane-container {

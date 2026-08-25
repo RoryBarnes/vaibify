@@ -6967,6 +6967,14 @@ def _fdictEntry(sRel):
         # into the carrier, where _ftExtractStepInfo's IndexError
         # settles as a FAILED worker and quarantines the container over
         # a typo in the URL.
+        #
+        # Two copies since 2026-08-24, one per generator route: the
+        # agent-safe deterministic generator repeats the guard rather
+        # than sharing a wrapper, because the guard's whole point is
+        # that it fires BEFORE the carrier opens, and a shared helper
+        # called from inside one would not. Both are mutated, so
+        # neither copy can be the undefended one.
+        iExpectedOccurrences=2,
         old=(
             '        _fnRequireStepIndexBeforeGenerating('
             'dictWorkflow, iStepIndex)\n'

@@ -49,6 +49,7 @@ from ...reproducibility.aiDeclarationStep import (
 from ...reproducibility.levelGates import (
     fdictLevel2Gaps,
     fiProofLevel,
+    flistLevel1Blockers,
 )
 
 
@@ -139,7 +140,30 @@ def _fsRequireProjectRepo(dictWorkflow):
 
 
 def _fnRegisterLevel2Readiness(app, dictCtx):
-    """Register GET /api/workflow/{sContainerId}/level2/readiness."""
+    """Register GET /api/workflow/{sContainerId}/level2/readiness.
+
+    Named for L2 but already the whole-ladder readiness endpoint: it
+    has always answered ``iProofLevel``, which is a statement about
+    every rung. ``listLevel1Blockers`` joins it rather than getting a
+    route of its own because the awaiting allow-list may only shrink,
+    and because one question -- "where does this project stand and
+    why" -- is better answered in one call than two.
+
+    That field is the only answer to "why is this project not at Level
+    1 yet" an agent can obtain. Before it, the blocker list was
+    computed on the dashboard's poll path and delivered only to the
+    browser, so an agent asked that question read project.json and
+    state.json and reconstructed an answer from raw fields. That is how
+    a researcher came to be told an unattested AI Declaration blocked
+    Level 1 (it does not -- that is a Level 2 criterion) and that
+    qualitative tests were user-only (they are not). Both were
+    inventions filling the space where a verdict should have been.
+
+    Each blocker carries ``sRemediationHint``: the same plain-English
+    sentence the dashboard shows the researcher ("Step has never been
+    verified -- click verify when satisfied"). That text, not the
+    ``sCriterion`` identifier, is what an agent should relay.
+    """
 
     @ffnAgentAction("check-l2-readiness")
     @app.get(
@@ -157,6 +181,16 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         return {
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictLevel2Gaps": dictGaps,
+            "listLevel1Blockers": flistLevel1Blockers(
+                dictWorkflow, {}, filesRepo,
+            ),
+            # Declared, never silent. The script-stale criterion needs
+            # the per-step mtime scan the poll builds from live session
+            # state, which this GET has no access to -- so the list can
+            # omit a script-stale blocker, and a caller reporting
+            # "nothing is blocking Level 1" from an empty list would be
+            # making a claim this route cannot support.
+            "bScriptStalenessEvaluated": False,
         }
 
 

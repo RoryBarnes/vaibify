@@ -172,31 +172,113 @@ class TestFlistConvertToStandards:
 
 
 class TestFlistVerifyConverted:
+    """The verifier now takes the pairs the conversion itself built.
+
+    It used to take the full plot list, the converted list and the
+    target filter, and re-derive the pairing by zipping the first two.
+    The old tests here handed it an UNFILTERED converted list -- an
+    input the production caller never produces, because that caller
+    filters as it builds. So the lists were always aligned under test
+    and always offset in production whenever the target was not the
+    first plot. The bug lived in the seam between two functions that
+    were each tested alone.
+    """
+
     def test_verifies_existing_files(self):
         dictCtx = _fdictMakeContext(ftResult=(0, ""))
-        listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        listConverted = ["plot1_standard.png"]
-        listResult = _flistVerifyConverted(
-            dictCtx, "ctr1", listPlots, listConverted, "")
+        listTargets = [("/out/plot1_standard.png", "plot1_standard.png")]
+        listResult = _flistVerifyConverted(dictCtx, "ctr1", listTargets)
         assert listResult == ["plot1_standard.png"]
 
     def test_excludes_missing_files(self):
         dictCtx = _fdictMakeContext(ftResult=(1, ""))
-        listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        listConverted = ["plot1_standard.png"]
-        listResult = _flistVerifyConverted(
-            dictCtx, "ctr1", listPlots, listConverted, "")
+        listTargets = [("/out/plot1_standard.png", "plot1_standard.png")]
+        listResult = _flistVerifyConverted(dictCtx, "ctr1", listTargets)
         assert listResult == []
 
-    def test_filters_by_target(self):
+
+class TestStandardizingANonFirstPlot:
+    """The end-to-end pairing, driven the way production drives it.
+
+    This is the case no unit test could see: each half was correct in
+    isolation, and only the caller's own filtered output exposed the
+    offset. Standardizing the SECOND plot of a step used to report
+    "Conversion failed" on a conversion that had succeeded.
+    """
+
+    def test_targeting_the_second_plot_verifies_that_plots_standard(self):
         dictCtx = _fdictMakeContext(ftResult=(0, ""))
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
-                      ("/out/plot2.pdf", "plot2.pdf")]
-        listConverted = ["plot1_standard.png",
-                          "plot2_standard.png"]
-        listResult = _flistVerifyConverted(
-            dictCtx, "ctr1", listPlots, listConverted, "plot2.pdf")
-        assert listResult == ["plot2_standard.png"]
+                     ("/out/plot2.pdf", "plot2.pdf")]
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "plot2.pdf")
+        assert listResult == ["plot2_standard.png"], (
+            "targeting the second plot must verify the second plot's "
+            "standard; an empty list here is the researcher being told "
+            "a successful conversion failed"
+        )
+
+    def test_targeting_the_second_plot_converts_only_that_plot(self):
+        dictCtx = _fdictMakeContext(ftResult=(0, ""))
+        listPlots = [("/out/plot1.pdf", "plot1.pdf"),
+                     ("/out/plot2.pdf", "plot2.pdf")]
+        _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "plot2.pdf")
+        sConvertCommand = (
+            dictCtx["docker"].ftResultExecuteCommand
+            .call_args_list[0][0][1]
+        )
+        assert "plot2.pdf" in sConvertCommand
+        assert "plot1.pdf" not in sConvertCommand
+
+
+class TestRasterPlotsGetAStandard:
+    """A PNG project had no path through the converter at all.
+
+    ``pdftoppm`` and ``gs`` both read PDF/PostScript, so both failed on
+    raster bytes, the trailing ``|| true`` swallowed both, and the
+    route told the researcher to check for a ghostscript that was
+    installed and working. A raster source's standard is the image
+    itself.
+    """
+
+    def test_a_png_plot_is_copied_rather_than_run_through_a_pdf_reader(self):
+        dictCtx = _fdictMakeContext(ftResult=(0, ""))
+        listPlots = [("/out/figure.png", "figure.png")]
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "")
+        assert listResult == ["figure_standard.png"]
+        sConvertCommand = (
+            dictCtx["docker"].ftResultExecuteCommand
+            .call_args_list[0][0][1]
+        )
+        assert "cp -f" in sConvertCommand, (
+            "a PNG must be copied; routing it through pdftoppm/gs is "
+            f"what produced nothing at all: {sConvertCommand}"
+        )
+        assert "pdftoppm" not in sConvertCommand
+        assert "figure_standard.png" in sConvertCommand
+
+    def test_a_vector_plot_still_goes_through_the_converters(self):
+        dictCtx = _fdictMakeContext(ftResult=(0, ""))
+        listPlots = [("/out/figure.pdf", "figure.pdf")]
+        _flistConvertToStandards(dictCtx, "ctr1", listPlots, "")
+        sConvertCommand = (
+            dictCtx["docker"].ftResultExecuteCommand
+            .call_args_list[0][0][1]
+        )
+        assert "pdftoppm" in sConvertCommand
+        assert "gs " in sConvertCommand
+
+    def test_an_unsupported_format_is_skipped_rather_than_attempted(self):
+        dictCtx = _fdictMakeContext(ftResult=(0, ""))
+        listPlots = [("/out/figure.svg", "figure.svg")]
+        assert _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "") == []
+        assert dictCtx["docker"].ftResultExecuteCommand.call_count == 0, (
+            "an unconvertible format must not reach the container at "
+            "all; the route refuses it by name instead"
+        )
 
 
 class TestFdictCheckStandardsExist:

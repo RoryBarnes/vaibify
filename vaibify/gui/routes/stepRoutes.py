@@ -407,6 +407,48 @@ def _fnRequireDestructiveConfirm(
                 f"Refusing to empty {sKey} without "
                 f"bConfirmDestructive=true",
             )
+    _fnRequireTestCategoryConfirm(dictStep, dictUpdates, bConfirm)
+
+
+def _flistSelectDroppedTestCategories(dictStep, dictNewTests):
+    """Return the category keys whose commands this update would erase.
+
+    ``fnUpdateStep`` assigns ``dictTests`` wholesale, so a caller that
+    sends one category to declare it silently deletes the others. The
+    loss does not surface as an error either: the aggregators read a
+    missing category with ``.get(sKey, {})``, and the derivation then
+    marks the vanished axis ``unnecessary`` -- which counts GREEN. A
+    destructive edit that reads as a pass is exactly the one that has
+    to be confirmed rather than inferred.
+    """
+    dictOldTests = dictStep.get("dictTests", {})
+    listDropped = []
+    for sKey, _sVerificationKey in workflowManager.T_STRUCTURED_TEST_GROUPS:
+        if not dictOldTests.get(sKey, {}).get("saCommands"):
+            continue
+        if not dictNewTests.get(sKey, {}).get("saCommands"):
+            listDropped.append(sKey)
+    return listDropped
+
+
+def _fnRequireTestCategoryConfirm(dictStep, dictUpdates, bConfirm):
+    """Refuse a dictTests edit that drops a category's commands."""
+    if bConfirm:
+        return
+    dictNewTests = dictUpdates.get("dictTests")
+    if dictNewTests is None:
+        return
+    listDropped = _flistSelectDroppedTestCategories(dictStep, dictNewTests)
+    if not listDropped:
+        return
+    raise HTTPException(
+        400,
+        "Refusing to drop test commands for "
+        + ", ".join(sorted(listDropped))
+        + " without bConfirmDestructive=true. dictTests is replaced "
+        "wholesale, not merged, so send every category you mean to "
+        "keep in the same update.",
+    )
 
 
 def _fnRegisterStepDelete(app, dictCtx):
