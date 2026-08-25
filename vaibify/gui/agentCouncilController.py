@@ -1032,6 +1032,13 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
     turn's runners (the labelled-runner reconcile destroys or
     quarantines them separately), so the record says interrupted.
     Returns how many were classified.
+
+    A campaign whose project is held by a LIVE PEER hub is left alone.
+    The durable store is machine-wide, so this hub reloads a peer's
+    in-flight campaign beside its own leftovers — and "planning with no
+    runner I can see" is true of both a crash and a council another hub
+    is running right now. Classifying the second one rewrites a working
+    council's checkpoint to interrupted.
     """
     iClassified = 0
     for sCampaignId in list(dictStore["listInsertionOrder"]):
@@ -1039,6 +1046,8 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             dictStore, sCampaignId)
         if dictCampaign is None or dictCampaign["sState"] != (
                 agentCouncilCampaign.S_STATE_PLANNING):
+            continue
+        if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(dictCampaign):
             continue
         agentCouncilCampaign.fnTransitionCampaignState(
             dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,

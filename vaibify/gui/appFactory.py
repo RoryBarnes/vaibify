@@ -385,8 +385,8 @@ def _fnReconcileCouncilRunners(app):
         return
     agentCouncilRegistry.fdictReconcileLabeledRunnersOnRestart(
         dictRegistry, dockerCouncil)
-    # The egress backstop: no council drive survives a restart, so
-    # every stored campaign's proxy and network is a leftover —
+    # The egress backstop: no council drive of OURS survives a restart,
+    # so every stored campaign's proxy and network is a leftover —
     # including one an earlier hub's teardown answered INDETERMINATE
     # for and could only log. (A proxy whose campaign record is gone
     # is caught by the labeled reconcile above instead — proxies wear
@@ -399,11 +399,35 @@ def _fnReconcileCouncilRunners(app):
         return
     from vaibify.gui import agentCouncilDockerGateway
     dictSwept = agentCouncilDockerGateway.fdictSweepCouncilEgressLeftovers(
-        dockerCouncil, list(dictStore["listInsertionOrder"]))
+        dockerCouncil, _flistSelectSweepableCampaigns(dictStore))
     if dictSwept["listIndeterminateResources"]:
         logger.warning(
             "startup council egress sweep could not settle: %s",
             dictSwept["listIndeterminateResources"])
+
+
+def _flistSelectSweepableCampaigns(dictStore):
+    """Return the stored campaign ids this hub may sweep egress for.
+
+    The durable store is machine-wide, so a booting hub reloads a LIVE
+    PEER's campaigns beside its own crash leftovers. Removing a peer's
+    proxy and internal network cuts the egress its running turns are
+    using — the same daemon-wide over-reach the labeled runner reconcile
+    already learned to avoid, on the resources beside the runners.
+
+    Filtered at the caller so the gateway stays free of lock knowledge
+    and adds no new untraceable SDK roots to the blind-spot budget.
+    """
+    listSweepable = []
+    for sCampaignId in list(dictStore["listInsertionOrder"]):
+        dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+            dictStore, sCampaignId)
+        if dictCampaign is not None and (
+                agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(
+                    dictCampaign)):
+            continue
+        listSweepable.append(sCampaignId)
+    return listSweepable
 
 
 def _fnDrainCouncilRunners(app):

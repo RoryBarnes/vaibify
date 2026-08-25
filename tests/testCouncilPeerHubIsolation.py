@@ -16,6 +16,7 @@ stopped destroying things.
 """
 
 import multiprocessing
+import tempfile
 import time
 
 import pytest
@@ -249,3 +250,113 @@ def testTheControllerGivesItsGatewayTheCampaignsProject(monkeypatch):
         dictRuntime)
 
     assert dictGateway["sResourceName"] == S_OUR_PROJECT
+
+
+# --- The store lane: the runners were spared, their campaigns were not ---
+#
+# The runner reconcile learned to ask who owns a survivor. The two
+# passes that run beside it — reload-and-classify, and the egress sweep
+# — kept enumerating from the machine-wide durable store and treating
+# everything in it as this hub's leftovers. Same daemon-wide over-reach,
+# one layer up, on the campaign records rather than the containers.
+
+
+def _fdictBuildStoreHolding(sCampaignId, sResourceName, sState="planning"):
+    """A campaign store holding one reloaded campaign, checkpoint and all."""
+    from vaibify.gui import agentCouncilStore
+
+    dictStore = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=tempfile.mkdtemp(prefix="councilPeerStore"))
+    dictCampaign = {
+        "sCampaignId": sCampaignId,
+        "sState": sState,
+        "sQuestion": "does a peer hub own this?",
+        "listParticipants": [],
+        "listStateTransitions": [],
+        "dictProjectIdentity": {"sResourceName": sResourceName,
+                                "sProjectRepoPath": "/workspace/repo",
+                                "sSnapshotIdentity": "snap-1",
+                                "sSnapshotScopeNote": ""},
+    }
+    agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
+    return dictStore
+
+
+def testALivePeersCampaignIsNotClassifiedInterrupted(tprocessLivePeerHub):
+    """A working council must not be declared dead by a booting neighbour.
+
+    "Planning with no runner I can see" is true of a crash AND of a
+    council another hub is running right now, and this pass could not
+    tell them apart. It rewrote the peer's checkpoint — the record the
+    peer's own hub reloads if it ever restarts.
+    """
+    from vaibify.gui import agentCouncilController, agentCouncilStore
+
+    dictStore = _fdictBuildStoreHolding("campaign-peer", S_PEER_PROJECT)
+
+    iClassified = agentCouncilController.fiClassifyInterruptedCampaignsOnStartup(
+        dictStore)
+
+    assert iClassified == 0
+    assert agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, "campaign-peer")["sState"] == "planning"
+
+
+def testAnOrphanedCampaignIsStillClassifiedInterrupted():
+    """The other half: crash recovery must still recover.
+
+    Same shape, same code path, no live holder — so a fix that simply
+    stopped classifying anything fails here.
+    """
+    from vaibify.gui import agentCouncilController, agentCouncilStore
+
+    dictStore = _fdictBuildStoreHolding("campaign-orphan", S_OUR_PROJECT)
+    assert not containerLock.fdictReadLockHolder(S_OUR_PROJECT), (
+        "the premise failed: something already holds this project's lock")
+
+    iClassified = agentCouncilController.fiClassifyInterruptedCampaignsOnStartup(
+        dictStore)
+
+    assert iClassified == 1
+    assert agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, "campaign-orphan")["sState"] == "interrupted"
+
+
+def testALivePeersEgressIsNotSweptAtStartup(tprocessLivePeerHub):
+    """Removing a peer's proxy and network cuts its running turns' egress.
+
+    The runners were already spared by the reconcile above; their egress
+    was not, so a spared runner lost the network it reaches its provider
+    through — a subtler kill than destroying the container, and one the
+    runner-level test cannot see.
+    """
+    from vaibify.gui import appFactory
+
+    dictStore = _fdictBuildStoreHolding("campaign-peer", S_PEER_PROJECT)
+
+    assert appFactory._flistSelectSweepableCampaigns(dictStore) == []
+
+
+def testAnOrphanedCampaignsEgressIsStillSwept():
+    """The falsification twin: the backstop still backstops."""
+    from vaibify.gui import appFactory
+
+    dictStore = _fdictBuildStoreHolding("campaign-orphan", S_OUR_PROJECT)
+
+    assert appFactory._flistSelectSweepableCampaigns(dictStore) == [
+        "campaign-orphan"]
+
+
+def testACampaignWithNoRecordedOwnerStaysSweepable(tprocessLivePeerHub):
+    """Unattributable means sweepable, exactly as for a runner.
+
+    Note the live peer: the sparing must not generalize from "some hub
+    is alive" to "leave everything alone", and a record predating the
+    identity binding must not become permanently unsweepable.
+    """
+    from vaibify.gui import appFactory
+
+    dictStore = _fdictBuildStoreHolding("campaign-legacy", "")
+
+    assert appFactory._flistSelectSweepableCampaigns(dictStore) == [
+        "campaign-legacy"]

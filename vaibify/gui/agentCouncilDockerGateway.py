@@ -822,16 +822,24 @@ def fdictSweepCouncilEgressLeftovers(dockerCouncil, listCampaignIds):
     The durable backstop for an indeterminate in-process teardown: a
     hub that died (or answered indeterminately) can leave a dual-homed
     CONNECT proxy and its internal network with nobody accounting for
-    them. At STARTUP no council drive can be live — drives do not
-    survive a restart — so every stored campaign's composed proxy and
-    network names are removed outright, absence proven by name; the
+    them. Every campaign id passed here has its composed proxy and
+    network names removed outright, absence proven by name; the
     LABELED reconcile that runs beside this catches any proxy whose
     campaign record is gone (the proxy wears the council label exactly
     so a lost record cannot orphan it). Deliberately enumerates from
     the durable store rather than asking the daemon for name-prefixed
     resources: the two existing removal probes are reused verbatim, so
     this backstop adds NO new untraceable SDK roots to the blind-spot
-    budget. Returns ``{listRemovedResources,
+    budget.
+
+    WHICH campaigns are sweepable is the CALLER's judgement, and it is
+    not "all of them". This used to reason that no council drive can be
+    live at startup because drives do not survive a restart — true of
+    this hub's own drives, false of a second hub booting beside a
+    working one, whose live campaigns sit in the same machine-wide
+    store. Passing them here cuts the egress their running turns use.
+
+    Returns ``{listRemovedResources,
     listIndeterminateResources}``; an indeterminate answer is reported
     for the log and the NEXT start sweeps again — the record never
     silently disappears.

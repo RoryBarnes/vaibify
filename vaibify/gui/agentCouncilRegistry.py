@@ -60,6 +60,7 @@ __all__ = [
     "fnRetireTurnInFlight",
     "fdictRecordApiRequest",
     "fnSettleApiRequest",
+    "fbCampaignBelongsToALivePeerHub",
     "fbCouncilRegistryReportsLiveWork",
     "fbHubHasLiveCouncilWork",
     "fdictDrainCouncilRegistry",
@@ -445,7 +446,36 @@ def _fbSurvivorBelongsToALivePeerHub(dictSurvivor):
     the lease — is spared, which is the case that was destroying live
     deliberations.
     """
-    sResourceName = dictSurvivor.get("sResourceName", "")
-    if not sResourceName:
-        return False
+    return _fbResourceHeldByALivePeerHub(dictSurvivor.get("sResourceName", ""))
+
+
+def fbCampaignBelongsToALivePeerHub(dictCampaign):
+    """Report whether another live hub owns this campaign's project.
+
+    The same question as :func:`_fbSurvivorBelongsToALivePeerHub` asked
+    about a different subject. The durable campaign store is machine-
+    wide, so a booting hub reloads a live peer's campaigns exactly as it
+    reloads its own crash leftovers — and then settles them, because
+    "reloaded from disk" was read as "left by a crash". A second hub
+    beside a working one therefore rewrote the peer's checkpoint to
+    interrupted and destroyed the egress its live turns were using.
+
+    Lives here rather than in ``agentCouncilCampaign``, which is
+    declared pure: reading a flock touches the filesystem.
+    """
+    return _fbResourceHeldByALivePeerHub(
+        (dictCampaign.get("dictProjectIdentity") or {}).get(
+            "sResourceName", ""))
+
+
+def _fbResourceHeldByALivePeerHub(sResourceName):
+    """Report whether a DIFFERENT live process holds this project's lock.
+
+    An unattributable subject answers False, so it stays sweepable and
+    crash recovery keeps working on records that predate the resource
+    label. That comes from ``fdictReadLockHolder``'s own name
+    validation rather than a check here: an explicit empty-string guard
+    above it could not change any answer, and a guard no mutation can
+    falsify reads as defence while defending nothing.
+    """
     return bool(containerLock.fdictReadLockHolder(sResourceName))

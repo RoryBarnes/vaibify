@@ -98,7 +98,14 @@ _S_COUNCIL_RUNNER_RATIONALE = (
     "against a lock nobody really holds; fdictReadLockHolder answers "
     "only for a live foreign process and reaps a stale holder on the "
     "spot, and an unlabeled survivor is swept rather than spared, so "
-    "both roads lead back to sweeping."
+    "both roads lead back to sweeping. "
+    "Re-reviewed 2026-08-25 when the survivor fingerprint moved again: "
+    "the flock read was extracted to _fbResourceHeldByALivePeerHub so "
+    "the campaign-shaped twin (fbCampaignBelongsToALivePeerHub, used by "
+    "the startup classifier and the egress sweep) asks the identical "
+    "question. Behaviour is unchanged and the direction is unchanged — "
+    "two more callers that DECLINE to act. Neither twin touches the "
+    "SDK; both read a host lock file."
 )
 _LIST_COUNCIL_RUNNER_SYMBOLS = [
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL",
@@ -109,6 +116,7 @@ _LIST_COUNCIL_RUNNER_SYMBOLS = [
     "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners",
     "gui/agentCouncilDockerGateway.py::fdictDestroyRunnerAndProveAbsence",
     "gui/agentCouncilRegistry.py::_fbSurvivorBelongsToALivePeerHub",
+    "gui/agentCouncilRegistry.py::_fbResourceHeldByALivePeerHub",
 ]
 _DICT_COUNCIL_RUNNER_DISPOSITION = {
     "sDisposition": S_DISPOSITION_SEPARATE_AUTHORITY,
@@ -352,7 +360,9 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification":
         "5e83fd78e4730736",
     "gui/agentCouncilRegistry.py::_fbSurvivorBelongsToALivePeerHub":
-        "f1b55d856901cb27",
+        "9a5b8eee881fa9c5",
+    "gui/agentCouncilRegistry.py::_fbResourceHeldByALivePeerHub":
+        "c0f215615af1f24c",
     "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner":
         "a24871a501bf8d6b",
     "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle":
