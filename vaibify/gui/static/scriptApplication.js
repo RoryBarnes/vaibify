@@ -115,7 +115,17 @@ const VaibifyApp = (function () {
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
-        listLeftTabs: ["steps", "proof", "files", "logs"],
+        // "repos" joined this list on 2026-08-25. It was present only
+        // in the no-workflow mode, so the panel was unreachable
+        // exactly when a project was open -- while four
+        // researcher-facing pointers that render ONLY with a project
+        // open sent the reader to it: the PROOF tab's L2 GitHub and
+        // Zenodo rows (whose fix button is literally labelled "Open
+        // the Repos panel"), and the Project block's two
+        // published-copies hints. The button half-worked by accident
+        // -- a programmatic .click() fires on a display:none tab --
+        // so the panel opened with no tab to return to.
+        listLeftTabs: ["steps", "proof", "files", "repos", "logs"],
         sDefaultLeftTab: "steps",
         bShowRunMenu: true,
         bShowDagButton: true,
