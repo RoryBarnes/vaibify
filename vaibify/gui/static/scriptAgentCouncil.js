@@ -72,6 +72,8 @@ var VaibifyAgentCouncil = (function () {
            so rather than keep displaying its last good answer. */
         iConsecutivePollFailures: 0,
         sLastPollError: "",
+        sLastEventPollError: "",
+        sLastRenderError: "",
         iLastPollSucceededAt: 0,
         /* Per-directory snapshot feasibility, keyed by directory
            basename, filled on demand when the convene form opens. The
@@ -1108,7 +1110,23 @@ var VaibifyAgentCouncil = (function () {
         }
         _dictState.bPollInFlight = true;
         try {
-            await _fnPollEventsOnce();
+            /* INDEPENDENTLY. These were sequential awaits in one try,
+               so a failing events poll meant the campaign refresh never
+               ran at all — the panel kept rendering convene-time state
+               for an entire deliberation while requests fired every
+               few seconds, all of them events, none of them the
+               campaign (live evidence, 2026-08-24).
+
+               The campaign record is the panel's ground truth; the
+               event ring is a console nicety. The nicety must never be
+               able to starve the truth, so its failure is recorded and
+               stepped over rather than aborting the tick. */
+            try {
+                await _fnPollEventsOnce();
+            } catch (errorEvents) {
+                _dictState.sLastEventPollError =
+                    errorEvents.message || String(errorEvents);
+            }
             await _fnLoadCampaignQuietly();
             _dictState.iConsecutivePollFailures = 0;
             _dictState.sLastPollError = "";
@@ -1166,8 +1184,20 @@ var VaibifyAgentCouncil = (function () {
            so a quiet poll must leave the DOM — and its form state —
            untouched. Interactive paths call _fnRenderWorkspace directly
            and always render. */
-        if (_fsWorkspaceSignature() !== _dictState.sRenderSignature) {
-            _fnRenderWorkspace();
+        /* The SIGNATURE is inside the guard too, not just the render.
+           It walks the same campaign payload, so a shape that breaks
+           one breaks the other — and a throw here escapes the events
+           poll, which (before the tick's two refreshes were separated)
+           also killed the campaign refresh. One bad payload froze the
+           entire panel with nothing on the console. */
+        try {
+            if (_fsWorkspaceSignature() !== _dictState.sRenderSignature) {
+                _fnRenderWorkspace();
+            }
+        } catch (errorRender) {
+            _dictState.sLastRenderError =
+                errorRender.message || String(errorRender);
+            _fnShowRenderFault();
         }
     }
 
@@ -1430,6 +1460,19 @@ var VaibifyAgentCouncil = (function () {
         synthesis: "synthesis",
         veto: "veto",
     };
+
+    function _fnShowRenderFault() {
+        /* Written straight to the DOM, deliberately NOT through the
+           renderer that just failed. */
+        var elBody = document.getElementById("agentCouncilWorkspaceBody");
+        if (!elBody) return;
+        elBody.innerHTML = "<div class=\"council-stale\">⚠ This panel " +
+            "could not draw the council's current state (" +
+            _fsEscape(_dictState.sLastRenderError) + "). The council " +
+            "itself is unaffected — this is a dashboard fault. Reload " +
+            "the page; if it recurs, the message above is the bug " +
+            "report.</div>";
+    }
 
     function _fsPollHealth() {
         /* Silence about a broken poll is the same defect as an

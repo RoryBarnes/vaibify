@@ -763,3 +763,88 @@ def testAHealthyPollDoesNotCryWolf(pageDashboard, serverHub):
         }"""
     )
     assert "NOT updating" not in sText, sText
+
+
+def testAFailingEventsPollCannotFreezeTheCampaignRefresh(
+    pageDashboard, serverHub,
+):
+    """The defect that froze a live council's panel for a whole run.
+
+    Kills: awaiting the events poll and the campaign refresh in one try.
+
+    Evidence from the researcher's own frozen session: requests fired
+    every few seconds and EVERY one was `events?iAfter=0` — no campaign
+    request at all, and iAfter never advanced. The events poll was
+    throwing, the shared catch swallowed it, and the campaign refresh
+    below it never executed. The panel rendered convene-time state
+    while the backend reached needsHuman (2026-08-24).
+
+    Stubs the TRANSPORT — not the logic under test — so the events
+    route fails and the campaign route succeeds, then runs the real
+    tick. The campaign must still arrive.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sText = pageDashboard.evaluate(
+        """async () => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-x', sState: 'planning',
+                sQuestion: 'Original question',
+                listParticipants: [], listRounds: []});
+            const fnRealGet = VaibifyApi.fdictGet;
+            VaibifyApi.fdictGet = function (sPath) {
+                if (sPath.indexOf('/events') !== -1) {
+                    return Promise.reject(new Error('events route broken'));
+                }
+                return Promise.resolve({dictCampaign: {
+                    sCampaignId: 'campaign-x', sState: 'needsHuman',
+                    sQuestion: 'Original question',
+                    dictPendingHumanGate: {
+                        sGateKind: 'blockingQuestion',
+                        listQuestions: [{
+                            sQuestionText: 'DECISION-THE-COUNCIL-NEEDS',
+                            sRaisedByParticipantId: 'p1'}]},
+                    listParticipants: [], listRounds: []}});
+            };
+            try {
+                await VaibifyAgentCouncil.fnPollOnceForTest();
+            } finally {
+                VaibifyApi.fdictGet = fnRealGet;
+            }
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "DECISION-THE-COUNCIL-NEEDS" in sText, (
+        "a broken events poll starved the campaign refresh, so the "
+        f"council's blocking question never reached the panel: {sText!r}")
+
+
+def testARendererFaultIsNamedInsteadOfFreezingThePanel(
+    pageDashboard, serverHub,
+):
+    """A dashboard bug must not masquerade as a quiet council.
+
+    Kills: letting a render exception escape the poll.
+
+    _fnIngestEvents ends by rendering, so a throw there escapes the
+    events poll — and with both refreshes sharing one try, that also
+    killed the campaign refresh. One bad render froze the whole panel
+    with nothing on the console, which is indistinguishable from a
+    council doing nothing.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sText = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-y', sState: 'planning',
+                sQuestion: 'Q', listParticipants: [],
+                /* A shape neither the signature nor the renderer can
+                   walk — both call .map on it. */
+                listRounds: 'not-an-array'});
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "could not draw" in sText, (
+        f"a renderer fault left the panel silent: {sText!r}")
+    assert "dashboard fault" in sText, sText
