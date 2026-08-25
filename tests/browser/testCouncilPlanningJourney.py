@@ -266,7 +266,19 @@ def _fnAnswerABlockingQuestion(page, serverHub, sCampaignId):
     _fnWaitForState(page, serverHub, sCampaignId, "needsHuman")
     page.click('.council-tab[data-tab="council"]')
     page.wait_for_selector(".council-needs-human", timeout=16000)
-    page.fill("#councilAnswer", "Use the content-hash policy.")
+    # One box PER DECISION, not one for the gate. Filling only some of
+    # them must not send: the gate closes on send, so a blank box is a
+    # question the council never gets answered. Drive that refusal here,
+    # because it is the only assertion that a real browser makes it.
+    page.wait_for_selector(".council-decision", timeout=16000)
+    listBoxes = page.query_selector_all(".council-decision-answer")
+    assert listBoxes, "the gate rendered no per-decision answer box"
+    page.click("#btnCouncilAnswer")
+    assert page.is_visible("#councilGateNotice"), (
+        "an empty decision was sent instead of refused")
+
+    for elementBox in listBoxes:
+        elementBox.fill("Use the content-hash policy.")
     page.click("#btnCouncilAnswer")
     _fnWaitForResponseRecorded(page, serverHub, sCampaignId)
 

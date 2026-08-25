@@ -513,6 +513,51 @@ def testTheAnswerReachesTheNextRoundBesideTheQuestionsItAnswered():
         "the answer arrived without a handle the plan can anchor to")
 
 
+def testPerDecisionAnswersAreComposedByTheServerNotTheCaller():
+    """The prose is composed FROM the per-decision answers.
+
+    Otherwise the readable record and the machine-readable one can
+    describe different answers, and nothing would ever reconcile them —
+    the caller sends both and only one is displayed.
+
+    Kills: recording the caller's sResponseText when decision answers
+    are present, and any unbound-name slip on this path (it was
+    `agentCouncilCharter.fsComposeDecisionAnswers` with the module name
+    never imported, which no other test executed).
+    """
+    fixture = fixtureBuildCouncil(
+        LIST_THREE_SPECS,
+        _ffnDecideVetoVerdict("B", "needsHuman", iRoundLimit=1,
+                              listOpenQuestions=["delete it, or keep it?"]),
+        sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    sQuestionId = (
+        dictOut["dictPendingHumanGate"]["listQuestions"][0]["sQuestionId"])
+
+    dictOut = fixture.fdictContinue(
+        "IGNORED — the caller does not get to write the record",
+        [{"sDecisionId": "decision-" + sQuestionId,
+          "listQuestionIds": [sQuestionId],
+          "sAnswerText": "keep it, but discourage it"}])
+
+    [dictResponse] = dictOut["listResearcherResponses"]
+    assert "IGNORED" not in dictResponse["sText"]
+    assert "delete it, or keep it?" in dictResponse["sText"]
+    assert "keep it, but discourage it" in dictResponse["sText"]
+    assert dictResponse["listDecisionAnswers"][0]["sAnswerText"] == (
+        "keep it, but discourage it")
+
+    listSecondRound = fixture.flistRequestsFor("C", S_VETO)
+    sQuoted = [dictQuoted
+               for dictQuoted in listSecondRound[-1]["listQuotedMaterial"]
+               if dictQuoted["sSourceKind"] == "researcherResponse"][-1][
+                   "sContent"]
+    assert "delete it, or keep it?" in sQuoted
+    assert sQuoted.count("delete it, or keep it?") == 1, (
+        "the question is stated twice: once by the composer and once by "
+        "the flat heading it should have replaced")
+
+
 def testContinuationAfterResearcherResponseReconstructsContext():
     """A researcher response is recorded and the continuation rebuilds
     context from the record — the response reappears as quoted material in

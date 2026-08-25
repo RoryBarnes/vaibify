@@ -695,7 +695,7 @@ def _fnRequireHumanGate(dictRuntime, sExpectedGateKind=""):
 
 async def fdictContinueCampaignAfterResponse(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        sResponseText):
+        sResponseText, listDecisionAnswers=None):
     """Answer a blocking question and relaunch deliberation.
 
     Refuses while a drive task is live, when the campaign has no
@@ -711,7 +711,8 @@ async def fdictContinueCampaignAfterResponse(
     sTurnId = _fsSpawnDriveTask(
         dictRuntime,
         lambda: dictRuntime["engineCouncil"]
-        .fdictContinueAfterResearcherResponse(sResponseText))
+        .fdictContinueAfterResearcherResponse(
+            sResponseText, listDecisionAnswers))
     return {"sTurnId": sTurnId}
 
 

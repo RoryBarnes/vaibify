@@ -580,6 +580,28 @@ def _flistResultQuotes(dictRound, sSourcePhase, sSourceKind,
     return listQuoted
 
 
+def fsComposeDecisionAnswers(listDecisionAnswers, listQuestions):
+    """Render per-decision answers as the researcher's reply, in order.
+
+    Each answer is written beneath the questions it answers, so a
+    participant that raised only one of them still reads the exchange it
+    belongs to. A decision naming a question this gate does not carry is
+    rendered on its ids alone rather than dropped: the researcher said
+    something and the record must not lose it.
+    """
+    dictTextById = {dictQuestion["sQuestionId"]: dictQuestion["sQuestionText"]
+                    for dictQuestion in listQuestions}
+    listBlocks = []
+    for dictAnswer in listDecisionAnswers:
+        listAsked = [
+            "  - %s" % dictTextById.get(sQuestionId, "[%s]" % sQuestionId)
+            for sQuestionId in dictAnswer.get("listQuestionIds", [])]
+        sAsked = "\n".join(listAsked) or "  - (question not recorded)"
+        listBlocks.append("ASKED:\n%s\nANSWERED:\n  %s"
+                          % (sAsked, dictAnswer["sAnswerText"]))
+    return "\n\n".join(listBlocks)
+
+
 def _fsComposeAnsweredQuestions(dictResponse):
     """Render a researcher answer beside the questions it answered.
 
@@ -589,6 +611,11 @@ def _fsComposeAnsweredQuestions(dictResponse):
     always were, rather than gaining an empty and misleading heading.
     """
     listAnswered = dictResponse.get("listAnsweredQuestions") or []
+    if dictResponse.get("listDecisionAnswers"):
+        # Already composed question-by-question by fsComposeDecisionAnswers.
+        # Re-heading it with the flat list would state every question
+        # twice and separate each answer from the question above it.
+        return dictResponse["sText"]
     if not listAnswered:
         return dictResponse["sText"]
     sAsked = "\n".join(

@@ -45,7 +45,158 @@ from .agentCouncilCharter import (
     _fsMintIdentifier,
 )
 
-__all__ = ["RoundResolutionMixin"]
+__all__ = [
+    "RoundResolutionMixin",
+    "TUPLE_DECISION_TIER_ORDER",
+    "flistGroupGateQuestionsIntoDecisions",
+]
+
+S_TIER_ALL = "raisedByAll"
+S_TIER_SEVERAL = "raisedBySeveral"
+S_TIER_ONE = "raisedByOne"
+S_TIER_SYNTHESIS = "raisedDuringSynthesis"
+# Most-shared first: a question every agent independently raised is the
+# one whose answer unblocks the most work, and the pen-holder's own
+# questions come last because it wrote the plan the others are about.
+TUPLE_DECISION_TIER_ORDER = (
+    S_TIER_ALL, S_TIER_SEVERAL, S_TIER_ONE, S_TIER_SYNTHESIS)
+
+
+def _fdictMapQuestionIdToPlanItems(listQuestions, listPlanItems):
+    """Return {question id: [plan item index]} by scanning item text.
+
+    The anchor exists only as an id the pen-holder wrote into prose, so
+    finding it is a text scan — the same shape as a cross-step reference
+    hidden in a script literal. A question the scan cannot place keeps an
+    EMPTY list and is presented as unplaced; it is never dropped, because
+    a question silently missing from the gate is a question the
+    researcher was never asked.
+    """
+    dictByQuestionId = {}
+    for dictQuestion in listQuestions:
+        sQuestionId = dictQuestion["sQuestionId"]
+        dictByQuestionId[sQuestionId] = [
+            iIndex for iIndex, jsonItem in enumerate(listPlanItems)
+            if sQuestionId in str(jsonItem)]
+    return dictByQuestionId
+
+
+def _flistFindCoAnchoredGroups(listQuestions, dictItemsByQuestionId):
+    """Group questions that any one plan item anchors together.
+
+    Two questions the pen-holder placed on the same item are one
+    decision — that is the judgement it already made by placing them,
+    and the reason the gate must not ask them twice. Grouping is
+    transitive: items {q1,q2} and {q2,q3} make one decision of three.
+    """
+    dictGroupIndexByQuestionId = {}
+    listGroups = []
+    for dictQuestion in listQuestions:
+        dictGroupIndexByQuestionId[dictQuestion["sQuestionId"]] = len(
+            listGroups)
+        listGroups.append([dictQuestion])
+    setAnchoringItems = {iItem
+                         for listItems in dictItemsByQuestionId.values()
+                         for iItem in listItems}
+    for iItemIndex in sorted(setAnchoringItems):
+        listShared = [sQuestionId
+                      for sQuestionId, listItems
+                      in dictItemsByQuestionId.items()
+                      if iItemIndex in listItems]
+        for sOtherId in listShared[1:]:
+            iInto = dictGroupIndexByQuestionId[listShared[0]]
+            iFrom = dictGroupIndexByQuestionId[sOtherId]
+            if iInto == iFrom:
+                continue
+            listGroups[iInto].extend(listGroups[iFrom])
+            for dictMoved in listGroups[iFrom]:
+                dictGroupIndexByQuestionId[dictMoved["sQuestionId"]] = iInto
+            listGroups[iFrom] = []
+    return [listGroup for listGroup in listGroups if listGroup]
+
+
+def _fsetFindSynthesisQuestionTexts(dictCampaign, iRoundNumber):
+    """Return the question texts the pen-holder raised writing the plan.
+
+    Derived from the round's own turn records rather than stamped on the
+    question when it is minted, so it reads correctly for campaigns
+    already checkpointed by an earlier hub — including one sitting at a
+    gate right now. "Raised by the chairbot" is NOT the same test: the
+    chairbot also proposes and cross-reviews, and those questions belong
+    with its peers'.
+    """
+    for dictRound in dictCampaign.get("listRounds", []):
+        if dictRound.get("iRoundNumber") != iRoundNumber:
+            continue
+        return {
+            str(sText)
+            for dictTurnRecord in dictRound.get(
+                "dictTurnsByPhase", {}).get(S_PHASE_SYNTHESIS, [])
+            for sText in (dictTurnRecord.get("dictResult") or {}).get(
+                "listOpenQuestions", []) or []}
+    return set()
+
+
+def _fsClassifyDecisionTier(listGroup, iParticipantCount, setSynthesisTexts):
+    if listGroup and all(dictQuestion["sQuestionText"] in setSynthesisTexts
+                         for dictQuestion in listGroup):
+        return S_TIER_SYNTHESIS
+    iDistinctAuthors = len({dictQuestion["sRaisedByParticipantId"]
+                            for dictQuestion in listGroup})
+    if iParticipantCount and iDistinctAuthors >= iParticipantCount:
+        return S_TIER_ALL
+    return S_TIER_SEVERAL if iDistinctAuthors > 1 else S_TIER_ONE
+
+
+def flistGroupGateQuestionsIntoDecisions(dictCampaign):
+    """Return the gate's questions as decision points, most-shared first.
+
+    One DECISION, not one question: two agents that asked the same thing
+    are answered once, under the plan item the pen-holder placed them
+    on. The tier is COMPUTED from who raised what — never asked of a
+    model, which could answer wrong about its own peers with nothing
+    able to check it.
+
+    Returns an empty list for any gate that is not a blocking-question
+    gate, so a caller can render the flat list unchanged.
+    """
+    dictGate = dictCampaign.get("dictPendingHumanGate") or {}
+    if dictGate.get("sGateKind") != S_GATE_BLOCKING_QUESTION:
+        return []
+    listQuestions = [dictQuestion
+                     for dictQuestion in dictGate.get("listQuestions", [])
+                     if dictQuestion.get("sQuestionId")]
+    if not listQuestions:
+        return []
+    dictPlan = dictCampaign.get("dictCandidatePlan") or {}
+    listPlanItems = (dictPlan.get("dictResult") or {}).get(
+        "listPlanItems", []) or []
+    dictItemsByQuestionId = _fdictMapQuestionIdToPlanItems(
+        listQuestions, listPlanItems)
+    setSynthesisTexts = _fsetFindSynthesisQuestionTexts(
+        dictCampaign, dictGate.get("iRoundNumber"))
+    iParticipantCount = len(dictCampaign.get("listParticipants", []))
+    listDecisions = []
+    for listGroup in _flistFindCoAnchoredGroups(
+            listQuestions, dictItemsByQuestionId):
+        listItemIndexes = sorted({
+            iItem for dictQuestion in listGroup
+            for iItem in dictItemsByQuestionId[dictQuestion["sQuestionId"]]})
+        listDecisions.append({
+            # Deterministic, because this is recomputed on every read:
+            # a minted id would change under a researcher mid-answer.
+            "sDecisionId": "decision-" + listGroup[0]["sQuestionId"],
+            "sTier": _fsClassifyDecisionTier(
+                listGroup, iParticipantCount, setSynthesisTexts),
+            "listQuestions": listGroup,
+            "listPlanItemIndexes": listItemIndexes,
+            "listPlanItemTexts": [str(listPlanItems[iItem])
+                                  for iItem in listItemIndexes],
+        })
+    listDecisions.sort(key=lambda dictDecision: (
+        TUPLE_DECISION_TIER_ORDER.index(dictDecision["sTier"]),
+        dictDecision["listPlanItemIndexes"] or [len(listPlanItems)]))
+    return listDecisions
 
 
 class RoundResolutionMixin:

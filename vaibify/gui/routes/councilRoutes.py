@@ -46,6 +46,7 @@ from .. import agentCouncilCampaign
 from .. import agentCouncilController
 from .. import agentCouncilDockerGateway
 from .. import agentCouncilRegistry
+from .. import agentCouncilResolution
 from .. import agentCouncilStore
 from ..pipelineServer import (
     WORKSPACE_ROOT,
@@ -129,10 +130,26 @@ class CouncilStartRequest(BaseModel):
         max_length=dockerConnection.I_REPOSITORY_WEIGHT_LARGEST_FILES)
 
 
+class CouncilDecisionAnswer(BaseModel):
+    """One answer to one decision point of a blocking-question gate."""
+
+    sDecisionId: str = Field(min_length=1, max_length=128)
+    listQuestionIds: list[str] = Field(default_factory=list, max_length=64)
+    sAnswerText: str = Field(min_length=1, max_length=I_MAX_RESPONSE_LENGTH)
+
+
 class CouncilRespondRequest(BaseModel):
-    """Body for answering a council's blocking question (section 6.5)."""
+    """Body for answering a council's blocking question (section 6.5).
+
+    ``sResponseText`` remains the whole answer as prose and is what a
+    flat gate sends. ``listDecisionAnswers`` is the per-decision form:
+    when present the SERVER composes the prose from it, so the two can
+    never disagree about what the researcher said.
+    """
 
     sResponseText: str = Field(min_length=1, max_length=I_MAX_RESPONSE_LENGTH)
+    listDecisionAnswers: list[CouncilDecisionAnswer] = Field(
+        default_factory=list, max_length=128)
 
 
 class CouncilGrantRoundRequest(BaseModel):
@@ -831,6 +848,14 @@ def _fnRegisterGetCouncil(app, dictCtx):
             agentCouncilDockerGateway.flistDescribeQuarantinedReservations(
                 dictGatewayView, sCampaignId))
         jsonCampaign["listQuarantinedRunners"] = listQuarantined
+        # Derived on READ, never stored on the gate. The grouping is a
+        # pure function of the questions, the plan and the roster, so
+        # recomputing it cannot go stale — and it applies to a campaign
+        # already sitting at a gate, which a value written at gate-open
+        # would have missed.
+        jsonCampaign["listGateDecisions"] = (
+            agentCouncilResolution.flistGroupGateQuestionsIntoDecisions(
+                jsonCampaign))
         return {
             "dictCampaign": jsonCampaign,
             "listQuarantinedRunners": listQuarantined,
@@ -1028,7 +1053,9 @@ def _fnRegisterRespond(app, dictCtx):
                 await agentCouncilController
                 .fdictContinueCampaignAfterResponse(
                     dictControllerState, dictStore, dictRegistry,
-                    sCampaignId, request.sResponseText))
+                    sCampaignId, request.sResponseText,
+                    [dictAnswer.model_dump()
+                     for dictAnswer in request.listDecisionAnswers]))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("researcherResponded",

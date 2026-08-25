@@ -90,6 +90,7 @@ from .agentCouncilCharter import (
     fdictComposeTurnRequest,
     fdictValidateTurnResult,
     flistBlindQuotedMaterial,
+    fsComposeDecisionAnswers,
     flistBuildQuotedMaterial,
     fsComposeTurnInstruction,
 )
@@ -688,7 +689,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self.dictCampaign["listResearcherDecisions"].append(dictDecision)
         self._fnEmitEvent("researcherDecisionRecorded", dict(dictDecision))
 
-    async def fdictContinueAfterResearcherResponse(self, sResponseText):
+    async def fdictContinueAfterResearcherResponse(
+            self, sResponseText, listDecisionAnswers=None):
         """Answer a blocking question and launch the continuation.
 
         Refused at an exhausted-round gate: a plain response never
@@ -698,6 +700,13 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             raise CouncilProtocolError(
                 "the round budget is exhausted; choose one of the three "
                 "exits — a plain response does not restart the loop")
+        listDecisionAnswers = list(listDecisionAnswers or [])
+        if listDecisionAnswers:
+            # The prose is COMPOSED from the per-decision answers rather
+            # than taken from the caller, so the readable record and the
+            # machine-readable one cannot describe different answers.
+            sResponseText = fsComposeDecisionAnswers(
+                listDecisionAnswers, dictGate.get("listQuestions", []))
         self._fnRecordResearcherDecision({
             "sDecisionKind": "researcherResponse", "sText": sResponseText})
         # Capture the questions this answers BEFORE the gate is
@@ -712,6 +721,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             "sText": sResponseText,
             "listAnsweredQuestions": copy.deepcopy(
                 dictGate.get("listQuestions", [])),
+            "listDecisionAnswers": copy.deepcopy(listDecisionAnswers),
         })
         self.dictCampaign["dictPendingHumanGate"] = None
         self._fnTransition(S_STATE_PLANNING, "researcherResponded")

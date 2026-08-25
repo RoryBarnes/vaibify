@@ -4140,7 +4140,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # repositories, so a bare read could not resolve which one it meant
     # and answered 409 on every poll — freezing a live panel for an
     # entire deliberation.
-    "routes/councilRoutes.py": 1278,
+    # 1278 -> 1305 (2026-08-25): the per-decision answer body, and the
+    # gate grouping derived on READ. Derived here rather than stored on
+    # the gate so it applies to a campaign already waiting at one.
+    "routes/councilRoutes.py": 1305,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4197,7 +4200,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # very next line and the next round would otherwise be handed bare
     # prose. It belongs at the point of record — anywhere else and the
     # questions are already gone.
-    "agentCouncil.py": 826,
+    # 826 -> 836 (2026-08-25): per-decision answers. The server composes
+    # the prose FROM them so the readable and machine-readable records
+    # cannot disagree, and that composition has to happen where the gate
+    # is still in hand — one line later it is cleared.
+    "agentCouncil.py": 836,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5224,7 +5231,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1232 -> 1240 (2026-08-24): the connection is built with the
     # CAMPAIGN's turn time budget rather than the module default, so
     # raising the setting actually governs a turn.
-    "agentCouncilController.py": 1240,
+    # +1 (2026-08-25): the continuation carries the per-decision answers
+    # through to the engine.
+    "agentCouncilController.py": 1241,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

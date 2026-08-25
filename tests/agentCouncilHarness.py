@@ -154,9 +154,10 @@ class CouncilTestFixture:
     def fdictDrive(self):
         return asyncio.run(self.engine.fdictRunUntilBlocked())
 
-    def fdictContinue(self, sResponseText):
+    def fdictContinue(self, sResponseText, listDecisionAnswers=None):
         return asyncio.run(
-            self.engine.fdictContinueAfterResearcherResponse(sResponseText))
+            self.engine.fdictContinueAfterResearcherResponse(
+                sResponseText, listDecisionAnswers))
 
     def fdictGrantResolutionRound(self, iRounds):
         return asyncio.run(self.engine.fdictGrantResolutionRound(iRounds))

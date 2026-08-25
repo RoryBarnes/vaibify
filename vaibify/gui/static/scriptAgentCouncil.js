@@ -1956,12 +1956,86 @@ var VaibifyAgentCouncil = (function () {
         return sParticipantId === "server" ? "the server" : sParticipantId;
     }
 
+    /* The server computes the tier; this only names it. A count here
+       would be a second authority on who raised what, and the two would
+       disagree the first time a participant failed. */
+    var LIST_DECISION_TIERS = [
+        {sTier: "raisedByAll",
+         sHeading: "Every agent raised this",
+         sWhy: "Answer these first — each unblocks work for the whole " +
+             "council."},
+        {sTier: "raisedBySeveral",
+         sHeading: "Several agents raised this",
+         sWhy: "More than one agent, but not all of them."},
+        {sTier: "raisedByOne",
+         sHeading: "One agent raised this",
+         sWhy: "A single agent's concern; the others did not raise it."},
+        {sTier: "raisedDuringSynthesis",
+         sHeading: "Raised while writing the plan",
+         sWhy: "The pen-holder's own questions. No other agent has seen " +
+             "these, so they carry no plan item yet."}
+    ];
+
+    function _fsDecisionBlock(dictCampaign, dictDecision, iNumber) {
+        var sQuestions = (dictDecision.listQuestions || []).map(
+            function (dictQuestion) {
+                return "<li data-question-id=\"" +
+                    _fsEscape(dictQuestion.sQuestionId || "") + "\">" +
+                    _fsEscape(dictQuestion.sQuestionText || "") +
+                    " <span class=\"council-question-author\">(" +
+                    _fsEscape(_fsAgentLabelForId(
+                        dictCampaign,
+                        dictQuestion.sRaisedByParticipantId || "")) +
+                    ")</span></li>";
+            }).join("");
+        /* The plan item is the CONTEXT the question was unreadable
+           without: "(Phase 2)" meant nothing when the plan was not
+           shown beside it. Truncated, because a plan item is a
+           paragraph and this is a heading — the Plan tab holds the
+           whole thing. */
+        var sContext = (dictDecision.listPlanItemTexts || []).map(
+            function (sText) {
+                return "<p class=\"council-decision-context\">" +
+                    _fsEscape(sText.length > 240
+                        ? sText.substring(0, 240) + "…" : sText) + "</p>";
+            }).join("");
+        return "<div class=\"council-decision\" data-decision-id=\"" +
+            _fsEscape(dictDecision.sDecisionId || "") + "\">" +
+            "<h5>Decision " + iNumber + "</h5>" +
+            sContext +
+            "<ul class=\"council-questions\">" + sQuestions + "</ul>" +
+            "<textarea class=\"council-decision-answer\" rows=\"2\" " +
+            "placeholder=\"Your answer to this\"></textarea>" +
+            "</div>";
+    }
+
+    function _fsDecisionGate(dictCampaign, listDecisions) {
+        var sBody = "";
+        var iNumber = 0;
+        LIST_DECISION_TIERS.forEach(function (dictTier) {
+            var listInTier = listDecisions.filter(function (dictDecision) {
+                return dictDecision.sTier === dictTier.sTier;
+            });
+            if (!listInTier.length) return;
+            sBody += "<h4 class=\"council-tier\">" +
+                _fsEscape(dictTier.sHeading) + " (" + listInTier.length +
+                ")</h4><p class=\"council-tier-why\">" +
+                _fsEscape(dictTier.sWhy) + "</p>";
+            listInTier.forEach(function (dictDecision) {
+                iNumber += 1;
+                sBody += _fsDecisionBlock(dictCampaign, dictDecision, iNumber);
+            });
+        });
+        return sBody;
+    }
+
     function _fsBlockingQuestionCard(dictCampaign, dictGate) {
         /* The ENGINE'S gate shape (remediation R6): a list of
            questions, each carrying who raised it. The quorum-shortfall
            gate shares this renderer — its single server-raised
            question rides the same list. */
         var listQuestions = dictGate.listQuestions || [];
+        var listDecisions = dictCampaign.listGateDecisions || [];
         var sQuestionRows = listQuestions.map(function (dictQuestion) {
             return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
                 " <span class=\"council-question-author\">(raised by " +
@@ -1987,16 +2061,25 @@ var VaibifyAgentCouncil = (function () {
                     "are not yet placed in one. They are shown as each " +
                     "agent raised them.</p>"
                 : "") +
-            (sQuestionRows
-                /* NUMBERED, not bulleted. A council can raise a dozen
-                   at once — this one raised twelve — and a researcher
-                   answering them in a single text box needs to say
-                   "on 3" and be understood. */
-                ? "<ol class=\"council-questions\">" + sQuestionRows +
-                    "</ol>"
-                : "<p>A material choice could not be settled from " +
-                    "evidence.</p>") +
-            "<textarea id=\"councilAnswer\" rows=\"3\"></textarea>" +
+            /* Grouped into DECISIONS when the server could compute
+               them: two agents asking one thing is answered once, and
+               the most-shared come first. The flat numbered list stays
+               as the fallback for a gate the grouping cannot place —
+               the quorum-shortfall gate, whose single server-raised
+               question has no plan item, and any record from a hub that
+               predates the grouping. */
+            (listDecisions.length
+                ? _fsDecisionGate(dictCampaign, listDecisions)
+                : (sQuestionRows
+                    ? "<ol class=\"council-questions\">" + sQuestionRows +
+                        "</ol>"
+                    : "<p>A material choice could not be settled from " +
+                        "evidence.</p>")) +
+            (listDecisions.length
+                ? ""
+                : "<textarea id=\"councilAnswer\" rows=\"3\"></textarea>") +
+            "<p id=\"councilGateNotice\" class=\"council-gate-notice\" " +
+            "style=\"display:none\"></p>" +
             "<button type=\"button\" id=\"btnCouncilAnswer\" " +
             "class=\"btn btn-primary\">Record decision</button>" +
             "</div>";
@@ -2196,10 +2279,62 @@ var VaibifyAgentCouncil = (function () {
     /* ------------------------------------------------------------------ */
 
     async function _fnAnswerQuestion() {
-        var sAnswer = _fsReadValue("councilAnswer");
-        if (!sAnswer) return;
+        var listBlocks = Array.prototype.slice.call(
+            document.querySelectorAll(".council-decision"));
+        if (!listBlocks.length) {
+            var sAnswer = _fsReadValue("councilAnswer");
+            if (!sAnswer) return;
+            await _fnPostAction(
+                "/" + _dictState.sActiveCampaignId + "/respond",
+                {sResponseText: sAnswer});
+            return;
+        }
+        var listDecisionAnswers = [];
+        var listUnanswered = [];
+        listBlocks.forEach(function (elementBlock, iIndex) {
+            var elementAnswer = elementBlock.querySelector(
+                ".council-decision-answer");
+            var sText = (elementAnswer && elementAnswer.value || "").trim();
+            if (!sText) {
+                listUnanswered.push(iIndex + 1);
+                return;
+            }
+            listDecisionAnswers.push({
+                sDecisionId: elementBlock.getAttribute("data-decision-id"),
+                listQuestionIds: Array.prototype.slice.call(
+                    elementBlock.querySelectorAll("[data-question-id]")
+                ).map(function (elementQuestion) {
+                    return elementQuestion.getAttribute("data-question-id");
+                }),
+                sAnswerText: sText
+            });
+        });
+        /* Refuse a partial submission rather than sending it. An
+           unanswered decision cannot be distinguished downstream from
+           one the researcher deliberately declined, so sending eight of
+           sixteen silently drops the other eight — and the gate closes,
+           so there is no second chance at them. */
+        if (listUnanswered.length) {
+            _fnShowGateNotice(
+                "Answer every decision before sending — " +
+                (listUnanswered.length === 1
+                    ? "decision " + listUnanswered[0] + " is empty."
+                    : listUnanswered.length + " are still empty (" +
+                        listUnanswered.join(", ") + ").") +
+                " The gate closes on send, so an empty one is a question " +
+                "the council never gets an answer to.");
+            return;
+        }
         await _fnPostAction("/" + _dictState.sActiveCampaignId + "/respond",
-            {sResponseText: sAnswer});
+            {sResponseText: "(composed from per-decision answers)",
+             listDecisionAnswers: listDecisionAnswers});
+    }
+
+    function _fnShowGateNotice(sMessage) {
+        var elementNotice = document.getElementById("councilGateNotice");
+        if (!elementNotice) return;
+        elementNotice.textContent = sMessage;
+        elementNotice.style.display = "block";
     }
 
     /* Each exhausted-round exit posts the ENGINE'S own transition
