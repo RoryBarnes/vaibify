@@ -4232,7 +4232,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # EXECUTION record (wall-clock kill, elapsed time, exit code), not
     # just the event stream. A turn killed at its time budget looks
     # identical to a model that stopped, from the events alone.
-    "agentCouncilProviders.py": 988,
+    # 988 -> 1002 (2026-08-25): the empty-result diagnosis records the
+    # OUTPUT-CAP kill as well as the wall-clock one. The gateway kills
+    # on either, only one was recorded, and two wrong causes were
+    # argued from the resulting record.
+    "agentCouncilProviders.py": 1002,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

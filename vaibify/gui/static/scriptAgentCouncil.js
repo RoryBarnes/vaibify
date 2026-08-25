@@ -1763,24 +1763,99 @@ var VaibifyAgentCouncil = (function () {
             "inspected, scripts run and their exit codes, usage and " +
             "errors. This is not the model's private reasoning.</p>" +
             _fsParticipantStatusChip(dictParticipant, dictCampaign) +
-            _fsEventLog() + "</div>";
+            _fsEventLog(sParticipantId) + "</div>";
     }
 
-    function _fsEventLog() {
-        if (!_dictState.listEvents.length) {
+    function _fsEventLog(sParticipantId) {
+        /* FILTERED, and rendered for its CONTENT. Every agent tab used
+           to show the same global stream as bare event names —
+           "#4 providerEvent", "#5 providerEvent" — because the log read
+           sEventKind and sDetail while the payload sat unread in
+           sParticipantId and dictProviderEvent (2026-08-25). A row that
+           names its envelope and hides its content is not a console. */
+        var listVisible = _dictState.listEvents.filter(
+            function (dictEvent) {
+                if (!sParticipantId) return true;
+                /* Council-level events (round opened, phase started)
+                   carry no participant and belong to every agent's
+                   timeline; anything attributed elsewhere does not. */
+                return !dictEvent.sParticipantId
+                    || dictEvent.sParticipantId === sParticipantId;
+            });
+        if (!listVisible.length) {
             return "<p class=\"council-hint\">No events yet.</p>";
         }
-        var sRows = _dictState.listEvents.map(function (dictEvent) {
-            return "<li class=\"council-event\"><span " +
-                "class=\"council-seq\">#" + dictEvent.iSequence + "</span> " +
-                "<span class=\"council-event-kind\">" +
-                _fsEscape(dictEvent.sEventKind || "") + "</span> " +
-                _fsEscape(dictEvent.sDetail || "") +
-                (dictEvent.sTurnId ? " <span class=\"council-turn\">(" +
-                    _fsEscape(dictEvent.sTurnId) + ")</span>" : "") +
-                "</li>";
-        }).join("");
-        return "<ul class=\"council-event-log\">" + sRows + "</ul>";
+        return "<ul class=\"council-event-log\">" +
+            listVisible.map(_fsOneEventRow).join("") + "</ul>";
+    }
+
+    function _fsOneEventRow(dictEvent) {
+        var sBody = _fsDescribeEvent(dictEvent);
+        return "<li class=\"council-event\"><span " +
+            "class=\"council-seq\">#" + dictEvent.iSequence + "</span> " +
+            "<span class=\"council-event-kind\">" +
+            _fsEscape(_fsEventKindLabel(dictEvent)) + "</span> " +
+            sBody + "</li>";
+    }
+
+    var DICT_EVENT_KIND_LABELS = {
+        campaignStarted: "council convened",
+        roundOpened: "round opened",
+        phaseStarted: "phase started",
+        stateTransition: "state changed",
+        providerEvent: "",
+    };
+
+    function _fsEventKindLabel(dictEvent) {
+        var sKind = dictEvent.sEventKind || "";
+        var sLabel = DICT_EVENT_KIND_LABELS[sKind];
+        return sLabel === undefined ? sKind : sLabel;
+    }
+
+    function _fsDescribeEvent(dictEvent) {
+        var dictProvider = dictEvent.dictProviderEvent;
+        if (!dictProvider) {
+            return _fsEscape(dictEvent.sDetail || dictEvent.sReason || "");
+        }
+        return _fsDescribeProviderEvent(dictProvider);
+    }
+
+    function _fsDescribeProviderEvent(dictProvider) {
+        /* The CLI's stream-json shapes, rendered as what happened. Not
+           the model's private reasoning — the assistant TEXT it emits
+           and the tools it invokes, which is what the console header
+           has always promised and never showed. */
+        var sType = dictProvider.type || "";
+        if (sType === "assistant" || sType === "user") {
+            var sText = _fsExtractMessageText(dictProvider);
+            return sText
+                ? "<span class=\"council-event-text\">" +
+                    _fsEscape(sText.slice(0, 300)) +
+                    (sText.length > 300 ? "…" : "") + "</span>"
+                : _fsEscape(sType);
+        }
+        if (sType === "result") {
+            return "<span class=\"council-event-text\">turn finished</span>";
+        }
+        return _fsEscape(sType || "event");
+    }
+
+    function _fsExtractMessageText(dictProvider) {
+        var jsonMessage = dictProvider.message || {};
+        var jsonContent = jsonMessage.content;
+        if (typeof jsonContent === "string") return jsonContent;
+        if (!Array.isArray(jsonContent)) return "";
+        return jsonContent.map(function (jsonBlock) {
+            if (!jsonBlock || typeof jsonBlock !== "object") return "";
+            if (jsonBlock.type === "text") return jsonBlock.text || "";
+            /* A tool call is the most informative thing in the stream:
+               it is what the agent DID to the repository. */
+            if (jsonBlock.type === "tool_use") {
+                return "→ " + (jsonBlock.name || "tool");
+            }
+            if (jsonBlock.type === "tool_result") return "← result";
+            return "";
+        }).filter(Boolean).join("  ");
     }
 
     /* ------------------------------------------------------------------ */
@@ -2310,6 +2385,16 @@ var VaibifyAgentCouncil = (function () {
             _dictState.iConsecutivePollFailures = iFailures;
             _dictState.sLastPollError = sError;
             _dictState.iLastPollSucceededAt = Date.now();
+        },
+        fnSetEventsForTest: function (listEvents) {
+            _dictState.listEvents.length = 0;
+            listEvents.forEach(function (dictEvent) {
+                _dictState.listEvents.push(dictEvent);
+            });
+        },
+        fnSelectTabForTest: function (sTab) {
+            _dictState.sActiveTab = sTab;
+            _fnRenderWorkspace();
         },
         fnSetCampaignForTest: function (dictCampaign) {
             _dictState.dictCampaign = dictCampaign;

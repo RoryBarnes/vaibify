@@ -164,6 +164,10 @@ S_RATE_LIMIT_EVENT_TYPE = "rate_limit_event"
 # destroyed mid-stream, so there is no result event and no error — the
 # CLI never got to report anything.
 S_EMPTY_BECAUSE_WALL_CLOCK = "killedAtTurnWallClockBudget"
+# The other bound the gateway kills on. A model whose stream-json runs
+# past the cap is destroyed exactly like one that runs past the clock,
+# and the two are indistinguishable without this flag.
+S_EMPTY_BECAUSE_OUTPUT_CAP = "killedAtTurnOutputCap"
 
 
 class RunnerCredentialError(Exception):
@@ -309,6 +313,8 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
     dictRun = dictExecution or {}
     if dictRun.get("bWallClockExceeded"):
         sReason = S_EMPTY_BECAUSE_WALL_CLOCK
+    elif dictRun.get("bOutputCapExceeded"):
+        sReason = S_EMPTY_BECAUSE_OUTPUT_CAP
     return {
         "sRawResultText": "",
         "sEmptyResultReason": sReason,
@@ -317,6 +323,14 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         "bResultEventReportedError": bool(dictResultEvent.get("is_error")),
         "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
         "bWallClockExceeded": bool(dictRun.get("bWallClockExceeded")),
+        # The gateway kills on the output cap OR the deadline, and I
+        # recorded only the deadline — so a turn killed by the cap
+        # reported "no result event" with every flag false and an exit
+        # code of 137 nobody was reading. Two wrong theories (rate
+        # limit, then wall clock) were argued from a record missing the
+        # one field that separates them (2026-08-25).
+        "bOutputCapExceeded": bool(dictRun.get("bOutputCapExceeded")),
+        "iOutputBytes": int(dictRun.get("iOutputBytes") or 0),
         "fElapsedSeconds": round(float(dictRun.get("fElapsedSeconds") or 0), 1),
         "jsonExitCode": dictRun.get("iExitCode"),
     }

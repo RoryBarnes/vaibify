@@ -1035,3 +1035,59 @@ def testARaisedTimeBudgetIsSentOnTheNextConvene(
     assert dictBody["dictSettings"]["iTurnWallClockSeconds"] == 7200, (
         "the raised budget was remembered but not sent, so the modal "
         f"promised something the next council will not do: {dictBody}")
+
+
+def testAnAgentTabShowsThatAgentsWorkNotABareEventDump(
+    pageDashboard, serverHub,
+):
+    """A console must show what happened, and whose.
+
+    Kills: rendering the event envelope, or ignoring sParticipantId.
+
+    Every agent tab showed the SAME global stream as bare names — "#4
+    providerEvent", "#5 providerEvent" — while the payload sat unread
+    in sParticipantId and dictProviderEvent. A row that names its
+    envelope and hides its content is not a console, and two tabs
+    showing identical content are not two agents (2026-08-25).
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    dictText = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetEventsForTest([
+                {iSequence: 1, sEventKind: 'roundOpened'},
+                {iSequence: 2, sEventKind: 'providerEvent',
+                 sParticipantId: 'p-opus',
+                 dictProviderEvent: {type: 'assistant', message: {content: [
+                     {type: 'text', text: 'OPUS-IS-READING-EVOLVE-C'},
+                     {type: 'tool_use', name: 'Grep'}]}}},
+                {iSequence: 3, sEventKind: 'providerEvent',
+                 sParticipantId: 'p-sonn',
+                 dictProviderEvent: {type: 'assistant', message: {content: [
+                     {type: 'text', text: 'SONNET-IS-READING-UPDATE-C'}]}}},
+            ]);
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'planning', sQuestion: 'Q',
+                sChairbotParticipantId: 'p-opus', listRounds: [],
+                listParticipants: [
+                    {sParticipantId: 'p-opus', sProvider: 'claude',
+                     sRequestedModel: 'opus'},
+                    {sParticipantId: 'p-sonn', sProvider: 'claude',
+                     sRequestedModel: 'sonnet'}]});
+            const fnTab = (sId) => {
+                VaibifyAgentCouncil.fnSelectTabForTest('participant:' + sId);
+                return document.getElementById(
+                    'agentCouncilWorkspaceBody').innerText;
+            };
+            return {sOpus: fnTab('p-opus'), sSonnet: fnTab('p-sonn')};
+        }"""
+    )
+    assert "OPUS-IS-READING-EVOLVE-C" in dictText["sOpus"], dictText["sOpus"]
+    assert "Grep" in dictText["sOpus"], (
+        "the tool the agent invoked — the most informative thing in the "
+        f"stream — is not shown: {dictText['sOpus']!r}")
+    assert "SONNET-IS-READING-UPDATE-C" not in dictText["sOpus"], (
+        "one agent's tab shows another agent's work; the tabs are not "
+        "filtered by participant")
+    assert "SONNET-IS-READING-UPDATE-C" in dictText["sSonnet"]
+    assert "round opened" in dictText["sOpus"], (
+        "council-level events belong in every agent's timeline")

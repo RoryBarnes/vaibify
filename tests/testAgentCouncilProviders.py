@@ -537,3 +537,38 @@ def testTheConnectionHandsItsExecutionRecordToTheDiagnosis():
         "the connection did not pass its execution record on, so the "
         "wall-clock kill is invisible to the diagnosis")
     assert dictResult["fElapsedSeconds"] == 300.2
+
+
+def testAnOutputCapKillIsDistinguishedFromATimeoutAndFromNeither():
+    """Three outcomes the record must not conflate.
+
+    Kills: recording only the wall-clock flag.
+
+    The gateway kills on the output cap OR the deadline. Only the
+    deadline was recorded, so a turn killed by the cap reported "no
+    result event" with every flag false and an exit code of 137 that
+    nothing read — and I argued two wrong causes from that record,
+    rate limiting and then a timeout, before the missing field made
+    the difference visible (2026-08-25).
+    """
+    dictCap = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bOutputCapExceeded": True, "bWallClockExceeded": False,
+         "iExitCode": 137, "fElapsedSeconds": 473.0})
+    assert dictCap["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_OUTPUT_CAP)
+
+    dictClock = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bOutputCapExceeded": False, "bWallClockExceeded": True,
+         "iExitCode": 137, "fElapsedSeconds": 3600.0})
+    assert dictClock["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_WALL_CLOCK)
+
+    dictNeither = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bOutputCapExceeded": False, "bWallClockExceeded": False,
+         "iExitCode": 1, "fElapsedSeconds": 9.0})
+    assert dictNeither["sEmptyResultReason"] == "noResultEvent", (
+        "a turn that hit neither bound was blamed on one of them")
+    assert dictNeither["jsonExitCode"] == 1

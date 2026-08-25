@@ -160,6 +160,12 @@ I_MAX_REJECTED_PAYLOAD_CHARACTERS = 2000
 
 
 DICT_EMPTY_TURN_EXPLANATIONS = {
+    "killedAtTurnOutputCap":
+        "this agent produced more output than one turn is allowed to "
+        "carry, so its container was stopped and its work was lost. "
+        "Agents that narrate heavily or invoke many tools hit this "
+        "before they hit the time limit; raising the per-turn output "
+        "cap is the remedy.",
     "killedAtTurnWallClockBudget":
         "this agent was still working when the turn's time budget ran "
         "out, so its container was stopped and it never returned an "
