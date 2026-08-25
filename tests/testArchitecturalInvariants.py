@@ -5189,7 +5189,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1228 -> 1232 (2026-08-22): the launch records the snapshot's
     # SCOPE beside its identity, so a partial snapshot travels to the
     # participants as a statement rather than as silence.
-    "agentCouncilController.py": 1232,
+    # 1232 -> 1240 (2026-08-24): the connection is built with the
+    # CAMPAIGN's turn time budget rather than the module default, so
+    # raising the setting actually governs a turn.
+    "agentCouncilController.py": 1240,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

@@ -923,3 +923,115 @@ def testTheStateLineIsASentenceAndAgentsAreCalledAgents(
     assert "Participant 1" not in sText, sText
     assert "A REAL QUESTION" in sText, (
         f"the blocking question never reached the panel: {sText!r}")
+
+
+def testATimeBudgetKillOffersToRaiseTheBudget(pageDashboard, serverHub):
+    """The one failure a researcher can fix, offered as a fix.
+
+    Kills: leaving a wall-clock kill as red text among other red text.
+
+    A turn destroyed at its time budget is not a model problem — it is
+    a number that was too small, and the researcher cannot raise a
+    number they do not know exists. Asserts the modal names the current
+    budget, offers a larger one, and records the choice so the next
+    convene actually sends it.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sModalText = pageDashboard.evaluate(
+        """() => {
+            window.localStorage.removeItem(
+                'vaibifyCouncilTurnWallClockSeconds');
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'planning', sQuestion: 'Q',
+                dictSettings: {iTurnWallClockSeconds: 3600},
+                listParticipants: [], listRounds: [{
+                    iRoundNumber: 1, dictTurnsByPhase: {
+                        independentProposals: [{
+                            sTurnId: 't1', sParticipantId: 'p1',
+                            sStatus: 'failed',
+                            sFailureReason: 'emptyTurn: ...',
+                            sRejectedPayload:
+                                '{"sEmptyResultReason": '
+                                + '"killedAtTurnWallClockBudget"}'}]}}]});
+            const el = document.getElementById('modalConfirm');
+            return el ? el.innerText : '(no modal)';
+        }"""
+    )
+    assert "ran out of time" in sModalText, sModalText
+    assert "60 minutes" in sModalText, (
+        f"the modal does not name the current budget: {sModalText!r}")
+    assert "120 minutes" in sModalText, (
+        f"the modal offers no larger budget: {sModalText!r}")
+
+    # Accepting must change what the NEXT convene sends, or the modal
+    # promised something it does not deliver.
+    iSent = pageDashboard.evaluate(
+        """() => {
+            /* By ID. A comma selector returns the first match in
+               DOCUMENT order, which is Cancel — so the first version of
+               this clicked "Leave it" and asserted the confirm path. */
+            document.getElementById('btnConfirmOk').click();
+            return parseInt(window.localStorage.getItem(
+                'vaibifyCouncilTurnWallClockSeconds'), 10);
+        }"""
+    )
+    assert iSent == 7200, iSent
+
+
+
+def testARaisedTimeBudgetIsSentOnTheNextConvene(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """Remembering the choice is not acting on it.
+
+    Kills: dropping iTurnWallClockSeconds from the convene body.
+
+    The modal offers a longer budget for the NEXT council. If the
+    convene request keeps sending the default, the modal promised
+    something that never happens — and a mutation deleting the field
+    survived a test that only asserted the stored value.
+    """
+    from vaibify.gui import agentCouncilCredentialGate
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
+        lambda sProvider, sImageIdentity=None: {
+            "bEnabled": True, "sReason": "", "dictRecord": {}})
+
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    pageDashboard.evaluate(
+        """() => window.localStorage.setItem(
+            'vaibifyCouncilTurnWallClockSeconds', '7200')""")
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector("#councilQuestion", timeout=8000)
+    pageDashboard.fill("#councilQuestion", "Q")
+    listOptions = pageDashboard.eval_on_selector(
+        '.council-model[data-index="0"]',
+        "el => Array.from(el.options).map(o => o.value).filter(v => v)")
+    pageDashboard.select_option(
+        '.council-model[data-index="0"]', listOptions[0])
+    pageDashboard.select_option(
+        '.council-model[data-index="1"]', listOptions[1])
+
+    dictBody = pageDashboard.evaluate(
+        """async () => {
+            let dictSent = null;
+            const fnRealPost = VaibifyApi.fdictPost;
+            VaibifyApi.fdictPost = function (sPath, dictPayload) {
+                dictSent = dictPayload;
+                return Promise.reject(new Error('intercepted'));
+            };
+            try {
+                document.getElementById('btnCouncilConvene').click();
+                await new Promise(r => setTimeout(r, 400));
+            } finally {
+                VaibifyApi.fdictPost = fnRealPost;
+            }
+            return dictSent;
+        }"""
+    )
+    assert dictBody, "the convene never issued a request"
+    assert dictBody["dictSettings"]["iTurnWallClockSeconds"] == 7200, (
+        "the raised budget was remembered but not sent, so the modal "
+        f"promised something the next council will not do: {dictBody}")

@@ -112,7 +112,14 @@ LIST_COUNCIL_IDLE_COMMAND = ["-c", "sleep 2147483647"]
 
 F_STREAM_POLL_SECONDS = 1.0
 F_SNAPSHOT_COPY_BUDGET_SECONDS = 120.0
-F_DEFAULT_TURN_WALL_CLOCK_SECONDS = 300.0
+# One hour. Was 300s, which killed every agent that explored the
+# repository with tool calls: a live opus turn was destroyed mid-loop
+# after 52 assistant messages and 32 tool results, and reported as an
+# unexplained empty result. The researcher runs opus turns beyond an
+# hour routinely (2026-08-24), so five minutes was never the right
+# shape for this work — it was a placeholder nobody had measured
+# against a real deliberation.
+F_DEFAULT_TURN_WALL_CLOCK_SECONDS = 3600.0
 I_DEFAULT_TURN_OUTPUT_CAP_BYTES = 1_048_576
 
 S_ABSENCE_ABSENT = "absent"

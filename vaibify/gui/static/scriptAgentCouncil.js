@@ -982,6 +982,12 @@ var VaibifyAgentCouncil = (function () {
         };
     }
 
+    function _fiPreferredTurnWallClockSeconds() {
+        var iStored = parseInt(
+            window.localStorage.getItem(S_WALL_CLOCK_STORAGE_KEY) || "", 10);
+        return (!isNaN(iStored) && iStored >= 60) ? iStored : 3600;
+    }
+
     function _fdictReadSettingsForm() {
         /* The convene request SENDS the settings the form renders
            (remediation R6) — a form whose values never left the
@@ -999,6 +1005,10 @@ var VaibifyAgentCouncil = (function () {
             sExecutionPermission: _fsReadValue("councilExecution")
                 || DICT_DEFAULT_SETTINGS.sExecutionPermission,
             iMinimumRounds: iMinimumRounds > 0 ? iMinimumRounds : 1,
+            /* The value the researcher agreed to after a time-budget
+               kill. Sending the default when they had raised it would
+               make the modal a lie. */
+            iTurnWallClockSeconds: _fiPreferredTurnWallClockSeconds(),
         };
     }
 
@@ -1258,6 +1268,7 @@ var VaibifyAgentCouncil = (function () {
        survives a reload: a height re-chosen on every visit is barely
        better than one that cannot be chosen at all. */
     var S_HEIGHT_STORAGE_KEY = "vaibifyCouncilWorkspaceHeight";
+    var S_WALL_CLOCK_STORAGE_KEY = "vaibifyCouncilTurnWallClockSeconds";
     var I_MIN_WORKSPACE_HEIGHT = 120;
 
     function _fnShowWorkspace() {
@@ -1351,6 +1362,65 @@ var VaibifyAgentCouncil = (function () {
         return Boolean(elWorkspace && elWorkspace.style.display !== "none");
     }
 
+    /* Turn ids already surfaced as a time-budget kill, so the modal
+       fires ONCE per turn rather than on every poll tick. Mutated in
+       place — never reassigned (the IIFE state trap). */
+    var _setWallClockNoticesShown = new Set();
+
+    function _fnNoticeWallClockKills(dictCampaign) {
+        /* A turn destroyed at its time budget is the one failure a
+           researcher can fix themselves, and the fix is a number they
+           have to know exists. Left in the failure text alone it reads
+           as one more red line among several (2026-08-24). */
+        (dictCampaign.listRounds || []).forEach(function (dictRound) {
+            var dictByPhase = dictRound.dictTurnsByPhase || {};
+            Object.keys(dictByPhase).forEach(function (sPhase) {
+                dictByPhase[sPhase].forEach(function (dictTurn) {
+                    if (_fbIsWallClockKill(dictTurn)
+                            && !_setWallClockNoticesShown.has(
+                                dictTurn.sTurnId)) {
+                        _setWallClockNoticesShown.add(dictTurn.sTurnId);
+                        _fnOfferALongerTurnBudget(dictCampaign, dictTurn);
+                    }
+                });
+            });
+        });
+    }
+
+    function _fbIsWallClockKill(dictTurn) {
+        return dictTurn.sStatus === "failed"
+            && (dictTurn.sRejectedPayload || "").indexOf(
+                "killedAtTurnWallClockBudget") !== -1;
+    }
+
+    function _fnOfferALongerTurnBudget(dictCampaign, dictTurn) {
+        var iCurrent = ((dictCampaign.dictSettings || {})
+            .iTurnWallClockSeconds) || 3600;
+        var iSuggested = Math.min(iCurrent * 2, 43200);
+        VaibifyApp.fnShowConfirmModal(
+            "An agent ran out of time",
+            "One agent was still working when this council's " +
+                "per-turn time budget of " + Math.round(iCurrent / 60) +
+                " minutes ran out, so its container was stopped and its " +
+                "work was lost. Agents that explore the repository with " +
+                "many tool calls need longer than ones that answer in a " +
+                "single shot.\n\nThe budget cannot be changed for a " +
+                "turn already lost. Raise it to " +
+            Math.round(iSuggested / 60) + " minutes for the NEXT " +
+            "council you convene?",
+            function () {
+                window.localStorage.setItem(
+                    S_WALL_CLOCK_STORAGE_KEY, String(iSuggested));
+                VaibifyApp.fnShowToast(
+                    "The next council will allow " +
+                    Math.round(iSuggested / 60) +
+                    " minutes per turn.", "info");
+            },
+            {sConfirmLabel: "Use " + Math.round(iSuggested / 60) +
+                " minutes next time",
+             sCancelLabel: "Leave it"});
+    }
+
     function _fnRenderWorkspace() {
         var elBody = document.getElementById("agentCouncilWorkspaceBody");
         if (!elBody) return;
@@ -1360,6 +1430,7 @@ var VaibifyAgentCouncil = (function () {
                 "selected.</p>";
             return;
         }
+        _fnNoticeWallClockKills(dictCampaign);
         elBody.innerHTML = _fsTabBar(dictCampaign) + _fsEvictionNotice() +
             "<div class=\"council-tab-content\">" +
             _fsActiveTabContent(dictCampaign) + "</div>";

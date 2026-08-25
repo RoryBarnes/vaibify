@@ -29,6 +29,8 @@ __all__ = [
     "CouncilProtocolError",
     "CouncilProviderConnection",
     "DICT_DEFAULT_SETTINGS",
+    "I_MINIMUM_TURN_WALL_CLOCK_SECONDS",
+    "I_MAXIMUM_TURN_WALL_CLOCK_SECONDS",
     "DICT_EMPTY_PROJECT_IDENTITY",
     "LIST_CAMPAIGN_REQUIRED_KEYS",
     "LIST_EXHAUSTED_ROUND_EXITS",
@@ -133,7 +135,21 @@ DICT_DEFAULT_SETTINGS = {
     "iMaximumRounds": 3,
     "iMaximumConcurrentTurns": 2,
     "iMaximumOutputBytesPerTurn": 262144,
+    # Seconds one turn may run before its container is destroyed. A
+    # SETTING rather than only a constant, because the right value is a
+    # property of the question being asked: a repository audit with
+    # dozens of tool calls is not the same shape of work as a
+    # single-shot opinion, and the researcher is the one who knows
+    # which they are convening.
+    "iTurnWallClockSeconds": 3600,
 }
+
+# The bounds on that setting. The ceiling is not a judgement about
+# model behaviour — it is the point past which a turn holding a runner,
+# a snapshot copy and an egress lease stops being a turn and becomes an
+# abandoned container.
+I_MINIMUM_TURN_WALL_CLOCK_SECONDS = 60
+I_MAXIMUM_TURN_WALL_CLOCK_SECONDS = 43200
 
 LIST_CAMPAIGN_REQUIRED_KEYS = [
     "sCampaignId", "sState", "sQuestion", "listParticipants",
@@ -208,6 +224,14 @@ def _fdictValidateSettings(dictRequestedSettings):
     if dictSettings["iMaximumRounds"] < dictSettings["iMinimumRounds"]:
         raise CouncilConfigurationError(
             "iMaximumRounds cannot be below iMinimumRounds")
+    iWallClock = dictSettings["iTurnWallClockSeconds"]
+    if not isinstance(iWallClock, int) or not (
+            I_MINIMUM_TURN_WALL_CLOCK_SECONDS <= iWallClock
+            <= I_MAXIMUM_TURN_WALL_CLOCK_SECONDS):
+        raise CouncilConfigurationError(
+            "iTurnWallClockSeconds must be an integer between "
+            f"{I_MINIMUM_TURN_WALL_CLOCK_SECONDS} and "
+            f"{I_MAXIMUM_TURN_WALL_CLOCK_SECONDS} seconds")
     if dictSettings["iMaximumConcurrentTurns"] < 1:
         raise CouncilConfigurationError(
             "iMaximumConcurrentTurns must be at least 1")

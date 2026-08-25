@@ -491,3 +491,45 @@ def test_commands_during_a_live_turn_keep_state_consistent(
         assert dictRecord["bStopRequested"] is True
         assert dictRecord["listStateTransitions"][-1]["sReason"] == (
             "stopAfterCurrentTurn")
+
+
+def testTheCampaignsTurnBudgetReachesTheConnection(monkeypatch):
+    """A setting that governs nothing is a number in a record.
+
+    Kills: building the connection without the campaign's
+    iTurnWallClockSeconds.
+
+    The researcher can raise the per-turn time budget, and the modal
+    that offers it promises the next council will use it. If the
+    controller keeps passing the module default, that promise is false
+    — and a mutation deleting the argument survived a suite that tested
+    the setting's validation and the UI separately, which is the same
+    shape as bAgentSafe before it was enforced (2026-08-24).
+    """
+    from vaibify.gui import agentCouncilController, agentCouncilProviders
+
+    dictSeen = {}
+
+    class _RecordingConnection:
+        def __init__(self, *tArguments, **dictKeywords):
+            dictSeen.update(dictKeywords)
+
+    monkeypatch.setattr(
+        agentCouncilProviders, "ClaudeRunnerConnection", _RecordingConnection)
+    monkeypatch.setattr(
+        agentCouncilController, "_fdictProvisionRunnerAccessOnce",
+        lambda dictRuntime: {"dictEgress": {}})
+    monkeypatch.setattr(
+        agentCouncilController, "_fdictEnsureRuntimeGateway",
+        lambda dictRuntime: {})
+
+    agentCouncilController.fconnectionBuildParticipantConnection(
+        {"sCampaignId": "c", "sImageReference": "img",
+         "baSnapshotTar": b"", "fsStageRunnerCredential": None,
+         "dictCampaign": {"dictSettings": {
+             "iTurnWallClockSeconds": 7200}}},
+        {"sRequestedModel": "opus"})
+
+    assert dictSeen.get("fWallClockSeconds") == 7200.0, (
+        "the campaign's turn budget never reached the connection, so "
+        f"raising it changes nothing: {dictSeen}")

@@ -37,6 +37,7 @@ import os
 from . import agentCouncilCampaign
 from . import agentCouncilCharter
 from . import agentCouncilRegistry
+from . import agentCouncilRunner
 from . import agentCouncilStore
 
 logger = logging.getLogger("vaibify")
@@ -218,6 +219,13 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         dictParticipant["sRequestedModel"],
         dictEgress=dictAccess["dictEgress"],
         fsStageRunnerCredential=dictRuntime["fsStageRunnerCredential"],
+        # The campaign's own budget, not the module default. Without
+        # this the setting is a number in a record that governs nothing
+        # — the shape of bAgentSafe before it was enforced.
+        fWallClockSeconds=float(
+            (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
+            .get("iTurnWallClockSeconds")
+            or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS),
     )
 
 
