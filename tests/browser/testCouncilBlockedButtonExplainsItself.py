@@ -848,3 +848,45 @@ def testARendererFaultIsNamedInsteadOfFreezingThePanel(
     assert "could not draw" in sText, (
         f"a renderer fault left the panel silent: {sText!r}")
     assert "dashboard fault" in sText, sText
+
+
+def testPollsCarryTheCampaignsDirectorySoAToolkitContainerCanRefresh(
+    pageDashboard, serverHub,
+):
+    """The 409-on-every-poll that froze a live panel.
+
+    Kills: dropping the directory from the poll URLs.
+
+    A toolkit container tracks several repositories, so with no
+    workflow open the server cannot resolve which one a bare request
+    means and answers 409. Only `start` sent a chosen directory, so
+    every read route refused from the moment the council convened and
+    the panel showed convene-time state for the whole deliberation
+    (live evidence, 2026-08-24).
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    listUrls = pageDashboard.evaluate(
+        """async () => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-z', sState: 'planning',
+                sQuestion: 'Q', listParticipants: [], listRounds: [],
+                dictProjectIdentity: {
+                    sProjectRepoPath: '/workspace/vplanet-private'}});
+            const listSeen = [];
+            const fnRealGet = VaibifyApi.fdictGet;
+            VaibifyApi.fdictGet = function (sPath) {
+                listSeen.push(sPath);
+                return Promise.resolve({dictCampaign: null, listEvents: []});
+            };
+            try {
+                await VaibifyAgentCouncil.fnPollOnceForTest();
+            } finally {
+                VaibifyApi.fdictGet = fnRealGet;
+            }
+            return listSeen;
+        }"""
+    )
+    assert listUrls, "the poll issued no requests at all"
+    for sUrl in listUrls:
+        assert "sProjectDirectory=vplanet-private" in sUrl, (
+            f"a read went out without the campaign's directory: {sUrl}")

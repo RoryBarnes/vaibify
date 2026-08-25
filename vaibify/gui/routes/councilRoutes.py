@@ -217,6 +217,17 @@ def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
     repo is one validated project repo — a container can host several,
     and a campaign belongs to exactly one.
 
+    ``sChosenDirectory`` is accepted by the READ routes too, not only
+    by start (2026-08-24). It has to be: a toolkit container tracks
+    several repositories, so with no workflow open the resolver
+    legitimately refuses to guess — and every poll route then answered
+    409 forever, which froze a live researcher's panel for a whole
+    deliberation. The value is validated against the tracked set
+    exactly as start validates it, so nothing is trusted that was not
+    trusted before, and the repo half of the principal is still
+    enforced: a campaign bound to another repo in the same container
+    stays unreachable.
+
     That invariant is UNCHANGED by the Blank Project work (2026-08-22).
     What widened is only where the repo half is resolved FROM. It used
     to come exclusively from an open workflow, which refused a project
@@ -780,9 +791,10 @@ def _fnRegisterListCouncils(app, dictCtx):
 
     @app.get("/api/agent-councils/{sContainerId}")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fdictListCouncils(sContainerId: str, requestHttp: Request):
+    async def fdictListCouncils(sContainerId: str, requestHttp: Request,
+                                sProjectDirectory: str = ""):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         return {
             "listCampaigns": agentCouncilStore.flistSummariseCampaigns(
                 _fdictCampaignStore(requestHttp),
@@ -799,9 +811,10 @@ def _fnRegisterGetCouncil(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictGetCouncil(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         jsonCampaign = _fjsonRequireCampaign(
             dictStore, sCampaignId, sName, sProjectRepoPath)
@@ -905,10 +918,10 @@ def _fnRegisterPollEvents(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictPollEvents(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
-        iAfter: int = 0,
+        iAfter: int = 0, sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         if iAfter < 0:
             raise HTTPException(400, "iAfter must not be negative")
         _fjsonRequireCampaign(

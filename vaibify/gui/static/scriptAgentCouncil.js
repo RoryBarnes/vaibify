@@ -1151,7 +1151,8 @@ var VaibifyAgentCouncil = (function () {
     async function _fnPollEventsOnce() {
         var dictResult = await VaibifyApi.fdictGet(
             _fsRoute("/" + _dictState.sActiveCampaignId + "/events?iAfter=" +
-                _dictState.iHighestSequenceSeen));
+                _dictState.iHighestSequenceSeen) +
+            _fsDirectoryQuery("&"));
         _fnIngestEvents(dictResult);
     }
 
@@ -1171,7 +1172,8 @@ var VaibifyAgentCouncil = (function () {
 
     async function _fnLoadCampaignQuietly() {
         var dictResult = await VaibifyApi.fdictGet(
-            _fsRoute("/" + _dictState.sActiveCampaignId));
+            _fsRoute("/" + _dictState.sActiveCampaignId) +
+            _fsDirectoryQuery("?"));
         _dictState.dictCampaign = dictResult.dictCampaign || null;
         _fnRenderToolbarButton();
         _fnRenderIfChanged();
@@ -2081,6 +2083,27 @@ var VaibifyAgentCouncil = (function () {
     /* ------------------------------------------------------------------ */
     /* Small helpers                                                      */
     /* ------------------------------------------------------------------ */
+
+    function _fsDirectoryQuery(sJoiner) {
+        /* The directory this campaign is about, echoed back on every
+           read. A toolkit container tracks several repositories, so
+           with no workflow open the server cannot resolve which one a
+           bare request means — it answered 409 on every poll, which
+           froze a live panel for an entire deliberation (2026-08-24).
+
+           Taken from the CAMPAIGN's own recorded repo path, not from a
+           remembered form value: the campaign is the authority on which
+           repository it belongs to, and the server re-validates the
+           basename against the tracked set exactly as it does at
+           convene. */
+        var sRepoPath = ((_dictState.dictCampaign || {})
+            .dictProjectIdentity || {}).sProjectRepoPath || "";
+        if (!sRepoPath) return "";
+        var sBasename = sRepoPath.split("/").filter(Boolean).pop() || "";
+        if (!sBasename) return "";
+        return sJoiner + "sProjectDirectory=" +
+            encodeURIComponent(sBasename);
+    }
 
     function _fsRoute(sSuffix) {
         return "/api/agent-councils/" +

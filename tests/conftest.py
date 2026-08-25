@@ -269,3 +269,36 @@ def fnPinCouncilCapacityToTheDeclaredFloors(request, monkeypatch):
     monkeypatch.setattr(
         agentCouncilCapacity, "fiReadHostMemoryBytes", lambda: 0)
     yield
+
+
+@pytest.fixture(autouse=True)
+def fnKeepEveryTestOutOfTheRealCouncilStore(
+        request, tmp_path_factory, monkeypatch):
+    """No test may touch the researcher's ~/.vaibify/agentCouncils.
+
+    The durable council store root is derived from $HOME, and any hub a
+    test builds runs a startup reconcile that classifies every campaign
+    still in `planning` as `interrupted`. So a suite that constructs a
+    hub kills a live council mid-deliberation — with a reason string
+    that reads like the researcher's own hub restarting.
+
+    This happened TWICE on 2026-08-24. The first fix was applied to the
+    browser lane's conftest alone, because that was the lane that had
+    done it; the route tests did the same thing an hour later. Fixing
+    the instance is not fixing the class, so the guard now lives at the
+    root conftest where it covers every suite, present and future.
+
+    Autouse and unconditional: a test that genuinely wants the real
+    root would be a test that can destroy a researcher's work, and
+    there is no such legitimate test.
+    """
+    if request.node.get_closest_marker("realCouncilStoreRoot") is not None:
+        yield
+        return
+    from vaibify.gui import agentCouncilStore
+    sIsolatedRoot = str(
+        tmp_path_factory.mktemp("councilStore") / "agentCouncils")
+    monkeypatch.setattr(
+        agentCouncilStore, "fsResolveDurableStoreRoot",
+        lambda: sIsolatedRoot)
+    yield

@@ -4135,7 +4135,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # spend a metadata walk each on a question nobody asked. All three
     # are the same responsibility this module already owns: resolving
     # WHICH repository a council is about and what it may carry.
-    "routes/councilRoutes.py": 1267,
+    # 1267 -> 1278 (2026-08-24): the READ routes accept the chosen
+    # directory too, not only start. A toolkit container tracks several
+    # repositories, so a bare read could not resolve which one it meant
+    # and answered 409 on every poll — freezing a live panel for an
+    # entire deliberation.
+    "routes/councilRoutes.py": 1278,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

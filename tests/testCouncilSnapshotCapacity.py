@@ -262,3 +262,32 @@ def testThePrunedComponentsReachTheProbeProgram():
         "the probe program does not prune directories at all")
     assert "'.git'" in sProgram or '".git"' in sProgram, (
         "the pruned set never reached the program text")
+
+
+@pytest.mark.councilCapacity
+def testNoSuiteCanReachTheResearchersCouncilStore():
+    """The class fix for a defect that destroyed live work twice.
+
+    Kills: removing the root conftest's council-store isolation.
+
+    Any hub a test builds runs a startup reconcile that marks every
+    campaign still in `planning` as `interrupted`. With the store root
+    derived from $HOME, that reaches the researcher's own councils —
+    and it killed a live deliberation on 2026-08-24, then killed a
+    second one an hour later because the first fix was applied only to
+    the lane that had caused it.
+
+    Asserts the mechanism from inside a test, which is the only place
+    the guarantee has to hold.
+    """
+    import os
+
+    from vaibify.gui import agentCouncilStore
+
+    sRoot = os.path.realpath(agentCouncilStore.fsResolveDurableStoreRoot())
+    sReal = os.path.realpath(
+        os.path.join(os.path.expanduser("~"), ".vaibify", "agentCouncils"))
+    assert sRoot != sReal, (
+        "a test can write to the researcher's council store; building a "
+        "hub here would interrupt their live council")
+    assert not sRoot.startswith(sReal + os.sep), sRoot

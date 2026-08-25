@@ -12,6 +12,8 @@ import json
 import os
 import stat
 
+import pytest
+
 from vaibify.gui import agentCouncilStore
 
 
@@ -46,6 +48,7 @@ def test_durable_checkpoint_writes_the_record_to_app_data(tmp_path):
         assert json.load(fileRecord)["sCampaignId"] == "campaign-1"
 
 
+@pytest.mark.realCouncilStoreRoot
 def test_the_store_root_is_outside_any_repository(tmp_path):
     """The default durable root is host app-data under the home directory."""
     sRoot = agentCouncilStore.fsResolveDurableStoreRoot()
