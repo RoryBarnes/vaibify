@@ -66,7 +66,14 @@ S_PHASE_VETO = "veto"
 # contract change that lives outside the text is a change no record
 # can show. The schema now travels inside the artifact it belongs to,
 # and any future change to the field table moves this version.
-S_CHARTER_VERSION = "1.2.0"
+# 1.3.0 (2026-08-25): the synthesis instruction asks the pen-holder to
+# ANCHOR each held question to the plan item it blocks. Questions raised
+# in proposal or cross-review no longer stop the round where they are
+# raised; they are held until synthesis so the researcher reads them
+# against a plan instead of against nothing. That is only worth doing if
+# the chairbot is told to place them, which is an instruction change, so
+# it moves the version.
+S_CHARTER_VERSION = "1.3.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
@@ -138,7 +145,15 @@ DICT_PHASE_INSTRUCTIONS = {
     S_PHASE_SYNTHESIS: (
         "PHASE: synthesis. You hold the pen for this round. Fold the "
         "quoted proposals and critiques into one candidate plan that "
-        "answers every surviving objection or names it as unresolved."),
+        "answers every surviving objection or names it as unresolved. "
+        "The quoted material may carry HELD QUESTIONS a participant "
+        "needs the researcher to answer. For each one, write a plan "
+        "item covering the work it blocks and state in that item which "
+        "question id it waits on, so the researcher reads the question "
+        "beside the decision it governs. Where two participants asked "
+        "the same thing, place both ids on the one item — never merge "
+        "their wording, because the evidence each cited is what makes "
+        "them separate questions."),
     S_PHASE_VETO: (
         "PHASE: veto. Judge the quoted candidate plan's substance, not "
         "its wording. Return verdict 'accept' only if no blocking "
@@ -543,6 +558,7 @@ def _flistPhaseSpecificQuotes(dictCampaign, dictRound, sPhase, sParticipantId):
             listQuoted.append(_fdictCandidateQuote(dictCampaign))
         listQuoted.extend(_flistResultQuotes(
             dictRound, S_PHASE_CROSS_REVIEW, "peerCritique"))
+        listQuoted.extend(_flistHeldQuestionQuotes(dictRound))
     elif sPhase == S_PHASE_VETO:
         listQuoted.append(_fdictCandidateQuote(dictCampaign))
         listQuoted.extend(_flistResearcherDecisionQuotes(dictCampaign))
@@ -561,6 +577,25 @@ def _flistResultQuotes(dictRound, sSourcePhase, sSourceKind,
             sSourceKind, dictTurnRecord["sParticipantId"],
             json.dumps(dictTurnRecord["dictResult"], sort_keys=True)))
     return listQuoted
+
+
+def _flistHeldQuestionQuotes(dictRound):
+    """Quote the questions held for the researcher, each with its id.
+
+    The peers' full results are already quoted, so the question TEXT is
+    not new — the id is. Without a stable handle the pen-holder can only
+    paraphrase a question to refer to it, and a paraphrase cannot be
+    matched back to the answer the researcher gives.
+    """
+    return [
+        fdictBuildQuotedEntry(
+            "heldQuestion", dictQuestion["sRaisedByParticipantId"],
+            json.dumps({
+                "sQuestionId": dictQuestion["sQuestionId"],
+                "sQuestionText": dictQuestion["sQuestionText"],
+            }, sort_keys=True))
+        for dictQuestion in dictRound.get("listDeferredQuestions", [])
+    ]
 
 
 def _fdictCandidateQuote(dictCampaign):

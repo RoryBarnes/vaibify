@@ -4179,6 +4179,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # POLICY table is that the answer comes from git per repository,
     # not from a fixed component list.
     "agentCouncilContext.py": 1191,
+    # NEW at 803 (2026-08-25): crossed the default cap by four lines,
+    # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
+    # out-of-memory case, which the gateway only started reporting the
+    # same day. The table is this module's own vocabulary for "the turn
+    # came back empty and here is why", so there is no seam to split
+    # along: the alternative homes an explanation away from the state
+    # machine that consults it. Still one responsibility.
+    # 803 -> 815 (2026-08-25): a question raised before synthesis is now
+    # HELD rather than gated on, so the researcher reads it against a
+    # plan instead of against an empty Plan tab. The twelve lines are
+    # the branch that parks them plus the round key that holds them —
+    # both in the phase-settle path that already decides what a settled
+    # phase means. Same responsibility, one ordering later.
+    "agentCouncil.py": 815,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -4194,7 +4208,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # forgotten — the alternative threaded a new argument through four
     # signatures and four call sites, which is more surface for the
     # same fact. Still one responsibility.
-    "agentCouncilDockerGateway.py": 862,
+    # 862 -> 889 (2026-08-25): the bounded turn returns the observed
+    # stream size and the container's own OOMKilled state. Both were
+    # read by the diagnosis before anything produced them — one
+    # reported a constant zero, the other was never asked. Seven of
+    # those lines are the comment explaining why the two inspect
+    # results are bound before they are read; re-chaining them spends
+    # blind-spot budget per link, which is not visible at the call.
+    "agentCouncilDockerGateway.py": 889,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4236,7 +4257,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # OUTPUT-CAP kill as well as the wall-clock one. The gateway kills
     # on either, only one was recorded, and two wrong causes were
     # argued from the resulting record.
-    "agentCouncilProviders.py": 1002,
+    # 1002 -> 1008 (2026-08-25): the OOM verdict joins the empty-result
+    # diagnosis, so exit 137 no longer means "somebody killed this".
+    "agentCouncilProviders.py": 1008,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

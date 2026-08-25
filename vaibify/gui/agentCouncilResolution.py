@@ -40,7 +40,9 @@ from .agentCouncilCampaign import (
 from .agentCouncilCharter import (
     S_PHASE_CROSS_REVIEW,
     S_PHASE_PROPOSAL,
+    S_PHASE_SYNTHESIS,
     S_PHASE_VETO,
+    _fsMintIdentifier,
 )
 
 __all__ = ["RoundResolutionMixin"]
@@ -201,10 +203,29 @@ class RoundResolutionMixin:
                 or ["blocking question without stated text"])
             for sQuestionText in listOpenQuestions:
                 listQuestions.append({
+                    # Minted from a uuid rather than a campaign counter
+                    # like sObjectionId: a counter is a new REQUIRED
+                    # campaign key, and fdictRestoreCampaignFromMetadata
+                    # refuses a record missing one — which would strand
+                    # every campaign already checkpointed on disk.
+                    "sQuestionId": _fsMintIdentifier("question"),
                     "sQuestionText": str(sQuestionText),
                     "sRaisedByParticipantId":
                         dictTurnRecord["sParticipantId"]})
         return listQuestions
+
+    def fnDeferQuestionsUntilSynthesis(self, dictRound, listQuestions):
+        """Park pre-synthesis questions instead of gating on them.
+
+        A question raised in proposal or cross-review is a question about
+        a plan the researcher cannot read yet: the chairbot has not
+        folded the proposals together, so the Plan tab is empty and a
+        question citing "phase 2" cites a document that exists only
+        inside one agent's own answer. Parking lets synthesis run first,
+        so the gate can present the questions against a plan.
+        """
+        dictRound.setdefault("listDeferredQuestions", []).extend(
+            listQuestions)
 
     def _fnOpenQuestionGate(self, dictRound, sOriginPhase, listQuestions):
         """Enter needsHuman (section 5.4): every turn in the phase has
@@ -213,6 +234,12 @@ class RoundResolutionMixin:
             "sGateKind": S_GATE_BLOCKING_QUESTION,
             "iRoundNumber": dictRound["iRoundNumber"],
             "sOriginPhase": sOriginPhase,
+            # Whether the questions arrive WITH the plan they are about.
+            # False when synthesis produced nothing — a failed chairbot
+            # turn must not swallow the questions, so the gate still
+            # opens and says plainly that it is un-consolidated.
+            "bPlanAvailable": self.dictCampaign["dictCandidatePlan"]
+            is not None,
             "listQuestions": listQuestions,
         }
         self._fnEmitEvent("humanGateOpened",

@@ -1779,8 +1779,11 @@ var VaibifyAgentCouncil = (function () {
                 /* Council-level events (round opened, phase started)
                    carry no participant and belong to every agent's
                    timeline; anything attributed elsewhere does not. */
-                return !dictEvent.sParticipantId
-                    || dictEvent.sParticipantId === sParticipantId;
+                if (dictEvent.sParticipantId
+                        && dictEvent.sParticipantId !== sParticipantId) {
+                    return false;
+                }
+                return _fbConsoleShowsEvent(dictEvent);
             });
         if (!listVisible.length) {
             return "<p class=\"council-hint\">No events yet.</p>";
@@ -1820,6 +1823,27 @@ var VaibifyAgentCouncil = (function () {
         return _fsDescribeProviderEvent(dictProvider);
     }
 
+    /* Transport telemetry, not the agent's work. Fourteen consecutive
+       "system" rows and a raw "rate_limit_event" told a researcher
+       nothing and crowded out the lines that did — enough information
+       to wonder what was happening, not enough to understand it
+       (2026-08-25). They stay in the durable record; they are not
+       shown in a console whose header promises messages, files
+       inspected, and scripts run with their exit codes. */
+    var SET_CONSOLE_SUPPRESSED_TYPES = {
+        system: true, rate_limit_event: true,
+    };
+
+    function _fbConsoleShowsEvent(dictEvent) {
+        var dictProvider = dictEvent.dictProviderEvent;
+        if (!dictProvider) return true;
+        if (SET_CONSOLE_SUPPRESSED_TYPES[dictProvider.type]) return false;
+        /* An event whose rendering is empty is a bare type name — the
+           noise this exists to remove. */
+        return Boolean(_fsExtractMessageText(dictProvider)
+            || dictProvider.type === "result");
+    }
+
     function _fsDescribeProviderEvent(dictProvider) {
         /* The CLI's stream-json shapes, rendered as what happened. Not
            the model's private reasoning — the assistant TEXT it emits
@@ -1840,6 +1864,18 @@ var VaibifyAgentCouncil = (function () {
         return _fsEscape(sType || "event");
     }
 
+    function _fsSummariseToolInput(jsonInput) {
+        /* The one field that says what happened, per tool shape. Whole
+           inputs are not rendered: a file write carries the entire new
+           contents, which is the model's output, not a console line. */
+        if (!jsonInput || typeof jsonInput !== "object") return "";
+        var sSummary = jsonInput.command || jsonInput.file_path
+            || jsonInput.path || jsonInput.pattern || jsonInput.query || "";
+        sSummary = String(sSummary);
+        return sSummary.length > 120
+            ? sSummary.slice(0, 120) + "…" : sSummary;
+    }
+
     function _fsExtractMessageText(dictProvider) {
         var jsonMessage = dictProvider.message || {};
         var jsonContent = jsonMessage.content;
@@ -1851,9 +1887,15 @@ var VaibifyAgentCouncil = (function () {
             /* A tool call is the most informative thing in the stream:
                it is what the agent DID to the repository. */
             if (jsonBlock.type === "tool_use") {
-                return "→ " + (jsonBlock.name || "tool");
+                /* WHAT it ran, not merely that it ran something. The
+                   header promises files inspected and scripts run; a
+                   bare tool name delivers neither. */
+                return "→ " + (jsonBlock.name || "tool") + " "
+                    + _fsSummariseToolInput(jsonBlock.input);
             }
-            if (jsonBlock.type === "tool_result") return "← result";
+            if (jsonBlock.type === "tool_result") {
+                return "← " + (jsonBlock.is_error ? "error" : "ok");
+            }
             return "";
         }).filter(Boolean).join("  ");
     }
@@ -1896,6 +1938,24 @@ var VaibifyAgentCouncil = (function () {
         return _fsBlockingQuestionCard(dictCampaign, dictGate);
     }
 
+    function _fsAgentLabelForId(dictCampaign, sParticipantId) {
+        /* "Agent 2", not "participant-248eecee27e1". The engine's id is
+           the right thing to key on and the wrong thing to show: the
+           tabs above already read "Agent 1"/"Agent 2", so a raw id in
+           the question list is unmatchable to the tab it came from.
+           Falls back to "the server" for the quorum-shortfall gate,
+           whose single question is raised by "server", and to the id
+           itself if a participant ever cannot be resolved — an
+           unrecognizable label is better than a confidently wrong one. */
+        var listParticipants = dictCampaign.listParticipants || [];
+        for (var iIndex = 0; iIndex < listParticipants.length; iIndex += 1) {
+            if (listParticipants[iIndex].sParticipantId === sParticipantId) {
+                return "Agent " + (iIndex + 1);
+            }
+        }
+        return sParticipantId === "server" ? "the server" : sParticipantId;
+    }
+
     function _fsBlockingQuestionCard(dictCampaign, dictGate) {
         /* The ENGINE'S gate shape (remediation R6): a list of
            questions, each carrying who raised it. The quorum-shortfall
@@ -1905,14 +1965,35 @@ var VaibifyAgentCouncil = (function () {
         var sQuestionRows = listQuestions.map(function (dictQuestion) {
             return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
                 " <span class=\"council-question-author\">(raised by " +
-                _fsEscape(dictQuestion.sRaisedByParticipantId || "") +
+                _fsEscape(_fsAgentLabelForId(
+                    dictCampaign,
+                    dictQuestion.sRaisedByParticipantId || "")) +
                 ")</span></li>";
         }).join("");
         return "<div class=\"council-needs-human\">" +
             "<h4>The council needs your opinion</h4>" +
+            /* Say so when the questions arrive WITHOUT the plan they
+               are about. bPlanAvailable is false when the pen-holder's
+               turn produced nothing: the questions are still shown —
+               a failed chairbot must not swallow them — but the
+               researcher is answering against proposals rather than
+               against a folded plan, and only this sentence says so.
+               Absent on gates written by an earlier hub, which is not
+               the same as false, so the notice needs an explicit
+               false. */
+            (dictGate.bPlanAvailable === false
+                ? "<p class=\"council-plan-missing\">The pen-holder " +
+                    "produced no plan this round, so these questions " +
+                    "are not yet placed in one. They are shown as each " +
+                    "agent raised them.</p>"
+                : "") +
             (sQuestionRows
-                ? "<ul class=\"council-questions\">" + sQuestionRows +
-                    "</ul>"
+                /* NUMBERED, not bulleted. A council can raise a dozen
+                   at once — this one raised twelve — and a researcher
+                   answering them in a single text box needs to say
+                   "on 3" and be understood. */
+                ? "<ol class=\"council-questions\">" + sQuestionRows +
+                    "</ol>"
                 : "<p>A material choice could not be settled from " +
                     "evidence.</p>") +
             "<textarea id=\"councilAnswer\" rows=\"3\"></textarea>" +

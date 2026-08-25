@@ -356,9 +356,30 @@ def fdictExecuteBoundedTurn(
     )
     if bBreached:
         _fnKillContainerQuietly(dockerCouncil, dictHandle["sContainerId"])
+    # Bind the inspect result before reading it, here and below. A
+    # ``.get()`` chained onto a docker-py call counts as its own
+    # unreadable site, because the scan sees a call whose chain passes
+    # through ``.api`` and cannot trace the client root -- so a fluent
+    # one-liner spends blind-spot budget per link. Subscripting a bound
+    # dict is not a call at all. A missing key raises into the same
+    # ``except`` the chain's ``None`` already fell through to.
     iExitCode = None
     try:
-        iExitCode = dockerCouncil.api.exec_inspect(sExecId).get("ExitCode")
+        dictExecInspected = dockerCouncil.api.exec_inspect(sExecId)
+        iExitCode = dictExecInspected["ExitCode"]
+    except Exception:
+        pass
+    # Read the CONTAINER's own verdict before anything destroys it. An
+    # exit code of 137 is SIGKILL and says nothing about who sent it:
+    # this gateway kills on a breached bound, and the kernel kills on
+    # memory pressure. Without OOMKilled the two are indistinguishable,
+    # and a live opus turn stayed ambiguous for a whole session because
+    # nothing asked (external review, 2026-08-25).
+    bOomKilled = False
+    try:
+        dictInspected = dockerCouncil.api.inspect_container(
+            dictHandle["sContainerId"])
+        bOomKilled = bool(dictInspected["State"]["OOMKilled"])
     except Exception:
         pass
     return {
@@ -367,6 +388,12 @@ def fdictExecuteBoundedTurn(
             "utf-8", errors="replace"),
         "bOutputCapExceeded": dictPumped["bOutputCapExceeded"],
         "bWallClockExceeded": dictPumped["bDeadlineExceeded"],
+        # The observed stream size. The diagnosis read this key before
+        # anything produced it, so every record said zero bytes while
+        # looking authoritative — a field that reports a constant is
+        # worse than an absent one (external review, 2026-08-25).
+        "iOutputBytes": len(dictPumped["baCaptured"]),
+        "bOomKilled": bOomKilled,
         "fElapsedSeconds": time.monotonic() - fStartedMonotonic,
     }
 

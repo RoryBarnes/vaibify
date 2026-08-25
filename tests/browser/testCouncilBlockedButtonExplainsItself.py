@@ -1091,3 +1091,37 @@ def testAnAgentTabShowsThatAgentsWorkNotABareEventDump(
     assert "SONNET-IS-READING-UPDATE-C" in dictText["sSonnet"]
     assert "round opened" in dictText["sOpus"], (
         "council-level events belong in every agent's timeline")
+
+
+def testTheCouncilsQuestionsAreNumbered(pageDashboard, serverHub):
+    """A dozen questions in one box need numbers to refer to.
+
+    Kills: rendering the blocking questions as an unordered list.
+
+    A live council raised twelve at once, answered through a single
+    text area — a researcher has to be able to write "on 3" and be
+    understood (2026-08-25).
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    dictResult = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'needsHuman', sQuestion: 'Q',
+                listParticipants: [], listRounds: [],
+                dictPendingHumanGate: {sGateKind: 'blockingQuestion',
+                    listQuestions: [
+                        {sQuestionText: 'FIRST', sRaisedByParticipantId: 'p'},
+                        {sQuestionText: 'SECOND', sRaisedByParticipantId: 'p'},
+                        {sQuestionText: 'THIRD', sRaisedByParticipantId: 'p'}]}});
+            const el = document.querySelector('.council-questions');
+            return {
+                sTag: el ? el.tagName : '(missing)',
+                sStyle: el ? getComputedStyle(el).listStyleType : '',
+                iItems: el ? el.querySelectorAll('li').length : 0,
+            };
+        }"""
+    )
+    assert dictResult["sTag"] == "OL", dictResult
+    assert dictResult["iItems"] == 3, dictResult
+    assert dictResult["sStyle"] == "decimal", (
+        f"the numbers are not rendered: {dictResult}")

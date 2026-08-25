@@ -572,3 +572,44 @@ def testAnOutputCapKillIsDistinguishedFromATimeoutAndFromNeither():
     assert dictNeither["sEmptyResultReason"] == "noResultEvent", (
         "a turn that hit neither bound was blamed on one of them")
     assert dictNeither["jsonExitCode"] == 1
+
+
+def testAnOutOfMemoryKillIsDistinguishedFromOurOwnKills():
+    """Exit 137 says SIGKILL, never who sent it.
+
+    Kills: omitting the container's OOMKilled state.
+
+    This gateway kills on a breached bound; the kernel kills on memory
+    pressure. Both surface as 137, and without the container's own
+    verdict an opus failure stayed ambiguous for a whole session. Our
+    own breach wins when both are true — a bound we chose to enforce is
+    the better explanation than pressure we merely observed.
+    """
+    dictOom = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bOomKilled": True, "iExitCode": 137, "iOutputBytes": 900})
+    assert dictOom["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_OUT_OF_MEMORY)
+
+    dictBoth = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bOutputCapExceeded": True, "bOomKilled": True,
+         "iExitCode": 137, "iOutputBytes": 1048576})
+    assert dictBoth["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_OUTPUT_CAP)
+
+
+def testTheObservedStreamSizeIsRealRatherThanAConstantZero():
+    """A field that always reports the same number is worse than none.
+
+    Kills: reading iOutputBytes from a gateway that never returns it.
+
+    The diagnosis read this key the day before anything produced it, so
+    every record said zero bytes while looking authoritative — and the
+    output-cap theory it existed to test could not be checked against
+    it (external review, 2026-08-25).
+    """
+    dictSized = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"iOutputBytes": 524288, "iExitCode": 1})
+    assert dictSized["iOutputBytes"] == 524288

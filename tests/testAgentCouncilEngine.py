@@ -412,6 +412,69 @@ def testVetoNeedsHumanEntersGateAfterAllVetoTurnsSettle():
     assert dictOut["dictPendingHumanGate"]["listQuestions"]
 
 
+def testProposalQuestionIsHeldUntilSynthesisSoTheGateCarriesAPlan():
+    """A question raised before synthesis does not stop the round where
+    it is raised: it is held until the pen-holder has folded a plan, so
+    the researcher reads it against a document instead of against
+    nothing.
+
+    Kills: opening the gate at the proposal settle (the ordering before
+    2026-08-25). That gated with dictCandidatePlan still None, so the
+    Plan tab was empty and a question citing "phase 2" cited a document
+    living only inside one participant's own answer.
+    """
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted(fdictMakeTurnResult(
+            "needsHuman",
+            listOpenQuestions=["delete the integrator, or discourage it?"]))
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(LIST_TWO_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+
+    assert dictOut["sState"] == "needsHuman"
+    dictGate = dictOut["dictPendingHumanGate"]
+    assert dictGate["sOriginPhase"] == S_SYNTHESIS, (
+        "the gate opened before the pen-holder had written anything")
+    assert dictGate["bPlanAvailable"] is True
+    assert dictOut["dictCandidatePlan"] is not None, (
+        "needsHuman with no candidate plan is the empty Plan tab")
+    [dictQuestion] = dictGate["listQuestions"]
+    assert dictQuestion["sQuestionText"] == (
+        "delete the integrator, or discourage it?")
+    assert dictQuestion["sQuestionId"].startswith("question-"), (
+        "a question with no stable id cannot be paired with its answer")
+
+
+def testTheChairbotIsShownTheHeldQuestionsWithTheirIdentifiers():
+    """The pen-holder cannot anchor a question it was never handed.
+
+    Kills: quoting the peers' results alone. Their text carries the
+    question wording but no id, so the chairbot could only paraphrase to
+    refer to one — and a paraphrase cannot be matched back to the
+    researcher's answer.
+    """
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted(fdictMakeTurnResult(
+            "needsHuman", listOpenQuestions=["which trade-off?"]))
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(LIST_TWO_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    fixture.fdictDrive()
+
+    listSynthesisRequests = fixture.flistRequestsFor("A", S_SYNTHESIS)
+    assert listSynthesisRequests, "synthesis never ran"
+    listHeld = [
+        dictQuoted
+        for dictQuoted in listSynthesisRequests[0]["listQuotedMaterial"]
+        if dictQuoted["sSourceKind"] == "heldQuestion"]
+    assert len(listHeld) == 1, listSynthesisRequests[0]["listQuotedMaterial"]
+    assert "which trade-off?" in listHeld[0]["sContent"]
+    assert "question-" in listHeld[0]["sContent"]
+
+
 def testContinuationAfterResearcherResponseReconstructsContext():
     """A researcher response is recorded and the continuation rebuilds
     context from the record — the response reappears as quoted material in

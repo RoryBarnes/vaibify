@@ -332,6 +332,15 @@ def test_memory_balloon_is_killed_with_swap_pinned(tCouncilHarness):
         "absorbed the pressure"
     )
     assert dictTurn["iExitCode"] != 0, dictTurn
+    assert dictTurn["bWallClockExceeded"] is False, dictTurn
+    assert dictTurn["bOutputCapExceeded"] is False, dictTurn
+    assert dictTurn["bOomKilled"] is True, (
+        "the kernel killed this turn for memory and the gateway did "
+        "not record it. Exit 137 is SIGKILL and names no sender: this "
+        "gateway kills on a breached bound and the kernel kills on "
+        "pressure, so without this flag the two are indistinguishable "
+        f"and the researcher is told the wrong cause. {dictTurn}"
+    )
 
     dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
     assert dictDestroyed["sOutcome"] == moduleRunner.S_OUTCOME_DESTROYED
@@ -509,6 +518,15 @@ def test_turn_output_cap_and_wall_clock_budget_bind(tCouncilHarness):
     )
     assert dictFlood["bOutputCapExceeded"] is True
     assert len(dictFlood["sOutput"].encode()) <= 65536
+    # The diagnosis reads iOutputBytes to tell the researcher how close
+    # a turn came to the cap. It read the key before anything produced
+    # it, so every record said zero while looking authoritative — a
+    # field reporting a constant is worse than an absent one. Assert it
+    # against a flood, where a constant zero cannot survive.
+    assert dictFlood["iOutputBytes"] > 0, dictFlood
+    assert dictFlood["iOutputBytes"] == len(dictFlood["sOutput"].encode()), (
+        f"the recorded stream size disagrees with the stream: {dictFlood}"
+    )
     dictDestroyedFlooder = moduleGateway.fdictDestroyAndSettle(
         dictGateway, dictFlooder["sHandle"],
     )

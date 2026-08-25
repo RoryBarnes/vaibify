@@ -168,6 +168,9 @@ S_EMPTY_BECAUSE_WALL_CLOCK = "killedAtTurnWallClockBudget"
 # past the cap is destroyed exactly like one that runs past the clock,
 # and the two are indistinguishable without this flag.
 S_EMPTY_BECAUSE_OUTPUT_CAP = "killedAtTurnOutputCap"
+# The kernel's kill, not ours. Checked AFTER our own two bounds, because
+# a breach we caused is the better explanation when both are true.
+S_EMPTY_BECAUSE_OUT_OF_MEMORY = "runnerOutOfMemory"
 
 
 class RunnerCredentialError(Exception):
@@ -315,6 +318,8 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         sReason = S_EMPTY_BECAUSE_WALL_CLOCK
     elif dictRun.get("bOutputCapExceeded"):
         sReason = S_EMPTY_BECAUSE_OUTPUT_CAP
+    elif dictRun.get("bOomKilled"):
+        sReason = S_EMPTY_BECAUSE_OUT_OF_MEMORY
     return {
         "sRawResultText": "",
         "sEmptyResultReason": sReason,
@@ -330,6 +335,7 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         # limit, then wall clock) were argued from a record missing the
         # one field that separates them (2026-08-25).
         "bOutputCapExceeded": bool(dictRun.get("bOutputCapExceeded")),
+        "bOomKilled": bool(dictRun.get("bOomKilled")),
         "iOutputBytes": int(dictRun.get("iOutputBytes") or 0),
         "fElapsedSeconds": round(float(dictRun.get("fElapsedSeconds") or 0), 1),
         "jsonExitCode": dictRun.get("iExitCode"),

@@ -160,6 +160,10 @@ I_MAX_REJECTED_PAYLOAD_CHARACTERS = 2000
 
 
 DICT_EMPTY_TURN_EXPLANATIONS = {
+    "runnerOutOfMemory":
+        "this agent's container ran out of memory and the kernel "
+        "stopped it. Raising the runner's memory limit is the remedy; "
+        "the work it had done is lost.",
     "killedAtTurnOutputCap":
         "this agent produced more output than one turn is allowed to "
         "carry, so its container was stopped and its work was lost. "
@@ -318,6 +322,13 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             "listFrozenVoterIds": None,
             "dictVetoVerdicts": {},
             "listUnresolvedObjections": [],
+            # Questions raised before synthesis, held so the gate can
+            # present them against the plan they are about. Read with
+            # .get elsewhere: rounds checkpointed by an earlier hub carry
+            # no such key and must still resolve. The final veto round
+            # has no key at all — it runs only the veto phase, which
+            # settles before any deferral can happen.
+            "listDeferredQuestions": [],
             "sResolution": "",
         }
         listRounds.append(dictRound)
@@ -376,6 +387,11 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             return
         listQuestions = self._flistCollectNeedsHumanQuestions(
             dictRound["dictTurnsByPhase"].get(sPhase, []))
+        if sPhase != S_PHASE_SYNTHESIS:
+            self.fnDeferQuestionsUntilSynthesis(dictRound, listQuestions)
+            return
+        listQuestions = (
+            dictRound.get("listDeferredQuestions", []) + listQuestions)
         if listQuestions:
             self._fnOpenQuestionGate(dictRound, sPhase, listQuestions)
 
