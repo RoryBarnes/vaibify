@@ -3662,13 +3662,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_socket_close_drains_the_containment_record',
         source='vaibify/gui/pipelineServer.py',
-        old='''        taskReader.cancel()
-        await asyncio.to_thread(
+        # Retargeted 2026-08-25: the drain moved out of
+        # fnRunTerminalSession's finally into
+        # _fnDrainAndCloseTerminalSession so it survives the
+        # cancellation uvicorn issues at shutdown. The mutation is
+        # unchanged in spirit -- the teardown awaits something that
+        # drains NOTHING -- and still leaves the record unsettled.
+        old='''    taskDrain = asyncio.create_task(
+        asyncio.to_thread(
             terminalContainment.fdictDrainSessionRecord, session,
-        )
-        session.fnClose()''',
-        new='''        taskReader.cancel()
-        session.fnClose()''',
+        ),
+    )''',
+        new='''    taskDrain = asyncio.create_task(asyncio.sleep(0))''',
     ),
 
     # --- Slice 3d, real-container halves (cases 43, 44, 45). These

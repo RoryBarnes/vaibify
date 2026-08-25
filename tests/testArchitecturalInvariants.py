@@ -4769,7 +4769,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # field; every flag that could select the LLM branch or force an
     # overwrite is ABSENT rather than defaulted, so no request can
     # carry one and no later edit can loosen a default into a bypass.
-    "pipelineServer.py": 2927,
+    # +61 (2026-08-25): _fnDrainAndCloseTerminalSession, extracted
+    # from fnRunTerminalSession's finally so the containment drain
+    # survives the cancellation uvicorn issues at shutdown. Mostly
+    # docstring: the async semantics are subtle enough that the
+    # natural reading of the code is wrong (one cancel does NOT skip
+    # an await in a finally; a cancel landing mid-drain does), and a
+    # reader who re-derives that from scratch will "simplify" the
+    # shield away. It sits beside its single caller rather than in a
+    # new module because it is that caller's teardown, not a
+    # reusable one.
+    "pipelineServer.py": 2988,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
