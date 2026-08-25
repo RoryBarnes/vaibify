@@ -690,3 +690,58 @@ def _fixtureAtExhaustedGate():
         dictSettings={"iMaximumRounds": 2}, sChairbotHandle="A")
     fixture.fdictDrive()
     return fixture
+
+
+def testAnEmptyTurnIsExplainedNotSchemaValidated():
+    """The diagnosis must not be buried inside the error it explains.
+
+    Kills: running the schema validator over an empty result.
+
+    A researcher read this on screen: fifteen "must be an array" lines,
+    then "unknown keys are not part of the schema:
+    ['bResultEventReportedError', 'dictEventTypeCounts', ...]" — the
+    diagnostic fields themselves, reported as violations, with the
+    actual cause nowhere in sight. An empty result is not a malformed
+    answer; it is the absence of one (2026-08-24).
+    """
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted({
+            "sRawResultText": "",
+            "sEmptyResultReason": "rateLimitedBeforeAnyResult",
+            "dictEventTypeCounts": {"assistant": 52}})
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(LIST_THREE_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictRecord = _fdictProposalRecordOf(fixture, dictOut, "B")
+
+    assert dictRecord["sStatus"] == "failed"
+    sReason = dictRecord["sFailureReason"]
+    assert "rate-limited" in sReason, sReason
+    assert "52 messages" in sReason, sReason
+    assert "must be an array" not in sReason, (
+        f"an absent answer was described as a malformed one: {sReason}")
+    assert "unknown keys" not in sReason, sReason
+    assert dictRecord["sRejectedPayload"], (
+        "the raw payload was dropped for the empty case")
+
+
+def testARepairIsNotSpentOnATurnThatReturnedNothing():
+    """A second turn against a throttling provider is one thrown away.
+
+    Kills: routing an empty result through the repair path.
+    """
+    listAttempts = []
+    def ffnDecide(sHandle, dictRequest):
+        if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL:
+            listAttempts.append(sHandle)
+            return fdictDecideCompleted({
+                "sRawResultText": "",
+                "sEmptyResultReason": "rateLimitedBeforeAnyResult"})
+        return fdictDecideCompleted(fdictMakeTurnResult("accept"))
+    fixture = fixtureBuildCouncil(LIST_THREE_SPECS, ffnDecide,
+                                  sChairbotHandle="A")
+    fixture.fdictDrive()
+    assert len(listAttempts) == 1, (
+        f"the empty turn was retried {len(listAttempts)} times")

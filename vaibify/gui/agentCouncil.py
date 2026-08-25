@@ -159,6 +159,38 @@ __all__ = [
 I_MAX_REJECTED_PAYLOAD_CHARACTERS = 2000
 
 
+DICT_EMPTY_TURN_EXPLANATIONS = {
+    "rateLimitedBeforeAnyResult":
+        "the provider rate-limited this model part-way through its "
+        "turn, so it never returned an answer. Its work so far is lost; "
+        "waiting and re-running is the remedy, not a change to the "
+        "question.",
+    "noResultEvent":
+        "the assistant stopped without returning an answer. Nothing in "
+        "the stream reported an error, so the cause is outside what the "
+        "turn can see.",
+    "resultEventCarriedNoText":
+        "the assistant finished but its answer was empty.",
+}
+
+
+def _fsExplainEmptyTurn(sEmptyReason, dictRawResult):
+    """Render an empty turn in words a researcher can act on.
+
+    The schema validator's output is the wrong vocabulary here: fifteen
+    "must be an array" lines describe the SHAPE of an answer that does
+    not exist, and say nothing about why.
+    """
+    dictTally = (dictRawResult or {}).get("dictEventTypeCounts") or {}
+    iAssistant = dictTally.get("assistant", 0)
+    sProgress = (
+        f" It had produced {iAssistant} messages before stopping."
+        if iAssistant else "")
+    return "emptyTurn: " + DICT_EMPTY_TURN_EXPLANATIONS.get(
+        sEmptyReason, f"the turn returned nothing ({sEmptyReason}).",
+    ) + sProgress
+
+
 def _fsSummarizeRejectedPayload(dictRawResult):
     """Render what a participant returned, for a turn that was rejected.
 
@@ -462,6 +494,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 "sRejectedPayload", "")
         else:
             dictTurnRecord["sFailureReason"] = dictAttempt["sFailureReason"]
+            dictTurnRecord["sRejectedPayload"] = dictAttempt.get(
+                "sRejectedPayload", "")
         return dictTurnRecord
 
     async def _fdictDriveConnection(self, dictParticipant, dictRequest):
@@ -488,6 +522,24 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         if iResultBytes > iOutputBudget:
             return {"sOutcome": "overBudget", "sCompletion": sCompletion,
                     "sFailureReason": "outputByteBudgetExceeded"}
+        # An EMPTY result is not a schema problem, and running the
+        # validator over it produces the worst of both: fifteen "must
+        # be an array" complaints plus a list of the diagnostic fields
+        # themselves as "unknown keys", with the actual cause buried in
+        # the middle. A researcher read exactly that and could not tell
+        # a rate-limited model from a badly formatted one (2026-08-24).
+        # Repair is skipped too: there is nothing to repair, and a
+        # second turn against a provider that just throttled us is a
+        # second turn thrown away.
+        sEmptyReason = (dictRawResult or {}).get("sEmptyResultReason")
+        if sEmptyReason:
+            return {
+                "sOutcome": "empty", "sCompletion": sCompletion,
+                "sFailureReason": _fsExplainEmptyTurn(
+                    sEmptyReason, dictRawResult),
+                "sRejectedPayload": _fsSummarizeRejectedPayload(
+                    dictRawResult),
+            }
         dictValidation = fdictValidateTurnResult(dictRawResult)
         if not dictValidation["bValid"]:
             return {"sOutcome": "invalid", "sCompletion": sCompletion,

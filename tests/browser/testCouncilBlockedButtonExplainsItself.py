@@ -890,3 +890,36 @@ def testPollsCarryTheCampaignsDirectorySoAToolkitContainerCanRefresh(
     for sUrl in listUrls:
         assert "sProjectDirectory=vplanet-private" in sUrl, (
             f"a read went out without the campaign's directory: {sUrl}")
+
+
+def testTheStateLineIsASentenceAndAgentsAreCalledAgents(
+    pageDashboard, serverHub,
+):
+    """Researcher-facing wording, not protocol vocabulary.
+
+    "Phase: needsHuman" told a researcher nothing about the five
+    questions waiting for them, and "Participant 1" is the protocol's
+    word for what they think of as an agent (2026-08-24).
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sText = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'c', sState: 'needsHuman', sQuestion: 'Q',
+                sChairbotParticipantId: 'p1',
+                dictPendingHumanGate: {sGateKind: 'blockingQuestion',
+                    listQuestions: [{sQuestionText: 'A REAL QUESTION',
+                                     sRaisedByParticipantId: 'p1'}]},
+                listParticipants: [{sParticipantId: 'p1',
+                    sProvider: 'claude', sRequestedModel: 'opus'}],
+                listRounds: []});
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "needs your opinion" in sText, sText
+    assert "Phase: needsHuman" not in sText, sText
+    assert "Agent 1" in sText, sText
+    assert "Participant 1" not in sText, sText
+    assert "A REAL QUESTION" in sText, (
+        f"the blocking question never reached the panel: {sText!r}")

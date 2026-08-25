@@ -735,7 +735,7 @@ var VaibifyAgentCouncil = (function () {
     function _fsParticipantCard(dictParticipant, iIndex) {
         return "<div class=\"council-participant-card\" data-index=\"" +
             iIndex + "\">" +
-            "<span class=\"council-participant-title\">Participant " +
+            "<span class=\"council-participant-title\">Agent " +
             (iIndex + 1) + "</span>" +
             _fsProviderSelect(dictParticipant, iIndex) +
             _fsModelField(dictParticipant, iIndex) +
@@ -836,7 +836,7 @@ var VaibifyAgentCouncil = (function () {
             function (dictParticipant, iIndex) {
                 return "<option value=\"" + iIndex + "\"" +
                     (iIndex === _dictState.iChairbotIndex ? " selected" : "") +
-                    ">Participant " + (iIndex + 1) + " (" +
+                    ">Agent " + (iIndex + 1) + " (" +
                     _fsEscape(dictParticipant.sProvider || "?") + ")</option>";
             }).join("");
         elSelect.addEventListener("change", function () {
@@ -1375,7 +1375,7 @@ var VaibifyAgentCouncil = (function () {
                 sTabs += "<button type=\"button\" class=\"council-tab\" " +
                     "data-tab=\"participant:" +
                     _fsEscape(dictParticipant.sParticipantId) + "\">" +
-                    "Participant " + (iIndex + 1) + "</button>";
+                    "Agent " + (iIndex + 1) + "</button>";
             });
         sTabs += "<button type=\"button\" class=\"council-tab\" " +
             "data-tab=\"plan\">Plan</button>";
@@ -1413,8 +1413,8 @@ var VaibifyAgentCouncil = (function () {
         return "<div class=\"council-summary\">" +
             "<h3>" + _fsEscape(dictCampaign.sQuestion) + "</h3>" +
             _fsPollHealth() +
-            "<p>Phase: <strong>" + _fsEscape(dictCampaign.sState) +
-            "</strong></p>" +
+            "<p>" + _fsEscape(_fsStateSentence(dictCampaign.sState)) +
+            "</p>" +
             _fsQuarantineWarning(dictCampaign) +
             _fsBaselineWarning(dictCampaign) +
             _fsVerdictBanner(dictCampaign) +
@@ -1474,6 +1474,28 @@ var VaibifyAgentCouncil = (function () {
             "itself is unaffected — this is a dashboard fault. Reload " +
             "the page; if it recurs, the message above is the bug " +
             "report.</div>";
+    }
+
+    /* What each campaign state MEANS, in the researcher's terms. The
+       raw state name is the protocol's vocabulary, not theirs:
+       "Phase: needsHuman" told a researcher nothing about the fact
+       that five questions were waiting for them (2026-08-24). The raw
+       name is kept in the title attribute for anyone debugging. */
+    var DICT_STATE_SENTENCES = {
+        draft: "Not yet convened.",
+        planning: "The agents are deliberating.",
+        needsHuman: "The council needs your opinion — see the questions "
+            + "below.",
+        planReady: "A plan is ready for your review.",
+        planAccepted: "You accepted this plan.",
+        awaitingImplementation: "Accepted, awaiting implementation.",
+        failed: "This council stopped without producing a plan.",
+        interrupted: "This council was interrupted before it finished.",
+        archived: "Archived.",
+    };
+
+    function _fsStateSentence(sState) {
+        return DICT_STATE_SENTENCES[sState] || ("Phase: " + sState);
     }
 
     function _fsPollHealth() {
@@ -1572,7 +1594,7 @@ var VaibifyAgentCouncil = (function () {
             function (dictParticipant, iIndex) {
                 var bChair = dictParticipant.sParticipantId ===
                     dictCampaign.sChairbotParticipantId;
-                return "<li>Participant " + (iIndex + 1) + " — " +
+                return "<li>Agent " + (iIndex + 1) + " — " +
                     _fsEscape(dictParticipant.sProvider) + " / " +
                     _fsEscape(dictParticipant.sRequestedModel || "?") +
                     (bChair ? " <span class=\"council-chair\">chairbot" +
@@ -1741,7 +1763,7 @@ var VaibifyAgentCouncil = (function () {
                 ")</span></li>";
         }).join("");
         return "<div class=\"council-needs-human\">" +
-            "<h4>The council needs your decision</h4>" +
+            "<h4>The council needs your opinion</h4>" +
             (sQuestionRows
                 ? "<ul class=\"council-questions\">" + sQuestionRows +
                     "</ul>"
