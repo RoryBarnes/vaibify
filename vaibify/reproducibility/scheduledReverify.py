@@ -112,18 +112,107 @@ def fdictLoadManifestExpectedHashes(filesRepo):
     }
 
 
-def _fdictRequireServiceConfig(dictWorkflow, sService):
-    """Return the per-service config dict from dictWorkflow or raise."""
+def _fsReadOriginRemoteUrl(filesRepo):
+    """Return the project repo's ``origin`` URL from .git/config, or "".
+
+    A file read, deliberately, rather than a ``git remote`` exec: this
+    module runs in the reproducibility layer with a files adapter and
+    no command authority, and asking for one here would add a
+    command-capable site to a layer that has none. The INI shape is
+    stable and the parse is total -- anything unexpected yields "",
+    which falls through to the same refusal as before.
+    """
+    if not filesRepo.fbIsFile(".git/config"):
+        return ""
+    try:
+        sConfig = filesRepo.fsReadText(".git/config")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    bInOrigin = False
+    for sLine in sConfig.splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("["):
+            bInOrigin = sStripped.replace(" ", "") == '[remote"origin"]'
+            continue
+        if bInOrigin and sStripped.startswith("url"):
+            _sKey, _sSep, sValue = sStripped.partition("=")
+            return sValue.strip()
+    return ""
+
+
+def _fdictDeriveGithubConfig(filesRepo):
+    """Return {sOwner, sRepo} derived from the repo's own git remote.
+
+    The owner and repository were always knowable: the project repo
+    has a git remote, and pushing to GitHub uses it. Only the VERIFY
+    side insisted on a second, hand-written declaration in
+    ``dictRemotes.github`` -- populated solely by the legacy-key
+    migration from ``sGithubBaseUrl``, a field new projects never get.
+    So every project created after that field was retired could push
+    to GitHub and then be told GitHub was "not configured".
+
+    Derived at each use rather than persisted: a git remote can be
+    changed, and a stale stored copy would verify against the wrong
+    repository and report a match or a divergence that means nothing.
+    """
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+    )
+    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(
+        _fsReadOriginRemoteUrl(filesRepo),
+    )
+    if not sOwner or not sRepo:
+        return {}
+    return {"sOwner": sOwner, "sRepo": sRepo}
+
+
+S_GITHUB_NOT_CONFIGURED = (
+    "This project has no GitHub remote to verify against. Open the "
+    "Repos panel, connect the project repository to GitHub, and push "
+    "once; verification then compares your files to what is published "
+    "there."
+)
+
+
+def _fsDescribeMissingRemote(sService):
+    """Return the researcher-facing refusal for an unconfigured remote.
+
+    It used to read "configure {service} in vaibify.yml", which was
+    false twice over: vaibify.yml has no remote section at all, and a
+    researcher should not be hand-editing configuration to clear a
+    dashboard error. Each message now names the panel that sets the
+    thing up.
+    """
+    if sService == "github":
+        return S_GITHUB_NOT_CONFIGURED
+    dictPanels = {
+        "zenodo": "the Zenodo card in the Sync panel",
+        "overleaf": "the Overleaf card in the Sync panel",
+        "arxiv": "the arXiv card in the Sync panel",
+    }
+    return (
+        f"This project is not connected to {sService}. Set it up in "
+        + dictPanels.get(sService, "the Sync panel")
+        + ", then verify again."
+    )
+
+
+def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
+    """Return the per-service config dict, deriving GitHub's when absent."""
     if sService not in LIST_SUPPORTED_SERVICES:
         raise ReverifyConfigError(
             f"Unsupported service '{sService}'."
         )
     dictRemotes = dictWorkflow.get("dictRemotes") or {}
-    dictConfig = dictRemotes.get(sService)
+    dictConfig = dict(dictRemotes.get(sService) or {})
+    if sService == "github" and filesRepo is not None and not (
+        dictConfig.get("sOwner") and dictConfig.get("sRepo")
+    ):
+        # Fill in only what is missing: an explicitly declared branch
+        # or a recorded sCommittedSha must survive the derivation.
+        dictConfig.update(_fdictDeriveGithubConfig(filesRepo))
     if not dictConfig:
-        raise ReverifyConfigError(
-            f"Remote not configured: configure {sService} in vaibify.yml"
-        )
+        raise ReverifyConfigError(_fsDescribeMissingRemote(sService))
     return dictConfig
 
 
@@ -174,8 +263,7 @@ def _fdictFetchArxivHashes(dictConfig, listRelPaths, filesRepo):
     sArxivId = dictConfig.get("sArxivId") or ""
     if not sArxivId:
         raise ReverifyConfigError(
-            "Remote not configured: configure arxiv in vaibify.yml"
-        )
+            _fsDescribeMissingRemote("arxiv"))
     dictPathMap = dictConfig.get("dictPathMap") or None
     return arxivClient.fdictFetchRemoteHashes(
         sArxivId, listRelPaths,
@@ -189,9 +277,7 @@ def _fdictFetchGithubHashes(dictConfig, listRelPaths):
     sRepo = dictConfig.get("sRepo") or ""
     sBranch = dictConfig.get("sBranch") or "main"
     if not sOwner or not sRepo:
-        raise ReverifyConfigError(
-            "Remote not configured: configure github in vaibify.yml"
-        )
+        raise ReverifyConfigError(S_GITHUB_NOT_CONFIGURED)
     return githubMirror.fdictFetchRemoteHashes(
         sOwner, sRepo, sBranch, listRelPaths,
     )
@@ -210,8 +296,7 @@ def _fdictFetchOverleafHashes(dictConfig, listRelPaths, filesRepo):
     sProjectId = dictConfig.get("sProjectId") or ""
     if not sProjectId:
         raise ReverifyConfigError(
-            "Remote not configured: configure overleaf in vaibify.yml"
-        )
+            _fsDescribeMissingRemote("overleaf"))
     dictRemoteByLocal = overleafSync.fdictOverleafRemotePathsAt(
         filesRepo, dictConfig.get("sLastPushCommit") or "",
     )
@@ -235,8 +320,7 @@ def _fdictFetchZenodoHashes(dictConfig, listRelPaths):
     sRecordId = dictConfig.get("sRecordId") or ""
     if not sRecordId:
         raise ReverifyConfigError(
-            "Remote not configured: configure zenodo in vaibify.yml"
-        )
+            _fsDescribeMissingRemote("zenodo"))
     sService = dictConfig.get("sService") or "sandbox"
     return zenodoClient.fdictFetchRemoteHashes(
         sRecordId, listRelPaths=listRelPaths, sService=sService,
@@ -361,7 +445,9 @@ def fdictVerifyRemoteService(
     drifted away from the last successful verification.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictConfig = _fdictRequireServiceConfig(dictWorkflow, sService)
+    dictConfig = _fdictRequireServiceConfig(
+        dictWorkflow, sService, filesRepo,
+    )
     dictExpected = fdictComputeLiveExpectedHashes(
         filesRepo, dictWorkflow,
     )
