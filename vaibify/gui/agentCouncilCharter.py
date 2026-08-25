@@ -522,7 +522,8 @@ def flistBuildQuotedMaterial(dictCampaign, dictRound, sPhase, sParticipantId):
         "researcherQuestion", "researcher", dictCampaign["sQuestion"])]
     for dictResponse in dictCampaign["listResearcherResponses"]:
         listQuoted.append(fdictBuildQuotedEntry(
-            "researcherResponse", "researcher", dictResponse["sText"]))
+            "researcherResponse", "researcher",
+            _fsComposeAnsweredQuestions(dictResponse)))
     for dictParticipant in dictCampaign["listParticipants"]:
         if dictParticipant["bFailed"]:
             listQuoted.append(fdictBuildQuotedEntry(
@@ -577,6 +578,24 @@ def _flistResultQuotes(dictRound, sSourcePhase, sSourceKind,
             sSourceKind, dictTurnRecord["sParticipantId"],
             json.dumps(dictTurnRecord["dictResult"], sort_keys=True)))
     return listQuoted
+
+
+def _fsComposeAnsweredQuestions(dictResponse):
+    """Render a researcher answer beside the questions it answered.
+
+    An answer alone is unreadable to a participant that did not raise
+    the question, and no participant raised all of them. Responses
+    recorded by an earlier hub carry no questions and are quoted as they
+    always were, rather than gaining an empty and misleading heading.
+    """
+    listAnswered = dictResponse.get("listAnsweredQuestions") or []
+    if not listAnswered:
+        return dictResponse["sText"]
+    sAsked = "\n".join(
+        f"[{dictQuestion['sQuestionId']}] {dictQuestion['sQuestionText']}"
+        for dictQuestion in listAnswered)
+    return (f"QUESTIONS PUT TO THE RESEARCHER:\n{sAsked}\n\n"
+            f"THE RESEARCHER'S REPLY TO THEM:\n{dictResponse['sText']}")
 
 
 def _flistHeldQuestionQuotes(dictRound):

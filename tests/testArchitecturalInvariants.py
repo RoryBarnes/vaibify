@@ -4192,7 +4192,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the branch that parks them plus the round key that holds them —
     # both in the phase-settle path that already decides what a settled
     # phase means. Same responsibility, one ordering later.
-    "agentCouncil.py": 815,
+    # 815 -> 826 (2026-08-25): a recorded answer captures the questions
+    # it answered, because the gate holding them is discarded on the
+    # very next line and the next round would otherwise be handed bare
+    # prose. It belongs at the point of record — anywhere else and the
+    # questions are already gone.
+    "agentCouncil.py": 826,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates

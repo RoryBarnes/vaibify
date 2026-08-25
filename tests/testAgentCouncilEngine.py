@@ -475,6 +475,44 @@ def testTheChairbotIsShownTheHeldQuestionsWithTheirIdentifiers():
     assert "question-" in listHeld[0]["sContent"]
 
 
+def testTheAnswerReachesTheNextRoundBesideTheQuestionsItAnswered():
+    """An answer alone is unreadable to an agent that did not ask.
+
+    The gate is discarded the moment a response is recorded, so unless
+    its questions are captured first they are gone: the next round is
+    handed bare prose, and one text box may be answering a dozen
+    questions at once.
+
+    Kills: appending {"sText": ...} alone (the shape before 2026-08-25),
+    and quoting dictResponse["sText"] directly instead of composing it
+    beside the questions.
+    """
+    fixture = fixtureBuildCouncil(
+        LIST_THREE_SPECS,
+        _ffnDecideVetoVerdict("B", "needsHuman", iRoundLimit=1,
+                              listOpenQuestions=["delete it, or keep it?"]),
+        sChairbotHandle="A")
+    fixture.fdictDrive()
+    dictOut = fixture.fdictContinue("keep it, but discourage it")
+
+    [dictResponse] = dictOut["listResearcherResponses"]
+    [dictAnswered] = dictResponse["listAnsweredQuestions"]
+    assert dictAnswered["sQuestionText"] == "delete it, or keep it?"
+
+    listSecondRound = fixture.flistRequestsFor("C", S_VETO)
+    assert len(listSecondRound) > 1, "the continuation round never ran"
+    listResponseQuotes = [
+        dictQuoted for dictQuoted in listSecondRound[-1]["listQuotedMaterial"]
+        if dictQuoted["sSourceKind"] == "researcherResponse"]
+    assert listResponseQuotes, "the answer never reached the next round"
+    sQuoted = listResponseQuotes[-1]["sContent"]
+    assert "keep it, but discourage it" in sQuoted
+    assert "delete it, or keep it?" in sQuoted, (
+        "the answer arrived without the question it answers")
+    assert dictAnswered["sQuestionId"] in sQuoted, (
+        "the answer arrived without a handle the plan can anchor to")
+
+
 def testContinuationAfterResearcherResponseReconstructsContext():
     """A researcher response is recorded and the continuation rebuilds
     context from the record — the response reappears as quoted material in

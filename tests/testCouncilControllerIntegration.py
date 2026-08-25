@@ -148,8 +148,17 @@ def test_blocking_question_gate_suspends_then_a_response_continues(
             app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
         dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
             app.state.dictCouncilCampaignStore, sCampaignId)
-        assert dictRecord["listResearcherResponses"] == [
-            {"sText": "the tolerance is fixed; proceed"}]
+        # The answer is durable WITH the questions it answered. The gate
+        # holding them is discarded the moment the response is recorded,
+        # so if they are not captured at that point they are gone — and
+        # the next round is handed prose with nothing to attach it to.
+        # Asserted over real HTTP through the durable record, because
+        # that is the path a resumed campaign actually reads.
+        [dictResponse] = dictRecord["listResearcherResponses"]
+        assert dictResponse["sText"] == "the tolerance is fixed; proceed"
+        [dictAnswered] = dictResponse["listAnsweredQuestions"]
+        assert dictAnswered["sQuestionText"] == "is the tolerance negotiable?"
+        assert dictAnswered["sQuestionId"].startswith("question-")
 
 
 def test_restart_classifies_a_mid_turn_campaign_as_interrupted(tmp_path):

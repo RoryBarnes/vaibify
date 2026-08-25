@@ -700,8 +700,19 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 "exits — a plain response does not restart the loop")
         self._fnRecordResearcherDecision({
             "sDecisionKind": "researcherResponse", "sText": sResponseText})
-        self.dictCampaign["listResearcherResponses"].append(
-            {"sText": sResponseText})
+        # Capture the questions this answers BEFORE the gate is
+        # discarded on the next line. Without them the answer reaches the
+        # next round as unattached prose: an agent is handed "prefer the
+        # conservative option" with no record of what was asked, and one
+        # text box may be answering a dozen questions at once. The
+        # researcher typed a single reply, so this records the questions
+        # it responded to — never a per-question mapping the UI did not
+        # collect.
+        self.dictCampaign["listResearcherResponses"].append({
+            "sText": sResponseText,
+            "listAnsweredQuestions": copy.deepcopy(
+                dictGate.get("listQuestions", [])),
+        })
         self.dictCampaign["dictPendingHumanGate"] = None
         self._fnTransition(S_STATE_PLANNING, "researcherResponded")
         return await self.fdictRunUntilBlocked()
