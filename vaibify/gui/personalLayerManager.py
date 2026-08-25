@@ -1,6 +1,7 @@
 """Personal-instruction-layer policy: commitments and the host-hash jail.
 
-The personal layer is instruction-stack layer 4: the researcher's
+The personal layer -- shown to the researcher as "Personal AI
+Configuration" -- is instruction-stack layer 4: the researcher's
 private host-side agent configuration (global instruction file,
 personal skills, memory, hooks). Its declaration lives in
 ``dictWorkflow["dictAiProvenance"]["dictPersonalLayer"]`` (statuses in

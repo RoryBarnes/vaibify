@@ -680,8 +680,8 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/personal-layer/declare",
      "bAgentSafe": False,
      "sDescription": "Record the researcher's answer about their "
-                     "personal instruction layer (private host-side "
-                     "agent configuration). Args: {sStatus: 'none' | "
+                     "Personal AI Configuration -- their private "
+                     "host-side agent configuration. Args: {sStatus: 'none' | "
                      "'declared-private' | 'included'}; "
                      "'declared-private' may add "
                      "{dictHashCommitment}; 'included' may add "

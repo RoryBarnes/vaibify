@@ -814,7 +814,7 @@ var VaibifyWorkflowRequirements = (function () {
                  return _fsRenderAiModelPromptsDetail(dictDetail);
              }},
             {sKey: "personalLayer", iLevel: 2,
-             sTitle: "Personal instruction layer",
+             sTitle: "Personal AI Configuration",
              sState: _fsLightStateFromBoolean(
                  dictDetail.bPersonalLayerDeclared === true),
              fsDetail: function () {
@@ -966,10 +966,23 @@ var VaibifyWorkflowRequirements = (function () {
         return sHtml + '</span>';
     }
 
+    /* Every level of the Project block is click-to-expand, and none of
+       them said so. A requirement whose light was red therefore read as
+       "you are blocked and there is nothing to do" rather than "open me
+       and I will tell you what to do" — which is exactly backwards,
+       because the detail body is where the fix lives. Step rows have
+       carried this triangle all along; the Project block simply never
+       got it. The click handlers dispatch on the closest matching
+       header, so a click that lands on the triangle still toggles. */
+    function _fsExpandTriangle(bOpen) {
+        return '<span class="expand-triangle">' +
+            (bOpen ? "▾" : "▸") + '</span> ';
+    }
+
     function _fsRenderRequirementRow(dictRow, setExpandedRows) {
-        // Mirrors a step row's banner: title on the left, the L1-L3
-        // level strip on the right, no expand button (click the
-        // banner to expand).
+        // Mirrors a step row's banner: triangle and title on the left,
+        // the L1-L3 level strip on the right; the banner is the
+        // expand control.
         var bOpen = setExpandedRows && setExpandedRows.has(dictRow.sKey);
         var dictStateByLevel = {};
         dictStateByLevel[dictRow.iLevel || 3] =
@@ -979,6 +992,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-row-header" data-req="' +
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
+            _fsExpandTriangle(bOpen) +
             fnEscapeHtml(dictRow.sTitle) + '</span>' +
             _fsRenderLevelStrip(dictStateByLevel, dictRow.sTitle) +
             '</div>';
@@ -1104,6 +1118,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-group-header" data-group="' +
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
+            _fsExpandTriangle(bOpen) +
             _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
@@ -1157,7 +1172,8 @@ var VaibifyWorkflowRequirements = (function () {
             '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the banner ' +
-            'to collapse or expand.">Project' +
+            'to collapse or expand.">' +
+            _fsExpandTriangle(bOpen) + 'Project' +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';

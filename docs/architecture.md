@@ -1311,7 +1311,11 @@ trust-base statement) is built by `aiProvenanceStamp.py` +
 `gui/aiProvenanceCapture.py`, kept current by a poll side-effect,
 and folded into the L3 attestation record (schema v2).
 
-**The instruction stack and the personal layer.** The instructions
+**The instruction stack and the personal layer.** (The dashboard
+calls layer 4 **Personal AI Configuration**; `personalLayer` /
+`dictPersonalLayer` remain its identifiers, wire path and persisted
+key, because renaming a stored schema key would strand every existing
+project.) The instructions
 governing an AI agent stack in four layers: (1) the harness system
 prompt (proprietary — declared via the model ID, unarchivable), (2)
 the vaibify-generated container context, (3) the project's own

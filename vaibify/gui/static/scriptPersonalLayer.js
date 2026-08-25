@@ -1,4 +1,9 @@
-/* Vaibify — personal instruction layer declaration (Replay axis).
+/* Vaibify — Personal AI Configuration declaration (Replay axis).
+
+   The researcher-facing name is "Personal AI Configuration"; the
+   identifiers, route path and persisted key stay `personalLayer` /
+   `dictPersonalLayer`, because renaming a stored schema key would
+   strand every project that already answered.
 
    Instruction-stack layer 4: the researcher's private host-side agent
    configuration (global instruction file, personal skills, memory,
@@ -31,7 +36,7 @@ var VaibifyPersonalLayer = (function () {
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
     var _DICT_STATUS_LABELS = {
-        "none": "No personal layer exists",
+        "none": "No personal AI configuration exists",
         "declared-private": "Exists — content withheld",
         "included": "Included in the project repository",
     };
@@ -154,7 +159,7 @@ var VaibifyPersonalLayer = (function () {
                 sContainerId, {sStatus: sStatus});
             _fnApplyResultToWorkflow(dictResult);
             VaibifyApp.fnShowToast(
-                "Personal layer declared: " +
+                "Personal AI Configuration declared: " +
                     (_DICT_STATUS_LABELS[sStatus] || sStatus) + ".",
                 "success");
         } catch (error) {

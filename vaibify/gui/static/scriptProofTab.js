@@ -152,7 +152,7 @@ var VaibifyProofTab = (function () {
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "aiModelPrompts"},
             {sStateKey: "bPersonalLayerDeclared",
-             sLabel: "Personal instruction layer answered",
+             sLabel: "Personal AI Configuration answered",
              sWhat: "The researcher's private host-side agent " +
                  "configuration (global instruction file, personal " +
                  "skills, memory, hooks) is accounted for with one " +
@@ -160,7 +160,7 @@ var VaibifyProofTab = (function () {
                  "withheld, or included in the repository. Any " +
                  "answer meets the criterion — disclosure is never " +
                  "required; unanswered is the only failing state.",
-             sHow: "Answer in the Personal instruction layer row " +
+             sHow: "Answer in the Personal AI Configuration row " +
                  "of the AI section of the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",

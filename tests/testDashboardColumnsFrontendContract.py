@@ -142,16 +142,25 @@ def test_step_rows_carry_no_hover_edit_button():
 def test_project_block_is_labeled_project():
     """The block header must read "Project", not "Workflow" — the
     bare word reads as a summary of the step rows, which it is not,
-    and "Workflow-wide" was rejected as clunky (2026-07-08)."""
+    and "Workflow-wide" was rejected as clunky (2026-07-08).
+
+    The assertions match the label as its own JS string literal rather
+    than as ``>Project``. The old form coupled the label to whatever
+    character preceded it, so adding the expand marker in front of it
+    (2026-08-24) broke this test while the contract it defends went
+    untouched — and the negative assertions would have gone quietly
+    vacuous in the same edit, since a regression to "Workflow" behind
+    a marker no longer renders as ``>Workflow<`` either.
+    """
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "fsRenderProjectBlock",
     )
-    assert ">Project" in sHeader
-    assert ">Workflow<" not in sHeader, (
+    assert "'Project'" in sHeader
+    assert "'Workflow'" not in sHeader, (
         "bare 'Workflow' label reads as an aggregate of the steps"
     )
-    assert ">Workflow-wide" not in sHeader, (
+    assert "'Workflow-wide" not in sHeader, (
         "the clunky 'Workflow-wide' label was retired for 'Project'"
     )
 
