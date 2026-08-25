@@ -2610,13 +2610,13 @@ const VaibifyApp = (function () {
         },
         "not-in-github-mirror": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from GitHub mirror — commit " +
+            sLabel: "Published files differ from GitHub — commit " +
                 "and push from the Repos panel",
             sClass: "step-blocker-glyph-l2-mirror",
         },
         "not-in-zenodo-deposit": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from Zenodo deposit — publish " +
+            sLabel: "Published files differ from Zenodo — publish " +
                 "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },

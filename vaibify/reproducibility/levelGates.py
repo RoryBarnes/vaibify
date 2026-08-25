@@ -1863,7 +1863,8 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
         dictWorkflow, dictStatus,
         sCriterion="not-in-github-mirror",
         sRemediationHint=(
-            "Outputs differ from GitHub mirror — push to clear blocker"
+            "Published files differ from the GitHub mirror — push to "
+            "clear blocker"
         ),
     )
 
@@ -1879,7 +1880,8 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
         dictWorkflow, dictStatus,
         sCriterion="not-in-zenodo-deposit",
         sRemediationHint=(
-            "Outputs differ from Zenodo deposit — archive to clear blocker"
+            "Published files differ from the Zenodo deposit — archive "
+            "to clear blocker"
         ),
     )
 
@@ -1973,9 +1975,59 @@ def _fsetDivergedPaths(dictStatus):
 
 
 def _flistStepDivergedFiles(dictStep, setDiverged):
-    """Return the step's output files that intersect ``setDiverged``."""
-    listFiles = _flistStepOutputFiles(dictStep)
+    """Return the step's published files that intersect ``setDiverged``."""
+    listFiles = _flistStepPublishedPaths(dictStep)
     return [sPath for sPath in listFiles if sPath in setDiverged]
+
+
+def _flistStepPublishedPaths(dictStep):
+    """Return every repo-relative path a step declares, any category.
+
+    The set the per-step sync projection intersects with the remote
+    divergence list. It must be a SUPERSET of what the reverify
+    compares, and until 2026-08-25 it was ``_flistStepOutputFiles`` —
+    a strict subset. Everything else the reverify hashes against
+    GitHub and Zenodo (inputs, scripts, test standards, generated test
+    files, and the AI declaration) was compared, found diverged,
+    recorded in ``syncStatus.json`` — and then dropped here, because
+    no step's output arrays contained it. No blocker was emitted, the
+    ``github-mirror`` requirement read satisfied, and the row rendered
+    a check. A researcher whose declaration file did not match GitHub
+    was told it did. The declaration made it unmissable because that
+    step has NO outputs at all, so its row could never be anything
+    but green; a diverged script had the same defect one file at a
+    time.
+
+    Over-inclusion is inert and under-inclusion is a false pass, which
+    is why this errs wide: ``setDiverged`` holds only paths the
+    reverify actually compared, so a path listed here that was never
+    compared simply cannot intersect it. That asymmetry is the reason
+    this is a separate collector rather than a reuse of
+    ``_flistStepDeclaredPaths`` — that one feeds the L3 manifest
+    check, where a path the manifest legitimately omits (standards,
+    declaration and test files are pinned only when the workflow
+    archives tests) would become a false FAILURE. The two sets are
+    close today and must be free to diverge; the direction each is
+    allowed to be wrong in is opposite.
+    """
+    from .manifestPaths import (
+        flistStepDeclarationRepoPaths,
+        flistStepInputRepoPaths,
+        flistStepScriptRepoPaths,
+        flistStepStandardsRepoPaths,
+    )
+    from .manifestWriter import flistStepTestFileRepoPaths
+
+    listPaths = list(_flistStepOutputFiles(dictStep))
+    for flistCollectCategory in (
+        flistStepInputRepoPaths,
+        flistStepScriptRepoPaths,
+        flistStepStandardsRepoPaths,
+        flistStepDeclarationRepoPaths,
+        flistStepTestFileRepoPaths,
+    ):
+        listPaths.extend(flistCollectCategory(dictStep) or [])
+    return [sPath for sPath in listPaths if sPath]
 
 
 def _fdictBuildSyncStepBlocker(

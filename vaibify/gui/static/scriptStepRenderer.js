@@ -276,8 +276,14 @@ var VaibifyStepRenderer = (function () {
         "user-attestation": "Your sign-off recorded",
         "timing-clean": "Nothing changed since verification",
         "input-data-declared": "Input data declared",
-        "github-mirror": "Outputs match the GitHub mirror",
-        "zenodo-deposit": "Outputs match the Zenodo deposit",
+        // "Outputs" until 2026-08-25, when the projection behind
+        // these rows widened from the step's output arrays to every
+        // path it declares — inputs, scripts, test standards,
+        // generated tests, and the AI declaration are all compared
+        // against the remote, so a label naming only outputs
+        // understated what a check here claims.
+        "github-mirror": "Published files match the GitHub mirror",
+        "zenodo-deposit": "Published files match the Zenodo deposit",
         "figure-frozen": "Manuscript figures frozen in Overleaf",
         "ai-declaration-attested": "AI declaration signed off",
         "missing-from-manifest": "Outputs pinned in the manifest",
