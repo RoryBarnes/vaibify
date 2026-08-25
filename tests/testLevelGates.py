@@ -453,7 +453,13 @@ def test_fdictBuildAiDeclarationStep_has_unnecessary_categories():
     assert dictStep["sStepKind"] == S_AI_DECLARATION_STEP_KIND
     assert dictStep["sDeclarationFile"] == "AI_USAGE.md"
     assert dictStep["bInteractive"] is True
-    assert dictStep["sDirectory"] == "aiDeclaration"
+    # Was "aiDeclaration" until 2026-08-25. The default directory is
+    # not free: the slug contract derives it from the default NAME,
+    # and the old value disagreed, so every declaration step vaibify
+    # built was born wearing a red contract-violation warning.
+    # testDeclarationStepHonorsTheSlugContract pins the relationship
+    # rather than the spelling.
+    assert dictStep["sDirectory"] == "AIDeclaration"
     dictV = dictStep["dictVerification"]
     for sKey in (
         "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",

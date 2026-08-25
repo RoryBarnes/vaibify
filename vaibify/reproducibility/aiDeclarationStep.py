@@ -46,8 +46,15 @@ __all__ = [
 
 S_AI_DECLARATION_STEP_KIND = "ai-declaration"
 S_DEFAULT_DECLARATION_FILENAME = "AI_USAGE.md"
-S_DEFAULT_DECLARATION_DIRECTORY = "aiDeclaration"
 S_DEFAULT_DECLARATION_STEP_NAME = "AI Declaration"
+# The slug contract (2026-07-18) derives a step's directory basename
+# from its name, so this default is NOT free: it must be exactly
+# fsSlugFromStepName(S_DEFAULT_DECLARATION_STEP_NAME). It read
+# "aiDeclaration" until 2026-08-25, so every declaration step vaibify
+# itself created was born violating vaibify's own contract and wore a
+# red ⚠ telling the researcher to rename a step the product had just
+# built for them. Pinned by testDeclarationStepHonorsTheSlugContract.
+S_DEFAULT_DECLARATION_DIRECTORY = "AIDeclaration"
 
 
 S_DECLARATION_TEMPLATE = """# AI Usage Declaration
