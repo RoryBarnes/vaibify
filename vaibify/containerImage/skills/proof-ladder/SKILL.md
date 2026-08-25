@@ -105,6 +105,20 @@ Every canonical file's hash matches an immutable public authority
    `sRefusal: "user-only-action"` response.
 5. After the researcher pushes: `vaibify-do verify-remote` confirms
    remote hashes match the current local files.
+6. **After a push that did NOT go through vaibify** — a `git push`
+   you or the researcher typed in a terminal, or one a script made —
+   run `vaibify-do reconcile-remote-state`. The L2 cells read a
+   cached comparison that only an explicit verify rewrites, and the
+   badge map only refreshes when a vaibify route bumps the sync
+   epoch; terminal git bumps neither, so the dashboard keeps showing
+   the pre-push state indefinitely. It is not wrong, it has not been
+   told. Report `iMatching`, `iTotalFiles` and `listDiverged` from
+   the response — if the cell was already green the researcher sees
+   no change and cannot otherwise tell the reconcile from a no-op.
+
+   **Check this before concluding a green L2 cell is a bug.** A
+   requirement row reads what the last verify recorded, not what
+   github.com holds right now.
 
 ## L3 — Reproducible
 
