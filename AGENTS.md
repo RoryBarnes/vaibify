@@ -1270,6 +1270,53 @@ correct approach.
   any function that composes container commands, regenerate and
   drift-check EVERY generated ledger, and diff the disposition count
   before and after.
+- **A guard can be credited with a property the surrounding code
+  already supplies, and then it is not a guard.** `_fsLevelCellState`
+  checked `bUnknown` ahead of the counts, documented and tested as
+  what keeps a stale verify cache out of `attained`. It never did:
+  `iSatisfied` counts only `bMet is True`, so an unknown requirement
+  already forces `iSatisfied < iTotal` and attainment is impossible by
+  the arithmetic alone. All the short-circuit did was erase a
+  researcher's positively-verified GitHub mirror behind a "?" because
+  Zenodo had never been checked. Three tests defended it and none
+  would have failed if the property were gone, because they asserted
+  the MARK ("unknown") rather than the property (never `attained`).
+  Before preserving a guard, find the line that actually supplies the
+  thing it is credited with; and assert properties, not the symptom
+  you expect a property to produce.
+- **A constant that must equal a derivation has to be pinned to it,
+  not re-typed.** `fdictBuildAiDeclarationStep` defaulted `sName` to
+  "AI Declaration" and `sDirectory` to the independently-typed
+  `"aiDeclaration"`, while the slug contract derives `"AIDeclaration"`
+  from that name. Every declaration step vaibify built was therefore
+  born violating vaibify's own contract, and the dashboard painted it
+  a red error telling the researcher to rename a step the product had
+  just created for them. Nothing caught it because creation validated
+  the name and the directory independently — the guard existed only on
+  the rename path. Two rules: pin the relationship
+  (`assert CONSTANT == fsDerive(OTHER)`) rather than the spelling, and
+  when a contract is enforced on edit, check whether creation enforces
+  it too.
+- **A projection that narrows its input set turns a proved failure
+  into a green check.** The L2 reverify compared every canonical path
+  against GitHub, recorded the AI declaration file as diverged in the
+  project's cached sync status — and the per-step projection then intersected
+  that divergence list with `_flistStepOutputFiles` alone, so no
+  blocker was emitted and the row rendered "Outputs match the GitHub
+  mirror". The gate whose purpose is not to overstate publication was
+  asserting a match about a file it had just proved did not match.
+  Two things to carry forward. When a comparison and its display are
+  separated by a projection, the projection's set must be a SUPERSET
+  of the comparison's — check that relationship explicitly, because
+  both stages look correct in isolation. And a *narrow but accurate*
+  label ("Outputs") reads as a broad claim once it sits in a
+  requirement row, so it hides the gap rather than disclosing it.
+- **`git checkout <file>` to undo a kill-confirm mutation discards the
+  fix with it.** Restoring from HEAD reverts every edit in that file,
+  not the mutation — and the suite goes green afterwards, because the
+  pre-fix code is what the pre-fix tests were written against. Copy
+  the file aside and copy it back, and re-grep for a marker string
+  from the change before believing the restore.
 
 ## Pointers
 
