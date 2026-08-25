@@ -559,3 +559,65 @@ def test_rename_flow_previews_the_dry_run_before_applying():
     assert "listScriptWarnings" in sEditor, (
         "script warnings from the dry run must reach the preview"
     )
+
+
+# --------------------------------------------------------------------------
+# Scalar path fields (sDeclarationFile)
+#
+# _T_STEP_PATH_ARRAY_KEYS drove the whole cascade, so a step path held
+# in a SCALAR field was never rewritten. sDeclarationFile was the only
+# one, and it stayed invisible because the declaration defaults to
+# AI_USAGE.md at the repo root, which no step rename touches. A
+# researcher who kept the declaration inside the step's own directory
+# and then renamed the step (or ran align-step-directories) got a
+# dangling pointer: the directory moved and the field still named the
+# old location, so the declaration silently stopped resolving --
+# including for the L2 published-copies comparison, which reads that
+# field to find the file.
+# --------------------------------------------------------------------------
+
+
+def test_plan_covers_a_declaration_file_inside_the_step_directory():
+    dictWorkflow = _fdictWorkflow(
+        {"sStepKind": "ai-declaration",
+         "sDeclarationFile": "OldStep/AI_USAGE.md"},
+    )
+    dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
+    assert {"sField": "sDeclarationFile",
+            "sOld": "OldStep/AI_USAGE.md",
+            "sNew": "NewStep/AI_USAGE.md"} in dictPlan["listFieldRewrites"], (
+        "the rename preview does not mention the declaration file, so "
+        "the researcher approves a move that silently breaks it"
+    )
+
+
+def test_apply_rewrites_a_declaration_file_inside_the_directory():
+    dictWorkflow = _fdictWorkflow(
+        {"sStepKind": "ai-declaration",
+         "sDeclarationFile": "OldStep/AI_USAGE.md"},
+    )
+    _fdictApply(dictWorkflow, {
+        "test -e": (1, ""), "test -d": (0, ""), "git mv": (0, ""),
+    })
+    assert dictWorkflow["listSteps"][0]["sDeclarationFile"] == (
+        "NewStep/AI_USAGE.md"
+    )
+
+
+def test_a_repo_root_declaration_is_left_alone():
+    """The default case must not be dragged into the step directory.
+
+    AI_USAGE.md at the repo root belongs to no step directory, so the
+    prefix rewrite must leave it exactly as it is -- the same rule
+    that already protects step-relative entries like 'local.csv'.
+    """
+    dictWorkflow = _fdictWorkflow(
+        {"sStepKind": "ai-declaration",
+         "sDeclarationFile": "AI_USAGE.md"},
+    )
+    _fdictApply(dictWorkflow, {
+        "test -e": (1, ""), "test -d": (0, ""), "git mv": (0, ""),
+    })
+    assert dictWorkflow["listSteps"][0]["sDeclarationFile"] == (
+        "AI_USAGE.md"
+    )
