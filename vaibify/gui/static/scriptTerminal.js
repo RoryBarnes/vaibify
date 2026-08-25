@@ -78,6 +78,9 @@ const VaibifyTerminal = (function () {
             '<div class="terminal-pane-tabs">' +
             '<button class="terminal-pane-add" data-pane="' +
             iPaneId + '" title="New tab">+</button>' +
+            '<button class="terminal-pane-copy" data-pane="' +
+            iPaneId + '" title="Copy this terminal\'s full scrollback ' +
+            'to the clipboard">Copy all</button>' +
             '</div>' +
             '<div class="terminal-pane-container"></div>';
         elStrip.appendChild(elPane);
@@ -90,10 +93,7 @@ const VaibifyTerminal = (function () {
         };
         listPanes.push(dictPane);
 
-        var elAdd = elPane.querySelector(".terminal-pane-add");
-        elAdd.onclick = function () {
-            fnCreateTab(iPaneId);
-        };
+        fnBindPaneToolbarButtons(dictPane, iPaneId);
 
         fnCreateTab(iPaneId);
         fnUpdateAddPaneButton();
@@ -141,17 +141,28 @@ const VaibifyTerminal = (function () {
                 fnBindTerminalResizeHandle(elHandle, iNewId);
             }
             elStrip.appendChild(dictPane.elPane);
-
-            /* Update add button data-pane */
-            var elAdd = dictPane.elPane.querySelector(".terminal-pane-add");
-            if (elAdd) {
-                elAdd.dataset.pane = String(iNewId);
-                var iCapturedId = iNewId;
-                elAdd.onclick = function () {
-                    fnCreateTab(iCapturedId);
-                };
-            }
+            fnBindPaneToolbarButtons(dictPane, iNewId);
         });
+    }
+
+    /* The pane's own buttons are rebound on every reindex, because the
+       pane id they act on is its position in listPanes and that moves
+       when a pane is removed. */
+    function fnBindPaneToolbarButtons(dictPane, iPaneId) {
+        var elAdd = dictPane.elPane.querySelector(".terminal-pane-add");
+        if (elAdd) {
+            elAdd.dataset.pane = String(iPaneId);
+            elAdd.onclick = function () {
+                fnCreateTab(iPaneId);
+            };
+        }
+        var elCopy = dictPane.elPane.querySelector(".terminal-pane-copy");
+        if (elCopy) {
+            elCopy.dataset.pane = String(iPaneId);
+            elCopy.onclick = function () {
+                fnCopyPaneScrollback(iPaneId);
+            };
+        }
     }
 
     function fnUpdateAddPaneButton() {
@@ -330,6 +341,7 @@ const VaibifyTerminal = (function () {
         dictTab.fitAddon = fitAddon;
 
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
+        fnBindScrollbackWheelHandler(terminal);
         if (fbTerminalIsAvailableHere()) {
             fnArmLazyShellDial(dictPane, dictTab, terminal, elContainer);
         } else {
@@ -410,6 +422,117 @@ const VaibifyTerminal = (function () {
             function (event) {
                 fnCopySelectionOnRightClick(event, terminal);
             });
+    }
+
+    /* --- Reaching the scrollback ---
+
+       A full-screen program (an agent, vim, htop) turns on mouse
+       reporting, and xterm then forwards the WHEEL to it — so the
+       researcher's own scrollback becomes unreachable for as long as
+       that program runs. Option+drag overrides the same capture for
+       selection, but there is no built-in override for the wheel, and
+       xterm's drag-scroll only engages once the pointer leaves the
+       pane. The measured consequence was a hard ceiling of one
+       screenful on anything that could be selected or copied.
+
+       Shift+wheel therefore scrolls the viewport UNCONDITIONALLY,
+       rather than detecting capture and reacting to it. The state it
+       would detect is not stable: the container's agent self-updates,
+       so whether the wheel is captured can change under a researcher
+       who changed nothing. A single behaviour in both states is the
+       only one that stays true across that. */
+
+    var _I_FALLBACK_CELL_HEIGHT_PIXELS = 17;
+
+    /* The browser remaps a shifted wheel onto the HORIZONTAL axis, so
+       the very gesture this handler exists for arrives with deltaY 0
+       and its magnitude in deltaX. Reading deltaY alone measured zero
+       lines on every real Shift+scroll — and since the handler still
+       claimed the event, it SUPPRESSED the scroll rather than
+       performing it, which is worse than not having been written.
+       (The browser-lane test did not catch it: Playwright's
+       mouse.wheel writes deltaY directly and does not reproduce the
+       remap, so the suite drove a shape no browser sends.) */
+    function ffMeasureWheelDelta(event) {
+        return event.deltaY || event.deltaX;
+    }
+
+    function fiMeasureWheelScrollLines(event, terminal) {
+        var fDelta = ffMeasureWheelDelta(event);
+        if (event.deltaMode === 1) return Math.round(fDelta);
+        if (event.deltaMode === 2) {
+            return Math.round(fDelta) * terminal.rows;
+        }
+        var fCellHeight = _I_FALLBACK_CELL_HEIGHT_PIXELS;
+        if (terminal.element && terminal.rows > 0) {
+            fCellHeight = terminal.element.clientHeight / terminal.rows;
+        }
+        var iLines = Math.round(fDelta / Math.max(fCellHeight, 1));
+        if (iLines !== 0 || fDelta === 0) return iLines;
+        /* A trackpad emits many sub-cell deltas; rounding each to zero
+           would make Shift+wheel do nothing at all on a trackpad. */
+        return fDelta > 0 ? 1 : -1;
+    }
+
+    function fbHandleScrollbackWheelEvent(event, terminal) {
+        if (!event.shiftKey) return true;
+        var iLines = fiMeasureWheelScrollLines(event, terminal);
+        /* Never swallow a wheel this handler did not act on: claiming
+           the event while scrolling nothing is how the remap above
+           turned a fix into a regression. */
+        if (iLines === 0) return true;
+        event.preventDefault();
+        terminal.scrollLines(iLines);
+        return false;
+    }
+
+    function fnBindScrollbackWheelHandler(terminal) {
+        terminal.attachCustomWheelEventHandler(function (event) {
+            return fbHandleScrollbackWheelEvent(event, terminal);
+        });
+    }
+
+    /* The whole buffer, with wrapped rows rejoined into the line the
+       program actually wrote. This is the path that needs no gesture
+       at all: it cannot be defeated by a program holding the mouse,
+       which is what makes it the reliable way to get an agent's
+       answer out of the pane. */
+    function flistReadBufferLines(buffer) {
+        var listLines = [];
+        for (var iRow = 0; iRow < buffer.length; iRow++) {
+            var bufferLine = buffer.getLine(iRow);
+            if (!bufferLine) continue;
+            var sText = bufferLine.translateToString(true);
+            if (bufferLine.isWrapped && listLines.length > 0) {
+                listLines[listLines.length - 1] += sText;
+            } else {
+                listLines.push(sText);
+            }
+        }
+        return listLines;
+    }
+
+    function fsReadTerminalScrollback(terminal) {
+        var listLines = flistReadBufferLines(terminal.buffer.active);
+        while (listLines.length > 0 &&
+               listLines[listLines.length - 1] === "") {
+            listLines.pop();
+        }
+        return listLines.join("\n");
+    }
+
+    function fnCopyPaneScrollback(iPaneId) {
+        var dictPane = listPanes[iPaneId];
+        if (!dictPane) return;
+        var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+        if (!dictTab || !dictTab.terminal) return;
+        var sScrollback = fsReadTerminalScrollback(dictTab.terminal);
+        if (!sScrollback) {
+            VaibifyApp.fnShowToast(
+                "This terminal has no output to copy yet.", "error");
+            return;
+        }
+        VaibifyFileOps.fnCopyToClipboard(sScrollback);
     }
 
     function fbTerminalIsAvailableHere() {

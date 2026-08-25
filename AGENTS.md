@@ -1197,6 +1197,48 @@ correct approach.
   and reproduce a divergence like this locally with
   `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch
   GIT_CONFIG_VALUE_0=master` rather than pushing a guess at CI.
+- **A browser-lane test can drive an event shape no browser sends.** A
+  Shift+scroll handler was added so a researcher could reach the
+  terminal scrollback while an agent held the mouse, and its
+  browser-lane test passed in Chromium and Firefox — while the feature
+  scrolled nothing at all for every real user. Browsers remap a shifted
+  wheel onto the HORIZONTAL axis (`deltaY` 0, magnitude on `deltaX`);
+  Playwright's `mouse.wheel` writes `deltaY` whatever the modifier
+  state, because it injects at the DOM layer and the remap happens
+  below it. The handler read `deltaY`, measured zero lines, and then
+  still claimed the event — so the "fix" SUPPRESSED the scroll the user
+  would otherwise have had. Driving a real gesture through a real
+  browser is not the same as driving the event that gesture produces:
+  where an input-layer transform sits between the two, construct and
+  dispatch the event yourself. The same caution applies to touch, IME
+  composition, and any modifier that changes an axis.
+- **Agent-facing docs that specify procedure without semantics produce
+  confident invention, not questions.** Four wrong answers reached a
+  researcher in one session — qualitative tests are "user-only", an
+  unattested AI Declaration blocks L1, making figures standards enables
+  qualitative tests, and `iProofLevel` recited at a scientist — and
+  every one came from guidance that said how to DO things and never
+  what they ARE. The container docs named the three test tiers as a
+  list of three words and never defined them; the L1 rule was stated
+  without its carve-out; the blocker list existed only on the
+  dashboard's poll path, so an agent asked "why am I not at Level 1"
+  had raw JSON and nothing else. An agent will not stop at a gap, it
+  will fill one. When documenting an action for an agent, state what
+  the thing IS and what it does NOT establish, and give it a call that
+  returns a verdict rather than fields to infer one from.
+- **A local rename re-fingerprints ledger rows, in more than one
+  ledger.** Renaming `sFullPath` to `sAbsolutePath` inside one function
+  invalidated its row in `mutationInventory.json` (keyed on the
+  enclosing scope) AND in `hostCapabilityInventory.json` (keyed on the
+  command expression itself). Regenerating the first left the second
+  drifted, and `--check` on one ledger reads exactly as clean as
+  `--check` on all three. Worse, the first regeneration silently
+  dropped that row's recorded security review — it came back
+  `UNCLASSIFIED`, drift printed `{}`, and only
+  `testTheUnclassifiedBudgetOnlyEverShrinks` noticed. After touching
+  any function that composes container commands, regenerate and
+  drift-check EVERY generated ledger, and diff the disposition count
+  before and after.
 
 ## Pointers
 

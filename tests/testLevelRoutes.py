@@ -111,6 +111,50 @@ def test_level2_readiness_returns_iproof_level_and_gaps(fixtureClient):
     assert dictGaps["bAtLeastLevel2"] is False
 
 
+def test_readiness_carries_level_1_blockers_with_human_hints(
+    fixtureClient, fixtureWorkflow,
+):
+    """The agent's only route to "why is this not at Level 1 yet".
+
+    Before this field the answer existed only on the dashboard's poll
+    path, so an agent asked the question read project.json and
+    state.json and reconstructed one -- and twice reported a rule that
+    does not exist. What makes the field useful is not that a list
+    arrives but that each entry carries the same plain-English sentence
+    the researcher reads on the badge, so the agent can relay it
+    instead of narrating identifiers at them.
+    """
+    dictWorkflow = fixtureWorkflow
+    dictWorkflow["listSteps"] = [{
+        "sName": "MakeNumbers",
+        "sDirectory": "MakeNumbers",
+        "saDataCommands": ["python3 makeNumbers.py"],
+        "saOutputDataFiles": ["numbers.json"],
+        "bNoInputData": True,
+        "dictVerification": {"sUser": "untested"},
+    }]
+    response = fixtureClient.get(
+        f"/api/workflow/{S_CONTAINER_ID}/level2/readiness",
+    )
+    assert response.status_code == 200
+    dictBody = response.json()
+    listBlockers = dictBody["listLevel1Blockers"]
+    assert listBlockers, (
+        "an unapproved step must be reported as an L1 blocker; an "
+        "empty list here sends the agent back to guessing"
+    )
+    dictBlocker = listBlockers[0]
+    assert dictBlocker["sCriterion"] == "user-not-approved"
+    assert dictBlocker["sRemediationHint"].strip(), (
+        "the blocker arrived with no human-readable hint, so the only "
+        "thing the agent can relay is the criterion identifier -- "
+        "which is the reporting problem this field exists to fix"
+    )
+    # The incompleteness is declared, never silent: an empty list from
+    # this route is not proof that nothing blocks Level 1.
+    assert dictBody["bScriptStalenessEvaluated"] is False
+
+
 def test_level2_readiness_unknown_container_id_404(fixtureClient):
     """An unregistered container id must return 404."""
     response = fixtureClient.get("/api/workflow/no-such-id/level2/readiness")

@@ -3588,11 +3588,20 @@ const VaibifyApp = (function () {
 
     var fsTestCategoryLabel = VaibifyUtilities.fsTestCategoryLabel;
 
+    /* "unnecessary" is the backend's value for a category that defines
+       no commands. It is a GREEN value there \u2014 stepPredicates and
+       truthDerivation both count it toward Level 1 \u2014 so rendering it
+       through the `|| "Untested"` fallback stated the opposite of what
+       the backend had derived, and a researcher reading "Untested" had
+       no way to tell a real gap from a category that is legitimately
+       N/A. It is shown grey rather than green: nothing was proven
+       here, there was simply nothing to prove. */
     function fsVerificationStateLabel(sState) {
         var dictLabels = {
             passed: "Passed", failed: "Failed",
             untested: "Untested", error: "Error",
             stale: "Stale",
+            unnecessary: "N/A",
             "passed-from-marker": "Passed",
             "outputs-changed": "Stale",
             "outputs-missing": "Missing",
@@ -3605,6 +3614,7 @@ const VaibifyApp = (function () {
             passed: "\u2713", failed: "\u2717",
             untested: "\u2014", error: "\u2717",
             stale: "\u26A0",
+            unnecessary: "\u25CB",
             "passed-from-marker": "\u2713",
             "outputs-changed": "\u26A0",
             "outputs-missing": "\u2717",

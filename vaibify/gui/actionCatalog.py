@@ -162,6 +162,22 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Write a test file and execute it. "
                      "Args: {sRelativePath, sContent}."},
+    {"sName": "generate-tests-deterministic",
+     "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}"
+              "/generate-test-deterministic",
+     "bAgentSafe": True,
+     "sDescription": "Generate test files by INTROSPECTING the step's "
+                     "declared output data files — columns, JSON keys, "
+                     "array names, shapes, values. Args: "
+                     "{sCategory: 'integrity'|'qualitative'|"
+                     "'quantitative'}, or omit sCategory for all "
+                     "three. Prefer this over hand-writing a test: it "
+                     "pins what is actually in the data. Never reaches "
+                     "an LLM and never overwrites an edited test file "
+                     "— it answers bNeedsOverwriteConfirm with the "
+                     "paths, which you bring back to the researcher."},
     {"sName": "generate-tests", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/generate-test",
@@ -467,6 +483,19 @@ LIST_AGENT_ACTIONS = [
                      "nudge for the positional {StepNN.stem} form). Use "
                      "this to verify a rewire before running a step."},
     # ---- PROOF ladder readiness ----
+    {"sName": "report-l1-blockers", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/level2/readiness",
+     "bAgentSafe": True,
+     "sDescription": "Return what is blocking Level 1, per step, with "
+                     "the plain-English remediation hint the dashboard "
+                     "shows the researcher. Ask this instead of "
+                     "inferring a reason from project.json or "
+                     "state.json, and relay sRemediationHint rather "
+                     "than the sCriterion identifier. "
+                     "bScriptStalenessEvaluated=false means the "
+                     "script-stale criterion was not evaluated, so an "
+                     "empty list is not proof of nothing blocking."},
     {"sName": "check-l2-readiness", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",
