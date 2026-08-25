@@ -4143,7 +4143,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1278 -> 1305 (2026-08-25): the per-decision answer body, and the
     # gate grouping derived on READ. Derived here rather than stored on
     # the gate so it applies to a campaign already waiting at one.
-    "routes/councilRoutes.py": 1305,
+    # +2 (2026-08-25): questions held for a gate that never opened are
+    # derived on read too, so an interrupted campaign can show them.
+    "routes/councilRoutes.py": 1307,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

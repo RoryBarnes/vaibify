@@ -1691,11 +1691,76 @@ var VaibifyAgentCouncil = (function () {
                 "failed: " + _fsEscape(dictParticipant.sFailureReason || "") +
                 "</span>";
         }
+        /* An agent whose own turn has settled must not read
+           "deliberating" just because the campaign is still live — the
+           campaign-wide fallback said exactly that, so a finished agent
+           was indistinguishable from one still working while a slower
+           peer ran. This reports the TURN, which is what settled; it
+           deliberately does not claim the runner stopped, because
+           nothing here has proven that and "verified stopped" is
+           reserved for the backend's absence probe. */
+        var sActivity = _fsParticipantActivity(dictParticipant, dictCampaign);
+        if (!dictParticipant.sRunnerLifecycle
+                && SET_LIVE_STATES[dictCampaign.sState]
+                && sActivity) {
+            return "<span class=\"council-chip council-chip-activity\">" +
+                _fsEscape(sActivity) + "</span>";
+        }
         var sLifecycle = dictParticipant.sRunnerLifecycle
             || _fsLifecycleFromCampaign(dictCampaign);
         return "<span class=\"council-chip council-chip-" +
             _fsEscape(sLifecycle) + "\">" +
             _fsEscape(_fsLifecycleLabel(sLifecycle)) + "</span>";
+    }
+
+    /* What an agent is DOING, per phase. "Deliberating" was true of the
+       campaign and useless about the agent: every chip read it at once,
+       so a finished proposer looked identical to a pen-holder mid-
+       synthesis. These name the phase's actual work. */
+    var DICT_PHASE_ACTIVITY = {
+        independentProposals: "proposing",
+        crossReview: "reviewing peers",
+        synthesis: "synthesizing",
+        veto: "voting"
+    };
+
+    function _fsParticipantActivity(dictParticipant, dictCampaign) {
+        /* Reads the OPEN round's latest phase. A participant with an
+           unsettled turn there is doing that phase's work; one whose
+           turn settled has finished it; one with no turn in that phase
+           at all is waiting on the others — which is the honest word for
+           a proposer while the pen-holder synthesizes. */
+        var listRounds = dictCampaign.listRounds || [];
+        if (!listRounds.length) return "";
+        var dictTurnsByPhase = listRounds[listRounds.length - 1]
+            .dictTurnsByPhase || {};
+        var listPhases = Object.keys(dictTurnsByPhase);
+        if (!listPhases.length) return "";
+        var sPhase = listPhases[listPhases.length - 1];
+        var listMine = (dictTurnsByPhase[sPhase] || []).filter(
+            function (dictTurn) {
+                return dictTurn.sParticipantId ===
+                    dictParticipant.sParticipantId;
+            });
+        if (!listMine.length) {
+            return _fbHasSettledTurnEarlier(dictParticipant, dictTurnsByPhase)
+                ? "waiting on the others" : "";
+        }
+        var dictTurn = listMine[listMine.length - 1];
+        if (dictTurn.sStatus === "completed") return "completed this round";
+        if (dictTurn.sStatus === "failed") return "failed this round";
+        return DICT_PHASE_ACTIVITY[sPhase] || "";
+    }
+
+    function _fbHasSettledTurnEarlier(dictParticipant, dictTurnsByPhase) {
+        return Object.keys(dictTurnsByPhase).some(function (sPhase) {
+            return (dictTurnsByPhase[sPhase] || []).some(
+                function (dictTurn) {
+                    return dictTurn.sParticipantId ===
+                        dictParticipant.sParticipantId
+                        && dictTurn.sStatus === "completed";
+                });
+        });
     }
 
     function _fsLifecycleFromCampaign(dictCampaign) {
@@ -1908,8 +1973,40 @@ var VaibifyAgentCouncil = (function () {
         if (dictCampaign.sState === "needsHuman") {
             return _fsNeedsHumanCard(dictCampaign);
         }
-        if (SET_TERMINAL_STATES[dictCampaign.sState]) return "";
+        if (SET_TERMINAL_STATES[dictCampaign.sState]) {
+            return _fsHeldQuestionsCard(dictCampaign);
+        }
         return _fsComposer(dictCampaign);
+    }
+
+    function _fsHeldQuestionsCard(dictCampaign) {
+        /* Questions raised before synthesis wait for the plan they are
+           about. If a later phase settles indeterminately the campaign
+           is interrupted BEFORE any gate can open, and without this the
+           questions sit on the round where nobody can read them —
+           real deliberation, silently unreachable. The council itself
+           cannot be resumed (its runners are unaccounted for), so what
+           is offered is the questions themselves, to carry into a fresh
+           one. */
+        var listHeld = dictCampaign.listHeldQuestions || [];
+        if (!listHeld.length) return "";
+        var sRows = listHeld.map(function (dictQuestion) {
+            return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
+                " <span class=\"council-question-author\">(" +
+                _fsEscape(_fsAgentLabelForId(
+                    dictCampaign, dictQuestion.sRaisedByParticipantId || "")) +
+                ")</span></li>";
+        }).join("");
+        return "<div class=\"council-needs-human council-held\">" +
+            "<h4>" + listHeld.length + " question" +
+            (listHeld.length === 1 ? " was" : "s were") + " raised before " +
+            "this council stopped</h4>" +
+            "<p>They were waiting for the plan they are about, which this " +
+            "council never reached. This campaign cannot be resumed, but " +
+            "the questions are not lost — they are the answers a fresh " +
+            "council would not have to ask for again.</p>" +
+            "<ol class=\"council-questions\">" + sRows + "</ol>" +
+            "</div>";
     }
 
     function _fsComposer(dictCampaign) {

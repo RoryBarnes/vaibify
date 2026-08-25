@@ -174,3 +174,47 @@ def testANonQuestionGateIsLeftAlone():
     dictCampaign = _fdictBuildCampaign([], [])
     dictCampaign["dictPendingHumanGate"]["sGateKind"] = "exhaustedRounds"
     assert flistGroupGateQuestionsIntoDecisions(dictCampaign) == []
+
+
+def testQuestionsHeldWhenALaterPhaseDiesAreStillReadable():
+    """An interruption must not swallow questions already raised.
+
+    A question raised before synthesis waits for the plan it is about.
+    If a later phase settles indeterminately the campaign is interrupted
+    BEFORE any gate can open, so without this the questions sit on the
+    round unreachable — which is what happened to a real council on
+    2026-08-25, ten questions deep.
+
+    Kills: returning held questions only for a campaign that reached a
+    gate, which is exactly the campaign that does not need them.
+    """
+    from vaibify.gui.agentCouncilResolution import flistDescribeHeldQuestions
+
+    dictCampaign = _fdictBuildCampaign([], [])
+    dictCampaign["sState"] = "interrupted"
+    dictCampaign["dictPendingHumanGate"] = None
+    dictCampaign["listRounds"][0]["listDeferredQuestions"] = [
+        _fdictBuildQuestion("question-aaa", "participant-aaaa", "held one"),
+        _fdictBuildQuestion("question-bbb", "participant-bbbb", "held two"),
+    ]
+
+    listHeld = flistDescribeHeldQuestions(dictCampaign)
+    assert [dictQuestion["sQuestionText"] for dictQuestion in listHeld] == [
+        "held one", "held two"]
+
+
+def testACampaignAtItsGateReportsNoHeldQuestions():
+    """The gate already presents them; reporting twice asks twice.
+
+    Kills: returning the round's deferred list unconditionally, which
+    puts every question in the gate AND in the held-questions card.
+    """
+    from vaibify.gui.agentCouncilResolution import flistDescribeHeldQuestions
+
+    dictCampaign = _fdictBuildCampaign(
+        [_fdictBuildQuestion("question-aaa", "participant-aaaa", "asked")],
+        ["PHASE 1 question-aaa"])
+    dictCampaign["listRounds"][0]["listDeferredQuestions"] = [
+        _fdictBuildQuestion("question-aaa", "participant-aaaa", "asked")]
+
+    assert flistDescribeHeldQuestions(dictCampaign) == []

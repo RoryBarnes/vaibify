@@ -856,6 +856,8 @@ def _fnRegisterGetCouncil(app, dictCtx):
         jsonCampaign["listGateDecisions"] = (
             agentCouncilResolution.flistGroupGateQuestionsIntoDecisions(
                 jsonCampaign))
+        jsonCampaign["listHeldQuestions"] = (
+            agentCouncilResolution.flistDescribeHeldQuestions(jsonCampaign))
         return {
             "dictCampaign": jsonCampaign,
             "listQuarantinedRunners": listQuarantined,

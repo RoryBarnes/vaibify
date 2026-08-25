@@ -148,6 +148,26 @@ def _fsClassifyDecisionTier(listGroup, iParticipantCount, setSynthesisTexts):
     return S_TIER_SEVERAL if iDistinctAuthors > 1 else S_TIER_ONE
 
 
+def flistDescribeHeldQuestions(dictCampaign):
+    """Return questions held for a gate that never opened.
+
+    A question raised before synthesis waits for the plan it is about.
+    If a LATER phase then settles indeterminately the campaign becomes
+    interrupted, and that transition happens before any gate can open —
+    so the questions sit on the round, real work nobody can read. They
+    are returned here for any campaign not currently at a gate, because
+    the researcher's own next step is to carry them into a fresh
+    council: the deliberation that produced them is not recoverable, but
+    the questions are.
+    """
+    if (dictCampaign.get("dictPendingHumanGate") or {}).get("listQuestions"):
+        return []
+    listRounds = dictCampaign.get("listRounds") or []
+    if not listRounds:
+        return []
+    return list(listRounds[-1].get("listDeferredQuestions") or [])
+
+
 def flistGroupGateQuestionsIntoDecisions(dictCampaign):
     """Return the gate's questions as decision points, most-shared first.
 
