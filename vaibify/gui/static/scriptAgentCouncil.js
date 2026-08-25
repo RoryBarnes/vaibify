@@ -1766,20 +1766,37 @@ var VaibifyAgentCouncil = (function () {
         if (listRunning.indexOf(dictParticipant.sParticipantId) >= 0) {
             return DICT_PHASE_ACTIVITY[dictInFlight.sPhase] || "working";
         }
+        if (dictInFlight.sPhase === "synthesis") {
+            return _fsWaitingOnTheSynthesisAuthor(dictCampaign, listRunning);
+        }
         return DICT_PHASE_WAITING[dictInFlight.sPhase]
             || "waiting on the others";
     }
 
     /* An agent not running the phase in flight is waiting on whoever
-       is. Naming WHO makes the wait legible: "waiting on the pen-holder"
+       is. Naming WHO makes the wait legible: "waiting on the chairbot"
        during synthesis says the council is progressing without this
        agent, where a bare "waiting" reads as a stall. */
     var DICT_PHASE_WAITING = {
         independentProposals: "waiting on the others",
         crossReview: "waiting on the others",
-        synthesis: "waiting on the pen-holder",
         veto: "waiting on the other voters"
     };
+
+    function _fsWaitingOnTheSynthesisAuthor(dictCampaign, listRunning) {
+        /* Synthesis usually IS the chairbot, so that is what the wait
+           says. But the author is picked by a fallback chain, and when
+           the chairbot fails another agent takes the pen — so naming
+           the chairbot unconditionally would be false exactly in the
+           case a researcher most needs to notice. Name the substitute
+           instead; the backend already recorded who is running. */
+        var sRunningId = listRunning[0];
+        if (sRunningId && sRunningId !== dictCampaign.sChairbotParticipantId) {
+            return "waiting on " + _fsAgentLabelForId(
+                dictCampaign, sRunningId);
+        }
+        return "waiting on the chairbot";
+    }
 
     function _fsLifecycleFromCampaign(dictCampaign) {
         /* A terminal campaign STATE proves nothing about runners on its
@@ -2087,7 +2104,7 @@ var VaibifyAgentCouncil = (function () {
          sWhy: "A single agent's concern; the others did not raise it."},
         {sTier: "raisedDuringSynthesis",
          sHeading: "Raised while writing the plan",
-         sWhy: "The pen-holder's own questions. No other agent has seen " +
+         sWhy: "The chairbot's own questions. No other agent has seen " +
              "these, so they carry no plan item yet."}
     ];
 
@@ -2171,7 +2188,7 @@ var VaibifyAgentCouncil = (function () {
                the same as false, so the notice needs an explicit
                false. */
             (dictGate.bPlanAvailable === false
-                ? "<p class=\"council-plan-missing\">The pen-holder " +
+                ? "<p class=\"council-plan-missing\">The chairbot " +
                     "produced no plan this round, so these questions " +
                     "are not yet placed in one. They are shown as each " +
                     "agent raised them.</p>"
