@@ -4243,7 +4243,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
     # the definition producer (R8) — the stamp lives at the
     # producer's own seam, never at save time.
-    "routes/testRoutes.py": 817,
+    # +115 (2026-08-24): the agent-safe deterministic generator --
+    # its route, its forced-flag request type, and its category
+    # validator. Cohesive with the module (test routes), but this is
+    # the largest single growth here and testRoutes.py is now the
+    # module to watch: generation (writes files, declares categories)
+    # and execution (runs them, records verification) are a real fault
+    # line, and the next addition on either side should split along it
+    # rather than raise this number again. Not split now because the
+    # falsification registry keys entries to this path and a move is
+    # its own reviewed change, not a side effect of adding a route.
+    "routes/testRoutes.py": 932,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4746,7 +4756,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # predicate, in researcher language. Discovery began listing that
     # shape; the guard bouncing the very card the researcher was shown
     # was the live incident.
-    "pipelineServer.py": 2890,
+    # +26 (2026-08-24): the plot-standard format split. pdftoppm and gs
+    # read PDF/PostScript only, so a project whose figures were already
+    # PNG had no path through the converter at all -- both commands
+    # failed, `|| true` swallowed both, and the route blamed a
+    # ghostscript that was installed and working. The format table and
+    # its predicate live beside the command they select, because a
+    # reader asking "what can be standardized" and "what command runs"
+    # is asking one question, and the two answers drifting apart is the
+    # bug being fixed.
+    # +11 (2026-08-24): TestGenerateCategoryRequest. One optional
+    # field; every flag that could select the LLM branch or force an
+    # overwrite is ABSENT rather than defaulted, so no request can
+    # carry one and no later edit can loosen a default into a bypass.
+    "pipelineServer.py": 2927,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5045,7 +5068,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
     "introspectionScript.py": 1214,
-    "testGenerator.py": 1063,
+    # +30 (2026-08-24): per-category deterministic generation. A
+    # researcher or agent asking for one tier must not have the other
+    # two silently rewritten underneath them, so each write is gated
+    # and an unrequested category is ABSENT from the result rather
+    # than empty in it.
+    "testGenerator.py": 1093,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -5271,7 +5299,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # be an import oracle over the researcher's own files. The comment
     # carries that reasoning because the exclusion set is where a
     # future reader will ask why this route is not offered.
-    "actionCatalog.py": 1021,
+    # +13 (2026-08-24): report-l1-blockers. A second action name on the
+    # level2/readiness path -- the established pattern there, which
+    # report-l2-gaps already uses -- because the agent had no way to
+    # ask what blocks Level 1 and answered from raw project.json
+    # instead, twice inventing a rule that does not exist. The catalog
+    # is a flat registry whose whole purpose is to be one list; a
+    # split would give the agent two places to look.
+    # +16 (2026-08-24): generate-tests-deterministic. The agent-safe
+    # half of a dual-mode route: generate-tests can also reach an LLM,
+    # so it stays user-only, which had left an inversion where an agent
+    # hand-writing assertions was permitted and vaibify deriving them
+    # from the researcher's own data was not.
+    "actionCatalog.py": 1050,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5376,7 +5416,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # post-save exact-source fingerprint, which the client adopts as
     # its acknowledged value so its own edit never trips the dispatch
     # freshness gate.
-    "routes/stepRoutes.py": 820,
+    # +42 (2026-08-24): the test-category destructive guard. dictTests
+    # is assigned wholesale by fnUpdateStep, so an agent declaring one
+    # category silently erases the others -- and the loss reads as a
+    # PASS, because the aggregators treat a missing category as absent
+    # and the derivation marks the vanished axis "unnecessary", which
+    # counts green. It sits beside the two guards that already answer
+    # "what may an update-step request destroy", because that is one
+    # question: a separate module would invite a second, drifting
+    # notion of which step edits are destructive, which is the bug
+    # class these guards exist to close.
+    "routes/stepRoutes.py": 862,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

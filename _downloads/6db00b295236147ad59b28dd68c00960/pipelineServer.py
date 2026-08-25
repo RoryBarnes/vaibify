@@ -225,6 +225,17 @@ class TestGenerateRequest(BaseModel):
     bForceOverwrite: bool = False
 
 
+class TestGenerateCategoryRequest(BaseModel):
+    """Body for the agent-safe deterministic generator.
+
+    One optional field, deliberately. Every flag that could select the
+    LLM branch or force an overwrite is ABSENT rather than defaulted,
+    so no request can carry one and no later edit can loosen a default
+    into a bypass.
+    """
+    sCategory: Optional[str] = None
+
+
 class FileUploadRequest(BaseModel):
     sFilename: str
     sDestination: str = "/workspace"
@@ -623,11 +634,39 @@ def _fsPlotStandardPath(sBasename):
     return f"{sBasename}_standard.png"
 
 
+# The formats a standard PNG can be produced from. The converters
+# below read PDF/PostScript only, so a raster source is COPIED: its
+# standard is the image itself. Before this split, a project whose
+# figures were already PNG had no path through here at all — pdftoppm
+# and gs each failed on the raster bytes, the trailing `|| true`
+# swallowed both, and the route reported a missing ghostscript that
+# was installed and working.
+T_VECTOR_PLOT_EXTENSIONS = (".pdf", ".ps", ".eps")
+T_RASTER_PLOT_EXTENSIONS = (".png",)
+
+
+def fbPlotFormatIsStandardizable(sBasename):
+    """Return True iff a standard PNG can be produced from this plot."""
+    sExtension = posixpath.splitext(sBasename)[1].lower()
+    return sExtension in T_VECTOR_PLOT_EXTENSIONS + T_RASTER_PLOT_EXTENSIONS
+
+
 def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
-    """Build a shell command to convert a plot to a standard PNG."""
+    """Build a shell command to produce this plot's standard PNG.
+
+    Every branch ends in ``|| true`` so a failure never aborts the
+    ``&&``-joined chain of sibling plots. Nothing here reports success:
+    the existence check afterwards is the only arbiter, which is what
+    lets a per-format command be wrong without being silent.
+    """
     sStandardBase = posixpath.splitext(sBasename)[0]
     sStandardPng = posixpath.join(
         sOutputDir, _fsPlotStandardPath(sStandardBase))
+    if posixpath.splitext(sBasename)[1].lower() in T_RASTER_PLOT_EXTENSIONS:
+        return (
+            f"cp -f {fsShellQuote(sPlotPath)} "
+            f"{fsShellQuote(sStandardPng)} 2>/dev/null || true"
+        )
     sStandardPrefix = posixpath.join(
         sOutputDir, f"{sStandardBase}_standard")
     return (
