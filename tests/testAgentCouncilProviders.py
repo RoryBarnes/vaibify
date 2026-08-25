@@ -9,6 +9,7 @@ tarball are all exercised against crafted inputs and fakes. The
 ``testResearcherAndPeerTextNeverReachArgv``.
 """
 
+import asyncio
 import json
 import os
 import stat
@@ -452,26 +453,47 @@ def testAUsableResultIsUnaffectedByTheDiagnosis():
     assert dictGood == {"sSummary": "ok"}
 
 
-def testARateLimitedTurnIsNamedAsSuchNotAsBadFormatting():
-    """The opus failure that took three sessions to name.
+def testAWallClockKillIsNamedRatherThanGuessedAt():
+    """The opus failure, correctly attributed at last.
 
-    Kills: ignoring the rate-limit event type when no result arrives.
+    Kills: diagnosing an empty result from the event stream alone.
 
-    A live opus turn ran 52 assistant messages, received a
-    `rate_limit_event`, and ended with NO result event — so the engine
-    saw an empty result and reported "every schema field is missing",
-    which reads as a model that formatted its answer badly. The signal
-    was in the stream the whole time, in an event type nothing
-    inspected: fsClassifyTurnFailure reads only the result event's
-    error text, and a rate limit can truncate a turn before any result
-    event exists (2026-08-24).
+    A turn killed at its wall-clock budget has its container destroyed
+    mid-stream: no result event, no error, nothing in the events to
+    distinguish it from a model that simply stopped. The gateway
+    recorded bWallClockExceeded and the elapsed seconds all along and
+    the diagnosis never read them — so I twice told the researcher
+    their council had been rate limited, inferring it from a
+    `rate_limit_event` that the CLI emits as routine telemetry
+    (2026-08-24).
     """
-    dictEmpty = providers.fdictExtractStructuredResult([
-        {"type": "system"}, {"type": "assistant"},
-        {"type": providers.S_RATE_LIMIT_EVENT_TYPE}])
+    dictEmpty = providers.fdictExtractStructuredResult(
+        [{"type": "system"}, {"type": "assistant"},
+         {"type": providers.S_RATE_LIMIT_EVENT_TYPE}],
+        {"bWallClockExceeded": True, "fElapsedSeconds": 300.4,
+         "iExitCode": None})
     assert dictEmpty["sEmptyResultReason"] == (
-        providers.S_EMPTY_BECAUSE_RATE_LIMITED)
-    assert dictEmpty["dictEventTypeCounts"]["assistant"] == 1
+        providers.S_EMPTY_BECAUSE_WALL_CLOCK)
+    assert dictEmpty["fElapsedSeconds"] == 300.4
+
+
+def testARateLimitEventIsRecordedButNeverTreatedAsTheCause():
+    """Co-occurrence is not causation, and this one cost real trust.
+
+    Kills: concluding "rate limited" from the event's presence.
+
+    The same stream that carries a rate_limit_event carries it whether
+    or not a limit was hit. It stays in the tally — a reader may weigh
+    it — but it must not become the reason.
+    """
+    dictEmpty = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"},
+         {"type": providers.S_RATE_LIMIT_EVENT_TYPE}],
+        {"bWallClockExceeded": False, "fElapsedSeconds": 9.0,
+         "iExitCode": 1})
+    assert dictEmpty["sEmptyResultReason"] == "noResultEvent"
+    assert dictEmpty["dictEventTypeCounts"][
+        providers.S_RATE_LIMIT_EVENT_TYPE] == 1
 
 
 def testAnOrdinaryTruncationIsNotBlamedOnARateLimit():
@@ -486,3 +508,32 @@ def testAnOrdinaryTruncationIsNotBlamedOnARateLimit():
     dictEmpty = providers.fdictExtractStructuredResult([
         {"type": "system"}, {"type": "assistant"}])
     assert dictEmpty["sEmptyResultReason"] == "noResultEvent"
+
+
+def testTheConnectionHandsItsExecutionRecordToTheDiagnosis():
+    """The WIRING, not the diagnosis — they fail independently.
+
+    Kills: calling fdictExtractStructuredResult without the execution
+    record.
+
+    A correct diagnosis that is never given the facts it needs is the
+    shape this bug had for three sessions: the gateway recorded
+    bWallClockExceeded, the extractor could read it, and nothing
+    connected the two — so every wall-clock kill was reported as an
+    unexplained empty result. Asserting the pure function alone leaves
+    that gap wide open, and a mutation removing the argument survived a
+    suite that only did that.
+    """
+    connection = providers.ClaudeRunnerConnection.__new__(
+        providers.ClaudeRunnerConnection)
+    connection._listEvents = [{"type": "assistant"}]
+    connection._dictTurnExecution = {
+        "bWallClockExceeded": True, "fElapsedSeconds": 300.2,
+        "iExitCode": None}
+    dictResult = asyncio.get_event_loop_policy().new_event_loop(
+        ).run_until_complete(connection.fdictCollectStructuredResult())
+    assert dictResult["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_WALL_CLOCK), (
+        "the connection did not pass its execution record on, so the "
+        "wall-clock kill is invisible to the diagnosis")
+    assert dictResult["fElapsedSeconds"] == 300.2

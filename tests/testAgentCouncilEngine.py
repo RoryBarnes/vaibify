@@ -707,7 +707,7 @@ def testAnEmptyTurnIsExplainedNotSchemaValidated():
     ffnDecide = lambda sHandle, dictRequest: (
         fdictDecideCompleted({
             "sRawResultText": "",
-            "sEmptyResultReason": "rateLimitedBeforeAnyResult",
+            "sEmptyResultReason": "killedAtTurnWallClockBudget",
             "dictEventTypeCounts": {"assistant": 52}})
         if sHandle == "B" and dictRequest["sPhase"] == S_PROPOSAL
         else fdictDecideCompleted(fdictMakeTurnResult("accept")))
@@ -718,7 +718,7 @@ def testAnEmptyTurnIsExplainedNotSchemaValidated():
 
     assert dictRecord["sStatus"] == "failed"
     sReason = dictRecord["sFailureReason"]
-    assert "rate-limited" in sReason, sReason
+    assert "time budget ran out" in sReason, sReason
     assert "52 messages" in sReason, sReason
     assert "must be an array" not in sReason, (
         f"an absent answer was described as a malformed one: {sReason}")
@@ -738,7 +738,7 @@ def testARepairIsNotSpentOnATurnThatReturnedNothing():
             listAttempts.append(sHandle)
             return fdictDecideCompleted({
                 "sRawResultText": "",
-                "sEmptyResultReason": "rateLimitedBeforeAnyResult"})
+                "sEmptyResultReason": "killedAtTurnWallClockBudget"})
         return fdictDecideCompleted(fdictMakeTurnResult("accept"))
     fixture = fixtureBuildCouncil(LIST_THREE_SPECS, ffnDecide,
                                   sChairbotHandle="A")

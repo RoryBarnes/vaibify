@@ -160,11 +160,12 @@ I_MAX_REJECTED_PAYLOAD_CHARACTERS = 2000
 
 
 DICT_EMPTY_TURN_EXPLANATIONS = {
-    "rateLimitedBeforeAnyResult":
-        "the provider rate-limited this model part-way through its "
-        "turn, so it never returned an answer. Its work so far is lost; "
-        "waiting and re-running is the remedy, not a change to the "
-        "question.",
+    "killedAtTurnWallClockBudget":
+        "this agent was still working when the turn's time budget ran "
+        "out, so its container was stopped and it never returned an "
+        "answer. Agents that explore the repository with many tool "
+        "calls hit this; a single-shot answer does not. Raising the "
+        "per-turn budget is the remedy, not a change to the question.",
     "noResultEvent":
         "the assistant stopped without returning an answer. Nothing in "
         "the stream reported an error, so the cause is outside what the "

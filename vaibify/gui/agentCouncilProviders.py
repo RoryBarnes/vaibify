@@ -160,7 +160,10 @@ S_FAILURE_RATE_LIMIT = "rateLimit"
 # the result event's error text: a rate limit can truncate a turn
 # BEFORE any result event exists.
 S_RATE_LIMIT_EVENT_TYPE = "rate_limit_event"
-S_EMPTY_BECAUSE_RATE_LIMITED = "rateLimitedBeforeAnyResult"
+# The turn was killed at its wall-clock budget: the container is
+# destroyed mid-stream, so there is no result event and no error — the
+# CLI never got to report anything.
+S_EMPTY_BECAUSE_WALL_CLOCK = "killedAtTurnWallClockBudget"
 
 
 class RunnerCredentialError(Exception):
@@ -244,7 +247,7 @@ def _fdictFindFinalResultEvent(listEvents):
     return None
 
 
-def fdictExtractStructuredResult(listEvents):
+def fdictExtractStructuredResult(listEvents, dictExecution=None):
     """Extract the turn's final structured result from the event stream.
 
     The deliberation output is the schema the model returns as its final
@@ -256,18 +259,21 @@ def fdictExtractStructuredResult(listEvents):
     """
     dictResultEvent = _fdictFindFinalResultEvent(listEvents)
     if dictResultEvent is None:
-        return _fdictDiagnoseEmptyResult("noResultEvent", listEvents, {})
+        return _fdictDiagnoseEmptyResult(
+            "noResultEvent", listEvents, {}, dictExecution)
     sResultText = dictResultEvent.get("result")
     if not isinstance(sResultText, str):
         return _fdictDiagnoseEmptyResult(
-            "resultEventCarriedNoText", listEvents, dictResultEvent)
+            "resultEventCarriedNoText", listEvents, dictResultEvent,
+            dictExecution)
     jsonParsed = _fjsonParseResultText(sResultText)
     if isinstance(jsonParsed, dict):
         return jsonParsed
     return {"sRawResultText": sResultText}
 
 
-def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent):
+def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
+                              dictExecution=None):
     """Return an empty result that says WHY it is empty.
 
     Both empty cases used to return a bare ``{"sRawResultText": ""}``,
@@ -287,15 +293,22 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent):
     for dictEvent in listEvents:
         sType = str(dictEvent.get("type", "?"))
         dictTally[sType] = dictTally.get(sType, 0) + 1
-    # A rate limit is announced by its own EVENT TYPE, not by the
-    # result event's error text — and when it truncates a turn there is
-    # no result event to carry an error at all. fsClassifyTurnFailure
-    # reads only the result event, so a live opus turn that was rate
-    # limited after 52 assistant messages was reported as a schema
-    # violation listing every absent field (2026-08-24). The stream
-    # said so plainly and nothing was reading it.
-    if dictTally.get(S_RATE_LIMIT_EVENT_TYPE):
-        sReason = S_EMPTY_BECAUSE_RATE_LIMITED
+    # A `rate_limit_event` in the tally is RECORDED, never treated as
+    # the cause. The CLI emits it as routine window telemetry, and
+    # reading its presence as "this turn was rate limited" is inferring
+    # causation from co-occurrence — I did exactly that and told the
+    # researcher twice that their council had hit a limit it had not
+    # (2026-08-24). The tally already carries the count; whoever reads
+    # it can weigh it against the execution facts below.
+    # The EXECUTION facts, which the event stream cannot show. A turn
+    # killed at its wall-clock budget ends mid-stream with no error and
+    # no result event — indistinguishable, from the events alone, from
+    # a model that simply stopped. The gateway has recorded
+    # bWallClockExceeded and the elapsed time all along and nothing
+    # read them.
+    dictRun = dictExecution or {}
+    if dictRun.get("bWallClockExceeded"):
+        sReason = S_EMPTY_BECAUSE_WALL_CLOCK
     return {
         "sRawResultText": "",
         "sEmptyResultReason": sReason,
@@ -303,6 +316,9 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent):
         "dictEventTypeCounts": dictTally,
         "bResultEventReportedError": bool(dictResultEvent.get("is_error")),
         "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
+        "bWallClockExceeded": bool(dictRun.get("bWallClockExceeded")),
+        "fElapsedSeconds": round(float(dictRun.get("fElapsedSeconds") or 0), 1),
+        "jsonExitCode": dictRun.get("iExitCode"),
     }
 
 
@@ -852,7 +868,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         in result handling cannot leak a live container.
         """
         try:
-            return fdictExtractStructuredResult(self._listEvents)
+            return fdictExtractStructuredResult(
+                self._listEvents, self._dictTurnExecution)
         except BaseException:
             await self._fnDestroyHandleAfterFailure()
             raise

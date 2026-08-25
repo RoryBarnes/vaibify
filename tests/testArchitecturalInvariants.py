@@ -4228,7 +4228,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a rate limit can truncate a turn before any result event exists —
     # so fsClassifyTurnFailure, which reads only the result event,
     # could never have seen it.
-    "agentCouncilProviders.py": 971,
+    # 971 -> 988 (2026-08-24): the empty-result diagnosis reads the
+    # EXECUTION record (wall-clock kill, elapsed time, exit code), not
+    # just the event stream. A turn killed at its time budget looks
+    # identical to a model that stopped, from the events alone.
+    "agentCouncilProviders.py": 988,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
