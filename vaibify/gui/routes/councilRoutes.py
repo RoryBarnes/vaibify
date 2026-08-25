@@ -858,6 +858,11 @@ def _fnRegisterGetCouncil(app, dictCtx):
                 jsonCampaign))
         jsonCampaign["listHeldQuestions"] = (
             agentCouncilResolution.flistDescribeHeldQuestions(jsonCampaign))
+        # Overwrites the engine's raw record deliberately: the stored key
+        # says what the engine believed, this says what the reader is
+        # entitled to believe, and only the second should reach a screen.
+        jsonCampaign["dictPhaseInFlight"] = (
+            agentCouncilResolution.fdictDescribeActivePhase(jsonCampaign))
         return {
             "dictCampaign": jsonCampaign,
             "listQuarantinedRunners": listQuarantined,

@@ -6952,6 +6952,23 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     cursor: help;
 }
 
+/* The phase running right now. Pulsed rather than coloured: a
+   researcher watching a council for twenty minutes needs to see that
+   something is alive, and a static row is what read as a hang. */
+.council-turn-live {
+    color: var(--accent-color, #1565c0);
+    animation: councilPhasePulse 2s ease-in-out infinite;
+}
+
+@keyframes councilPhasePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .council-turn-live { animation: none; }
+}
+
 .council-resize-handle {
     height: 6px;
     flex: 0 0 6px;

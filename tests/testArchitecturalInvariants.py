@@ -4145,7 +4145,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the gate so it applies to a campaign already waiting at one.
     # +2 (2026-08-25): questions held for a gate that never opened are
     # derived on read too, so an interrupted campaign can show them.
-    "routes/councilRoutes.py": 1307,
+    # 1307 -> 1312: and the phase in flight is re-checked on read, so
+    # the raw record never reaches a screen unguarded.
+    "routes/councilRoutes.py": 1312,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4206,7 +4208,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the prose FROM them so the readable and machine-readable records
     # cannot disagree, and that composition has to happen where the gate
     # is still in hand — one line later it is cleared.
-    "agentCouncil.py": 836,
+    # 836 -> 881 (2026-08-25): the engine records the phase it is
+    # running and who is running it. It belongs in the engine because
+    # the engine is the only thing that knows — a turn record appears
+    # only once its turn has settled, so no reader can derive an
+    # in-flight phase from the campaign, and a council mid-cross-review
+    # read as hung for its whole duration.
+    "agentCouncil.py": 881,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -4229,7 +4237,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # those lines are the comment explaining why the two inspect
     # results are bound before they are read; re-chaining them spends
     # blind-spot budget per link, which is not visible at the call.
-    "agentCouncilDockerGateway.py": 889,
+    # 889 -> 897 (2026-08-25): the egress sweep's docstring stated the
+    # premise that WHICH campaigns are sweepable is obvious ("no drive
+    # survives a restart"). It is not — a second hub's live campaigns
+    # sit in the same machine-wide store — so the correction is recorded
+    # where the next reader of this function will find it.
+    "agentCouncilDockerGateway.py": 897,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -5235,7 +5248,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # raising the setting actually governs a turn.
     # +1 (2026-08-25): the continuation carries the per-decision answers
     # through to the engine.
-    "agentCouncilController.py": 1241,
+    # 1241 -> 1250 (2026-08-25): the startup classifier declines to
+    # declare a live peer hub's campaign interrupted. The check belongs
+    # in the loop that does the classifying — one line earlier and it
+    # would be filtering a list nobody had read yet.
+    "agentCouncilController.py": 1250,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

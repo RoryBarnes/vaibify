@@ -325,6 +325,15 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
         "bStopRequested": False,
         "iObjectionCounter": 0,
         "iClaimCounter": 0,
+        # What the engine is running RIGHT NOW, or None between phases.
+        # A turn record only exists once its turn has settled, so a
+        # record alone cannot say that a phase is under way — a reader
+        # watching only settled turns sees the whole of cross-review as
+        # "nothing has happened since the proposals", which reads as a
+        # hung council. Not in LIST_CAMPAIGN_REQUIRED_KEYS: campaigns
+        # checkpointed by an earlier hub carry no such key and must
+        # still restore, so every read of it goes through .get.
+        "dictPhaseInFlight": None,
     }
 
 

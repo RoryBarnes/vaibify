@@ -31,6 +31,7 @@ from .agentCouncilCampaign import (
     S_GATE_QUORUM_SHORTFALL,
     S_STATE_FAILED,
     S_STATE_NEEDS_HUMAN,
+    S_STATE_PLANNING,
     S_STATE_PLAN_READY,
     S_VERDICT_ACCEPT,
     S_VERDICT_BLOCKING_OBJECTION,
@@ -48,6 +49,8 @@ from .agentCouncilCharter import (
 __all__ = [
     "RoundResolutionMixin",
     "TUPLE_DECISION_TIER_ORDER",
+    "fdictDescribeActivePhase",
+    "flistDescribeHeldQuestions",
     "flistGroupGateQuestionsIntoDecisions",
 ]
 
@@ -166,6 +169,33 @@ def flistDescribeHeldQuestions(dictCampaign):
     if not listRounds:
         return []
     return list(listRounds[-1].get("listDeferredQuestions") or [])
+
+
+def fdictDescribeActivePhase(dictCampaign):
+    """Return the phase running right now, or None.
+
+    The record the engine writes is what an engine BELIEVES it is doing;
+    this is what a reader is entitled to believe. Two things can falsify
+    the record without anyone rewriting it — the campaign left the
+    planning state, or a hub died mid-phase and a later hub restored the
+    checkpoint — and both would leave a dead council reporting
+    "synthesizing" indefinitely. So the state is re-checked here, and the
+    round number must still be the OPEN round: a record naming a round
+    that has since resolved is stale by construction.
+
+    A live hub cannot outrun this. It clears the record before it settles
+    a phase, so there is no window in which the round resolves while the
+    record still names it.
+    """
+    dictInFlight = dictCampaign.get("dictPhaseInFlight")
+    if not dictInFlight or dictCampaign.get("sState") != S_STATE_PLANNING:
+        return None
+    listRounds = dictCampaign.get("listRounds") or []
+    if not listRounds or listRounds[-1].get("sResolution"):
+        return None
+    if listRounds[-1].get("iRoundNumber") != dictInFlight.get("iRoundNumber"):
+        return None
+    return copy.deepcopy(dictInFlight)
 
 
 def flistGroupGateQuestionsIntoDecisions(dictCampaign):

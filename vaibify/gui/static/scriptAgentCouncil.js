@@ -1615,11 +1615,12 @@ var VaibifyAgentCouncil = (function () {
             });
         return "<div class=\"council-rounds\">" +
             listRounds.map(function (dictRound) {
-                return _fsOneRound(dictRound, dictModelById);
+                return _fsOneRound(dictRound, dictModelById,
+                                   dictCampaign.dictPhaseInFlight);
             }).join("") + "</div>";
     }
 
-    function _fsOneRound(dictRound, dictModelById) {
+    function _fsOneRound(dictRound, dictModelById, dictInFlight) {
         var dictByPhase = dictRound.dictTurnsByPhase || {};
         var sBody = Object.keys(dictByPhase).filter(
             function (sPhase) { return dictByPhase[sPhase].length; }
@@ -1630,11 +1631,33 @@ var VaibifyAgentCouncil = (function () {
                     return _fsOneTurn(dictTurn, dictModelById);
                 }).join(" ") + "</li>";
         }).join("");
+        sBody += _fsPhaseInFlightRow(dictRound, dictInFlight, dictModelById);
         return "<div class=\"council-round\">" +
             "<strong>Round " + _fsEscape(String(dictRound.iRoundNumber)) +
             "</strong><ul>" + (sBody ||
                 "<li class=\"council-hint\">turns in flight</li>") +
             "</ul></div>";
+    }
+
+    function _fsPhaseInFlightRow(dictRound, dictInFlight, dictModelById) {
+        /* The running phase gets its own row, because the settled rows
+           above cannot express it: a phase appears there only once it
+           has finished, so cross-review is invisible for its whole
+           duration and the round looks abandoned at the proposals. */
+        if (!dictInFlight
+                || dictInFlight.iRoundNumber !== dictRound.iRoundNumber) {
+            return "";
+        }
+        var sWho = (dictInFlight.listRunningParticipantIds || []).map(
+            function (sParticipantId) {
+                return dictModelById[sParticipantId] || "participant";
+            }).join(", ");
+        return "<li class=\"council-phase-live\">" +
+            _fsEscape(DICT_PHASE_LABELS[dictInFlight.sPhase]
+                || dictInFlight.sPhase) + ": " +
+            "<span class=\"council-turn council-turn-live\">" +
+            (sWho ? _fsEscape(sWho) + " working…" : "starting…") +
+            "</span></li>";
     }
 
     function _fsOneTurn(dictTurn, dictModelById) {
@@ -1725,43 +1748,38 @@ var VaibifyAgentCouncil = (function () {
     };
 
     function _fsParticipantActivity(dictParticipant, dictCampaign) {
-        /* Reads the OPEN round's latest phase. A participant with an
-           unsettled turn there is doing that phase's work; one whose
-           turn settled has finished it; one with no turn in that phase
-           at all is waiting on the others — which is the honest word for
-           a proposer while the pen-holder synthesizes. */
-        var listRounds = dictCampaign.listRounds || [];
-        if (!listRounds.length) return "";
-        var dictTurnsByPhase = listRounds[listRounds.length - 1]
-            .dictTurnsByPhase || {};
-        var listPhases = Object.keys(dictTurnsByPhase);
-        if (!listPhases.length) return "";
-        var sPhase = listPhases[listPhases.length - 1];
-        var listMine = (dictTurnsByPhase[sPhase] || []).filter(
-            function (dictTurn) {
-                return dictTurn.sParticipantId ===
-                    dictParticipant.sParticipantId;
-            });
-        if (!listMine.length) {
-            return _fbHasSettledTurnEarlier(dictParticipant, dictTurnsByPhase)
-                ? "waiting on the others" : "";
+        /* Reads the backend's record of what is running, NEVER the
+           settled turn records. A turn record exists only once its turn
+           has SETTLED, so a view built from them is structurally blind
+           to the phase in progress: during cross-review the newest
+           records are the two finished proposals, and every agent reads
+           "completed" while both are working. That is the reading a
+           researcher correctly called a hang.
+
+           Which agent is running is the backend's word too. Synthesis
+           runs one author picked by a fallback chain, so a display that
+           assumed the configured chairbot would name the wrong agent
+           precisely when a substitution had happened. */
+        var dictInFlight = dictCampaign.dictPhaseInFlight;
+        if (!dictInFlight) return "";
+        var listRunning = dictInFlight.listRunningParticipantIds || [];
+        if (listRunning.indexOf(dictParticipant.sParticipantId) >= 0) {
+            return DICT_PHASE_ACTIVITY[dictInFlight.sPhase] || "working";
         }
-        var dictTurn = listMine[listMine.length - 1];
-        if (dictTurn.sStatus === "completed") return "completed this round";
-        if (dictTurn.sStatus === "failed") return "failed this round";
-        return DICT_PHASE_ACTIVITY[sPhase] || "";
+        return DICT_PHASE_WAITING[dictInFlight.sPhase]
+            || "waiting on the others";
     }
 
-    function _fbHasSettledTurnEarlier(dictParticipant, dictTurnsByPhase) {
-        return Object.keys(dictTurnsByPhase).some(function (sPhase) {
-            return (dictTurnsByPhase[sPhase] || []).some(
-                function (dictTurn) {
-                    return dictTurn.sParticipantId ===
-                        dictParticipant.sParticipantId
-                        && dictTurn.sStatus === "completed";
-                });
-        });
-    }
+    /* An agent not running the phase in flight is waiting on whoever
+       is. Naming WHO makes the wait legible: "waiting on the pen-holder"
+       during synthesis says the council is progressing without this
+       agent, where a bare "waiting" reads as a stall. */
+    var DICT_PHASE_WAITING = {
+        independentProposals: "waiting on the others",
+        crossReview: "waiting on the others",
+        synthesis: "waiting on the pen-holder",
+        veto: "waiting on the other voters"
+    };
 
     function _fsLifecycleFromCampaign(dictCampaign) {
         /* A terminal campaign STATE proves nothing about runners on its

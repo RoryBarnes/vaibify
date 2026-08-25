@@ -357,6 +357,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
     async def _fnRunPhase(self, dictRound, sPhase):
         self._fnEmitEvent("phaseStarted", {
             "sPhase": sPhase, "iRoundNumber": dictRound["iRoundNumber"]})
+        self._fnRecordPhaseInFlight(dictRound, sPhase)
         if sPhase == S_PHASE_SYNTHESIS:
             await self._fnRunSynthesisPhase(dictRound)
         elif sPhase == S_PHASE_VETO:
@@ -371,8 +372,43 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             # its key so ``_fsNextPhaseForRound`` reads it as done rather
             # than re-running it forever.
             dictRound["dictTurnsByPhase"].setdefault(sPhase, [])
+        self._fnRecordPhaseInFlight(None, "")
         self._fnEmitEvent("phaseSettled", {
             "sPhase": sPhase, "iRoundNumber": dictRound["iRoundNumber"]})
+
+    def _fnRecordPhaseInFlight(self, dictRound, sPhase):
+        """Record the phase the engine is about to run, or clear it.
+
+        Checkpointed, because a poll reads the checkpointed record: an
+        event would be the more natural home, but the event ring evicts
+        under load and a display that loses the eviction loses the only
+        statement that a phase is running at all.
+        """
+        self.dictCampaign["dictPhaseInFlight"] = None if sPhase == "" else {
+            "sPhase": sPhase,
+            "iRoundNumber": dictRound["iRoundNumber"],
+            "listRunningParticipantIds": [],
+        }
+        self.fnCheckpointCampaign(self.dictCampaign)
+
+    def _fnRecordParticipantRunning(self, sParticipantId, bRunning):
+        """Add or remove one participant from the in-flight phase.
+
+        Which agent is working is not derivable from the phase: synthesis
+        runs ONE author, chosen by a fallback chain, and a display that
+        guessed the configured chairbot would name the wrong agent
+        exactly when a substitution had happened. The engine knows, so
+        it says.
+        """
+        dictInFlight = self.dictCampaign.get("dictPhaseInFlight")
+        if dictInFlight is None:
+            return
+        listRunning = dictInFlight["listRunningParticipantIds"]
+        if bRunning and sParticipantId not in listRunning:
+            listRunning.append(sParticipantId)
+        elif not bRunning and sParticipantId in listRunning:
+            listRunning.remove(sParticipantId)
+        self.fnCheckpointCampaign(self.dictCampaign)
 
     def _fnSettlePhaseOutcome(self, dictRound, sPhase):
         """Order matters (section 5.4): an indeterminate settle becomes
@@ -448,18 +484,27 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         dictRequest = fdictComposeTurnRequest(
             self.dictCampaign, dictParticipant, sPhase,
             dictRound["iRoundNumber"], listQuotedMaterial)
-        dictAttempt = await self._fdictDriveConnection(dictParticipant,
-                                                       dictRequest)
-        bRepairAttempted = False
-        if dictAttempt["sOutcome"] == "invalid":
-            bRepairAttempted = True
-            dictRepairRequest = fdictComposeTurnRequest(
-                self.dictCampaign, dictParticipant, sPhase,
-                dictRound["iRoundNumber"], listQuotedMaterial,
-                bRepairRequest=True,
-                listSchemaProblems=dictAttempt["listProblems"])
+        sParticipantId = dictParticipant["sParticipantId"]
+        self._fnRecordParticipantRunning(sParticipantId, True)
+        try:
             dictAttempt = await self._fdictDriveConnection(dictParticipant,
-                                                           dictRepairRequest)
+                                                           dictRequest)
+            bRepairAttempted = False
+            if dictAttempt["sOutcome"] == "invalid":
+                bRepairAttempted = True
+                dictRepairRequest = fdictComposeTurnRequest(
+                    self.dictCampaign, dictParticipant, sPhase,
+                    dictRound["iRoundNumber"], listQuotedMaterial,
+                    bRepairRequest=True,
+                    listSchemaProblems=dictAttempt["listProblems"])
+                dictAttempt = await self._fdictDriveConnection(
+                    dictParticipant, dictRepairRequest)
+        finally:
+            # In a finally because a turn that raises out of here still
+            # is not running: an agent left marked would read as working
+            # for the rest of the phase, which is the false-progress
+            # claim this whole record exists to avoid.
+            self._fnRecordParticipantRunning(sParticipantId, False)
         dictTurnRecord = self._fdictBuildTurnRecord(
             dictRequest, dictRound, dictParticipant, sPhase, dictAttempt,
             bRepairAttempted)
