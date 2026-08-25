@@ -103,6 +103,7 @@ def _fnWaitUntilServing(iPort, fTimeoutSeconds=20.0):
 S_HOST_WORKFLOW_NAME = "hostLaneProject"
 S_HOST_STEP_NAME = "MakeNumbers"
 S_HOST_STEP_OUTPUT = "numbers.json"
+S_HOST_DECLARATION_STEP_NAME = "AI Declaration"
 
 _S_HOST_STEP_SCRIPT = """import argparse
 import json
@@ -150,6 +151,26 @@ def fdictHostWorkflowDocument():
             "saOutputDataFiles": [],
             "saPlotCommands": [],
             "saPlotFiles": [],
+        }, {
+            # A third step no journey runs, and that CANNOT be run:
+            # the declaration kind's command block is empty by
+            # construction, which is what the run-light column has to
+            # report honestly. Shaped exactly like the one
+            # fdictBuildAiDeclarationStep emits, including the
+            # slug-conforming directory, so a regression in either
+            # lands here.
+            "sName": S_HOST_DECLARATION_STEP_NAME,
+            "sStepId": "ai-declaration",
+            "sDirectory": "AIDeclaration",
+            "sStepKind": "ai-declaration",
+            "sDeclarationFile": "AI_USAGE.md",
+            "bRunEnabled": True,
+            "bPlotOnly": False,
+            "bInteractive": True,
+            "saDataCommands": [],
+            "saOutputDataFiles": [],
+            "saPlotCommands": [],
+            "saPlotFiles": [],
         }],
     }
 
@@ -171,14 +192,15 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
         os.path.join(sStepDirectory, "makeNumbers.py"), "w",
     ) as fileScript:
         fileScript.write(_S_HOST_STEP_SCRIPT)
-    sSecondStageDirectory = os.path.join(
-        sProjectDirectory, "SecondStage",
-    )
-    os.makedirs(sSecondStageDirectory, exist_ok=True)
-    with open(
-        os.path.join(sSecondStageDirectory, ".gitkeep"), "w",
-    ) as fileKeep:
-        fileKeep.write("")
+    for sDirectoryName in ("SecondStage", "AIDeclaration"):
+        sStageDirectory = os.path.join(
+            sProjectDirectory, sDirectoryName,
+        )
+        os.makedirs(sStageDirectory, exist_ok=True)
+        with open(
+            os.path.join(sStageDirectory, ".gitkeep"), "w",
+        ) as fileKeep:
+            fileKeep.write("")
     sProjectsDirectory = os.path.join(
         sProjectDirectory, ".vaibify", "projects",
     )

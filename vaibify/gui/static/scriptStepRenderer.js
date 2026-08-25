@@ -106,6 +106,41 @@ var VaibifyStepRenderer = (function () {
         "skipped": "skipped in the last run",
     };
 
+    var _T_STEP_COMMAND_KEYS = ["saDataCommands", "saTestCommands",
+        "saPlotCommands", "saSetupCommands", "saCommands"];
+
+    function fbStepRunsNoCommands(dictStep) {
+        // A declaration step's command block is empty BY
+        // CONSTRUCTION (fdictBuildAiDeclarationStep) — its whole
+        // content is a markdown file and an attestation. The test is
+        // on the commands rather than on sStepKind so that a
+        // declaration step which somehow acquires one gets its light
+        // back and reports honestly.
+        if (!dictStep || dictStep.sStepKind !== "ai-declaration") {
+            return false;
+        }
+        return _T_STEP_COMMAND_KEYS.every(function (sKey) {
+            return (dictStep[sKey] || []).length === 0;
+        });
+    }
+
+    function _fsBuildNoExecutionCell() {
+        // NOT a suppressed light: the column is declared
+        // not-applicable, in the same muted-dash vocabulary the level
+        // strip already uses for "there is nothing here to attain".
+        // A step with no commands has no execution to report, so
+        // every state this light could show would be about the
+        // researcher's answer to the interactive prompt rather than
+        // about work — which is how a declaration step a researcher
+        // had never run came to wear "last run failed" (2026-08-25).
+        // Whether the declaration is signed lives in the L2 cell.
+        return '<span class="step-status-cell" title="' +
+            fnEscapeHtml("Run status: this step runs no commands — " +
+                "it records your AI declaration. Sign-off shows in " +
+                "the L2 cell.") +
+            '"><span class="level-cell-dash">&ndash;</span></span>';
+    }
+
     function _fsBuildStepStatusCell(sRunStatus, bDownstreamOfDegraded) {
         // Vocabulary: hollow grey = never run this session, filled
         // grey = queued, blinking orange = running, red = failed,
@@ -468,8 +503,11 @@ var VaibifyStepRenderer = (function () {
             '<input type="checkbox" class="step-checkbox" ' +
             'title="Include this step when running the project"' +
             (bRunEnabled ? " checked" : "") + ">" +
-            _fsBuildStepStatusCell(
-                sRunStatus, !!dictContext.dictStepTaint[iIndex]) +
+            (fbStepRunsNoCommands(step)
+                ? _fsBuildNoExecutionCell()
+                : _fsBuildStepStatusCell(
+                    sRunStatus,
+                    !!dictContext.dictStepTaint[iIndex])) +
             '<span class="step-number">' +
             sStepNumber + "</span>" +
             '<span class="step-name" title="' +
@@ -1208,6 +1246,11 @@ var VaibifyStepRenderer = (function () {
         // The banner's run light went alarm-only (2026-07-17), so
         // this line is where a successful run's record lives:
         // outcome, finish stamp, and durations.
+        // No guard for commandless steps here, deliberately: this is
+        // reached only from _fsRenderLevelOneBody, and a declaration
+        // step takes the "no requirements at this level" branch
+        // instead, so its expanded body already makes no run claim.
+        // A guard would be unreachable code implying otherwise.
         var dictStats = step.dictRunStats || {};
         var sOutcome = _fsLastRunOutcome(step, iIndex, dictContext);
         if (!sOutcome && dictStats.fWallClock === undefined) {
