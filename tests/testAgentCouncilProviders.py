@@ -450,3 +450,39 @@ def testAUsableResultIsUnaffectedByTheDiagnosis():
     dictGood = providers.fdictExtractStructuredResult([
         {"type": "result", "result": json.dumps({"sSummary": "ok"})}])
     assert dictGood == {"sSummary": "ok"}
+
+
+def testARateLimitedTurnIsNamedAsSuchNotAsBadFormatting():
+    """The opus failure that took three sessions to name.
+
+    Kills: ignoring the rate-limit event type when no result arrives.
+
+    A live opus turn ran 52 assistant messages, received a
+    `rate_limit_event`, and ended with NO result event — so the engine
+    saw an empty result and reported "every schema field is missing",
+    which reads as a model that formatted its answer badly. The signal
+    was in the stream the whole time, in an event type nothing
+    inspected: fsClassifyTurnFailure reads only the result event's
+    error text, and a rate limit can truncate a turn before any result
+    event exists (2026-08-24).
+    """
+    dictEmpty = providers.fdictExtractStructuredResult([
+        {"type": "system"}, {"type": "assistant"},
+        {"type": providers.S_RATE_LIMIT_EVENT_TYPE}])
+    assert dictEmpty["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_RATE_LIMITED)
+    assert dictEmpty["dictEventTypeCounts"]["assistant"] == 1
+
+
+def testAnOrdinaryTruncationIsNotBlamedOnARateLimit():
+    """The other half: only a real rate-limit event says rate limit.
+
+    Kills: reporting every empty result as rate limited.
+
+    A stream that simply died has a different remedy from one the
+    provider throttled, and conflating them would send the researcher
+    to wait out a limit that was never hit.
+    """
+    dictEmpty = providers.fdictExtractStructuredResult([
+        {"type": "system"}, {"type": "assistant"}])
+    assert dictEmpty["sEmptyResultReason"] == "noResultEvent"

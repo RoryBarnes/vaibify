@@ -156,6 +156,11 @@ S_FAILURE_KILLED_NO_EXIT_CODE = "killedNoExitCode"
 S_FAILURE_NO_RESULT_EVENT = "noResultEvent"
 S_FAILURE_AUTHENTICATION = "authenticationFailure"
 S_FAILURE_RATE_LIMIT = "rateLimit"
+# The CLI's own stream-json event type for a rate limit. Distinct from
+# the result event's error text: a rate limit can truncate a turn
+# BEFORE any result event exists.
+S_RATE_LIMIT_EVENT_TYPE = "rate_limit_event"
+S_EMPTY_BECAUSE_RATE_LIMITED = "rateLimitedBeforeAnyResult"
 
 
 class RunnerCredentialError(Exception):
@@ -282,6 +287,15 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent):
     for dictEvent in listEvents:
         sType = str(dictEvent.get("type", "?"))
         dictTally[sType] = dictTally.get(sType, 0) + 1
+    # A rate limit is announced by its own EVENT TYPE, not by the
+    # result event's error text — and when it truncates a turn there is
+    # no result event to carry an error at all. fsClassifyTurnFailure
+    # reads only the result event, so a live opus turn that was rate
+    # limited after 52 assistant messages was reported as a schema
+    # violation listing every absent field (2026-08-24). The stream
+    # said so plainly and nothing was reading it.
+    if dictTally.get(S_RATE_LIMIT_EVENT_TYPE):
+        sReason = S_EMPTY_BECAUSE_RATE_LIMITED
     return {
         "sRawResultText": "",
         "sEmptyResultReason": sReason,

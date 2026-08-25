@@ -4223,7 +4223,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a result event carrying no text. The diagnosis belongs beside the
     # extraction that produces it; anywhere else it would be a second
     # reading of the same event list.
-    "agentCouncilProviders.py": 957,
+    # 957 -> 971 (2026-08-24): an empty result caused by a RATE LIMIT
+    # is named as one. The signal is a distinct stream event type, and
+    # a rate limit can truncate a turn before any result event exists —
+    # so fsClassifyTurnFailure, which reads only the result event,
+    # could never have seen it.
+    "agentCouncilProviders.py": 971,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
