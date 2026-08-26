@@ -492,6 +492,110 @@ def test_accept_plan_writes_local_only_not_the_project(
     assert response.json()["sPlanSha256"] == sExpectedSha256
 
 
+# ── the plan.md deliverable ──────────────────────────────────────
+
+@pytest.mark.falsification
+def test_a_candidate_plan_is_rendered_over_http(tOwnerClient, eventTurnGate):
+    """The deliverable is always readable, not only at acceptance.
+
+    fsComposePlanMarkdown used to run ONLY on acceptance, and no
+    council ever reached acceptance — so the researcher had never seen
+    the real artifact, and a council that died at a gate yielded
+    nothing at all.
+
+    Kills: dropping the plan.md route from registration.
+    """
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    sCampaignId = _sStartOneCampaign(client)
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/plan.md")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "# Council plan" in response.text
+    assert DICT_START_BODY["sQuestion"] in response.text
+
+
+@pytest.mark.falsification
+def test_no_candidate_answers_not_found_never_an_empty_document(
+        tOwnerClient):
+    """A campaign that has produced nothing renders nothing.
+
+    An empty 200 would hand an implementation agent a title and no
+    plan, which reads as a plan that says nothing rather than as an
+    error.
+
+    Kills: rendering a document for a council with no candidate.
+    """
+    client, app, _ = tOwnerClient
+    # The turn gate stays CLOSED: the campaign is mid-planning and no
+    # synthesis has adopted a candidate.
+    sCampaignId = _sStartOneCampaign(client)
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/plan.md")
+    assert response.status_code == 404, response.text
+    assert "no candidate plan" in response.json()["detail"]
+
+
+@pytest.mark.falsification
+def test_the_route_bytes_equal_the_accepted_artifact_bytes(
+        tOwnerClient, eventTurnGate):
+    """One composer, proven by identity, not by inspection.
+
+    The acceptance path seals sha256(plan.md) into the event stream so
+    a reader can prove the file they hold is the accepted one; the
+    route must therefore serve exactly those bytes for an accepted
+    campaign — no watermark, no staleness sentence, no second
+    composer.
+
+    Kills: the route decorating the composed document with text of its
+    own.
+    """
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    sCampaignId = _sStartOneCampaign(client)
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+    responseAccept = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/accept-plan")
+    assert responseAccept.status_code == 200, responseAccept.text
+    with open(responseAccept.json()["sLocalPlanPath"],
+              encoding="utf-8") as filePlan:
+        sAcceptedArtifact = filePlan.read()
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/plan.md")
+    assert response.status_code == 200, response.text
+    assert response.text == sAcceptedArtifact
+
+
+@pytest.mark.falsification
+def test_an_unaccepted_candidate_says_so_in_its_own_text(
+        tOwnerClient, eventTurnGate):
+    """The watermark lives in the document, not in the page around it.
+
+    The downloaded file outlives the page it came from, so an
+    unaccepted candidate must announce itself — a fresh implementation
+    agent handed the file has no other way to know.
+
+    Kills: dropping the DRAFT watermark from the composer.
+    """
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    sCampaignId = _sStartOneCampaign(client)
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/plan.md")
+    assert response.status_code == 200, response.text
+    assert "DRAFT — this candidate was never accepted." in response.text
+    assert "planReady" in response.text
+
+
 def test_accept_plan_does_not_write_the_container(tmp_path, eventTurnGate):
     """The negative, proven on the docker double's write recorder."""
     docker = MockDockerCouncil()

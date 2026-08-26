@@ -19,6 +19,7 @@ stale-baseline flag, whose real producer is R12.
 import io
 import json
 import os
+import pathlib
 import shutil
 import tarfile
 import tempfile
@@ -312,6 +313,17 @@ def _fnAcceptTheCandidatePlan(page, serverHub, sCampaignId):
                       "Stop conditions",
                       "halt if a cached run disagrees with a cold run"):
         assert sExpected in sPlanText, sExpected
+    # Download serves the SERVER's plan.md bytes. The DRAFT watermark
+    # is the proof: only the backend composer writes it, so a
+    # resurrected client-side composer fails here, in a real browser,
+    # on the real route.
+    with page.expect_download() as contextDownload:
+        page.click("#btnCouncilDownloadPlan")
+    sDownloadedText = pathlib.Path(
+        contextDownload.value.path()).read_text(encoding="utf-8")
+    assert sDownloadedText.startswith("# Council plan")
+    assert "DRAFT — this candidate was never accepted." in sDownloadedText
+    assert contextDownload.value.suggested_filename == "council-plan.md"
     page.click("#btnCouncilAcceptPlan")
     _fnWaitForState(page, serverHub, sCampaignId, "awaitingImplementation")
     page.wait_for_function(

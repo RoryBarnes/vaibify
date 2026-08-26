@@ -38,6 +38,7 @@ import asyncio
 import posixpath
 
 from fastapi import HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
 from vaibify.docker import dockerConnection
@@ -1020,6 +1021,65 @@ def _fnRegisterAcceptPlan(app, dictCtx):
             _fdictExecuteAcceptPlan)
 
 
+def _fsDescribeBaselineStaleness(dictStaleness):
+    """Turn the staleness producer's verdict into one document sentence."""
+    bStale = dictStaleness.get("bPlanningBaselineStale")
+    sSummary = dictStaleness.get("sPlanningBaselineSummary", "")
+    if bStale is True:
+        return ("the repository has CHANGED since this council's sealed "
+                f"baseline ({sSummary}); the plan speaks about the "
+                "baseline, not the tree as it stands now")
+    if bStale is None:
+        return ("the baseline comparison could not run "
+                f"({sSummary or 'no verdict'}); treat the repository as "
+                "possibly changed since capture")
+    return ""
+
+
+def _fnRegisterPlanMarkdown(app, dictCtx):
+    """Register GET /api/agent-councils/{sContainerId}/{sCampaignId}/plan.md.
+
+    The deliverable, always available (continuation plan section 5): a
+    council that died at a gate still yields its candidate. The bytes
+    come from the ONE composer acceptance uses — for an ACCEPTED
+    campaign they are exactly the sealed artifact's bytes, so the
+    planArtifactSealed sha256 still identifies what this route serves,
+    which is why no staleness sentence may be appended there; an
+    unaccepted candidate instead carries the DRAFT watermark and the
+    staleness statement in its own text. No candidate answers 404,
+    never an empty document.
+    """
+
+    @app.get("/api/agent-councils/{sContainerId}/{sCampaignId}/plan.md")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fresponseReadCouncilPlanMarkdown(
+        sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
+    ):
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+        dictStore = fdictCampaignStore(requestHttp)
+        jsonCampaign = fjsonRequireCampaign(
+            dictStore, sCampaignId, sName, sProjectRepoPath)
+        if not jsonCampaign.get("dictCandidatePlan"):
+            raise HTTPException(
+                404, "this council holds no candidate plan; there is "
+                "nothing to render yet")
+        bAccepted = jsonCampaign.get("sState") in (
+            "planAccepted", "awaitingImplementation")
+        sStalenessStatement = ""
+        if not bAccepted:
+            sStalenessStatement = _fsDescribeBaselineStaleness(
+                await asyncio.to_thread(
+                    _fdictComputeBaselineStaleness, dictCtx, dictStore,
+                    sContainerId, sProjectRepoPath, sCampaignId))
+        return PlainTextResponse(
+            agentCouncilController.fsComposePlanMarkdown(
+                jsonCampaign, jsonCampaign["dictCandidatePlan"],
+                sStalenessStatement=sStalenessStatement),
+            media_type="text/markdown; charset=utf-8")
+
+
 def _fnRegisterDeleteCouncil(app, dictCtx):
     """Register DELETE /api/agent-councils/{sContainerId}/{sCampaignId}."""
 
@@ -1073,5 +1133,6 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRequestStop(app, dictCtx)
     _fnRegisterExhaustedRoundExits(app, dictCtx)
     _fnRegisterAcceptPlan(app, dictCtx)
+    _fnRegisterPlanMarkdown(app, dictCtx)
     _fnRegisterDeleteCouncil(app, dictCtx)
     _fnRegisterGetCouncil(app, dictCtx)

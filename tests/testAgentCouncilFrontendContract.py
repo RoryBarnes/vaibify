@@ -294,6 +294,30 @@ def test_plan_acceptance_controls_present():
     assert "btnCouncilAnotherPass" not in sSource
 
 
+@pytest.mark.falsification
+def test_copy_and_download_serve_the_servers_plan_bytes():
+    """One composer: the backend's plan.md is the only plan text.
+
+    A display-side brief composer lived here and diverged from the
+    server's artifact by construction — two renderers over one record.
+    Copy and Download now fetch the server's bytes, which also carry
+    the DRAFT watermark and staleness statement only the server can
+    compose.
+
+    Kills: reintroducing a client-side plan composer, and the fetch
+    helper losing the plan.md route.
+    """
+    sSource = _fsCouncilSource()
+    assert "_fsComposePlanBriefText" not in sSource, (
+        "a second plan composer diverges from the accepted artifact")
+    sFetch = _fsFunctionBody(sSource, "_fsFetchPlanMarkdown")
+    assert "/plan.md" in sFetch
+    assert "fsGetText" in sFetch
+    for sHelper in ("_fnCopyBrief", "_fnDownloadPlan"):
+        assert "_fsFetchPlanMarkdown" in _fsFunctionBody(
+            sSource, sHelper), sHelper
+
+
 def test_candidate_plan_renders_the_engine_result_shape():
     """The plan tab reads dictCandidatePlan.dictResult (R6), never the
     fabricated top-level sPlanText no engine ever wrote."""

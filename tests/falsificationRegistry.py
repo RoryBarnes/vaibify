@@ -13950,4 +13950,75 @@ def _fdictEntry(sRel):
         ),
         new='    setTaken = set(saExistingNames or [])',
     ),
+
+    # ------------------------------------------------------------------
+    # The plan.md deliverable (continuation plan section 5, 2026-08-26).
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_a_candidate_plan_is_rendered_over_http'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='    _fnRegisterPlanMarkdown(app, dictCtx)\n',
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_no_candidate_answers_not_found_never_an_empty_document'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='        if not jsonCampaign.get("dictCandidatePlan"):',
+        new='        if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_the_route_bytes_equal_the_accepted_artifact_bytes'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # The route decorates the document with text of its own -- the
+        # sealed sha256 no longer identifies what the route serves.
+        old=(
+            '        return PlainTextResponse(\n'
+            '            agentCouncilController.fsComposePlanMarkdown('
+        ),
+        new=(
+            '        return PlainTextResponse(\n'
+            '            "<!-- rendered by the plan.md route -->\\n"\n'
+            '            + agentCouncilController.fsComposePlanMarkdown('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_an_unaccepted_candidate_says_so_in_its_own_text'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    if dictCampaign.get("sState") not in ("planAccepted",\n'
+            '                                          '
+            '"awaitingImplementation"):'
+        ),
+        new='    if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilFrontendContract.py::'
+            'test_copy_and_download_serve_the_servers_plan_bytes'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '            + "/plan.md") + _fsDirectoryQuery("?");'
+        ),
+        new=(
+            '            + "/plan.txt") + _fsDirectoryQuery("?");'
+        ),
+    ),
 ]

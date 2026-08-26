@@ -886,7 +886,8 @@ def _fdictCollectResolvedModelsByParticipant(dictCampaign):
     return dictResolvedModels
 
 
-def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan):
+def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan,
+                          sStalenessStatement=""):
     """Render the council's own candidate into the plan.md text.
 
     The acceptance artifact is composed from the SERVER-held record
@@ -897,11 +898,31 @@ def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan):
     summary, plan items, security risks, counterexamples attempted and
     open questions, plus the objection provenance the protocol
     recorded (researcher overrides stated as overrides, loudly).
+
+    This is the ONLY composer — the plan.md read route serves these
+    same bytes, so acceptance and the HTTP read can never disagree. An
+    unaccepted candidate says so in the document's own text, because
+    the file outlives the page it was downloaded from; the optional
+    ``sStalenessStatement`` (route-computed, since staleness needs a
+    live repository read this pure function must not make) rides the
+    same principle.
     """
     dictResult = dictCandidatePlan.get("dictResult") or {}
     dictIdentity = dictCampaign.get("dictProjectIdentity") or {}
-    listLines = ["# Council plan", "",
-                 f"**Question.** {dictCampaign.get('sQuestion', '')}", ""]
+    listLines = ["# Council plan", ""]
+    if dictCampaign.get("sState") not in ("planAccepted",
+                                          "awaitingImplementation"):
+        listLines.extend([
+            "**DRAFT — this candidate was never accepted.** The council "
+            "that produced it stopped at "
+            f"`{dictCampaign.get('sState') or 'an unrecorded state'}`; "
+            "read it as the council's working position, not a decision.",
+            ""])
+    if sStalenessStatement:
+        listLines.extend(
+            [f"**Baseline staleness.** {sStalenessStatement}", ""])
+    listLines.extend(
+        [f"**Question.** {dictCampaign.get('sQuestion', '')}", ""])
     sSnapshotIdentity = dictIdentity.get("sSnapshotIdentity", "")
     if sSnapshotIdentity:
         listLines.extend([

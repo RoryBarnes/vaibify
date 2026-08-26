@@ -2540,26 +2540,23 @@ var VaibifyAgentCouncil = (function () {
         return sParts;
     }
 
-    function _fsComposePlanBriefText(dictPlan) {
-        /* The copy/download text, composed from the same candidate the
-           backend's plan.md composer reads — display-side only; the
-           backend stays the authority for the accepted artifact. */
-        var dictResult = dictPlan.dictResult || {};
-        var listLines = ["# Council plan", "", dictResult.sSummary || ""];
-        (dictResult.listPlanItems || []).forEach(function (sItem, iIndex) {
-            listLines.push((iIndex + 1) + ". " + String(sItem));
-        });
-        [["listRejectedAlternatives", "rejected alternative"],
-         ["listVerificationRequirements", "verification required"],
-         ["listStopConditions", "stop condition"],
-         ["listOpenQuestions", "open question"]]
-            .forEach(function (tSection) {
-                (dictResult[tSection[0]] || []).forEach(function (sEntry) {
-                    listLines.push(
-                        "- " + tSection[1] + ": " + String(sEntry));
-                });
-            });
-        return listLines.join("\n");
+    async function _fsFetchPlanMarkdown() {
+        /* The SERVER's bytes, always: the backend composer is the one
+           authority on what the plan document says, and it watermarks
+           an unaccepted draft in the document's own text. A second
+           display-side composer lived here once and was a divergence
+           waiting to happen. */
+        var sUrl = _fsRoute(
+            "/" + encodeURIComponent(_dictState.sActiveCampaignId)
+            + "/plan.md") + _fsDirectoryQuery("?");
+        try {
+            return await VaibifyApi.fsGetText(sUrl);
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                "The plan could not be fetched: " +
+                (error.message || String(error)), "error");
+            return "";
+        }
     }
 
     function _fsPlanTab(dictCampaign) {
@@ -2955,25 +2952,26 @@ var VaibifyAgentCouncil = (function () {
         _fnStartPolling();
     }
 
-    function _fnCopyBrief(dictCampaign) {
-        var dictPlan = dictCampaign.dictCandidatePlan || {};
-        var sBrief = _fsComposePlanBriefText(dictPlan);
+    async function _fnCopyBrief(dictCampaign) {
+        void dictCampaign;
+        var sBrief = await _fsFetchPlanMarkdown();
         if (navigator.clipboard && sBrief) {
             navigator.clipboard.writeText(sBrief);
             VaibifyApp.fnShowToast("Implementation brief copied.", "info");
         }
     }
 
-    function _fnDownloadPlan(dictCampaign) {
+    async function _fnDownloadPlan(dictCampaign) {
         /* Downloads land on the computer the browser runs on, which in a
            remote session is NOT the execution host — say so (section
            21). */
-        var dictPlan = dictCampaign.dictCandidatePlan || {};
-        var sText = _fsComposePlanBriefText(dictPlan);
+        void dictCampaign;
+        var sText = await _fsFetchPlanMarkdown();
+        if (!sText) return;
         var elLink = document.createElement("a");
-        elLink.href = "data:text/plain;charset=utf-8," +
+        elLink.href = "data:text/markdown;charset=utf-8," +
             encodeURIComponent(sText);
-        elLink.download = "council-plan.txt";
+        elLink.download = "council-plan.md";
         elLink.click();
         if (VaibifyApp.fbIsRemoteSession()) {
             VaibifyApp.fnShowToast(

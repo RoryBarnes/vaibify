@@ -4166,7 +4166,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stopped being this module's privates. (+3 the same day: the
     # campaign-name field's comment stopped promising uniqueness the
     # store does not enforce.)
-    "routes/councilRoutes.py": 1077,
+    # +62 (2026-08-26): the plan.md deliverable — GET
+    # /{sCampaignId}/plan.md renders the candidate through the ONE
+    # composer acceptance uses (a council that dies at a gate still
+    # yields its plan), with the staleness sentence composed here
+    # because only the route may read the live repository. A
+    # campaign-lifecycle read at the same guard points as every other
+    # campaign route.
+    "routes/councilRoutes.py": 1139,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -5300,7 +5307,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # council state settles its conversations too — the release
     # drain, the delete disposal and the shutdown settle each grew
     # the chat half beside the runtime half they already had.
-    "agentCouncilController.py": 1316,
+    # +21 (2026-08-26): fsComposePlanMarkdown watermarks an unaccepted
+    # draft in the document's own text and takes the route-computed
+    # staleness sentence — the composer stays the ONE renderer, so the
+    # honesty additions land in it rather than in a second one.
+    "agentCouncilController.py": 1337,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
