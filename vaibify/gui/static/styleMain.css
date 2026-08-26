@@ -5912,6 +5912,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l3-workflow-image,
 .step-blocker-glyph-l3-workflow-reproduce,
 .step-blocker-glyph-l3-workflow-attestation,
+.step-blocker-glyph-l3-workflow-envelope,
 .step-blocker-glyph-l3-workflow-binaries {
     color: var(--color-orange);
 }

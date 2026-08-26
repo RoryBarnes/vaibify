@@ -534,6 +534,37 @@ var VaibifyWorkflowRequirements = (function () {
             });
     }
 
+    function _flistEnvelopeMirrorRows(dictDetail) {
+        /* The Level 3 published-copy row, sitting with the envelope
+           artifacts it is about rather than beside the Level 2 sync
+           rows. Same comparison, same single network pass, different
+           files: Level 2 asks whether the generating data is
+           published, Level 3 asks whether what a third party needs in
+           order to RE-RUN it is. Keeping them in separate groups is
+           what stops a stale requirements.lock from reading as "your
+           data is not published". */
+        var bMatched = dictDetail.bEnvelopeInGithubMirror === true;
+        return [{
+            sKey: "envelopeMirror", iLevel: 3,
+            sTitle: "Envelope matches the GitHub mirror",
+            sState: bMatched ? "green" : "red",
+            fsDetail: function () {
+                if (bMatched) {
+                    return '<div class="detail-note">The published ' +
+                        'reproduce script, manifest, dependency lock, ' +
+                        'environment snapshot and Dockerfile match ' +
+                        'the copies in this repository.</div>';
+                }
+                return '<div class="detail-note">One of the envelope ' +
+                    'files differs from the copy on GitHub, or has ' +
+                    'not been compared with it. A third party ' +
+                    'reproducing from the published repository would ' +
+                    'not be running what you ran. Push the current ' +
+                    'envelope, then use Verify now on the GitHub ' +
+                    'mirror row above.</div>';
+            }}];
+    }
+
     function _flistDeterminismRows(dictDetail) {
         return [{
             sKey: "determinism", iLevel: 3,
@@ -1185,7 +1216,8 @@ var VaibifyWorkflowRequirements = (function () {
             ["software", _flistSoftwareRows(dictDetail),
              _fsRenderBinaryAddForm(
                  dictContext.bBinaryAddFormOpen === true)],
-            ["artifacts", _flistArtifactRows(dictDetail), ""],
+            ["artifacts", _flistArtifactRows(dictDetail).concat(
+                _flistEnvelopeMirrorRows(dictDetail)), ""],
             ["determinism", _flistDeterminismRows(dictDetail), ""],
             ["publishedCopies",
              _flistPublishedCopiesRows(dictDetail), ""],

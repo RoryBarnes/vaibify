@@ -2232,6 +2232,14 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+        # The Level 3 half of the published-copy question. Its Level 2
+        # twin lives in dictRemoteSyncs; this one is scoped to the
+        # reproducibility envelope, which the L2 rows deliberately do
+        # not cover (2026-08-26).
+        "bEnvelopeInGithubMirror": (
+            levelGates.fbEnvelopeMatchesGithubMirror(filesRepo)
+            if bHasRepo else False
+        ),
         "bRebuildAttestationCurrent": (
             fbL3AttestationCurrent(filesRepo) if bHasRepo else False
         ),

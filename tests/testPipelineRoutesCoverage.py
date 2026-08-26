@@ -1798,6 +1798,13 @@ class TestPollLevelStatePayload:
             "bRepoRootAgentsFileDetected",
             "sReplayAxisState", "dictPromptRecord",
             "dictSupervision",
+            # Added 2026-08-26. The Level 3 published-copy answer gets
+            # a field of its own rather than joining dictRemoteSyncs,
+            # and that separation is load-bearing: dictRemoteSyncs
+            # feeds the Level 2 rows, and an envelope answer arriving
+            # there would re-couple the levels in the UI after the
+            # gates had been deliberately kept apart.
+            "bEnvelopeInGithubMirror",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None

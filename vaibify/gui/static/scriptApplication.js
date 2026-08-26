@@ -2749,6 +2749,21 @@ const VaibifyApp = (function () {
                 "of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
         },
+        /* The Level 3 half of the published-copy question. Its Level 2
+           twin is "not-in-github-mirror" above: same comparison, one
+           pass, different files. Level 3 owns the envelope because
+           the envelope is what a third party needs to re-execute —
+           and a published reproduce.sh that differs from the local
+           one means they would run something the researcher never
+           did. */
+        "envelope-not-in-github-mirror": {
+            sIcon: "⚠",
+            sLabel: "The reproduce script, manifest, dependency lock, " +
+                "environment snapshot or Dockerfile differs from the " +
+                "copy on GitHub, or has not been compared with it — " +
+                "push the envelope, then Verify now",
+            sClass: "step-blocker-glyph-l3-workflow-envelope",
+        },
         "l3-attestation-stale": {
             sIcon: "⚠",
             sLabel: "Files changed since the last successful " +

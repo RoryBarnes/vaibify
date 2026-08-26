@@ -4231,7 +4231,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # now got a correct server answer and a permanently stale screen.
     # Most of the addition is the comment explaining why the stamp
     # lands AFTER the ETag rather than before it.
-    "routes/pipelineRoutes.py": 3229,
+    # +8 (2026-08-26): bEnvelopeInGithubMirror on the requirements
+    # detail payload. The Level 3 half of the published-copy question
+    # needs a field of its own precisely because it must NOT ride the
+    # Level 2 sync rows -- that separation is the whole point of the
+    # scope split, and sharing a field would undo it in the UI after
+    # the gates had been carefully kept apart.
+    "routes/pipelineRoutes.py": 3237,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
