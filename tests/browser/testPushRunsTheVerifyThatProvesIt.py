@@ -28,11 +28,7 @@ truthy fails the failed-push assertion.
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
@@ -60,28 +56,6 @@ _S_INSTALL_RECORDER = """(bPushSucceeds) => {
 }"""
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
-    pageDashboard.wait_for_selector(
-        ".project-block-header", timeout=20000,
-    )
 
 
 def _flistDrivePush(pageDashboard, bPushSucceeds):
@@ -96,6 +70,7 @@ def _flistDrivePush(pageDashboard, bPushSucceeds):
     return pageDashboard.evaluate("() => window.__listPosts")
 
 
+@pytest.mark.falsification
 def test_only_a_successful_push_is_followed_by_a_verify(
     pageDashboard, serverHub,
 ):
@@ -106,8 +81,12 @@ def test_only_a_successful_push_is_followed_by_a_verify(
     failure looks like a Playwright timeout and has nothing to do with
     what is under test. The complement is not optional though: without
     it, an unconditional verify passes the first half.
+
+    Kills: remove the _fnVerifyAfterSuccessfulPush call from
+    _fnRunSyncOnce, after which a push leaves every badge exactly as
+    it was and the researcher cannot see that their file is published.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
 
     listAfterSuccess = _flistDrivePush(pageDashboard, True)
     assert any("/add-file" in s for s in listAfterSuccess), (

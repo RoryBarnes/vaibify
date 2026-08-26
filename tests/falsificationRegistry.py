@@ -57,6 +57,80 @@ class Falsification:
 # Each entry below is confirmed by tools/reconfirmFalsification.py to
 # actually kill its falsification test.
 LIST_FALSIFICATIONS = [
+    # --- 2026-08-26: guards added with the publication-scope work ---
+    # Every entry below defends a guard whose REMOVAL changes what the
+    # researcher is told. The pure selectors that came with the same
+    # change (fsetSelectLevel2Paths, fbPathIsCompared,
+    # flistCollectComparisonPaths) have unit tests and no entry: there
+    # is no guard to disable, so a mutation just breaks their own
+    # assertions directly.
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_the_route_summary_reports_the_level_two_counts'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    dictSummary = dict(publicationScope.fdictCountAtLevel2(dictStatus))',
+        new=('    dictSummary = {"iTotalFiles": int(dictStatus.get("iTotalFiles") or 0),'
+             ' "iMatching": int(dictStatus.get("iMatching") or 0),'
+             ' "iDivergedCount": len(dictStatus.get("listDiverged") or [])}'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_an_envelope_never_compared_does_not_pass'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not set(listOnDisk).issubset(setCompared):',
+        new='    if False:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_a_never_compared_file_gets_its_own_badge_not_an_orange_todo'
+        ),
+        source='vaibify/gui/badgeState.py',
+        old='    if not publicationScope.fbPathIsCompared(sRepoRelPath):',
+        new='    if False:',
+    ),
+    # The four JS guards. Deferred on a host with no browser, the way
+    # every other browser-nodeid entry is.
+    Falsification(
+        nodeid=(
+            'tests/browser/testPushRunsTheVerifyThatProvesIt.py::'
+            'test_only_a_successful_push_is_followed_by_a_verify'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old='        await _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome);',
+        new='        void 0;',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvelopeMirrorRowRenders.py::'
+            'test_the_two_published_sections_are_parallel_and_disjoint'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (listExcludePaths && listExcludePaths.length) {',
+        new='        if (false) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectBlockBadgesAreActionable.py::'
+            'test_clicking_a_project_block_badge_opens_its_picklist'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old="""            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +""",
+        new="""            '' +""",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnOlderScopeRendersAsVerifyAgain.py::'
+            'test_an_older_scope_paints_orange_and_says_verify_again'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictSync.bScopeStale === true) return "orange";',
+        new='        if (false) return "orange";',
+    ),
 
     Falsification(
         nodeid=(

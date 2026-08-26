@@ -26,44 +26,25 @@ with choices rather than an empty box.
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
-    pageDashboard.wait_for_selector(
-        ".project-block-header", timeout=20000,
-    )
 
 
+@pytest.mark.falsification
 def test_clicking_a_project_block_badge_opens_its_picklist(
     pageDashboard, serverHub,
 ):
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    """A Project-block badge opens the same menu as one in a step.
+
+    Kills: drop the data-resolved attribute from
+    _fsRenderFileRowWithBadges, after which the global .remote-badge
+    handler bails on the enclosing row and the menu never opens.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
 
     # Open the Level 2 published-copies section and its GitHub row so
     # the file rows render.

@@ -283,6 +283,7 @@ def test_a_matching_envelope_passes_level_three(monkeypatch):
     ) is True
 
 
+@pytest.mark.falsification
 def test_an_envelope_never_compared_does_not_pass(monkeypatch):
     """A cache from a hub whose verify predated the widening.
 
@@ -290,6 +291,10 @@ def test_an_envelope_never_compared_does_not_pass(monkeypatch):
     proven; the file that matters is simply absent from it. Detected
     by asking whether every envelope file ON DISK appears in the
     compared set.
+
+    Kills: drop the `set(listOnDisk).issubset(setCompared)` check in
+    fbEnvelopeMatchesGithubMirror, which then reports a match over an
+    envelope no verify ever looked at.
     """
     assert _fbEnvelopeMatches(
         monkeypatch,
@@ -497,6 +502,7 @@ def test_a_pre_split_cache_keeps_its_counts():
     }, dictCounts
 
 
+@pytest.mark.falsification
 def test_the_route_summary_reports_the_level_two_counts():
     """Assert the projection ARRIVES, with a value the aggregate can't give.
 
@@ -504,6 +510,9 @@ def test_the_route_summary_reports_the_level_two_counts():
     subtracted, so this fails if the route is ever simplified back to
     reading iTotalFiles/iMatching straight off the cache -- the shape
     that looks correct and says the wrong thing.
+
+    Kills: replace the publicationScope.fdictCountAtLevel2 call in
+    _fdictProjectSyncSummary with the cache's raw aggregate counts.
     """
     from vaibify.gui.routes.pipelineRoutes import _fdictProjectSyncSummary
 
@@ -534,6 +543,7 @@ def test_the_envelope_paths_present_are_offered_to_the_client():
 # ---------------------------------------------------------------------
 
 
+@pytest.mark.falsification
 def test_a_never_compared_file_gets_its_own_badge_not_an_orange_todo():
     """Orange says "nobody has looked yet"; these will never be looked at.
 
@@ -541,6 +551,9 @@ def test_a_never_compared_file_gets_its_own_badge_not_an_orange_todo():
     governs the repository rather than describing the work, so no
     verify compares either -- and `unknown` would leave the researcher
     an instruction ("run a verify") that changes nothing when followed.
+
+    Kills: drop the fbPathIsCompared branch in _fsVerifiedRemoteBadge,
+    which returns these files to an orange to-do nothing can clear.
     """
     from vaibify.gui import badgeState
 

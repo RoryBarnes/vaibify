@@ -34,11 +34,7 @@ disjointness assertion.
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
@@ -75,28 +71,6 @@ _S_READ_SECTION = """(sGroup) => {
 }"""
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
-    pageDashboard.wait_for_selector(
-        ".project-block-header", timeout=20000,
-    )
 
 
 def _fnExpandEverything(pageDashboard):
@@ -116,10 +90,18 @@ def _fnExpandEverything(pageDashboard):
         ).nth(iIndex).click()
 
 
+@pytest.mark.falsification
 def test_the_two_published_sections_are_parallel_and_disjoint(
     pageDashboard, serverHub,
 ):
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    """The two published sections exist and their file lists are disjoint.
+
+    Kills: disable the listExcludePaths filter in
+    _fsRenderRemoteFileRows, which puts the envelope files back among
+    the Level 2 published-copies rows -- the exact symptom the
+    researcher reported after the scope split had supposedly landed.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
     _fnExpandEverything(pageDashboard)
 
     dictLevel3 = pageDashboard.evaluate(
