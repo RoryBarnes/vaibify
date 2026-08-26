@@ -2078,6 +2078,27 @@ var VaibifySyncManager = (function () {
         _fnSurfaceSyncOutcome(dictOutcome);
         await VaibifyGitBadges.fnRefresh(sContainerId);
         VaibifyApp.fnRenderStepList();
+        await _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome);
+    }
+
+    async function _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome) {
+        /* A push changes the remote; it does not change what vaibify
+           KNOWS about the remote. Since the badge means "verified
+           identical to the published copy", a push alone can never
+           turn one blue — so pushing a file and watching nothing
+           happen was the honest behaviour and a dead end: the
+           researcher had done the right thing and had no way to see
+           it. The verify is the only thing that can close that loop,
+           so the push runs it.
+
+           Deliberately not on the scheduled sweep's terms. A daily
+           cadence is right for unattended re-checking; this is a
+           researcher acting on one file and waiting for the answer,
+           which is the same bargain the Verify-now button strikes. */
+        if (!(dictOutcome || {}).bPushed) return;
+        var sService = _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey];
+        if (!sService || sService === "overleaf") return;
+        await fnVerifyRemoteFromDashboard(sService, null);
     }
 
     function _fnSurfaceSyncOutcome(dictOutcome) {
@@ -2170,9 +2191,24 @@ var VaibifySyncManager = (function () {
 
     function _fdictBuildPushOutcome(dictResult, sServiceLabel) {
         if (dictResult && dictResult.bSuccess) {
+            // "Pushed", not "Synced". Since the badge started meaning
+            // "verified identical to the published copy", `synced` is
+            // a verdict only a verify can reach — and this call made
+            // no comparison at all. The verify that follows is what
+            // gets to use the stronger word.
+            //
+            // A file that was already committed and pushed produces
+            // "Everything up-to-date" and no new commit. Saying
+            // "Pushed" there would describe work that did not happen,
+            // and this is exactly the case a researcher hits on a file
+            // whose badge is orange for want of a VERIFY rather than
+            // for want of a push.
+            var bAlready = /everything up-to-date/i.test(
+                (dictResult.sOutput || ""));
             VaibifyApp.fnShowToast(
-                "Synced to " + sServiceLabel + ".", "success");
-            return {};
+                (bAlready ? "Already published to " : "Pushed to ") +
+                sServiceLabel + ".", "success");
+            return {bPushed: true};
         }
         return {
             dictFailureResult: dictResult || {},
