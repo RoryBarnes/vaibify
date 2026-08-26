@@ -2148,32 +2148,27 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
-    # 2026-08-17: the commit guard gained a second copy when
-    # ftResultPushToGithub adopted it. 2026-08-26: a THIRD, when
-    # ftResultAddFileToGithub finally adopted it too — it had been
-    # left with the original unguarded chain since the 2026-07-02 fix,
-    # and shipped that defect to a researcher.
+    # The commit guard had three byte-identical copies (2026-07-02
+    # added it to two variants, 2026-08-26 to the third after it
+    # shipped the unguarded chain to a researcher). Both entries below
+    # then needed iExpectedOccurrences=3, because mutating one copy of
+    # a three-copy guard changes nothing any test can observe.
     #
-    # Both entries below therefore mutate all THREE copies
-    # (iExpectedOccurrences=3). That is the point of the count: a
-    # guard with several copies must have every one mutated, or
-    # disabling a single copy changes nothing any test can observe.
-    # The staged real-git tests still kill via the staged copy; the
-    # add-file copy has its own scoped entry in
-    # testAlreadyCommittedFileIsNotASyncFailure.
+    # 2026-08-26: the tail was extracted to _fsComposePublishSuffix, so
+    # there is ONE copy and these mutate it directly. That is a
+    # strengthening, not bookkeeping — a single-copy guard is one a
+    # mutation can actually falsify.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
-        iExpectedOccurrences=3,
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
-        iExpectedOccurrences=3,
     ),
 
     # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
@@ -12590,17 +12585,15 @@ def _fdictEntry(sRel):
         # push error is unreachable (found live, 2026-08-17; the
         # staged variant's identical 2026-07-02 fix never reached this
         # sibling).
-        old=(
-            '        f"git {sHardening} add {sQuotedPaths} && "\n'
-            '        f"(git diff --cached --quiet || "\n'
-            '        f"git {sHardening} commit -m '
-            '{fsShellQuote(sCommitMessage)}) && "\n'
-        ),
-        new=(
-            '        f"git {sHardening} add {sQuotedPaths} && "\n'
-            '        f"git {sHardening} commit -m '
-            '{fsShellQuote(sCommitMessage)} && "\n'
-        ),
+        #
+        # Retargeted 2026-08-26: the guard was anchored on the add line
+        # of this one variant, and the tail is now composed once by
+        # _fsComposePublishSuffix. The mutation drops the `||` rather
+        # than the whole guard, which is what this test's substring
+        # assertion detects and keeps it distinct from the two entries
+        # that mutate the same line differently.
+        old='        f"(git diff --cached --quiet || "',
+        new='        f"(git diff --cached ',
     ),
     Falsification(
         nodeid=(

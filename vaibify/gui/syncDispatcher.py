@@ -607,6 +607,31 @@ def _fsGithubHardeningFlags():
     return " ".join(fsShellQuote(s) for s in LIST_GIT_HARDENING_CONFIG)
 
 
+def _fsComposePublishSuffix(sHardening, sCommitMessage):
+    """Return the shared tail of every GitHub push: commit, push, report.
+
+    The three push variants differ ONLY in what they stage, and shared
+    this tail byte for byte. That cost twice: the empty-commit guard
+    reached two of the three on 2026-07-02 and the third only after it
+    shipped a bogus "sync failed" to a researcher, and the falsification
+    entries had to declare iExpectedOccurrences=3 because mutating one
+    copy of a three-copy guard changes nothing any test can observe.
+    One copy fixes both.
+
+    The parentheses are load-bearing in a non-obvious way: ``a && b ||
+    c && d`` parses as ``((a && b) || c) && d``, so an ungrouped skip
+    lets a FAILED add fall through to the commit, which publishes
+    whatever else was staged. A failed add with a CLEAN index stops
+    under either parse, so that case cannot detect the difference.
+    """
+    return (
+        f"(git diff --cached --quiet || "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
+        f"git {sHardening} push && "
+        f"git {sHardening} rev-parse --short HEAD"
+    )
+
+
 def ftResultPushToGithub(
     connectionDocker, sContainerId,
     listFilePaths, sCommitMessage, sWorkdir,
@@ -631,10 +656,7 @@ def ftResultPushToGithub(
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
         f"git {sHardening} add {sQuotedPaths} && "
-        f"(git diff --cached --quiet || "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
-        f"git {sHardening} push && "
-        f"git {sHardening} rev-parse --short HEAD"
+        + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -656,10 +678,7 @@ def ftResultPushStagedToGithub(
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"(git diff --cached --quiet || "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
-        f"git {sHardening} push && "
-        f"git {sHardening} rev-parse --short HEAD"
+        + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
@@ -840,10 +859,7 @@ def ftResultAddFileToGithub(
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
         f"git {sHardening} add {fsShellQuote(sFilePath)} && "
-        f"(git diff --cached --quiet || "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
-        f"git {sHardening} push && "
-        f"git {sHardening} rev-parse --short HEAD"
+        + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand

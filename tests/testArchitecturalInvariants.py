@@ -5044,7 +5044,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stops under either parse; only a dirty one diverges). This entry
     # falls again if the deprecated, caller-less
     # ftResultPushScriptsToGithub is removed.
-    "syncDispatcher.py": 1974,
+    # +16 (2026-08-26, dedup): the three push variants' identical
+    # commit/push/report tail becomes _fsComposePublishSuffix. The
+    # extraction removes 12 duplicated lines and the docstring costs
+    # more than that back — deliberately, because the duplication had
+    # already caused a fix to land in two of three sites and forced
+    # iExpectedOccurrences=3 on two falsification entries. The history
+    # is the reason the seam exists, so it lives at the seam.
+    "syncDispatcher.py": 1990,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
