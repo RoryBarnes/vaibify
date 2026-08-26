@@ -216,6 +216,8 @@ def test_github_verified_sha_empty_but_live_sha_present_is_not_synced(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
             "sCommittedShaVerified": "",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
@@ -243,6 +245,8 @@ def test_github_verified_sha_present_but_live_sha_empty_is_not_synced(tmp_path):
             "sService": "github",
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
     })
@@ -274,6 +278,8 @@ def test_github_full_match_without_timestamp_is_not_synced(tmp_path):
         "github": {
             "sService": "github",
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
     })

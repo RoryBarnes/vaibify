@@ -1337,7 +1337,7 @@ correct approach.
   design, because guessing would make a gate silently wrong. Every
   test of the new Level 3 envelope gate drove a hand-written fake
   whose `fbIsFile` answers anything, so all of them passed while the
-  shipped gate raised on `requirements.txt`, 500'd the poll, and
+  shipped gate raised on a dependency-declaration path, 500'd the poll, and
   blanked every badge and level cell on the researcher's dashboard.
   The tests and the code were both self-consistent and neither was
   the product. When a module has a permissive test double and a

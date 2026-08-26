@@ -240,6 +240,8 @@ def test_fbWorkflowFullySyncedWithGithub_sha_mismatch_returns_false(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
             "sCommittedShaVerified": "OLD_SHA",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
@@ -289,6 +291,8 @@ def test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
             "sZenodoDoi": "",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sEndpointVerified": "sandbox",
         },
     })
