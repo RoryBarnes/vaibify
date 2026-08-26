@@ -201,6 +201,14 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
             os.path.join(sStageDirectory, ".gitkeep"), "w",
         ) as fileKeep:
             fileKeep.write("")
+    # One reproducibility-envelope file, so the Level 2 / Level 3
+    # published-copy split has something to be disjoint ABOUT. Without
+    # it both halves of that assertion pass vacuously: no envelope file
+    # exists, so none is misfiled into the Level 2 section either.
+    with open(
+        os.path.join(sProjectDirectory, "reproduce.sh"), "w",
+    ) as fileReproduce:
+        fileReproduce.write("#!/bin/sh\necho reproduce\n")
     sProjectsDirectory = os.path.join(
         sProjectDirectory, ".vaibify", "projects",
     )

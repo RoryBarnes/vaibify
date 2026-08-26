@@ -464,7 +464,8 @@ def test_workflow_wide_groups_and_rows_are_expandable():
         sSource, "fsRenderProjectBlock",
     )
     for sKey in ('"software"', '"artifacts"', '"determinism"',
-                 '"publishedCopies"', '"attestation"'):
+                 '"publishedCopies"', '"publishedEnvelope"',
+                 '"attestation"'):
         assert sKey in sBlock, "missing requirement section " + sKey
     assert "data-group=" in sSource
     assert "data-req=" in sSource

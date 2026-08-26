@@ -265,6 +265,19 @@ var VaibifyProofTab = (function () {
                  "Software section of the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bEnvelopeInGithubMirror",
+             sLabel: "Envelope published",
+             sWhat: "The reproduce script, manifest, dependency " +
+                 "lock, environment snapshot and Dockerfile match " +
+                 "the copies on GitHub. Level 2 publishes the data; " +
+                 "this asks whether what a third party needs in " +
+                 "order to RE-RUN it is published too — a drifted " +
+                 "reproduce.sh means they would run something you " +
+                 "never ran.",
+             sHow: "Commit and push the envelope, then use Verify " +
+                 "now on the GitHub mirror row in the Project block.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
             {sStateKey: "bL3AttestationCurrent",
              sLabel: "Rebuild attestation",
              sWhat: "A full rebuild reran the project and " +
