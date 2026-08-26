@@ -438,3 +438,72 @@ def test_the_idle_countdown_is_absent_from_the_render_signature():
     assert "iIdleSecondsRemaining" not in sBody
     assert "listMessages" in sBody, (
         "a landed answer must change the signature or it never appears")
+
+
+# ── the gate reads as prose, not as a record dump ────────────────
+
+def _fsFunctionBody(sSource, sName):
+    """Return one module-level function's body, bounded at the next one.
+
+    Searching for "the next `async function`" is not a bound: when the
+    named helper happens to be the last of its kind, `find` returns -1
+    and the slice runs to the end of the file — so an assertion about
+    THIS function silently becomes an assertion about the whole module,
+    and passes for a helper that no longer contains the thing at all.
+    Caught by mutation testing, 2026-08-25.
+    """
+    iStart = sSource.find("function " + sName)
+    assert iStart != -1, sName
+    listEnds = [iEnd for iEnd in
+                (sSource.find("\n    function ", iStart + 10),
+                 sSource.find("\n    async function ", iStart + 10),
+                 sSource.find("\n    var ", iStart + 10))
+                if iEnd != -1]
+    return sSource[iStart:min(listEnds)] if listEnds else sSource[iStart:]
+
+
+def test_server_identifiers_are_hidden_from_model_written_text():
+    """A model repeats the ids it was handed; a reader must not see them.
+
+    The chairbot is given question ids so it can say which decision a
+    plan item waits on, and it puts them into prose the researcher then
+    reads. A participant id is REPLACED with the agent label rather than
+    deleted, because "as participant-x noted" would otherwise lose its
+    subject.
+    """
+    sSource = _fsCouncilSource()
+    assert "_fsHideInternalIdentifiers" in sSource
+    assert "_RE_QUESTION_IDENTIFIER" in sSource
+    assert "_RE_PARTICIPANT_IDENTIFIER" in sSource
+    # Applied to every place model-written question text is rendered.
+    for sRenderer in ("_fsDecisionBlock", "_fsBlockingQuestionCard"):
+        assert "_fsHideInternalIdentifiers" in _fsFunctionBody(
+            sSource, sRenderer), sRenderer
+
+
+def test_decision_context_is_reachable_in_full():
+    """A researcher must not be asked to decide against a cut sentence.
+
+    The context was truncated at 240 characters with an ellipsis and no
+    way to read the rest. The whole text is now in the DOM behind a
+    native disclosure, so it costs a click and no round trip.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsDecisionContext")
+    assert "<details" in sBody and "<summary>" in sBody
+    assert "show all" in sBody
+    # The FULL text, not the summary, is what the disclosure holds.
+    assert "_fsEscape(sText) + \"</p></details>\"" in sBody
+    assert "I_CONTEXT_SUMMARY_CHARACTERS" in sBody
+
+
+def test_every_council_action_sends_the_chosen_directory():
+    """An action that omits it is refused on a multi-directory project.
+
+    The reads carried it and the actions did not, so the panel polled
+    happily while every button failed.
+    """
+    sSource = _fsCouncilSource()
+    for sHelper in ("_fnPostAction", "_fnPostChatAction"):
+        assert "_fsDirectoryQuery" in _fsFunctionBody(
+            sSource, sHelper), sHelper

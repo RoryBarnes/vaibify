@@ -2165,28 +2165,52 @@ var VaibifyAgentCouncil = (function () {
              "these, so they carry no plan item yet."}
     ];
 
+    /* The server's own identifiers, as they appear in text a MODEL
+       wrote. The chairbot is handed question ids so it can say which
+       decision a plan item waits on (charter clause for synthesis), and
+       it dutifully repeats them into prose the researcher then reads:
+       "question-6ad0ced24d7b (participant-854f6ca400d1) — Euler:
+       deprecate this release…". The id is the right thing to key on and
+       the wrong thing to show, which is already why the author suffix
+       reads "Agent 1". Reported live 2026-08-25. */
+    var _RE_QUESTION_IDENTIFIER = /question-[0-9a-f]{6,}/g;
+    var _RE_PARTICIPANT_IDENTIFIER = /participant-[0-9a-f]{6,}/g;
+
+    function _fsHideInternalIdentifiers(dictCampaign, sText) {
+        /* A participant id is REPLACED rather than dropped: the model
+           sometimes says "as participant-x noted", and deleting the id
+           would leave a sentence missing its subject. A question id
+           carries nothing a reader can use — the decision it belongs to
+           is the block it is rendered inside — so it goes. */
+        var sCleaned = String(sText || "").replace(
+            _RE_PARTICIPANT_IDENTIFIER, function (sIdentifier) {
+                return _fsAgentLabelForId(dictCampaign, sIdentifier);
+            });
+        sCleaned = sCleaned.replace(_RE_QUESTION_IDENTIFIER, "");
+        /* The debris an excised id leaves: an empty bracket, a doubled
+           space, a leading dash where the id used to be. */
+        return sCleaned.replace(/\(\s*\)/g, "")
+            .replace(/\s{2,}/g, " ")
+            .replace(/^[\s\u2014\u2013-]+/, "")
+            .trim();
+    }
+
     function _fsDecisionBlock(dictCampaign, dictDecision, iNumber) {
         var sQuestions = (dictDecision.listQuestions || []).map(
             function (dictQuestion) {
                 return "<li data-question-id=\"" +
                     _fsEscape(dictQuestion.sQuestionId || "") + "\">" +
-                    _fsEscape(dictQuestion.sQuestionText || "") +
+                    _fsEscape(_fsHideInternalIdentifiers(
+                        dictCampaign, dictQuestion.sQuestionText)) +
                     " <span class=\"council-question-author\">(" +
                     _fsEscape(_fsAgentLabelForId(
                         dictCampaign,
                         dictQuestion.sRaisedByParticipantId || "")) +
                     ")</span></li>";
             }).join("");
-        /* The plan item is the CONTEXT the question was unreadable
-           without: "(Phase 2)" meant nothing when the plan was not
-           shown beside it. Truncated, because a plan item is a
-           paragraph and this is a heading — the Plan tab holds the
-           whole thing. */
         var sContext = (dictDecision.listPlanItemTexts || []).map(
             function (sText) {
-                return "<p class=\"council-decision-context\">" +
-                    _fsEscape(sText.length > 240
-                        ? sText.substring(0, 240) + "…" : sText) + "</p>";
+                return _fsDecisionContext(dictCampaign, sText);
             }).join("");
         return "<div class=\"council-decision\" data-decision-id=\"" +
             _fsEscape(dictDecision.sDecisionId || "") + "\">" +
@@ -2196,6 +2220,30 @@ var VaibifyAgentCouncil = (function () {
             "<textarea class=\"council-decision-answer\" rows=\"2\" " +
             "placeholder=\"Your answer to this\"></textarea>" +
             "</div>";
+    }
+
+    /* The plan item is the CONTEXT the question was unreadable without:
+       "(Phase 2)" meant nothing when the plan was not shown beside it.
+       It used to be cut at 240 characters with an ellipsis and NO way
+       to read the rest — the researcher was asked to decide against a
+       sentence that stopped mid-clause (reported live 2026-08-25). Now
+       the whole text is in the DOM and a native <details> holds it, so
+       reading it costs one click and no round trip; a short item is
+       rendered plainly, because a disclosure widget around two lines is
+       noise. */
+    var I_CONTEXT_SUMMARY_CHARACTERS = 180;
+
+    function _fsDecisionContext(dictCampaign, sRawText) {
+        var sText = _fsHideInternalIdentifiers(dictCampaign, sRawText);
+        if (sText.length <= I_CONTEXT_SUMMARY_CHARACTERS) {
+            return "<p class=\"council-decision-context\">" +
+                _fsEscape(sText) + "</p>";
+        }
+        return "<details class=\"council-decision-context\">" +
+            "<summary>" +
+            _fsEscape(sText.substring(0, I_CONTEXT_SUMMARY_CHARACTERS)) +
+            "… <span class=\"council-context-more\">show all</span>" +
+            "</summary><p>" + _fsEscape(sText) + "</p></details>";
     }
 
     function _fsDecisionGate(dictCampaign, listDecisions) {
@@ -2226,7 +2274,8 @@ var VaibifyAgentCouncil = (function () {
         var listQuestions = dictGate.listQuestions || [];
         var listDecisions = dictCampaign.listGateDecisions || [];
         var sQuestionRows = listQuestions.map(function (dictQuestion) {
-            return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
+            return "<li>" + _fsEscape(_fsHideInternalIdentifiers(
+                dictCampaign, dictQuestion.sQuestionText)) +
                 " <span class=\"council-question-author\">(raised by " +
                 _fsEscape(_fsAgentLabelForId(
                     dictCampaign,
@@ -2552,7 +2601,8 @@ var VaibifyAgentCouncil = (function () {
            refused never appears as one it accepted. */
         try {
             var sPath = _fsRoute(
-                "/" + _dictState.sActiveCampaignId + sSuffix);
+                "/" + _dictState.sActiveCampaignId + sSuffix)
+                + _fsDirectoryQuery("?");
             if (dictBody === undefined) {
                 await VaibifyApi.fdictPostRaw(sPath);
             } else {
@@ -2768,11 +2818,17 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnPostAction(sPath, dictBody) {
+        /* The directory rides EVERY action, not just the reads. A
+           project tracking several directories with no workflow open
+           resolves to no repository, and the server rightly refuses to
+           guess — so an action that omitted it was refused while the
+           panel beside it polled happily. */
+        var sUrl = _fsRoute(sPath) + _fsDirectoryQuery("?");
         try {
             if (dictBody === undefined) {
-                await VaibifyApi.fdictPostRaw(_fsRoute(sPath));
+                await VaibifyApi.fdictPostRaw(sUrl);
             } else {
-                await VaibifyApi.fdictPost(_fsRoute(sPath), dictBody);
+                await VaibifyApi.fdictPost(sUrl, dictBody);
             }
         } catch (error) {
             VaibifyApp.fnShowToast(

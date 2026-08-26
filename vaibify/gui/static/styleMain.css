@@ -6920,6 +6920,67 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding-left: 4px;
 }
 
+/* A gate is several TIERS of several decisions, and rendered flat it
+   reads as one grey mass — the researcher cannot see where one decision
+   they must answer ends and the next begins (reported live
+   2026-08-25). The separation is structural, not decorative: a tier
+   heading opens a group, and each decision is a card with its own
+   answer box. */
+.council-tier {
+    margin: 28px 0 2px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+
+.council-tier:first-of-type {
+    margin-top: 12px;
+    padding-top: 0;
+    border-top: none;
+}
+
+.council-tier-why {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.council-decision {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.council-decision h5 {
+    margin: 0 0 8px;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.council-decision-context {
+    margin: 0 0 10px;
+    color: var(--text-secondary);
+}
+
+details.council-decision-context > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+details.council-decision-context > p {
+    margin: 8px 0 0;
+    white-space: pre-wrap;
+}
+
+.council-context-more {
+    color: var(--highlight-color);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
 .council-questions li {
     margin: 6px 0;
     padding-left: 4px;

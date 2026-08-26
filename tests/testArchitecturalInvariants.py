@@ -4154,7 +4154,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a separate module would have to import five of this one's
     # private helpers to do it. That is an artificial seam, not a
     # real one; this module remains the HTTP skin over the council.
-    "routes/councilRoutes.py": 1481,
+    # 1481 -> 1505 (2026-08-25): every campaign-scoped route can now
+    # be TOLD which tracked directory it means, not only the reads.
+    # On a project tracking several, a researcher could watch a
+    # council and not answer it.
+    "routes/councilRoutes.py": 1505,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

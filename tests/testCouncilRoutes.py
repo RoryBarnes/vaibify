@@ -40,6 +40,7 @@ from vaibify.gui import (
     containerOwnership,
     pipelineServer,
 )
+from vaibify.gui.routes import councilRoutes
 from vaibify.config import registryManager
 from tests.agentCouncilHarness import fdictMakeTurnResult
 from tests.sessionTokenTestHelper import fsBootstrapCredential
@@ -1489,3 +1490,87 @@ def test_chat_open_refuses_once_the_lease_was_released(
     # released project releasable, so gating it would put the only exit
     # behind the gate it opens.
     assert client.post(sBase + "/close").status_code == 200
+
+
+# ── every campaign-scoped route can be told its directory ────────
+
+T_CAMPAIGN_SCOPED_ACTIONS = (
+    ("POST", "/respond", {"sResponseText": "the content-hash policy"}),
+    ("POST", "/request-stop", None),
+    ("POST", "/grant-resolution-round", {"iGrantedRounds": 1}),
+    ("POST", "/resolve-objections", {"dictDispositionByObjectionId": {}}),
+    ("POST", "/reject-candidate", {"sReasonText": "not now"}),
+    ("POST", "/accept-plan", None),
+    ("POST", "/chat/open", None),
+    ("POST", "/chat/ask", {"sQuestionText": "why?"}),
+    ("POST", "/chat/close", None),
+    ("DELETE", "", None),
+)
+
+
+@pytest.mark.parametrize("sMethod,sSuffix,dictBody", T_CAMPAIGN_SCOPED_ACTIONS)
+def test_every_campaign_action_accepts_a_chosen_directory(
+        tmp_path, monkeypatch, sMethod, sSuffix, dictBody):
+    """A project tracking several directories must still be ANSWERABLE.
+
+    The 2026-08-24 fix taught the READ routes to accept the directory
+    and stopped there, so a researcher on a toolkit container with no
+    workflow open could watch a council perfectly well and not answer
+    it: every action refused with "a council needs to be told which one
+    it is about". Reported live on 2026-08-25 against the chat's open,
+    which was simply the first of the ten anyone clicked.
+
+    The assertion is deliberately NOT "200": each of these has its own
+    lifecycle preconditions and most will refuse a freshly-started
+    campaign for reasons of their own. What must never happen is the
+    DIRECTORY refusal, because that one is not about the campaign at
+    all — it says the server could not tell which repository was meant
+    after being told.
+    """
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    # A toolkit container: several tracked repositories, no open
+    # workflow, so nothing but the query parameter can disambiguate.
+    app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
+    monkeypatch.setattr(
+        councilRoutes, "_flistTrackedDirectoryNames",
+        lambda dictCtx, sContainerId: ["vplanet", "vplot", "vspace"])
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        sUrl = (f"/api/agent-councils/{S_CONTAINER_ID}/campaign-any"
+                f"{sSuffix}?sProjectDirectory=vplanet")
+        response = client.request(sMethod, sUrl, json=dictBody)
+
+    assert "needs to be told which one" not in response.text, (
+        f"{sMethod} {sSuffix} refused a directory it was explicitly "
+        f"given: {response.text[:200]}")
+
+
+def test_a_campaign_action_still_refuses_an_untracked_directory(tmp_path,
+                                                                monkeypatch):
+    """The falsification twin: the value is validated, never trusted.
+
+    It becomes a container path, so a basename this project does not
+    track must be refused rather than joined onto the workspace root.
+    """
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
+    monkeypatch.setattr(
+        councilRoutes, "_flistTrackedDirectoryNames",
+        lambda dictCtx, sContainerId: ["vplanet", "vplot"])
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+
+    with TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    }) as client:
+        response = client.post(
+            f"/api/agent-councils/{S_CONTAINER_ID}/campaign-any/respond"
+            "?sProjectDirectory=../etc",
+            json={"sResponseText": "x"})
+
+    assert response.status_code == 400, response.text
+    assert "tracked directories" in response.text

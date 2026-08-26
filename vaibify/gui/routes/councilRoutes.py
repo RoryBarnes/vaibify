@@ -241,8 +241,22 @@ def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
     repo is one validated project repo — a container can host several,
     and a campaign belongs to exactly one.
 
-    ``sChosenDirectory`` is accepted by the READ routes too, not only
-    by start (2026-08-24). It has to be: a toolkit container tracks
+    ``sChosenDirectory`` is accepted by EVERY campaign-scoped route,
+    not only by start. The 2026-08-24 fix widened the READ routes and
+    stopped there, so on a project tracking several directories with no
+    workflow open a researcher could watch a council perfectly well and
+    not answer it: respond, stop, accept, reject, delete and the
+    ask-the-chairbot lane all still refused with "a council needs to be
+    told which one it is about". Reported live on 2026-08-25 against the
+    chat's open, which was simply the first of the ten anyone clicked.
+    Fixing the instance is not fixing the class.
+
+    It cannot re-point a campaign. The value is validated against the
+    tracked set exactly as start validates it, and every one of these
+    routes then matches the resolved principal against the STORED
+    campaign — so a wrong directory answers 404, never a rebinding.
+
+    The original reason the read routes needed it: a toolkit container tracks
     several repositories, so with no workflow open the resolver
     legitimately refuses to guess — and every poll route then answered
     409 forever, which froze a live researcher's panel for a whole
@@ -1052,9 +1066,10 @@ def _fnRegisterRespond(app, dictCtx):
     async def fdictRespond(
         sContainerId: str, sCampaignId: str,
         request: CouncilRespondRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
 
@@ -1091,9 +1106,10 @@ def _fnRegisterRequestStop(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRequestStop(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
 
@@ -1132,9 +1148,10 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
     async def fdictGrantResolutionRound(
         sContainerId: str, sCampaignId: str,
         request: CouncilGrantRoundRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
@@ -1159,9 +1176,10 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
     async def fdictResolveObjections(
         sContainerId: str, sCampaignId: str,
         request: CouncilResolveObjectionsRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
@@ -1189,9 +1207,10 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
     async def fdictRejectCandidate(
         sContainerId: str, sCampaignId: str,
         request: CouncilRejectRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
@@ -1222,9 +1241,10 @@ def _fnRegisterAcceptPlan(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictAcceptPlan(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
@@ -1282,9 +1302,10 @@ def _fnRegisterChairbotChat(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictOpenChairbotChat(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
 
@@ -1323,10 +1344,11 @@ def _fnRegisterChairbotChat(app, dictCtx):
     async def fdictAskChairbot(
         sContainerId: str, sCampaignId: str,
         request: CouncilChatAskRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         from .. import agentCouncilChat
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
 
@@ -1349,10 +1371,11 @@ def _fnRegisterChairbotChat(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictCloseChairbotChat(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         from .. import agentCouncilChat
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictControllerState = _fdictControllerState(requestHttp)
 
@@ -1414,9 +1437,10 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictDeleteCouncil(
         sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
         dictStore = _fdictCampaignStore(requestHttp)
         dictRegistry = _fdictCouncilRegistry(requestHttp)
 
