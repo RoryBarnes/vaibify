@@ -14021,4 +14021,81 @@ def _fdictEntry(sRel):
             '            + "/plan.txt") + _fsDirectoryQuery("?");'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Durable provenance: the evidence ledger and the turn counter
+    # survive a store reload (continuation plan section 3, 2026-08-26).
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testAClaimRecordedBeforeAReloadIsReadableAfterIt'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # The reload path stops reading the sidecar -- the exact
+        # pre-sidecar behaviour: every reloaded ledger is empty.
+        old=(
+            '        dictProvenance = DurableCampaignCheckpoint(\n'
+            '            _fsCampaignDirectory(dictStore, sCampaignId)).'
+            'fdictLoadProvenance()\n'
+            '        dictStore["dictEntriesById"][sCampaignId] = '
+            '_fdictBuildEntry(\n'
+            '            dictStore, jsonRecord, dictProvenance)'
+        ),
+        new=(
+            '        dictStore["dictEntriesById"][sCampaignId] = '
+            '_fdictBuildEntry(\n'
+            '            dictStore, jsonRecord)'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testAnEvidenceIdMintedAfterAReloadNeverCollides'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        self.listRecordedEntries = copy.deepcopy(\n'
+            '            dictState.get("listRecordedEntries") or [])'
+        ),
+        new='        self.listRecordedEntries = []',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testATurnIdMintedAfterAReloadNeverCollides'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        "iTurnsLaunched": int(\n'
+            '            (dictProvenance or {}).get("iTurnsLaunched") or 0),'
+        ),
+        new='        "iTurnsLaunched": 0,',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testARefusalBudgetDoesNotRefillOnReload'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # Persist only when an entry is RECORDED: a refusal before the
+        # first recorded entry then leaves no sidecar at all, and the
+        # consumed refusal budget refills across the restart.
+        old=(
+            '    # Persisted on refusal too: the refusal COUNT is part '
+            'of the\n'
+            '    # ledger\'s honest state, and a budget consumed before '
+            'a restart\n'
+            '    # must not silently refill after one.\n'
+            '    _fnPersistEntryProvenance(dictEntry)'
+        ),
+        new=(
+            '    if dictOutcome["bRecorded"]:\n'
+            '        _fnPersistEntryProvenance(dictEntry)'
+        ),
+    ),
 ]

@@ -4216,6 +4216,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # <store>/<campaign>/snapshot/... by hand, which is a layout
     # spelled in several places and checked in none.
     "agentCouncilContext.py": 1219,
+    # NEW at 837 (2026-08-26): the store crossed the default cap when
+    # the durable provenance sidecar landed — the evidence ledger's
+    # recorded state and the turn counter now survive a hub restart
+    # (design 7.5 lists the ledger as part of the durable record; the
+    # reload used to rebuild it EMPTY). One cohesive responsibility:
+    # the sidecar is written and read by the same checkpoint class,
+    # beside the same campaign record, with the same private-file
+    # discipline as everything else the store persists.
+    "agentCouncilStore.py": 838,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the

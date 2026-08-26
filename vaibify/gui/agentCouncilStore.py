@@ -198,6 +198,29 @@ class CouncilEvidenceLedger:
         self.iRecordedTotalBytes = 0
         self.iRefusedEntryCount = 0
 
+    def fdictExportState(self):
+        """Return the durable view of this ledger for the sidecar."""
+        return {
+            "listRecordedEntries": copy.deepcopy(self.listRecordedEntries),
+            "iRecordedTotalBytes": self.iRecordedTotalBytes,
+            "iRefusedEntryCount": self.iRefusedEntryCount,
+        }
+
+    def fnRestoreState(self, dictState):
+        """Adopt a sidecar's exported state on store reload.
+
+        The entries were vetted at ADMISSION (bounds and credential
+        detection), so restore adopts them as recorded history rather
+        than re-judging them — a bound lowered since they were admitted
+        must not silently delete evidence a confirmed claim cites.
+        """
+        self.listRecordedEntries = copy.deepcopy(
+            dictState.get("listRecordedEntries") or [])
+        self.iRecordedTotalBytes = int(
+            dictState.get("iRecordedTotalBytes") or 0)
+        self.iRefusedEntryCount = int(
+            dictState.get("iRefusedEntryCount") or 0)
+
     def fdictRecordEvidence(self, dictEntry):
         """Admit or refuse one ledger entry.
 
@@ -332,6 +355,15 @@ S_COUNCIL_CAMPAIGN_STORE_STATE_KEY = "dictCouncilCampaignStore"
 S_DURABLE_STORE_SUBPATH = os.path.join(".vaibify", "agentCouncils")
 S_CAMPAIGN_RECORD_BASENAME = "campaign.json"
 S_ACCEPTED_PLAN_BASENAME = "plan.md"
+# The durable provenance sidecar: the evidence ledger's recorded state
+# and the turn counter, written beside the campaign record with the
+# same private-file discipline. The specification lists the ledger as
+# part of the durable campaign record (design section 7.5); before this
+# sidecar existed a hub restart rebuilt every entry with an EMPTY
+# ledger and a zeroed counter, so confirmed claims cited evidence that
+# no longer existed, the next entry re-minted evidence-1, and the
+# counter's only-rises contract broke on reload.
+S_PROVENANCE_SIDECAR_BASENAME = "provenance.json"
 
 S_CREDENTIAL_REDACTION_MARKER = "[redacted-credential]"
 
@@ -450,6 +482,33 @@ class DurableCampaignCheckpoint:
         except OSError:
             return 0.0
 
+    def fnCheckpointProvenance(self, dictProvenance):
+        """Write the provenance sidecar with the record's discipline."""
+        _fnEnsurePrivateDirectory(self.sCampaignDirectory)
+        _fnWritePrivateFileAtomically(
+            os.path.join(
+                self.sCampaignDirectory, S_PROVENANCE_SIDECAR_BASENAME),
+            json.dumps(fjsonRedactCredentialsInRecord(dictProvenance),
+                       default=str, sort_keys=True, indent=2),
+        )
+
+    def fdictLoadProvenance(self):
+        """Return the sidecar's provenance, or None when absent/unreadable.
+
+        Unreadable answers None rather than raising: a campaign whose
+        record survives but whose sidecar did not must still reload —
+        with an honest empty ledger — instead of vanishing entirely.
+        """
+        sSidecarPath = os.path.join(
+            self.sCampaignDirectory, S_PROVENANCE_SIDECAR_BASENAME)
+        if not os.path.exists(sSidecarPath):
+            return None
+        try:
+            with open(sSidecarPath, encoding="utf-8") as fileSidecar:
+                return json.load(fileSidecar)
+        except (OSError, ValueError):
+            return None
+
     def fsWriteAcceptedPlan(self, sPlanText):
         """Write the accepted plan locally (host app-data only) and return it.
 
@@ -499,12 +558,21 @@ def _fsCampaignDirectory(dictStore, sCampaignId):
     return os.path.join(dictStore["sDurableStoreRoot"], sCampaignId)
 
 
-def _fdictBuildEntry(dictStore, dictCampaign):
-    """Build a store entry: durable record, ring, ledger, checkpoint."""
+def _fdictBuildEntry(dictStore, dictCampaign, dictProvenance=None):
+    """Build a store entry: durable record, ring, ledger, checkpoint.
+
+    ``dictProvenance`` is the durable sidecar on the RELOAD path: the
+    evidence ledger's recorded entries and the turn counter survive a
+    hub restart (design section 7.5), so a claim recorded before the
+    restart stays citable and an id minted after it can never collide
+    with one minted before. The ephemeral event ring alone starts
+    empty — it was never durable.
+    """
     dictBounds = dictStore["dictBounds"]
-    return {
+    dictEntry = {
         "dictCampaign": copy.deepcopy(dictCampaign),
-        "iTurnsLaunched": 0,
+        "iTurnsLaunched": int(
+            (dictProvenance or {}).get("iTurnsLaunched") or 0),
         "ringEvents": CouncilEventRing(
             dictBounds["iEventCountBound"], dictBounds["iEventTotalBytes"]),
         "ledgerEvidence": CouncilEvidenceLedger(
@@ -512,6 +580,18 @@ def _fdictBuildEntry(dictStore, dictCampaign):
         "checkpointDurable": DurableCampaignCheckpoint(
             _fsCampaignDirectory(dictStore, dictCampaign["sCampaignId"])),
     }
+    if dictProvenance and dictProvenance.get("dictLedgerState"):
+        dictEntry["ledgerEvidence"].fnRestoreState(
+            dictProvenance["dictLedgerState"])
+    return dictEntry
+
+
+def _fnPersistEntryProvenance(dictEntry):
+    """Write one entry's provenance sidecar beside its campaign record."""
+    dictEntry["checkpointDurable"].fnCheckpointProvenance({
+        "iTurnsLaunched": dictEntry["iTurnsLaunched"],
+        "dictLedgerState": dictEntry["ledgerEvidence"].fdictExportState(),
+    })
 
 
 def _fdictRequireEntry(dictStore, sCampaignId):
@@ -550,6 +630,7 @@ def fsMintNextTurnId(dictStore, sCampaignId):
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} to launch a turn")
     dictEntry["iTurnsLaunched"] += 1
+    _fnPersistEntryProvenance(dictEntry)
     return "turn-" + str(dictEntry["iTurnsLaunched"])
 
 
@@ -643,7 +724,13 @@ def fdictRecordCampaignEvidence(dictStore, sCampaignId, dictEvidenceEntry):
     dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} for evidence")
-    return dictEntry["ledgerEvidence"].fdictRecordEvidence(dictEvidenceEntry)
+    dictOutcome = dictEntry["ledgerEvidence"].fdictRecordEvidence(
+        dictEvidenceEntry)
+    # Persisted on refusal too: the refusal COUNT is part of the
+    # ledger's honest state, and a budget consumed before a restart
+    # must not silently refill after one.
+    _fnPersistEntryProvenance(dictEntry)
+    return dictOutcome
 
 
 def fdictCollectCampaignEvents(dictStore, sCampaignId, iAfterSequence):
@@ -732,8 +819,10 @@ def fdictReloadDurableCampaigns(dictStore):
         jsonRecord = _fjsonLoadDurableRecord(dictStore, sCampaignId)
         if jsonRecord is None:
             continue
+        dictProvenance = DurableCampaignCheckpoint(
+            _fsCampaignDirectory(dictStore, sCampaignId)).fdictLoadProvenance()
         dictStore["dictEntriesById"][sCampaignId] = _fdictBuildEntry(
-            dictStore, jsonRecord)
+            dictStore, jsonRecord, dictProvenance)
         dictStore["listInsertionOrder"].append(sCampaignId)
         iReloaded += 1
     return {"iReloaded": iReloaded}
