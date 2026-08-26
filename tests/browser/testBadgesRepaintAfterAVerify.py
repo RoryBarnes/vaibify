@@ -27,42 +27,19 @@ Kills (confirmed, not assumed): removing the fnRefresh call from
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
 
 
 def test_a_verify_repaints_and_the_epoch_still_travels(
     pageDashboard, serverHub,
 ):
     """One test, both paths — one session may hold one container."""
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # Path 1. Stub the verify POST so no network is touched, and count
     # badge fetches across the call. The researcher's click must cause

@@ -29,41 +29,21 @@ catch fails the last-map assertion; restoring ``none`` in
 import pytest
 
 from tests.browser.conftest import (
+    fnOpenTheSeededHostWorkflow,
     S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
 )
 
 
 pytestmark = pytest.mark.browser
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
 
 
 def test_a_failed_refresh_claims_nothing_and_says_so(
     pageDashboard, serverHub,
 ):
     """One test, both halves — the session holds one browser."""
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # Half 1: with no prior map, an unseen file must read unknown.
     # This is the researcher's case: first refresh after a restart.

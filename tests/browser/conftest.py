@@ -175,6 +175,47 @@ def fdictHostWorkflowDocument():
     }
 
 
+def fnOpenTheSeededHostWorkflow(
+    pageDashboard, serverHub, bAwaitProjectBlock=False,
+):
+    """Acknowledge the host warning and open the seeded workflow.
+
+    Ten test modules had a private copy of this, in four variants that
+    differed by one wait: five had gained
+    ``wait_for_selector(".project-block-header")`` and five had not.
+    That is the drift itself -- a shared step that had to agree with
+    itself and stopped -- so the wait is a parameter rather than a
+    coin flip, and a caller that needs the Project block says so.
+
+    It defaults OFF because that is what the majority did; turning it
+    on for everyone would be a behaviour change smuggled in as a
+    cleanup, and a test that deliberately reads the page before the
+    Project block renders would start reading it after.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
+        timeout=15000,
+    )
+    pageDashboard.click(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+        '.container-tile-main',
+    )
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
+    )
+    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    pageDashboard.wait_for_selector(
+        f"text={S_HOST_STEP_NAME}", timeout=20000,
+    )
+    if bAwaitProjectBlock:
+        pageDashboard.wait_for_selector(
+            ".project-block-header", timeout=20000,
+        )
+
+
 def fnSeedRunnableHostWorkflow(sProjectDirectory):
     """Make the ready host project a git repo holding a runnable step.
 

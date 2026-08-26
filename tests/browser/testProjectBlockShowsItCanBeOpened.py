@@ -23,11 +23,7 @@ assertion fails with the header text carrying no marker.
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
@@ -36,28 +32,6 @@ S_CLOSED_TRIANGLE = "▸"
 S_OPEN_TRIANGLE = "▾"
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
-    pageDashboard.wait_for_selector(
-        ".project-block-header", timeout=20000,
-    )
 
 
 def _fsTitleText(pageDashboard, sSelector):
@@ -75,7 +49,7 @@ def test_the_project_block_shows_and_tracks_its_expand_state(
     working as designed, so the tests merged rather than the model
     being worked around.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
 
     sProject = _fsTitleText(pageDashboard, ".project-block-title")
     assert S_OPEN_TRIANGLE in sProject or S_CLOSED_TRIANGLE in sProject, (

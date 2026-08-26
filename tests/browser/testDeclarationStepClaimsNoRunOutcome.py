@@ -42,10 +42,9 @@ Kills (confirmed, not assumed): returning ``false`` from
 import pytest
 
 from tests.browser.conftest import (
+    fnOpenTheSeededHostWorkflow,
     S_HOST_DECLARATION_STEP_NAME,
-    S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
 )
 
 
@@ -56,32 +55,13 @@ S_DECLARATION_ROW = (
 )
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
 
 
 def test_the_declaration_step_reports_no_run_outcome(
     pageDashboard, serverHub,
 ):
     """One test, both surfaces — the session holds one browser."""
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(S_DECLARATION_ROW, timeout=20000)
 
     # 1. The collapsed row's execution column carries no light at all.

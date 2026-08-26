@@ -24,35 +24,12 @@ ordering assertion for one state or the other.
 
 import pytest
 
-from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
-    S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
-)
+from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 
 pytestmark = pytest.mark.browser
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
 
 
 S_LABELS_FOR_STATE = """([sRemoteKey, sState]) => {
@@ -85,7 +62,7 @@ def test_every_badge_menu_can_resolve_the_badge(
     all: the second test's claim is refused with "In use in another
     browser session", which is the model working as designed.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # All three, because the gap was in the shared builder; asserting
     # only GitHub would pass against a fix that special-cased the
