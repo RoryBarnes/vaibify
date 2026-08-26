@@ -1345,6 +1345,32 @@ correct approach.
   real one — and where a set in module A must be a subset of a set in
   module B, pin the relationship, because each edit looks complete on
   its own.
+- **Retargeting a falsification entry is authoring a new mutation, not
+  bookkeeping.** When a refactor moves the code an entry points at,
+  the natural reflex is to repoint `old`/`new` and move on — it feels
+  like updating a reference. It is not: the replacement text has to
+  parse AND still kill. One retarget dropped a closing quote
+  (`f"(git diff --cached ` for `f"(git diff --cached --quiet || "`),
+  producing an unterminated f-string; the static registry check passed,
+  because it only asks whether `old` appears in the source, and CI
+  reported `ERROR: mutation does not compile` an hour later. Three
+  entries were retargeted in that change, two were kill-confirmed, and
+  the one treated as clerical was the broken one. Verify every
+  retarget the same way as a new guard: apply it, `ast.parse` the
+  result, run the named test, see it fail, restore.
+- **A new early return converts every downstream guard's test into a
+  tautology, and only the marked ones are noticed.** Adding the
+  scope-version check to `_fbCachedSyncStatusFullMatch` made it refuse
+  fixtures before the SHA, freshness and divergence guards below it —
+  and those tests kept passing, because `False` is what they already
+  asserted. CI's mutation run flagged the three that were
+  `@pytest.mark.falsification`; a fourth was an ordinary unit test and
+  was invisible to every lane (verified: deleting the divergence guard
+  outright left it green). When adding an early return to a gate, list
+  what sits below it and check that each one's test still fails when
+  its guard is removed. Shared fixture builders are a control here, not
+  a tidiness exercise: a hand-typed fixture gains a newly-required
+  field in five files and silently not the other fourteen.
 - **A kill-confirmation that edits by non-unique text mutates the
   wrong site and reports a false negative.** `syncDispatcher.py` has
   three byte-identical `(git diff --cached --quiet || git commit …)`

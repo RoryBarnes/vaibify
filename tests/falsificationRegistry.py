@@ -12593,7 +12593,7 @@ def _fdictEntry(sRel):
         # assertion detects and keeps it distinct from the two entries
         # that mutate the same line differently.
         old='        f"(git diff --cached --quiet || "',
-        new='        f"(git diff --cached ',
+        new='        f"(git diff --cached "',
     ),
     Falsification(
         nodeid=(

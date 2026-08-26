@@ -32,17 +32,7 @@ from vaibify.reproducibility.levelGates import (
     fnClearLevelBlockerCache,
 )
 
-from vaibify.reproducibility.publicationScope import (
-    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
-)
-
-# A cached verify is evidence for a claim whose SCOPE is versioned, so
-# a fixture meaning "a complete, current verification" must record
-# which definition of the published set it ran under and which paths
-# it compared. Without them the gate refuses -- correctly: a file the
-# verify never looked at is missing from listDiverged in exactly the
-# way a file that matched is missing.
-_LIST_COMPARED = ["step01/data.csv", "step01/run.py", "step02/out.json"]
+from tests.syncStatusFixtures import fdictBuildCachedVerify
 
 pytestmark = pytest.mark.falsification
 
@@ -135,18 +125,14 @@ def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            # Internally CONSISTENT (3 - 1 diverged = 2 matching), so
-            # the consistency check cannot be what fails and the
-            # divergence guard is genuinely the decisive one.
-            "iTotalFiles": 3, "iMatching": 2,
-            "listDiverged": [{"sPath": _LIST_COMPARED[0]}],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sCommittedShaVerified": "abc123",
-        },
+        # Counts stay internally consistent (3 total - 1 diverged =
+        # 2 matching), so the consistency check cannot be what fails
+        # and the divergence guard is genuinely decisive.
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listDivergedPaths=["step01/data.csv"],
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -177,15 +163,13 @@ def test_github_undercount_with_empty_diverged_is_not_synced(tmp_path):
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 2,
-            "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sCommittedShaVerified": "abc123",
-        },
+        # iMatching contradicts listDiverged on purpose: no writer
+        # produces this, so it models a hand-edited or truncated cache.
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            iMatchingOverride=2,
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -211,14 +195,10 @@ def test_github_verified_sha_empty_but_live_sha_present_is_not_synced(tmp_path):
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "sCommittedShaVerified": "",
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     dictWorkflow["dictRemotes"]["github"]["sCommittedSha"] = "abc123"
@@ -241,14 +221,10 @@ def test_github_verified_sha_present_but_live_sha_empty_is_not_synced(tmp_path):
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     dictWorkflow["dictRemotes"]["github"]["sCommittedSha"] = ""
@@ -275,13 +251,11 @@ def test_github_full_match_without_timestamp_is_not_synced(tmp_path):
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sCommittedShaVerified": "abc123",
-        },
+        # sLastVerified omitted entirely: the freshness guard reads
+        # its ABSENCE, which is what this test makes decisive.
+        "github": fdictBuildCachedVerify(
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -326,23 +300,16 @@ def test_fdictLevel2Gaps_subset_failure_keeps_level2_false(tmp_path):
 def _fnWriteAllGreenSyncStatus(sProjectRepo):
     """Write fresh-and-matching cache files for both services."""
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sCommittedShaVerified": "abc123",
-        },
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="abc123",
+        ),
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     })
 
 
