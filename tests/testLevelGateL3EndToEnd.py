@@ -33,6 +33,18 @@ from vaibify.reproducibility.reproduceScriptGenerator import (
 )
 
 
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
+)
+
+# A cached verify is evidence for a claim whose SCOPE is versioned, so
+# a fixture meaning "a complete, current verification" must record
+# which definition of the published set it ran under and which paths
+# it compared. Without them the gate refuses -- correctly: a file the
+# verify never looked at is missing from listDiverged in exactly the
+# way a file that matched is missing.
+_LIST_COMPARED = ["step01/data.csv"]
+
 def _fsIsoNow(fHoursAgo=0.0):
     dtNow = datetime.now(timezone.utc) - timedelta(hours=fHoursAgo)
     return dtNow.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -44,11 +56,15 @@ def _fnWriteSyncStatus(tmp_path):
     dictPayload = {
         "github": {
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",

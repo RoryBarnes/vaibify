@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
@@ -30,6 +31,18 @@ from vaibify.reproducibility.levelGates import (
     fdictLevel2Gaps,
     fnClearLevelBlockerCache,
 )
+
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
+)
+
+# A cached verify is evidence for a claim whose SCOPE is versioned, so
+# a fixture meaning "a complete, current verification" must record
+# which definition of the published set it ran under and which paths
+# it compared. Without them the gate refuses -- correctly: a file the
+# verify never looked at is missing from listDiverged in exactly the
+# way a file that matched is missing.
+_LIST_COMPARED = ["step01/data.csv", "step01/run.py", "step02/out.json"]
 
 pytestmark = pytest.mark.falsification
 
@@ -104,23 +117,34 @@ def _fdictBuildLevel2ReadyWorkflow():
 
 
 def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
-    """iMatching==iTotal but a populated listDiverged must fail closed.
+    """A consistent cache with a diverged Level 2 file must fail closed.
 
-    Isolates the divergence guard: the count check is satisfied
-    (3 == 3) and the SHA + freshness clauses are green, so only the
-    ``listDiverged`` guard can keep the gate dark. A mutant that drops
+    Isolates the divergence guard: the counts are internally
+    consistent (3 total - 1 diverged = 2 matching) and the SHA +
+    freshness clauses are green, so only the Level 2 divergence guard
+    can keep the gate dark. A mutant that drops
     that guard would light L2 for files known to differ from the mirror.
 
-    Kills: Remove the `if dictStatus.get('listDiverged'): return False`
-    divergence guard in _fbCachedSyncStatusFullMatch
+    Kills: Remove the Level 2 divergence guard (the final
+    `setLevel2 & _fsetDivergedPathsOf(...)` return) in
+    _fbCachedSyncStatusFullMatch.
+
+    The fixture is deliberately scope-CURRENT. Without that it fails
+    on the scope check instead, which is a different guard, and the
+    test would pass while proving nothing about divergence.
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": {
             "sService": "github",
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3,
-            "listDiverged": [{"sPath": "a"}],
+            # Internally CONSISTENT (3 - 1 diverged = 2 matching), so
+            # the consistency check cannot be what fails and the
+            # divergence guard is genuinely the decisive one.
+            "iTotalFiles": 3, "iMatching": 2,
+            "listDiverged": [{"sPath": _LIST_COMPARED[0]}],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
     })
@@ -136,15 +160,20 @@ def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
 
 
 def test_github_undercount_with_empty_diverged_is_not_synced(tmp_path):
-    """iMatching<iTotal with empty listDiverged must fail closed.
+    """Counts that contradict listDiverged must fail closed.
 
-    Isolates the count check: ``listDiverged`` is empty and the SHA +
-    freshness clauses are green, so only ``iMatching != iTotal`` can
-    keep the gate dark. A mutant that drops the count check would light
-    L2 on an undercount of matched files.
+    Isolates the internal-consistency check: ``listDiverged`` is empty
+    and the SHA + freshness clauses are green, so only the
+    ``iMatching != iTotal - len(listDiverged)`` relation can keep the
+    gate dark. A mutant that drops it would light L2 off a cache whose
+    own numbers contradict each other.
 
-    Kills: Remove the `if dictStatus.get('iMatching') != iTotal: return
-    False` count check in _fbCachedSyncStatusFullMatch
+    Kills: Remove the internal-consistency check in
+    _fbCachedSyncStatusFullMatch.
+
+    iMatching and listDiverged disagree here, which no writer produces
+    — the fixture models a hand-edited or truncated cache, whose
+    divergence list cannot be trusted to be the whole story.
     """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
@@ -153,6 +182,8 @@ def test_github_undercount_with_empty_diverged_is_not_synced(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 2,
             "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
     })
@@ -293,12 +324,16 @@ def _fnWriteAllGreenSyncStatus(sProjectRepo):
             "sService": "github",
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
             "sService": "zenodo",
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",
         },

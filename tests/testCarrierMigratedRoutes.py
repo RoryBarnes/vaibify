@@ -77,6 +77,10 @@ from vaibify.gui import (
 )
 
 
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION,
+)
+
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
 S_PRIMITIVE_EXEC = "ftRunInContainerStreamed"
 
@@ -1244,6 +1248,7 @@ def _fdictAllGreenSyncCache():
             "sLastVerified": _fsFreshIsoTimestamp(),
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
             "listComparedPaths": list(listCompared),
+            "iScopeVersion": I_PUBLICATION_SCOPE_VERSION,
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
@@ -1251,6 +1256,7 @@ def _fdictAllGreenSyncCache():
             "sLastVerified": _fsFreshIsoTimestamp(),
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
             "listComparedPaths": list(listCompared),
+            "iScopeVersion": I_PUBLICATION_SCOPE_VERSION,
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",
         },
@@ -3446,7 +3452,10 @@ def _fnGithubVerifyProvesOnePath():
             "sService": sService,
             "sLastVerified": _fsFreshIsoTimestamp(),
             "iTotalFiles": 1,
+            "iMatching": 1,
             "listDiverged": [],
+            "listComparedPaths": ["stepA/output.dat"],
+            "iScopeVersion": I_PUBLICATION_SCOPE_VERSION,
         },
     ):
         yield

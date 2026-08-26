@@ -38,6 +38,19 @@ from vaibify.reproducibility.levelGates import (
     fiProofLevel,
 )
 
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
+)
+
+# A cached verify is evidence for a claim whose SCOPE is versioned, so
+# a fixture meaning "a complete, current verification" must record
+# which definition of the published set it ran under and which paths
+# it compared. Without them the gate refuses -- correctly: a file the
+# verify never looked at is missing from listDiverged in exactly the
+# way a file that matched is missing.
+_LIST_COMPARED = ["step01/data.csv", "step01/run.py", "step02/out.json"]
+
+
 
 def _fsBuildIsoTimestamp(fHoursAgo=0.0):
     """Return an ISO-8601 UTC timestamp fHoursAgo before now."""
@@ -174,6 +187,8 @@ def test_fbWorkflowFullySyncedWithGithub_fresh_full_match_returns_true(tmp_path)
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
             "sCommittedShaVerified": "abc123",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
@@ -190,6 +205,8 @@ def test_fbWorkflowFullySyncedWithGithub_stale_returns_false(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=48.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
             "sCommittedShaVerified": "abc123",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
@@ -253,6 +270,8 @@ def test_fbWorkflowFullySyncedWithZenodo_fresh_full_match_returns_true(tmp_path)
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
             "sZenodoDoi": "10.1000/example",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sEndpointVerified": "sandbox",
         },
     })
@@ -287,6 +306,8 @@ def test_fbWorkflowFullySyncedWithZenodo_endpoint_mismatch_returns_false(tmp_pat
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
             "sZenodoDoi": "10.1000/example",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sEndpointVerified": "sandbox",
         },
     })
@@ -310,12 +331,16 @@ def _fnWriteAllGreenSyncStatus(sProjectRepo):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
             "sCommittedShaVerified": "abc123",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
         "zenodo": {
             "sService": "zenodo",
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
             "sZenodoDoi": "10.1000/example",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
             "sEndpointVerified": "sandbox",
         },
     })

@@ -48,6 +48,7 @@ from vaibify.reproducibility import (
     manifestWriter,
     overleafMirror,
     overleafSync,
+    publicationScope,
     zenodoClient,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -348,7 +349,6 @@ def fdictComputeLiveExpectedHashes(filesRepo, dictWorkflow):
     # pushed reproduce.sh that had drifted meant reproduction failed
     # and no surface said so. One pass compares the union; each gate
     # reads the paths it owns, via publicationScope.
-    from . import publicationScope
     listPaths = publicationScope.flistCollectComparisonPaths(
         dictWorkflow, filesRepo,
     )
@@ -484,6 +484,13 @@ def fdictVerifyRemoteService(
         # existed simply has no compared set, so every path reads
         # unknown until the next verify.
         "listComparedPaths": listRelPaths,
+        # Which DEFINITION of the published set this verify ran under.
+        # `listComparedPaths` says what was looked at; this says what
+        # was supposed to be. Without it a cache from an older scope
+        # looks identical to a complete one, because a file that was
+        # never compared is absent from `listDiverged` in exactly the
+        # same way as a file that matched.
+        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
     }
     _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
     return dictStatus
@@ -552,6 +559,10 @@ def _fdictEmptyServiceStatus(sService):
         "iMatching": 0,
         "listDiverged": [],
         "listComparedPaths": [],
+        # 0, never the current version: a service that has never been
+        # verified must not present as scope-current, or the gate's
+        # scope check would pass on no evidence at all.
+        "iScopeVersion": 0,
     }
     if sService == "github":
         dictEmpty["sCommittedShaVerified"] = None
