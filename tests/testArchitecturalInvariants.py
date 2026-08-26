@@ -4237,7 +4237,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Level 2 sync rows -- that separation is the whole point of the
     # scope split, and sharing a field would undo it in the UI after
     # the gates had been carefully kept apart.
-    "routes/pipelineRoutes.py": 3237,
+    # +18 (2026-08-26): the scope split reaching the screen —
+    # listLevel3EnvelopePaths on the same payload, and
+    # _fdictProjectSyncSummary reporting the LEVEL 2 counts rather
+    # than the aggregate. The row beside the scope-aware gate was
+    # still reporting an envelope divergence as a reason the
+    # researcher's data was unpublished; most of the addition is the
+    # docstring saying so, because the aggregate version is the one
+    # that looks right.
+    # +7 (2026-08-26): bScopeStale on the sync summary, and the
+    # envelope path list the Level 2 rows subtract. Both exist so the
+    # SCREEN can say what the gate says — the row was reporting a
+    # complete match off counts that were complete for a question no
+    # longer being asked.
+    "routes/pipelineRoutes.py": 3262,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5023,7 +5036,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +10 (2026-08-17, push retry): the add-variant push adopts the
     # staged variant's commit guard, with the docstring recording the
     # stranded-commits failure it closes.
-    "syncDispatcher.py": 1958,
+    # +16 (2026-08-26, single-file push): ftResultAddFileToGithub
+    # finally adopts the SAME commit guard — it had been left with the
+    # unguarded chain since 2026-07-02 and shipped that defect, so the
+    # docstring records the class-versus-instance miss and the
+    # non-obvious reason the grouping parentheses matter (a clean index
+    # stops under either parse; only a dirty one diverges). This entry
+    # falls again if the deprecated, caller-less
+    # ftResultPushScriptsToGithub is removed.
+    "syncDispatcher.py": 1974,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

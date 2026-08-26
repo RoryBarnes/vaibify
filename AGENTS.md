@@ -1330,6 +1330,67 @@ correct approach.
   pre-fix code is what the pre-fix tests were written against. Copy
   the file aside and copy it back, and re-grep for a marker string
   from the change before believing the restore.
+- **A fake that answers every input cannot exercise an adapter that
+  refuses most of them.** `SnapshotRepoFiles` — the adapter the
+  file-status poll passes — answers `fbIsFile` only for the paths one
+  container exec sampled and raises `KeyError` for the rest, by
+  design, because guessing would make a gate silently wrong. Every
+  test of the new Level 3 envelope gate drove a hand-written fake
+  whose `fbIsFile` answers anything, so all of them passed while the
+  shipped gate raised on `requirements.txt`, 500'd the poll, and
+  blanked every badge and level cell on the researcher's dashboard.
+  The tests and the code were both self-consistent and neither was
+  the product. When a module has a permissive test double and a
+  fail-closed production adapter, at least one test must drive the
+  real one — and where a set in module A must be a subset of a set in
+  module B, pin the relationship, because each edit looks complete on
+  its own.
+- **A kill-confirmation that edits by non-unique text mutates the
+  wrong site and reports a false negative.** `syncDispatcher.py` has
+  three byte-identical `(git diff --cached --quiet || git commit …)`
+  guards in three functions, so a `str.replace(old, new, 1)` aimed at
+  the third silently hit the first. The suite went green, which reads
+  exactly like "this guard is not load-bearing" — the conclusion that
+  gets a guard deleted. Before believing a mutation survived, `grep -c`
+  the target text: more than one occurrence means the edit landed
+  somewhere unknown. Mutate by line number, or by text that includes
+  the enclosing function's unique context, and print the mutated region
+  before running.
+- **The obvious assertion often cannot tell two shell chains apart.**
+  For `a && b || c && d`, the natural test — "a failed `add` returns
+  non-zero" — passes against BOTH the grouped and ungrouped forms,
+  because a failed add with a clean index stops either way. The forms
+  diverge only when the index is DIRTY: ungrouped, the failure falls
+  through to the commit, which succeeds on unrelated staged content and
+  pushes it. A docstring claiming the simple case kills the mutant was
+  written and was false. When pinning operator grouping, find the input
+  where the two parses actually differ, and verify the kill rather than
+  reasoning about it.
+- **A researcher's project STATE leaks into comments more easily than
+  their science does.** The "never hard-code science-specific
+  examples" rule is easy to obey for dataset and target names and easy
+  to break for everything else: a comment justifying a fix was written
+  as `the row reads "19 of 19 files matching"` — a count copied
+  straight off the researcher's dashboard while debugging with them.
+  It names no science, so it reads as harmless, and
+  `testNoScienceSpecificIdentifiersInSource` cannot catch it (the seed
+  list matches identifiers, not arbitrary numbers). It is still their
+  project pinned into vaibify's source, where every future agent will
+  read it as if it were a fact about vaibify. Write the general shape
+  — "all files matching" — never the observed instance. The tell is a
+  comment containing a number, path, or timestamp you learned from the
+  session rather than from the code.
+- **Making a gate scope-aware does not make the row beside it
+  scope-aware.** The L2/L3 split taught the gates that a drifted
+  `reproduce.sh` says nothing about whether the researcher's DATA is
+  published — and the Published-copies row kept reporting the verify's
+  aggregate counts and listing `reproduce.sh` among the files, so the
+  screen went on making exactly the statement the gate had just been
+  corrected out of. The researcher saw it immediately; the suite could
+  not, because every test asserted the gate. After changing what a
+  computation MEANS, grep for the other consumers of the same cached
+  record — a summary, a count, a file list — and check each one
+  against the new meaning.
 
 ## Pointers
 

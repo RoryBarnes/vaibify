@@ -820,12 +820,28 @@ def ftResultAddFileToGithub(
     """Git add, commit, push a single file inside the container.
 
     Shares the hardening-flag discipline with ``ftResultPushToGithub``.
+
+    The commit is SKIPPED when the add staged nothing, using the guard
+    the two sibling pushes grew after the 2026-07-02 live bug. This
+    function was left with the original defect and shipped it: an
+    already-committed file stages nothing, ``git commit`` exits
+    "nothing added to commit", ``&&`` swallows the push, and the
+    researcher is told the sync failed about a file already on GitHub.
+    That is the ordinary state of a published file, and the state an
+    orange (unverified) badge is pushed FROM -- so the only action the
+    badge offered failed for the researcher who had already published.
+
+    The grouping parentheses are load-bearing, but not in the obvious
+    way: a failed add with a CLEAN index stops under either parse. They
+    diverge on a DIRTY index, where the ungrouped form falls through to
+    the commit and publishes unrelated staged work.
     """
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
         f"git {sHardening} add {fsShellQuote(sFilePath)} && "
-        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "
+        f"(git diff --cached --quiet || "
+        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "
         f"git {sHardening} push && "
         f"git {sHardening} rev-parse --short HEAD"
     )

@@ -1303,27 +1303,50 @@ LIST_FALSIFICATIONS = [
         old='    if iRefNumber > iStepCount:',
         new='    if iRefNumber >= iStepCount:',
     ),
+    # The divergence guard reached through its READER rather than its
+    # return, so this entry stays distinct from the one below that
+    # mutates the return itself. Two tests defend the same guard from
+    # different sides, and a shared mutation string would collapse
+    # them into one entry the registry cannot attribute.
     Falsification(
-        # Retargeted 2026-08-26. _fbCachedSyncStatusFullMatch became
-        # scope-aware when the verify started comparing the Level 3
-        # envelope in the same pass; the two conditions these mutate
-        # now live in the pre-split fallback branch, which is the
-        # branch these tests' legacy-shaped fixtures take.
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""            and not dictStatus.get("listDiverged")""",
-        new="""            and True""",
+        old="""        for dictEntry in (dictStatus.get("listDiverged") or [])""",
+        new="""        for dictEntry in []""",
     ),
     Falsification(
+        # Retargeted 2026-08-26 (twice). These two entries mutated the
+        # pre-split fallback branch, which no longer exists: a cache
+        # with no scope version is now refused outright rather than
+        # read on its own terms. This one moved to the
+        # internal-consistency check that survived the rewrite.
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_undercount_with_empty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""            dictStatus.get("iMatching") == iTotal""",
-        new="""            True""",
+        old="""    if dictStatus.get("iMatching") != iTotal - len(""",
+        new="""    if False and dictStatus.get("iMatching") != iTotal - len(""",
     ),
-    # The scope-aware branch is the PRIMARY path once a project has
-    # re-verified, and the two entries above only reach the legacy
-    # fallback. Without this one the branch that actually separates
-    # the levels would carry no falsification at all.
+    # Absence of evidence is not agreement. A cached verify written
+    # under an EARLIER definition of the published set is silent about
+    # the files the scope has since added, in exactly the way it is
+    # silent about files that matched -- so without this guard the gate
+    # reports a full match over a comparison nobody performed. That is
+    # not hypothetical: it is what shipped when project.json joined
+    # Level 2.
+    Falsification(
+        nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):""",
+        new="""    if False:""",
+    ),
+    # The writer half of the same guard. A scope check whose writer
+    # never stamps the field is not a check, it is an outage in which
+    # no project can ever reach Level 2 again.
+    Falsification(
+        nodeid='tests/testScheduledReverify.py::testVerifyStampsTheScopeItRanUnder',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,""",
+        new="""        "iScopeVersionRemoved": 0,""",
+    ),
     Falsification(
         nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_diverged_data_file_still_fails_level_two',
         source='vaibify/reproducibility/levelGates.py',
@@ -2126,23 +2149,31 @@ def _fdictEntry(sRel):
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
     # 2026-08-17: the commit guard gained a second copy when
-    # ftResultPushToGithub adopted it, so both entries below mutate
-    # BOTH copies (iExpectedOccurrences=2) — the staged real-git tests
-    # still kill via the staged copy, and the add-variant copy has its
-    # own scoped entry further down.
+    # ftResultPushToGithub adopted it. 2026-08-26: a THIRD, when
+    # ftResultAddFileToGithub finally adopted it too — it had been
+    # left with the original unguarded chain since the 2026-07-02 fix,
+    # and shipped that defect to a researcher.
+    #
+    # Both entries below therefore mutate all THREE copies
+    # (iExpectedOccurrences=3). That is the point of the count: a
+    # guard with several copies must have every one mutated, or
+    # disabling a single copy changes nothing any test can observe.
+    # The staged real-git tests still kill via the staged copy; the
+    # add-file copy has its own scoped entry in
+    # testAlreadyCommittedFileIsNotASyncFailure.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
-        iExpectedOccurrences=2,
+        iExpectedOccurrences=3,
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
-        iExpectedOccurrences=2,
+        iExpectedOccurrences=3,
     ),
 
     # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
