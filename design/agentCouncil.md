@@ -986,6 +986,67 @@ the UI flags that the pen-holder co-authored the plan under review. The
 synthesis-turn-is-never-the-veto-turn rule (§5.2) and the at-least-one-fresh-
 reviewer rule (§2.4) both still hold on top of this.
 
+### 6.8 Ask the chairbot (amendment, 2026-08-25)
+
+A researcher reading a candidate plan, a held question or a round of
+objections wants to ask the pen-holder about it. That is a **conversation, not
+a protocol turn**, and the distinction is the whole design: a chat message
+resolves no round, casts no veto, adopts no plan and answers no gate, so it
+does not go through the engine at all. It is served by
+`vaibify/gui/agentCouncilChat.py`, beside the controller rather than inside
+it.
+
+**Why one runner serves the whole conversation.** Every protocol turn creates
+and destroys a runner (§9.6); a conversation creates one when the researcher
+opens it, serves N messages, and destroys it at close. That is affordable
+here for exactly the reason it is not affordable there. The completion proof
+of §5.4 classifies PROTOCOL turns — an indeterminate one interrupts the
+campaign — and a chat message classifies nothing. The proof that matters
+attaches to the CONTAINER's disposal, which still happens once per session
+through `fdictDestroyAndSettle`, quarantining on an unproven absence exactly
+as a turn's does. §5.4 is therefore untouched: no chat message can leave a
+council waiting on a human with live provider work open, because no chat
+message is council work.
+
+**A persistent runner buys latency, never memory.** Each message is a fresh
+headless CLI run inside the container; nothing survives between them but the
+files. The conversation's memory is the SERVER'S transcript, re-quoted in
+full on every message through the untrusted-material channel (§5.5) — so a
+reply the server does not quote is a reply the chairbot never said, and the
+chat clause tells the model so rather than letting it act as though it
+remembers. The transcript is bounded, and at the bound the conversation
+REFUSES further messages rather than truncating its own middle.
+
+**The chat instruction suspends charter clause 7 and nothing else.** The
+campaign's own charter text rides the instruction channel; the appended chat
+clause lifts the structured-output requirement, states that the answer settles
+nothing and names where the researcher takes each action instead. Every other
+clause — the evidence discipline, the adversarial stance, independence —
+binds unchanged, which is the reason the charter rides this channel rather
+than being replaced by it.
+
+**Containment and egress are the campaign's, under a distinct scope.** The
+runner is seeded from the campaign's sealed snapshot and reaches the provider
+only through an allowlisting CONNECT proxy on an internal network (§9.7). The
+egress resources are named for a *chat scope* derived from the campaign id,
+never the campaign's own, so a conversation and a deliberation can never
+contend for one Docker name — and the startup sweep composes both scopes from
+the durable store, so a crashed hub's conversation leaves nothing orphaned.
+The registry reservation is still accounted to the CAMPAIGN, so a
+conversation's runner is visible to every per-campaign live-work check and is
+admitted through the same ceilings as a turn (§9.3).
+
+**Two clocks bound the credential window, and they are the feature's price.**
+A turn's login copy is staged and the host file deleted the instant its
+tarball is built; that is unchanged. What a session-scoped runner widens is
+the window the copy lives INSIDE the container. So a conversation closes
+itself after an idle timeout and after an absolute ceiling regardless of
+activity, both enforced by a hub-side reaper — never by the browser, because
+the case being bounded is the tab that was closed. A message IN FLIGHT is
+spared by the reaper (it has its own wall clock and the researcher is waiting
+on it) and makes the container busy for the release authority, with its own
+refusal text: nobody stops a council to end a conversation.
+
 ## 7. Plan and review artifacts
 
 ### 7.1 Accepted plan format
@@ -1776,7 +1837,20 @@ POST /api/agent-councils/{sContainerId}/{sCampaignId}/respond
 POST /api/agent-councils/{sContainerId}/{sCampaignId}/request-stop
 POST /api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan
 DELETE /api/agent-councils/{sContainerId}/{sCampaignId}
+GET  /api/agent-councils/{sContainerId}/{sCampaignId}/chat
+POST /api/agent-councils/{sContainerId}/{sCampaignId}/chat/open
+POST /api/agent-councils/{sContainerId}/{sCampaignId}/chat/ask
+POST /api/agent-councils/{sContainerId}/{sCampaignId}/chat/close
 ```
+
+The four `chat` routes are the §6.8 amendment. `ask` returns as soon as the
+message is recorded and the answer lands on a background task the panel polls
+`chat` for — an answer takes minutes, and a request held open that long is at
+the mercy of every proxy between the browser and the hub. `open` is
+synchronous, because building the runner is bounded work the researcher just
+asked for. `close` is deliberately NOT gated on closed council admission:
+closing is how a researcher makes a released project releasable, so gating it
+would put the only exit behind the gate it opens.
 
 The deferred review extension may add `start-review` and `accept-review` only
 after the planning MVP is evaluated.

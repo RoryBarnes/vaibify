@@ -74,6 +74,7 @@ var VaibifyAgentCouncil = (function () {
         sLastPollError: "",
         sLastEventPollError: "",
         sLastRenderError: "",
+        sLastChatError: "",
         iLastPollSucceededAt: 0,
         /* Per-directory snapshot feasibility, keyed by directory
            basename, filled on demand when the convene form opens. The
@@ -83,6 +84,11 @@ var VaibifyAgentCouncil = (function () {
            (the IIFE state trap). */
         dictFeasibilityByDirectory: {},
         setExcludedPaths: new Set(),
+        /* The ask-the-chairbot conversation, exactly as the backend
+           reports it. Never composed here: an answer appears on screen
+           because the server recorded it, so a message that failed to
+           reach the runner cannot look like one that did. */
+        dictChat: null,
     };
 
     /* ------------------------------------------------------------------ */
@@ -107,6 +113,7 @@ var VaibifyAgentCouncil = (function () {
         _dictState.bEvictionSeen = false;
         _dictState.sActiveTab = "council";
         _dictState.sRenderSignature = "";
+        _dictState.dictChat = null;
         _dictState.listDraftParticipants = [];
         _dictState.iChairbotIndex = 0;
         _fnResetSnapshotScope();
@@ -1070,6 +1077,9 @@ var VaibifyAgentCouncil = (function () {
         _setKnownEventSequences.clear();
         _dictState.sActiveTab = "council";
         _dictState.sRenderSignature = "";
+        /* The conversation belongs to the campaign, so switching
+           campaigns must not show the previous one's transcript. */
+        _dictState.dictChat = null;
         _fnRenderToolbarButton();
     }
 
@@ -1138,6 +1148,14 @@ var VaibifyAgentCouncil = (function () {
                     errorEvents.message || String(errorEvents);
             }
             await _fnLoadCampaignQuietly();
+            /* Only while its tab is open. A conversation nobody is
+               reading is bounded by the hub's reaper, not by a poll,
+               so polling it in the background would spend requests to
+               learn nothing. */
+            if (_dictState.sActiveTab === "chat") {
+                await _fnLoadChatQuietly();
+                _fnRenderIfChanged();
+            }
             _dictState.iConsecutivePollFailures = 0;
             _dictState.sLastPollError = "";
             _dictState.iLastPollSucceededAt = Date.now();
@@ -1251,7 +1269,25 @@ var VaibifyAgentCouncil = (function () {
                count, and the panel would keep showing its last good
                answer forever — which is the state being warned about. */
             _dictState.iConsecutivePollFailures > 0 ? "stale" : "fresh",
+            /* The conversation's SETTLED facts only. The idle
+               countdown is deliberately absent: it changes on every
+               tick, and putting it here would re-render the panel
+               every few seconds and wipe a half-typed question. */
+            _fsChatSignature(),
         ].join("|");
+    }
+
+    function _fsChatSignature() {
+        var dictChat = _dictState.dictChat;
+        if (!dictChat || !dictChat.bOpen) {
+            return "chat:closed:" +
+                (_dictState.sLastChatError ? "stale" : "fresh");
+        }
+        return ["chat", _dictState.sLastChatError ? "stale" : "fresh",
+                dictChat.sState,
+                (dictChat.listMessages || []).length,
+                dictChat.sFailureReason ? 1 : 0,
+                dictChat.sResolvedModel || ""].join(":");
     }
 
     function _fiPollInterval() {
@@ -1431,7 +1467,7 @@ var VaibifyAgentCouncil = (function () {
             return;
         }
         _fnNoticeWallClockKills(dictCampaign);
-        elBody.innerHTML = _fsTabBar(dictCampaign) + _fsEvictionNotice() +
+        elBody.innerHTML = _fsTabBar(dictCampaign) +
             "<div class=\"council-tab-content\">" +
             _fsActiveTabContent(dictCampaign) + "</div>";
         _fnBindWorkspace(dictCampaign);
@@ -1450,19 +1486,38 @@ var VaibifyAgentCouncil = (function () {
             });
         sTabs += "<button type=\"button\" class=\"council-tab\" " +
             "data-tab=\"plan\">Plan</button>";
+        sTabs += "<button type=\"button\" class=\"council-tab\" " +
+            "data-tab=\"chat\">Ask the chairbot</button>";
         return "<div class=\"council-tabs\">" + sTabs + "</div>";
     }
 
-    function _fsEvictionNotice() {
+    function _fbConsoleHasLostEarlierEvents() {
+        /* The ring evicts from the FRONT, so anything lost is always
+           earlier than everything retained — which is why the marker
+           below belongs at the top of a log rather than between two
+           rows. */
         var bGap = _dictState.iLowestRetainedSeen > 1
             && _dictState.iLowestRetainedSeen >
                 (_fiEarliestSeenSequence() + 1);
-        if (!_dictState.bEvictionSeen && !bGap) return "";
-        return "<p class=\"council-eviction\">Earlier console output is " +
-            "no longer retained (events " +
+        return Boolean(_dictState.bEvictionSeen || bGap);
+    }
+
+    function _fsRetentionBoundaryRow() {
+        /* Rendered INSIDE the console, never above the tab bar. As a
+           banner it appeared on the Council, Plan and chat tabs too —
+           none of which show a single event — so a notice about missing
+           console lines was displayed everywhere except the console.
+
+           It states the RING's boundary, not a gap between adjacent
+           visible rows: each agent tab filters the global stream down
+           to one participant, so consecutive rows there routinely skip
+           sequence numbers that were never lost at all. */
+        if (!_fbConsoleHasLostEarlierEvents()) return "";
+        return "<li class=\"council-event council-event-evicted\">" +
+            "earlier events no longer retained" +
             (_dictState.iLowestRetainedSeen > 1
-                ? "before #" + _dictState.iLowestRetainedSeen + " " : "") +
-            "evicted). The structured phase artifacts remain.</p>";
+                ? " (before #" + _dictState.iLowestRetainedSeen + ")" : "") +
+            " — the structured phase artifacts remain</li>";
     }
 
     function _fiEarliestSeenSequence() {
@@ -1473,6 +1528,7 @@ var VaibifyAgentCouncil = (function () {
     function _fsActiveTabContent(dictCampaign) {
         var sTab = _dictState.sActiveTab;
         if (sTab === "plan") return _fsPlanTab(dictCampaign);
+        if (sTab === "chat") return _fsChatTab();
         if (sTab.indexOf("participant:") === 0) {
             return _fsParticipantTab(
                 dictCampaign, sTab.substring("participant:".length));
@@ -1885,10 +1941,11 @@ var VaibifyAgentCouncil = (function () {
                 }
                 return _fbConsoleShowsEvent(dictEvent);
             });
-        if (!listVisible.length) {
+        var sBoundaryRow = _fsRetentionBoundaryRow();
+        if (!listVisible.length && !sBoundaryRow) {
             return "<p class=\"council-hint\">No events yet.</p>";
         }
-        return "<ul class=\"council-event-log\">" +
+        return "<ul class=\"council-event-log\">" + sBoundaryRow +
             listVisible.map(_fsOneEventRow).join("") + "</ul>";
     }
 
@@ -2377,6 +2434,154 @@ var VaibifyAgentCouncil = (function () {
     }
 
     /* ------------------------------------------------------------------ */
+    /* Ask the chairbot — a conversation, never a protocol turn           */
+    /* ------------------------------------------------------------------ */
+
+    function _fsChatTab() {
+        var dictChat = _dictState.dictChat;
+        if (!dictChat || !dictChat.bOpen) {
+            return "<div class=\"council-chat\">" + _fsChatStaleNotice() +
+                _fsChatClosedTab() + "</div>";
+        }
+        return "<div class=\"council-chat\">" +
+            _fsChatStaleNotice() +
+            _fsChatStatusLine(dictChat) +
+            _fsChatTranscript(dictChat) +
+            _fsChatComposer(dictChat) +
+            "</div>";
+    }
+
+    function _fsChatStaleNotice() {
+        if (!_dictState.sLastChatError) return "";
+        return "<p class=\"council-chat-failure\">This conversation " +
+            "could not be refreshed (" +
+            _fsEscape(_dictState.sLastChatError) +
+            "), so what is shown below may be out of date.</p>";
+    }
+
+    function _fsChatClosedTab() {
+        /* The cost is stated BEFORE the button, not after the click.
+           Opening builds a real container and every message spends the
+           project's own provider subscription, so a researcher who has
+           not been told that has not agreed to it. */
+        return "" +
+            "<p>Ask this council's chairbot about its work — the plan it " +
+            "wrote, an objection it recorded, a question it held for " +
+            "you.</p>" +
+            "<p class=\"council-hint\">Opening a conversation builds a " +
+            "disposable runner from the sealed snapshot this council " +
+            "reviewed, and every message spends this project's provider " +
+            "subscription. The chairbot answers only: " +
+            "it cannot accept a plan, clear an objection or start a " +
+            "round. The conversation closes itself after a while " +
+            "idle, and after two hours regardless.</p>" +
+            "<button type=\"button\" id=\"btnCouncilChatOpen\" " +
+            "class=\"btn\">Open conversation</button>";
+    }
+
+    function _fsChatStatusLine(dictChat) {
+        var sModel = dictChat.sResolvedModel
+            ? "chairbot running " + _fsEscape(dictChat.sResolvedModel)
+            : "chairbot model not yet recorded";
+        var sBusy = dictChat.sState === "answering"
+            ? "<span class=\"council-chip council-chip-deliberating\">" +
+              "answering…</span> "
+            : "";
+        return "<p class=\"council-chat-status\">" + sBusy + sModel +
+            " · " + dictChat.iMessagesRemaining + " messages left · " +
+            "closes after " + Math.round(
+                dictChat.iIdleSecondsRemaining / 60) + " min idle" +
+            "</p>" + _fsChatFailure(dictChat);
+    }
+
+    function _fsChatFailure(dictChat) {
+        if (!dictChat.sFailureReason) return "";
+        return "<p class=\"council-chat-failure\">" +
+            _fsEscape(dictChat.sFailureReason) + "</p>";
+    }
+
+    function _fsChatTranscript(dictChat) {
+        var listMessages = dictChat.listMessages || [];
+        if (!listMessages.length) {
+            return "<p class=\"council-hint\">Nothing asked yet.</p>";
+        }
+        return "<div class=\"council-chat-transcript\">" +
+            listMessages.map(function (dictMessage) {
+                return "<div class=\"council-chat-message " +
+                    "council-chat-" + _fsEscape(dictMessage.sAuthor) +
+                    "\"><span class=\"council-chat-author\">" +
+                    _fsEscape(dictMessage.sAuthor) + "</span>" +
+                    "<div class=\"council-chat-text\">" +
+                    _fsEscape(dictMessage.sText) + "</div></div>";
+            }).join("") + "</div>";
+    }
+
+    function _fsChatComposer(dictChat) {
+        var bBlocked = dictChat.sState !== "ready"
+            || dictChat.iMessagesRemaining <= 0;
+        return "<div class=\"council-composer\">" +
+            "<textarea id=\"councilChatQuestion\" rows=\"3\" " +
+            (bBlocked ? "disabled " : "") +
+            "placeholder=\"Ask the chairbot about this council's " +
+            "work\"></textarea>" +
+            "<div class=\"council-plan-actions\">" +
+            "<button type=\"button\" id=\"btnCouncilChatAsk\" " +
+            "class=\"btn\"" + (bBlocked ? " disabled" : "") + ">Ask</button>" +
+            "<button type=\"button\" id=\"btnCouncilChatClose\" " +
+            "class=\"btn\">Close conversation</button>" +
+            "</div></div>";
+    }
+
+    async function _fnOpenChat() {
+        await _fnPostChatAction("/chat/open");
+    }
+
+    async function _fnAskChairbot() {
+        var sQuestion = _fsReadValue("councilChatQuestion");
+        if (!sQuestion) return;
+        await _fnPostChatAction("/chat/ask", {sQuestionText: sQuestion});
+    }
+
+    async function _fnCloseChat() {
+        await _fnPostChatAction("/chat/close");
+    }
+
+    async function _fnPostChatAction(sSuffix, dictBody) {
+        /* Never optimistic: the transcript on screen is refetched from
+           the server after the action, so a message the backend
+           refused never appears as one it accepted. */
+        try {
+            var sPath = _fsRoute(
+                "/" + _dictState.sActiveCampaignId + sSuffix);
+            if (dictBody === undefined) {
+                await VaibifyApi.fdictPostRaw(sPath);
+            } else {
+                await VaibifyApi.fdictPost(sPath, dictBody);
+            }
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                "Chairbot: " + (error.message || String(error)), "error");
+        }
+        await _fnLoadChatQuietly();
+        _fnRenderWorkspace();
+        _fnStartPolling();
+    }
+
+    async function _fnLoadChatQuietly() {
+        try {
+            _dictState.dictChat = await VaibifyApi.fdictGet(
+                _fsRoute("/" + _dictState.sActiveCampaignId + "/chat") +
+                _fsDirectoryQuery("?"));
+            _dictState.sLastChatError = "";
+        } catch (error) {
+            /* Recorded and RENDERED, not swallowed: a conversation
+               whose poll is failing must not keep displaying its last
+               good answer as though it were current. */
+            _dictState.sLastChatError = error.message || String(error);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Workspace event binding                                            */
     /* ------------------------------------------------------------------ */
 
@@ -2385,6 +2590,14 @@ var VaibifyAgentCouncil = (function () {
             elTab.addEventListener("click", function () {
                 _dictState.sActiveTab = elTab.getAttribute("data-tab");
                 _fnRenderWorkspace();
+                /* The conversation is not polled while its tab is
+                   hidden, so opening the tab has to fetch it once —
+                   otherwise the first thing a returning researcher
+                   sees is a stale transcript that only corrects itself
+                   on the next tick. */
+                if (_dictState.sActiveTab === "chat") {
+                    _fnLoadChatQuietly().then(_fnRenderWorkspace);
+                }
             });
         });
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
@@ -2392,6 +2605,9 @@ var VaibifyAgentCouncil = (function () {
         _fnBindElement("btnCouncilGrantRound", _fnGrantResolutionRound);
         _fnBindElement("btnCouncilResolveOverride", _fnResolveObjections);
         _fnBindElement("btnCouncilReject", _fnRejectCandidate);
+        _fnBindElement("btnCouncilChatOpen", _fnOpenChat);
+        _fnBindElement("btnCouncilChatAsk", _fnAskChairbot);
+        _fnBindElement("btnCouncilChatClose", _fnCloseChat);
         _fnBindPlanActions(dictCampaign);
     }
 

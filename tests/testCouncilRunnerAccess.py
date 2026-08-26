@@ -1279,3 +1279,49 @@ def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
         assert sField in sEvidenceSource, (
             f"the schema requires {sField}, which the evidence engine "
             "never reads")
+
+
+# ── the egress proxy's memory ceiling ────────────────────────────
+
+# The cap the proxy was killed AT, seven times in a few hours on
+# 2026-08-25. Compare against the CAP, not against the anon-rss the
+# kernel reported (260820 kB): anon-rss excludes file-backed pages, so
+# it sits just under the limit that killed the process, and a test
+# written against it passes for the very ceiling that failed.
+I_INSUFFICIENT_PROXY_CEILING_BYTES = 256 * 1024 * 1024
+
+
+def testTheEgressProxyCeilingClearsTheObservedKillPoint():
+    """A council's egress must not die under its own traffic.
+
+    When the proxy is OOM-killed mid-turn the runner loses the only
+    path it is allowed to reach the provider through, and the
+    researcher reads it as an unexplained provider failure — the
+    council's containment killing the council. The ceiling therefore
+    has to clear the size the proxy was actually observed reaching, not
+    a size that seemed generous when nobody had measured one.
+
+    Deliberately NOT a ratchet that may only rise: the growth is in the
+    number of concurrent tunnels, and the real answer is to bound those.
+    This asserts only that the ceiling is above the evidence.
+    """
+    assert agentCouncilDockerGateway.I_PROXY_MEMORY_BYTES > (
+        I_INSUFFICIENT_PROXY_CEILING_BYTES), (
+        "the egress proxy's memory limit is at or below the size it was "
+        "observed being killed at; a council on a large repository will "
+        "lose its egress mid-turn")
+
+
+def testTheProxyRelayIsBoundedPerConnection():
+    """Headroom is not a substitute for a bounded relay.
+
+    The raise above is only defensible because each tunnel copies in
+    fixed-size chunks and waits for the sink to drain between writes —
+    so one busy connection cannot grow without limit. If that ever
+    became an unbounded read, no ceiling would be large enough and the
+    OOM would come back looking like a capacity problem.
+    """
+    from vaibify.gui import agentCouncilEgress
+    sSource = agentCouncilEgress.S_CONNECT_PROXY_SCRIPT
+    assert "readerSource.read(I_RELAY_CHUNK_BYTES)" in sSource
+    assert "await writerSink.drain()" in sSource

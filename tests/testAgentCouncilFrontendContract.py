@@ -198,10 +198,28 @@ def test_council_never_constructs_a_terminal():
 
 
 def test_sequence_gap_and_eviction_are_surfaced():
+    """Lost console output is still admitted — in the console.
+
+    It used to be a banner above the tab bar, so a notice about missing
+    console lines rendered on the Council, Plan and chat tabs, none of
+    which show an event. Moving it into the log removes the noise
+    WITHOUT removing the statement; deleting it outright would make the
+    console skip events silently, which is the one thing the dashboard
+    rules forbid.
+    """
     sSource = _fsCouncilSource()
-    assert "_fsEvictionNotice" in sSource
+    assert "_fsRetentionBoundaryRow" in sSource
     assert "no longer retained" in sSource
     assert "iLowestRetainedSequence" in sSource
+    # In the log, not in the workspace header.
+    iRender = sSource.find("function _fnRenderWorkspace")
+    iEnd = sSource.find("function _fsTabBar", iRender)
+    assert "_fsRetentionBoundaryRow" not in sSource[iRender:iEnd], (
+        "the retention notice is back above the tab bar, where it shows "
+        "on tabs that display no events at all")
+    iLog = sSource.find("function _fsEventLog")
+    iLogEnd = sSource.find("function _fsOneEventRow", iLog)
+    assert "_fsRetentionBoundaryRow" in sSource[iLog:iLogEnd]
 
 
 def test_needs_human_blocking_question_card_renders_engine_questions():
@@ -347,3 +365,76 @@ def test_all_council_urls_are_same_origin_relative():
     assert "http://127.0.0.1" not in sSource
     assert "https://" not in sSource
     assert "/api/agent-councils/" in sSource
+
+
+# ── ask the chairbot ─────────────────────────────────────────────
+
+def test_chat_tab_exists_and_states_its_cost_before_the_button():
+    """A researcher who has not been told the cost has not agreed to it.
+
+    Opening a conversation builds a real container and every message
+    spends the project's provider subscription, so the disclosure has to
+    be beside the Open button, not discovered after the click.
+    """
+    sSource = _fsCouncilSource()
+    assert 'data-tab=\\"chat\\"' in sSource or 'data-tab="chat"' in sSource
+    iClosed = sSource.find("function _fsChatClosedTab")
+    iOpenButton = sSource.find("btnCouncilChatOpen", iClosed)
+    assert iClosed != -1 and iOpenButton != -1
+    sBefore = sSource[iClosed:iOpenButton]
+    assert "spends this project's provider" in sBefore
+    assert "disposable runner" in sBefore
+
+
+def test_chat_says_what_the_chairbot_cannot_do():
+    """The panel must not let a conversation read as an action.
+
+    A chairbot cannot accept a plan, clear an objection or start a
+    round; a UI that did not say so invites a researcher to ask it to.
+    """
+    sSource = _fsCouncilSource()
+    iClosed = sSource.find("function _fsChatClosedTab")
+    iEnd = sSource.find("function _fsChatStatusLine", iClosed)
+    sTab = sSource[iClosed:iEnd]
+    assert "cannot accept a plan" in sTab
+    assert "closes itself" in sTab
+
+
+def test_chat_transcript_is_backend_truth_never_composed_locally():
+    """An answer on screen must be one the server recorded.
+
+    Appending the researcher's own message locally would make a refused
+    message indistinguishable from an accepted one.
+    """
+    sSource = _fsCouncilSource()
+    iAction = sSource.find("async function _fnPostChatAction")
+    iEnd = sSource.find("async function _fnLoadChatQuietly", iAction)
+    sBody = sSource[iAction:iEnd]
+    assert "_fnLoadChatQuietly" in sBody, (
+        "a chat action that does not refetch would show an optimistic "
+        "transcript")
+    assert "listMessages.push" not in sSource
+    assert "_dictState.dictChat = await VaibifyApi.fdictGet(" in sSource
+
+
+def test_chat_poll_failures_are_shown_not_swallowed():
+    """A conversation whose poll broke must not look current."""
+    sSource = _fsCouncilSource()
+    assert "sLastChatError" in sSource
+    assert "_fsChatStaleNotice" in sSource
+    assert "may be out of date" in sSource
+
+
+def test_the_idle_countdown_is_absent_from_the_render_signature():
+    """A per-tick value in the signature would wipe a half-typed question.
+
+    The panel re-renders only when its signature changes, so anything
+    that changes on every poll must stay out of it.
+    """
+    sSource = _fsCouncilSource()
+    iSignature = sSource.find("function _fsChatSignature")
+    iEnd = sSource.find("function _fiPollInterval", iSignature)
+    sBody = sSource[iSignature:iEnd]
+    assert "iIdleSecondsRemaining" not in sBody
+    assert "listMessages" in sBody, (
+        "a landed answer must change the signature or it never appears")

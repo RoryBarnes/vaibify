@@ -77,7 +77,24 @@ I_COUNCIL_DAEMON_TIMEOUT_SECONDS = 60
 # user, all capabilities dropped, no privilege escalation, and hard
 # memory / CPU / PID bounds. The listen port is above 1024 so the
 # unprivileged bind succeeds.
-I_PROXY_MEMORY_BYTES = 256 * 1024 * 1024
+#
+# RAISED 256 MiB -> 1 GiB (2026-08-25). The researcher's VM kernel log
+# recorded the proxy being OOM-killed SEVEN times in a few hours, every
+# one at ~254 MiB anon-rss against the old 256 MiB cap — a council's
+# egress dying under its own traffic, which reads to the researcher as
+# an unexplained provider failure. One gibibyte is the bound a RUNNER
+# already gets, so the proxy is no longer the smallest thing in the
+# campaign, and two runners plus a proxy still sit inside a default
+# daemon's memory.
+#
+# This is HEADROOM, not a fix. The relay itself is bounded per
+# connection — 64 KiB chunks with a drain between writes — so the growth
+# is in the NUMBER of concurrent tunnels, which nothing caps: every
+# accepted socket becomes a task and a pair of buffers. Capping
+# concurrency is the real answer and it needs a measurement nobody has
+# taken; a cap guessed today would refuse a legitimate turn mid-council,
+# which is worse than the kill it prevents.
+I_PROXY_MEMORY_BYTES = 1024 * 1024 * 1024
 F_PROXY_CPU_COUNT = 0.5
 I_PROXY_PIDS_LIMIT = 64
 

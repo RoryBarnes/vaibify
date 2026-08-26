@@ -31,6 +31,9 @@ __all__ = [
     "LIST_TURN_RESULT_STRING_KEYS",
     "S_CHARTER_TEXT",
     "S_CHARTER_VERSION",
+    "S_CHAT_AUTHOR_CHAIRBOT",
+    "S_CHAT_AUTHOR_RESEARCHER",
+    "S_CHAT_INSTRUCTION",
     "S_PHASE_CROSS_REVIEW",
     "S_PHASE_PROPOSAL",
     "S_PHASE_SYNTHESIS",
@@ -40,7 +43,9 @@ __all__ = [
     "fdictComposeTurnRequest",
     "fdictValidateTurnResult",
     "flistBlindQuotedMaterial",
+    "flistBuildChatQuotedMaterial",
     "flistBuildQuotedMaterial",
+    "fsComposeChatInstruction",
     "fsComposeTurnInstruction",
     "fsDescribeSnapshotScope",
 ]
@@ -161,6 +166,39 @@ DICT_PHASE_INSTRUCTIONS = {
         "objections stated, or 'needsHuman' for a judgment call the "
         "researcher must own."),
 }
+
+# The two authors a chat transcript can carry, spelled here because the
+# charter composes the quoted entries and the chat module records them:
+# one vocabulary, so a transcript the server wrote can always be quoted
+# back by the same names.
+S_CHAT_AUTHOR_RESEARCHER = "researcher"
+S_CHAT_AUTHOR_CHAIRBOT = "chairbot"
+
+# The ask-the-chairbot channel. It suspends clause 7 and NOTHING else —
+# a conversation about the plan is still bound by the evidence
+# discipline and the adversarial stance, which is the entire reason the
+# charter rides this channel rather than being replaced by it.
+S_CHAT_INSTRUCTION = """\
+CHAT: the researcher is asking you questions ABOUT this council's work.
+This is a conversation, not a protocol turn.
+
+Charter clause 7 (structured output) does not apply to this message and
+no other clause is relaxed. Answer in prose. Do not return the turn
+schema, and do not wrap your whole answer in a code fence.
+
+Your answer SETTLES NOTHING. It adopts no plan, casts no vote, clears no
+objection, answers no blocking question and starts no round: every one
+of those is an action the researcher takes in the dashboard, and none of
+them can be taken by saying so here. If you are asked to do one, say
+plainly that you cannot and name where the researcher does it.
+
+You have no memory of your own between messages. Each message is a fresh
+run; the conversation quoted below is everything that has been said, and
+anything not quoted there did not reach you.
+
+Answer from the sealed snapshot and the quoted material. Where a
+question cannot be answered from them, say what is missing rather than
+inferring it — clause 3 binds here exactly as it binds in a turn."""
 
 S_REPAIR_INSTRUCTION = (
     "REPAIR: your previous response did not satisfy the required turn "
@@ -429,15 +467,16 @@ def fsDescribeSnapshotScope(listExcludedPaths):
     )
 
 
-def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
-                             bRepairRequest=False, listSchemaProblems=None):
-    """Compose charter + role + phase + exact schema (section 5.6).
+def _flistComposeStandingSections(dictCampaign, dictParticipant):
+    """Compose the sections EVERY instruction channel opens with.
 
-    The composition happens here in the engine, never in an adapter,
-    and quoted untrusted material is never part of this channel. The
-    exact result schema rides here too: it is server-owned text, and
-    the adapter must not be the thing that decides what a valid result
-    looks like.
+    Shared by the protocol turn and the chat conversation rather than
+    written twice, because the snapshot-scope note is the kind of thing
+    a second copy silently omits: a participant that is not told which
+    oversized files were excluded will reason confidently about what
+    they contain. Two callers is normally too few to extract for, but
+    the cost of the two drifting is a model asserting a file's contents
+    from its absence.
     """
     listSections = [dictCampaign["sCharterText"]]
     sScopeNote = (dictCampaign.get("dictProjectIdentity") or {}).get(
@@ -449,10 +488,63 @@ def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
             "ROLE PERSPECTIVE: scrutinize hardest through this lens — "
             f"{dictParticipant['sRole']}. A role narrows attention; it "
             "never relaxes the charter.")
+    return listSections
+
+
+def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
+                             bRepairRequest=False, listSchemaProblems=None):
+    """Compose charter + role + phase + exact schema (section 5.6).
+
+    The composition happens here in the engine, never in an adapter,
+    and quoted untrusted material is never part of this channel. The
+    exact result schema rides here too: it is server-owned text, and
+    the adapter must not be the thing that decides what a valid result
+    looks like.
+    """
+    listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)
     listSections.append(DICT_PHASE_INSTRUCTIONS[sPhase])
     if bRepairRequest:
         listSections.append(fsComposeRepairInstruction(listSchemaProblems))
     return "\n\n".join(listSections)
+
+
+def fsComposeChatInstruction(dictCampaign, dictParticipant):
+    """Compose the instruction channel for one ask-the-chairbot message.
+
+    The same standing sections a protocol turn opens with, then
+    :data:`S_CHAT_INSTRUCTION` — which explicitly suspends charter
+    clause 7 (structured output) and nothing else. A campaign carries
+    the charter text it was convened under, so a conversation about an
+    older campaign is answered under that campaign's charter, and the
+    chat clause has to name the clause it overrides rather than assume
+    a version.
+    """
+    listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)
+    listSections.append(S_CHAT_INSTRUCTION)
+    return "\n\n".join(listSections)
+
+
+def flistBuildChatQuotedMaterial(dictCampaign, listMessages):
+    """Assemble the quoted untrusted material one chat message receives.
+
+    The researcher's original question, the council's candidate plan
+    when one exists, and the conversation so far — every one of them
+    quoted as untrusted material on the same channel peer proposals
+    ride, because none of it is server-owned text.
+
+    The transcript is quoted IN FULL on every message and that is the
+    whole memory the conversation has: each message is a fresh headless
+    CLI run in a container that kept no state between them, so a reply
+    the server does not quote back is a reply the chairbot never said.
+    """
+    listQuoted = [fdictBuildQuotedEntry(
+        "researcherQuestion", "researcher", dictCampaign["sQuestion"])]
+    if dictCampaign.get("dictCandidatePlan"):
+        listQuoted.append(_fdictCandidateQuote(dictCampaign))
+    for dictMessage in listMessages:
+        listQuoted.append(fdictBuildQuotedEntry(
+            "chatMessage", dictMessage["sAuthor"], dictMessage["sText"]))
+    return listQuoted
 
 
 def fdictBuildQuotedEntry(sSourceKind, sAuthorIdentity, sContent):

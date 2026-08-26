@@ -374,6 +374,57 @@ def _fnRegisterCouncilLifecycle(app):
 
     app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
     app.state.listLifespanShutdown.append(fnDrainCouncilOnShutdown)
+    _fnRegisterCouncilChatReaper(app)
+
+
+# The reaper's cadence. It only has to be fine enough that a bound
+# overruns by at most one tick, and coarse enough that an idle hub is
+# not doing dictionary walks every second.
+F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS = 60.0
+
+
+async def _fnCouncilChatReaperLoop(app, fInterval):
+    """Close expired ask-the-chairbot conversations, forever.
+
+    On the HUB's clock, never the browser's: the bound this enforces
+    exists for the tab that was closed, crashed, or navigated away, and
+    a client that is gone cannot be the thing that reports it. One
+    failed pass is logged and the loop continues — a reaper that exits
+    on a transient daemon fault would leave every later session
+    unbounded for the rest of the process lifetime.
+    """
+    from . import agentCouncilChat
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            dictControllerState = getattr(
+                app.state,
+                agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY, None)
+            if isinstance(dictControllerState, dict):
+                await agentCouncilChat.fiReapExpiredChatSessions(
+                    dictControllerState)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Council chat reaper iteration failed", exc_info=True)
+
+
+def _fnRegisterCouncilChatReaper(app):
+    """Install the chat-session reaper on the lifespan."""
+
+    async def fnStartChatReaper(app):
+        app.state.taskCouncilChatReaper = asyncio.create_task(
+            _fnCouncilChatReaperLoop(
+                app, F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            name="vaibify-council-chat-reaper")
+
+    async def fnStopChatReaper(app):
+        await serverLifespan.fnCancelBackgroundTask(
+            app, "taskCouncilChatReaper")
+
+    serverLifespan.fnRegisterLifespanTask(
+        app, fnStartChatReaper, fnStopChatReaper)
 
 
 def _fnReconcileCouncilRunners(app):
@@ -417,7 +468,15 @@ def _flistSelectSweepableCampaigns(dictStore):
 
     Filtered at the caller so the gateway stays free of lock knowledge
     and adds no new untraceable SDK roots to the blind-spot budget.
+
+    Each sweepable campaign contributes TWO scopes: its deliberation's
+    and its ask-the-chairbot conversation's
+    (``agentCouncilChat.fsComposeChatEgressScope``). A chat session is
+    purely in-process, so at startup every chat network and proxy is by
+    definition a leftover — but only if this sweep names them, and the
+    name is the only handle the store can compose.
     """
+    from . import agentCouncilChat
     listSweepable = []
     for sCampaignId in list(dictStore["listInsertionOrder"]):
         dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
@@ -427,6 +486,8 @@ def _flistSelectSweepableCampaigns(dictStore):
                     dictCampaign)):
             continue
         listSweepable.append(sCampaignId)
+        listSweepable.append(
+            agentCouncilChat.fsComposeChatEgressScope(sCampaignId))
     return listSweepable
 
 

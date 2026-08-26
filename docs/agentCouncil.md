@@ -280,10 +280,46 @@ browser runs on, which in a remote session is not the execution host.
 
 During deliberation, the workspace streams a bounded, sequence-numbered
 event log per participant. It is a display convenience: old console
-output may roll off, and the workspace says so when it does. The
+output may roll off, and the log marks the point where it did. The
 structured phase artifacts — proposals, critiques, candidate plans,
 the evidence ledger, and your decisions — are the durable record and do
 not roll off.
+
+## Asking the chairbot
+
+An accepted plan is a document; sometimes what you want is a
+conversation. Open **Ask the chairbot** in the council workspace and the
+pen-holder that wrote the plan answers questions about it — why an
+alternative was rejected, what a plan item assumes, what a held question
+is really asking.
+
+The conversation runs in one disposable runner built from the same
+sealed snapshot the council reviewed, and it is destroyed when you close
+the conversation. Each message spends this project's provider
+subscription exactly as a deliberation turn does, so the
+credential-risk disclosure above applies unchanged.
+
+Three things it deliberately cannot do:
+
+- **It settles nothing.** The chairbot cannot accept a plan, clear an
+  objection, answer a blocking question or start a round. Those are your
+  decisions, taken with the workspace's own controls; the conversation
+  is reading, not voting.
+- **It remembers only what is on screen.** Every message is a fresh run
+  in a container that kept no conversational state, so vaibify re-sends
+  the whole transcript each time. That is also why a conversation has a
+  message bound: at the bound it refuses further messages rather than
+  quietly forgetting its own middle.
+- **It answers from the sealed snapshot, not your repository as it
+  stands now.** If the baseline has moved, the workspace's
+  stale-baseline warning applies to the conversation too.
+
+The conversation closes itself after fifteen minutes idle, and after two
+hours however active it is. That is not housekeeping: the runner holds a
+copy of this project's provider login for as long as it exists, and a
+browser tab you closed cannot be trusted to end it. A message already
+being answered is never cut short — it has its own time budget, and
+until it settles the project cannot be released to another session.
 
 ## Honest limits
 

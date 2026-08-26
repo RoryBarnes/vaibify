@@ -273,6 +273,12 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events"),
+    # The ask-the-chairbot transcript. Acknowledged as an owned-container
+    # read even though what it reads is in-process state rather than the
+    # container: it exposes the researcher's private conversation with
+    # the council, which is exactly the material the lease is what
+    # entitles somebody to.
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/chat"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),

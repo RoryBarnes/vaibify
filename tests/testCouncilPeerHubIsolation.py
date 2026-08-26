@@ -338,13 +338,21 @@ def testALivePeersEgressIsNotSweptAtStartup(tprocessLivePeerHub):
 
 
 def testAnOrphanedCampaignsEgressIsStillSwept():
-    """The falsification twin: the backstop still backstops."""
-    from vaibify.gui import appFactory
+    """The falsification twin: the backstop still backstops.
+
+    A sweepable campaign contributes BOTH its egress scopes — the
+    deliberation's and the ask-the-chairbot conversation's. A chat
+    session is purely in-process, so at startup its network and proxy
+    are always leftovers, and this list is the only thing that can name
+    them.
+    """
+    from vaibify.gui import agentCouncilChat, appFactory
 
     dictStore = _fdictBuildStoreHolding("campaign-orphan", S_OUR_PROJECT)
 
     assert appFactory._flistSelectSweepableCampaigns(dictStore) == [
-        "campaign-orphan"]
+        "campaign-orphan",
+        agentCouncilChat.fsComposeChatEgressScope("campaign-orphan")]
 
 
 def testACampaignWithNoRecordedOwnerStaysSweepable(tprocessLivePeerHub):
@@ -354,9 +362,10 @@ def testACampaignWithNoRecordedOwnerStaysSweepable(tprocessLivePeerHub):
     is alive" to "leave everything alone", and a record predating the
     identity binding must not become permanently unsweepable.
     """
-    from vaibify.gui import appFactory
+    from vaibify.gui import agentCouncilChat, appFactory
 
     dictStore = _fdictBuildStoreHolding("campaign-legacy", "")
 
     assert appFactory._flistSelectSweepableCampaigns(dictStore) == [
-        "campaign-legacy"]
+        "campaign-legacy",
+        agentCouncilChat.fsComposeChatEgressScope("campaign-legacy")]

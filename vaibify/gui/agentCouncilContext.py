@@ -113,8 +113,10 @@ __all__ = [
     "DICT_EXCLUDED_COMPONENT_REASONS",
     "S_SNAPSHOT_ARCHIVE_BASENAME",
     "S_SNAPSHOT_MANIFEST_BASENAME",
+    "fbaReadSealedSnapshotArchive",
     "fdictCaptureProjectContextSnapshot",
     "fsComputePathIdentitiesDigest",
+    "fsResolveSnapshotDirectory",
 ]
 
 import hashlib
@@ -420,6 +422,32 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
     }
 
 
+def fsResolveSnapshotDirectory(sSnapshotStoreRoot, sCampaignId):
+    """Return ``<store>/<campaign>/snapshot`` without creating anything.
+
+    The layout is this module's, because this module is what writes it.
+    It was being re-composed by hand wherever a reader needed the
+    sealed archive or its manifest, which is a path spelled in several
+    places and checked in none.
+    """
+    return os.path.join(sSnapshotStoreRoot, sCampaignId, "snapshot")
+
+
+def fbaReadSealedSnapshotArchive(sSnapshotStoreRoot, sCampaignId):
+    """Read a campaign's sealed snapshot tarball from host app-data.
+
+    Every runner a campaign builds — a deliberation turn's, a baseline
+    sandbox's, an ask-the-chairbot conversation's — is seeded from THIS
+    archive rather than from a fresh read of the repository, which is
+    what makes "the council reasoned about the repository as it stood
+    at capture" a true statement rather than a hope.
+    """
+    with open(os.path.join(
+            fsResolveSnapshotDirectory(sSnapshotStoreRoot, sCampaignId),
+            S_SNAPSHOT_ARCHIVE_BASENAME), "rb") as fileSnapshot:
+        return fileSnapshot.read()
+
+
 def _fsCreateSnapshotDirectory(sCampaignId, sSnapshotStoreRoot):
     """Create ``<store>/<campaign>/snapshot`` owner-only; refuse reuse.
 
@@ -432,7 +460,7 @@ def _fsCreateSnapshotDirectory(sCampaignId, sSnapshotStoreRoot):
         os.path.expanduser("~"), ".vaibify", "agentCouncils",
     )
     sCampaignDirectory = os.path.join(sStoreRoot, sCampaignId)
-    sSnapshotDirectory = os.path.join(sCampaignDirectory, "snapshot")
+    sSnapshotDirectory = fsResolveSnapshotDirectory(sStoreRoot, sCampaignId)
     if os.path.exists(sSnapshotDirectory):
         raise SnapshotRefusedError(
             f"A snapshot already exists for campaign {sCampaignId!r}; "

@@ -32,7 +32,6 @@ campaign state it serializes.
 import asyncio
 import hashlib
 import logging
-import os
 
 from . import agentCouncilCampaign
 from . import agentCouncilCharter
@@ -46,7 +45,10 @@ __all__ = [
     "CouncilCommandError",
     "LIST_CONTROLLER_COMMANDS",
     "S_COMMAND_ACCEPT_PLAN",
+    "S_COMMAND_ASK_CHAIRBOT",
+    "S_COMMAND_CLOSE_CHAT",
     "S_COMMAND_DELETE",
+    "S_COMMAND_OPEN_CHAT",
     "S_COMMAND_GRANT_RESOLUTION_ROUND",
     "S_COMMAND_REJECT_CANDIDATE",
     "S_COMMAND_RESOLVE_OBJECTIONS",
@@ -66,6 +68,7 @@ __all__ = [
     "fsComposePlanMarkdown",
     "fbCloseResourceAdmission",
     "fbControllerHasLiveDriveForResource",
+    "fbResourceAdmissionIsClosed",
     "fdictDisposeCampaignRuntime",
     "fgenericSubmitCampaignCommand",
     "fnReopenResourceAdmission",
@@ -90,6 +93,13 @@ S_COMMAND_DELETE = "delete"
 S_COMMAND_GRANT_RESOLUTION_ROUND = "grantResolutionRound"
 S_COMMAND_RESOLVE_OBJECTIONS = "resolveObjectionsThenFinalVeto"
 S_COMMAND_REJECT_CANDIDATE = "rejectCandidate"
+# The ask-the-chairbot lane. These drive no engine and write no campaign
+# state, but they are submitted here so a conversation's lifecycle is
+# serialized against the campaign's: an open must not race a delete, and
+# a close must not race a drain.
+S_COMMAND_OPEN_CHAT = "openChat"
+S_COMMAND_ASK_CHAIRBOT = "askChairbot"
+S_COMMAND_CLOSE_CHAT = "closeChat"
 
 LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_START,
@@ -100,6 +110,9 @@ LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_GRANT_RESOLUTION_ROUND,
     S_COMMAND_RESOLVE_OBJECTIONS,
     S_COMMAND_REJECT_CANDIDATE,
+    S_COMMAND_OPEN_CHAT,
+    S_COMMAND_ASK_CHAIRBOT,
+    S_COMMAND_CLOSE_CHAT,
 ]
 
 # The command log is an observability convenience for the serialization
@@ -122,10 +135,18 @@ def fdictCreateCouncilControllerState():
     (engine, connections, live-turn task) once the controller launches
     real deliberation; the substrate only reserves the slot.
     """
+    from . import agentCouncilChat
     return {
         "dictCampaignLocks": {},
         "dictCommandLogByCampaign": {},
         "dictCampaignRuntime": {},
+        # The ask-the-chairbot conversations, keyed by campaign id and
+        # owned by ``agentCouncilChat``. They live here because they
+        # share this dict's lifetime and its release semantics: what
+        # settles a container's live council state has to settle its
+        # conversations too, and a second app-state key would be a
+        # second thing to forget.
+        agentCouncilChat.S_CHAT_SESSIONS_KEY: {},
         # Resource names whose council admission the release authority
         # has CLOSED: no launch and no turn-driving continuation may
         # pass while a name is here. Closed atomically before the
@@ -647,11 +668,9 @@ async def _fnAwaitBuildWorkerCompletion(taskBuild):
 
 def _fbaReadSealedSnapshot(dictStore, sCampaignId):
     """Read the sealed snapshot tarball beside the campaign record."""
-    sSnapshotPath = os.path.join(
-        dictStore["sDurableStoreRoot"], sCampaignId, "snapshot",
-        "snapshot.tar")
-    with open(sSnapshotPath, "rb") as fileSnapshot:
-        return fileSnapshot.read()
+    from . import agentCouncilContext
+    return agentCouncilContext.fbaReadSealedSnapshotArchive(
+        dictStore["sDurableStoreRoot"], sCampaignId)
 
 
 def _fdictRequireContinuationRuntime(dictControllerState, sCampaignId,
@@ -1081,10 +1100,17 @@ def fbCloseResourceAdmission(dictControllerState, sResourceName):
     no drive is live after the close (the release may proceed), False
     when one is (the caller reopens and refuses).
     """
+    from . import agentCouncilChat
     dictControllerState.setdefault(
         "setClosedResourceAdmissions", set()).add(sResourceName)
-    return not fbControllerHasLiveDriveForResource(
-        dictControllerState, sResourceName)
+    # A chat message in flight is checked here too, and for the same
+    # reason a drive is: it is paid provider work over the copied
+    # login, started under the lease that is about to be dropped.
+    return not (
+        fbControllerHasLiveDriveForResource(
+            dictControllerState, sResourceName)
+        or agentCouncilChat.fbResourceHasChatMessageInFlight(
+            dictControllerState, sResourceName))
 
 
 def fnReopenResourceAdmission(dictControllerState, sResourceName):
@@ -1093,13 +1119,24 @@ def fnReopenResourceAdmission(dictControllerState, sResourceName):
         "setClosedResourceAdmissions", set()).discard(sResourceName)
 
 
+def fbResourceAdmissionIsClosed(dictControllerState, sResourceName):
+    """Report whether council admission is closed for one container.
+
+    Public because the chat lane is not a controller command and must
+    still honour the same gate: a conversation started after the lease
+    was released would be paid provider work over a project this hub no
+    longer owns.
+    """
+    return sResourceName in dictControllerState.get(
+        "setClosedResourceAdmissions", set())
+
+
 def _fnRefuseWhenResourceAdmissionClosed(dictControllerState, dictCampaign,
                                          sAction):
     """Refuse a turn-driving command for a resource whose lease is gone."""
     sResourceName = (dictCampaign.get("dictProjectIdentity")
                      or {}).get("sResourceName")
-    if sResourceName in dictControllerState.get(
-            "setClosedResourceAdmissions", set()):
+    if fbResourceAdmissionIsClosed(dictControllerState, sResourceName):
         raise CouncilCommandError(
             f"cannot {sAction}: the project lease was released; claim "
             "the project again and convene a fresh council")
@@ -1137,7 +1174,11 @@ async def fdictDrainControllerForResource(dictControllerState, sResourceName):
     whose lease is gone — respond-after-release must answer "convene
     a fresh council", and no proxy or network may outlive the lease.
     A drive that slipped live between the busy check and this drain
-    still gets the cooperative stop as the last belt.
+    still gets the cooperative stop as the last belt. The
+    ask-the-chairbot conversations bound to the resource are closed
+    first, on the same terms and for the same reason — an idle
+    conversation is not busy enough to refuse a release, but its runner
+    and proxy must not outlive the lease either.
 
     Returns ``{bAllSettled, listUnsettledCampaignIds}``. ``bAllSettled``
     False means at least one campaign's egress boundary could not be
@@ -1148,7 +1189,10 @@ async def fdictDrainControllerForResource(dictControllerState, sResourceName):
     state but told the release authority nothing, so the release
     proceeded anyway.
     """
-    listUnsettledCampaignIds = []
+    from . import agentCouncilChat
+    listUnsettledCampaignIds = list(
+        await agentCouncilChat.flistCloseChatSessionsForResource(
+            dictControllerState, sResourceName))
     for sCampaignId, dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].items()):
         dictIdentity = dictRuntime["dictCampaign"].get(
@@ -1193,8 +1237,22 @@ async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):
     answers indeterminately would orphan the very network or proxy
     nobody proved gone. A quiet no-op for a campaign that never had a
     runtime this process lifetime.
+
+    An open ask-the-chairbot conversation is closed here too, and an
+    unproven close refuses the delete on exactly the terms an unproven
+    egress teardown does: the conversation's runner and proxy are named
+    from the campaign id, so removing the record would leave the
+    startup sweep unable to compose the names of whatever survived.
     """
+    from . import agentCouncilChat
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "delete")
+    dictChatSettled = await agentCouncilChat.fdictCloseChatSession(
+        dictControllerState, sCampaignId)
+    if not dictChatSettled["bSettled"]:
+        raise CouncilCommandError(
+            "the chairbot conversation's resources could not be proven "
+            f"gone ({dictChatSettled['sReason']}); retry the delete — "
+            "removing the record now would orphan what may still exist")
     dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
     if dictRuntime is None:
         return {"bDisposed": False}
@@ -1233,8 +1291,16 @@ async def fnAwaitControllerSettleOnShutdown(dictControllerState,
     staged host credential are released here regardless of whether its
     drive made the deadline, so a hub shutdown never strands a
     mode-600 token copy or a council network on the researcher's
-    machine.
+    machine. Every open ask-the-chairbot conversation is closed for the
+    same reason and with the same honesty: its runner holds a copied
+    login, so a hub that exits leaving one running has widened the
+    credential window past its own lifetime.
     """
+    from . import agentCouncilChat
+    for sCampaignId in list(dictControllerState.get(
+            agentCouncilChat.S_CHAT_SESSIONS_KEY, {})):
+        await agentCouncilChat.fdictCloseChatSession(
+            dictControllerState, sCampaignId)
     listLiveDriveTasks = [
         dictRuntime["taskDrive"]
         for dictRuntime in dictControllerState["dictCampaignRuntime"].values()

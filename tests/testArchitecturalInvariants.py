@@ -4147,7 +4147,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # derived on read too, so an interrupted campaign can show them.
     # 1307 -> 1312: and the phase in flight is re-checked on read, so
     # the raw record never reaches a screen unguarded.
-    "routes/councilRoutes.py": 1312,
+    # 1312 -> 1481 (2026-08-25): the ask-the-chairbot lane — read,
+    # open, ask, close. NOT split out: every one of them resolves
+    # the same principal, matches the same campaign identity and
+    # passes the same credential gate as a deliberation route, and
+    # a separate module would have to import five of this one's
+    # private helpers to do it. That is an artificial seam, not a
+    # real one; this module remains the HTTP skin over the council.
+    "routes/councilRoutes.py": 1481,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4185,7 +4192,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and why — and the reason it is here rather than in the exclusion
     # POLICY table is that the answer comes from git per repository,
     # not from a fixed component list.
-    "agentCouncilContext.py": 1191,
+    # 1191 -> 1219 (2026-08-25): the sealed-snapshot READER moves in
+    # beside the writer. Three call sites were composing
+    # <store>/<campaign>/snapshot/... by hand, which is a layout
+    # spelled in several places and checked in none.
+    "agentCouncilContext.py": 1219,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4242,7 +4253,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # survives a restart"). It is not — a second hub's live campaigns
     # sit in the same machine-wide store — so the correction is recorded
     # where the next reader of this function will find it.
-    "agentCouncilDockerGateway.py": 897,
+    # 897 -> 914 (2026-08-25): the egress proxy's memory ceiling
+    # rose to 1 GiB, and the reason it rose — seven observed OOM
+    # kills, and why headroom is not the real fix — is recorded
+    # beside the constant rather than in a commit message.
+    "agentCouncilDockerGateway.py": 914,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4286,7 +4301,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # argued from the resulting record.
     # 1002 -> 1008 (2026-08-25): the OOM verdict joins the empty-result
     # diagnosis, so exit 137 no longer means "somebody killed this".
-    "agentCouncilProviders.py": 1008,
+    # 1008 -> 1063 (2026-08-25): the PROSE half of a result — the
+    # verbatim text and a researcher-facing explanation of an empty
+    # stream — for the ask-the-chairbot lane, composed from the same
+    # diagnosis the structured lane records so the two cannot
+    # disagree about which bound a turn hit.
+    # 1063 -> 1096 (2026-08-25): the result parser stopped requiring
+    # a code fence to be the FIRST thing in the text. A live council
+    # discarded a complete, schema-valid cross-review because one
+    # sentence of preamble preceded the block.
+    "agentCouncilProviders.py": 1096,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5190,7 +5214,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # owner is kept), and the start-reservation door reopens council
     # admission exactly as a claim does — a released-then-restarted
     # container inherited the previous era's closed admission.
-    "sessionLifecycle.py": 1530,
+    # 1530 -> 1546 (2026-08-25): a chairbot answering a question is
+    # its own release-busy clause with its own words. Widening the
+    # council clause would have sent the researcher to "stop the
+    # council", which does not end a conversation.
+    "sessionLifecycle.py": 1546,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -5252,7 +5280,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # declare a live peer hub's campaign interrupted. The check belongs
     # in the loop that does the classifying — one line earlier and it
     # would be filtering a list nobody had read yet.
-    "agentCouncilController.py": 1250,
+    # 1250 -> 1316 (2026-08-25): the ask-the-chairbot conversations
+    # join the controller state, so what settles a container's live
+    # council state settles its conversations too — the release
+    # drain, the delete disposal and the shutdown settle each grew
+    # the chat half beside the runtime half they already had.
+    "agentCouncilController.py": 1316,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5629,7 +5662,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # be an import oracle over the researcher's own files. The comment
     # carries that reasoning because the exclusion set is where a
     # future reader will ask why this route is not offered.
-    "actionCatalog.py": 1044,
+    # 1044 -> 1056 (2026-08-25): the three ask-the-chairbot mutating
+    # routes join the human-only exclusion set.
+    "actionCatalog.py": 1056,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5816,7 +5851,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # list, still gated because it reads the researcher's own files.
     # +1 (2026-08-22): the council's per-directory snapshot pre-flight
     # joins the container-read allowlist. One line of table data.
-    "routeScope.py": 974,
+    # 974 -> 980 (2026-08-25): the ask-the-chairbot transcript read
+    # joins the frozen container-read allowlist, with the reason it
+    # counts as an owned-container read beside it.
+    "routeScope.py": 980,
 }
 
 

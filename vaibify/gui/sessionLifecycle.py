@@ -678,6 +678,7 @@ def _fsReleaseBusyReason(appState, sName, bForce):
             f"Container '{sName}' has a guarded operation still "
             "running. It is retained until that operation settles."
         )
+    from . import agentCouncilChat
     from . import agentCouncilController
     dictCouncilControllerState = getattr(
         appState, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
@@ -691,6 +692,21 @@ def _fsReleaseBusyReason(appState, sName, bForce):
             f"Container '{sName}' has an Agent Council still "
             "deliberating — paid provider work that no release should "
             "silently abandon. Stop the council first, then release."
+        )
+    # A SEPARATE clause with its own words, not a widened one. Both are
+    # paid provider work, but the remedy differs: nobody stops a
+    # council to end a conversation, and a refusal that named the wrong
+    # remedy would send the researcher to a button that does nothing.
+    if isinstance(dictCouncilControllerState, dict) and (
+        agentCouncilChat.fbResourceHasChatMessageInFlight(
+            dictCouncilControllerState, sName,
+        )
+    ):
+        return (
+            f"Container '{sName}' has a council chairbot still answering "
+            "a question — paid provider work that no release should "
+            "silently abandon. Wait for the answer, or close the "
+            "conversation, then release."
         )
     if bForce:
         return ""

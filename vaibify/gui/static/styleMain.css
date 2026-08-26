@@ -7067,6 +7067,14 @@ body.council-workspace-open #mainLayout {
     font-size: 0.85em;
 }
 
+/* The retention boundary, INSIDE the event log. Dim rather than orange:
+   a bounded console rolling off is expected behaviour, not a fault, and
+   the old banner's warning colour made it read as one. */
+.council-event-evicted {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 .council-chip {
     display: inline-block;
     border-radius: 10px;
@@ -7167,4 +7175,45 @@ body.council-workspace-open #mainLayout {
 
 .council-plan-accepted {
     color: var(--highlight-color);
+}
+
+.council-chat-status {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+.council-chat-failure {
+    color: var(--color-orange);
+    font-size: 0.85em;
+}
+
+.council-chat-transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 40vh;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.council-chat-message {
+    border-left: 3px solid var(--border-color);
+    padding-left: 10px;
+}
+
+.council-chat-chairbot {
+    border-left-color: var(--highlight-color);
+}
+
+.council-chat-author {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.council-chat-text {
+    white-space: pre-wrap;
+    color: var(--text-primary);
 }

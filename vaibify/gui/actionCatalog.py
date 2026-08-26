@@ -868,6 +868,18 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/agent-councils/{sContainerId}/{sCampaignId}"
      "/reject-candidate"),
     ("DELETE", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
+    # Ask-the-chairbot is human-only on the same terms and one more:
+    # every message spends the researcher's own provider subscription
+    # through a runner carrying a copy of their login, so an agent that
+    # could open a conversation could spend it in a loop. The
+    # conversation is also the researcher's private reading of the
+    # council's work, which the in-container agent has no standing in.
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/open"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/ask"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/close"),
     # The dependency scan READS the researcher's own Python files on
     # the host and reports what they import. It writes nothing -- it
     # is a POST only because its input is a list -- but agent-invokable

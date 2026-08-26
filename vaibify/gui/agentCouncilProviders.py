@@ -40,6 +40,7 @@ import asyncio
 import hashlib
 import json
 import posixpath
+import re
 import time
 
 from . import agentCouncilDockerGateway
@@ -71,7 +72,10 @@ __all__ = [
     "flistComposeClaudeArgv",
     "fsComposeUntrustedPromptText",
     "flistParseStreamJsonEvents",
+    "ftBuildDnsWiring",
     "fdictExtractStructuredResult",
+    "fsExtractResultText",
+    "fsExplainEmptyResult",
     "fdictExtractModelIdentity",
     "fsClassifyTurnFailure",
     "fdictDiscoverClaudeModels",
@@ -279,6 +283,58 @@ def fdictExtractStructuredResult(listEvents, dictExecution=None):
     return {"sRawResultText": sResultText}
 
 
+def fsExtractResultText(listEvents):
+    """Return the stream's final result text verbatim, or "" when empty.
+
+    The PROSE half of the result event, for the ask-the-chairbot lane
+    (``agentCouncilChat``), where the deliverable is an answer to read
+    rather than a schema to validate. Deliberately does not parse,
+    unwrap a fence, or diagnose: a chat answer that happens to contain
+    JSON is still the answer, and a stream with no result at all is
+    explained by :func:`fsExplainEmptyResult` rather than by an empty
+    string nobody can act on.
+    """
+    dictResultEvent = _fdictFindFinalResultEvent(listEvents)
+    if dictResultEvent is None:
+        return ""
+    sResultText = dictResultEvent.get("result")
+    return sResultText if isinstance(sResultText, str) else ""
+
+
+def fsExplainEmptyResult(listEvents, dictExecution=None):
+    """Explain, in the researcher's words, why a stream carried no answer.
+
+    Composed from the same diagnosis the structured lane records, so
+    the two can never disagree about which bound a turn hit — the
+    lesson that produced those fields was two confident wrong theories
+    argued from a record missing the one field that separated them
+    (2026-08-25). What differs is only the audience: a chat message's
+    failure is read by a person, not by the engine's validator.
+    """
+    dictDiagnosis = _fdictDiagnoseEmptyResult(
+        "noResultEvent", listEvents, {}, dictExecution)
+    dictReasonSentences = {
+        S_EMPTY_BECAUSE_WALL_CLOCK:
+            "the chairbot ran past this conversation's time budget and "
+            "its runner was stopped mid-answer",
+        S_EMPTY_BECAUSE_OUTPUT_CAP:
+            "the chairbot's answer ran past the output size this "
+            "conversation allows and its runner was stopped",
+        S_EMPTY_BECAUSE_OUT_OF_MEMORY:
+            "the chairbot's runner was killed by the kernel for running "
+            "out of memory",
+    }
+    sSentence = dictReasonSentences.get(
+        dictDiagnosis["sEmptyResultReason"],
+        "the chairbot produced no answer at all")
+    return (
+        f"{sSentence} (exit {dictDiagnosis['jsonExitCode']}, "
+        f"{dictDiagnosis['iOutputBytes']} bytes over "
+        f"{dictDiagnosis['fElapsedSeconds']}s, "
+        f"{dictDiagnosis['iEventCount']} stream events)"
+    )
+
+
 def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
                               dictExecution=None):
     """Return an empty result that says WHY it is empty.
@@ -343,16 +399,48 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
 
 
 def _fjsonParseResultText(sResultText):
-    """Parse result text as JSON, unwrapping one ``json`` code fence."""
-    sCandidate = sResultText.strip()
-    if sCandidate.startswith("```"):
-        listLines = sCandidate.splitlines()
-        if len(listLines) >= 2:
-            sCandidate = "\n".join(listLines[1:])
-            if sCandidate.rstrip().endswith("```"):
-                sCandidate = sCandidate.rstrip()[:-3]
+    """Parse the result text as JSON, unwrapping a fence found ANYWHERE.
+
+    The whole text is tried first, so a well-behaved turn is unaffected.
+    Only when that fails are fenced blocks considered.
+
+    That second step exists because of a live council (2026-08-25): a
+    participant returned a complete, schema-valid result behind one
+    sentence of preamble — "I mistakenly invoked a tool meant for a
+    different workflow; disregard that. Here is the required structured
+    turn result." followed by a ```json block. The unwrap only fired
+    when the text STARTED with a fence, so the block was never looked
+    at, the result was recorded as raw text, validation reported every
+    field missing at once, and a genuine adversarial cross-review — paid
+    for, and correct — was discarded. The model had done what was asked.
+
+    Only FENCED blocks are considered. Scanning prose for a bare ``{``
+    would be guessing where the result starts, and a parser that guesses
+    can adopt something the participant never offered as its answer.
+
+    When several fenced blocks parse to objects the LAST is taken: the
+    structured result is the turn's concluding deliverable, so material
+    that follows it is rarer than material that precedes it. This is a
+    judgement, not a certainty, which is why the whole-text path is
+    tried first and is the only one a conforming turn ever takes.
+    """
     try:
-        return json.loads(sCandidate)
+        return json.loads(sResultText.strip())
+    except ValueError:
+        pass
+    listObjects = [jsonBlock for jsonBlock in
+                   (_fjsonLoadOrNone(sBlock)
+                    for sBlock in re.findall(
+                        r"```[A-Za-z0-9_+-]*[ \t]*\r?\n(.*?)```",
+                        sResultText, re.DOTALL))
+                   if isinstance(jsonBlock, dict)]
+    return listObjects[-1] if listObjects else None
+
+
+def _fjsonLoadOrNone(sText):
+    """Decode JSON text, or return None rather than raising."""
+    try:
+        return json.loads(sText)
     except ValueError:
         return None
 
@@ -820,7 +908,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         dictEnvironment = self._fdictComposeRunnerEnvironment()
         sNetworkName = (self.dictEgress["sNetworkName"]
                         if self.dictEgress else None)
-        listDnsServers, listDnsOptions = _ftBuildDnsWiring(self.dictEgress)
+        listDnsServers, listDnsOptions = ftBuildDnsWiring(self.dictEgress)
         dictCreated = await asyncio.to_thread(
             agentCouncilDockerGateway.fdictReserveAndCreateRunner,
             self.dictGateway, self.sCampaignId, S_PROVIDER_CLAUDE,
@@ -920,7 +1008,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             self.sHostCredentialPath = ""
 
 
-def _ftBuildDnsWiring(dictEgress):
+def ftBuildDnsWiring(dictEgress):
     """Return the black-hole DNS server and options for an egress runner.
 
     A runner on the internal egress network needs no resolver: its

@@ -613,3 +613,113 @@ def testTheObservedStreamSizeIsRealRatherThanAConstantZero():
         [{"type": "assistant"}],
         {"iOutputBytes": 524288, "iExitCode": 1})
     assert dictSized["iOutputBytes"] == 524288
+
+
+# ── a structured result behind a preamble (2026-08-25 live failure) ──
+
+S_LIVE_PREAMBLE = (
+    "I mistakenly invoked a tool meant for a different workflow; "
+    "disregard that. Here is the required structured turn result."
+)
+
+
+def _fsFenceOne(dictResult, sLanguage="json"):
+    """Wrap a result in one code fence, the way a model returns it."""
+    return "```" + sLanguage + "\n" + json.dumps(dictResult) + "\n```"
+
+
+def _fdictSchemaShapedResult(sSummary="a summary"):
+    return {"sSummary": sSummary, "sVerdict": "accept"}
+
+
+def _flistResultStream(sResultText):
+    return [{"type": "result", "result": sResultText}]
+
+
+def testAResultBehindAPreambleIsStillExtracted():
+    """The live failure: one sentence of prose cost a whole paid turn.
+
+    A participant returned a complete, schema-valid cross-review behind
+    an apology for a mis-fired tool call. The unwrap only fired when the
+    text STARTED with a fence, so the block was never read, every field
+    was reported missing at once, and a correct adversarial review was
+    discarded.
+    """
+    sText = S_LIVE_PREAMBLE + "\n\n" + _fsFenceOne(
+        _fdictSchemaShapedResult("the peer's Phase 4 is incomplete"))
+
+    dictExtracted = providers.fdictExtractStructuredResult(
+        _flistResultStream(sText))
+
+    assert dictExtracted["sSummary"] == "the peer's Phase 4 is incomplete"
+    assert "sRawResultText" not in dictExtracted
+
+
+def testABareResultAndALeadingFenceBothStillWork():
+    """The two shapes that already worked must keep working.
+
+    A conforming turn returns bare JSON and never reaches the fence
+    scan at all; the leading-fence case is the one the old unwrap
+    handled, and a rewrite that fixed the preamble while breaking
+    either of these would trade one discarded turn class for another.
+    """
+    dictWanted = _fdictSchemaShapedResult()
+    for sText in (json.dumps(dictWanted), _fsFenceOne(dictWanted),
+                  _fsFenceOne(dictWanted, sLanguage=""),
+                  "  " + json.dumps(dictWanted) + "  "):
+        dictExtracted = providers.fdictExtractStructuredResult(
+            _flistResultStream(sText))
+        assert dictExtracted == dictWanted, sText[:40]
+
+
+def testTheLastFencedObjectWinsWhenAModelEmitsSeveral():
+    """The structured result is the turn's concluding deliverable."""
+    sText = ("Here is an example of the shape I was given:\n\n"
+             + _fsFenceOne({"sSummary": "EXAMPLE", "sVerdict": "accept"})
+             + "\n\nAnd here is my actual answer:\n\n"
+             + _fsFenceOne({"sSummary": "ANSWER", "sVerdict": "accept"}))
+
+    dictExtracted = providers.fdictExtractStructuredResult(
+        _flistResultStream(sText))
+
+    assert dictExtracted["sSummary"] == "ANSWER"
+
+
+def testAFencedNonObjectNeverDisplacesARealResult():
+    """A quoted array before the answer must not swallow the answer.
+
+    With a single block the object filter is invisible — the caller
+    re-checks the type and falls back to raw text either way. It only
+    bites here: without it the LAST parsing block is the array, the
+    result is discarded, and a turn that answered correctly is recorded
+    as having returned nothing.
+    """
+    sBefore = ("The affected step indices are:\n\n```json\n[1, 2, 3]\n```"
+               "\n\nAnd the result:\n\n"
+               + _fsFenceOne(_fdictSchemaShapedResult("ANSWER")))
+    # The order that DISCRIMINATES. With the array first, "last wins"
+    # picks the object whether or not non-objects are filtered, so that
+    # arrangement alone proves nothing about the filter.
+    sAfter = (_fsFenceOne(_fdictSchemaShapedResult("ANSWER"))
+              + "\n\nAffected step indices:\n\n```json\n[1, 2, 3]\n```")
+
+    for sText in (sBefore, sAfter):
+        dictExtracted = providers.fdictExtractStructuredResult(
+            _flistResultStream(sText))
+        assert dictExtracted["sSummary"] == "ANSWER", sText[:40]
+
+
+def testProseWithNoJsonStaysRawAndIsNotGuessedAt():
+    """A parser that guesses can adopt what was never offered.
+
+    Only FENCED blocks are considered. Scanning prose for a bare brace
+    would let a sentence about a dictionary become a turn result, and
+    the engine would validate it as though the participant had answered.
+    """
+    for sText in ("I could not complete this turn.",
+                  "The config is { sSummary: not really json }",
+                  "```\nnot json at all\n```",
+                  "```json\n[1, 2, 3]\n```"):
+        dictExtracted = providers.fdictExtractStructuredResult(
+            _flistResultStream(sText))
+        assert dictExtracted.get("sRawResultText") == sText, sText[:40]

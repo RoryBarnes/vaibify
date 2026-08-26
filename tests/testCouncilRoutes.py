@@ -1308,3 +1308,184 @@ def test_snapshot_feasibility_refuses_the_agent_token_lane(tmp_path):
     response = clientAgent.get(
         f"/api/agent-councils/{S_CONTAINER_ID}/snapshot-feasibility")
     assert response.status_code == 403, response.text
+
+
+# ── ask the chairbot: the conversation lane's gates ───────────────
+
+def _fnPatchChatGatewayForRoutes(monkeypatch, dictRecorded):
+    """Answer the chat lane's gateway calls without a daemon.
+
+    The chat module's own suite (tests/testCouncilChat.py) proves what
+    the lane DOES. These route tests prove only what the HTTP skin
+    enforces before it gets there, so the gateway is reduced to the
+    minimum that lets an open succeed — and every call is recorded, so
+    a gate that failed open would show as a runner nobody authorized.
+    """
+    from vaibify.gui import agentCouncilChat, agentCouncilDockerGateway
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdockerCreateCouncilClient",
+        lambda *args, **kwargs: object())
+    # NOT the gateway factory: the campaign read route builds a
+    # registry-only view through the same function, so replacing it
+    # would break a route this suite is not testing.
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fsCreateCampaignInternalNetwork",
+        lambda dictGateway, sScope: "vaibifyCouncilEgress-fake")
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fsLaunchAllowlistProxy",
+        lambda dictGateway, sScope, saHostnames: "172.30.0.2")
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sScope: {
+            "bProxyAbsenceProven": True, "bNetworkAbsenceProven": True,
+            "saIndeterminateResources": []})
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictReserveAndCreateRunner",
+        lambda *args, **kwargs: dictRecorded.setdefault(
+            "listRunners", []).append(args[1]) or {
+            "bCreated": True, "sRefusalReason": "", "sHandle": "h",
+            "sReservationId": "r", "sContainerName": "n", "sRole": "runner"})
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fnCopySnapshotIntoRunner",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictDestroyAndSettle",
+        lambda dictGateway, sHandle: {
+            "sOutcome": "destroyed", "sReason": ""})
+    monkeypatch.setattr(
+        agentCouncilChat, "_fnDeliverChatCredential", lambda dictSession: None)
+
+
+def test_chat_refuses_the_agent_token_lane_on_every_mutating_route(tmp_path):
+    """A compromised agent must not be able to spend the subscription.
+
+    Every chat message is a paid provider turn over a copy of the
+    researcher's own login, so an agent that could open a conversation
+    could spend it in a loop. The catalog exclusion and the handler's
+    own refusal have to agree, and this drives the real middleware.
+    """
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    _tEstablishOwnership(app, S_CONTAINER_NAME, S_CONTAINER_ID)
+    clientAgent = TestClient(app, headers={
+        actionCatalog.S_SESSION_HEADER_NAME: S_AGENT_TOKEN,
+        "Host": "host.docker.internal:8050",
+    })
+    sBase = f"/api/agent-councils/{S_CONTAINER_ID}/campaign-x/chat"
+
+    assert clientAgent.post(sBase + "/open").status_code == 403
+    assert clientAgent.post(
+        sBase + "/ask", json={"sQuestionText": "hi"}).status_code == 403
+    assert clientAgent.post(sBase + "/close").status_code == 403
+    assert clientAgent.get(sBase).status_code == 403
+
+
+def test_chat_routes_refuse_a_campaign_bound_to_another_principal(
+        tOwnerClient, eventTurnGate):
+    """A foreign campaign answers 404 — the same answer an unknown id gets."""
+    client, app, _ = tOwnerClient
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+    dictRecord = app.state.dictCouncilCampaignStore["dictEntriesById"][
+        sCampaignId]["dictCampaign"]
+    dictRecord["dictProjectIdentity"]["sResourceName"] = "another-project"
+
+    sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat"
+    assert client.get(sBase).status_code == 404
+    assert client.post(sBase + "/open").status_code == 404
+
+
+def test_chat_read_reports_a_closed_conversation_rather_than_404(
+        tOwnerClient, eventTurnGate):
+    """The panel polls this; "nothing open" must not read as a failure."""
+    client, app, _ = tOwnerClient
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+
+    response = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["bOpen"] is False
+
+
+def test_chat_open_refuses_a_project_with_no_claude_login(
+        tOwnerClient, eventTurnGate, monkeypatch):
+    """Opening builds a runner, so it passes start's login probe first.
+
+    Discovering an absent login after a container has been created and
+    destroyed would report a failed conversation where "log in" is the
+    truth.
+    """
+    client, app, _ = tOwnerClient
+    dictRecorded = {}
+    _fnPatchChatGatewayForRoutes(monkeypatch, dictRecorded)
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+    from vaibify.gui import agentCouncilProviders
+    monkeypatch.setattr(
+        agentCouncilProviders, "fsExplainUnusableRunnerCredential",
+        lambda *args: "the project's Claude login expired 3.0 hours ago")
+
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat/open")
+
+    assert response.status_code == 409, response.text
+    assert "expired" in response.json()["detail"]
+    assert dictRecorded.get("listRunners") is None, (
+        "a refused open must build no runner at all")
+
+
+def test_chat_open_and_close_over_real_http(
+        tOwnerClient, eventTurnGate, monkeypatch):
+    """The falsification twin: the gates admit a legitimate conversation.
+
+    Without this every refusal above is equally satisfied by a lane
+    that refuses everything.
+    """
+    client, app, _ = tOwnerClient
+    dictRecorded = {}
+    _fnPatchChatGatewayForRoutes(monkeypatch, dictRecorded)
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+    sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat"
+
+    responseOpen = client.post(sBase + "/open")
+    assert responseOpen.status_code == 200, responseOpen.text
+    assert responseOpen.json()["bOpen"] is True
+    assert dictRecorded["listRunners"] == [sCampaignId]
+
+    responseClose = client.post(sBase + "/close")
+    assert responseClose.status_code == 200, responseClose.text
+    assert client.get(sBase).json()["bOpen"] is False
+
+
+def test_chat_open_refuses_once_the_lease_was_released(
+        tOwnerClient, eventTurnGate, monkeypatch):
+    """A released project's council must not be talked to.
+
+    The release authority CLOSES council admission for the container
+    before dropping the lease. A conversation is not a controller
+    command, so it has to honour that gate explicitly or it becomes the
+    one way to spend paid work against a project this hub gave up.
+    """
+    client, app, _ = tOwnerClient
+    _fnPatchChatGatewayForRoutes(monkeypatch, {})
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+    agentCouncilController.fbCloseResourceAdmission(
+        app.state.dictCouncilControllerState, S_CONTAINER_NAME)
+
+    sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat"
+    responseOpen = client.post(sBase + "/open")
+
+    assert responseOpen.status_code == 409, responseOpen.text
+    assert "lease was released" in responseOpen.json()["detail"]
+    # But CLOSING must still work: it is how a researcher makes a
+    # released project releasable, so gating it would put the only exit
+    # behind the gate it opens.
+    assert client.post(sBase + "/close").status_code == 200
