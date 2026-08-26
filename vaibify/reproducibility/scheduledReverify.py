@@ -340,8 +340,17 @@ def fdictComputeLiveExpectedHashes(filesRepo, dictWorkflow):
     vacuous "0 of 0 matching".
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    listPaths = manifestWriter.flistCollectCanonicalRepoPaths(
-        dictWorkflow,
+    # The union of both levels' scopes (2026-08-26). It was the
+    # manifest set alone, which is Level 2 material only, so the
+    # reproducibility envelope -- MANIFEST.sha256, requirements.lock,
+    # reproduce.sh, environment.json, the Dockerfile -- was pinned by
+    # L3 and never compared against the published copy by anything. A
+    # pushed reproduce.sh that had drifted meant reproduction failed
+    # and no surface said so. One pass compares the union; each gate
+    # reads the paths it owns, via publicationScope.
+    from . import publicationScope
+    listPaths = publicationScope.flistCollectComparisonPaths(
+        dictWorkflow, filesRepo,
     )
     dictEntries = filesRepo.fdictHashFiles(listPaths)
     dictExpected = {

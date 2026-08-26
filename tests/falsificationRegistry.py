@@ -1304,20 +1304,31 @@ LIST_FALSIFICATIONS = [
         new='    if iRefNumber >= iStepCount:',
     ),
     Falsification(
+        # Retargeted 2026-08-26. _fbCachedSyncStatusFullMatch became
+        # scope-aware when the verify started comparing the Level 3
+        # envelope in the same pass; the two conditions these mutate
+        # now live in the pre-split fallback branch, which is the
+        # branch these tests' legacy-shaped fixtures take.
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if dictStatus.get("listDiverged"):
-        return False""",
-        new="""    if False and dictStatus.get("listDiverged"):
-        return False""",
+        old="""            and not dictStatus.get("listDiverged")""",
+        new="""            and True""",
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_undercount_with_empty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if dictStatus.get("iMatching") != iTotal:
-        return False""",
-        new="""    if False and dictStatus.get("iMatching") != iTotal:
-        return False""",
+        old="""            dictStatus.get("iMatching") == iTotal""",
+        new="""            True""",
+    ),
+    # The scope-aware branch is the PRIMARY path once a project has
+    # re-verified, and the two entries above only reach the legacy
+    # fallback. Without this one the branch that actually separates
+    # the levels would carry no falsification at all.
+    Falsification(
+        nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_diverged_data_file_still_fails_level_two',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    return not (setLevel2 & _fsetDivergedPathsOf(dictStatus))""",
+        new="""    return True""",
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_verified_sha_empty_but_live_sha_present_is_not_synced',

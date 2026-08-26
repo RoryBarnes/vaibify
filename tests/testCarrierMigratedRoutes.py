@@ -1227,18 +1227,30 @@ def _fsFreshIsoTimestamp():
 
 
 def _fdictAllGreenSyncCache():
-    """Return the per-service verify cache both L2 sync gates demand."""
+    """Return the per-service verify cache both L2 sync gates demand.
+
+    ``listComparedPaths`` is required since 2026-08-26: the L2 gate
+    asks whether the paths LEVEL 2 owns matched, so a cache that does
+    not say what it compared cannot support the claim and reads as
+    unproven. A step-scoped path is used because the partition puts
+    anything outside the reproducibility envelope in Level 2 — an
+    envelope path here would leave the L2 scope empty and the gate
+    correctly closed.
+    """
+    listCompared = ["step1/output.json"]
     return {
         "github": {
             "sService": "github",
             "sLastVerified": _fsFreshIsoTimestamp(),
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "listComparedPaths": list(listCompared),
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
             "sService": "zenodo",
             "sLastVerified": _fsFreshIsoTimestamp(),
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "listComparedPaths": list(listCompared),
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",
         },

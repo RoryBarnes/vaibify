@@ -1438,17 +1438,52 @@ def _fbCachedSyncStatusFresh(dictStatus, fMaxStaleHours):
 
 
 def _fbCachedSyncStatusFullMatch(dictStatus):
-    """Return True iff every manifest file matched the remote."""
+    """Return True iff every LEVEL 2 file matched the remote.
+
+    Scope-aware since 2026-08-26, and the reason is the whole point of
+    the split. The verify now compares the reproducibility envelope in
+    the same pass, so the aggregate ``iMatching``/``iTotalFiles`` this
+    used to read covers BOTH levels — reading them here would make
+    Level 2 fail because ``requirements.lock`` had drifted, which is
+    exactly the coupling the split exists to prevent. Level 2 asks
+    only about the paths Level 2 owns.
+
+    The counts are still consulted for the vacuity floor: a verify
+    that compared nothing must not read as a full match, which is the
+    property the old ``iTotal == 0`` guard supplied and which a purely
+    divergence-based reading would lose.
+    """
     if not dictStatus:
         return False
     iTotal = dictStatus.get("iTotalFiles", 0) or 0
     if iTotal == 0:
         return False
-    if dictStatus.get("iMatching") != iTotal:
+    listCompared = dictStatus.get("listComparedPaths")
+    if listCompared is None:
+        # A cache written before the scope split. Everything such a
+        # verify compared WAS Level 2 material -- the envelope was not
+        # in the comparison set at all then -- so the aggregate is
+        # exactly the Level 2 answer, not an approximation of it. No
+        # re-verify is demanded for a claim the old cache can support
+        # on its own terms.
+        return (
+            dictStatus.get("iMatching") == iTotal
+            and not dictStatus.get("listDiverged")
+        )
+    from . import publicationScope
+    setLevel2 = publicationScope.fsetSelectLevel2Paths(listCompared)
+    if not setLevel2:
         return False
-    if dictStatus.get("listDiverged"):
-        return False
-    return True
+    return not (setLevel2 & _fsetDivergedPathsOf(dictStatus))
+
+
+def _fsetDivergedPathsOf(dictStatus):
+    """Return the repo-relative paths the last verify found diverged."""
+    return {
+        dictEntry.get("sPath", "")
+        for dictEntry in (dictStatus.get("listDiverged") or [])
+        if isinstance(dictEntry, dict)
+    }
 
 
 def fbWorkflowFullySyncedWithGithub(
@@ -2316,7 +2351,59 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
             dictWorkflow,
         ),
+        "envelope-not-in-github-mirror":
+            fbEnvelopeMatchesGithubMirror(filesRepo),
     }
+
+
+def fbEnvelopeMatchesGithubMirror(filesRepo):
+    """Return True iff the published envelope matches the local one.
+
+    The Level 3 half of the published-copy question (2026-08-26). The
+    other L3 artifact criteria ask whether the envelope EXISTS and is
+    pinned; none of them asked whether the copy on GitHub is the same
+    file. A pushed ``reproduce.sh`` that has drifted from the local
+    one means a third party's reproduction runs something the
+    researcher never ran, and every surface reported Level 3 attained.
+
+    Unproven is a block, symmetric with the Level 2 gate: an envelope
+    nobody has compared cannot support a reproducibility claim. That
+    includes a cache from a hub whose verify did not yet cover the
+    envelope — detected by asking whether every envelope file that
+    exists on disk actually appears in the compared set, rather than
+    by trusting a non-empty list.
+
+    Vacuously true when the project has no envelope files at all,
+    deliberately: their absence is already reported by
+    ``dockerfile-not-pinned`` and its siblings, and a second blocker
+    saying the same thing would send the researcher looking for a
+    sync problem they do not have.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "github",
+    )
+    if not dictStatus or not dictStatus.get("sLastVerified"):
+        return False
+    if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    setCompared = set(dictStatus.get("listComparedPaths") or [])
+    listOnDisk = _flistEnvelopePathsOnDisk(filesRepo)
+    if not listOnDisk:
+        return True
+    if not set(listOnDisk).issubset(setCompared):
+        return False
+    return not (set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))
+
+
+def _flistEnvelopePathsOnDisk(filesRepo):
+    """Return the envelope paths that actually exist in the repo."""
+    from . import publicationScope
+    return [
+        sPath
+        for sPath in publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS
+        if filesRepo.fbIsFile(sPath)
+    ]
 
 
 # The single criterion a host project reports, in place of the seven
@@ -2326,6 +2413,11 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
 S_L3_HOST_MODE_CRITERION = "host-mode"
 
 _DICT_L3_REMEDIATION_HINTS = {
+    "envelope-not-in-github-mirror":
+        "The reproduce script, manifest, dependency lock, environment "
+        "snapshot or Dockerfile differs from the copy on GitHub, or "
+        "has not been compared against it. Push the current envelope, "
+        "then click Verify now on the GitHub mirror row.",
     S_L3_HOST_MODE_CRITERION:
         "Level 3 requires a containerized project: it is defined by a "
         "pinned image digest and an in-container rerun. This project "
