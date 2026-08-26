@@ -1482,6 +1482,20 @@ var VaibifySyncManager = (function () {
         return _fsValidateLinkUrl(dictSummary.sRemoteUrl || "");
     }
 
+    function _fsBadgeStateOfElement(elBadge) {
+        /* "badge-unknown" -> "unknown". Returns "" for an element
+           with no state class, which lands the verify item at the
+           end — the conservative placement. */
+        if (!elBadge || !elBadge.classList) return "";
+        var listClasses = Array.prototype.slice.call(elBadge.classList);
+        for (var i = 0; i < listClasses.length; i++) {
+            if (listClasses[i].indexOf("badge-") === 0) {
+                return listClasses[i].substring("badge-".length);
+            }
+        }
+        return "";
+    }
+
     var _DICT_REMOTE_KEY_TO_PUSH_SERVICE = {
         sGithub: "github",
         sZenodo: "zenodo",
@@ -1490,21 +1504,66 @@ var VaibifySyncManager = (function () {
     };
 
     function _flistBuildPicklistItems(
-        sRemoteKey, sResolved, sWorkdir, dictWorkflow,
+        sRemoteKey, sResolved, sWorkdir, dictWorkflow, sBadgeState,
     ) {
         if (sRemoteKey === "sGithub") {
-            return _flistGithubPicklistItems();
+            return _flistWithVerifyItem(
+                _flistGithubPicklistItems(), sBadgeState);
         }
         if (sRemoteKey === "sZenodo") {
-            return _flistZenodoPicklistItems(dictWorkflow);
+            return _flistWithVerifyItem(
+                _flistZenodoPicklistItems(dictWorkflow), sBadgeState);
         }
         if (sRemoteKey === "sOverleaf") {
-            return _flistOverleafPicklistItems(dictWorkflow);
+            return _flistWithVerifyItem(
+                _flistOverleafPicklistItems(dictWorkflow), sBadgeState);
         }
         if (sRemoteKey === "sArxiv") {
+            // arXiv already leads with its own "Verify now" — it is
+            // pull-only, so verifying IS its primary action.
             return _flistArxivPicklistItems(dictWorkflow);
         }
         return [];
+    }
+
+    var _T_UNPROVEN_BADGE_STATES = ["unknown", "drifted"];
+
+    function _flistWithVerifyItem(listItems, sBadgeState) {
+        /* Every badge whose meaning is "was this compared against the
+           published copy" needs the comparison reachable from itself.
+           arXiv's picklist has led with "Verify now" all along; the
+           other three offered Sync / Archive / Push and a couple of
+           links, none of which re-runs the comparison the badge
+           reports — so an unproven badge opened a menu that could not
+           resolve it.
+
+           Position tracks the state rather than being fixed. On an
+           unknown or drifted badge the verify is the whole question
+           and leads; on a badge already showing a verified match it
+           is the least useful item on the menu and sits at the end.
+           It is never omitted: re-verifying is how a researcher
+           confirms a badge is current rather than merely cached. */
+        var dictVerify = {
+            sLabel: "Verify now", sAction: "verifyNow",
+        };
+        if (_T_UNPROVEN_BADGE_STATES.indexOf(sBadgeState) === -1) {
+            return listItems.concat([dictVerify]);
+        }
+        dictVerify.bPrimary = true;
+        return [dictVerify].concat(listItems.map(
+            function (dictItem) {
+                /* Only one item may lead. The former primary keeps
+                   its place and its action, and loses only the
+                   emphasis. */
+                if (!dictItem.bPrimary) return dictItem;
+                var dictCopy = {};
+                Object.keys(dictItem).forEach(function (sKey) {
+                    dictCopy[sKey] = dictItem[sKey];
+                });
+                dictCopy.bPrimary = false;
+                return dictCopy;
+            },
+        ));
     }
 
 
@@ -1705,8 +1764,13 @@ var VaibifySyncManager = (function () {
         if (!elMenu) return;
         fnDismissAllPicklists();
         var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
+        /* Read the state off the badge that was clicked rather than
+           re-deriving it: the class is what the researcher is looking
+           at, so the menu can never disagree with the icon it opened
+           from. */
+        var sBadgeState = _fsBadgeStateOfElement(elBadge);
         var listItems = _flistBuildPicklistItems(
-            sRemoteKey, sResolved, sWorkdir, dictWorkflow);
+            sRemoteKey, sResolved, sWorkdir, dictWorkflow, sBadgeState);
         var elList = elMenu.querySelector(".picklist-items");
         elList.innerHTML = "";
         listItems.forEach(function (dictItem) {
@@ -1729,6 +1793,18 @@ var VaibifySyncManager = (function () {
         fnDismissAllPicklists();
         if (sRemoteKey === "sArxiv") {
             _fnHandleArxivPicklistSelect(dictItem);
+            return;
+        }
+        if (dictItem.sAction === "verifyNow") {
+            /* The same route the Project block's Verify-now button
+               posts to, deliberately — one comparison, one cache, one
+               answer, whichever control the researcher reached for.
+               No element is passed, so nothing is disabled; the menu
+               has already dismissed itself. */
+            fnVerifyRemoteFromDashboard(
+                _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey] || "",
+                null,
+            );
             return;
         }
         if (dictItem.sAction === "primary") {
