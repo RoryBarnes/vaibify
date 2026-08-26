@@ -549,6 +549,16 @@ def fdictDescribeStoppingPoint(dictCampaign):
         dictStopping["sBlockedReason"] = (
             "this council is finished; convene a new one")
         return dictStopping
+    if sState not in ("planning", "needsHuman", "planReady"):
+        # Retrying a failed or interrupted phase is the attempt
+        # record's NEXT consumer (continuation plan 2.5/2.6) and is not
+        # built yet. Until it is, the listing must not offer an action
+        # the resume route then refuses — that disagreement is the
+        # answer-box-over-a-dead-runtime defect generalized.
+        dictStopping["sBlockedReason"] = (
+            f"this council stopped at {sState!r}; retrying the failed "
+            "phase is not yet available — convene a fresh council")
+        return dictStopping
     sIncoherent = _fsFindIncoherentTurn(dictRound)
     if sIncoherent:
         dictStopping["sBlockedReason"] = sIncoherent

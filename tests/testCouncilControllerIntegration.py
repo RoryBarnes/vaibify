@@ -196,9 +196,17 @@ def test_restart_classifies_a_mid_turn_campaign_as_interrupted(tmp_path):
         "hubRestartedWhileATurnHadNoTerminalRecord")
 
 
-def test_respond_after_a_restart_is_refused_not_resumed(
+def test_respond_after_a_restart_rebuilds_and_continues(
         tmp_path, monkeypatch):
-    """A restart-classified campaign refuses continuation honestly."""
+    """A gate answer after a hub restart rebuilds the runtime and runs.
+
+    This test used to assert the refusal ("convene a fresh council"),
+    which was the pre-amendment behaviour and the live failure of
+    2026-08-25: the panel showed a 13-question gate and then refused
+    the answer. The 2026-08-26 amendment (design/agentCouncil.md §3,
+    continuation plan 2.5) makes the gate answer the moment the
+    runtime is rebuilt, under the same paid-work gates start passes.
+    """
     def _fdictDecide(sHandle, dictTurnRequest):
         return fdictDecideCompleted(fdictMakeTurnResult(
             sVerdict="needsHuman", listOpenQuestions=["which prior?"]))
@@ -220,8 +228,9 @@ def test_respond_after_a_restart_is_refused_not_resumed(
         responseAnswer = client.post(
             f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/respond",
             json={"sResponseText": "carry on"})
-        assert responseAnswer.status_code == 409, responseAnswer.text
-        assert "convene a fresh council" in responseAnswer.json()["detail"]
+        assert responseAnswer.status_code == 200, responseAnswer.text
+        assert responseAnswer.json()["sTurnId"], (
+            "the rebuilt runtime launched no continuation turn")
 
 
 def test_accept_requires_plan_ready_and_persists_the_engine_candidate(

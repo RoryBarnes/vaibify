@@ -318,6 +318,33 @@ def test_copy_and_download_serve_the_servers_plan_bytes():
             sSource, sHelper), sHelper
 
 
+@pytest.mark.falsification
+def test_a_dead_deliberation_offers_resume_from_backend_truth():
+    """The composer must not claim "deliberating" over a dead hub.
+
+    A crashed planning campaign used to render "The council is
+    deliberating" forever. The panel now branches on the backend's own
+    liveness statement and renders the resume surface from the durable
+    stopping point — never a guess derived from staleness.
+
+    Kills: the composer ignoring bDeliberationLive and rendering the
+    deliberating text for a campaign nothing is driving.
+    """
+    sSource = _fsCouncilSource()
+    sComposer = _fsFunctionBody(sSource, "_fsComposer")
+    assert "bDeliberationLive" in sComposer
+    assert "_fsResumeSurface" in sComposer
+    sSurface = _fsFunctionBody(sSource, "_fsResumeSurface")
+    assert "dictStoppingPoint" in sSurface
+    assert "bResumable" in sSurface
+    # The stop-clear choice is surfaced ON the control, and the action
+    # posts the explicit flag.
+    assert "clears the requested stop" in sSurface
+    sAction = _fsFunctionBody(sSource, "_fnResumeCouncil")
+    assert "/resume" in sAction
+    assert "bClearStopRequest" in sAction
+
+
 def test_candidate_plan_renders_the_engine_result_shape():
     """The plan tab reads dictCandidatePlan.dictResult (R6), never the
     fabricated top-level sPlanText no engine ever wrote."""

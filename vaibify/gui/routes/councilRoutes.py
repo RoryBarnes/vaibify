@@ -197,6 +197,19 @@ class CouncilRejectRequest(BaseModel):
     sReasonText: str = Field(default="", max_length=I_MAX_RESPONSE_LENGTH)
 
 
+class CouncilResumeRequest(BaseModel):
+    """Body for resuming a crashed deliberation.
+
+    ``bClearStopRequest`` is the researcher's explicit answer to the
+    one choice resume surfaces (continuation plan 4.2.5): a stop
+    requested before the crash was a decision about THAT run, and a
+    resumed record that kept the flag would archive itself instantly.
+    The clear is recorded as a researcher decision, never silent.
+    """
+
+    bClearStopRequest: bool = False
+
+
 # Acceptance takes NO body (remediation R3): what lands in plan.md is
 # the council's own server-held candidate, accepted through the
 # engine's planReady gate — caller-supplied plan text was the accept
@@ -624,6 +637,18 @@ def _fnRegisterGetCouncil(app, dictCtx):
                 jsonCampaign))
         jsonCampaign["listHeldQuestions"] = (
             agentCouncilResolution.flistDescribeHeldQuestions(jsonCampaign))
+        # What the record supports (the stopping point) and what is
+        # actually live in this process — the pair the panel needs to
+        # tell "deliberating" from "crashed and resumable" without
+        # guessing. The listing shows the first; only the hub knows
+        # the second.
+        jsonCampaign["dictStoppingPoint"] = (
+            agentCouncilResolution.fdictDescribeStoppingPoint(jsonCampaign))
+        dictControllerState = fdictControllerState(requestHttp)
+        jsonCampaign["bDeliberationLive"] = (
+            sCampaignId in dictControllerState["dictCampaignRuntime"]
+            or agentCouncilController.fbCampaignDriveIsLive(
+                dictControllerState, sCampaignId))
         # Overwrites the engine's raw record deliberately: the stored key
         # says what the engine believed, this says what the reader is
         # entitled to believe, and only the second should reach a screen.
@@ -813,6 +838,82 @@ def _fnRegisterStartCouncil(app, dictCtx):
             agentCouncilController.S_COMMAND_START, _fdictExecuteStart)
 
 
+async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
+                                      sContainerId, sCampaignId):
+    """Build runtime-rebuild materials when the hub restarted, else None.
+
+    While a runtime is live the common case pays nothing. When it died
+    with the hub, continuing IS paid provider work relaunching, so the
+    rebuild passes the SAME gates start passes, in the same order: the
+    immutable image resolves first so the evidence record's pin is
+    always compared, then the credential gate, then the login-presence
+    probe. The check is advisory — commands serialize per campaign, so
+    a runtime appearing between this check and execution just means the
+    materials go unused.
+    """
+    if dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId) is not None:
+        return None
+    sImageReference = await ffnBuildImageResolver(dictCtx, sContainerId)()
+    fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+    await asyncio.to_thread(
+        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+    return {"sImageReference": sImageReference,
+            "fsStageRunnerCredential": ffnBuildCredentialStager(
+                dictCtx, sContainerId)}
+
+
+def _fnRegisterResume(app, dictCtx):
+    """Register POST /api/agent-councils/{sContainerId}/{sCampaignId}/resume.
+
+    The explicit researcher resume (continuation plan section 4; spec
+    amendment 2026-08-26): never unattended, always from a boundary the
+    durable attempt record proves coherent. The listing's
+    dictStoppingPoint advertised only what the record supports; this
+    route re-derives that answer and adds the dynamic refusals the
+    listing cannot promise — unsettled reservations, a changed image, a
+    corrupt archive, a live peer hub.
+    """
+
+    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/resume")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictResumeCouncil(
+        sContainerId: str, sCampaignId: str,
+        request: CouncilResumeRequest, requestHttp: Request,
+        sProjectDirectory: str = "",
+    ):
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
+
+        async def _fdictExecuteResume():
+            fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            sImageReference = await ffnBuildImageResolver(
+                dictCtx, sContainerId)()
+            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            await asyncio.to_thread(
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+            dictResumed = (
+                await agentCouncilController.fdictResumeCampaignDeliberation(
+                    dictControllerState, dictStore, dictRegistry,
+                    sCampaignId, sImageReference,
+                    fsStageRunnerCredential=ffnBuildCredentialStager(
+                        dictCtx, sContainerId),
+                    bClearStopRequest=request.bClearStopRequest))
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId,
+                _fdictBuildEvent("campaignResumed",
+                                 dictResumed.get("sTurnId", "")))
+            return dictResumed
+
+        return await fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
+            agentCouncilController.S_COMMAND_RESUME, _fdictExecuteResume)
+
+
 def _fnRegisterRespond(app, dictCtx):
     """Register POST /api/agent-councils/{sContainerId}/{sCampaignId}/respond."""
 
@@ -839,7 +940,10 @@ def _fnRegisterRespond(app, dictCtx):
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, request.sResponseText,
                     [dictAnswer.model_dump()
-                     for dictAnswer in request.listDecisionAnswers]))
+                     for dictAnswer in request.listDecisionAnswers],
+                    dictRebuildMaterials=await _fdictBuildRebuildMaterials(
+                        dictCtx, dictControllerState, sContainerId,
+                        sCampaignId)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("researcherResponded",
@@ -917,7 +1021,10 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
             return await (
                 agentCouncilController.fdictGrantCampaignResolutionRound(
                     dictControllerState, dictStore, dictRegistry,
-                    sCampaignId, request.iGrantedRounds))
+                    sCampaignId, request.iGrantedRounds,
+                    dictRebuildMaterials=await _fdictBuildRebuildMaterials(
+                        dictCtx, dictControllerState, sContainerId,
+                        sCampaignId)))
 
         return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
@@ -948,7 +1055,10 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
                     sCampaignId,
                     {sObjectionId: dictDisposition.model_dump()
                      for sObjectionId, dictDisposition
-                     in request.dictDispositionByObjectionId.items()}))
+                     in request.dictDispositionByObjectionId.items()},
+                    dictRebuildMaterials=await _fdictBuildRebuildMaterials(
+                        dictCtx, dictControllerState, sContainerId,
+                        sCampaignId)))
 
         return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
@@ -1130,6 +1240,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterStartCouncil(app, dictCtx)
     _fnRegisterPollEvents(app, dictCtx)
     _fnRegisterRespond(app, dictCtx)
+    _fnRegisterResume(app, dictCtx)
     _fnRegisterRequestStop(app, dictCtx)
     _fnRegisterExhaustedRoundExits(app, dictCtx)
     _fnRegisterAcceptPlan(app, dictCtx)

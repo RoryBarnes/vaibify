@@ -14242,4 +14242,232 @@ def _fdictEntry(sRel):
         ),
         new='        if False:',
     ),
+
+    # ------------------------------------------------------------------
+    # Explicit resume (continuation plan section 4, 2026-08-26): the
+    # five refusals, the non-destructive failure, the continued walk,
+    # and the hub-restart journey.
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeContinuesTheWalkWithoutRerunningSettledPhases'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Resume drops the settled boundary and re-walks the round from
+        # its first phase -- silently re-spending provider work the
+        # researcher already paid for.
+        old=(
+            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
+        ),
+        new=(
+            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictCampaign["listRounds"][-1]["dictTurnsByPhase"] = {}\n'
+            '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesARunningAttemptAndNamesReconcile'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old='    if sAttemptState == "running":',
+        new='    if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesAPreAttemptRecord'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    if dictAttempt is None:\n'
+            '        raise CouncilCommandError(\n'
+            '            "this campaign was checkpointed by an earlier '
+            'hub version "'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise CouncilCommandError(\n'
+            '            "this campaign was checkpointed by an earlier '
+            'hub version "'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesAChangedImageNamingBothIdentities'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old='    if sRecordedImage != sImageReference:',
+        new='    if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesACorruptSealedArchive'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old='    if sCurrentDigest != sRecordedDigest:',
+        new='    if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesOverAnUnsettledReservation'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Narrow the refusal back to quarantined-only -- a pending or
+        # live reservation then passes, which is a runner nobody proved
+        # gone under a fresh drive.
+        old=(
+            '        and dictReservation["sStatus"]\n'
+            '        in agentCouncilRegistry.SET_LIVE_RESERVATION_STATUSES]'
+        ),
+        new=(
+            '        and dictReservation["sStatus"]\n'
+            '        == agentCouncilRegistry.S_RESERVATION_QUARANTINED]'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testResumeRefusesAPeerHeldCampaign'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub'
+            '(dictCampaign):\n'
+            '        raise CouncilCommandError(\n'
+            '            f"cannot {sAction}: another live hub holds this '
+            'campaign\'s "\n'
+            '            "project; resume it from that hub, or release '
+            'it there "\n'
+            '            "first.")\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testAStandingStopRequestSurfacesTheChoice'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Silently clear the flag: the researcher never chose, and the
+        # refusal half of the choice disappears.
+        old=(
+            '    if dictCampaign.get("bStopRequested"):\n'
+            '        if not bClearStopRequest:'
+        ),
+        new=(
+            '    if dictCampaign.get("bStopRequested"):\n'
+            '        bClearStopRequest = True\n'
+            '        if not bClearStopRequest:'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testAFailedRebuildLeavesTheRecordByteIdentical'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The rebuild failure path adopts the LAUNCH path's
+        # transactionality -- transition to failed and checkpoint --
+        # which destroys the exact record the rescue exists to reach.
+        old=(
+            '            if bAccessSettled:\n'
+            '                dictControllerState["dictCampaignRuntime"].pop(\n'
+            '                    sCampaignId, None)\n'
+            '        raise\n'
+            '    dictRuntime["bLaunchInProgress"] = False\n'
+            '    return dictRuntime'
+        ),
+        new=(
+            '            if bAccessSettled:\n'
+            '                dictControllerState["dictCampaignRuntime"].pop(\n'
+            '                    sCampaignId, None)\n'
+            '        agentCouncilCampaign.fnTransitionCampaignState(\n'
+            '            dictCampaign, agentCouncilCampaign.S_STATE_FAILED,\n'
+            '            "resumeRebuildFailed")\n'
+            '        agentCouncilStore.fnCheckpointStoredCampaign(\n'
+            '            dictStore, sCampaignId, dictCampaign)\n'
+            '        raise\n'
+            '    dictRuntime["bLaunchInProgress"] = False\n'
+            '    return dictRuntime'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testAGateAnswerSurvivesTheHubRestart'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The pre-feature behaviour verbatim: a dead runtime refuses
+        # the answer, and the 13-question gate is unrescuable.
+        old='    if dictRebuildMaterials is None:',
+        new='    if True:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilFrontendContract.py::'
+            'test_a_dead_deliberation_offers_resume_from_backend_truth'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '        if (dictCampaign.bDeliberationLive === false) {\n'
+            '            return _fsResumeSurface(dictCampaign);\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # Skip the state admission: the listing then derives
+        # resumability from record coherence alone and offers Resume on
+        # a failed campaign the route refuses.
+        old=(
+            '    if sState not in ("planning", "needsHuman", '
+            '"planReady"):'
+        ),
+        new='    if False:',
+    ),
+
+    # ------------------------------------------------------------------
+    # One action at a time (continuation plan section 7, 2026-08-26).
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testADoubleClickSpendsOneMessageNotTwo'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The chat action helper loses its pending-state suppression:
+        # a double-click submits the paid message twice.
+        old=(
+            '        if (_dictState.bActionPending) return;\n'
+            '        _dictState.bActionPending = true;\n'
+            '        _fnRenderWorkspace();\n'
+            '        try {'
+        ),
+        new='        try {',
+    ),
 ]

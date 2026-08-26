@@ -178,12 +178,20 @@ LIST_CAMPAIGN_REQUIRED_KEYS = [
 LIST_PROJECT_IDENTITY_KEYS = [
     "sResourceName", "sProjectRepoPath", "sSnapshotIdentity",
     "sSnapshotScopeNote",
+    # Pinned at launch, compared at resume (continuation plan 4.2,
+    # researcher ruling 3): the immutable image id the runners actually
+    # executed in, and the byte digest of the sealed snapshot archive.
+    # sSnapshotIdentity is a CONTENT identity over sorted manifest rows
+    # -- not a tar-byte digest -- so archive validation needs its own.
+    "sImageIdentity", "sSnapshotArchiveSha256",
 ]
 
 DICT_EMPTY_PROJECT_IDENTITY = {
     "sResourceName": "",
     "sProjectRepoPath": "",
     "sSnapshotIdentity": "",
+    "sImageIdentity": "",
+    "sSnapshotArchiveSha256": "",
     "sSnapshotScopeNote": "",
 }
 
@@ -328,15 +336,23 @@ def _fdictValidateProjectIdentity(dictProjectIdentity):
     if not isinstance(dictProjectIdentity, dict):
         raise CouncilConfigurationError(
             "the campaign project identity must be a mapping")
-    if sorted(dictProjectIdentity) != sorted(LIST_PROJECT_IDENTITY_KEYS):
+    # Missing keys are BACK-FILLED empty, not refused (the
+    # sCampaignName precedent): the identity vocabulary grew on
+    # 2026-08-26 (sImageIdentity, sSnapshotArchiveSha256, both pinned
+    # at launch), and demanding the full set at creation would strand
+    # every caller and record built against the four-key shape. An
+    # empty value means unbound, which is already the vocabulary's
+    # honest default; an UNKNOWN key still refuses.
+    dictBackFilled = {**DICT_EMPTY_PROJECT_IDENTITY, **dictProjectIdentity}
+    if sorted(dictBackFilled) != sorted(LIST_PROJECT_IDENTITY_KEYS):
         raise CouncilConfigurationError(
-            "the campaign project identity must carry exactly "
+            "the campaign project identity must carry only "
             f"{LIST_PROJECT_IDENTITY_KEYS}")
     for sIdentityKey in LIST_PROJECT_IDENTITY_KEYS:
-        if not isinstance(dictProjectIdentity[sIdentityKey], str):
+        if not isinstance(dictBackFilled[sIdentityKey], str):
             raise CouncilConfigurationError(
                 f"campaign identity '{sIdentityKey}' must be a string")
-    return dict(dictProjectIdentity)
+    return dictBackFilled
 
 
 def fbCampaignMatchesPrincipal(dictCampaign, sResourceName,

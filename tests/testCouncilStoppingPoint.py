@@ -109,6 +109,50 @@ def testTheDescriptorBlamesNoPhaseItCannotProve():
 
 
 @pytest.mark.falsification
+def testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses():
+    """The listing offers only what the resume route would admit.
+
+    A failed campaign's attempt record is coherent (outcomeSettled,
+    transitioned:failed), so every record-level check passes — but its
+    recovery action is Retry, which is not built, and the resume route
+    refuses non-planning states. A listing that says "Can be
+    continued" over a route that answers 409 is the
+    answer-box-over-a-dead-runtime defect generalized.
+
+    Kills: the descriptor skipping the state admission and deriving
+    resumability from record coherence alone.
+    """
+    dictRecord = {
+        "sState": "failed",
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "synthesisFailed",
+            "dictTurnsByPhase": {
+                "independentProposals": [{"sStatus": "completed"}],
+                "crossReview": [{"sStatus": "completed"}],
+                "synthesis": [{"sStatus": "failed"}],
+            },
+            "dictPhaseAttempt": {
+                "sPhase": "synthesis", "iRoundNumber": 1,
+                "iAttemptNumber": 1,
+                "listEligibleParticipantIds": ["participant-a"],
+                "sCompletionRule": "firstAuthorOrExhaustion",
+                "sAttemptState": "outcomeSettled",
+                "sOutcome": "transitioned:failed",
+                "dictPrePhaseState": {},
+            },
+        }],
+    }
+
+    dictStopping = fdictDescribeStoppingPoint(dictRecord)
+
+    assert dictStopping["bResumable"] is False
+    assert "not yet available" in dictStopping["sBlockedReason"]
+
+
+@pytest.mark.falsification
 def testAMidPhaseRecordIsNotResumable():
     """A turn the record shows launched but never settled blocks resume.
 

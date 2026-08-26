@@ -4173,7 +4173,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # because only the route may read the live repository. A
     # campaign-lifecycle read at the same guard points as every other
     # campaign route.
-    "routes/councilRoutes.py": 1139,
+    # +110 (2026-08-26): the resume route, the shared rebuild-materials
+    # builder the three gate-answer routes thread to the controller
+    # (paid work relaunching passes the same gates start passes), the
+    # stop-clear request body, and the GET response's liveness +
+    # stopping-point pair the panel renders resume from.
+    "routes/councilRoutes.py": 1249,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -5328,7 +5333,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # draft in the document's own text and takes the route-computed
     # staleness sentence — the composer stays the ONE renderer, so the
     # honesty additions land in it rather than in a second one.
-    "agentCouncilController.py": 1337,
+    # +256 (2026-08-26): explicit resume (continuation plan section 4)
+    # — the launch-time identity pins, the five admission refusals, the
+    # non-destructive runtime rebuild the respond path shares, and the
+    # resume command itself. The refusals live beside the launch whose
+    # transactionality they deliberately invert; a separate module
+    # would put the two failure disciplines a hop apart and invite the
+    # wrong one being reused (which is exactly the 4.3 hazard).
+    "agentCouncilController.py": 1593,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5707,7 +5719,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # future reader will ask why this route is not offered.
     # 1044 -> 1056 (2026-08-25): the three ask-the-chairbot mutating
     # routes join the human-only exclusion set.
-    "actionCatalog.py": 1056,
+    # +1 (2026-08-26): the resume route joins the human-only
+    # exclusion set beside its sibling council actions.
+    "actionCatalog.py": 1057,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5897,7 +5911,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 974 -> 980 (2026-08-25): the ask-the-chairbot transcript read
     # joins the frozen container-read allowlist, with the reason it
     # counts as an owned-container read beside it.
-    "routeScope.py": 980,
+    # +1 (2026-08-26): the plan.md read joins the frozen
+    # container-read allowlist.
+    "routeScope.py": 981,
 }
 
 

@@ -53,6 +53,7 @@ __all__ = [
     "S_COMMAND_REJECT_CANDIDATE",
     "S_COMMAND_RESOLVE_OBJECTIONS",
     "S_COMMAND_RESPOND",
+    "S_COMMAND_RESUME",
     "S_COMMAND_REQUEST_STOP",
     "S_COMMAND_START",
     "S_COUNCIL_CONTROLLER_STATE_KEY",
@@ -62,6 +63,7 @@ __all__ = [
     "fdictRequestCampaignStop",
     "fdictAcceptCampaignPlan",
     "fdictContinueCampaignAfterResponse",
+    "fdictResumeCampaignDeliberation",
     "fdictGrantCampaignResolutionRound",
     "fdictRejectCampaignCandidate",
     "fdictResolveCampaignObjections",
@@ -100,6 +102,10 @@ S_COMMAND_REJECT_CANDIDATE = "rejectCandidate"
 S_COMMAND_OPEN_CHAT = "openChat"
 S_COMMAND_ASK_CHAIRBOT = "askChairbot"
 S_COMMAND_CLOSE_CHAT = "closeChat"
+# Explicit researcher resume of a crashed deliberation (continuation
+# plan section 4): never unattended, always from a boundary the durable
+# phase-attempt record proves coherent.
+S_COMMAND_RESUME = "resume"
 
 LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_START,
@@ -113,6 +119,7 @@ LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_OPEN_CHAT,
     S_COMMAND_ASK_CHAIRBOT,
     S_COMMAND_CLOSE_CHAT,
+    S_COMMAND_RESUME,
 ]
 
 # The command log is an observability convenience for the serialization
@@ -542,6 +549,208 @@ def _fsSpawnDriveTask(dictRuntime, ffnAdvanceEngine):
     return sTurnId
 
 
+def _fnRefuseUnsettledCampaignWork(dictRegistry, dictCampaign,
+                                   sCampaignId, sAction):
+    """Refuse over ANY unsettled reservation, request, or peer claim.
+
+    Not only quarantined (continuation plan 4.2.1): pending and live
+    reservations equally represent runners the hub cannot prove gone,
+    an active API request is spend nobody accounted for, and a
+    campaign held by a live peer hub is not this hub's to drive.
+    """
+    listUnsettled = [
+        dictReservation for dictReservation
+        in dictRegistry["dictReservationsById"].values()
+        if dictReservation["sCampaignId"] == sCampaignId
+        and dictReservation["sStatus"]
+        in agentCouncilRegistry.SET_LIVE_RESERVATION_STATUSES]
+    if listUnsettled or any(
+            sCid == sCampaignId
+            for sCid, _ in dictRegistry["setTurnsInFlight"]) or any(
+            dictRequest["sCampaignId"] == sCampaignId
+            and dictRequest["sStatus"]
+            == agentCouncilRegistry.S_API_REQUEST_ACTIVE
+            for dictRequest in dictRegistry["dictApiRequestsById"].values()):
+        raise CouncilCommandError(
+            f"cannot {sAction}: this campaign still has unsettled "
+            "runner reservations or requests nobody proved gone. Run "
+            "vaibify reconcile, then retry.")
+    if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(dictCampaign):
+        raise CouncilCommandError(
+            f"cannot {sAction}: another live hub holds this campaign's "
+            "project; resume it from that hub, or release it there "
+            "first.")
+
+
+def _fbaAdmitRuntimeRebuild(dictStore, dictCampaign, sCampaignId,
+                            sImageReference, sAction):
+    """Admit a runtime rebuild, or refuse naming what changed.
+
+    Returns the validated sealed snapshot bytes. Two identity checks,
+    both against values PINNED at launch (researcher ruling 3): the
+    execution image — a resume that would change it is refused with no
+    override, the remedy is a fresh council — and the sealed archive's
+    byte digest, because ``sSnapshotIdentity`` is a content identity
+    over manifest rows and validates nothing about the tar the runners
+    would be handed.
+    """
+    dictIdentity = dictCampaign.get("dictProjectIdentity") or {}
+    sRecordedImage = dictIdentity.get("sImageIdentity", "")
+    if not sRecordedImage:
+        raise CouncilCommandError(
+            f"cannot {sAction}: this campaign recorded no execution "
+            "image identity (it predates the pin), so image sameness "
+            "cannot be proven; convene a fresh council")
+    if sRecordedImage != sImageReference:
+        raise CouncilCommandError(
+            f"cannot {sAction}: the project container's image changed "
+            f"since this council ran (recorded {sRecordedImage}, "
+            f"current {sImageReference}). The council's reasoning is "
+            "bound to the image its runners executed in; convene a "
+            "fresh council.")
+    sRecordedDigest = dictIdentity.get("sSnapshotArchiveSha256", "")
+    if not sRecordedDigest:
+        raise CouncilCommandError(
+            f"cannot {sAction}: this campaign recorded no snapshot "
+            "archive digest (it predates the pin), so the sealed "
+            "baseline cannot be validated; convene a fresh council")
+    baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
+    sCurrentDigest = hashlib.sha256(baSnapshotTar).hexdigest()
+    if sCurrentDigest != sRecordedDigest:
+        raise CouncilCommandError(
+            f"cannot {sAction}: the sealed snapshot archive on disk "
+            "does not match the digest recorded at launch — the "
+            "baseline the council reasoned about cannot be "
+            "reconstructed. Convene a fresh council.")
+    return baSnapshotTar
+
+
+async def _fdictRebuildRuntimeNonDestructively(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        dictCampaign, sImageReference, fsStageRunnerCredential):
+    """Rebuild a campaign runtime without ever touching the record.
+
+    The launch path is transactional the OTHER way — a build fault
+    moves planning to failed and checkpoints before re-raising. A
+    rebuild needs the opposite (continuation plan 4.3): the record a
+    researcher is rescuing must be byte-identical after a failed
+    rebuild, or the rescue destroys the gate it exists to reach. So
+    resources are released on failure exactly as the launch does, but
+    no transition is written and no checkpoint runs.
+    """
+    baSnapshotTar = _fbaAdmitRuntimeRebuild(
+        dictStore, dictCampaign, sCampaignId, sImageReference, "resume")
+    taskBuild = asyncio.ensure_future(asyncio.to_thread(
+        _fdictBuildCampaignRuntime, dictControllerState, dictStore,
+        dictRegistry, sCampaignId, dictCampaign, sImageReference,
+        baSnapshotTar, fsStageRunnerCredential))
+    try:
+        dictRuntime = await asyncio.shield(taskBuild)
+    except BaseException:
+        await _fnAwaitBuildWorkerCompletion(taskBuild)
+        dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId)
+        if dictBuiltRuntime is not None:
+            dictBuiltRuntime["bLaunchInProgress"] = False
+            bAccessSettled = await asyncio.to_thread(
+                _fbReleaseRunnerAccessResources, dictBuiltRuntime)
+            if bAccessSettled:
+                dictControllerState["dictCampaignRuntime"].pop(
+                    sCampaignId, None)
+        raise
+    dictRuntime["bLaunchInProgress"] = False
+    return dictRuntime
+
+
+async def fdictResumeCampaignDeliberation(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        sImageReference, fsStageRunnerCredential=None,
+        bClearStopRequest=False):
+    """Resume a crashed deliberation from its proven boundary.
+
+    The recovery actions are keyed by the durable attempt record
+    (continuation plan 2.5): ``turnsSettled`` replays settlement first
+    and then acts on the resulting outcome; ``advancedToNextPhase`` and
+    ``roundResolved`` rebuild the runtime and let the engine continue
+    the walk. ``running`` and a record with no attempt refuse — the
+    stopping-point descriptor already said so in the listing, and the
+    route re-derives the same answer here at the click.
+    """
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    if dictCampaign is None:
+        raise CouncilCommandError(
+            f"no stored campaign {sCampaignId!r} to resume")
+    dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
+        dictCampaign)
+    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "resume")
+    if dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId) is not None:
+        raise CouncilCommandError(
+            "this campaign already has a live runtime; there is "
+            "nothing to resume")
+    _fnRefuseWhenResourceAdmissionClosed(
+        dictControllerState, dictCampaign, "resume")
+    _fnRefuseUnsettledCampaignWork(
+        dictRegistry, dictCampaign, sCampaignId, "resume")
+    if dictCampaign["sState"] != agentCouncilCampaign.S_STATE_PLANNING:
+        raise CouncilCommandError(
+            "only a campaign stopped mid-deliberation can be resumed; "
+            f"this one is {dictCampaign['sState']!r} — answer its gate, "
+            "review its plan, or convene a fresh council")
+    listRounds = dictCampaign.get("listRounds") or []
+    dictAttempt = (listRounds[-1] if listRounds else {}).get(
+        "dictPhaseAttempt")
+    if dictAttempt is None:
+        raise CouncilCommandError(
+            "this campaign was checkpointed by an earlier hub version "
+            "that recorded no phase attempts, so where it stopped "
+            "cannot be proven; convene a fresh council")
+    sAttemptState = dictAttempt.get("sAttemptState", "")
+    if sAttemptState == "running":
+        raise CouncilCommandError(
+            "a phase attempt was still running when this council "
+            "stopped — its launched runners cannot be proven gone. "
+            "Run vaibify reconcile, then retry the phase.")
+    if sAttemptState == "outcomeSettled" and dictAttempt.get(
+            "sOutcome") not in ("advancedToNextPhase", "roundResolved"):
+        raise CouncilCommandError(
+            "this campaign's last settled outcome "
+            f"({dictAttempt.get('sOutcome') or 'unrecorded'}) is not a "
+            "resumable boundary")
+    if dictCampaign.get("bStopRequested"):
+        if not bClearStopRequest:
+            raise CouncilCommandError(
+                "a stop was requested before this council stopped, and "
+                "resuming would archive it immediately. Resume with the "
+                "stop cleared to continue deliberating, or convene a "
+                "fresh council if the stop should stand.")
+        # An explicit, recorded researcher decision — never a silent
+        # clear (continuation plan 4.2.5). The decision rides the
+        # runtime's record and reaches disk with the next checkpoint.
+        dictCampaign["bStopRequested"] = False
+        dictCampaign.setdefault("listResearcherDecisions", []).append(
+            {"sDecisionKind": "stopRequestClearedOnResume"})
+    dictRuntime = await _fdictRebuildRuntimeNonDestructively(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        dictCampaign, sImageReference, fsStageRunnerCredential)
+    if sAttemptState == "turnsSettled":
+        dictReplayed = dictRuntime[
+            "engineCouncil"].fdictReplaySettlementFromTurnRecords()
+        if dictReplayed["sState"] != agentCouncilCampaign.S_STATE_PLANNING:
+            # The replayed settlement reached a gate or a terminal
+            # state: the record says so durably and there is no walk
+            # to continue. The rebuilt runtime STAYS registered — a
+            # gate's answer drives it next, and a terminal state is
+            # settled by the ordinary release/dispose paths.
+            return {"bResumed": True, "sTurnId": "",
+                    "sState": dictReplayed["sState"]}
+    sTurnId = _fsSpawnDriveTask(
+        dictRuntime, dictRuntime["engineCouncil"].fdictRunUntilBlocked)
+    return {"bResumed": True, "sTurnId": sTurnId,
+            "sState": dictRuntime["dictCampaign"]["sState"]}
+
+
 def _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction):
     """Refuse a continuation that would race the live drive task."""
     if fbCampaignDriveIsLive(dictControllerState, sCampaignId):
@@ -593,9 +802,19 @@ async def fdictLaunchCampaignDeliberation(
         dictCampaign["dictProjectIdentity"]["sSnapshotScopeNote"] = (
             agentCouncilCharter.fsDescribeSnapshotScope(
                 dictManifest.get("listResearcherExcludedPaths") or []))
+        baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
+        # Pinned before the first turn, checkpointed with the snapshot
+        # identity: the image the runners execute in and the sealed
+        # archive's BYTE digest (sSnapshotSha256 is a content identity
+        # over manifest rows, which validates nothing about the tar a
+        # resume would hand back to the runners). Resume compares both
+        # and refuses on difference (continuation plan 4.2).
+        dictCampaign["dictProjectIdentity"]["sImageIdentity"] = (
+            sImageReference)
+        dictCampaign["dictProjectIdentity"]["sSnapshotArchiveSha256"] = (
+            hashlib.sha256(baSnapshotTar).hexdigest())
         agentCouncilStore.fnCheckpointStoredCampaign(
             dictStore, sCampaignId, dictCampaign)
-        baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
         # SHIELDED: cancelling this await cancels only the awaiting
         # future, never the worker thread, which would otherwise keep
         # registering the runtime and provisioning egress AFTER the
@@ -673,18 +892,51 @@ def _fbaReadSealedSnapshot(dictStore, sCampaignId):
         dictStore["sDurableStoreRoot"], sCampaignId)
 
 
-def _fdictRequireContinuationRuntime(dictControllerState, sCampaignId,
-                                     sAction):
-    """Return the runtime a continuation drives, or refuse honestly."""
+async def _fdictRequireOrRebuildRuntime(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        sAction, dictRebuildMaterials=None):
+    """Return the continuation runtime, rebuilding it when the hub died.
+
+    The original live failure (continuation plan 0.1): a needsHuman
+    campaign survives on disk, the panel shows its gate and an answer
+    box, and the answer is then refused because the in-process runtime
+    died with the hub. The gate is live in the record, so the honest
+    behaviour is ruling 2.5's — the runtime is rebuilt when the answer
+    is SUBMITTED, under the same admissions a resume passes, and a
+    failed rebuild leaves the record byte-identical (4.3): the
+    13-question gate this path exists to rescue is exactly what a
+    transactional launch-style failure handler would destroy.
+    """
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction)
     dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
-    if dictRuntime is None:
+    if dictRuntime is not None:
+        _fnRefuseWhenResourceAdmissionClosed(
+            dictControllerState, dictRuntime["dictCampaign"], sAction)
+        return dictRuntime
+    if dictRebuildMaterials is None:
+        raise CouncilCommandError(
+            "this campaign has no live deliberation to continue — the "
+            "hub restarted since it ran; convene a fresh council")
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    if dictCampaign is None:
+        raise CouncilCommandError(
+            f"no stored campaign {sCampaignId!r} to continue")
+    dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
+        dictCampaign)
+    if dictCampaign["sState"] != agentCouncilCampaign.S_STATE_NEEDS_HUMAN:
         raise CouncilCommandError(
             "this campaign has no live deliberation to continue — the "
             "hub restarted since it ran; convene a fresh council")
     _fnRefuseWhenResourceAdmissionClosed(
-        dictControllerState, dictRuntime["dictCampaign"], sAction)
-    return dictRuntime
+        dictControllerState, dictCampaign, sAction)
+    _fnRefuseUnsettledCampaignWork(
+        dictRegistry, dictCampaign, sCampaignId, sAction)
+    return await _fdictRebuildRuntimeNonDestructively(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        dictCampaign,
+        dictRebuildMaterials["sImageReference"],
+        dictRebuildMaterials.get("fsStageRunnerCredential"))
 
 
 def _fnRequireHumanGate(dictRuntime, sExpectedGateKind=""):
@@ -714,7 +966,8 @@ def _fnRequireHumanGate(dictRuntime, sExpectedGateKind=""):
 
 async def fdictContinueCampaignAfterResponse(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        sResponseText, listDecisionAnswers=None):
+        sResponseText, listDecisionAnswers=None,
+        dictRebuildMaterials=None):
     """Answer a blocking question and relaunch deliberation.
 
     Refuses while a drive task is live, when the campaign has no
@@ -724,8 +977,9 @@ async def fdictContinueCampaignAfterResponse(
     the exhausted-rounds one, whose only continuations are its three
     exits.
     """
-    dictRuntime = _fdictRequireContinuationRuntime(
-        dictControllerState, sCampaignId, "respond")
+    dictRuntime = await _fdictRequireOrRebuildRuntime(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        "respond", dictRebuildMaterials)
     _fnRequireHumanGate(dictRuntime)
     sTurnId = _fsSpawnDriveTask(
         dictRuntime,
@@ -737,10 +991,11 @@ async def fdictContinueCampaignAfterResponse(
 
 async def fdictGrantCampaignResolutionRound(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        iGrantedRounds):
+        iGrantedRounds, dictRebuildMaterials=None):
     """Exhausted-round exit 1: grant a bounded resolution round."""
-    dictRuntime = _fdictRequireContinuationRuntime(
-        dictControllerState, sCampaignId, "grant a resolution round")
+    dictRuntime = await _fdictRequireOrRebuildRuntime(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        "grant a resolution round", dictRebuildMaterials)
     _fnRequireHumanGate(
         dictRuntime, agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS)
     if iGrantedRounds < 1:
@@ -755,10 +1010,11 @@ async def fdictGrantCampaignResolutionRound(
 
 async def fdictResolveCampaignObjections(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        dictDispositionByObjectionId):
+        dictDispositionByObjectionId, dictRebuildMaterials=None):
     """Exhausted-round exit 2: dispose every objection, one final veto."""
-    dictRuntime = _fdictRequireContinuationRuntime(
-        dictControllerState, sCampaignId, "resolve objections")
+    dictRuntime = await _fdictRequireOrRebuildRuntime(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        "resolve objections", dictRebuildMaterials)
     _fnRequireHumanGate(
         dictRuntime, agentCouncilCampaign.S_GATE_EXHAUSTED_ROUNDS)
     sTurnId = _fsSpawnDriveTask(

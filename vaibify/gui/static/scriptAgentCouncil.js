@@ -65,6 +65,15 @@ var VaibifyAgentCouncil = (function () {
         sRenderSignature: "",
         iPollTimer: null,
         bPollInFlight: false,
+        /* True while an action POST is in flight. Held in MODULE
+           state and derived into the DOM by the render path, never by
+           a helper holding a captured element: this module re-renders
+           constantly, so a captured element is a stale element. The
+           flag suppresses a second submission of paid work and keeps
+           every action button disabled across mid-request re-renders;
+           the finally clears it, so a refused action's button is
+           restored. */
+        bActionPending: false,
         listDraftParticipants: [],
         iChairbotIndex: 0,
         /* Poll health. The panel renders backend truth, so when the
@@ -1586,6 +1595,15 @@ var VaibifyAgentCouncil = (function () {
             "<div class=\"council-tab-content\">" +
             _fsActiveTabContent(dictCampaign) + "</div>";
         _fnBindWorkspace(dictCampaign);
+        if (_dictState.bActionPending) {
+            /* Derived HERE, in the render path, from module state: a
+               poll tick re-rendering mid-request replaces every
+               button element, so only a derivation that runs on each
+               render can keep them disabled — a helper holding the
+               clicked element would be holding a dead node. */
+            elBody.querySelectorAll("button").forEach(
+                function (elButton) { elButton.disabled = true; });
+        }
         _dictState.sRenderSignature = _fsWorkspaceSignature();
     }
 
@@ -2223,7 +2241,9 @@ var VaibifyAgentCouncil = (function () {
            actually do while the council deliberates — read, or stop.
            A message box here would post a respond the backend rightly
            refuses 409, which is a control that only ever fails. */
-        void dictCampaign;
+        if (dictCampaign.bDeliberationLive === false) {
+            return _fsResumeSurface(dictCampaign);
+        }
         return "<div class=\"council-composer\">" +
             "<p class=\"council-hint\">The council is deliberating. It " +
             "will pause here when it needs your decision; until then " +
@@ -2231,6 +2251,39 @@ var VaibifyAgentCouncil = (function () {
             "turn.</p>" +
             "<button type=\"button\" id=\"btnCouncilStop\" " +
             "class=\"btn\">Stop council</button>" +
+            "</div>";
+    }
+
+    function _fsResumeSurface(dictCampaign) {
+        /* A planning campaign with NO live deliberation: the hub
+           restarted under it. Rendered only from backend truth
+           (bDeliberationLive and the durable stopping point) — this
+           panel never guesses liveness from staleness. The button
+           offers exactly what the record supports; the route
+           re-derives the same answer and adds the dynamic refusals
+           (reservations, image drift, archive validation) a listing
+           cannot promise. */
+        var dictStopping = dictCampaign.dictStoppingPoint || {};
+        if (!dictStopping.bResumable) {
+            return "<div class=\"council-composer\">" +
+                "<p class=\"council-hint\">This council is not " +
+                "running, and cannot be continued: " +
+                _fsEscape(dictStopping.sBlockedReason ||
+                    "no coherent stopping point was recorded") +
+                "</p></div>";
+        }
+        var bClearsStop = Boolean(dictCampaign.bStopRequested);
+        return "<div class=\"council-composer\">" +
+            "<p class=\"council-hint\">This council is not running — " +
+            "the hub restarted since its last settled step (" +
+            _fsEscape(_fsDescribeStoppingPoint(dictStopping)) +
+            "). Resuming relaunches paid provider work from that " +
+            "step, against the same sealed snapshot.</p>" +
+            "<button type=\"button\" id=\"btnCouncilResume\" " +
+            "class=\"btn btn-primary\">" +
+            (bClearsStop ? "Resume (clears the requested stop)"
+                : "Resume deliberation") +
+            "</button>" +
             "</div>";
     }
 
@@ -2710,7 +2763,12 @@ var VaibifyAgentCouncil = (function () {
     async function _fnPostChatAction(sSuffix, dictBody) {
         /* Never optimistic: the transcript on screen is refetched from
            the server after the action, so a message the backend
-           refused never appears as one it accepted. */
+           refused never appears as one it accepted. Same one-action
+           discipline as _fnPostAction: paid work is never
+           double-submitted by a double-click. */
+        if (_dictState.bActionPending) return;
+        _dictState.bActionPending = true;
+        _fnRenderWorkspace();
         try {
             var sPath = _fsRoute(
                 "/" + _dictState.sActiveCampaignId + sSuffix)
@@ -2723,6 +2781,8 @@ var VaibifyAgentCouncil = (function () {
         } catch (error) {
             VaibifyApp.fnShowToast(
                 "Chairbot: " + (error.message || String(error)), "error");
+        } finally {
+            _dictState.bActionPending = false;
         }
         await _fnLoadChatQuietly();
         _fnRenderWorkspace();
@@ -2763,6 +2823,7 @@ var VaibifyAgentCouncil = (function () {
             });
         });
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
+        _fnBindElement("btnCouncilResume", _fnResumeCouncil);
         _fnBindElement("btnCouncilAnswer", _fnAnswerQuestion);
         _fnBindElement("btnCouncilGrantRound", _fnGrantResolutionRound);
         _fnBindElement("btnCouncilResolveOverride", _fnResolveObjections);
@@ -2900,6 +2961,18 @@ var VaibifyAgentCouncil = (function () {
             "/" + _dictState.sActiveCampaignId + "/request-stop", undefined);
     }
 
+    async function _fnResumeCouncil() {
+        /* The stop-clear choice is surfaced ON the button label
+           (continuation plan 4.2.5): a record carrying bStopRequested
+           resumes only with the clear made explicit, and the backend
+           records that clear as a researcher decision. */
+        var bClearsStop = Boolean(
+            (_dictState.dictCampaign || {}).bStopRequested);
+        await _fnPostAction(
+            "/" + _dictState.sActiveCampaignId + "/resume",
+            {bClearStopRequest: bClearsStop});
+    }
+
     async function _fnAcceptPlan() {
         /* No body (remediation R3): the backend accepts the council's
            own server-held candidate through the engine's planReady
@@ -2934,7 +3007,16 @@ var VaibifyAgentCouncil = (function () {
            project tracking several directories with no workflow open
            resolves to no repository, and the server rightly refuses to
            guess — so an action that omitted it was refused while the
-           panel beside it polled happily. */
+           panel beside it polled happily.
+
+           One action at a time: a double-click on a council control is
+           a second submission of PAID provider work, so a click while
+           one is pending is dropped, and the pending flag rides module
+           state so every re-render keeps the buttons disabled until
+           the request settles either way. */
+        if (_dictState.bActionPending) return;
+        _dictState.bActionPending = true;
+        _fnRenderWorkspace();
         var sUrl = _fsRoute(sPath) + _fsDirectoryQuery("?");
         try {
             if (dictBody === undefined) {
@@ -2947,6 +3029,9 @@ var VaibifyAgentCouncil = (function () {
                 "Action failed: " + (error.message || String(error)),
                 "error");
             return;
+        } finally {
+            _dictState.bActionPending = false;
+            _fnRenderWorkspace();
         }
         await _fnReloadActiveCampaign();
         _fnStartPolling();

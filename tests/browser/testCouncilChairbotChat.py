@@ -194,6 +194,51 @@ def testTheChairbotConversationRunsInTheBrowser(pageDashboard, serverHub):
 
 
 @pytest.mark.falsification
+def testADoubleClickSpendsOneMessageNotTwo(pageDashboard, serverHub):
+    """A double-click on Ask is one paid message, never two.
+
+    The scripted runner's 3s delay keeps the first request in flight
+    while the second click lands, which is exactly the window a real
+    double-click hits. The pending-action state lives in the module
+    state object and is derived into the DOM by the render path, so a
+    mid-request re-render cannot silently re-enable the button.
+
+    Kills: the action helper dropping the pending-state suppression.
+    """
+    _fdictClaimAndActivate(pageDashboard, serverHub)
+    _fnConveneThroughTheForm(pageDashboard)
+    sCampaignId = _fsNewestCampaignId(serverHub)
+
+    pageDashboard.click('.council-tab[data-tab="chat"]')
+    pageDashboard.wait_for_selector("#btnCouncilChatOpen", timeout=16000)
+    pageDashboard.click("#btnCouncilChatOpen")
+    pageDashboard.wait_for_selector("#councilChatQuestion", timeout=16000)
+
+    pageDashboard.fill("#councilChatQuestion", "asked exactly once?")
+    pageDashboard.dblclick("#btnCouncilChatAsk")
+    pageDashboard.wait_for_selector(
+        ".council-chat-chairbot", timeout=30000)
+
+    dictControllerState = getattr(
+        serverHub.app.state,
+        agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY)
+    dictSession = dictControllerState[
+        agentCouncilChat.S_CHAT_SESSIONS_KEY][sCampaignId]
+    listResearcherMessages = [
+        dictMessage for dictMessage in dictSession["listMessages"]
+        if dictMessage.get("sAuthor") == "researcher"]
+    assert len(listResearcherMessages) == 1, (
+        "a double-click submitted the researcher's message twice")
+    # The settled action restores its controls: the finally clears the
+    # pending flag on refusal and success alike, so a stuck-disabled
+    # button would mean the flag leaked.
+    assert not pageDashboard.is_disabled("#btnCouncilChatAsk")
+
+    assert pageDashboard.listPageErrors == []
+    assert pageDashboard.listConsoleErrors == []
+
+
+@pytest.mark.falsification
 def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     """The render-signature trap, driven rather than asserted in a string.
 

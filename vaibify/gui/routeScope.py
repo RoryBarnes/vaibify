@@ -279,6 +279,7 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # the council, which is exactly the material the lease is what
     # entitles somebody to.
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/chat"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/plan.md"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),

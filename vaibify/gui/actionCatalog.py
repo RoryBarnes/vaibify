@@ -854,6 +854,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the per-handler refusal agree.
     ("POST", "/api/agent-councils/{sContainerId}/start"),
     ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/respond"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/resume"),
     ("POST",
      "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
     ("POST",
