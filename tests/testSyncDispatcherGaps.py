@@ -1,8 +1,6 @@
 """Tests targeting uncovered lines in vaibify.gui.syncDispatcher.
 
 Covers:
-- Line 232: _flistBuildStepCopyCommandList skips steps with empty sCamelDir
-- Lines 255-266: ftResultPushScriptsToGithub with actual commands
 - Line 386: fdictCheckConnectivity unreachable "Unknown service" fallback
 - Lines 645-667: ftResultExportDag (new function)
 """
@@ -13,11 +11,9 @@ from unittest.mock import MagicMock, patch
 from vaibify.gui.syncDispatcher import (
     DICT_DAG_MEDIA_TYPES,
     _flistBuildDagEdges,
-    _flistBuildStepCopyCommandList,
     fdictCheckConnectivity,
     fsBuildDagDot,
     ftResultExportDag,
-    ftResultPushScriptsToGithub,
 )
 
 
@@ -55,90 +51,6 @@ DICT_STEP_EMPTY = {
     "saOutputDataFiles": [],
     "saPlotFiles": [],
 }
-
-
-# ── _flistBuildStepCopyCommandList: line 232 (empty sCamelDir) ───
-
-
-class TestBuildStepCopyCommandListEmptyCamelDir:
-    """When fdictBuildStepDirectoryMap returns '' for a step, skip it."""
-
-    @patch("vaibify.gui.syncDispatcher.workflowManager")
-    def test_empty_camel_dir_skipped(self, mockWorkflowMgr):
-        mockWorkflowMgr.fdictBuildStepDirectoryMap.return_value = {
-            0: "",
-            1: "runSimulation",
-        }
-        mockWorkflowMgr.flistExtractStepScripts.return_value = [
-            "run.py"]
-        mockWorkflowMgr.fsGetPlotCategory.return_value = "display"
-        dictWorkflow = {
-            "listSteps": [DICT_STEP_WITH_SCRIPTS, DICT_STEP_WITH_SCRIPTS],
-        }
-        listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
-        assert len(listCommands) == 1
-        assert "runSimulation" in listCommands[0]
-
-    @patch("vaibify.gui.syncDispatcher.workflowManager")
-    def test_all_empty_camel_dirs_returns_empty(self, mockWorkflowMgr):
-        mockWorkflowMgr.fdictBuildStepDirectoryMap.return_value = {
-            0: "",
-        }
-        dictWorkflow = {"listSteps": [DICT_STEP_WITH_SCRIPTS]}
-        listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
-        assert listCommands == []
-
-
-# ── ftResultPushScriptsToGithub: lines 255-266 ──────────────────
-
-
-class TestPushScriptsToGithubWithCommands:
-    """When scripts exist, builds git command and executes it."""
-
-    @patch("vaibify.gui.syncDispatcher.workflowManager")
-    def test_successful_push(self, mockWorkflowMgr):
-        mockWorkflowMgr.fdictBuildStepDirectoryMap.return_value = {
-            0: "runSimulation",
-        }
-        mockWorkflowMgr.flistExtractStepScripts.return_value = [
-            "run.py"]
-        mockWorkflowMgr.fsGetPlotCategory.return_value = "display"
-        mockDocker = _fmockDocker(iExitCode=0, sOutput="abc1234")
-        dictWorkflow = {
-            "sWorkflowName": "Test",
-            "listSteps": [DICT_STEP_WITH_SCRIPTS],
-        }
-        iExit, sOut = ftResultPushScriptsToGithub(
-            mockDocker, "cid123", dictWorkflow,
-            "commit message", "/workspace/repo",
-        )
-        assert iExit == 0
-        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-        assert "git add -A" in sCommand
-        assert "git push" in sCommand
-        assert ".gitignore" in sCommand
-        assert "README.md" in sCommand
-        assert "commit message" in sCommand
-
-    @patch("vaibify.gui.syncDispatcher.workflowManager")
-    def test_push_failure_propagated(self, mockWorkflowMgr):
-        mockWorkflowMgr.fdictBuildStepDirectoryMap.return_value = {
-            0: "runSimulation",
-        }
-        mockWorkflowMgr.flistExtractStepScripts.return_value = [
-            "run.py"]
-        mockWorkflowMgr.fsGetPlotCategory.return_value = "display"
-        mockDocker = _fmockDocker(iExitCode=1, sOutput="push rejected")
-        dictWorkflow = {
-            "sWorkflowName": "Fail",
-            "listSteps": [DICT_STEP_WITH_SCRIPTS],
-        }
-        iExit, sOut = ftResultPushScriptsToGithub(
-            mockDocker, "cid123", dictWorkflow,
-            "commit msg", "/workspace/repo",
-        )
-        assert iExit == 1
-        assert sOut == "push rejected"
 
 
 # ── fdictCheckConnectivity: line 386 (unreachable fallback) ──────

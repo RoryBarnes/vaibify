@@ -7,10 +7,7 @@ import pytest
 from vaibify.gui.syncDispatcher import (
     _fbSafeDirectoryName,
     _fdictParsePorcelainLine,
-    _flistArchivePlotPaths,
     _flistBuildDagEdges,
-    _fsBuildStepCopyCommands,
-    _fsGenerateReadme,
     _fsNormalizePath,
     fdictParseTestMarkerOutput,
     flistCollectOutputFiles,
@@ -170,90 +167,10 @@ class TestFlistCollectOutputFiles:
         assert flistCollectOutputFiles(dictWorkflow, {}) == []
 
 
-class TestFlistArchivePlotPaths:
-    def test_archive_category_included(self):
-        dictStep = {"saPlotFiles": ["fig.pdf"]}
-
-        def fsMockGetCategory(dictStep, sFile):
-            return "archive"
-
-        listResult = _flistArchivePlotPaths(
-            dictStep, "/work/step01", fsMockGetCategory)
-        assert len(listResult) == 1
-        assert "/work/step01/fig.pdf" in listResult[0]
-
-    def test_non_archive_excluded(self):
-        dictStep = {"saPlotFiles": ["fig.pdf"]}
-
-        def fsMockGetCategory(dictStep, sFile):
-            return "display"
-
-        listResult = _flistArchivePlotPaths(
-            dictStep, "/work", fsMockGetCategory)
-        assert listResult == []
-
-    def test_absolute_path_preserved(self):
-        dictStep = {"saPlotFiles": ["/abs/fig.pdf"]}
-
-        def fsMockGetCategory(dictStep, sFile):
-            return "archive"
-
-        listResult = _flistArchivePlotPaths(
-            dictStep, "/work", fsMockGetCategory)
-        assert listResult[0] == "/abs/fig.pdf"
-
-    def test_empty_plot_files(self):
-        dictStep = {"saPlotFiles": []}
-        assert _flistArchivePlotPaths(
-            dictStep, "/work", lambda d, f: "archive") == []
 
 
-class TestFsBuildStepCopyCommands:
-    def test_builds_mkdir_and_copy(self):
-        sResult = _fsBuildStepCopyCommands(
-            "/work/step01", "stepOne",
-            ["run.py"], [])
-        assert "mkdir -p" in sResult
-        assert "cp" in sResult
-        assert "stepOne" in sResult
-
-    def test_archive_plots_use_pdftoppm(self):
-        sResult = _fsBuildStepCopyCommands(
-            "/work/step01", "stepOne",
-            [], ["/work/step01/fig.pdf"])
-        assert "pdftoppm" in sResult
-
-    def test_no_scripts_no_plots(self):
-        sResult = _fsBuildStepCopyCommands(
-            "/work", "stepDir", [], [])
-        assert "mkdir -p" in sResult
 
 
-class TestFsGenerateReadme:
-    def test_contains_workflow_name(self):
-        dictWorkflow = {
-            "sProjectTitle": "GJ 1132 XUV",
-            "listSteps": [],
-        }
-        sResult = _fsGenerateReadme(dictWorkflow)
-        assert "GJ 1132 XUV" in sResult
-
-    def test_lists_step_names(self):
-        dictWorkflow = {
-            "sProjectTitle": "Test",
-            "listSteps": [
-                {"sName": "Build Model"},
-                {"sName": "Plot Results"},
-            ],
-        }
-        sResult = _fsGenerateReadme(dictWorkflow)
-        assert "Build Model" in sResult
-        assert "Plot Results" in sResult
-
-    def test_contains_vaibify_link(self):
-        dictWorkflow = {"listSteps": []}
-        sResult = _fsGenerateReadme(dictWorkflow)
-        assert "Vaibify" in sResult
 
 
 class TestFdictParseTestMarkerOutput:

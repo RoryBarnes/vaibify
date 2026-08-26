@@ -12,7 +12,6 @@ from vaibify.gui.syncDispatcher import (
     ftResultPullFromOverleaf,
     ftResultArchiveToZenodo,
     ftResultPushToGithub,
-    ftResultPushScriptsToGithub,
     ftResultAddFileToGithub,
     ftResultGenerateLatex,
     fdictCheckConnectivity,
@@ -762,19 +761,7 @@ def test_ftResultGenerateDagSvg_failure():
 
 
 # -----------------------------------------------------------------------
-# syncDispatcher: ftResultPushScriptsToGithub
 # -----------------------------------------------------------------------
-
-
-def test_ftResultPushScriptsToGithub_no_scripts():
-    mockDocker = _fMockDocker()
-    dictWorkflow = {"listSteps": []}
-    iExit, sOut = ftResultPushScriptsToGithub(
-        mockDocker, "cid", dictWorkflow,
-        "commit msg", "/workspace",
-    )
-    assert iExit == 1
-    assert "No scripts" in sOut
 
 
 # -----------------------------------------------------------------------

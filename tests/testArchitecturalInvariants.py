@@ -5044,6 +5044,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stops under either parse; only a dirty one diverges). This entry
     # falls again if the deprecated, caller-less
     # ftResultPushScriptsToGithub is removed.
+    # -110 (2026-08-26, deletion): ftResultPushScriptsToGithub and the
+    # four helpers only it reached are gone. Deprecated, caller-less,
+    # and the least safe command path in the module -- `git add -A`
+    # with no hardening flags at all, where every sibling carries the
+    # protocol/symlink/submodule guards. Deleting it removed three
+    # rows from the audited ledgers, one of them an UNCLASSIFIED
+    # arbitrary-command site.
     # +16 (2026-08-26, dedup): the three push variants' identical
     # commit/push/report tail becomes _fsComposePublishSuffix. The
     # extraction removes 12 duplicated lines and the docstring costs
@@ -5051,7 +5058,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # already caused a fix to land in two of three sites and forced
     # iExpectedOccurrences=3 on two falsification entries. The history
     # is the reason the seam exists, so it lives at the seam.
-    "syncDispatcher.py": 1990,
+    "syncDispatcher.py": 1880,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

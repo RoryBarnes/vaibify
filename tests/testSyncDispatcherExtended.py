@@ -8,9 +8,6 @@ import pytest
 from vaibify.gui.syncDispatcher import (
     fsPythonCommand,
     _fsNormalizePath,
-    _fsGenerateReadme,
-    _fsBuildStepCopyCommands,
-    _flistArchivePlotPaths,
     fsBuildDagDot,
     fdictClassifyError,
     fdictSyncResult,
@@ -113,88 +110,14 @@ def test_fsNormalizePath_dotdot_normalized():
 
 
 # -----------------------------------------------------------------------
-# _fsGenerateReadme
 # -----------------------------------------------------------------------
 
 
-def test_fsGenerateReadme_uses_project_title():
-    dictWorkflow = {
-        "sProjectTitle": "My Project",
-        "listSteps": [],
-    }
-    sReadme = _fsGenerateReadme(dictWorkflow)
-    assert "# My Project" in sReadme
-
-
-def test_fsGenerateReadme_falls_back_to_name():
-    dictWorkflow = {
-        "sWorkflowName": "TestFlow",
-        "listSteps": [],
-    }
-    sReadme = _fsGenerateReadme(dictWorkflow)
-    assert "# TestFlow" in sReadme
-
-
-def test_fsGenerateReadme_lists_steps():
-    dictWorkflow = {
-        "sWorkflowName": "Flow",
-        "listSteps": [
-            {"sName": "Alpha"},
-            {"sName": "Beta"},
-        ],
-    }
-    sReadme = _fsGenerateReadme(dictWorkflow)
-    assert "1. Alpha" in sReadme
-    assert "2. Beta" in sReadme
-
-
-def test_fsGenerateReadme_contains_vaibify_link():
-    dictWorkflow = {"listSteps": []}
-    sReadme = _fsGenerateReadme(dictWorkflow)
-    assert "Vaibify" in sReadme
-
-
 # -----------------------------------------------------------------------
-# _fsBuildStepCopyCommands
 # -----------------------------------------------------------------------
 
 
-def test_fsBuildStepCopyCommands_creates_mkdir():
-    sResult = _fsBuildStepCopyCommands(
-        "/workspace/step1", "stepOne",
-        ["script.py"], [],
-    )
-    assert "mkdir -p" in sResult
-    assert "stepOne" in sResult
-
-
-def test_fsBuildStepCopyCommands_copies_scripts():
-    sResult = _fsBuildStepCopyCommands(
-        "/workspace/step1", "stepOne",
-        ["analyze.py", "plot.py"], [],
-    )
-    assert "cp" in sResult
-    assert "analyze.py" in sResult
-    assert "plot.py" in sResult
-
-
-def test_fsBuildStepCopyCommands_handles_archive_plots():
-    sResult = _fsBuildStepCopyCommands(
-        "/workspace/step1", "stepOne",
-        [], ["step1/fig.pdf"],
-    )
-    assert "pdftoppm" in sResult
-    assert "fig" in sResult
-
-
-def test_fsBuildStepCopyCommands_empty_lists():
-    sResult = _fsBuildStepCopyCommands(
-        "/workspace", "stepDir", [], [])
-    assert "mkdir -p" in sResult
-
-
 # -----------------------------------------------------------------------
-# _flistArchivePlotPaths
 # -----------------------------------------------------------------------
 
 
@@ -204,34 +127,6 @@ def _fsAlwaysArchive(dictStep, sFile):
 
 def _fsAlwaysSupporting(dictStep, sFile):
     return "supporting"
-
-
-def test_flistArchivePlotPaths_collects_archive():
-    dictStep = {"saPlotFiles": ["a.pdf", "b.pdf"]}
-    listResult = _flistArchivePlotPaths(
-        dictStep, "/workspace/step1", _fsAlwaysArchive)
-    assert len(listResult) == 2
-
-
-def test_flistArchivePlotPaths_skips_supporting():
-    dictStep = {"saPlotFiles": ["a.pdf", "b.pdf"]}
-    listResult = _flistArchivePlotPaths(
-        dictStep, "/workspace", _fsAlwaysSupporting)
-    assert len(listResult) == 0
-
-
-def test_flistArchivePlotPaths_absolute_path_preserved():
-    dictStep = {"saPlotFiles": ["/abs/fig.pdf"]}
-    listResult = _flistArchivePlotPaths(
-        dictStep, "/workspace", _fsAlwaysArchive)
-    assert listResult[0] == "/abs/fig.pdf"
-
-
-def test_flistArchivePlotPaths_relative_joined():
-    dictStep = {"saPlotFiles": ["fig.pdf"]}
-    listResult = _flistArchivePlotPaths(
-        dictStep, "/workspace/step1", _fsAlwaysArchive)
-    assert listResult[0] == "/workspace/step1/fig.pdf"
 
 
 # -----------------------------------------------------------------------
