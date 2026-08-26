@@ -2629,6 +2629,28 @@ var VaibifySyncManager = (function () {
             "error");
     }
 
+    function _fsDescribeVerifyOutcome(sService, dictStatus) {
+        /* Report the VERDICT, not the mechanism. "Status updates on
+           the next refresh" describes vaibify's plumbing and leaves
+           the researcher watching an icon; the numbers are what they
+           asked the question to learn, and they are already in the
+           response. */
+        var dict = dictStatus || {};
+        var iTotal = dict.iTotalFiles;
+        var iMatching = dict.iMatching;
+        if (typeof iTotal !== "number" || typeof iMatching !== "number") {
+            return "Verification of " + sService + " complete.";
+        }
+        if (iMatching === iTotal) {
+            return "Verified " + sService + ": all " + iTotal +
+                " published file" + (iTotal === 1 ? "" : "s") +
+                " match.";
+        }
+        return "Verified " + sService + ": " + iMatching + " of " +
+            iTotal + " match — " + (iTotal - iMatching) +
+            " differ from the published copy.";
+    }
+
     async function fnVerifyRemoteFromDashboard(sService, elButton) {
         // The Project block's per-row "Verify now" button. Runs the
         // same verify the Repos panel uses; the requirement row picks
@@ -2637,13 +2659,36 @@ var VaibifySyncManager = (function () {
         // network round trip is live.
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
+        /* A verify fetches and hashes every published file against the
+           remote, which took ~10s on a real project and showed the
+           researcher nothing at all — a disabled button is not visible
+           when the click came from a picklist that has already
+           dismissed itself, and there is no elButton on that path. Say
+           it has started, and say what it is doing, so a slow answer
+           is distinguishable from a dead one. */
+        VaibifyApp.fnShowToast(
+            "Verifying " + sService + " — comparing every published " +
+            "file against the remote. This can take a few seconds.",
+            "info");
         if (elButton) elButton.disabled = true;
         try {
-            await _fdictPostVerify(sContainerId, sService);
+            var dictStatus = await _fdictPostVerify(
+                sContainerId, sService,
+            );
             fnInvalidateVerifyCache();
+            /* Repaint HERE rather than waiting for the epoch to come
+               back round on a poll. The epoch path is the general
+               signal — it has to be, since a verify can also come from
+               the in-container agent or the scheduled sweep — but a
+               researcher who just clicked the button should not watch
+               a stale badge for a poll interval wondering whether
+               anything happened. */
+            if (typeof VaibifyGitBadges !== "undefined") {
+                await VaibifyGitBadges.fnRefresh(sContainerId);
+            }
             VaibifyApp.fnShowToast(
-                "Verification of " + sService + " complete — " +
-                "status updates on the next refresh.", "success");
+                _fsDescribeVerifyOutcome(sService, dictStatus),
+                "success");
         } catch (error) {
             if (error && error.iStatus === 409) {
                 // A 409 is a precondition refusal computed locally —

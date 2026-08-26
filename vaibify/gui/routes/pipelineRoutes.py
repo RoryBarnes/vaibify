@@ -944,6 +944,18 @@ def _fnRegisterFileStatus(app, dictCtx):
             })
         response.headers["ETag"] = sEtag
         response.headers["Cache-Control"] = S_FILE_STATUS_CACHE_CONTROL
+        # Carried in the BODY as well as the ETag (2026-08-26). The
+        # epoch was reachable only on /pipeline/{id}/state, which is
+        # polled only while a run is live -- so the dashboard's one
+        # poll-free invalidation signal was unobservable in exactly
+        # the situation it exists for: a researcher clicking Verify
+        # now with nothing running, whose badges then never repainted.
+        # Stamped AFTER the ETag so the 304 comparison is unchanged; a
+        # bump alters the ETag anyway, so the full body that follows
+        # always carries the new value.
+        dictResponse["iSyncEpoch"] = fiGetSyncEpoch(
+            dictCtx, sContainerId,
+        )
         return dictResponse
 
 

@@ -4223,7 +4223,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the file-status route's six ambient-admission save sites
     # are enumerated with their migration shape so the future
     # carrier migration starts from the examination, not from zero.
-    "routes/pipelineRoutes.py": 3217,
+    # +12 (2026-08-26): the file-status response now stamps
+    # iSyncEpoch onto its body. The epoch rode only
+    # /pipeline/{id}/state, whose poll runs solely while a run is
+    # live, so the dashboard's one poll-free invalidation signal was
+    # unobservable on an idle project — a researcher clicking Verify
+    # now got a correct server answer and a permanently stale screen.
+    # Most of the addition is the comment explaining why the stamp
+    # lands AFTER the ETag rather than before it.
+    "routes/pipelineRoutes.py": 3229,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
