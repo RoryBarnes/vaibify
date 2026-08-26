@@ -555,7 +555,7 @@ def testConveningShowsItIsWorkingAndCannotBeDoubleSubmitted(
 
     eventRelease = threading.Event()
     from vaibify.gui.routes import councilRoutes
-    fnRealProbe = councilRoutes._fnRefuseStartWithoutAProjectLogin
+    fnRealProbe = councilRoutes.fnRefuseStartWithoutAProjectLogin
 
     def _fnSlowLoginProbe(*tArguments, **dictKeywords):
         """Hold the START request open, and only that request.
@@ -570,7 +570,7 @@ def testConveningShowsItIsWorkingAndCannotBeDoubleSubmitted(
         return fnRealProbe(*tArguments, **dictKeywords)
 
     monkeypatch.setattr(
-        councilRoutes, "_fnRefuseStartWithoutAProjectLogin",
+        councilRoutes, "fnRefuseStartWithoutAProjectLogin",
         _fnSlowLoginProbe)
 
     _fdictActivateCouncilToolbar(pageDashboard, serverHub)

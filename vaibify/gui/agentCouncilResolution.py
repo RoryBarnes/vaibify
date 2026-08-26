@@ -47,6 +47,7 @@ from .agentCouncilCharter import (
 )
 
 __all__ = [
+    "fdictDescribeStoppingPoint",
     "RoundResolutionMixin",
     "TUPLE_DECISION_TIER_ORDER",
     "fdictDescribeActivePhase",
@@ -467,3 +468,115 @@ class RoundResolutionMixin:
         self._fnEmitEvent("humanGateOpened",
                           {"sGateKind": S_GATE_EXHAUSTED_ROUNDS})
         self._fnTransition(S_STATE_NEEDS_HUMAN, "roundBudgetExhausted")
+
+
+# States a council is finished in BY THE RESEARCHER'S CHOICE. Everything
+# else — including `failed` — stopped for a reason the researcher may
+# want undone, which is the whole premise of continuation.
+# ``awaitingImplementation`` is here because acceptance transitions
+# planAccepted -> awaitingImplementation inside one call
+# (fdictAcceptCampaignPlan), so the PERSISTED state of an accepted
+# campaign is never planAccepted — a set without the successor state
+# read every accepted campaign as resumable.
+SET_TERMINAL_BY_CHOICE = frozenset(
+    {"planAccepted", "awaitingImplementation", "archived"})
+
+# The phase order the engine walks, mirrored here so a reader can be
+# told what would run next WITHOUT constructing an engine. The engine's
+# _fsNextPhaseForRound stays the authority; testTheStoppingPointMirrors
+# TheEnginesPhaseOrder pins the two together, because a mirror nobody
+# checks is a second authority.
+LIST_FIRST_ROUND_PHASES = ["independentProposals", "crossReview",
+                           "synthesis", "veto"]
+LIST_LATER_ROUND_PHASES = ["crossReview", "synthesis", "veto"]
+
+
+def fdictDescribeStoppingPoint(dictCampaign):
+    """Describe where a campaign stopped and whether it can go on.
+
+    The listing's answer to "what was this doing when it stopped", and
+    the SAME predicate the resume route enforces — so the button and the
+    route can never disagree about what is resumable. A campaign that
+    cannot be continued must say so in the list rather than at the
+    click; discovering it at the click is the defect this exists to
+    remove.
+
+    Resumable means the record is COHERENT: every turn the open round
+    launched carries a terminal status, so the engine can be handed the
+    record and asked for the next phase without anything half-written
+    underneath it. A record checkpointed mid-phase is not resumable, and
+    that is exactly the case a crashed hub leaves.
+    """
+    sState = dictCampaign.get("sState", "")
+    listRounds = dictCampaign.get("listRounds") or []
+    dictRound = listRounds[-1] if listRounds else None
+    dictStopping = {
+        "sState": sState,
+        "iRoundNumber": (dictRound or {}).get("iRoundNumber", 0),
+        "sLastSettledPhase": _fsFindLastSettledPhase(dictRound),
+        "sNextPhase": _fsFindNextPhase(dictRound),
+        # Deliberately NO failed-phase attribution here. A scan of the
+        # turn records cannot say which phase KILLED the campaign: a
+        # participant failing during proposals is tolerated (marked
+        # bFailed, dropped from the active set, council continues), so
+        # a fixed-order scan blames proposals for a death synthesis
+        # caused. The durable phase-attempt record (continuation plan
+        # section 2) is the authority a retry target will come from;
+        # until it exists, this descriptor reports nothing it would
+        # have to guess.
+        "bResumable": False,
+        "sBlockedReason": "",
+    }
+    if sState in SET_TERMINAL_BY_CHOICE:
+        dictStopping["sBlockedReason"] = (
+            "this council is finished; convene a new one")
+        return dictStopping
+    sIncoherent = _fsFindIncoherentTurn(dictRound)
+    if sIncoherent:
+        dictStopping["sBlockedReason"] = sIncoherent
+        return dictStopping
+    if not (dictCampaign.get("dictProjectIdentity") or {}).get(
+            "sSnapshotIdentity"):
+        dictStopping["sBlockedReason"] = (
+            "this council never sealed a snapshot, so there is no "
+            "baseline to continue against")
+        return dictStopping
+    dictStopping["bResumable"] = True
+    return dictStopping
+
+
+def _fsFindIncoherentTurn(dictRound):
+    """Name a turn the record shows as launched but never settled."""
+    for sPhase, listTurns in ((dictRound or {}).get(
+            "dictTurnsByPhase") or {}).items():
+        for dictTurn in listTurns:
+            if dictTurn.get("sStatus") not in ("completed", "failed"):
+                return (f"a {sPhase} turn was still running when this "
+                        "council stopped, so its runners cannot be "
+                        "accounted for; convene a fresh council")
+    return ""
+
+
+def _fsFindLastSettledPhase(dictRound):
+    """Return the last phase of the open round that produced turns."""
+    dictByPhase = (dictRound or {}).get("dictTurnsByPhase") or {}
+    listWalked = [sPhase for sPhase in LIST_FIRST_ROUND_PHASES
+                  if sPhase in dictByPhase]
+    return listWalked[-1] if listWalked else ""
+
+
+def _fsFindNextPhase(dictRound):
+    """Return the phase the engine would run next in the open round."""
+    if dictRound is None or dictRound.get("sResolution"):
+        return ""
+    listOrder = (["veto"] if dictRound.get("bFinalVetoRound")
+                 else LIST_FIRST_ROUND_PHASES
+                 if dictRound.get("iRoundNumber") == 1
+                 else LIST_LATER_ROUND_PHASES)
+    for sPhase in listOrder:
+        if sPhase == "synthesis":
+            if not dictRound.get("bSynthesisSettled"):
+                return sPhase
+        elif sPhase not in (dictRound.get("dictTurnsByPhase") or {}):
+            return sPhase
+    return ""

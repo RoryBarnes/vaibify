@@ -95,8 +95,6 @@ def testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber():
     clearing is what makes it unreachable, and a future engine that
     resolved a round on a different path would otherwise report a
     finished round as live with nothing to catch it.
-
-    Kills: the reader ignoring a resolved round.
     """
     dictCampaign = _fdictBuildCampaign(
         DICT_RUNNING_SYNTHESIS,
@@ -109,12 +107,10 @@ def testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber():
 def testAnInterruptedCampaignReportsNothingRunning():
     """Leaving the planning state falsifies the record without rewriting it.
 
-    Kills: guarding on the round alone. The interrupted transition
-    happens with the round still open and still current, so a
-    round-number check passes and the dead campaign keeps claiming work.
-
-    Kills: the reader ignoring the campaign state, so a crashed hub's
-    record reads as live work.
+    Kills: the reader guarding on the round alone and ignoring the
+    campaign state. The interrupted transition happens with the round
+    still open and still current, so a round-number check passes and
+    the dead campaign keeps claiming work.
     """
     dictCampaign = _fdictBuildCampaign(DICT_RUNNING_SYNTHESIS,
                                        sState=S_STATE_INTERRUPTED)
@@ -166,16 +162,13 @@ def _tBuildCouncilObservingItselfMidTurn():
 
 
 @pytest.mark.falsification
-def testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord():
+def testEveryTurnSeesItsOwnPhaseInTheRecord():
     """Observed from inside each turn, not asserted after the run.
 
-    Kills: writing the phase but never the running participant; writing
-    either only once the phase settles; and writing the phase for the
+    Kills: the engine never recording the phase it runs — including
+    writing it only once the phase settles, and writing it for the
     barrier phases but not for synthesis, whose author is chosen by a
     fallback chain rather than by the loop.
-
-    Kills: the engine never recording the phase it runs, and never
-    recording who is running it.
     """
     fixtureCouncil, listObservations = (
         _tBuildCouncilObservingItselfMidTurn())
@@ -189,23 +182,43 @@ def testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord():
             "nothing was recorded as running during a %s turn"
             % dictObservation["sPhase"])
         assert dictActive["sPhase"] == dictObservation["sPhase"]
-        assert (dictObservation["sParticipantId"]
-                in dictActive["listRunningParticipantIds"])
     assert {dictObservation["sPhase"]
             for dictObservation in listObservations} >= {
         "independentProposals", "crossReview", "synthesis"}
 
 
 @pytest.mark.falsification
+def testEveryTurnSeesItsOwnNameInTheRecord():
+    """The record names WHO is running, observed mid-turn.
+
+    Kills: the engine writing the phase but never the running
+    participant — synthesis runs one author picked by a fallback
+    chain, so a display filling in the configured chairbot would name
+    the wrong agent exactly when the substitution made it matter.
+    """
+    fixtureCouncil, listObservations = (
+        _tBuildCouncilObservingItselfMidTurn())
+
+    fixtureCouncil.fdictDrive()
+
+    assert listObservations, "no turn ran"
+    for dictObservation in listObservations:
+        dictActive = dictObservation["dictActive"]
+        assert dictActive is not None, (
+            "nothing was recorded as running during a %s turn"
+            % dictObservation["sPhase"])
+        assert (dictObservation["sParticipantId"]
+                in dictActive["listRunningParticipantIds"])
+
+
+@pytest.mark.falsification
 def testTheRecordIsClearedOnceNothingIsRunning():
     """A settled council must not keep claiming a phase.
 
-    Kills: setting the record and never clearing it. The staleness
-    guards above would not catch this one: a campaign that reached a
-    human gate has an OPEN round with the current number, so only the
-    clearing makes it honest.
-
-    Kills: the engine never clearing the in-flight record.
+    Kills: the engine setting the record and never clearing it. The
+    staleness guards above would not catch this one: a campaign that
+    reached a human gate has an OPEN round with the current number, so
+    only the clearing makes it honest.
     """
     fixtureCouncil, _ = _tBuildCouncilObservingItselfMidTurn()
 

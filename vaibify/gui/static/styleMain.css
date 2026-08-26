@@ -7238,6 +7238,20 @@ body.council-workspace-open #mainLayout {
     color: var(--highlight-color);
 }
 
+.council-summary-directory {
+    margin: 14px 0 4px;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.council-open-newest {
+    color: var(--highlight-color);
+    font-size: 0.8em;
+    margin-right: 4px;
+}
+
 .council-chat-status {
     color: var(--text-secondary);
     font-size: 0.85em;

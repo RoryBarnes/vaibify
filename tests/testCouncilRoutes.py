@@ -40,6 +40,7 @@ from vaibify.gui import (
     containerOwnership,
     pipelineServer,
 )
+from vaibify.gui import councilRouteGuards
 from vaibify.gui.routes import councilRoutes
 from vaibify.config import registryManager
 from tests.agentCouncilHarness import fdictMakeTurnResult
@@ -1481,8 +1482,7 @@ def test_chat_open_refuses_once_the_lease_was_released(
     command, so it has to honour that gate explicitly or it becomes the
     one way to spend paid work against a project this hub gave up.
 
-    Kills: open ignoring closed council admission, and the twin that
-    gates close on admission like open.
+    Kills: open ignoring closed council admission.
     """
     client, app, _ = tOwnerClient
     _fnPatchChatGatewayForRoutes(monkeypatch, {})
@@ -1497,9 +1497,28 @@ def test_chat_open_refuses_once_the_lease_was_released(
 
     assert responseOpen.status_code == 409, responseOpen.text
     assert "lease was released" in responseOpen.json()["detail"]
-    # But CLOSING must still work: it is how a researcher makes a
-    # released project releasable, so gating it would put the only exit
-    # behind the gate it opens.
+
+
+@pytest.mark.falsification
+def test_chat_close_still_works_once_the_lease_was_released(
+        tOwnerClient, eventTurnGate, monkeypatch):
+    """Closing is the one chat action a released project must keep.
+
+    Close is how a researcher makes a released project releasable, so
+    gating it on admission would put the only exit behind the gate it
+    opens.
+
+    Kills: the twin that gates close on admission like open.
+    """
+    client, app, _ = tOwnerClient
+    _fnPatchChatGatewayForRoutes(monkeypatch, {})
+    sCampaignId = _sStartOneCampaign(client)
+    eventTurnGate.set()
+    _fnWaitForNoLiveCouncilWork(app)
+    agentCouncilController.fbCloseResourceAdmission(
+        app.state.dictCouncilControllerState, S_CONTAINER_NAME)
+
+    sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}/chat"
     assert client.post(sBase + "/close").status_code == 200
 
 
@@ -1547,7 +1566,7 @@ def test_every_campaign_action_accepts_a_chosen_directory(
     # workflow, so nothing but the query parameter can disambiguate.
     app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
     monkeypatch.setattr(
-        councilRoutes, "_flistTrackedDirectoryNames",
+        councilRouteGuards, "flistTrackedDirectoryNames",
         lambda dictCtx, sContainerId: ["vplanet", "vplot", "vspace"])
     sCredential, sLease = _tEstablishOwnership(
         app, S_CONTAINER_NAME, S_CONTAINER_ID)
@@ -1577,7 +1596,7 @@ def test_a_campaign_action_still_refuses_an_untracked_directory(tmp_path,
     app = _fnBuildAppWithTmpStore(tmp_path)
     app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
     monkeypatch.setattr(
-        councilRoutes, "_flistTrackedDirectoryNames",
+        councilRouteGuards, "flistTrackedDirectoryNames",
         lambda dictCtx, sContainerId: ["vplanet", "vplot"])
     sCredential, sLease = _tEstablishOwnership(
         app, S_CONTAINER_NAME, S_CONTAINER_ID)

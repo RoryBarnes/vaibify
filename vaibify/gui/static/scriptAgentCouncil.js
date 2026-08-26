@@ -74,6 +74,7 @@ var VaibifyAgentCouncil = (function () {
         sLastPollError: "",
         sLastEventPollError: "",
         sLastRenderError: "",
+        sLastListError: "",
         sLastChatError: "",
         iLastPollSucceededAt: 0,
         /* Per-directory snapshot feasibility, keyed by directory
@@ -339,24 +340,101 @@ var VaibifyAgentCouncil = (function () {
             "<button type=\"button\" id=\"btnCouncilOpenExisting\" " +
             "class=\"btn council-choice\"" +
             (_dictState.listSummaries.length ? "" : " disabled") +
-            ">Open an existing campaign (" +
+            ">Continue a council (" +
             _dictState.listSummaries.length + ")</button>" +
             "</div>" +
+            _fsListRefusalNotice() +
             _fsSummariesList();
         _fnShowModal();
         _fnBindChooser();
     }
 
+    function _fsListRefusalNotice() {
+        /* "(0)" is what an unreported refusal looks like, and it is
+           indistinguishable from a project that never convened. */
+        if (!_dictState.sLastListError) return "";
+        return "<p class=\"council-chat-failure\">This project's " +
+            "councils could not be listed (" +
+            _fsEscape(_dictState.sLastListError) +
+            "). The count beside the button is not a count of what " +
+            "exists.</p>";
+    }
+
     function _fsSummariesList() {
+        /* Ordered by the record's own clock, identified by the
+           researcher's own name, and split by whether the council can
+           actually be continued. None of those three existed: a list of
+           identical questions in sorted-by-uuid order, with no way to
+           tell a live gate from a dead campaign, sent a researcher into
+           a nine-hour-old failure (2026-08-25). */
         if (!_dictState.listSummaries.length) return "";
-        var sRows = _dictState.listSummaries.map(function (dictSummary) {
-            return "<li><button type=\"button\" class=\"council-open-row\" " +
-                "data-campaign=\"" + _fsEscape(dictSummary.sCampaignId) +
-                "\"><span class=\"council-open-state\">" +
-                _fsEscape(dictSummary.sState) + "</span> " +
-                _fsEscape(dictSummary.sQuestion) + "</button></li>";
-        }).join("");
-        return "<ul class=\"council-summaries\">" + sRows + "</ul>";
+        var listSorted = _dictState.listSummaries.slice().sort(
+            function (dictLeft, dictRight) {
+                return (dictRight.fLastActivityEpoch || 0) -
+                    (dictLeft.fLastActivityEpoch || 0);
+            });
+        return _fsSummarySection("Can be continued",
+                listSorted.filter(_fbSummaryIsResumable)) +
+            _fsSummarySection("Finished or unusable",
+                listSorted.filter(function (dictSummary) {
+                    return !_fbSummaryIsResumable(dictSummary);
+                }));
+    }
+
+    function _fbSummaryIsResumable(dictSummary) {
+        return Boolean((dictSummary.dictStoppingPoint || {}).bResumable);
+    }
+
+    function _fsSummarySection(sHeading, listSummaries) {
+        if (!listSummaries.length) return "";
+        return "<h5 class=\"council-summary-directory\">" +
+            _fsEscape(sHeading) + "</h5><ul class=\"council-summaries\">" +
+            listSummaries.map(_fsOneSummaryRow).join("") + "</ul>";
+    }
+
+    function _fsOneSummaryRow(dictSummary) {
+        var dictStopping = dictSummary.dictStoppingPoint || {};
+        return "<li><button type=\"button\" class=\"council-open-row\" " +
+            "data-campaign=\"" + _fsEscape(dictSummary.sCampaignId) +
+            "\"><span class=\"council-open-name\">" +
+            _fsEscape(dictSummary.sCampaignName ||
+                dictSummary.sCampaignId) + "</span>" +
+            "<span class=\"council-open-state\">" +
+            _fsEscape(dictSummary.sState) + "</span> " +
+            "<span class=\"council-open-where\">" +
+            _fsEscape(_fsDescribeStoppingPoint(dictStopping)) + "</span> " +
+            "<span class=\"council-open-when\">" +
+            _fsEscape(_fsDescribeActivityTime(
+                dictSummary.fLastActivityEpoch)) + "</span></button></li>";
+    }
+
+    function _fsDescribeStoppingPoint(dictStopping) {
+        if (!dictStopping.bResumable) {
+            return dictStopping.sBlockedReason || "cannot be continued";
+        }
+        if (dictStopping.sNextPhase) {
+            return "next: " + dictStopping.sNextPhase + ", round " +
+                (dictStopping.iRoundNumber || 1);
+        }
+        return "round " + (dictStopping.iRoundNumber || 1) + " complete";
+    }
+
+    function _fsDescribeActivityTime(fEpochSeconds) {
+        /* Absence says so rather than rendering 1970. */
+        if (!fEpochSeconds) return "no recorded activity";
+        return new Date(fEpochSeconds * 1000).toLocaleString();
+    }
+
+    function _fsDirectoryForListedCampaign(sCampaignId) {
+        /* From the SUMMARY the server sent, never a map the panel kept
+           for itself: the record is the authority on which repository a
+           campaign belongs to. */
+        var listMatched = _dictState.listSummaries.filter(
+            function (dictSummary) {
+                return dictSummary.sCampaignId === sCampaignId;
+            });
+        return ((listMatched[0] || {}).sProjectRepoPath || "")
+            .split("/").filter(Boolean).pop() || "";
     }
 
     function _fnBindChooser() {
@@ -1038,7 +1116,8 @@ var VaibifyAgentCouncil = (function () {
     async function _fnLoadCampaign(sCampaignId) {
         try {
             var dictResult = await VaibifyApi.fdictGet(
-                _fsRoute("/" + sCampaignId));
+                _fsRoute("/" + sCampaignId)
+                + _fsDirectoryQuery("?", sCampaignId));
             _fnAdoptCampaign(sCampaignId, dictResult.dictCampaign);
         } catch (error) {
             VaibifyApp.fnShowToast(
@@ -1084,13 +1163,49 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnRefreshSummaries() {
+        /* A BLANK PROJECT has no workflow to open, so on a project
+           tracking several directories the server cannot resolve which
+           repository a bare listing means, and rightly refuses. That
+           refusal used to be swallowed into an empty list, so the
+           chooser read "(0)" for a project holding a live council
+           waiting at its gate (2026-08-25).
+
+           The bare call is tried FIRST, so an ordinary project still
+           costs one request; only a refusal fans out across the
+           candidate directories the capabilities poll already named. */
+        _dictState.sLastListError = "";
         try {
             var dictResult = await VaibifyApi.fdictGet(_fsRoute(""));
-            _dictState.listSummaries = (
-                dictResult.listCampaigns || []).slice().reverse();
+            _dictState.listSummaries = dictResult.listCampaigns || [];
+            return;
         } catch (error) {
-            _dictState.listSummaries = [];
+            _dictState.sLastListError = error.message || String(error);
         }
+        await _fnListAcrossCandidateDirectories();
+    }
+
+    async function _fnListAcrossCandidateDirectories() {
+        var listCandidates = (_dictState.dictCapabilities || {})
+            .listCandidateDirectories || [];
+        if (!listCandidates.length) {
+            _dictState.listSummaries = [];
+            return;
+        }
+        var listMerged = [];
+        for (var iIndex = 0; iIndex < listCandidates.length; iIndex += 1) {
+            try {
+                var dictOne = await VaibifyApi.fdictGet(
+                    _fsRoute("") + "?sProjectDirectory=" +
+                    encodeURIComponent(listCandidates[iIndex]));
+                (dictOne.listCampaigns || []).forEach(
+                    function (dictSummary) { listMerged.push(dictSummary); });
+            } catch (errorOne) {
+                /* One unreadable directory must not hide the others. */
+                void errorOne;
+            }
+        }
+        if (listMerged.length) _dictState.sLastListError = "";
+        _dictState.listSummaries = listMerged;
     }
 
     /* ------------------------------------------------------------------ */
@@ -2872,7 +2987,7 @@ var VaibifyAgentCouncil = (function () {
     /* Small helpers                                                      */
     /* ------------------------------------------------------------------ */
 
-    function _fsDirectoryQuery(sJoiner) {
+    function _fsDirectoryQuery(sJoiner, sCampaignIdForLookup) {
         /* The directory this campaign is about, echoed back on every
            read. A toolkit container tracks several repositories, so
            with no workflow open the server cannot resolve which one a
@@ -2886,7 +3001,17 @@ var VaibifyAgentCouncil = (function () {
            convene. */
         var sRepoPath = ((_dictState.dictCampaign || {})
             .dictProjectIdentity || {}).sProjectRepoPath || "";
-        if (!sRepoPath) return "";
+        if (!sRepoPath) {
+            /* Nothing loaded yet — the first fetch of a campaign just
+               picked out of the list. The SUMMARY carries the repo the
+               record itself records, keyed on the id being fetched: the
+               active id is not set until this call returns. */
+            var sListed = _fsDirectoryForListedCampaign(
+                sCampaignIdForLookup || _dictState.sActiveCampaignId);
+            return sListed
+                ? sJoiner + "sProjectDirectory=" + encodeURIComponent(sListed)
+                : "";
+        }
         var sBasename = sRepoPath.split("/").filter(Boolean).pop() || "";
         if (!sBasename) return "";
         return sJoiner + "sProjectDirectory=" +

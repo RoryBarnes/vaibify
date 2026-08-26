@@ -17,6 +17,7 @@ provider.
 """
 
 import copy
+import re
 
 from .agentCouncilCharter import (
     S_CHARTER_TEXT,
@@ -33,6 +34,8 @@ __all__ = [
     "I_MAXIMUM_TURN_WALL_CLOCK_SECONDS",
     "DICT_EMPTY_PROJECT_IDENTITY",
     "LIST_CAMPAIGN_REQUIRED_KEYS",
+    "fsComposeUniqueCampaignName",
+    "fsValidateCampaignName",
     "LIST_EXHAUSTED_ROUND_EXITS",
     "LIST_PROJECT_IDENTITY_KEYS",
     "S_CLAIM_ASSERTED",
@@ -185,6 +188,83 @@ DICT_EMPTY_PROJECT_IDENTITY = {
 }
 
 
+# A campaign's researcher-facing NAME. Not an identifier the server
+# keys on — the minted sCampaignId stays the only identity — but the one
+# thing that tells two campaigns apart in a listing. A researcher
+# iterating on one development prompt gets a list where every row is the
+# same sentence, and picking the wrong row cost a live 13-question gate
+# (2026-08-25). The contract is deliberately the campaign's OWN, not
+# the step-name contract in pipelineUtils: a step name becomes a
+# directory basename, so it strips only and allows 100 characters; a
+# campaign name is display-only, so whitespace collapses, 80 characters
+# fit a list row, and the first character must be alphanumeric so
+# every name sorts and renders predictably.
+I_MAX_CAMPAIGN_NAME_LENGTH = 80
+I_CAMPAIGN_NAME_WORDS_FROM_QUESTION = 6
+_RE_CAMPAIGN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 \-]*$")
+
+
+def fsValidateCampaignName(sCampaignName):
+    """Return a validated campaign name, or refuse and say why.
+
+    Shape only. Uniqueness needs the other campaigns bound to the same
+    project and is settled by :func:`fsComposeUniqueCampaignName`, which
+    is where the caller has them.
+    """
+    sTrimmed = " ".join((sCampaignName or "").split())
+    if not sTrimmed:
+        raise CouncilConfigurationError("a council name must not be empty")
+    if len(sTrimmed) > I_MAX_CAMPAIGN_NAME_LENGTH:
+        raise CouncilConfigurationError(
+            f"a council name is at most {I_MAX_CAMPAIGN_NAME_LENGTH} "
+            f"characters; got {len(sTrimmed)}")
+    if not _RE_CAMPAIGN_NAME.match(sTrimmed):
+        raise CouncilConfigurationError(
+            "a council name may hold letters, digits, spaces and hyphens, "
+            f"and must start with a letter or digit; got {sCampaignName!r}")
+    return sTrimmed
+
+
+def fsComposeUniqueCampaignName(sRequestedName, sQuestion, saExistingNames):
+    """Return the name to store: the researcher's, or one derived.
+
+    A blank request derives from the question's opening words, which is
+    better than nothing and worse than a name the researcher chose — the
+    convene form should ask. A name colliding with ``saExistingNames``
+    gains a numeric suffix. That is BEST-EFFORT disambiguation, not a
+    uniqueness guarantee: the caller reads the existing names and then
+    creates, so two concurrent starts can both pass the scan and store
+    the same name. Nothing downstream keys on the name —
+    ``sCampaignId`` is the only identity — so a duplicate costs a
+    researcher a moment of confusion, never a misdirected action.
+    """
+    sBase = (fsValidateCampaignName(sRequestedName) if (sRequestedName or "").strip()
+             else _fsDeriveNameFromQuestion(sQuestion))
+    setTaken = {sName.casefold() for sName in saExistingNames or []}
+    if sBase.casefold() not in setTaken:
+        return sBase
+    for iSuffix in range(2, 1000):
+        sCandidate = f"{sBase} {iSuffix}"[:I_MAX_CAMPAIGN_NAME_LENGTH].strip()
+        if sCandidate.casefold() not in setTaken:
+            return sCandidate
+    raise CouncilConfigurationError(
+        f"too many councils are already named like {sBase!r}")
+
+
+def _fsDeriveNameFromQuestion(sQuestion):
+    """Derive a fallback name from the question's opening words."""
+    saWords = [
+        "".join(sCharacter for sCharacter in sWord
+                if sCharacter.isalnum() or sCharacter == "-")
+        for sWord in (sQuestion or "").split()
+    ]
+    saKept = [sWord for sWord in saWords if sWord][
+        :I_CAMPAIGN_NAME_WORDS_FROM_QUESTION]
+    sDerived = " ".join(saKept)[:I_MAX_CAMPAIGN_NAME_LENGTH].strip()
+    return sDerived if sDerived and _RE_CAMPAIGN_NAME.match(sDerived) \
+        else "Council"
+
+
 class CouncilProtocolError(Exception):
     """A caller asked the protocol for a transition it does not offer."""
 
@@ -276,7 +356,8 @@ def fbCampaignMatchesPrincipal(dictCampaign, sResourceName,
 
 
 def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
-                        sChairbotParticipantId="", dictProjectIdentity=None):
+                        sChairbotParticipantId="", dictProjectIdentity=None,
+                        sCampaignName=""):
     """Create the durable campaign record in state draft.
 
     Requires at least two participants covering two distinct
@@ -306,6 +387,7 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
             "the chairbot must be one of the configured participants")
     return {
         "sCampaignId": _fsMintIdentifier("campaign"),
+        "sCampaignName": sCampaignName or "Council",
         "sState": S_STATE_DRAFT,
         "dictProjectIdentity": _fdictValidateProjectIdentity(
             dictProjectIdentity),
@@ -366,7 +448,15 @@ def fdictRestoreCampaignFromMetadata(dictMetadata):
         raise CouncilProtocolError(
             f"campaign metadata carries unknown state "
             f"'{dictMetadata['sState']}'")
-    return copy.deepcopy(dictMetadata)
+    dictRestored = copy.deepcopy(dictMetadata)
+    # Back-filled, NOT required. LIST_CAMPAIGN_REQUIRED_KEYS is checked
+    # strictly above, so adding the name there would strand every
+    # campaign checkpointed before it existed — including, when this
+    # landed, a live 13-question gate the researcher was waiting on.
+    if not dictRestored.get("sCampaignName"):
+        dictRestored["sCampaignName"] = _fsDeriveNameFromQuestion(
+            dictRestored.get("sQuestion", ""))
+    return dictRestored
 
 
 class CouncilProviderConnection:

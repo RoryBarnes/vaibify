@@ -13,6 +13,8 @@ This mirrors tests/testReposPanelFrontendContract.py.
 import os
 import re
 
+import pytest
+
 _sStaticDir = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "vaibify", "gui", "static",
@@ -116,7 +118,7 @@ def test_host_on_ramp_keys_on_the_marker_not_prose():
 def test_creation_chooser_offers_plan_and_open_existing():
     sSource = _fsCouncilSource()
     assert "Plan a change" in sSource
-    assert "Open an existing campaign" in sSource
+    assert "Continue a council" in sSource
     assert "btnCouncilPlanChange" in sSource
     assert "btnCouncilOpenExisting" in sSource
 
@@ -462,6 +464,7 @@ def _fsFunctionBody(sSource, sName):
     return sSource[iStart:min(listEnds)] if listEnds else sSource[iStart:]
 
 
+@pytest.mark.falsification
 def test_server_identifiers_are_hidden_from_model_written_text():
     """A model repeats the ids it was handed; a reader must not see them.
 
@@ -470,6 +473,8 @@ def test_server_identifiers_are_hidden_from_model_written_text():
     reads. A participant id is REPLACED with the agent label rather than
     deleted, because "as participant-x noted" would otherwise lose its
     subject.
+
+    Kills: internal identifiers leaking into the decision list.
     """
     sSource = _fsCouncilSource()
     assert "_fsHideInternalIdentifiers" in sSource
@@ -481,12 +486,15 @@ def test_server_identifiers_are_hidden_from_model_written_text():
             sSource, sRenderer), sRenderer
 
 
+@pytest.mark.falsification
 def test_decision_context_is_reachable_in_full():
     """A researcher must not be asked to decide against a cut sentence.
 
     The context was truncated at 240 characters with an ellipsis and no
     way to read the rest. The whole text is now in the DOM behind a
     native disclosure, so it costs a click and no round trip.
+
+    Kills: the context collapsing to a dead 240-character ellipsis.
     """
     sSource = _fsCouncilSource()
     sBody = _fsFunctionBody(sSource, "_fsDecisionContext")
@@ -497,13 +505,113 @@ def test_decision_context_is_reachable_in_full():
     assert "I_CONTEXT_SUMMARY_CHARACTERS" in sBody
 
 
+@pytest.mark.falsification
 def test_every_council_action_sends_the_chosen_directory():
     """An action that omits it is refused on a multi-directory project.
 
     The reads carried it and the actions did not, so the panel polled
     happily while every button failed.
+
+    Kills: actions posting without the directory query.
     """
     sSource = _fsCouncilSource()
     for sHelper in ("_fnPostAction", "_fnPostChatAction"):
         assert "_fsDirectoryQuery" in _fsFunctionBody(
             sSource, sHelper), sHelper
+
+
+def test_a_refusal_never_renders_as_zero_campaigns():
+    """"(0)" and "never convened" must not look identical.
+
+    A Blank Project has no workflow to open, so on a project tracking
+    several directories the server cannot resolve which repository a
+    bare listing means and rightly refuses. That refusal was swallowed
+    into an empty list, so the chooser read "Open an existing campaign
+    (0)" for a project holding a live council waiting at its gate.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnRefreshSummaries")
+    # The CATCH must record it. Matching the name alone also matched
+    # the reset at the top of the function, so a mutation that put the
+    # swallow straight back passed (2026-08-25).
+    assert "sLastListError = error.message" in sBody, (
+        "the listing refusal is discarded, so the count cannot be "
+        "distinguished from an empty project")
+    assert "listSummaries = []" not in sBody, (
+        "the bare-call failure path empties the list instead of "
+        "falling back to the candidate directories")
+    assert "_fsListRefusalNotice" in sSource
+    assert "not a count of what" in sSource
+
+
+def test_the_listing_falls_back_to_the_candidate_directories():
+    """A Blank Project must still be able to list its own councils.
+
+    The bare call is tried first so the ordinary project still costs one
+    request; only a refusal fans out across the directories the
+    capabilities poll already named, and each summary remembers which
+    one answered for it — a summary carries no repository of its own,
+    and on a fresh load no campaign is open to supply it.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnListAcrossCandidateDirectories")
+    assert "listCandidateDirectories" in sBody
+    assert "sProjectDirectory=" in sBody
+    # The directory for the first per-campaign fetch comes from the
+    # SUMMARY the server sent, not from bookkeeping the panel keeps.
+    sQuery = _fsFunctionBody(sSource, "_fsDirectoryQuery")
+    assert "_fsDirectoryForListedCampaign" in sQuery, (
+        "picking a campaign out of the list would fetch it with no "
+        "directory and be refused all over again")
+    sLookup = _fsFunctionBody(sSource, "_fsDirectoryForListedCampaign")
+    assert "sProjectRepoPath" in sLookup
+
+
+def test_the_panel_keeps_no_directory_bookkeeping_of_its_own():
+    """The record is the authority on which repository a campaign is in.
+
+    The panel used to keep its own campaign-id-to-directory map because
+    the listing summary carried no repository. It carries one now, and
+    a second copy of that fact is a second thing that can be wrong.
+    """
+    sSource = _fsCouncilSource()
+    assert "_dictDirectoryByCampaignId" not in sSource
+
+
+def test_opening_a_listed_campaign_carries_its_directory():
+    """The first fetch is keyed on the id being FETCHED, not the active one.
+
+    _fnAdoptCampaign sets the active id AFTER the fetch returns, so a
+    lookup against it is always a tick too late and the request goes out
+    bare — which is why picking a campaign out of the list still failed
+    with the directory refusal after the listing had already resolved it
+    (2026-08-25).
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnLoadCampaign")
+    assert "_fsDirectoryQuery(\"?\", sCampaignId)" in sBody, (
+        "the campaign fetch sends no directory, or looks it up under "
+        "the wrong id")
+
+
+def test_the_chooser_distinguishes_identical_questions():
+    """One prompt iterated on gives a list where every row reads alike.
+
+    The directory each campaign belongs to and its state are what tell
+    them apart, so the rows are grouped under the directory that
+    answered — and the ordering claim is limited to what a summary can
+    actually support.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsSummariesList")
+    # Ordered by the record's own clock, not by a position in a list.
+    assert "fLastActivityEpoch" in sBody
+    assert "sort(" in sBody
+    # Split by whether the council can actually be continued, so a dead
+    # campaign is not offered beside a live gate.
+    assert "_fbSummaryIsResumable" in sBody
+    sRow = _fsFunctionBody(sSource, "_fsOneSummaryRow")
+    assert "sCampaignName" in sRow, (
+        "rows are identified by the question alone, which is identical "
+        "for a researcher iterating on one prompt")
+    assert "_fsDescribeStoppingPoint" in sRow

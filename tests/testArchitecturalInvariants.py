@@ -4148,17 +4148,25 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1307 -> 1312: and the phase in flight is re-checked on read, so
     # the raw record never reaches a screen unguarded.
     # 1312 -> 1481 (2026-08-25): the ask-the-chairbot lane — read,
-    # open, ask, close. NOT split out: every one of them resolves
-    # the same principal, matches the same campaign identity and
-    # passes the same credential gate as a deliberation route, and
-    # a separate module would have to import five of this one's
-    # private helpers to do it. That is an artificial seam, not a
-    # real one; this module remains the HTTP skin over the council.
+    # open, ask, close. Initially NOT split out, because a separate
+    # module would have had to import five of this one's private
+    # helpers.
     # 1481 -> 1505 (2026-08-25): every campaign-scoped route can now
     # be TOLD which tracked directory it means, not only the reads.
     # On a project tracking several, a researcher could watch a
     # council and not answer it.
-    "routes/councilRoutes.py": 1505,
+    # 1530 -> 1074 (2026-08-26): the ratchet forced the conversation
+    # the 2026-08-25 note deferred, and the continuation plan's answer
+    # dissolved its objection: the shared guards were hoisted to
+    # ``councilRouteGuards.py`` (a non-route module both skins may
+    # import), so the chat lane moved to ``councilChatRoutes.py``
+    # without importing anybody's privates. The conversation lane
+    # registers its own commands, owns its own session lifecycle and
+    # changes for its own reasons — a real fault line once the guards
+    # stopped being this module's privates. (+3 the same day: the
+    # campaign-name field's comment stopped promising uniqueness the
+    # store does not enforce.)
+    "routes/councilRoutes.py": 1077,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -5033,7 +5041,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # had already recorded a line or two of slack, and adding them
     # together would have compounded it into a ceiling nothing reaches
     # — a ratchet with slack is green for growth nobody justified.
-    "pipelineServer.py": 2890,
+    # +1 (2026-08-26): the councilChatRoutes registration line — the
+    # chat lane split out of councilRoutes registers through the same
+    # canonical _fnRegisterAllRoutes list as every other route module.
+    "pipelineServer.py": 2891,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

@@ -17,6 +17,7 @@ phase settles; Phase 3 supplies the durable local app-data writer, and
 import copy
 import json
 import os
+import time
 import re
 
 __all__ = [
@@ -287,10 +288,21 @@ class InMemoryCampaignCheckpoint:
     def __init__(self):
         self.dictLatestCheckpoint = None
         self.iCheckpointCount = 0
+        self.fLastWrittenEpoch = 0.0
+
+    def ffFindLastWrittenEpoch(self):
+        """Mirror the durable writer's clock so the summary is uniform.
+
+        Both checkpoints answer the same question, so the listing never
+        has to know which one a store was built with — a test store and
+        a real one produce the same summary shape.
+        """
+        return self.fLastWrittenEpoch
 
     def fnCheckpointCampaign(self, dictCampaign):
         self.dictLatestCheckpoint = copy.deepcopy(dictCampaign)
         self.iCheckpointCount += 1
+        self.fLastWrittenEpoch = time.time()
 
     def fdictLoadLatestCheckpoint(self):
         """Return a deep copy of the latest checkpoint, or None."""
@@ -423,6 +435,21 @@ class DurableCampaignCheckpoint:
         with open(sRecordPath, encoding="utf-8") as fileRecord:
             return json.load(fileRecord)
 
+    def ffFindLastWrittenEpoch(self):
+        """Return when this campaign was last checkpointed, or 0.0.
+
+        The store's only source of TIME. The record itself carries none
+        — state transitions are not stamped — so without this a listing
+        cannot be ordered, and an unordered listing presented as ordered
+        is what sent a researcher into a nine-hour-old dead campaign.
+        """
+        try:
+            return os.path.getmtime(
+                os.path.join(self.sCampaignDirectory,
+                             S_CAMPAIGN_RECORD_BASENAME))
+        except OSError:
+            return 0.0
+
     def fsWriteAcceptedPlan(self, sPlanText):
         """Write the accepted plan locally (host app-data only) and return it.
 
@@ -535,15 +562,37 @@ def fjsonGetCampaignRecord(dictStore, sCampaignId):
 
 
 def _fdictSummariseEntry(dictEntry):
-    """Return the listing-safe summary of one stored campaign."""
+    """Return the listing-safe summary of one stored campaign.
+
+    Four of these fields exist because the listing without them was
+    unreadable (2026-08-25): a researcher iterating on one development
+    prompt saw rows whose question text was identical, in an order that
+    carried no time information — after a hub restart the store rebuilds
+    itself in ``sorted(os.listdir())`` order, alphabetical by a uuid
+    fragment — and with nothing saying what any of them was doing when
+    it stopped. Picking the wrong row cost a live 13-question gate.
+    """
+    from . import agentCouncilResolution
     dictCampaign = dictEntry["dictCampaign"]
     return {
         "sCampaignId": dictCampaign["sCampaignId"],
+        "sCampaignName": dictCampaign.get("sCampaignName", ""),
         "sState": dictCampaign["sState"],
         "sQuestion": dictCampaign["sQuestion"],
         "iParticipantCount": len(dictCampaign.get("listParticipants", [])),
         "iHighestRetainedSequence": (
             dictEntry["ringEvents"].iHighestRetainedSequence),
+        # The repository this campaign belongs to, so the panel stops
+        # keeping its own map of which directory answered for which row.
+        "sProjectRepoPath": (dictCampaign.get("dictProjectIdentity")
+                             or {}).get("sProjectRepoPath", ""),
+        # Real ordering. Read from the durable checkpoint the store
+        # already owns, so "most recent" is a fact rather than a
+        # position in a list nobody sorted.
+        "fLastActivityEpoch": dictEntry[
+            "checkpointDurable"].ffFindLastWrittenEpoch(),
+        "dictStoppingPoint": (
+            agentCouncilResolution.fdictDescribeStoppingPoint(dictCampaign)),
     }
 
 

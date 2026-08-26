@@ -13149,7 +13149,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
-            'testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord'
+            'testEveryTurnSeesItsOwnPhaseInTheRecord'
         ),
         source='vaibify/gui/agentCouncil.py',
         # The engine never records the phase it is about to run, so the
@@ -13164,7 +13164,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
-            'testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord'
+            'testEveryTurnSeesItsOwnNameInTheRecord'
         ),
         source='vaibify/gui/agentCouncil.py',
         # The engine never records who is running, so every agent chip
@@ -13245,7 +13245,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCouncilPeerHubIsolation.py::'
-            'testALivePeersCampaignIsNotClassifiedInterrupted'
+            'testThePeerPredicateReadsTheResourceNameNotTheRepoPath'
         ),
         source='vaibify/gui/agentCouncilRegistry.py',
         # The peer predicate reads the repository path where the flock is
@@ -13587,10 +13587,11 @@ def _fdictEntry(sRel):
             'tests/testCouncilRoutes.py::'
             'test_chat_open_refuses_a_project_with_no_claude_login'
         ),
-        source='vaibify/gui/routes/councilRoutes.py',
+        source='vaibify/gui/routes/councilChatRoutes.py',
         old=(
             '            await asyncio.to_thread(\n'
-            '                _fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)\n'
+            '                councilRouteGuards.fnRefuseStartWithoutAProjectLogin,\n'
+            '                dictCtx, sContainerId)\n'
             '            return await _fdictOpenChatMapped('
         ),
         new='            return await _fdictOpenChatMapped(',
@@ -13601,7 +13602,7 @@ def _fdictEntry(sRel):
             'tests/testCouncilRoutes.py::'
             'test_chat_open_refuses_once_the_lease_was_released'
         ),
-        source='vaibify/gui/routes/councilRoutes.py',
+        source='vaibify/gui/routes/councilChatRoutes.py',
         old=(
             '            _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)\n'
             '            # The same two gates start passes'
@@ -13614,11 +13615,11 @@ def _fdictEntry(sRel):
             'tests/testCouncilRoutes.py::'
             'test_chat_routes_refuse_a_campaign_bound_to_another_principal'
         ),
-        source='vaibify/gui/routes/councilRoutes.py',
+        source='vaibify/gui/routes/councilChatRoutes.py',
         old=(
-            '        _fjsonRequireCampaign(\n'
-            '            _fdictCampaignStore(requestHttp), sCampaignId, sName,\n'
-            '            sProjectRepoPath)\n'
+            '        councilRouteGuards.fjsonRequireCampaign(\n'
+            '            councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,\n'
+            '            sName, sProjectRepoPath)\n'
             '        return agentCouncilChat.fdictDescribeChatSession('
         ),
         new='        return agentCouncilChat.fdictDescribeChatSession(',
@@ -13627,9 +13628,9 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
-            'test_chat_open_refuses_once_the_lease_was_released'
+            'test_chat_close_still_works_once_the_lease_was_released'
         ),
-        source='vaibify/gui/routes/councilRoutes.py',
+        source='vaibify/gui/routes/councilChatRoutes.py',
         # The symmetric twin: gating close on admission would leave the
         # only exit behind the gate it opens -- a released project could
         # never settle its conversation.
@@ -13653,19 +13654,19 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/councilRoutes.py',
         old=(
             '            dictCtx, requestHttp, sContainerId, sProjectDirectory)\n'
-            '        dictStore = _fdictCampaignStore(requestHttp)\n'
-            '        dictRegistry = _fdictCouncilRegistry(requestHttp)\n'
+            '        dictStore = fdictCampaignStore(requestHttp)\n'
+            '        dictRegistry = fdictCouncilRegistry(requestHttp)\n'
             '\n'
-            '        dictControllerState = _fdictControllerState(requestHttp)\n'
+            '        dictControllerState = fdictControllerState(requestHttp)\n'
             '\n'
             '        async def _fdictExecuteRespond():'
         ),
         new=(
             '            dictCtx, requestHttp, sContainerId)\n'
-            '        dictStore = _fdictCampaignStore(requestHttp)\n'
-            '        dictRegistry = _fdictCouncilRegistry(requestHttp)\n'
+            '        dictStore = fdictCampaignStore(requestHttp)\n'
+            '        dictRegistry = fdictCouncilRegistry(requestHttp)\n'
             '\n'
-            '        dictControllerState = _fdictControllerState(requestHttp)\n'
+            '        dictControllerState = fdictControllerState(requestHttp)\n'
             '\n'
             '        async def _fdictExecuteRespond():'
         ),
@@ -13676,7 +13677,7 @@ def _fdictEntry(sRel):
             'tests/testCouncilRoutes.py::'
             'test_a_campaign_action_still_refuses_an_untracked_directory'
         ),
-        source='vaibify/gui/routes/councilRoutes.py',
+        source='vaibify/gui/councilRouteGuards.py',
         old='        if sChosenDirectory not in listTracked:',
         new='        if False:',
     ),
@@ -13802,65 +13803,6 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
-            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
-            'testTheRetentionBoundaryAppearsInTheLogAndNowhereElse'
-        ),
-        source='vaibify/gui/static/scriptAgentCouncil.js',
-        # The marker floats above the tab bar, outside the console the
-        # researcher is reading.
-        old=(
-            '        elBody.innerHTML = _fsTabBar(dictCampaign) +\n'
-            '            "<div class=\\"council-tab-content\\">" +'
-        ),
-        new=(
-            '        elBody.innerHTML = _fsTabBar(dictCampaign) +\n'
-            '            "<ul>" + _fsRetentionBoundaryRow() + "</ul>" +\n'
-            '            "<div class=\\"council-tab-content\\">" +'
-        ),
-    ),
-
-    Falsification(
-        nodeid=(
-            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
-            'testTheRetentionBoundaryAppearsInTheLogAndNowhereElse'
-        ),
-        source='vaibify/gui/static/scriptAgentCouncil.js',
-        old=(
-            '        return "<ul class=\\"council-event-log\\">" + sBoundaryRow +\n'
-            '            listVisible.map(_fsOneEventRow).join("") + "</ul>";'
-        ),
-        new=(
-            '        return sBoundaryRow + "<ul class=\\"council-event-log\\">" +\n'
-            '            listVisible.map(_fsOneEventRow).join("") + "</ul>";'
-        ),
-    ),
-
-    Falsification(
-        nodeid=(
-            'tests/browser/testCouncilChairbotChat.py::'
-            'testTheChairbotConversationRunsInTheBrowser'
-        ),
-        source='vaibify/gui/static/scriptAgentCouncil.js',
-        old=(
-            '        _fnBindElement("btnCouncilChatAsk", _fnAskChairbot);\n'
-        ),
-        new='',
-    ),
-
-    Falsification(
-        nodeid=(
-            'tests/browser/testCouncilChairbotChat.py::'
-            'testTheChairbotConversationRunsInTheBrowser'
-        ),
-        source='vaibify/gui/static/scriptAgentCouncil.js',
-        old=(
-            '        _fnBindElement("btnCouncilChatOpen", _fnOpenChat);\n'
-        ),
-        new='',
-    ),
-
-    Falsification(
-        nodeid=(
             'tests/browser/testCouncilChairbotChat.py::'
             'testAPollTickDoesNotWipeAHalfTypedQuestion'
         ),
@@ -13900,5 +13842,112 @@ def _fdictEntry(sRel):
             '                _fnRenderIfChanged();\n'
             '            }'
         ),
+    ),
+
+    # ------------------------------------------------------------------
+    # The stopping-point descriptor and the campaign name (continuation
+    # plan sections 0.3 and 6, 2026-08-26).
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testAnAcceptedCampaignIsFinishedNotResumable'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # Acceptance persists awaitingImplementation, never planAccepted,
+        # so a terminal set without the successor state read every
+        # accepted campaign as resumable.
+        old=(
+            'SET_TERMINAL_BY_CHOICE = frozenset(\n'
+            '    {"planAccepted", "awaitingImplementation", "archived"})'
+        ),
+        new=(
+            'SET_TERMINAL_BY_CHOICE = frozenset(\n'
+            '    {"planAccepted", "archived"})'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testTheDescriptorBlamesNoPhaseItCannotProve'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # Reintroduce a fixed-order failed-phase attribution: a scan of
+        # turn records blames a tolerated proposal failure for a death
+        # synthesis caused.
+        old=(
+            '        "bResumable": False,\n'
+            '        "sBlockedReason": "",\n'
+            '    }'
+        ),
+        new=(
+            '        "bResumable": False,\n'
+            '        "sBlockedReason": "",\n'
+            '        "sFailedPhase": "independentProposals",\n'
+            '        "bRequiresRetry": True,\n'
+            '    }'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testAMidPhaseRecordIsNotResumable'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        old=(
+            '            if dictTurn.get("sStatus") not in '
+            '("completed", "failed"):'
+        ),
+        new='            if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testTheStoppingPointMirrorsTheEnginesPhaseOrder'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # The mirror drifts from the engine's walk; the engine's own
+        # order rides its S_PHASE_* constants, so only the mirror moves.
+        old=(
+            'LIST_FIRST_ROUND_PHASES = ["independentProposals", "crossReview",\n'
+            '                           "synthesis", "veto"]'
+        ),
+        new=(
+            'LIST_FIRST_ROUND_PHASES = ["independentProposals", "synthesis",\n'
+            '                           "crossReview", "veto"]'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCampaignName.py::'
+            'testACollidingNameGainsASuffix'
+        ),
+        source='vaibify/gui/agentCouncilCampaign.py',
+        old=(
+            '    if sBase.casefold() not in setTaken:\n'
+            '        return sBase'
+        ),
+        new=(
+            '    if True:\n'
+            '        return sBase'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCampaignName.py::'
+            'testTheCollisionScanIsCaseInsensitive'
+        ),
+        source='vaibify/gui/agentCouncilCampaign.py',
+        old=(
+            '    setTaken = {sName.casefold() for sName in '
+            'saExistingNames or []}'
+        ),
+        new='    setTaken = set(saExistingNames or [])',
     ),
 ]

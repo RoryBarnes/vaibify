@@ -23,6 +23,7 @@ __all__ = [
     "replayRoutes",
     "preferencesRoutes",
     "councilRoutes",
+    "councilChatRoutes",
 ]
 
 from . import (
@@ -48,4 +49,5 @@ from . import (
     replayRoutes,
     preferencesRoutes,
     councilRoutes,
+    councilChatRoutes,
 )

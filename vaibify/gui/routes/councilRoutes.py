@@ -48,6 +48,22 @@ from .. import agentCouncilDockerGateway
 from .. import agentCouncilRegistry
 from .. import agentCouncilResolution
 from .. import agentCouncilStore
+from ..councilRouteGuards import (
+    I_MAX_RESPONSE_LENGTH,
+    S_COUNCIL_CAPABILITY,
+    fdictCampaignStore,
+    flistTrackedDirectoryNames,
+    fsResolveDominantRepositoryPath,
+    fdictControllerState,
+    fdictCouncilRegistry,
+    ffnBuildCredentialStager,
+    ffnBuildImageResolver,
+    fgenericSubmitMapped,
+    fjsonRequireCampaign,
+    fnRefuseRunnerBackendUnlessEnabled,
+    fnRefuseStartWithoutAProjectLogin,
+    ftResolveCouncilPrincipal,
+)
 from ..pipelineServer import (
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
@@ -67,10 +83,6 @@ from ..routeScope import (
     S_CARRIER_SEPARATE_AUTHORITY,
 )
 
-# The capability name the refusal reads back to the researcher, in their
-# words (section 21). One constant so every route names it identically.
-S_COUNCIL_CAPABILITY = "Convening a council"
-
 # The provider vocabulary a start request may name. Claude ONLY
 # (remediation R7/R9): Codex has no reviewed adapter — its feasibility
 # work is a separate follow-up — and advertising an adapter-less
@@ -81,7 +93,6 @@ SET_ALLOWED_PROVIDERS = frozenset({"claude"})
 I_MAX_QUESTION_LENGTH = 20000
 I_MAX_MODEL_LENGTH = 200
 I_MAX_ROLE_LENGTH = 2000
-I_MAX_RESPONSE_LENGTH = 20000
 I_MAX_PARTICIPANTS = 8
 I_MIN_PARTICIPANTS = 2
 
@@ -113,6 +124,13 @@ class CouncilStartRequest(BaseModel):
     """
 
     sQuestion: str = Field(min_length=1, max_length=I_MAX_QUESTION_LENGTH)
+    # The researcher's own name for this council. Blank derives one
+    # from the question; a collision with an existing name gains a
+    # numeric suffix as best-effort disambiguation (the store does not
+    # enforce uniqueness — sCampaignId stays the only identity).
+    sCampaignName: str = Field(
+        default="",
+        max_length=agentCouncilCampaign.I_MAX_CAMPAIGN_NAME_LENGTH)
     listParticipants: list[CouncilParticipantRequest] = Field(
         min_length=I_MIN_PARTICIPANTS, max_length=I_MAX_PARTICIPANTS)
     iChairbotIndex: int = Field(default=0, ge=0, lt=I_MAX_PARTICIPANTS)
@@ -178,173 +196,11 @@ class CouncilRejectRequest(BaseModel):
     sReasonText: str = Field(default="", max_length=I_MAX_RESPONSE_LENGTH)
 
 
-class CouncilChatAskRequest(BaseModel):
-    """Body for one ask-the-chairbot message."""
-
-    sQuestionText: str = Field(
-        min_length=1, max_length=I_MAX_RESPONSE_LENGTH)
-
-
 # Acceptance takes NO body (remediation R3): what lands in plan.md is
 # the council's own server-held candidate, accepted through the
 # engine's planReady gate — caller-supplied plan text was the accept
 # bypass the review flagged, and the review gate is the researcher
 # READING the candidate, not retyping it.
-
-
-def _fdictCampaignStore(requestHttp):
-    """Return the app-owned campaign store from ``app.state``."""
-    return getattr(
-        requestHttp.app.state,
-        agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
-    )
-
-
-def _fdictCouncilRegistry(requestHttp):
-    """Return the app-owned council registry from ``app.state``."""
-    return getattr(
-        requestHttp.app.state,
-        agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY,
-    )
-
-
-def _fdictControllerState(requestHttp):
-    """Return the app-owned controller state from ``app.state``."""
-    return getattr(
-        requestHttp.app.state,
-        agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
-    )
-
-
-def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
-    """Reject the agent lane, refuse a host project, require the daemon.
-
-    The container lease is already enforced by ``ContainerAwareRoute``
-    before this runs, so this is steps two and three of the ordering
-    (section 21): the browser-only refusal (council reads and actions
-    both expose researcher deliberation), then the mode branch, then the
-    daemon requirement. Returns the resolved resource name.
-    """
-    fnRejectAgentTokenLane(requestHttp)
-    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
-    fnRefuseContainerOnlyForHostProject(sName, S_COUNCIL_CAPABILITY)
-    dictCtx["require"](sContainerId)
-    return sName
-
-
-def _ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
-                               sChosenDirectory=""):
-    """Guard the route and resolve the (resource name, project repo) pair.
-
-    The canonical identity a campaign is bound to and matched against
-    (remediation R2): the lease principal is the container NAME, and the
-    repo is one validated project repo — a container can host several,
-    and a campaign belongs to exactly one.
-
-    ``sChosenDirectory`` is accepted by EVERY campaign-scoped route,
-    not only by start. The 2026-08-24 fix widened the READ routes and
-    stopped there, so on a project tracking several directories with no
-    workflow open a researcher could watch a council perfectly well and
-    not answer it: respond, stop, accept, reject, delete and the
-    ask-the-chairbot lane all still refused with "a council needs to be
-    told which one it is about". Reported live on 2026-08-25 against the
-    chat's open, which was simply the first of the ten anyone clicked.
-    Fixing the instance is not fixing the class.
-
-    It cannot re-point a campaign. The value is validated against the
-    tracked set exactly as start validates it, and every one of these
-    routes then matches the resolved principal against the STORED
-    campaign — so a wrong directory answers 404, never a rebinding.
-
-    The original reason the read routes needed it: a toolkit container tracks
-    several repositories, so with no workflow open the resolver
-    legitimately refuses to guess — and every poll route then answered
-    409 forever, which froze a live researcher's panel for a whole
-    deliberation. The value is validated against the tracked set
-    exactly as start validates it, so nothing is trusted that was not
-    trusted before, and the repo half of the principal is still
-    enforced: a campaign bound to another repo in the same container
-    stays unreachable.
-
-    That invariant is UNCHANGED by the Blank Project work (2026-08-22).
-    What widened is only where the repo half is resolved FROM. It used
-    to come exclusively from an open workflow, which refused a project
-    with no steps defined yet — and a project at that stage is arguably
-    the one a planning council helps most. When no workflow is open the
-    repo is resolved from the tracked-repos sidecar instead, which is
-    the researcher's own already-recorded statement about which
-    directories matter.
-    """
-    sName = _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
-    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId) or {}
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if sProjectRepoPath:
-        return sName, sProjectRepoPath
-    return sName, _fsResolveDominantRepositoryPath(
-        dictCtx, sContainerId, sChosenDirectory)
-
-
-def _fsResolveDominantRepositoryPath(dictCtx, sContainerId,
-                                     sChosenDirectory=""):
-    """Return the Blank Project's directory, or refuse and say why.
-
-    A Blank Project — no steps defined yet — is still tied to a
-    directory, so this answers "which one" rather than inventing a
-    repo-less campaign kind. Two flavours of Blank Project both land
-    here and neither needs special handling: a true greenfield
-    directory snapshots to almost nothing, and a slightly-brownfield
-    one (files, no steps) snapshots like any other repo.
-
-    The tracked-repos sidecar is REUSED rather than a council-specific
-    setting added: it already records which directories the researcher
-    considers part of this project, it is already editable in the Repos
-    panel, and a second copy of that judgement would be one more thing
-    to disagree with the first.
-
-    Exactly one tracked repo is unambiguous. Several is a real CHOICE,
-    and the researcher makes it: a toolkit container tracks many
-    repositories by design — one live project tracks nine — so the
-    first version of this, which refused until only one was tracked,
-    was telling researchers to break the Repos panel's actual purpose.
-    The candidates are offered at convene time instead. Still never
-    guessed: silently picking one would snapshot the wrong codebase and
-    every participant would reason about the wrong thing.
-    """
-    from .. import projectRoots
-    listTracked = _flistTrackedDirectoryNames(dictCtx, sContainerId)
-    sRoot = projectRoots.fsResolveProjectRoot(
-        sContainerId, WORKSPACE_ROOT).rstrip("/")
-    if sChosenDirectory:
-        # Validated against the tracked set, never trusted: the value
-        # becomes a container path, so a basename this project does not
-        # track is refused rather than joined onto the workspace root.
-        if sChosenDirectory not in listTracked:
-            raise HTTPException(
-                400, f"{sChosenDirectory!r} is not one of this project's "
-                "tracked directories")
-        return posixpath.join(sRoot, sChosenDirectory)
-    if len(listTracked) == 1:
-        return posixpath.join(sRoot, listTracked[0])
-    if not listTracked:
-        raise HTTPException(
-            409, "this project has no tracked directory for a council to "
-            "reason about. Track the directory this project lives in "
-            "from the Repos panel, then convene.")
-    raise HTTPException(
-        409, "this project tracks several directories ("
-        + ", ".join(sorted(listTracked))
-        + "), so a council needs to be told which one it is about. "
-        "Choose it when you convene, or open the workflow you mean.")
-
-
-def _flistTrackedDirectoryNames(dictCtx, sContainerId):
-    """Return the basenames the tracked-repos sidecar records."""
-    from .. import trackedReposManager
-    dictSidecar = trackedReposManager.fdictReadOrSeedSidecar(
-        dictCtx["docker"], sContainerId)
-    return [dictEntry.get("sName", "")
-            for dictEntry in (dictSidecar or {}).get("listTracked", [])
-            if dictEntry.get("sName")]
 
 
 def _fdictBuildEvent(sEventKind, sTurnId="", sDetail=""):
@@ -378,44 +234,6 @@ def _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
         dictRequest["sCampaignId"] == sCampaignId
         and dictRequest["sStatus"] == agentCouncilRegistry.S_API_REQUEST_ACTIVE
         for dictRequest in dictRegistry["dictApiRequestsById"].values())
-
-
-async def _fgenericSubmitMapped(dictControllerState, sCampaignId,
-                                sCommandKind, ffnExecuteCommand):
-    """Submit a controller command, mapping its refusals onto HTTP.
-
-    A ``CouncilCommandError`` is a serialization or lifecycle refusal —
-    the campaign is deliberating, has nothing to continue, or was asked
-    for a command outside the vocabulary — and answers 409 with the
-    controller's own words. Everything else propagates untouched.
-    """
-    try:
-        return await agentCouncilController.fgenericSubmitCampaignCommand(
-            dictControllerState, sCampaignId, sCommandKind,
-            ffnExecuteCommand)
-    except agentCouncilController.CouncilCommandError as error:
-        raise HTTPException(409, str(error))
-
-
-def _fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
-    """Refuse paid runner work unless the credential gate enables it.
-
-    The gate defaults OFF (remediation R10): starting a council is paid
-    provider work over a copied credential, and nothing but the
-    maintainer's recorded live check enables that. The start path
-    resolves the project image FIRST and passes it here, so the
-    evidence record's image pin is ALWAYS compared before a campaign
-    is registered — an evidence record verified in a different image
-    refuses at start, not at the first burned runner. The refusal
-    carries the gate's own reason so the researcher reads why, not a
-    bare 409.
-    """
-    from .. import agentCouncilCredentialGate
-    dictEnablement = (
-        agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
-            "claude", sImageIdentity))
-    if not dictEnablement["bEnabled"]:
-        raise HTTPException(409, dictEnablement["sReason"])
 
 
 def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
@@ -471,7 +289,7 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
                         agentCouncilContext.fdictCaptureProjectContextSnapshot(
                             dictCtx["docker"], sContainerId,
                             sProjectRepoPath, sCampaignId,
-                            _fdictCampaignStore(requestHttp)[
+                            fdictCampaignStore(requestHttp)[
                                 "sDurableStoreRoot"],
                             dictBounds=dictBounds,
                             listExcludedPaths=listExcludedPaths),
@@ -488,89 +306,6 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
         return dictCaptured["dictManifest"]
 
     return _fdictCaptureUnderProjectLock
-
-
-def _ffnBuildImageResolver(dictCtx, sContainerId):
-    """Build the closure resolving the project container's IMMUTABLE image.
-
-    The content-addressed image id, never the display tag: a tag can be
-    repointed at a different image (a different CLI) without the
-    evidence record's key changing, so both the credential gate's
-    comparison and the runners' launches ride the id — which also
-    closes the tag-resolution race between the gate check and the
-    runner create.
-    """
-
-    async def _fsResolveRunnerImage():
-        listContainers = await asyncio.to_thread(
-            dictCtx["docker"].flistGetRunningContainers)
-        for dictContainer in listContainers:
-            if dictContainer["sContainerId"] == sContainerId:
-                sImageIdentity = dictContainer.get("sImageIdentity")
-                if sImageIdentity:
-                    return sImageIdentity
-                break
-        raise HTTPException(
-            502, "cannot resolve the project container's immutable "
-            "image identity for the council runners")
-
-    return _fsResolveRunnerImage
-
-
-def _fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
-    """Refuse a launch when the project holds no copyable provider token.
-
-    R10's live PRESENCE probe, at the cheapest correct point: the
-    credential gate says the maintainer's evidence record permits paid
-    work in this image, and this says the project actually has a login
-    the runner lane could copy. It proves presence, never usability —
-    a token that no longer authenticates is only discoverable by
-    spending a turn, and the first turn's authentication-classified
-    failure is what reports that. It runs before the campaign
-    registers and before any runner exists; the per-turn extraction
-    would otherwise discover an absent login only after a runner had
-    been created and destroyed, and the researcher would read a failed
-    turn instead of "log in". The token is discarded inside the probe;
-    only a boolean returns.
-    """
-    from .. import agentCouncilProviders
-    from .. import projectRoots
-    sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
-        sContainerId, WORKSPACE_ROOT)
-    sUnusable = agentCouncilProviders.fsExplainUnusableRunnerCredential(
-        dictCtx["docker"], sContainerId,
-        agentCouncilProviders.fsComposeCredentialContainerPath(
-            sWorkspaceRoot))
-    if sUnusable:
-        raise HTTPException(409, sUnusable)
-
-
-def _ffnBuildCredentialStager(dictCtx, sContainerId):
-    """Build the closure that stages the runner's host credential copy.
-
-    Invoked in the launch worker thread by the controller's PRODUCTION
-    connection factory on the first connection build — a patched fake
-    seam never lands there, so no fake lane needs a persisted login.
-    Extraction reads the narrowest authenticating field from the login
-    the project container already persists (a file fetch, never a
-    container command) and materializes it as an ephemeral mode-600
-    host file; the workspace root goes through ``projectRoots``, never
-    a ``/workspace`` literal.
-    """
-    from .. import agentCouncilProviders
-    from .. import projectRoots
-
-    def _fsStageRunnerCredential():
-        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
-            sContainerId, WORKSPACE_ROOT)
-        dictCredential = agentCouncilProviders.fdictExtractRunnerCredential(
-            dictCtx["docker"], sContainerId,
-            agentCouncilProviders.fsComposeCredentialContainerPath(
-                sWorkspaceRoot))
-        return agentCouncilProviders.fsStageRunnerCredentialFile(
-            dictCredential["sAccessToken"], dictCredential["listScopes"])
-
-    return _fsStageRunnerCredential
 
 
 def _fnDrainCampaignWork(dictRegistry, sCampaignId):
@@ -603,8 +338,15 @@ def _fsResolveChairbotId(listParticipants, iChairbotIndex):
     return listParticipants[iChairbotIndex]["sParticipantId"]
 
 
-def _fdictCreateCampaignFromRequest(request, dictProjectIdentity):
-    """Build a draft campaign record from a validated start request."""
+def _fdictCreateCampaignFromRequest(request, dictProjectIdentity,
+                                    saExistingNames=None):
+    """Build a draft campaign record from a validated start request.
+
+    ``saExistingNames`` are the names already taken in this project, so
+    the composer can guarantee the listing shows no two rows a person
+    cannot tell apart. Passed in rather than read here: the store is the
+    route's to reach, and this stays a pure record builder.
+    """
     listParticipants = [
         agentCouncilCampaign.fdictCreateParticipant(
             requestParticipant.sProvider,
@@ -621,6 +363,8 @@ def _fdictCreateCampaignFromRequest(request, dictProjectIdentity):
             dictSettings=request.dictSettings or None,
             sChairbotParticipantId=sChairbotId,
             dictProjectIdentity=dictProjectIdentity,
+            sCampaignName=agentCouncilCampaign.fsComposeUniqueCampaignName(
+                request.sCampaignName, request.sQuestion, saExistingNames),
         )
     except agentCouncilCampaign.CouncilConfigurationError as error:
         raise HTTPException(400, str(error))
@@ -678,12 +422,12 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
         # pre-flight is skipped in that case because there is no single
         # repository to weigh yet.
         listCandidates = sorted(
-            _flistTrackedDirectoryNames(dictCtx, sContainerId))
+            flistTrackedDirectoryNames(dictCtx, sContainerId))
         if len(listCandidates) > 1:
             dictCapabilities["listCandidateDirectories"] = listCandidates
             return
         try:
-            sProjectRepoPath = _fsResolveDominantRepositoryPath(
+            sProjectRepoPath = fsResolveDominantRepositoryPath(
                 dictCtx, sContainerId)
         except HTTPException as errorRefusal:
             dictCapabilities["bAvailable"] = False
@@ -735,7 +479,7 @@ def _fnRegisterSnapshotFeasibility(app, dictCtx):
                 409, "host projects have no container to snapshot")
         dictCtx["require"](sContainerId)
         from .. import agentCouncilContext
-        sProjectRepoPath = _fsResolveDominantRepositoryPath(
+        sProjectRepoPath = fsResolveDominantRepositoryPath(
             dictCtx, sContainerId, sProjectDirectory)
         try:
             return agentCouncilContext.fdictAssessSnapshotFeasibility(
@@ -783,7 +527,7 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
     """
     from .. import agentCouncilCredentialGate
     try:
-        sImageIdentity = await _ffnBuildImageResolver(
+        sImageIdentity = await ffnBuildImageResolver(
             dictCtx, sContainerId)()
         dictEnablement = (
             agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
@@ -831,11 +575,11 @@ def _fnRegisterListCouncils(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictListCouncils(sContainerId: str, requestHttp: Request,
                                 sProjectDirectory: str = ""):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
         return {
             "listCampaigns": agentCouncilStore.flistSummariseCampaigns(
-                _fdictCampaignStore(requestHttp),
+                fdictCampaignStore(requestHttp),
                 fbSelectCampaign=lambda dictCampaign:
                     agentCouncilCampaign.fbCampaignMatchesPrincipal(
                         dictCampaign, sName, sProjectRepoPath)),
@@ -851,10 +595,10 @@ def _fnRegisterGetCouncil(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        jsonCampaign = _fjsonRequireCampaign(
+        dictStore = fdictCampaignStore(requestHttp)
+        jsonCampaign = fjsonRequireCampaign(
             dictStore, sCampaignId, sName, sProjectRepoPath)
         jsonCampaign.update(await asyncio.to_thread(
             _fdictComputeBaselineStaleness, dictCtx, dictStore,
@@ -864,7 +608,7 @@ def _fnRegisterGetCouncil(app, dictCtx):
         # view — no daemon is consulted on this read path.
         dictGatewayView = (
             agentCouncilDockerGateway.fdictCreateCouncilDockerGateway(
-                None, _fdictCouncilRegistry(requestHttp)))
+                None, fdictCouncilRegistry(requestHttp)))
         listQuarantined = (
             agentCouncilDockerGateway.flistDescribeQuarantinedReservations(
                 dictGatewayView, sCampaignId))
@@ -973,15 +717,15 @@ def _fnRegisterPollEvents(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         iAfter: int = 0, sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
         if iAfter < 0:
             raise HTTPException(400, "iAfter must not be negative")
-        _fjsonRequireCampaign(
-            _fdictCampaignStore(requestHttp), sCampaignId, sName,
+        fjsonRequireCampaign(
+            fdictCampaignStore(requestHttp), sCampaignId, sName,
             sProjectRepoPath)
         dictEvents = agentCouncilStore.fdictCollectCampaignEvents(
-            _fdictCampaignStore(requestHttp), sCampaignId, iAfter)
+            fdictCampaignStore(requestHttp), sCampaignId, iAfter)
         if dictEvents is None:
             raise HTTPException(404, f"no council campaign '{sCampaignId}'")
         return dictEvents
@@ -1001,17 +745,27 @@ def _fnRegisterStartCouncil(app, dictCtx):
         # where the campaign's repo is decided. Every other council
         # route resolves the same principal to MATCH an existing
         # campaign, and must not be able to re-point one.
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, request.sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictCampaign = _fdictCreateCampaignFromRequest(request, {
-            **agentCouncilCampaign.DICT_EMPTY_PROJECT_IDENTITY,
-            "sResourceName": sName,
-            "sProjectRepoPath": sProjectRepoPath,
-        })
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictCampaign = _fdictCreateCampaignFromRequest(
+            request,
+            {
+                **agentCouncilCampaign.DICT_EMPTY_PROJECT_IDENTITY,
+                "sResourceName": sName,
+                "sProjectRepoPath": sProjectRepoPath,
+            },
+            saExistingNames=[
+                dictSummary.get("sCampaignName", "")
+                for dictSummary
+                in agentCouncilStore.flistSummariseCampaigns(
+                    dictStore,
+                    fbSelectCampaign=lambda dictOther:
+                        agentCouncilCampaign.fbCampaignMatchesPrincipal(
+                            dictOther, sName, sProjectRepoPath))])
 
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
         sCampaignId = dictCampaign["sCampaignId"]
 
         async def _fdictExecuteStart():
@@ -1020,11 +774,11 @@ def _fnRegisterStartCouncil(app, dictCtx):
             # run before the campaign registers — a refusal here leaves
             # no record at all (the launch itself is transactional
             # about the record it registers below).
-            sImageReference = await _ffnBuildImageResolver(
+            sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
-            _fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                _fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
@@ -1041,7 +795,7 @@ def _fnRegisterStartCouncil(app, dictCtx):
                         sProjectRepoPath, sCampaignId, sName,
                         request.listExcludedPaths),
                     sImageReference,
-                    fsStageRunnerCredential=_ffnBuildCredentialStager(
+                    fsStageRunnerCredential=ffnBuildCredentialStager(
                         dictCtx, sContainerId)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
@@ -1053,7 +807,7 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     dictStore, sCampaignId),
             }
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_START, _fdictExecuteStart)
 
@@ -1068,15 +822,15 @@ def _fnRegisterRespond(app, dictCtx):
         request: CouncilRespondRequest, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
 
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteRespond():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             dictContinued = (
                 await agentCouncilController
@@ -1093,7 +847,7 @@ def _fnRegisterRespond(app, dictCtx):
                     "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
                         dictStore, sCampaignId)}
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_RESPOND, _fdictExecuteRespond)
 
@@ -1108,15 +862,15 @@ def _fnRegisterRequestStop(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
 
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteRequestStop():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             dictStopped = await agentCouncilController.fdictRequestCampaignStop(
                 dictControllerState, dictStore, dictRegistry, sCampaignId,
@@ -1125,7 +879,7 @@ def _fnRegisterRequestStop(app, dictCtx):
                 dictStore, sCampaignId, _fdictBuildEvent("stopRequested"))
             return dictStopped
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_REQUEST_STOP,
             _fdictExecuteRequestStop)
@@ -1150,21 +904,21 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         request: CouncilGrantRoundRequest, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteGrant():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             return await (
                 agentCouncilController.fdictGrantCampaignResolutionRound(
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, request.iGrantedRounds))
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_GRANT_RESOLUTION_ROUND,
             _fdictExecuteGrant)
@@ -1178,14 +932,14 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         request: CouncilResolveObjectionsRequest, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteResolve():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             return await (
                 agentCouncilController.fdictResolveCampaignObjections(
@@ -1195,7 +949,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
                      for sObjectionId, dictDisposition
                      in request.dictDispositionByObjectionId.items()}))
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_RESOLVE_OBJECTIONS,
             _fdictExecuteResolve)
@@ -1209,14 +963,14 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         request: CouncilRejectRequest, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteReject():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             dictRejected = (
                 await agentCouncilController.fdictRejectCampaignCandidate(
@@ -1227,7 +981,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
                 _fdictBuildEvent("candidateRejected"))
             return dictRejected
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_REJECT_CANDIDATE,
             _fdictExecuteReject)
@@ -1243,14 +997,14 @@ def _fnRegisterAcceptPlan(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteAcceptPlan():
-            _fjsonRequireCampaign(
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             dictAccepted = (
                 await agentCouncilController.fdictAcceptCampaignPlan(
@@ -1260,174 +1014,10 @@ def _fnRegisterAcceptPlan(app, dictCtx):
                 dictStore, sCampaignId, _fdictBuildEvent("planAccepted"))
             return dictAccepted
 
-        return await _fgenericSubmitMapped(
+        return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_ACCEPT_PLAN,
             _fdictExecuteAcceptPlan)
-
-
-def _fnRegisterChairbotChat(app, dictCtx):
-    """Register the four ask-the-chairbot routes (the conversation lane).
-
-    A conversation is not a protocol turn — it resolves no round and
-    writes no campaign state — but it IS paid provider work over the
-    project's copied login inside a council runner, so it passes every
-    gate a turn passes: the browser-only refusal, the container-only
-    refusal, the identity match, the credential gate against the
-    project's resolved immutable image, the live login probe, and the
-    release authority's admission close.
-
-    Ask returns as soon as the message is recorded and the answer lands
-    on a background task; the panel polls the read route for it. An
-    answer can take minutes, and a request held open that long is at
-    the mercy of every proxy between the browser and the hub.
-    """
-
-    @app.get("/api/agent-councils/{sContainerId}/{sCampaignId}/chat")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fdictReadChairbotChat(
-        sContainerId: str, sCampaignId: str, requestHttp: Request,
-        sProjectDirectory: str = "",
-    ):
-        from .. import agentCouncilChat
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        _fjsonRequireCampaign(
-            _fdictCampaignStore(requestHttp), sCampaignId, sName,
-            sProjectRepoPath)
-        return agentCouncilChat.fdictDescribeChatSession(
-            _fdictControllerState(requestHttp), sCampaignId)
-
-    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/chat/open")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fdictOpenChairbotChat(
-        sContainerId: str, sCampaignId: str, requestHttp: Request,
-        sProjectDirectory: str = "",
-    ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
-
-        async def _fdictExecuteOpenChat():
-            jsonCampaign = _fjsonRequireCampaign(
-                dictStore, sCampaignId, sName, sProjectRepoPath)
-            _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)
-            # The same two gates start passes, in the same order and for
-            # the same reasons: the image resolves first so the evidence
-            # record's pin is always compared, and the login presence
-            # probe runs before a runner exists so an absent login reads
-            # as "log in" rather than as a failed conversation.
-            sImageReference = await _ffnBuildImageResolver(
-                dictCtx, sContainerId)()
-            _fnRefuseRunnerBackendUnlessEnabled(sImageReference)
-            await asyncio.to_thread(
-                _fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
-            return await _fdictOpenChatMapped(dictControllerState, {
-                "sCampaignId": sCampaignId,
-                "sResourceName": sName,
-                "dictCampaign": jsonCampaign,
-                "dictStore": dictStore,
-                "dictRegistry": _fdictCouncilRegistry(requestHttp),
-                "sImageReference": sImageReference,
-                "fsStageRunnerCredential": _ffnBuildCredentialStager(
-                    dictCtx, sContainerId),
-            })
-
-        return await _fgenericSubmitMapped(
-            dictControllerState, sCampaignId,
-            agentCouncilController.S_COMMAND_OPEN_CHAT,
-            _fdictExecuteOpenChat)
-
-    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/chat/ask")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fdictAskChairbot(
-        sContainerId: str, sCampaignId: str,
-        request: CouncilChatAskRequest, requestHttp: Request,
-        sProjectDirectory: str = "",
-    ):
-        from .. import agentCouncilChat
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
-
-        async def _fdictExecuteAsk():
-            _fjsonRequireCampaign(
-                dictStore, sCampaignId, sName, sProjectRepoPath)
-            _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)
-            try:
-                return await agentCouncilChat.fdictAskChatQuestion(
-                    dictControllerState, sCampaignId, request.sQuestionText)
-            except agentCouncilChat.CouncilChatError as error:
-                raise HTTPException(409, str(error))
-
-        return await _fgenericSubmitMapped(
-            dictControllerState, sCampaignId,
-            agentCouncilController.S_COMMAND_ASK_CHAIRBOT,
-            _fdictExecuteAsk)
-
-    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/chat/close")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fdictCloseChairbotChat(
-        sContainerId: str, sCampaignId: str, requestHttp: Request,
-        sProjectDirectory: str = "",
-    ):
-        from .. import agentCouncilChat
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictControllerState = _fdictControllerState(requestHttp)
-
-        async def _fdictExecuteCloseChat():
-            _fjsonRequireCampaign(
-                dictStore, sCampaignId, sName, sProjectRepoPath)
-            # NOT gated on admission: closing is how a researcher makes
-            # a released project releasable, so refusing it there would
-            # leave the only exit behind the gate it opens.
-            dictSettled = await agentCouncilChat.fdictCloseChatSession(
-                dictControllerState, sCampaignId)
-            if not dictSettled["bSettled"]:
-                raise HTTPException(
-                    409,
-                    "the conversation's runner could not be proven gone "
-                    f"({dictSettled['sReason']}); it stays visible as a "
-                    "quarantined runner until vaibify reconcile settles "
-                    "it. Retry the close.")
-            return dictSettled
-
-        return await _fgenericSubmitMapped(
-            dictControllerState, sCampaignId,
-            agentCouncilController.S_COMMAND_CLOSE_CHAT,
-            _fdictExecuteCloseChat)
-
-
-def _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName):
-    """Refuse a conversation for a container whose lease was released."""
-    if agentCouncilController.fbResourceAdmissionIsClosed(
-            dictControllerState, sName):
-        raise HTTPException(
-            409, "the project lease was released; claim the project "
-            "again before talking to its council")
-
-
-async def _fdictOpenChatMapped(dictControllerState, dictOpenRequest):
-    """Open a conversation, mapping its refusals onto HTTP.
-
-    A ``CouncilChatError`` is a refusal decided before anything was
-    built (no admission, a corrupt chairbot record) and answers 409 in
-    the chat module's own words; a gateway or daemon fault is a 502,
-    because it is the machine that failed, not the request.
-    """
-    from .. import agentCouncilChat
-    try:
-        return await agentCouncilChat.fdictOpenChatSession(
-            dictControllerState, dictOpenRequest)
-    except agentCouncilChat.CouncilChatError as error:
-        raise HTTPException(409, str(error))
-    except agentCouncilDockerGateway.CouncilGatewayError as error:
-        raise HTTPException(
-            502, f"the chairbot's runner could not be built: {error}")
 
 
 def _fnRegisterDeleteCouncil(app, dictCtx):
@@ -1439,16 +1029,16 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
         sContainerId: str, sCampaignId: str, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
-        sName, sProjectRepoPath = _ftResolveCouncilPrincipal(
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
             dictCtx, requestHttp, sContainerId, sProjectDirectory)
-        dictStore = _fdictCampaignStore(requestHttp)
-        dictRegistry = _fdictCouncilRegistry(requestHttp)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
 
         async def _fdictExecuteDelete():
             # Identity resolves BEFORE the live-work refusal: a foreign
             # caller must see the same 404 as an unknown id, never a 409
             # that leaks that the campaign exists and is running.
-            _fjsonRequireCampaign(dictStore, sCampaignId, sName,
+            fjsonRequireCampaign(dictStore, sCampaignId, sName,
                                   sProjectRepoPath)
             if _fbCampaignHasLiveWork(dictRegistry, sCampaignId):
                 raise HTTPException(
@@ -1458,30 +1048,13 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
             # boundary, and drop the runtime — durable deletion must
             # not strand either.
             await agentCouncilController.fdictDisposeCampaignRuntime(
-                _fdictControllerState(requestHttp), sCampaignId)
+                fdictControllerState(requestHttp), sCampaignId)
             agentCouncilStore.fbDeleteStoredCampaign(dictStore, sCampaignId)
             return {"bDeleted": True, "sCampaignId": sCampaignId}
 
-        return await _fgenericSubmitMapped(
-            _fdictControllerState(requestHttp), sCampaignId,
+        return await fgenericSubmitMapped(
+            fdictControllerState(requestHttp), sCampaignId,
             agentCouncilController.S_COMMAND_DELETE, _fdictExecuteDelete)
-
-
-def _fjsonRequireCampaign(dictStore, sCampaignId, sResourceName,
-                          sProjectRepoPath):
-    """Return a campaign bound to this principal, or raise 404.
-
-    A campaign bound to another resource or another repo answers with
-    the SAME 404 an unknown id gets (remediation R2): a foreign caller
-    learns nothing about whether the id exists.
-    """
-    jsonCampaign = agentCouncilStore.fjsonGetCampaignRecord(
-        dictStore, sCampaignId)
-    if jsonCampaign is None or not (
-            agentCouncilCampaign.fbCampaignMatchesPrincipal(
-                jsonCampaign, sResourceName, sProjectRepoPath)):
-        raise HTTPException(404, f"no council campaign '{sCampaignId}'")
-    return jsonCampaign
 
 
 def fnRegisterAll(app, dictCtx):
@@ -1500,6 +1073,5 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRequestStop(app, dictCtx)
     _fnRegisterExhaustedRoundExits(app, dictCtx)
     _fnRegisterAcceptPlan(app, dictCtx)
-    _fnRegisterChairbotChat(app, dictCtx)
     _fnRegisterDeleteCouncil(app, dictCtx)
     _fnRegisterGetCouncil(app, dictCtx)

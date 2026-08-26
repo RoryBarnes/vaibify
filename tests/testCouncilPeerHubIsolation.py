@@ -291,8 +291,7 @@ def testALivePeersCampaignIsNotClassifiedInterrupted(tprocessLivePeerHub):
     tell them apart. It rewrote the peer's checkpoint — the record the
     peer's own hub reloads if it ever restarts.
 
-    Kills: the startup classifier ignoring a live peer, and the peer
-    predicate reading the repository path instead of the resource name.
+    Kills: the startup classifier ignoring a live peer.
     """
     from vaibify.gui import agentCouncilController, agentCouncilStore
 
@@ -304,6 +303,33 @@ def testALivePeersCampaignIsNotClassifiedInterrupted(tprocessLivePeerHub):
     assert iClassified == 0
     assert agentCouncilStore.fjsonGetCampaignRecord(
         dictStore, "campaign-peer")["sState"] == "planning"
+
+
+@pytest.mark.falsification
+def testThePeerPredicateReadsTheResourceNameNotTheRepoPath(
+        tprocessLivePeerHub):
+    """The flock is keyed by resource NAME; the repo path cannot stand in.
+
+    The keys are made distinct on purpose (the name-vs-id lesson): a
+    campaign whose ``sResourceName`` is the held project but whose
+    ``sProjectRepoPath`` is something else entirely must read as
+    peer-owned, and one where only the PATH spells the held name must
+    not — a predicate reading the wrong key passes any fixture where
+    the two happen to agree.
+
+    Kills: the peer predicate reading the repository path instead of
+    the resource name.
+    """
+    assert registry.fbCampaignBelongsToALivePeerHub({
+        "dictProjectIdentity": {
+            "sResourceName": S_PEER_PROJECT,
+            "sProjectRepoPath": "/repos/somewhere-else",
+        }})
+    assert not registry.fbCampaignBelongsToALivePeerHub({
+        "dictProjectIdentity": {
+            "sResourceName": "some-other-project",
+            "sProjectRepoPath": S_PEER_PROJECT,
+        }})
 
 
 def testAnOrphanedCampaignIsStillClassifiedInterrupted():
