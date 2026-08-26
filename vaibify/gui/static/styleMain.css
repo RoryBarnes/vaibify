@@ -1561,7 +1561,7 @@ body.proof-level-3 .toolbar-label {
     color: var(--color-pale-blue);
 }
 
-/* Four states carry every remote badge (2026-08-25), and colour
+/* Five states carry every remote badge (2026-08-26), and colour
    alone distinguishes them — no outline or hollow variant, because
    these are solid-fill logo paths and the Zenodo and arXiv marks have
    no outline form. That works only because the GitHub badge stopped
@@ -1569,6 +1569,7 @@ body.proof-level-3 .toolbar-label {
    to sGitState, which is never rendered here, which freed red.
 
    ghost grey = the remote does not have it
+   muted grey = not compared by design, and never will be
    orange     = not checked (no verify, or the refresh failed)
    red        = checked, and it differs from the published copy
    pale blue  = checked, and it matches
@@ -1584,6 +1585,16 @@ body.proof-level-3 .toolbar-label {
 
 .remote-badge.badge-unknown {
     color: var(--color-orange);
+}
+
+/* Compared by nothing, by design — test markers and .gitignore. It
+   must NOT be orange: orange says "nobody has looked yet", which
+   reads as a to-do, and no amount of verifying will ever clear this
+   one. Muted grey at low opacity says "this file is simply not part
+   of the question", which is the truth. */
+.remote-badge.badge-not-compared {
+    color: var(--text-muted);
+    opacity: 0.4;
 }
 
 /* Local git states. Rendered only if some caller passes sGitState

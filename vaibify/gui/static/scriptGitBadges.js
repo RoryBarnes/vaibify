@@ -43,6 +43,10 @@ var VaibifyGitBadges = (function () {
         drifted: "differs from the published copy",
         unknown: "not checked — run a verify, or the last badge "
             + "refresh failed",
+        // Never a to-do: no verify compares these, so there is
+        // nothing the researcher could run to change this mark.
+        "not-compared": "not compared — vaibify does not check this "
+            + "file against published copies",
         dirty: "uncommitted local changes",
         untracked: "not tracked by git",
         ignored: "git-ignored",

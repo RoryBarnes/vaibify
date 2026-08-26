@@ -53,6 +53,7 @@ import os
 
 from . import mtimeCache
 from . import workflowManager
+from ..reproducibility import publicationScope
 
 __all__ = [
     "S_BADGE_SYNCED",
@@ -62,6 +63,7 @@ __all__ = [
     "S_BADGE_IGNORED",
     "S_BADGE_NONE",
     "S_BADGE_UNKNOWN",
+    "S_BADGE_NOT_COMPARED",
     "fdictBadgesForFile",
     "fdictBadgeStateForWorkspace",
     "fdictBadgeStateFromHashes",
@@ -80,6 +82,13 @@ S_BADGE_NONE = "none"
 # published, and read it — correctly, per the tooltip — as "not synced
 # to this remote".
 S_BADGE_UNKNOWN = "unknown"
+# Tracked, published, and deliberately compared by nothing — test
+# markers and .gitignore. Distinct from `unknown` because `unknown` is
+# a to-do ("run a verify") and this one can never be discharged: every
+# verify skips these by design, so an orange mark beside them is an
+# instruction the researcher cannot follow. The partition that decides
+# this lives in `reproducibility.publicationScope`.
+S_BADGE_NOT_COMPARED = "not-compared"
 
 
 _DICT_GIT_STATE_TO_BADGE = {
@@ -124,7 +133,7 @@ def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
 
 
 def _fsVerifiedRemoteBadge(sRepoRelPath, dictStatus, bConfigured=True):
-    """Four-state icon driven by a cached remote verify result.
+    """Five-state icon driven by a cached remote verify result.
 
     The reader for every remote whose truth is a real comparison
     against the published copy — a SHA-256 of the file as it exists
@@ -134,9 +143,13 @@ def _fsVerifiedRemoteBadge(sRepoRelPath, dictStatus, bConfigured=True):
     nothing to compare against, whereas a project repo always has a
     GitHub answer once a verify has run.
 
-    The four states, and the distinction that did not exist before
+    The five states, and the distinction that did not exist before
     2026-08-25:
 
+    - ``not-compared``  no verify compares this path, ever (test
+      markers, ``.gitignore``). Checked FIRST, because it is the one
+      answer a researcher cannot act on and must not be dressed as a
+      to-do.
     - ``unknown``  no verify has run, or this path was not in the set
       the last verify compared. NOT a claim about the remote.
     - ``none``     the verify looked and the remote does not have the
@@ -153,6 +166,11 @@ def _fsVerifiedRemoteBadge(sRepoRelPath, dictStatus, bConfigured=True):
     """
     if not bConfigured:
         return S_BADGE_NONE
+    # Ahead of the verify check: a path no verify will ever compare is
+    # not waiting on one, and answering `unknown` would leave the
+    # researcher an orange mark they cannot clear by doing anything.
+    if not publicationScope.fbPathIsCompared(sRepoRelPath):
+        return S_BADGE_NOT_COMPARED
     if not dictStatus or not dictStatus.get("sLastVerified"):
         return S_BADGE_UNKNOWN
     if sRepoRelPath not in _fsetComparedPaths(dictStatus):
