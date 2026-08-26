@@ -690,3 +690,66 @@ def test_the_row_reports_scope_staleness_rather_than_a_pass():
         _fdictStatus([S_DATA]),
     )
     assert dictCurrent["bScopeStale"] is False, dictCurrent
+
+
+# ---------------------------------------------------------------------
+# A refusal must name itself.
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal(
+    tmp_path,
+):
+    """The gate refused on scope while the blocker list said nothing.
+
+    _flistGithubLevel2Blockers consulted the clock and the divergence
+    list and never the scope, so a cache verified under an earlier
+    definition blocked Level 2 with no reason attached -- the same
+    unexplained-dash failure the Level 3 envelope row was given a
+    criterion to avoid. It reuses `github-verify-stale` because the
+    criterion is named for the VERIFICATION being stale, not the
+    clock, and its existing remediation ("re-verify") is already the
+    correct instruction.
+
+    Kills: drop the fbCachedScopeIsCurrent check from
+    _fbSyncCacheStale, which returns Level 2 to refusing silently.
+    """
+    import json
+    import os
+    from tests.syncStatusFixtures import fdictBuildCachedVerify
+
+    sRepo = str(tmp_path)
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    dictWorkflow = {
+        "sProjectRepoPath": sRepo,
+        "listSteps": [{
+            "sName": "A", "sDirectory": "A", "bNoInputData": True,
+            "dictVerification": {sKey: "passed" for sKey in (
+                "sUser", "sUnitTest", "sIntegrity",
+                "sQualitative", "sQuantitative",
+            )},
+        }],
+        "dictRemotes": {"github": {
+            "sOwner": "u", "sRepo": "r", "sBranch": "main",
+            "sCommittedSha": "abc123",
+        }},
+    }
+    with open(
+        os.path.join(sRepo, ".vaibify", "syncStatus.json"), "w",
+    ) as fileStatus:
+        json.dump({"github": fdictBuildCachedVerify(
+            sLastVerified="2026-08-26T00:00:00Z",
+            bScopeCurrent=False,
+            sCommittedShaVerified="abc123",
+        )}, fileStatus)
+
+    levelGates.fnClearLevelBlockerCache()
+    listCriteria = [
+        dictEntry.get("sCriterion")
+        for dictEntry in levelGates.flistLevel2Blockers(dictWorkflow, sRepo)
+    ]
+    assert "github-verify-stale" in listCriteria, (
+        "Level 2 is refused on scope with nothing in the blocker list "
+        f"naming GitHub, so the researcher gets no reason: {listCriteria}"
+    )

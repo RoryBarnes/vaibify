@@ -1345,6 +1345,29 @@ correct approach.
   real one — and where a set in module A must be a subset of a set in
   module B, pin the relationship, because each edit looks complete on
   its own.
+- **Run the mutations locally before pushing; the tool exists.**
+  `tools/reconfirmFalsification.py --only <substring>` applies each
+  recorded mutation in a disposable git worktree, runs the named test,
+  and reports KILLED or SURVIVED — about a minute for a handful of
+  entries, against ~20 minutes for a suite and far longer for a CI
+  round trip. `--include-local-diff` replays uncommitted work; it
+  otherwise refuses a dirty tree, because checking out HEAD would
+  report on code you do not have. Three defects reached CI in one
+  session that a single narrowed run would have caught, and the agent
+  responsible had asserted that no local runner existed — the tool's
+  own `--help` said otherwise. `testFalsificationRegistryIsWellFormed`
+  is NOT this check: it verifies the mutation text still appears in
+  the source, never that a test would notice the mutation.
+- **Batch the small fixes; every one costs a full verification cycle.**
+  A suite run is ~20 minutes locally and a CI round trip is longer, so
+  finishing four small items in four passes spends over an hour to
+  learn what one pass would have said. It also hides interactions: the
+  blocker fix in one item is what turned another item's "no
+  materialized force yet" into three red tests, and a batched run
+  surfaced that immediately instead of a cycle later. "Deliberately
+  scoped out" is a decision worth stating, but re-check it whenever a
+  neighbouring change lands — the force that was absent is often
+  created by the very next commit.
 - **Retargeting a falsification entry is authoring a new mutation, not
   bookkeeping.** When a refactor moves the code an entry points at,
   the natural reflex is to repoint `old`/`new` and move on — it feels

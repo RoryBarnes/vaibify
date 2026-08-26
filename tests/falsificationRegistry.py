@@ -58,6 +58,15 @@ class Falsification:
 # actually kill its falsification test.
 LIST_FALSIFICATIONS = [
     # --- 2026-08-26: guards added with the publication-scope work ---
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):\n        return True',
+        new='    if False:\n        return True',
+    ),
     # Every entry below defends a guard whose REMOVAL changes what the
     # researcher is told. The pure selectors that came with the same
     # change (fsetSelectLevel2Paths, fbPathIsCompared,
@@ -1409,8 +1418,16 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):""",
-        new="""    if False:""",
+        # Anchored on its own `return False`: the identical condition
+        # now also guards blocker surfacing in _fbSyncCacheStale, and
+        # they are different guarantees -- one refuses the Level 2
+        # claim, the other makes the refusal say why. A shared
+        # mutation would test neither precisely.
+        old=(
+            "    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):"
+            "\n        return False"
+        ),
+        new="    if False:\n        return False",
     ),
     # The writer half of the same guard. A scope check whose writer
     # never stamps the field is not a check, it is an outage in which

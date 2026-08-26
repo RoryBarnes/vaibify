@@ -2001,7 +2001,19 @@ def _fbSyncCacheStale(dictStatus):
     as stale for blocker-surfacing purposes: the dashboard should tell
     the researcher to verify, not silently emit per-step rows from
     empty divergence data.
+
+    So does a cache verified under an EARLIER publication scope. Both
+    mean the same thing to the researcher -- the evidence does not
+    answer the question now being asked, and the fix is one Verify now
+    -- and the criterion is named for the verification being stale,
+    not for the clock. Without this the gate refused Level 2 on scope
+    while the blocker list said nothing about GitHub at all, which is
+    a refusal with no reason attached: exactly the unexplained-dash
+    failure the Level 3 envelope row was given a criterion to avoid.
     """
+    from . import publicationScope
+    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):
+        return True
     return not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS)
 
 

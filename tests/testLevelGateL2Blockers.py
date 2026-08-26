@@ -30,6 +30,15 @@ from vaibify.reproducibility.levelGates import (
 )
 
 
+from tests.syncStatusFixtures import fdictBuildCachedVerify
+
+# These fixtures declare five compared files because the blockers they
+# assert are PER-STEP projections of the divergence list, and the step
+# outputs must be inside the compared set for a divergence to project.
+_LIST_COMPARED_FIVE = [
+    "A/data.csv", "B/data.csv", "A/run.py", "B/run.py", "C/out.json",
+]
+
 # ------------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------------
@@ -77,29 +86,30 @@ def _fdictAiDeclarationStep():
 def _fdictFreshGithubCache(listDiverged=None):
     """Return a syncStatus dict whose github entry verifies cleanly now."""
     return {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 5,
-            "iMatching": 5 - len(listDiverged or []),
-            "listDiverged": listDiverged or [],
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listComparedPaths=_LIST_COMPARED_FIVE,
+            listDivergedPaths=[
+                dictEntry["sPath"] for dictEntry in (listDiverged or [])
+            ],
+            sCommittedShaVerified="abc123",
+        ),
     }
 
 
 def _fdictFreshZenodoCache(listDiverged=None):
     """Return a syncStatus dict whose zenodo entry verifies cleanly now."""
     return {
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 5,
-            "iMatching": 5 - len(listDiverged or []),
-            "listDiverged": listDiverged or [],
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listComparedPaths=_LIST_COMPARED_FIVE,
+            listDivergedPaths=[
+                dictEntry["sPath"] for dictEntry in (listDiverged or [])
+            ],
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     }
 
 
