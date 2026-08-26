@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
 from vaibify.reproducibility import scheduledReverify
 from vaibify.reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_FILENAME,
@@ -62,6 +63,18 @@ from vaibify.reproducibility.scheduledReverify import (
     fdictReadCachedSyncStatus,
 )
 
+
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
+)
+
+# A cached verify is evidence for a claim whose SCOPE is versioned, so
+# a fixture meaning "a complete, current verification" must record
+# which definition of the published set it ran under and which paths
+# it compared. Without them the gate refuses -- correctly: a file the
+# verify never looked at is missing from listDiverged in exactly the
+# way a file that matched is missing.
+_LIST_COMPARED = ["step01/data.csv", "step01/run.py", "step02/out.json"]
 
 # ============================================================================
 # aiDeclarationStep.py
@@ -847,6 +860,8 @@ def test_fbGithubHeadMatchesVerifiedSha_both_empty_is_permissive(tmp_path):
             "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
             "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
             "sCommittedShaVerified": "",
+            "listComparedPaths": _LIST_COMPARED,
+            "iScopeVersion": _I_SCOPE_VERSION,
         },
     })
     dictWorkflow = {

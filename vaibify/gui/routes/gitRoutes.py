@@ -292,7 +292,27 @@ def _ftCollectGitBadgeInputs(
         dictGit, listTracked, dictHashes, sRemoteUrl,
         _fdictLoadCachedArxivStatus(filesRepo),
         _fsetSelectMissingPaths(docker, sContainerId, listTracked, sRepo),
+        # The GitHub badge became a real remote comparison on
+        # 2026-08-25, so it reads the same cached verify the Level 2
+        # cells do rather than local porcelain. Loaded here with the
+        # other probes because it is part of the same snapshot; it is
+        # a file read, so it needs no admission of its own.
+        _fdictLoadCachedGithubStatus(filesRepo),
     )
+
+
+def _fdictLoadCachedGithubStatus(filesRepo):
+    """Return the cached GitHub verify report, or an empty one."""
+    from ...reproducibility import scheduledReverify
+    try:
+        return scheduledReverify.fdictReadCachedSyncStatus(
+            filesRepo, "github",
+        )
+    except (OSError, ValueError):
+        # A cache that cannot be read is not a claim that nothing
+        # matches: an empty status has no sLastVerified, so every
+        # badge reads unknown rather than borrowing a verdict.
+        return {}
 
 
 def _fsetSelectMissingPaths(docker, sContainerId, listTracked, sRepo):
@@ -358,7 +378,7 @@ def _fnRegisterGitBadges(app, dictCtx):
             return _fdictBadgeRefreshPaused(dictRead["sPausedBy"])
         (
             dictGit, listTracked, dictHashes, sRemoteUrl, dictArxivStatus,
-            setMissing,
+            setMissing, dictGithubStatus,
         ) = dictRead["objResult"]
         dictBadges = badgeState.fdictBadgeStateFromHashes(
             listTracked, dictGit,
@@ -370,6 +390,7 @@ def _fnRegisterGitBadges(app, dictCtx):
             ),
             dictArxivStatus=dictArxivStatus,
             bArxivConfigured=_fbArxivConfiguredFor(dictWorkflow),
+            dictGithubStatus=dictGithubStatus,
         )
         return {
             "dictGit": _fdictProjectGitView(dictGit, sRemoteUrl),

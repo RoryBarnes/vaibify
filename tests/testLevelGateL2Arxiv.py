@@ -36,6 +36,18 @@ from vaibify.reproducibility.levelGates import (
 )
 
 
+from vaibify.reproducibility.publicationScope import (
+    I_PUBLICATION_SCOPE_VERSION as _I_SCOPE_VERSION,
+)
+
+# A cached verify is evidence for a claim whose SCOPE is versioned, so
+# a fixture meaning "a complete, current verification" must record
+# which definition of the published set it ran under and which paths
+# it compared. Without them the gate refuses -- correctly: a file the
+# verify never looked at is missing from listDiverged in exactly the
+# way a file that matched is missing.
+_LIST_COMPARED = ["step01/data.csv"]
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -78,6 +90,8 @@ def _fdictFreshGithubCache():
         "sService": "github",
         "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
         "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+        "listComparedPaths": _LIST_COMPARED,
+        "iScopeVersion": _I_SCOPE_VERSION,
         "sCommittedShaVerified": "abc123",
     }
 
@@ -88,6 +102,8 @@ def _fdictFreshZenodoCache():
         "sService": "zenodo",
         "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
         "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+        "listComparedPaths": _LIST_COMPARED,
+        "iScopeVersion": _I_SCOPE_VERSION,
         "sZenodoDoi": "10.1000/example",
         "sEndpointVerified": "sandbox",
     }

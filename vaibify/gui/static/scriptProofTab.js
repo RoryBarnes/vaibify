@@ -152,7 +152,7 @@ var VaibifyProofTab = (function () {
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "aiModelPrompts"},
             {sStateKey: "bPersonalLayerDeclared",
-             sLabel: "Personal instruction layer answered",
+             sLabel: "Personal AI Configuration answered",
              sWhat: "The researcher's private host-side agent " +
                  "configuration (global instruction file, personal " +
                  "skills, memory, hooks) is accounted for with one " +
@@ -160,7 +160,7 @@ var VaibifyProofTab = (function () {
                  "withheld, or included in the repository. Any " +
                  "answer meets the criterion — disclosure is never " +
                  "required; unanswered is the only failing state.",
-             sHow: "Answer in the Personal instruction layer row " +
+             sHow: "Answer in the Personal AI Configuration row " +
                  "of the AI section of the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",
@@ -265,6 +265,19 @@ var VaibifyProofTab = (function () {
                  "Software section of the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bEnvelopeInGithubMirror",
+             sLabel: "Envelope published",
+             sWhat: "The reproduce script, manifest, dependency " +
+                 "lock, environment snapshot and Dockerfile match " +
+                 "the copies on GitHub. Level 2 publishes the data; " +
+                 "this asks whether what a third party needs in " +
+                 "order to RE-RUN it is published too — a drifted " +
+                 "reproduce.sh means they would run something you " +
+                 "never ran.",
+             sHow: "Commit and push the envelope, then use Verify " +
+                 "now on the GitHub mirror row in the Project block.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
             {sStateKey: "bL3AttestationCurrent",
              sLabel: "Rebuild attestation",
              sWhat: "A full rebuild reran the project and " +

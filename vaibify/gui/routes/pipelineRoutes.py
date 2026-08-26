@@ -944,6 +944,18 @@ def _fnRegisterFileStatus(app, dictCtx):
             })
         response.headers["ETag"] = sEtag
         response.headers["Cache-Control"] = S_FILE_STATUS_CACHE_CONTROL
+        # Carried in the BODY as well as the ETag (2026-08-26). The
+        # epoch was reachable only on /pipeline/{id}/state, which is
+        # polled only while a run is live -- so the dashboard's one
+        # poll-free invalidation signal was unobservable in exactly
+        # the situation it exists for: a researcher clicking Verify
+        # now with nothing running, whose badges then never repainted.
+        # Stamped AFTER the ETag so the 304 comparison is unchanged; a
+        # bump alters the ETag anyway, so the full body that follows
+        # always carries the new value.
+        dictResponse["iSyncEpoch"] = fiGetSyncEpoch(
+            dictCtx, sContainerId,
+        )
         return dictResponse
 
 
@@ -2191,7 +2203,9 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
     from vaibify.reproducibility.repoFiles import (
         ffilesEnsureRepoFiles, fsRepoRootOf,
     )
-    from vaibify.reproducibility import levelGates, replayGate
+    from vaibify.reproducibility import (
+        levelGates, publicationScope, replayGate,
+    )
     from vaibify.reproducibility.l3Attestation import (
         fbL3AttestationCurrent,
     )
@@ -2220,6 +2234,23 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+        # The Level 3 half of the published-copy question. Its Level 2
+        # twin lives in dictRemoteSyncs; this one is scoped to the
+        # reproducibility envelope, which the L2 rows deliberately do
+        # not cover (2026-08-26).
+        "bEnvelopeInGithubMirror": (
+            levelGates.fbEnvelopeMatchesGithubMirror(filesRepo)
+            if bHasRepo else False
+        ),
+        # The envelope paths that actually exist, so the Level 2 rows
+        # can leave them out of their file lists and the Level 3 row
+        # can show them. Sent rather than mirrored in JavaScript: a
+        # second copy of the partition is a second authority on it,
+        # and the two would drift on the first envelope addition.
+        "listLevel3EnvelopePaths": (
+            publicationScope.flistSelectEnvelopePathsPresent(filesRepo)
+            if bHasRepo else []
+        ),
         "bRebuildAttestationCurrent": (
             fbL3AttestationCurrent(filesRepo) if bHasRepo else False
         ),
@@ -2479,22 +2510,36 @@ def _fdictEnvelopeRemoteSyncs(filesRepo):
 
 
 def _fdictProjectSyncSummary(dictStatus):
-    """Project one cached verify status onto the wire summary, or None."""
+    """Project one cached verify status onto the wire summary, or None.
+
+    The counts are the LEVEL 2 counts. These summaries feed the
+    Published-copies rows, which are Level 2 rows, and one verify
+    writes one set of aggregate counts spanning both levels — so
+    reporting the aggregate here told a researcher with a drifted
+    ``reproduce.sh`` that their data was unpublished, while the gate
+    beside it correctly said otherwise. The envelope's own agreement
+    is reported by the Level 3 row.
+    """
     from vaibify.reproducibility.levelGates import (
         F_MAX_STALE_HOURS,
         _fbCachedSyncStatusFresh,
     )
+    from vaibify.reproducibility import publicationScope
     if not dictStatus or not dictStatus.get("sLastVerified"):
         return None
-    return {
-        "sLastVerified": dictStatus.get("sLastVerified"),
-        "iTotalFiles": int(dictStatus.get("iTotalFiles") or 0),
-        "iMatching": int(dictStatus.get("iMatching") or 0),
-        "iDivergedCount": len(dictStatus.get("listDiverged") or []),
-        "bStale": not _fbCachedSyncStatusFresh(
-            dictStatus, F_MAX_STALE_HOURS,
-        ),
-    }
+    dictSummary = dict(publicationScope.fdictCountAtLevel2(dictStatus))
+    dictSummary["sLastVerified"] = dictStatus.get("sLastVerified")
+    dictSummary["bStale"] = not _fbCachedSyncStatusFresh(
+        dictStatus, F_MAX_STALE_HOURS,
+    )
+    # Ages out the same way `bStale` does, but for a different reason:
+    # not "this evidence is old" but "this evidence answers an older
+    # question". The row must not read green off counts that were
+    # complete under a scope that no longer applies.
+    dictSummary["bScopeStale"] = (
+        not publicationScope.fbCachedScopeIsCurrent(dictStatus)
+    )
+    return dictSummary
 
 
 def _fiCountUniqueBlockingSteps(listBlockers):

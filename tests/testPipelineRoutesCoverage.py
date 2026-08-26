@@ -1798,6 +1798,18 @@ class TestPollLevelStatePayload:
             "bRepoRootAgentsFileDetected",
             "sReplayAxisState", "dictPromptRecord",
             "dictSupervision",
+            # Added 2026-08-26. The Level 3 published-copy answer gets
+            # a field of its own rather than joining dictRemoteSyncs,
+            # and that separation is load-bearing: dictRemoteSyncs
+            # feeds the Level 2 rows, and an envelope answer arriving
+            # there would re-couple the levels in the UI after the
+            # gates had been deliberately kept apart.
+            "bEnvelopeInGithubMirror",
+            # Which files that answer is ABOUT. Sent rather than
+            # mirrored in JavaScript so the partition keeps one
+            # authority: the Level 2 rows subtract this set from their
+            # file lists and the Level 3 row renders it.
+            "listLevel3EnvelopePaths",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
@@ -2063,6 +2075,12 @@ class TestBuildWorkflowEnvelopeDetail:
             "iMatching": 2,
             "iDivergedCount": 1,
             "bStale": True,
+            # This fixture records no scope version, which is what a
+            # cache written before scope versioning looks like. It is
+            # reported rather than hidden: the counts below are
+            # complete for the question that verify asked, and the
+            # flag says that is no longer the question.
+            "bScopeStale": True,
         }
         assert dictSyncs["zenodo"] is None
         assert dictSyncs["overleaf"] is None

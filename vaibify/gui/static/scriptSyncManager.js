@@ -1482,6 +1482,20 @@ var VaibifySyncManager = (function () {
         return _fsValidateLinkUrl(dictSummary.sRemoteUrl || "");
     }
 
+    function _fsBadgeStateOfElement(elBadge) {
+        /* "badge-unknown" -> "unknown". Returns "" for an element
+           with no state class, which lands the verify item at the
+           end — the conservative placement. */
+        if (!elBadge || !elBadge.classList) return "";
+        var listClasses = Array.prototype.slice.call(elBadge.classList);
+        for (var i = 0; i < listClasses.length; i++) {
+            if (listClasses[i].indexOf("badge-") === 0) {
+                return listClasses[i].substring("badge-".length);
+            }
+        }
+        return "";
+    }
+
     var _DICT_REMOTE_KEY_TO_PUSH_SERVICE = {
         sGithub: "github",
         sZenodo: "zenodo",
@@ -1490,21 +1504,66 @@ var VaibifySyncManager = (function () {
     };
 
     function _flistBuildPicklistItems(
-        sRemoteKey, sResolved, sWorkdir, dictWorkflow,
+        sRemoteKey, sResolved, sWorkdir, dictWorkflow, sBadgeState,
     ) {
         if (sRemoteKey === "sGithub") {
-            return _flistGithubPicklistItems();
+            return _flistWithVerifyItem(
+                _flistGithubPicklistItems(), sBadgeState);
         }
         if (sRemoteKey === "sZenodo") {
-            return _flistZenodoPicklistItems(dictWorkflow);
+            return _flistWithVerifyItem(
+                _flistZenodoPicklistItems(dictWorkflow), sBadgeState);
         }
         if (sRemoteKey === "sOverleaf") {
-            return _flistOverleafPicklistItems(dictWorkflow);
+            return _flistWithVerifyItem(
+                _flistOverleafPicklistItems(dictWorkflow), sBadgeState);
         }
         if (sRemoteKey === "sArxiv") {
+            // arXiv already leads with its own "Verify now" — it is
+            // pull-only, so verifying IS its primary action.
             return _flistArxivPicklistItems(dictWorkflow);
         }
         return [];
+    }
+
+    var _T_UNPROVEN_BADGE_STATES = ["unknown", "drifted"];
+
+    function _flistWithVerifyItem(listItems, sBadgeState) {
+        /* Every badge whose meaning is "was this compared against the
+           published copy" needs the comparison reachable from itself.
+           arXiv's picklist has led with "Verify now" all along; the
+           other three offered Sync / Archive / Push and a couple of
+           links, none of which re-runs the comparison the badge
+           reports — so an unproven badge opened a menu that could not
+           resolve it.
+
+           Position tracks the state rather than being fixed. On an
+           unknown or drifted badge the verify is the whole question
+           and leads; on a badge already showing a verified match it
+           is the least useful item on the menu and sits at the end.
+           It is never omitted: re-verifying is how a researcher
+           confirms a badge is current rather than merely cached. */
+        var dictVerify = {
+            sLabel: "Verify now", sAction: "verifyNow",
+        };
+        if (_T_UNPROVEN_BADGE_STATES.indexOf(sBadgeState) === -1) {
+            return listItems.concat([dictVerify]);
+        }
+        dictVerify.bPrimary = true;
+        return [dictVerify].concat(listItems.map(
+            function (dictItem) {
+                /* Only one item may lead. The former primary keeps
+                   its place and its action, and loses only the
+                   emphasis. */
+                if (!dictItem.bPrimary) return dictItem;
+                var dictCopy = {};
+                Object.keys(dictItem).forEach(function (sKey) {
+                    dictCopy[sKey] = dictItem[sKey];
+                });
+                dictCopy.bPrimary = false;
+                return dictCopy;
+            },
+        ));
     }
 
 
@@ -1705,8 +1764,13 @@ var VaibifySyncManager = (function () {
         if (!elMenu) return;
         fnDismissAllPicklists();
         var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
+        /* Read the state off the badge that was clicked rather than
+           re-deriving it: the class is what the researcher is looking
+           at, so the menu can never disagree with the icon it opened
+           from. */
+        var sBadgeState = _fsBadgeStateOfElement(elBadge);
         var listItems = _flistBuildPicklistItems(
-            sRemoteKey, sResolved, sWorkdir, dictWorkflow);
+            sRemoteKey, sResolved, sWorkdir, dictWorkflow, sBadgeState);
         var elList = elMenu.querySelector(".picklist-items");
         elList.innerHTML = "";
         listItems.forEach(function (dictItem) {
@@ -1729,6 +1793,18 @@ var VaibifySyncManager = (function () {
         fnDismissAllPicklists();
         if (sRemoteKey === "sArxiv") {
             _fnHandleArxivPicklistSelect(dictItem);
+            return;
+        }
+        if (dictItem.sAction === "verifyNow") {
+            /* The same route the Project block's Verify-now button
+               posts to, deliberately — one comparison, one cache, one
+               answer, whichever control the researcher reached for.
+               No element is passed, so nothing is disabled; the menu
+               has already dismissed itself. */
+            fnVerifyRemoteFromDashboard(
+                _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey] || "",
+                null,
+            );
             return;
         }
         if (dictItem.sAction === "primary") {
@@ -2002,6 +2078,27 @@ var VaibifySyncManager = (function () {
         _fnSurfaceSyncOutcome(dictOutcome);
         await VaibifyGitBadges.fnRefresh(sContainerId);
         VaibifyApp.fnRenderStepList();
+        await _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome);
+    }
+
+    async function _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome) {
+        /* A push changes the remote; it does not change what vaibify
+           KNOWS about the remote. Since the badge means "verified
+           identical to the published copy", a push alone can never
+           turn one blue — so pushing a file and watching nothing
+           happen was the honest behaviour and a dead end: the
+           researcher had done the right thing and had no way to see
+           it. The verify is the only thing that can close that loop,
+           so the push runs it.
+
+           Deliberately not on the scheduled sweep's terms. A daily
+           cadence is right for unattended re-checking; this is a
+           researcher acting on one file and waiting for the answer,
+           which is the same bargain the Verify-now button strikes. */
+        if (!(dictOutcome || {}).bPushed) return;
+        var sService = _DICT_REMOTE_KEY_TO_PUSH_SERVICE[sRemoteKey];
+        if (!sService || sService === "overleaf") return;
+        await fnVerifyRemoteFromDashboard(sService, null);
     }
 
     function _fnSurfaceSyncOutcome(dictOutcome) {
@@ -2094,9 +2191,24 @@ var VaibifySyncManager = (function () {
 
     function _fdictBuildPushOutcome(dictResult, sServiceLabel) {
         if (dictResult && dictResult.bSuccess) {
+            // "Pushed", not "Synced". Since the badge started meaning
+            // "verified identical to the published copy", `synced` is
+            // a verdict only a verify can reach — and this call made
+            // no comparison at all. The verify that follows is what
+            // gets to use the stronger word.
+            //
+            // A file that was already committed and pushed produces
+            // "Everything up-to-date" and no new commit. Saying
+            // "Pushed" there would describe work that did not happen,
+            // and this is exactly the case a researcher hits on a file
+            // whose badge is orange for want of a VERIFY rather than
+            // for want of a push.
+            var bAlready = /everything up-to-date/i.test(
+                (dictResult.sOutput || ""));
             VaibifyApp.fnShowToast(
-                "Synced to " + sServiceLabel + ".", "success");
-            return {};
+                (bAlready ? "Already published to " : "Pushed to ") +
+                sServiceLabel + ".", "success");
+            return {bPushed: true};
         }
         return {
             dictFailureResult: dictResult || {},
@@ -2553,6 +2665,28 @@ var VaibifySyncManager = (function () {
             "error");
     }
 
+    function _fsDescribeVerifyOutcome(sService, dictStatus) {
+        /* Report the VERDICT, not the mechanism. "Status updates on
+           the next refresh" describes vaibify's plumbing and leaves
+           the researcher watching an icon; the numbers are what they
+           asked the question to learn, and they are already in the
+           response. */
+        var dict = dictStatus || {};
+        var iTotal = dict.iTotalFiles;
+        var iMatching = dict.iMatching;
+        if (typeof iTotal !== "number" || typeof iMatching !== "number") {
+            return "Verification of " + sService + " complete.";
+        }
+        if (iMatching === iTotal) {
+            return "Verified " + sService + ": all " + iTotal +
+                " published file" + (iTotal === 1 ? "" : "s") +
+                " match.";
+        }
+        return "Verified " + sService + ": " + iMatching + " of " +
+            iTotal + " match — " + (iTotal - iMatching) +
+            " differ from the published copy.";
+    }
+
     async function fnVerifyRemoteFromDashboard(sService, elButton) {
         // The Project block's per-row "Verify now" button. Runs the
         // same verify the Repos panel uses; the requirement row picks
@@ -2561,13 +2695,36 @@ var VaibifySyncManager = (function () {
         // network round trip is live.
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
+        /* A verify fetches and hashes every published file against the
+           remote, which took ~10s on a real project and showed the
+           researcher nothing at all — a disabled button is not visible
+           when the click came from a picklist that has already
+           dismissed itself, and there is no elButton on that path. Say
+           it has started, and say what it is doing, so a slow answer
+           is distinguishable from a dead one. */
+        VaibifyApp.fnShowToast(
+            "Verifying " + sService + " — comparing every published " +
+            "file against the remote. This can take a few seconds.",
+            "info");
         if (elButton) elButton.disabled = true;
         try {
-            await _fdictPostVerify(sContainerId, sService);
+            var dictStatus = await _fdictPostVerify(
+                sContainerId, sService,
+            );
             fnInvalidateVerifyCache();
+            /* Repaint HERE rather than waiting for the epoch to come
+               back round on a poll. The epoch path is the general
+               signal — it has to be, since a verify can also come from
+               the in-container agent or the scheduled sweep — but a
+               researcher who just clicked the button should not watch
+               a stale badge for a poll interval wondering whether
+               anything happened. */
+            if (typeof VaibifyGitBadges !== "undefined") {
+                await VaibifyGitBadges.fnRefresh(sContainerId);
+            }
             VaibifyApp.fnShowToast(
-                "Verification of " + sService + " complete — " +
-                "status updates on the next refresh.", "success");
+                _fsDescribeVerifyOutcome(sService, dictStatus),
+                "success");
         } catch (error) {
             if (error && error.iStatus === 409) {
                 // A 409 is a precondition refusal computed locally —

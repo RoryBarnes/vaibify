@@ -27,6 +27,7 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
+from ..pipelineUtils import fbStepDirectoryConforms, fsSlugFromStepName
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     ffilesForWorkflow,
@@ -39,8 +40,8 @@ from ..routeScope import (
     ffnDeclareCarrierMode,
 )
 from ...reproducibility.aiDeclarationStep import (
-    S_DEFAULT_DECLARATION_DIRECTORY,
     S_DEFAULT_DECLARATION_FILENAME,
+    S_DEFAULT_DECLARATION_STEP_NAME,
     fbDeclarationFileExists,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
@@ -101,16 +102,44 @@ def _fsValidateRelativePath(sRelativePath):
     return sClean
 
 
-def _fsValidateNewStepDirectory(dictWorkflow, sDirectory):
+def _fnRejectDirectoryDisagreeingWithName(sDirectory, sName):
+    """Raise 400 when a directory violates the name->slug contract.
+
+    The generic update-step path already 400s a rename for exactly
+    this reason, so that the directory, marker, and manifest can never
+    drift from the name. Creation had no such guard, which is how the
+    shipped declaration step came to be born non-conforming.
+    """
+    if fbStepDirectoryConforms(
+        {"sName": sName, "sDirectory": sDirectory},
+    ):
+        return
+    sExpected = fsSlugFromStepName(sName)
+    raise HTTPException(
+        400,
+        f"sDirectory '{sDirectory}' does not match the step name "
+        f"'{sName}' — the slug contract derives '{sExpected}'. "
+        f"Omit sDirectory to have it derived, or rename the step.",
+    )
+
+
+def _fsValidateNewStepDirectory(dictWorkflow, sDirectory, sName):
     """Return a validated, unique step directory or raise 400/409.
 
     Mirrors the load-time step-directory boundary rules (repo-relative,
     no ``..`` escape) and additionally requires uniqueness among the
     workflow's existing step directories so per-step state keys in
     state.json cannot collide.
+
+    An omitted directory is DERIVED from the step's own name rather
+    than defaulting to a constant: a caller who overrides ``sName``
+    and leaves ``sDirectory`` alone would otherwise get a step born
+    violating the slug contract, which the dashboard paints as a red
+    error against a step the product just built for them.
     """
-    sClean = (sDirectory or "").strip() or S_DEFAULT_DECLARATION_DIRECTORY
+    sClean = (sDirectory or "").strip() or fsSlugFromStepName(sName)
     _fnRejectEscapingPath(sClean, "sDirectory")
+    _fnRejectDirectoryDisagreeingWithName(sClean, sName)
     setExistingDirectories = {
         (dictStep.get("sDirectory") or "").strip()
         for dictStep in dictWorkflow.get("listSteps", []) or []
@@ -293,15 +322,23 @@ def _fnRefuseDuplicateAiDeclarationStep(dictWorkflow):
 
 
 def _fdictBuildStepFromAddRequest(dictWorkflow, request):
-    """Translate the optional add-step body into a validated new step."""
+    """Translate the optional add-step body into a validated new step.
+
+    The name is resolved to its effective value FIRST, because the
+    directory is validated against it — deriving from the raw request
+    would check a custom directory against the default name.
+    """
+    sName = (
+        (request.sName or "").strip() or S_DEFAULT_DECLARATION_STEP_NAME
+    )
     sDirectory = _fsValidateNewStepDirectory(
-        dictWorkflow, request.sDirectory,
+        dictWorkflow, request.sDirectory, sName,
     )
     sDeclarationFile = _fsValidateRelativePath(
         request.sDeclarationFile,
     )
     return fdictBuildAiDeclarationStep(
-        sName=request.sName,
+        sName=sName,
         sDeclarationFile=sDeclarationFile,
         sDirectory=sDirectory,
     )

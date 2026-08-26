@@ -38,6 +38,9 @@ from vaibify.reproducibility.levelGates import (
     fiProofLevel,
 )
 
+from tests.syncStatusFixtures import fdictBuildCachedVerify
+
+
 
 def _fsBuildIsoTimestamp(fHoursAgo=0.0):
     """Return an ISO-8601 UTC timestamp fHoursAgo before now."""
@@ -169,12 +172,10 @@ def test_fbWorkflowHasAiDeclarationStep_handles_empty_workflow():
 def test_fbWorkflowFullySyncedWithGithub_fresh_full_match_returns_true(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -185,12 +186,10 @@ def test_fbWorkflowFullySyncedWithGithub_fresh_full_match_returns_true(tmp_path)
 def test_fbWorkflowFullySyncedWithGithub_stale_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=48.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=48.0),
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -201,13 +200,11 @@ def test_fbWorkflowFullySyncedWithGithub_stale_returns_false(tmp_path):
 def test_fbWorkflowFullySyncedWithGithub_diverged_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 2,
-            "listDiverged": [{"sPath": "a"}],
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listDivergedPaths=["step01/data.csv"],
+            sCommittedShaVerified="abc123",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -218,12 +215,10 @@ def test_fbWorkflowFullySyncedWithGithub_diverged_returns_false(tmp_path):
 def test_fbWorkflowFullySyncedWithGithub_sha_mismatch_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "sCommittedShaVerified": "OLD_SHA",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="OLD_SHA",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithGithub(
@@ -248,13 +243,12 @@ def test_fbWorkflowFullySyncedWithGithub_no_cache_returns_false(tmp_path):
 def test_fbWorkflowFullySyncedWithZenodo_fresh_full_match_returns_true(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithZenodo(
@@ -265,13 +259,12 @@ def test_fbWorkflowFullySyncedWithZenodo_fresh_full_match_returns_true(tmp_path)
 def test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
-            "sZenodoDoi": "",
-            "sEndpointVerified": "sandbox",
-        },
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sZenodoDoi="",
+            sEndpointVerified="sandbox",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbWorkflowFullySyncedWithZenodo(
@@ -282,13 +275,12 @@ def test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false(tmp_path):
 def test_fbWorkflowFullySyncedWithZenodo_endpoint_mismatch_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     })
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     dictWorkflow["dictRemotes"]["zenodo"]["sService"] = "production"
@@ -305,19 +297,16 @@ def test_fbWorkflowFullySyncedWithZenodo_endpoint_mismatch_returns_false(tmp_pat
 def _fnWriteAllGreenSyncStatus(sProjectRepo):
     """Write fresh-and-matching cache files for both services."""
     _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
-            "sCommittedShaVerified": "abc123",
-        },
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="abc123",
+        ),
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     })
 
 
@@ -453,7 +442,13 @@ def test_fdictBuildAiDeclarationStep_has_unnecessary_categories():
     assert dictStep["sStepKind"] == S_AI_DECLARATION_STEP_KIND
     assert dictStep["sDeclarationFile"] == "AI_USAGE.md"
     assert dictStep["bInteractive"] is True
-    assert dictStep["sDirectory"] == "aiDeclaration"
+    # Was "aiDeclaration" until 2026-08-25. The default directory is
+    # not free: the slug contract derives it from the default NAME,
+    # and the old value disagreed, so every declaration step vaibify
+    # built was born wearing a red contract-violation warning.
+    # testDeclarationStepHonorsTheSlugContract pins the relationship
+    # rather than the spelling.
+    assert dictStep["sDirectory"] == "AIDeclaration"
     dictV = dictStep["dictVerification"]
     for sKey in (
         "sUnitTest", "sIntegrity", "sQualitative", "sQuantitative",

@@ -29,7 +29,20 @@ def _fdictGit(dictFileStates=None, bIsRepo=True):
 
 
 # ----------------------------------------------------------------------
-# Git column
+# Local git column (sGitState)
+#
+# These five asserted ``sGithub`` until 2026-08-25, when that key
+# stopped being local git truth and became agreement with the
+# published copy. The local answer did not go away and neither did
+# these tests -- it moved to ``sGitState``, which the declaration
+# row's track/untrack gate reads. Retargeted rather than deleted:
+# every case below is still a real behaviour of the porcelain reader.
+#
+# The rename is the whole point of the change. A file committed but
+# never pushed has no porcelain entry, so the old sGithub lit as
+# "in sync with remote" for a remote that had never seen it --
+# test_git_badge_synced_for_committed_file was, read literally, a
+# test that the octocat overstated.
 # ----------------------------------------------------------------------
 
 
@@ -38,7 +51,7 @@ def test_git_badge_synced_for_committed_file(tmp_path):
     dictResult = badgeState.fdictBadgesForFile(
         "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
     )
-    assert dictResult["sGithub"] == badgeState.S_BADGE_SYNCED
+    assert dictResult["sGitState"] == badgeState.S_BADGE_SYNCED
 
 
 def test_git_badge_dirty_for_working_tree_modification(tmp_path):
@@ -48,7 +61,7 @@ def test_git_badge_dirty_for_working_tree_modification(tmp_path):
         _fdictGit({"fig.pdf": "dirty"}),
         {}, str(tmp_path), {},
     )
-    assert dictResult["sGithub"] == badgeState.S_BADGE_DIRTY
+    assert dictResult["sGitState"] == badgeState.S_BADGE_DIRTY
 
 
 def test_git_badge_drifted_for_staged_modification(tmp_path):
@@ -58,7 +71,7 @@ def test_git_badge_drifted_for_staged_modification(tmp_path):
         _fdictGit({"fig.pdf": "uncommitted"}),
         {}, str(tmp_path), {},
     )
-    assert dictResult["sGithub"] == badgeState.S_BADGE_DRIFTED
+    assert dictResult["sGitState"] == badgeState.S_BADGE_DRIFTED
 
 
 def test_git_badge_untracked(tmp_path):
@@ -68,7 +81,7 @@ def test_git_badge_untracked(tmp_path):
         _fdictGit({"new.pdf": "untracked"}),
         {}, str(tmp_path), {},
     )
-    assert dictResult["sGithub"] == badgeState.S_BADGE_UNTRACKED
+    assert dictResult["sGitState"] == badgeState.S_BADGE_UNTRACKED
 
 
 def test_git_badge_none_when_not_a_repo(tmp_path):
@@ -77,7 +90,7 @@ def test_git_badge_none_when_not_a_repo(tmp_path):
         "fig.pdf", _fdictGit(bIsRepo=False),
         {}, str(tmp_path), {},
     )
-    assert dictResult["sGithub"] == badgeState.S_BADGE_NONE
+    assert dictResult["sGitState"] == badgeState.S_BADGE_NONE
 
 
 # ----------------------------------------------------------------------
@@ -416,8 +429,14 @@ def test_workspace_badges_many_files(tmp_path):
         ["a.pdf", "b.pdf"], dictGit, dictSync,
         str(tmp_path), dictCache,
     )
-    assert dictResult["a.pdf"]["sGithub"] == badgeState.S_BADGE_SYNCED
-    assert dictResult["b.pdf"]["sGithub"] == badgeState.S_BADGE_DIRTY
+    # sGitState, not sGithub (2026-08-25): the per-file local git
+    # answer this exercises still exists, under the key that now
+    # carries it. sGithub is asserted too, and reads unknown because
+    # no GitHub verify was supplied -- which is the honest answer and
+    # was previously indistinguishable from "not on the remote".
+    assert dictResult["a.pdf"]["sGitState"] == badgeState.S_BADGE_SYNCED
+    assert dictResult["b.pdf"]["sGitState"] == badgeState.S_BADGE_DIRTY
+    assert dictResult["a.pdf"]["sGithub"] == badgeState.S_BADGE_UNKNOWN
 
 
 def test_workspace_badges_tolerate_container_absolute_keys(tmp_path):
@@ -468,13 +487,26 @@ def test_workspace_badges_populates_mtime_cache(tmp_path):
 # ----------------------------------------------------------------------
 
 
-def _fdictArxivStatusFor(listDivergedPaths):
-    """Return a syncStatus.json-shaped dict for arxiv with listDiverged."""
+def _fdictArxivStatusFor(listDivergedPaths, listComparedPaths=None):
+    """Return a syncStatus.json-shaped dict for arxiv with listDiverged.
+
+    ``listComparedPaths`` (2026-08-25) is what separates "matched"
+    from "never looked at". It defaults to the union of the diverged
+    paths and the paths these tests probe, because every case here is
+    about a file the verify DID compare; the not-compared case has its
+    own test rather than riding on a fixture default.
+    """
+    listCompared = listComparedPaths
+    if listCompared is None:
+        listCompared = sorted(
+            set(listDivergedPaths) | {"fig.pdf", "a.pdf", "b.pdf"},
+        )
     return {
         "sService": "arxiv",
         "sLastVerified": "2026-05-13T12:00:00Z",
         "iTotalFiles": 3,
         "iMatching": 3 - len(listDivergedPaths),
+        "listComparedPaths": listCompared,
         "listDiverged": [
             {"sPath": sPath, "sExpected": "expected", "sActual": "actual"}
             for sPath in listDivergedPaths
@@ -491,13 +523,41 @@ def test_arxiv_badge_none_when_not_configured(tmp_path):
     assert dictResult["sArxiv"] == badgeState.S_BADGE_NONE
 
 
-def test_arxiv_badge_drifted_when_configured_but_never_verified(tmp_path):
+def test_arxiv_badge_unknown_when_configured_but_never_verified(tmp_path):
+    """Was DRIFTED until 2026-08-25, which was a claim it had not earned.
+
+    "No verify has run" and "the verify found a difference" are
+    different facts with different remedies -- run a verify, versus
+    re-push the figure -- and reporting the first as the second is the
+    same overstatement the GitHub column was making. Renamed, not
+    deleted: the case is still exactly the one worth pinning.
+    """
     _fsWrite(str(tmp_path), "fig.pdf", "x")
     dictResult = badgeState.fdictBadgesForFile(
         "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
         dictArxivStatus=None, bArxivConfigured=True,
     )
-    assert dictResult["sArxiv"] == badgeState.S_BADGE_DRIFTED
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_UNKNOWN
+
+
+def test_arxiv_badge_unknown_for_a_path_the_verify_never_compared(
+    tmp_path,
+):
+    """A verify ran, but not over this file.
+
+    Absence from listDiverged means "matched" only for a path that was
+    actually compared. Without this distinction a file the verify
+    never looked at reads identically to one it confirmed.
+    """
+    _fsWrite(str(tmp_path), "fig.pdf", "x")
+    dictResult = badgeState.fdictBadgesForFile(
+        "fig.pdf", _fdictGit(), {}, str(tmp_path), {},
+        dictArxivStatus=_fdictArxivStatusFor(
+            [], listComparedPaths=["other.pdf"],
+        ),
+        bArxivConfigured=True,
+    )
+    assert dictResult["sArxiv"] == badgeState.S_BADGE_UNKNOWN
 
 
 def test_arxiv_badge_synced_when_file_absent_from_diverged(tmp_path):

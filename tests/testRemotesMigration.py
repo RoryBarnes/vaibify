@@ -253,9 +253,22 @@ def test_migrated_legacy_workflow_unblocks_verify_409_guard(
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
             sRepo, dictWorkflow, sService,
         )
-    assert dictStatus["iTotalFiles"] == 1
-    assert dictStatus["iMatching"] == 1
-    assert dictStatus["listDiverged"] == []
+    # The point of this test is that migration clears the CONFIG
+    # guard: the verify RAN instead of raising ReverifyConfigError.
+    # It asserted an exact count and a wholly empty divergence list
+    # until 2026-08-26, when the comparison set gained the
+    # reproducibility envelope. This fixture's repo carries a
+    # MANIFEST.sha256, and the stubbed remote returns hashes for one
+    # figure only, so that file now diverges correctly -- an artifact
+    # of the stub, not of migration. Asserting the FIGURE's outcome
+    # keeps a real check that cannot be satisfied vacuously, without
+    # coupling an unrelated test to the envelope definition.
+    setDiverged = {
+        dictEntry["sPath"] for dictEntry in dictStatus["listDiverged"]
+    }
+    assert "d/f.pdf" not in setDiverged, dictStatus["listDiverged"]
+    assert dictStatus["iTotalFiles"] >= 1
+    assert dictStatus["iMatching"] >= 1
 
 
 def test_migrated_remotes_round_trip_through_save():

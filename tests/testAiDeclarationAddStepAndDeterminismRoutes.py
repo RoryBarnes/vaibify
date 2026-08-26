@@ -17,6 +17,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from vaibify.gui.pipelineUtils import fsSlugFromStepName
 from vaibify.gui.routes import levelRoutes, reproducibilityRoutes
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
@@ -38,11 +39,19 @@ S_DETERMINISM_URL = (
 )
 
 
-def _fdictBuildDataStep(sDirectory):
-    """Return a minimal pre-existing data step for listSteps."""
+def _fdictBuildDataStep(sName):
+    """Return a minimal pre-existing data step for listSteps.
+
+    The directory is DERIVED, not passed: the fixture used to hold a
+    step whose name and directory disagreed under the slug contract,
+    which is the very defect the add-step route now refuses (see
+    testDeclarationStepHonorsTheSlugContract). A fixture that could
+    not exist in a healthy project is a poor thing to test a
+    uniqueness rule against.
+    """
     return {
-        "sName": f"Existing {sDirectory}",
-        "sDirectory": sDirectory,
+        "sName": sName,
+        "sDirectory": fsSlugFromStepName(sName),
         "saPlotCommands": [],
         "saPlotFiles": [],
     }
@@ -54,7 +63,7 @@ def fixtureWorkflow(tmp_path):
     return {
         "sProjectRepoPath": str(tmp_path),
         "sPlotDirectory": "Plot",
-        "listSteps": [_fdictBuildDataStep("makeData")],
+        "listSteps": [_fdictBuildDataStep("Make Data")],
     }
 
 
@@ -142,15 +151,26 @@ def test_add_step_appends_declaration_step_at_end(
 
 
 def test_add_step_honors_body_overrides(fixtureClient, fixtureWorkflow):
+    """The override directory is nested, and conforms.
+
+    It read ``"declarations"`` until 2026-08-25, when creation gained
+    the name<->directory guard the rename path already had; that value
+    disagrees with the overriding name, so the route now 400s it. The
+    parent path is free under the slug contract — only the final
+    component is governed — so a nested value keeps this test proving
+    that overrides are honored rather than merely that a slug is
+    echoed back. The refusal case lives in
+    testDeclarationStepHonorsTheSlugContract.
+    """
     response = fixtureClient.post(S_ADD_STEP_URL, json={
         "sName": "Declare AI Assistance",
-        "sDirectory": "declarations",
+        "sDirectory": "docs/DeclareAIAssistance",
         "sDeclarationFile": "docs/AI_USAGE.md",
     })
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     dictStep = fixtureWorkflow["listSteps"][-1]
     assert dictStep["sName"] == "Declare AI Assistance"
-    assert dictStep["sDirectory"] == "declarations"
+    assert dictStep["sDirectory"] == "docs/DeclareAIAssistance"
     assert dictStep["sDeclarationFile"] == "docs/AI_USAGE.md"
 
 
@@ -183,10 +203,19 @@ def test_add_step_rejects_dotdot_directory(fixtureClient):
 
 
 def test_add_step_rejects_duplicate_directory(fixtureClient):
+    """A collision now arrives via the NAME, which is how it can.
+
+    The request used to post the colliding directory straight in. With
+    the name<->directory guard that pair is refused 400 before
+    uniqueness is ever consulted, so posting it would prove the wrong
+    guard fired. Reusing the existing step's name reaches the
+    uniqueness check the way a researcher would: two steps whose names
+    slug to one directory.
+    """
     response = fixtureClient.post(
-        S_ADD_STEP_URL, json={"sDirectory": "makeData"},
+        S_ADD_STEP_URL, json={"sName": "Make Data"},
     )
-    assert response.status_code == 409
+    assert response.status_code == 409, response.text
     assert "already used" in response.text
 
 

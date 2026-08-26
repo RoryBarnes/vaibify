@@ -862,6 +862,21 @@ Usage:
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
+**The dashboard's sync labels are CACHES, and your terminal does not update them.** "Synced", the per-file remote badges, and the Level 2 Published cells are not computed when the researcher looks at them. They come from two stores, each with a fixed set of update triggers:
+
+- The **per-file badge map** is fetched when the researcher opens the project, and afterwards only when a vaibify route bumps the server's sync epoch. The five-second file poll deliberately does not refresh it.
+- The **remote comparison** (`.vaibify/syncStatus.json`) is the one that actually contacts github.com — it SHA-256s each declared canonical file against the published copy. It is rewritten only by an explicit verify or by the scheduled background pass.
+
+Any git you run in this shell — `git add`, `git commit`, `git push` — changes reality and bumps neither. **The dashboard then keeps showing the pre-push state indefinitely, and it is not wrong; it has not been told.** This is the single most likely explanation when a researcher reports that vaibify disagrees with what you can see, so check it before concluding the dashboard is broken.
+
+The repair is one action:
+
+- "I pushed / committed outside vaibify" → `vaibify-do reconcile-remote-state`
+
+It fetches origin, re-runs the GitHub content verify that the Level 2 cells read, records what the verify proved, and bumps the epoch so every open tab repaints. Read-only plus bookkeeping; the working tree is untouched. Run it after ANY out-of-band git operation, without being asked.
+
+**Report the verdict, not the fact that you ran it.** The response carries `dictVerifyStatus` with `iMatching`, `iTotalFiles`, and `listDiverged`. Say "19 of 19 files match GitHub" or name the files in `listDiverged`. A researcher who is told only "I ran the reconcile" has learned nothing, and if the badge was already showing a check they will see no visible change and cannot tell success from a no-op. `vaibify-do verify-remote github` re-runs just the comparison if you want the numbers without the fetch and repaint.
+
 **Run steps through `vaibify-do`, not by executing scripts directly in a shell.** A `vaibify-do run-step`/`run-selected-steps` dispatch lights the step's marker as *running* on the dashboard; a bare `python …` you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the `running-steps` skill for the full protocol, including safe (compare-and-swap) project edits.
 
 **Never compute a quantitative or statistical result with a throwaway construction** — no heredocs, `python -c`, inline one-liners, or REPL sessions. A number that isn't produced by a saved script is not reproducible and cannot become a step. When asked to compute, estimate, fit, sample, or analyze anything numeric, write it as a script — in the relevant step's directory if it extends a step, otherwise in `explorations/` at the repository root — with a self-explanatory verb-first name and a one-line docstring, taking inputs as arguments and writing outputs to files, then run it through `vaibify-do`. Even a quick exploratory answer is delivered as the script, and you `grep explorations/` for an existing one before writing a new one. See the `reproducible-analysis` skill for the full protocol.

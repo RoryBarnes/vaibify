@@ -11,12 +11,32 @@ entry per service (currently only consulted for arXiv, which has no
 push-side counterpart).
 
 Badge values:
-- ``synced``     local content matches the remote's last-known digest
-- ``drifted``    local has changed since the last push to this remote
-- ``dirty``      (git only) uncommitted working-tree changes
-- ``untracked``  (git only) not tracked by git
-- ``ignored``    (git only) explicitly gitignored
-- ``none``       the service is not configured for this file
+- ``synced``     the published copy was compared and matches
+- ``drifted``    the published copy was compared and differs
+- ``unknown``    no comparison has been made for this file
+- ``none``       the remote does not have this file, or the service
+                 is not configured for it
+- ``dirty`` / ``untracked`` / ``ignored``  local git states, carried
+                 on ``sGitState`` only — never on a remote key
+
+**The GitHub badge is agreement with the remote, not local git
+cleanliness (2026-08-25).** It read ``git status --porcelain`` until
+then, which meant a file committed but never pushed had no porcelain
+entry and so lit the octocat as "in sync with remote" — a positive
+claim about a remote that had never seen the file. It is now driven by
+the same cached verify the Level 2 cells read: a real SHA-256 of the
+file as it exists now against the bytes raw.githubusercontent.com
+serves. The local answer did not go away; it moved to ``sGitState``,
+which the declaration row's track/untrack gate reads because that gate
+genuinely asks "does git hold this file".
+
+``unknown`` exists because its absence was itself the bug. A
+researcher whose files were byte-identical to GitHub saw the faint
+grey ``none`` icon — whose tooltip reads "not synced to this remote" —
+and could not distinguish it from a file that had genuinely never been
+published, or from a badge map that failed to load. Ignorance now has
+its own value and its own colour, and never borrows a verdict from
+either neighbour.
 
 A file that is NOT THERE gets ``none`` from every column. ``git status
 --porcelain`` lists only files it has something to say about, and the
@@ -33,6 +53,7 @@ import os
 
 from . import mtimeCache
 from . import workflowManager
+from ..reproducibility import publicationScope
 
 __all__ = [
     "S_BADGE_SYNCED",
@@ -41,6 +62,8 @@ __all__ = [
     "S_BADGE_UNTRACKED",
     "S_BADGE_IGNORED",
     "S_BADGE_NONE",
+    "S_BADGE_UNKNOWN",
+    "S_BADGE_NOT_COMPARED",
     "fdictBadgesForFile",
     "fdictBadgeStateForWorkspace",
     "fdictBadgeStateFromHashes",
@@ -53,6 +76,19 @@ S_BADGE_DIRTY = "dirty"
 S_BADGE_UNTRACKED = "untracked"
 S_BADGE_IGNORED = "ignored"
 S_BADGE_NONE = "none"
+# "I have no answer", as distinct from "the answer is no" (2026-08-25).
+# Their absence is why a researcher whose files were byte-identical to
+# GitHub saw the same faint grey icon as a file that was never
+# published, and read it — correctly, per the tooltip — as "not synced
+# to this remote".
+S_BADGE_UNKNOWN = "unknown"
+# Tracked, published, and deliberately compared by nothing — test
+# markers and .gitignore. Distinct from `unknown` because `unknown` is
+# a to-do ("run a verify") and this one can never be discharged: every
+# verify skips these by design, so an orange mark beside them is an
+# instruction the researcher cannot follow. The partition that decides
+# this lives in `reproducibility.publicationScope`.
+S_BADGE_NOT_COMPARED = "not-compared"
 
 
 _DICT_GIT_STATE_TO_BADGE = {
@@ -96,35 +132,71 @@ def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
     return S_BADGE_DRIFTED
 
 
-def _fsArxivBadge(sRepoRelPath, dictArxivStatus, bConfigured):
-    """Three-state arXiv icon driven by the cached verify result.
+def _fsVerifiedRemoteBadge(sRepoRelPath, dictStatus, bConfigured=True):
+    """Five-state icon driven by a cached remote verify result.
 
-    arXiv is pull-only — there is no last-pushed digest because
-    submissions happen outside vaibify. The badge therefore consults
-    the workflow's cached ``syncStatus.json`` arxiv entry: a file is
-    ``synced`` when the latest verify saw it match the e-print
-    tarball, ``drifted`` when it appeared in ``listDiverged`` or was
-    not yet verified, and ``none`` when the workflow has no arxiv
-    remote configured.
+    The reader for every remote whose truth is a real comparison
+    against the published copy — a SHA-256 of the file as it exists
+    now against the bytes the remote serves. GitHub and arXiv share
+    it because they ask the identical question; only arXiv gates on
+    ``bConfigured``, because a workflow with no arxiv remote has
+    nothing to compare against, whereas a project repo always has a
+    GitHub answer once a verify has run.
+
+    The five states, and the distinction that did not exist before
+    2026-08-25:
+
+    - ``not-compared``  no verify compares this path, ever (test
+      markers, ``.gitignore``). Checked FIRST, because it is the one
+      answer a researcher cannot act on and must not be dressed as a
+      to-do.
+    - ``unknown``  no verify has run, or this path was not in the set
+      the last verify compared. NOT a claim about the remote.
+    - ``none``     the verify looked and the remote does not have the
+      file (``sActual`` empty — a 404 from the mirror).
+    - ``drifted``  the verify compared both copies and they differ.
+    - ``synced``   the verify compared both copies and they match.
+
+    ``listComparedPaths`` is what makes ``unknown`` separable from
+    ``synced``: absence from ``listDiverged`` means "matched" only for
+    a path that was actually compared, and means nothing at all for
+    one that was not. A cache written before that field existed has
+    no compared set, so every path reads ``unknown`` until the next
+    verify — self-correcting, and honest in the meantime.
     """
     if not bConfigured:
         return S_BADGE_NONE
-    if not dictArxivStatus:
-        return S_BADGE_DRIFTED
-    if not dictArxivStatus.get("sLastVerified"):
-        return S_BADGE_DRIFTED
-    setDiverged = _fsetDivergedPaths(dictArxivStatus)
-    if sRepoRelPath in setDiverged:
-        return S_BADGE_DRIFTED
-    return S_BADGE_SYNCED
+    # Ahead of the verify check: a path no verify will ever compare is
+    # not waiting on one, and answering `unknown` would leave the
+    # researcher an orange mark they cannot clear by doing anything.
+    if not publicationScope.fbPathIsCompared(sRepoRelPath):
+        return S_BADGE_NOT_COMPARED
+    if not dictStatus or not dictStatus.get("sLastVerified"):
+        return S_BADGE_UNKNOWN
+    if sRepoRelPath not in _fsetComparedPaths(dictStatus):
+        return S_BADGE_UNKNOWN
+    dictDiverged = _fdictDivergedEntries(dictStatus)
+    if sRepoRelPath not in dictDiverged:
+        return S_BADGE_SYNCED
+    if not (dictDiverged[sRepoRelPath].get("sActual") or ""):
+        return S_BADGE_NONE
+    return S_BADGE_DRIFTED
 
 
-def _fsetDivergedPaths(dictArxivStatus):
-    """Return the set of repo-relative paths in ``listDiverged``."""
-    listDiverged = dictArxivStatus.get("listDiverged") or []
+def _fsetComparedPaths(dictStatus):
+    """Return the set of repo-relative paths the last verify compared."""
     return {
-        dictEntry.get("sPath", "")
-        for dictEntry in listDiverged
+        sPath
+        for sPath in (dictStatus.get("listComparedPaths") or [])
+        if isinstance(sPath, str) and sPath
+    }
+
+
+def _fdictDivergedEntries(dictStatus):
+    """Return ``{repo-rel-path: entry}`` for the divergence list."""
+    return {
+        dictEntry.get("sPath", ""): dictEntry
+        for dictEntry in (dictStatus.get("listDiverged") or [])
         if isinstance(dictEntry, dict)
     }
 
@@ -153,6 +225,7 @@ def fdictBadgesForFile(
     sRepoRelPath, dictGitStatus, dictSyncEntry,
     sWorkspaceRoot, dictMtimeCache, sZenodoService="",
     dictArxivStatus=None, bArxivConfigured=False,
+    dictGithubStatus=None,
 ):
     """Return the per-file badge dict for one file.
 
@@ -177,6 +250,7 @@ def fdictBadgesForFile(
         not os.path.exists(
             os.path.join(sWorkspaceRoot, sRepoRelPath),
         ),
+        dictGithubStatus=dictGithubStatus,
     )
 
 
@@ -187,24 +261,39 @@ def _fdictAllBadgesNone():
         "sOverleaf": S_BADGE_NONE,
         "sZenodo": S_BADGE_NONE,
         "sArxiv": S_BADGE_NONE,
+        "sGitState": S_BADGE_NONE,
     }
 
 
 def _fdictAssembleBadges(
     sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
     sZenodoService, dictArxivStatus, bArxivConfigured,
-    bFileIsMissing,
+    bFileIsMissing, dictGithubStatus=None,
 ):
-    """Combine the four per-remote badge functions into the per-file dict.
+    """Combine the per-remote badge functions into the per-file dict.
 
     ``bFileIsMissing`` has no default on purpose: defaulting it to
     False is precisely the bug -- every caller that forgot to answer
     would go on reporting absent files as in sync.
+
+    ``sGitState`` carries the LOCAL git answer that ``sGithub`` used
+    to carry. The two were one key until 2026-08-25, which meant a
+    file committed but never pushed had no porcelain entry and so lit
+    the octocat as "in sync with remote" — a claim about a remote that
+    had never seen it. They are separate questions and now separate
+    keys: ``sGithub`` is agreement with the published copy,
+    ``sGitState`` is the working tree. Only the four remote keys are
+    rendered as badges; ``sGitState`` is read by the declaration
+    row's track/untrack gate, which genuinely wants "does git hold
+    this file".
     """
     if bFileIsMissing:
         return _fdictAllBadgesNone()
     return {
-        "sGithub": _fsGitBadge(sRepoRelPath, dictGitStatus),
+        "sGitState": _fsGitBadge(sRepoRelPath, dictGitStatus),
+        "sGithub": _fsVerifiedRemoteBadge(
+            sRepoRelPath, dictGithubStatus,
+        ),
         "sOverleaf": _fsRemoteBadge(
             sCurrentSha,
             dictEntry.get("sOverleafLastPushedDigest", ""),
@@ -217,7 +306,7 @@ def _fdictAssembleBadges(
             dictEntry.get("sZenodoLastPushedEndpoint", ""),
             sZenodoService,
         ),
-        "sArxiv": _fsArxivBadge(
+        "sArxiv": _fsVerifiedRemoteBadge(
             sRepoRelPath, dictArxivStatus, bArxivConfigured,
         ),
     }
@@ -227,7 +316,7 @@ def fdictBadgeStateForWorkspace(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
     sWorkspaceRoot, dictMtimeCache, sProjectRepoPath="",
     sZenodoService="", dictArxivStatus=None,
-    bArxivConfigured=False,
+    bArxivConfigured=False, dictGithubStatus=None,
 ):
     """Return {repo-rel-path: badge-dict} for each file in the list.
 
@@ -247,6 +336,7 @@ def fdictBadgeStateForWorkspace(
             sWorkspaceRoot, dictMtimeCache, sZenodoService,
             dictArxivStatus=dictArxivStatus,
             bArxivConfigured=bArxivConfigured,
+            dictGithubStatus=dictGithubStatus,
         )
     return dictResult
 
@@ -255,6 +345,7 @@ def fdictBadgeStateFromHashes(
     listRepoRelPaths, dictGitStatus, dictSyncStatus,
     dictCurrentHashes, setMissingRepoRelPaths, sProjectRepoPath="",
     sZenodoService="", dictArxivStatus=None, bArxivConfigured=False,
+    dictGithubStatus=None,
 ):
     """Compute badges when current hashes were obtained by some other means.
 
@@ -286,6 +377,7 @@ def fdictBadgeStateFromHashes(
             dictHashes.get(sRelPath, ""), sZenodoService,
             dictArxivStatus, bArxivConfigured,
             sRelPath in setMissingRepoRelPaths,
+            dictGithubStatus,
         )
     return dictResult
 
@@ -294,10 +386,11 @@ def _fdictBadgesForHashedFile(
     sRepoRelPath, dictGitStatus, dictEntry,
     sCurrentSha, sZenodoService,
     dictArxivStatus, bArxivConfigured, bFileIsMissing,
+    dictGithubStatus=None,
 ):
     """Compose the per-file badge dict from a precomputed hash."""
     return _fdictAssembleBadges(
         sRepoRelPath, dictGitStatus, dictEntry, sCurrentSha,
         sZenodoService, dictArxivStatus, bArxivConfigured,
-        bFileIsMissing,
+        bFileIsMissing, dictGithubStatus,
     )

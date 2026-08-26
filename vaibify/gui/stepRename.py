@@ -72,6 +72,16 @@ _T_STEP_COMMAND_ARRAY_KEYS = (
     "saSetupCommands",
 )
 
+# Step path fields holding ONE path rather than a list of them. They
+# need their own tuple because the array loop cannot reach them, and
+# a scalar that the cascade misses dangles silently: the directory
+# moves, the field keeps pointing at the old location, and the file
+# it names simply stops resolving. ``sDeclarationFile`` went
+# unrewritten until 2026-08-25 — harmless while the declaration sat
+# at the repo root (the default), and a broken pointer the moment a
+# researcher kept it inside the step directory and renamed the step.
+_T_STEP_PATH_SCALAR_KEYS = ("sDeclarationFile",)
+
 S_MANIFEST_FILENAME = "MANIFEST.sha256"
 
 
@@ -106,6 +116,15 @@ def _flistPlanFieldRewrites(dictStep, sOldDirectory, sNewDirectory):
                     "sField": sField, "sOld": sPath,
                     "sNew": sRewritten,
                 })
+    for sField in _T_STEP_PATH_SCALAR_KEYS:
+        sPath = dictStep.get(sField) or ""
+        sRewritten = _fsRewriteDirectoryPrefix(
+            sPath, sOldDirectory, sNewDirectory,
+        )
+        if sRewritten != sPath:
+            listRewrites.append({
+                "sField": sField, "sOld": sPath, "sNew": sRewritten,
+            })
     for dictRemote in dictStep.get("listRemoteData") or []:
         if not isinstance(dictRemote, dict):
             continue
@@ -426,6 +445,12 @@ def _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan):
                     dictPlan["sNewDirectory"],
                 ) for sPath in listPaths
             ]
+    for sField in _T_STEP_PATH_SCALAR_KEYS:
+        if dictStep.get(sField):
+            dictStep[sField] = _fsRewriteDirectoryPrefix(
+                dictStep[sField], dictPlan["sOldDirectory"],
+                dictPlan["sNewDirectory"],
+            )
     for dictRemote in dictStep.get("listRemoteData") or []:
         if isinstance(dictRemote, dict) and dictRemote.get("sPath"):
             dictRemote["sPath"] = _fsRewriteDirectoryPrefix(

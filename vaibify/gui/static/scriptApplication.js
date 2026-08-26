@@ -115,7 +115,17 @@ const VaibifyApp = (function () {
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
-        listLeftTabs: ["steps", "proof", "files", "logs"],
+        // "repos" joined this list on 2026-08-25. It was present only
+        // in the no-workflow mode, so the panel was unreachable
+        // exactly when a project was open -- while four
+        // researcher-facing pointers that render ONLY with a project
+        // open sent the reader to it: the PROOF tab's L2 GitHub and
+        // Zenodo rows (whose fix button is literally labelled "Open
+        // the Repos panel"), and the Project block's two
+        // published-copies hints. The button half-worked by accident
+        // -- a programmatic .click() fires on a display:none tab --
+        // so the panel opened with no tab to return to.
+        listLeftTabs: ["steps", "proof", "files", "repos", "logs"],
         sDefaultLeftTab: "steps",
         bShowRunMenu: true,
         bShowDagButton: true,
@@ -2610,13 +2620,13 @@ const VaibifyApp = (function () {
         },
         "not-in-github-mirror": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from GitHub mirror — commit " +
+            sLabel: "Published files differ from GitHub — commit " +
                 "and push from the Repos panel",
             sClass: "step-blocker-glyph-l2-mirror",
         },
         "not-in-zenodo-deposit": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from Zenodo deposit — publish " +
+            sLabel: "Published files differ from Zenodo — publish " +
                 "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },
@@ -2738,6 +2748,21 @@ const VaibifyApp = (function () {
                 "manifest — generate it from the Artifacts section " +
                 "of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
+        },
+        /* The Level 3 half of the published-copy question. Its Level 2
+           twin is "not-in-github-mirror" above: same comparison, one
+           pass, different files. Level 3 owns the envelope because
+           the envelope is what a third party needs to re-execute —
+           and a published reproduce.sh that differs from the local
+           one means they would run something the researcher never
+           did. */
+        "envelope-not-in-github-mirror": {
+            sIcon: "⚠",
+            sLabel: "The reproduce script, manifest, dependency lock, " +
+                "environment snapshot or Dockerfile differs from the " +
+                "copy on GitHub, or has not been compared with it — " +
+                "push the envelope, then Verify now",
+            sClass: "step-blocker-glyph-l3-workflow-envelope",
         },
         "l3-attestation-stale": {
             sIcon: "⚠",

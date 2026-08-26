@@ -37,10 +37,10 @@ import os
 import pytest
 
 from tests.browser.conftest import (
+    fnOpenTheSeededHostWorkflow,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_STEP_OUTPUT,
-    S_HOST_WORKFLOW_NAME,
 )
 
 
@@ -85,26 +85,6 @@ def _flistRecordFailedRequests(page):
     return listFailures
 
 
-def _fnOpenTheHostWorkflow(page, serverHub):
-    """Warn, continue, and open the seeded workflow. Returns nothing."""
-    page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    page.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    page.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    page.wait_for_selector("#modalConfirm", timeout=10000)
-    page.click("#btnConfirmOk")
-    page.wait_for_selector(
-        f'text={S_HOST_WORKFLOW_NAME}', timeout=20000,
-    )
-    page.click(f'text={S_HOST_WORKFLOW_NAME}')
-    page.wait_for_selector(
-        f'text={S_HOST_STEP_NAME}', timeout=20000,
-    )
 
 
 def _fnEnterTheHostProjectWithoutAWorkflow(page, serverHub):
@@ -153,7 +133,7 @@ def testAHostProjectOpensItsWorkflowWithoutAFailedRequest(
     log is the only place it shows.
     """
     listFailures = _flistRecordFailedRequests(pageDashboard)
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     assert pageDashboard.is_visible("#hostModeBadge"), (
         "the uncontained badge is missing from an open host workflow"
     )
@@ -185,7 +165,7 @@ def testTheToolbarNamesTheDirectoryNotASandboxName(
     in the title can only come from the directory, and the pre-fix
     toolbar never set a title at all.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     assert pageDashboard.text_content(
         "#activeResourceLabel",
     ).strip() == "Directory:"
@@ -296,7 +276,7 @@ def testRunningAStepWritesARealFileAndTheDashboardSeesIt(
     if os.path.exists(sOutputPath):
         os.remove(sOutputPath)
     listFailures = _flistRecordFailedRequests(pageDashboard)
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # Expand the step, then use its Run button. The button lives in
     # the step's detail block, so a collapsed row has none.
@@ -483,7 +463,7 @@ def testAHostTerminalOpensWithTheBannerAndEchoes(
 
     Kills: the banner never reaching the host session's first bytes.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     # The shell dials on the researcher's first gesture, never on
     # entry (the lazy dial, 2026-08-17) — and a HOST shell is the
     # highest-stakes case of the quarantine-bearing operation that
@@ -574,7 +554,7 @@ def testStoppingTasksDoesNotUnRunAFinishedStep(
             }),
         ),
     )
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
         "**/api/pipeline/*/kill",
         lambda routeIntercepted: routeIntercepted.fulfill(
@@ -669,7 +649,7 @@ def testAKillResumesFilePollingItself(pageDashboard, serverHub):
             body=json.dumps({"bRunning": True}),
         ),
     )
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
         "**/api/pipeline/*/kill",
         lambda routeIntercepted: routeIntercepted.fulfill(
@@ -717,7 +697,7 @@ def testAStaleRecoveryAnswerDoesNotResumePollingMidRun(
     directly, so the "response arrives after the run started"
     ordering is forced, not raced.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.evaluate(
         "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'started', sCommand: 'runSelected' })",
@@ -748,7 +728,7 @@ def testADegradedRunNeverToastsACleanCompletion(
     degraded provenance", never plain "completed" — the clean toast
     claims documentation the disk does not have.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.evaluate(
         "() => VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'completed', sCommand: 'runSelected', iExitCode: 0,"
@@ -777,7 +757,7 @@ def testAStepDownstreamOfDegradedProvenanceWearsTheGlyph(
     shows two ordinary lights with no visible connection to the
     undocumented data the second step may have consumed (ruling R6).
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.evaluate(
         "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
@@ -807,7 +787,7 @@ def testACleanRunsResultsWearNoTaintGlyph(pageDashboard, serverHub):
     """Kills: the glyph rendering unconditionally — a mark that
     appears on every step says nothing, and a researcher learns to
     ignore exactly the warning ruling R6 exists to make visible."""
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.evaluate(
         "() => { VaibifyPipelineRunner.fnHandlePipelineEvent("
         "{ sType: 'stepPass', iStepNumber: 1, iExitCode: 0 });"
@@ -847,7 +827,7 @@ def testATaintMarkSurvivesAReconnect(pageDashboard, serverHub):
             }),
         ),
     )
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(
         '.step-item:has-text("Second Stage") .step-taint-glyph',
         timeout=10000,
@@ -889,7 +869,7 @@ def testAStoppedRunsLightsSurviveAReconnect(pageDashboard, serverHub):
             }),
         ),
     )
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(
         f'.step-item:has-text("{S_HOST_STEP_NAME}") .step-status.pass',
         timeout=15000,
@@ -912,7 +892,7 @@ def testAKillPaintsTheStoppedLight(pageDashboard, serverHub):
     PURPLE 'stopped' — never failure-red (the researcher's stop is
     not the step failing), never hollow (it did run).
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
         "**/api/pipeline/*/kill",
         lambda routeIntercepted: routeIntercepted.fulfill(
@@ -972,7 +952,7 @@ def testARunClickAcknowledgesTheAppliedRevision(
     text is actively false and sends the researcher to the Kill
     button, which cannot help.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     dictSent = pageDashboard.evaluate(
         "() => {"
         " const fnRealSend = VaibifyWebSocket.fnSend;"
@@ -1027,7 +1007,7 @@ def testADegradedCompletionIsNotReportedClean(pageDashboard, serverHub):
     beside it, because a warning that fires on every completion would
     train the researcher to ignore it.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.evaluate(
         "() => VaibifyPipelineRunner.fnHandlePipelineEvent({"
         " sType: 'completed', iExitCode: 0, sLogPath: '',"

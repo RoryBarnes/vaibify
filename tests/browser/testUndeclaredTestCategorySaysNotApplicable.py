@@ -26,9 +26,8 @@ assertion below fails naming the state it was given.
 import pytest
 
 from tests.browser.conftest import (
-    S_HOST_PROJECT_READY,
+    fnOpenTheSeededHostWorkflow,
     S_HOST_STEP_NAME,
-    S_HOST_WORKFLOW_NAME,
 )
 
 
@@ -40,25 +39,6 @@ pytestmark = pytest.mark.browser
 T_CATEGORIES = ("qualitative", "quantitative", "integrity")
 
 
-def _fnOpenTheHostWorkflow(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
-        timeout=15000,
-    )
-    pageDashboard.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-main',
-    )
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
-    )
-    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
-    pageDashboard.wait_for_selector(
-        f"text={S_HOST_STEP_NAME}", timeout=20000,
-    )
 
 
 def _fnExpandTheStepsTestCategories(pageDashboard):
@@ -86,7 +66,7 @@ def test_a_category_with_no_commands_reads_not_applicable(
     a fix that special-cased one category, which is not what was
     wrong.
     """
-    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     _fnExpandTheStepsTestCategories(pageDashboard)
 
     for sCategory in T_CATEGORIES:

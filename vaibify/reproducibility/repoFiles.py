@@ -791,9 +791,21 @@ sys.stdout.write(json.dumps(dictOut))
 
 # The fixed envelope-file set every snapshot fetch reads. Existence,
 # contents, and mtimes for these drive the cheap L2/L3 conjuncts.
+#
+# This set is a CONTRACT, not a convenience list: a poll-path gate that
+# probes a path absent from here gets a ``KeyError`` from
+# ``_fdictFileEntry``, which surfaces as a 500 on the file-status poll
+# and blanks every badge and level cell on the dashboard. Adding a path
+# to ``publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS`` without adding it
+# here did exactly that; the subset is now pinned by
+# ``testPublicationScopeSeparatesTheLevels`` so it fails at the source
+# rather than in the researcher's browser.
 TUPLE_SNAPSHOT_CONTENT_PATHS = (
     "MANIFEST.sha256",
     "requirements.lock",
+    "requirements.txt",
+    "environment.yml",
+    "pyproject.toml",
     "Dockerfile",
     "reproduce.sh",
     ".vaibify/environment.json",
@@ -818,6 +830,16 @@ TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
     ".vaibify/AGENTS.md",
     "CLAUDE.md",
     "AGENTS.md",
+    # The dependency declarations are sampled for EXISTENCE only: the
+    # envelope comparison asks whether they are on disk and whether
+    # their published copy agrees (by sha), never what they say. Their
+    # bodies are the largest files in a typical research repo after the
+    # manifest, and carrying them over docker exec on every poll would
+    # buy nothing. The lock compiler reads them, but on the write path
+    # with a live adapter.
+    "requirements.txt",
+    "environment.yml",
+    "pyproject.toml",
 )
 
 
