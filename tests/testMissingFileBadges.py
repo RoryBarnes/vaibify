@@ -62,11 +62,18 @@ class TestTheRuleItself:
             bArxivConfigured=True,
         )[S_MISSING]
 
+        # sGitState joined the dict on 2026-08-25, when sGithub became
+        # agreement with the published copy and the local git answer
+        # moved to its own key. A missing file claims nothing there
+        # either. Exact equality is kept deliberately: a new key must
+        # not be addable without deciding what a missing file says on
+        # it.
         assert dictBadges == {
             "sGithub": badgeState.S_BADGE_NONE,
             "sOverleaf": badgeState.S_BADGE_NONE,
             "sZenodo": badgeState.S_BADGE_NONE,
             "sArxiv": badgeState.S_BADGE_NONE,
+            "sGitState": badgeState.S_BADGE_NONE,
         }
 
     @pytest.mark.falsification
@@ -88,7 +95,13 @@ class TestTheRuleItself:
             sZenodoService="sandbox",
         )[S_PRESENT]
 
-        assert dictBadges["sGithub"] == badgeState.S_BADGE_SYNCED
+        # sGitState carries the local git answer this exercises.
+        # sGithub is asserted as UNKNOWN rather than dropped: no
+        # GitHub verify was supplied here, and "nobody looked" must
+        # stay distinguishable from the NONE the missing-file rule
+        # produces, or this pair stops discriminating.
+        assert dictBadges["sGitState"] == badgeState.S_BADGE_SYNCED
+        assert dictBadges["sGithub"] == badgeState.S_BADGE_UNKNOWN
         assert dictBadges["sZenodo"] == badgeState.S_BADGE_SYNCED
 
 
@@ -178,7 +191,9 @@ def testTheBadgeRouteAsksWhichTrackedFilesAreOnDisk(
     assert response.status_code == 200, response.text
     dictBadges = response.json()["dictBadges"]
     assert dictBadges[S_MISSING]["sGithub"] == badgeState.S_BADGE_NONE
-    assert dictBadges[S_PRESENT]["sGithub"] == badgeState.S_BADGE_SYNCED
+    assert dictBadges[S_PRESENT]["sGitState"] == (
+        badgeState.S_BADGE_SYNCED
+    )
     assert connection.listExistenceProbes == [
         f"{S_REPO}/{S_PRESENT}", f"{S_REPO}/{S_MISSING}",
     ]

@@ -1311,6 +1311,19 @@ correct approach.
   both stages look correct in isolation. And a *narrow but accurate*
   label ("Outputs") reads as a broad claim once it sits in a
   requirement row, so it hides the gap rather than disclosing it.
+- **A threaded parameter can be accepted and dropped, and every call
+  site still reads correctly.** Wiring the GitHub verify cache into
+  the badges meant adding one argument to four functions in a chain.
+  The third link took it into its signature with a default and then
+  called the fourth without it — so every badge silently read
+  `unknown`, the honest-but-wrong answer, while a reader checking any
+  individual function found nothing amiss. Signatures agreed; the wire
+  was cut. Nothing about a green import or a green existing suite could
+  see it, because the parameter's absence is indistinguishable from its
+  default. Two habits: when threading a value through more than two
+  hops, assert it arrives with a value the DEFAULT cannot produce; and
+  distrust a change whose new tests all fail the same way, because one
+  broken link and one wrong branch look identical from the assertion.
 - **`git checkout <file>` to undo a kill-confirm mutation discards the
   fix with it.** Restoring from HEAD reverts every edit in that file,
   not the mutation — and the suite goes green afterwards, because the

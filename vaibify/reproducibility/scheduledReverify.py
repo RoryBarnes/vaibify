@@ -467,6 +467,14 @@ def fdictVerifyRemoteService(
         "iTotalFiles": iTotal,
         "iMatching": iTotal - len(listDiverged),
         "listDiverged": listDiverged,
+        # The paths this verify actually compared. Without it a
+        # reader cannot tell "absent from listDiverged because it
+        # matched" from "absent because it was never looked at", and
+        # the per-file badges had to guess -- which they did, in the
+        # reassuring direction. A cache written before this field
+        # existed simply has no compared set, so every path reads
+        # unknown until the next verify.
+        "listComparedPaths": listRelPaths,
     }
     _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
     return dictStatus
@@ -534,6 +542,7 @@ def _fdictEmptyServiceStatus(sService):
         "iTotalFiles": 0,
         "iMatching": 0,
         "listDiverged": [],
+        "listComparedPaths": [],
     }
     if sService == "github":
         dictEmpty["sCommittedShaVerified"] = None

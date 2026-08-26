@@ -39,12 +39,14 @@ var VaibifyGitBadges = (function () {
     };
 
     var _DICT_BADGE_TITLES = {
-        synced: "in sync with remote",
-        drifted: "local differs from last push",
+        synced: "verified identical to the published copy",
+        drifted: "differs from the published copy",
+        unknown: "not checked — run a verify, or the last badge "
+            + "refresh failed",
         dirty: "uncommitted local changes",
         untracked: "not tracked by git",
         ignored: "git-ignored",
-        none: "not synced to this remote",
+        none: "the remote does not have this file",
     };
 
     var _DICT_REMOTE_LABELS = {

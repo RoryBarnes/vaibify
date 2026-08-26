@@ -1616,14 +1616,21 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fbDeclarationFileIsTracked(sFilePath) {
-        // The GitHub badge column is plain git truth. Tracked states
-        // (clean, modified, staged) offer removal; untracked, no
-        // repo, or badges not yet loaded hide it — there is nothing
-        // in git to remove.
+        // Tracked states (clean, modified, staged) offer removal;
+        // untracked, no repo, or badges not yet loaded hide it —
+        // there is nothing in git to remove.
+        //
+        // Reads sGitState, NOT sGithub. It read sGithub until
+        // 2026-08-25, when that key stopped being local git truth and
+        // became agreement with the published copy — at which point
+        // this gate would have offered "Remove from repo" based on
+        // whether a remote verify had matched, and hidden it for a
+        // tracked file that simply had not been pushed. The question
+        // here is genuinely local: does git hold this file.
         if (typeof VaibifyGitBadges === "undefined") return false;
         var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
             sFilePath, "");
-        var sState = (dictBadges && dictBadges.sGithub) || "";
+        var sState = (dictBadges && dictBadges.sGitState) || "";
         return sState === "synced" || sState === "dirty" ||
             sState === "drifted";
     }

@@ -5364,7 +5364,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe is its own named function beside the collector rather than
     # a fifth line inside it -- the reason it costs a round trip is
     # the whole point and belongs where a reader will find it.
-    "routes/gitRoutes.py": 1120,
+    # +21 (2026-08-25): _fdictLoadCachedGithubStatus. The GitHub
+    # badge became a real comparison against the published copy
+    # rather than a reading of local porcelain, so the badge snapshot
+    # now carries the same cached verify the Level 2 cells read. It is
+    # a named function beside the collector, matching the arXiv loader
+    # directly above it -- the two answer the same question for two
+    # remotes and a reader who finds one expects the other.
+    "routes/gitRoutes.py": 1141,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
