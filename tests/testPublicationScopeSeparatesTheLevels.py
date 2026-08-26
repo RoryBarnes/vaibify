@@ -59,9 +59,17 @@ class _FakeRepoFiles:
         return []
 
 
-def _fdictStatus(listCompared, listDivergedPaths=(), sVerified="2026-08-26T00:00:00Z"):
-    """A syncStatus.json github entry as a real verify writes one."""
-    return {
+def _fdictStatus(listCompared, listDivergedPaths=(),
+                 sVerified="2026-08-26T00:00:00Z", bScopeCurrent=True):
+    """A syncStatus.json github entry as a real verify writes one.
+
+    ``bScopeCurrent`` defaults True because that is what a real verify
+    writes; passing False models a cache written under an EARLIER
+    definition of the published set, which is a different thing from a
+    stale or diverged one and is the case the gate used to wave
+    through.
+    """
+    dictStatus = {
         "sService": "github",
         "sLastVerified": sVerified,
         "iTotalFiles": len(listCompared),
@@ -72,6 +80,11 @@ def _fdictStatus(listCompared, listDivergedPaths=(), sVerified="2026-08-26T00:00
             for s in listDivergedPaths
         ],
     }
+    if bScopeCurrent:
+        dictStatus["iScopeVersion"] = (
+            publicationScope.I_PUBLICATION_SCOPE_VERSION
+        )
+    return dictStatus
 
 
 # ---------------------------------------------------------------------
@@ -175,25 +188,30 @@ def test_a_diverged_data_file_still_fails_level_two():
     assert levelGates._fbCachedSyncStatusFullMatch(dictStatus) is False
 
 
-def test_a_pre_split_cache_still_answers_level_two_on_its_own_terms():
-    """A cache with no scope field is not thereby useless.
+def test_a_pre_split_cache_cannot_answer_the_current_question():
+    """This test asserted the OPPOSITE until 2026-08-26, and was wrong.
 
-    Everything a pre-split verify compared WAS Level 2 material --
-    the envelope was not in the comparison set at all then -- so its
-    aggregate is exactly the Level 2 answer rather than an
-    approximation. Demanding a re-verify for a claim the old cache
-    can support would have demoted every existing project on upgrade,
-    which is a cost with nothing bought.
+    The reasoning was: everything a pre-split verify compared WAS
+    Level 2 material, so its aggregate is exactly the Level 2 answer,
+    and demanding a re-verify would demote every project on upgrade
+    for nothing. The first clause is true and the conclusion does not
+    follow. The scope also GREW -- project.json joined Level 2 -- and
+    an old cache is silent about the added files in precisely the way
+    it is silent about files that matched. So the "complete" reading
+    was complete only for a question no longer being asked.
+
+    The cost is one Verify-now per project, once. The thing bought is
+    that the row stops asserting a comparison nobody performed.
     """
     dictLegacy = {
         "sService": "github", "sLastVerified": "2026-08-26T00:00:00Z",
         "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
     }
-    assert levelGates._fbCachedSyncStatusFullMatch(dictLegacy) is True
+    assert levelGates._fbCachedSyncStatusFullMatch(dictLegacy) is False
 
 
-def test_a_pre_split_cache_with_a_divergence_still_fails():
-    """The fallback reads the old shape; it does not wave it through."""
+def test_a_pre_split_cache_with_a_divergence_also_fails():
+    """Two independent reasons now; it must not pass on either."""
     dictLegacy = {
         "sService": "github", "sLastVerified": "2026-08-26T00:00:00Z",
         "iTotalFiles": 3, "iMatching": 2,
@@ -309,3 +327,353 @@ def test_the_criterion_is_registered_with_a_usable_hint():
     ]
     assert "Verify now" in sHint, sHint
     assert "GitHub" in sHint, sHint
+
+
+# ---------------------------------------------------------------------
+# The gate runs under the POLL adapter, which answers a fixed set.
+# ---------------------------------------------------------------------
+#
+# Every test above this line drives `_FakeRepoFiles`, whose `fbIsFile`
+# answers any path a caller asks about. The adapter the file-status
+# poll really passes -- `SnapshotRepoFiles` -- answers exactly the
+# paths one container exec sampled and raises `KeyError` for the rest,
+# deliberately, because guessing would make a gate silently wrong.
+#
+# So the permissive fake agreed with itself while the shipped gate
+# raised on `requirements.txt` and 500'd the whole poll: every badge
+# and every level cell on the researcher's dashboard went blank. The
+# two tests below close that gap from both ends -- one pins the set
+# relationship at the source, the other drives the real adapter over a
+# real tree so a future envelope addition fails here rather than in a
+# browser.
+
+
+class _FakeExecConnection:
+    """Run the snapshot's embedded script in a host shell, for real."""
+
+    def ftRunInContainerStreamed(
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+    ):
+        import subprocess
+        from types import SimpleNamespace
+
+        resultProcess = subprocess.run(
+            ["bash", "-c", sCommand], capture_output=True, text=True,
+        )
+        return SimpleNamespace(
+            iExitCode=resultProcess.returncode,
+            sStdout=resultProcess.stdout,
+            sStderr=resultProcess.stderr,
+        )
+
+
+def test_the_poll_snapshot_samples_every_envelope_path():
+    """Pin the relationship, not the spelling.
+
+    The envelope tuple and the snapshot's sampled set are edited in
+    different modules for different reasons, and nothing about either
+    edit looks wrong on its own. This is the assertion that makes the
+    second edit compulsory.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        TUPLE_SNAPSHOT_CONTENT_PATHS,
+    )
+
+    setUnsampled = (
+        set(publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS)
+        - set(TUPLE_SNAPSHOT_CONTENT_PATHS)
+    )
+    assert not setUnsampled, (
+        "these envelope paths are probed by the Level 3 gate but not "
+        "sampled by the poll snapshot, so fbIsFile raises KeyError and "
+        "the file-status poll answers 500 -- blanking every badge and "
+        f"level cell on the dashboard: {sorted(setUnsampled)}"
+    )
+
+
+def test_the_level_three_gate_survives_the_real_poll_adapter(tmp_path):
+    """Drive the gate through the adapter the poll actually passes.
+
+    Not a unit stub: the embedded snapshot script runs over a real
+    tree, and the gate then probes it exactly as the poll route does.
+    Before the sampled set was widened this raised ``KeyError: path
+    not in poll snapshot: 'requirements.txt'``.
+    """
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+
+    (tmp_path / ".vaibify").mkdir()
+    (tmp_path / "reproduce.sh").write_text("#!/bin/sh\necho run\n")
+    (tmp_path / "requirements.txt").write_text("numpy==1.26.4\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+
+    filesSnapshot = SnapshotRepoFiles.ffilesFetch(
+        _FakeExecConnection(), "cid", str(tmp_path),
+    )
+
+    # Existence is answered for every envelope path, present or not.
+    listOnDisk = levelGates._flistEnvelopePathsOnDisk(filesSnapshot)
+    assert set(listOnDisk) == {
+        "reproduce.sh", "requirements.txt", "pyproject.toml",
+    }, listOnDisk
+
+    # And the whole criterion evaluates rather than raising. No verify
+    # has ever run against this tree, so the honest answer is False.
+    assert levelGates.fbEnvelopeMatchesGithubMirror(filesSnapshot) is False
+
+
+def test_the_poll_snapshot_answers_existence_without_carrying_bodies(
+    tmp_path,
+):
+    """The dependency declarations cost a stat, not a transfer.
+
+    They are sampled for existence only. Asserting this keeps a later
+    reader from "fixing" the skip list and quietly putting a research
+    repo's largest files on every poll.
+    """
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+
+    (tmp_path / ".vaibify").mkdir()
+    (tmp_path / "requirements.txt").write_text("numpy==1.26.4\n")
+
+    filesSnapshot = SnapshotRepoFiles.ffilesFetch(
+        _FakeExecConnection(), "cid", str(tmp_path),
+    )
+    assert filesSnapshot.fbIsFile("requirements.txt") is True
+    with pytest.raises(FileNotFoundError):
+        filesSnapshot.fsReadText("requirements.txt")
+
+
+# ---------------------------------------------------------------------
+# The split has to reach the SCREEN, not only the gate.
+# ---------------------------------------------------------------------
+#
+# The first cut made the gates scope-aware and stopped there. The
+# Published-copies row beside them kept reporting the aggregate, so a
+# researcher with a drifted reproduce.sh saw the Level 2 GitHub row go
+# orange and list reproduce.sh among the files -- the row making
+# exactly the statement the gate had just been taught not to make.
+# A split visible only to the backend is not a split the researcher
+# has.
+
+
+def test_the_level_two_counts_leave_the_envelope_out():
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT, S_PROJECT, S_ENVELOPE, "requirements.lock"],
+        listDivergedPaths=[S_ENVELOPE],
+    )
+    dictCounts = publicationScope.fdictCountAtLevel2(dictStatus)
+    assert dictCounts["iTotalFiles"] == 3, dictCounts
+    assert dictCounts["iMatching"] == 3, dictCounts
+    assert dictCounts["iDivergedCount"] == 0, (
+        "a diverged reproduce.sh is being counted against the "
+        f"researcher's DATA: {dictCounts}"
+    )
+
+
+def test_a_diverged_data_file_still_counts_at_level_two():
+    """The complement of the test above; without it, always-zero passes."""
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT, S_ENVELOPE],
+        listDivergedPaths=[S_DATA, S_ENVELOPE],
+    )
+    dictCounts = publicationScope.fdictCountAtLevel2(dictStatus)
+    assert dictCounts["iTotalFiles"] == 2, dictCounts
+    assert dictCounts["iDivergedCount"] == 1, dictCounts
+    assert dictCounts["iMatching"] == 1, dictCounts
+
+
+def test_a_pre_split_cache_keeps_its_counts():
+    """No project loses a verified row by upgrading the hub.
+
+    A cache written before the split carries no listComparedPaths, and
+    its compared set was entirely Level 2 material, so its aggregate
+    IS the Level 2 answer.
+    """
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT], listDivergedPaths=[S_DATA])
+    del dictStatus["listComparedPaths"]
+    dictCounts = publicationScope.fdictCountAtLevel2(dictStatus)
+    assert dictCounts == {
+        "iTotalFiles": 2, "iMatching": 1, "iDivergedCount": 1,
+    }, dictCounts
+
+
+def test_the_route_summary_reports_the_level_two_counts():
+    """Assert the projection ARRIVES, with a value the aggregate can't give.
+
+    The counts differ from the aggregate only because the envelope was
+    subtracted, so this fails if the route is ever simplified back to
+    reading iTotalFiles/iMatching straight off the cache -- the shape
+    that looks correct and says the wrong thing.
+    """
+    from vaibify.gui.routes.pipelineRoutes import _fdictProjectSyncSummary
+
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT, S_ENVELOPE, "MANIFEST.sha256"],
+        listDivergedPaths=[S_ENVELOPE, "MANIFEST.sha256"],
+    )
+    dictSummary = _fdictProjectSyncSummary(dictStatus)
+    assert dictSummary["iTotalFiles"] == 2, dictSummary
+    assert dictSummary["iDivergedCount"] == 0, (
+        "the Level 2 row is reporting envelope divergences as reasons "
+        f"the data is unpublished: {dictSummary}"
+    )
+    assert dictSummary["sLastVerified"], dictSummary
+
+
+def test_the_envelope_paths_present_are_offered_to_the_client():
+    """The Level 3 row's file list, from the one authority on the set."""
+    filesRepo = _FakeRepoFiles(setPresent={S_ENVELOPE, S_DATA})
+    listPresent = publicationScope.flistSelectEnvelopePathsPresent(
+        filesRepo,
+    )
+    assert listPresent == [S_ENVELOPE], listPresent
+
+
+# ---------------------------------------------------------------------
+# A mark the researcher cannot clear must not look like a to-do.
+# ---------------------------------------------------------------------
+
+
+def test_a_never_compared_file_gets_its_own_badge_not_an_orange_todo():
+    """Orange says "nobody has looked yet"; these will never be looked at.
+
+    Test markers are rewritten by every local test run and .gitignore
+    governs the repository rather than describing the work, so no
+    verify compares either -- and `unknown` would leave the researcher
+    an instruction ("run a verify") that changes nothing when followed.
+    """
+    from vaibify.gui import badgeState
+
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT])
+    for sPath in (S_MARKER, ".gitignore"):
+        sBadge = badgeState._fsVerifiedRemoteBadge(sPath, dictStatus)
+        assert sBadge == badgeState.S_BADGE_NOT_COMPARED, (
+            f"{sPath} renders as {sBadge!r}, which asks the researcher "
+            "to run a verify that will skip this file forever"
+        )
+
+
+def test_a_compared_file_still_reaches_the_ordinary_states():
+    """The complement: the new branch must not swallow real answers."""
+    from vaibify.gui import badgeState
+
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT], listDivergedPaths=[S_DATA],
+    )
+    assert badgeState._fsVerifiedRemoteBadge(
+        S_SCRIPT, dictStatus) == badgeState.S_BADGE_SYNCED
+    assert badgeState._fsVerifiedRemoteBadge(
+        S_DATA, dictStatus) == badgeState.S_BADGE_DRIFTED
+    assert badgeState._fsVerifiedRemoteBadge(
+        "Never/Verified.json", dictStatus) == badgeState.S_BADGE_UNKNOWN
+
+
+def test_the_envelope_criterion_reaches_the_proof_tab_payload(tmp_path):
+    """A blocker with no row is an unexplained dash to the researcher.
+
+    The PROOF tab binds its L3 rows to `dictL3ReadinessGaps` keys, so
+    a criterion absent from that payload can block Level 3 with
+    nothing on screen naming it.
+    """
+    from vaibify.reproducibility.repoFiles import HostRepoFiles
+
+    dictWorkflow = {"sProjectRepoPath": "/repo", "listSteps": []}
+    dictGaps = levelGates.fdictL3ReadinessGaps(
+        dictWorkflow, HostRepoFiles(str(tmp_path)),
+    )
+    assert "bEnvelopeInGithubMirror" in dictGaps, sorted(dictGaps)
+
+
+def test_publishing_is_not_a_precondition_for_attesting_locally():
+    """Readiness asks about the LOCAL envelope; publication is separate.
+
+    Folding the mirror check into the readiness all() would stop a
+    researcher attesting a complete local envelope until they had
+    pushed it — a different rung's requirement reaching down, which is
+    the coupling this whole split exists to prevent.
+    """
+    dictFlags = levelGates._fdictCollectL3ReadinessFlags(
+        {"sProjectRepoPath": "/repo", "listSteps": []},
+        _FakeRepoFiles(setPresent={S_ENVELOPE}),
+        True,
+    )
+    assert "bEnvelopeInGithubMirror" not in dictFlags, sorted(dictFlags)
+
+
+# ---------------------------------------------------------------------
+# Absence of evidence is not agreement.
+# ---------------------------------------------------------------------
+#
+# The gate can only ask "did anything that WAS compared diverge?" A
+# file the verify never looked at is missing from listDiverged in
+# exactly the way a file that matched is missing. So when the Level 2
+# scope grew, every cached verify kept reporting a full match while
+# newly-covered files sat uncompared beside it. The scope version is
+# what makes the two cases distinguishable.
+
+
+def test_a_cache_from_an_older_scope_cannot_carry_level_two():
+    """The defect, stated directly.
+
+    Every field says "complete": nothing diverged, everything compared
+    matched. The only thing wrong is that the set it compared was
+    defined before the current one, so files now in scope were never
+    looked at -- and the gate has no other way to know.
+    """
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT], bScopeCurrent=False)
+    assert levelGates._fbCachedSyncStatusFullMatch(dictStatus) is False
+
+
+def test_a_current_scope_cache_with_no_divergence_does_carry_it():
+    """The complement: the check must not refuse everything."""
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT, S_PROJECT])
+    assert levelGates._fbCachedSyncStatusFullMatch(dictStatus) is True
+
+
+def test_a_current_scope_cache_still_fails_on_a_real_divergence():
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT], listDivergedPaths=[S_DATA],
+    )
+    assert levelGates._fbCachedSyncStatusFullMatch(dictStatus) is False
+
+
+def test_an_envelope_divergence_still_leaves_level_two_alone():
+    """The independence property, re-asserted under scope versioning.
+
+    This is the assertion the whole split exists for, and the scope
+    check must not quietly take it away by refusing every cache that
+    contains an envelope divergence.
+    """
+    dictStatus = _fdictStatus(
+        [S_DATA, S_SCRIPT, S_ENVELOPE],
+        listDivergedPaths=[S_ENVELOPE],
+    )
+    assert levelGates._fbCachedSyncStatusFullMatch(dictStatus) is True
+
+
+def test_a_never_verified_service_is_not_scope_current():
+    """The empty status must not present as evidence of anything."""
+    from vaibify.reproducibility import scheduledReverify
+
+    dictEmpty = scheduledReverify._fdictEmptyServiceStatus("github")
+    assert not publicationScope.fbCachedScopeIsCurrent(dictEmpty)
+
+
+def test_the_row_reports_scope_staleness_rather_than_a_pass():
+    """The screen must not disagree with the gate.
+
+    An orange "verify again" is the honest rendering: the researcher
+    has published nothing wrong, they have no evidence yet about the
+    newly-covered files. Red would accuse them of something untrue.
+    """
+    from vaibify.gui.routes.pipelineRoutes import _fdictProjectSyncSummary
+
+    dictSummary = _fdictProjectSyncSummary(
+        _fdictStatus([S_DATA], bScopeCurrent=False),
+    )
+    assert dictSummary["bScopeStale"] is True, dictSummary
+
+    dictCurrent = _fdictProjectSyncSummary(
+        _fdictStatus([S_DATA]),
+    )
+    assert dictCurrent["bScopeStale"] is False, dictCurrent
