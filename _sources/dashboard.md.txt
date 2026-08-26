@@ -363,7 +363,7 @@ collapsible sections:
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
-| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, the personal instruction layer (the researcher's private host-side agent configuration, accounted for — Level 2), and the AI Declaration (the researcher's signed statement — Level 2). |
+| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, Personal AI Configuration (the researcher's private host-side agent configuration, accounted for — Level 2), and the AI Declaration (the researcher's signed statement — Level 2). |
 | **Attestation** | The rebuild attestation (Level 3). |
 
 The AI section is where the process provenance lives. Every AI model
@@ -406,14 +406,14 @@ an action exists — a button that performs it in place:
   AI Model / Prompts row (removal is user-only — deleting a
   declaration erases provenance and can drop the project below
   Level 2).
-- The **Personal instruction layer** row accounts for the fourth
+- The **Personal AI Configuration** row accounts for the fourth
   layer of the instruction stack that governed the AI's work: your
   private host-side agent configuration (global instruction file,
   personal skills, memory, hooks) — the layers above it being the
   harness system prompt (declared via the model ID), the
   vaibify-generated container context, and the project context file.
-  You answer with one of three statuses: **none** (no personal layer
-  exists), **exists — content withheld**, or **included in the
+  You answer with one of three statuses: **none** (no personal AI
+  configuration exists), **exists — content withheld**, or **included in the
   project repository**. Answering the question is the Level 2
   requirement; disclosure is never required, and "withheld" with
   nothing else is a fully valid answer. With "withheld" you may
@@ -571,7 +571,7 @@ tab's Project block. The requirements are:
   posting happens outside vaibify on its own timeline); AI
   Declaration attested; AI model declared (every model used, with
   vendor, ID, and dates — closed-weights models pass by declaration);
-  Personal instruction layer answered (none / exists-but-withheld /
+  Personal AI Configuration answered (none / exists-but-withheld /
   included — any answer meets it; disclosure is never required).
 
 The AI rows' deep links land on the specific requirement row in the

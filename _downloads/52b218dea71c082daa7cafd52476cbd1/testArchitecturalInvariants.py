@@ -4223,7 +4223,34 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the file-status route's six ambient-admission save sites
     # are enumerated with their migration shape so the future
     # carrier migration starts from the examination, not from zero.
-    "routes/pipelineRoutes.py": 3217,
+    # +12 (2026-08-26): the file-status response now stamps
+    # iSyncEpoch onto its body. The epoch rode only
+    # /pipeline/{id}/state, whose poll runs solely while a run is
+    # live, so the dashboard's one poll-free invalidation signal was
+    # unobservable on an idle project — a researcher clicking Verify
+    # now got a correct server answer and a permanently stale screen.
+    # Most of the addition is the comment explaining why the stamp
+    # lands AFTER the ETag rather than before it.
+    # +8 (2026-08-26): bEnvelopeInGithubMirror on the requirements
+    # detail payload. The Level 3 half of the published-copy question
+    # needs a field of its own precisely because it must NOT ride the
+    # Level 2 sync rows -- that separation is the whole point of the
+    # scope split, and sharing a field would undo it in the UI after
+    # the gates had been carefully kept apart.
+    # +18 (2026-08-26): the scope split reaching the screen —
+    # listLevel3EnvelopePaths on the same payload, and
+    # _fdictProjectSyncSummary reporting the LEVEL 2 counts rather
+    # than the aggregate. The row beside the scope-aware gate was
+    # still reporting an envelope divergence as a reason the
+    # researcher's data was unpublished; most of the addition is the
+    # docstring saying so, because the aggregate version is the one
+    # that looks right.
+    # +7 (2026-08-26): bScopeStale on the sync summary, and the
+    # envelope path list the Level 2 rows subtract. Both exist so the
+    # SCREEN can say what the gate says — the row was reporting a
+    # complete match off counts that were complete for a question no
+    # longer being asked.
+    "routes/pipelineRoutes.py": 3262,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4769,7 +4796,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # field; every flag that could select the LLM branch or force an
     # overwrite is ABSENT rather than defaulted, so no request can
     # carry one and no later edit can loosen a default into a bypass.
-    "pipelineServer.py": 2927,
+    # +61 (2026-08-25): _fnDrainAndCloseTerminalSession, extracted
+    # from fnRunTerminalSession's finally so the containment drain
+    # survives the cancellation uvicorn issues at shutdown. Mostly
+    # docstring: the async semantics are subtle enough that the
+    # natural reading of the code is wrong (one cancel does NOT skip
+    # an await in a finally; a cancel landing mid-drain does), and a
+    # reader who re-derives that from scratch will "simplify" the
+    # shield away. It sits beside its single caller rather than in a
+    # new module because it is that caller's teardown, not a
+    # reusable one.
+    "pipelineServer.py": 2988,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4999,7 +5036,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +10 (2026-08-17, push retry): the add-variant push adopts the
     # staged variant's commit guard, with the docstring recording the
     # stranded-commits failure it closes.
-    "syncDispatcher.py": 1958,
+    # +16 (2026-08-26, single-file push): ftResultAddFileToGithub
+    # finally adopts the SAME commit guard — it had been left with the
+    # unguarded chain since 2026-07-02 and shipped that defect, so the
+    # docstring records the class-versus-instance miss and the
+    # non-obvious reason the grouping parentheses matter (a clean index
+    # stops under either parse; only a dirty one diverges). This entry
+    # falls again if the deprecated, caller-less
+    # ftResultPushScriptsToGithub is removed.
+    # +16 (2026-08-26, dedup): the three push variants' identical
+    # commit/push/report tail becomes _fsComposePublishSuffix. The
+    # extraction removes 12 duplicated lines and the docstring costs
+    # more than that back — deliberately, because the duplication had
+    # already caused a fix to land in two of three sites and forced
+    # iExpectedOccurrences=3 on two falsification entries. The history
+    # is the reason the seam exists, so it lives at the seam.
+    "syncDispatcher.py": 1990,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -5354,7 +5406,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe is its own named function beside the collector rather than
     # a fifth line inside it -- the reason it costs a round trip is
     # the whole point and belongs where a reader will find it.
-    "routes/gitRoutes.py": 1120,
+    # +21 (2026-08-25): _fdictLoadCachedGithubStatus. The GitHub
+    # badge became a real comparison against the published copy
+    # rather than a reading of local porcelain, so the badge snapshot
+    # now carries the same cached verify the Level 2 cells read. It is
+    # a named function beside the collector, matching the arXiv loader
+    # directly above it -- the two answer the same question for two
+    # remotes and a reader who finds one expects the other.
+    "routes/gitRoutes.py": 1141,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
