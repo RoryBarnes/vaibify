@@ -303,7 +303,17 @@ The first production version does not:
   overwrite, repository push, or attestation;
 - support every model provider merely because a container overlay exists;
 - promise verified provider-side cancellation of an API request;
-- promise automatic continuation across a hub crash;
+- relaunch paid provider work unattended. (Amended 2026-08-26: this
+  bullet used to disclaim "automatic continuation across a hub crash"
+  outright, which contradicted §7.5's resume-from-the-last-settled-phase
+  requirement and acceptance question 41 — the same document required
+  and disclaimed the same feature. The reconciliation keeps every
+  intent: paid work never restarts merely because the hub booted; the
+  researcher may EXPLICITLY resume from a boundary the durable
+  phase-attempt record proves coherent; and ambiguous work — an
+  attempt still `running`, or a record with no attempt at all — is
+  never treated as completed. See
+  `design/agentCouncilContinuationPlan.md` §1–§2.);
 - launch review councils, Deep protocol campaigns, correction campaigns, or
   tracked/manifest-integrated artifacts; or
 - run provider CLIs in the active project container.
@@ -1202,11 +1212,25 @@ application state until acceptance. Separate the two:
   content.
 
 Consequently a hub crash loses at most the single in-flight turn, never the
-whole campaign. On restart the campaign is discoverable and resumes from the
-last settled phase into a recovered state the UI shows honestly (it does not
-silently reappear as if nothing happened, and it never reports a turn complete
-that the crash interrupted — that turn is re-run or marked interrupted per
-§9.3/§9.4). This is the same principle as §2.3: if the durable record is the
+whole campaign. On restart the campaign is discoverable and may be resumed by
+the researcher — never relaunched unattended — from the last boundary the
+record proves coherent, into a recovered state the UI shows honestly (it does
+not silently reappear as if nothing happened, and it never reports a turn
+complete that the crash interrupted — that turn is re-run or marked
+interrupted per §9.3/§9.4). The proof is the durable **phase-attempt record**
+(amended 2026-08-26; `design/agentCouncilContinuationPlan.md` §2): each phase
+opens a checkpointed attempt carrying its ordered eligible participants and
+completion rule, `turnsSettled` is written only when that rule is met — a
+phase key in `dictTurnsByPhase` is written by the FIRST turn to settle and is
+not completion — and the outcome (`gateOpened`, `advancedToNextPhase`,
+`transitioned:<state>`, `roundResolved`) settles atomically with the
+transition that decides it. Recovery acts on that record alone: an
+`outcomeSettled` attempt names its action, a `turnsSettled` attempt is
+recovered by deterministic settlement replay over the turn records, a
+`running` attempt is permanently unresumable (launched runners nobody proved
+gone — the remedy is `vaibify reconcile`), and a record with no attempt at
+all was checkpointed by an earlier hub and is never assumed settled. This is
+the same principle as §2.3: if the durable record is the
 authoritative context, it has to survive the process that produced it.
 Checkpointing to local app-data is not a repository write and does not touch
 the tracked-file or reproducibility envelope (§7.3); only explicit acceptance
@@ -2875,8 +2899,10 @@ The reviewing agent should try to falsify this plan and answer:
     recorded-notes form, never hidden session state?
 41. Is the durable campaign record checkpointed to local app-data as each
     turn/phase settles, so a hub crash loses at most the in-flight turn and
-    the campaign resumes honestly — never silently, and never reporting an
-    interrupted turn complete?
+    the campaign resumes honestly — by explicit researcher action from a
+    boundary the phase-attempt record proves coherent, never unattended,
+    never silently, and never reporting an interrupted or ambiguous turn
+    complete?
 42. Is the charter an explicit, versioned, reviewable document whose effective
     version is recorded per campaign, and does the feature ship documentation
     stating the charter, protocol, backends, and honest limits per the

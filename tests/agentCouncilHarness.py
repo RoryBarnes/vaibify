@@ -168,9 +168,25 @@ class CouncilTestFixture:
                 dictDispositions))
 
 
+class VersionRecordingCheckpoint:
+    """A checkpoint that keeps EVERY version, in order.
+
+    The crash-point falsifications inspect the durable record as it
+    stood at a precise checkpoint — "what would a restarted hub read
+    if the process died here" — which the latest-only checkpoint
+    cannot answer.
+    """
+
+    def __init__(self):
+        self.listVersions = []
+
+    def fnCheckpointCampaign(self, dictCampaign):
+        self.listVersions.append(copy.deepcopy(dictCampaign))
+
+
 def fixtureBuildCouncil(listSpecs, ffnDecide, dictSettings=None,
                         sChairbotHandle="", ledger=None, listEventRing=None,
-                        ffnBaselineExecute=None):
+                        ffnBaselineExecute=None, checkpoint=None):
     """Assemble a campaign, fake connections and a wired engine.
 
     ``listSpecs`` is a list of dicts each carrying ``sHandle``,
@@ -206,7 +222,7 @@ def fixtureBuildCouncil(listSpecs, ffnDecide, dictSettings=None,
         def fnAppendEvent(dictEvent):
             listEventRing.fdictAppendEvent(dictEvent)
     ledgerForEngine = ledger or CouncilEvidenceLedger(65536, 262144)
-    checkpoint = InMemoryCampaignCheckpoint()
+    checkpoint = checkpoint or InMemoryCampaignCheckpoint()
     listBaselineCalls = []
 
     def fdictExecuteBaselineEvidence(dictRequest):

@@ -295,6 +295,7 @@ class RoundResolutionMixin:
             if dictVerdict["sVerdict"] == S_VERDICT_NEEDS_HUMAN]
         if listNeedsHumanIds:
             dictRound["sResolution"] = "needsHuman"
+            self._fnSettleAttemptOutcome(dictRound, "gateOpened")
             self._fnOpenQuestionGate(
                 dictRound, S_PHASE_VETO,
                 self._flistCollectNeedsHumanQuestions(
@@ -308,11 +309,16 @@ class RoundResolutionMixin:
             self._flistCollectUnresolvedObjections(dictRound))
         dictRound["sResolution"] = "objectionsOutstanding"
         if dictRound["bFinalVetoRound"]:
+            self._fnSettleAttemptOutcome(dictRound, "gateOpened")
             self._fnOpenExhaustedGate()
+            return
+        self._fnSettleAttemptOutcome(dictRound, "roundResolved")
+        self.fnCheckpointCampaign(self.dictCampaign)
 
     def _fnResolveQuorumShortfall(self, dictRound):
         dictRound["sResolution"] = "quorumShortfall"
         if not self._fbAnyCompletedTurnExists():
+            self._fnSettleAttemptOutcome(dictRound, "transitioned:failed")
             self._fnTransition(S_STATE_FAILED, "noSubstantiveWorkSurvived")
             return
         self.dictCampaign["dictPendingHumanGate"] = {
@@ -325,6 +331,7 @@ class RoundResolutionMixin:
                     "roles; a legitimate council result needs two"),
                 "sRaisedByParticipantId": "server"}],
         }
+        self._fnSettleAttemptOutcome(dictRound, "gateOpened")
         self._fnEmitEvent("humanGateOpened",
                           {"sGateKind": S_GATE_QUORUM_SHORTFALL})
         self._fnTransition(S_STATE_NEEDS_HUMAN, "quorumShortfall")
@@ -338,14 +345,17 @@ class RoundResolutionMixin:
         if (not dictRound["bFinalVetoRound"]
                 and iCompletedRounds < iMinimumRounds):
             dictRound["sResolution"] = "minimumRoundsFloor"
+            self._fnSettleAttemptOutcome(dictRound, "roundResolved")
             self._fnEmitEvent("minimumRoundsFloorHeld", {
                 "iCompletedRounds": iCompletedRounds,
                 "iMinimumRounds": iMinimumRounds})
+            self.fnCheckpointCampaign(self.dictCampaign)
             return
         dictRound["sResolution"] = "planReady"
         self.dictCampaign["dictCandidatePlan"][
             "listCouncilClearedObjections"] = (
             self._flistHistoricalObjectionTexts())
+        self._fnSettleAttemptOutcome(dictRound, "transitioned:planReady")
         self._fnTransition(S_STATE_PLAN_READY, "everyRequiredVetoAccepted")
 
     def _flistHistoricalObjectionTexts(self):
@@ -510,11 +520,19 @@ def fdictDescribeStoppingPoint(dictCampaign):
     sState = dictCampaign.get("sState", "")
     listRounds = dictCampaign.get("listRounds") or []
     dictRound = listRounds[-1] if listRounds else None
+    dictAttempt = (dictRound or {}).get("dictPhaseAttempt")
     dictStopping = {
         "sState": sState,
         "iRoundNumber": (dictRound or {}).get("iRoundNumber", 0),
         "sLastSettledPhase": _fsFindLastSettledPhase(dictRound),
         "sNextPhase": _fsFindNextPhase(dictRound),
+        # The durable attempt record's own words (continuation plan
+        # 2.2): what recovery may act on is exactly what the record
+        # supports, and the route re-derives the same answer at the
+        # click — dynamic conditions (image drift, reservations) are
+        # the route's alone.
+        "sAttemptState": (dictAttempt or {}).get("sAttemptState", ""),
+        "sOutcome": (dictAttempt or {}).get("sOutcome", ""),
         # Deliberately NO failed-phase attribution here. A scan of the
         # turn records cannot say which phase KILLED the campaign: a
         # participant failing during proposals is tolerated (marked
@@ -535,6 +553,10 @@ def fdictDescribeStoppingPoint(dictCampaign):
     if sIncoherent:
         dictStopping["sBlockedReason"] = sIncoherent
         return dictStopping
+    sAttemptRefusal = _fsRefuseByAttemptState(dictRound, dictAttempt)
+    if sAttemptRefusal:
+        dictStopping["sBlockedReason"] = sAttemptRefusal
+        return dictStopping
     if not (dictCampaign.get("dictProjectIdentity") or {}).get(
             "sSnapshotIdentity"):
         dictStopping["sBlockedReason"] = (
@@ -543,6 +565,31 @@ def fdictDescribeStoppingPoint(dictCampaign):
         return dictStopping
     dictStopping["bResumable"] = True
     return dictStopping
+
+
+def _fsRefuseByAttemptState(dictRound, dictAttempt):
+    """Name why the attempt record forbids continuation, or allow it.
+
+    The recovery states, exhaustively (continuation plan 2.4):
+    ``outcomeSettled`` and ``turnsSettled`` are continuable (the second
+    by deterministic settlement replay); ``running`` is permanently
+    unresumable — launched runners nobody proved gone; and NO record on
+    a round that holds turns means a pre-feature hub wrote the
+    checkpoint, which is never assumed settled.
+    """
+    if dictRound is None:
+        return ""
+    if dictAttempt is None:
+        if not (dictRound.get("dictTurnsByPhase") or {}):
+            return ""
+        return ("this council was checkpointed by an earlier hub "
+                "version that recorded no phase attempts, so where it "
+                "stopped cannot be proven; convene a fresh council")
+    if dictAttempt.get("sAttemptState") == "running":
+        return ("a phase attempt was still running when this council "
+                "stopped — its launched runners cannot be proven "
+                "gone. Run vaibify reconcile, then retry the phase.")
+    return ""
 
 
 def _fsFindIncoherentTurn(dictRound):

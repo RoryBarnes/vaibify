@@ -330,6 +330,12 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             # has no key at all — it runs only the veto phase, which
             # settles before any deferral can happen.
             "listDeferredQuestions": [],
+            # The durable phase-attempt record (continuation plan
+            # section 2): what recovery reads. The live walk keeps
+            # reading _fsNextPhaseForRound; only one authority is ever
+            # consulted per code path.
+            "dictPhaseAttempt": None,
+            "listRetiredAttempts": [],
             "sResolution": "",
         }
         listRounds.append(dictRound)
@@ -357,6 +363,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
     async def _fnRunPhase(self, dictRound, sPhase):
         self._fnEmitEvent("phaseStarted", {
             "sPhase": sPhase, "iRoundNumber": dictRound["iRoundNumber"]})
+        self._fnBeginPhaseAttempt(dictRound, sPhase)
         self._fnRecordPhaseInFlight(dictRound, sPhase)
         if sPhase == S_PHASE_SYNTHESIS:
             await self._fnRunSynthesisPhase(dictRound)
@@ -372,6 +379,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             # its key so ``_fsNextPhaseForRound`` reads it as done rather
             # than re-running it forever.
             dictRound["dictTurnsByPhase"].setdefault(sPhase, [])
+        self._fnMarkAttemptTurnsSettled(dictRound)
         self._fnRecordPhaseInFlight(None, "")
         self._fnEmitEvent("phaseSettled", {
             "sPhase": sPhase, "iRoundNumber": dictRound["iRoundNumber"]})
@@ -410,6 +418,172 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             listRunning.remove(sParticipantId)
         self.fnCheckpointCampaign(self.dictCampaign)
 
+    def _fnBeginPhaseAttempt(self, dictRound, sPhase):
+        """Open the durable attempt record BEFORE the first launch.
+
+        The eligible set and completion rule are fixed here, up front,
+        because "every expected participant has a terminal turn" is
+        only checkable against a set recorded before any turn could
+        fail out of it — and synthesis has NO fixed expected set (it
+        tries authors sequentially and stops at the first success), so
+        its rule is recorded as firstAuthorOrExhaustion instead.
+        ``dictPrePhaseState`` is what a retirement restores. The
+        following ``_fnRecordPhaseInFlight`` checkpoints, so the
+        running attempt is durable before the first provider request.
+        """
+        listEligibleIds, sCompletionRule = (
+            self._ftDescribeAttemptEligibility(dictRound, sPhase))
+        iPriorAttempts = len([
+            dictRetired
+            for dictRetired in dictRound.get("listRetiredAttempts") or []
+            if dictRetired.get("sPhase") == sPhase])
+        dictRound["dictPhaseAttempt"] = {
+            "sPhase": sPhase,
+            "iRoundNumber": dictRound["iRoundNumber"],
+            "iAttemptNumber": iPriorAttempts + 1,
+            "listEligibleParticipantIds": listEligibleIds,
+            "sCompletionRule": sCompletionRule,
+            "sAttemptState": "running",
+            "sOutcome": "",
+            "dictPrePhaseState": self._fdictCapturePrePhaseState(dictRound),
+        }
+
+    def _ftDescribeAttemptEligibility(self, dictRound, sPhase):
+        """Return (ordered eligible participant ids, completion rule)."""
+        if sPhase == S_PHASE_SYNTHESIS:
+            sChairbotId = self.dictCampaign["sChairbotParticipantId"]
+            listAuthorOrder = sorted(
+                self._flistActiveParticipants(),
+                key=lambda dictParticipant:
+                    dictParticipant["sParticipantId"] != sChairbotId)
+            return ([dictParticipant["sParticipantId"]
+                     for dictParticipant in listAuthorOrder],
+                    "firstAuthorOrExhaustion")
+        if sPhase == S_PHASE_VETO:
+            return (list(dictRound["listFrozenVoterIds"] or []),
+                    "allEligible")
+        return ([dictParticipant["sParticipantId"]
+                 for dictParticipant in self._flistActiveParticipants()],
+                "allEligible")
+
+    def _fdictCapturePrePhaseState(self, dictRound):
+        """Snapshot the derived state a retirement must restore.
+
+        A phase settles more than turns: retirement of a failed attempt
+        restores all of this as one checkpoint, so a re-run starts from
+        the state the attempt found, not the state it half-wrote.
+        """
+        return copy.deepcopy({
+            "bSynthesisSettled": dictRound.get("bSynthesisSettled", False),
+            "sSynthesisAuthorId": dictRound.get("sSynthesisAuthorId", ""),
+            "bChairbotSubstituted": dictRound.get(
+                "bChairbotSubstituted", False),
+            "listFrozenVoterIds": dictRound.get("listFrozenVoterIds"),
+            "listDeferredQuestions": dictRound.get(
+                "listDeferredQuestions") or [],
+            "dictVetoVerdicts": dictRound.get("dictVetoVerdicts") or {},
+            "listUnresolvedObjections": dictRound.get(
+                "listUnresolvedObjections") or [],
+            "dictCandidatePlan": self.dictCampaign.get("dictCandidatePlan"),
+            "dictParticipantFailures": {
+                dictParticipant["sParticipantId"]: {
+                    "bFailed": dictParticipant["bFailed"],
+                    "sFailureReason": dictParticipant.get(
+                        "sFailureReason", ""),
+                }
+                for dictParticipant in self.dictCampaign[
+                    "listParticipants"]},
+        })
+
+    def _fnMarkAttemptTurnsSettled(self, dictRound):
+        """Record that the attempt's completion rule is met.
+
+        This is what "all agents completed the step" means, made
+        checkable: allEligible needs a terminal turn from every
+        eligible participant; firstAuthorOrExhaustion needs one
+        completed author or every author failed. The caller's next
+        checkpoint carries it, so a crash after the last turn but
+        before settlement leaves ``turnsSettled`` — recoverable by
+        settlement replay — never a phase key masquerading as done.
+        """
+        dictAttempt = dictRound.get("dictPhaseAttempt")
+        if dictAttempt is None or dictAttempt["sAttemptState"] != "running":
+            return
+        listTurnRecords = dictRound["dictTurnsByPhase"].get(
+            dictAttempt["sPhase"], [])
+        dictStatusById = {}
+        for dictTurnRecord in listTurnRecords:
+            dictStatusById.setdefault(
+                dictTurnRecord["sParticipantId"], set()).add(
+                dictTurnRecord["sStatus"])
+        listEligibleIds = dictAttempt["listEligibleParticipantIds"]
+        if dictAttempt["sCompletionRule"] == "firstAuthorOrExhaustion":
+            bMet = any("completed" in dictStatusById.get(sEligibleId, set())
+                       for sEligibleId in listEligibleIds) or (
+                bool(listEligibleIds)
+                and all("failed" in dictStatusById.get(sEligibleId, set())
+                        for sEligibleId in listEligibleIds))
+        else:
+            bMet = all(
+                dictStatusById.get(sEligibleId, set())
+                & {"completed", "failed"}
+                for sEligibleId in listEligibleIds)
+        if bMet:
+            dictAttempt["sAttemptState"] = "turnsSettled"
+
+    def _fnSettleAttemptOutcome(self, dictRound, sOutcome):
+        """Settle the attempt's outcome, BEFORE the call that checkpoints.
+
+        The rule (continuation plan 2.3): mutate the attempt fields
+        first, then make the transition or gate call whose checkpoint
+        carries them — never checkpoint for the attempt alone between
+        the two. A crash before the combined checkpoint leaves
+        ``turnsSettled`` (replayable); after it, a settled attempt.
+        There is no third state.
+        """
+        dictAttempt = (dictRound or {}).get("dictPhaseAttempt")
+        if dictAttempt is None or (
+                dictAttempt["sAttemptState"] == "outcomeSettled"):
+            return
+        dictAttempt["sAttemptState"] = "outcomeSettled"
+        dictAttempt["sOutcome"] = sOutcome
+
+    def fdictReplaySettlementFromTurnRecords(self):
+        """Replay the settlement a crash interrupted (recovery, 2.4).
+
+        Settlement is deterministic — question collection, veto
+        classification and round resolution are pure functions of the
+        durable turn records — so a record at ``turnsSettled`` is
+        recovered by replaying it and checkpointing the result, then
+        proceeding as if the crash had not happened. Anything else is
+        refused: ``running`` means launched runners nobody proved
+        gone, and no record at all means a pre-feature hub wrote the
+        checkpoint.
+        """
+        dictRound = self.dictCampaign["listRounds"][-1]
+        dictAttempt = dictRound.get("dictPhaseAttempt")
+        if not dictAttempt or dictAttempt["sAttemptState"] != "turnsSettled":
+            raise CouncilProtocolError(
+                "only an attempt whose turns all settled can replay "
+                "its settlement")
+        sPhase = dictAttempt["sPhase"]
+        if sPhase == S_PHASE_VETO:
+            # Re-derived from the turn records rather than trusted:
+            # classification being a pure function of durable records
+            # is the property the replay claim rests on, so replay
+            # exercises it instead of assuming the crashed run's
+            # partial writes.
+            self._fnClassifyVetoVerdicts(dictRound)
+        self._fnSettlePhaseOutcome(dictRound, sPhase)
+        if (sPhase == S_PHASE_VETO
+                and self.dictCampaign["sState"] == S_STATE_PLANNING
+                and dictAttempt["sAttemptState"] != "outcomeSettled"):
+            self._fnResolveRoundTermination(dictRound)
+        if dictAttempt["sAttemptState"] != "outcomeSettled":
+            self._fnSettleAttemptOutcome(dictRound, "advancedToNextPhase")
+        self.fnCheckpointCampaign(self.dictCampaign)
+        return copy.deepcopy(self.dictCampaign)
+
     def _fnSettlePhaseOutcome(self, dictRound, sPhase):
         """Order matters (section 5.4): an indeterminate settle becomes
         interrupted and never masquerades as a clean human pause."""
@@ -417,20 +591,37 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             return
         for dictTurnRecord in dictRound["dictTurnsByPhase"].get(sPhase, []):
             if dictTurnRecord["sCompletion"] == S_COMPLETION_INDETERMINATE:
+                # The attempt settles BEFORE the transition whose
+                # checkpoint carries it (2.3) — and the abandoned
+                # questions stay uncollected on purpose: retirement of
+                # this attempt must not pretend they were handled, and
+                # re-running the phase regenerates them.
+                self._fnSettleAttemptOutcome(
+                    dictRound, "transitioned:interrupted")
                 self._fnTransition(S_STATE_INTERRUPTED,
                                    "turnSettledIndeterminately")
                 return
         if sPhase == S_PHASE_VETO:
+            # The veto attempt's outcome is the ROUND's resolution,
+            # written by _fnResolveRoundTermination when the walk
+            # exhausts. The crash window between the two is exactly
+            # what turnsSettled + deterministic replay covers.
             return
         listQuestions = self._flistCollectNeedsHumanQuestions(
             dictRound["dictTurnsByPhase"].get(sPhase, []))
         if sPhase != S_PHASE_SYNTHESIS:
             self.fnDeferQuestionsUntilSynthesis(dictRound, listQuestions)
+            self._fnSettleAttemptOutcome(dictRound, "advancedToNextPhase")
+            self.fnCheckpointCampaign(self.dictCampaign)
             return
         listQuestions = (
             dictRound.get("listDeferredQuestions", []) + listQuestions)
         if listQuestions:
+            self._fnSettleAttemptOutcome(dictRound, "gateOpened")
             self._fnOpenQuestionGate(dictRound, sPhase, listQuestions)
+            return
+        self._fnSettleAttemptOutcome(dictRound, "advancedToNextPhase")
+        self.fnCheckpointCampaign(self.dictCampaign)
 
     # ----- turn execution ------------------------------------------------
 
@@ -653,6 +844,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 return
         dictRound["bSynthesisSettled"] = True
         dictRound["sResolution"] = "synthesisFailed"
+        self._fnMarkAttemptTurnsSettled(dictRound)
+        self._fnSettleAttemptOutcome(dictRound, "transitioned:failed")
         self._fnTransition(S_STATE_FAILED, "noParticipantCouldSynthesize")
 
     def _fnAdoptCandidatePlan(self, dictRound, dictTurnRecord):
@@ -697,6 +890,16 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                       for sVoterId in dictRound["listFrozenVoterIds"] or []]
         await self._fnRunTurnsWithBarrier(dictRound, S_PHASE_VETO,
                                           listVoters)
+        self._fnClassifyVetoVerdicts(dictRound)
+
+    def _fnClassifyVetoVerdicts(self, dictRound):
+        """Classify every frozen voter's verdict from the turn records.
+
+        A pure function of durable records — the property the
+        settlement-replay claim rests on, exercised by both the live
+        veto run and the recovery replay so it can never silently
+        become accidental.
+        """
         dictRecordByVoter = {
             dictTurnRecord["sParticipantId"]: dictTurnRecord
             for dictTurnRecord in
@@ -843,6 +1046,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 dictLastFrozenRound["listFrozenVoterIds"]),
             "dictVetoVerdicts": {},
             "listUnresolvedObjections": [],
+            "dictPhaseAttempt": None,
+            "listRetiredAttempts": [],
             "sResolution": "",
         })
         self._fnEmitEvent("finalVetoRoundOpened", {

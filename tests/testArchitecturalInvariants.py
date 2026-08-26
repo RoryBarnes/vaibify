@@ -4253,7 +4253,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # only once its turn has settled, so no reader can derive an
     # in-flight phase from the campaign, and a council mid-cross-review
     # read as hung for its whole duration.
-    "agentCouncil.py": 881,
+    # +205 (2026-08-26): the durable phase-attempt record — opened
+    # before the first launch with its eligible set and completion
+    # rule, turns-settled only when that rule is met, outcome settled
+    # atomically with the transition that decides it, plus the
+    # deterministic settlement replay recovery reads. The record and
+    # the loop that writes it are one lifecycle; a separate module
+    # would put every settlement call a hop away from the transition
+    # it must precede (continuation plan section 2).
+    "agentCouncil.py": 1086,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates

@@ -14098,4 +14098,148 @@ def _fdictEntry(sRel):
             '        _fnPersistEntryProvenance(dictEntry)'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Durable phase attempts (continuation plan section 2, 2026-08-26):
+    # the record recovery reads, its atomic settlement, and the
+    # deterministic replay that makes turnsSettled recoverable.
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testOneSettledWaveOfAMultiWavePhaseIsRefused'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The attempt opens already claiming its turns settled -- the
+        # section-2.1 hazard verbatim: every mid-wave checkpoint then
+        # reads as a finished phase and the descriptor offers resume
+        # over a fraction of the deliberation. (A mutation of the
+        # completion-rule ARITHMETIC is unobservable here: the rule is
+        # evaluated only at phase end, where the barrier makes it
+        # trivially met -- first asked and answered 2026-08-26.)
+        old='            "sAttemptState": "running",',
+        new='            "sAttemptState": "turnsSettled",',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testACrashBetweenSynthesisAuthorsLeavesARunningAttempt'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # Synthesis mislabeled as an allEligible phase: the recorded
+        # completion rule is what recovery acts on, and a wrong label
+        # tells the resume machinery to wait for every author of a
+        # phase that stops at the first success.
+        old=(
+            '            return ([dictParticipant["sParticipantId"]\n'
+            '                     for dictParticipant in listAuthorOrder],\n'
+            '                    "firstAuthorOrExhaustion")'
+        ),
+        new=(
+            '            return ([dictParticipant["sParticipantId"]\n'
+            '                     for dictParticipant in listAuthorOrder],\n'
+            '                    "allEligible")'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testAGateAndItsSettledAttemptLandInOneCheckpoint'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The attempt settles AFTER the gate call whose transition
+        # checkpoints -- the checkpoint then carries an open gate above
+        # an unsettled attempt, the ambiguous state 2.3 forbids.
+        old=(
+            '            self._fnSettleAttemptOutcome(dictRound, '
+            '"gateOpened")\n'
+            '            self._fnOpenQuestionGate(dictRound, sPhase, '
+            'listQuestions)'
+        ),
+        new=(
+            '            self._fnOpenQuestionGate(dictRound, sPhase, '
+            'listQuestions)\n'
+            '            self._fnSettleAttemptOutcome(dictRound, '
+            '"gateOpened")'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testAnIndeterminateOutcomeSettlesWithItsTransition'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old=(
+            '                self._fnSettleAttemptOutcome(\n'
+            '                    dictRound, "transitioned:interrupted")\n'
+            '                self._fnTransition(S_STATE_INTERRUPTED,\n'
+            '                                   '
+            '"turnSettledIndeterminately")'
+        ),
+        new=(
+            '                self._fnTransition(S_STATE_INTERRUPTED,\n'
+            '                                   '
+            '"turnSettledIndeterminately")\n'
+            '                self._fnSettleAttemptOutcome(\n'
+            '                    dictRound, "transitioned:interrupted")'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testSettlementReplayIsDeterministicOverTheRecord'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The replay stops replaying settlement: the recovered record
+        # silently advances past a gate the researcher never saw.
+        old=(
+            '            self._fnClassifyVetoVerdicts(dictRound)\n'
+            '        self._fnSettlePhaseOutcome(dictRound, sPhase)'
+        ),
+        new='            self._fnClassifyVetoVerdicts(dictRound)',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testVetoReplayReproducesTheResolutionFromTheRecordAlone'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The replay trusts the crashed run's partial verdict writes
+        # instead of re-deriving them from the turn records -- the
+        # determinism-over-the-record property silently becomes
+        # accidental.
+        old=(
+            '        if sPhase == S_PHASE_VETO:\n'
+            '            # Re-derived from the turn records rather than '
+            'trusted:\n'
+            '            # classification being a pure function of '
+            'durable records\n'
+            '            # is the property the replay claim rests on, '
+            'so replay\n'
+            '            # exercises it instead of assuming the crashed '
+            'run\'s\n'
+            '            # partial writes.\n'
+            '            self._fnClassifyVetoVerdicts(dictRound)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseAttempts.py::'
+            'testARunningAttemptRefusesReplay'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old=(
+            '        if not dictAttempt or dictAttempt["sAttemptState"] '
+            '!= "turnsSettled":'
+        ),
+        new='        if False:',
+    ),
 ]
