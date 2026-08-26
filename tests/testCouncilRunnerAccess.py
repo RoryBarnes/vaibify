@@ -1291,6 +1291,7 @@ def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
 I_INSUFFICIENT_PROXY_CEILING_BYTES = 256 * 1024 * 1024
 
 
+@pytest.mark.falsification
 def testTheEgressProxyCeilingClearsTheObservedKillPoint():
     """A council's egress must not die under its own traffic.
 
@@ -1304,6 +1305,8 @@ def testTheEgressProxyCeilingClearsTheObservedKillPoint():
     Deliberately NOT a ratchet that may only rise: the growth is in the
     number of concurrent tunnels, and the real answer is to bound those.
     This asserts only that the ceiling is above the evidence.
+
+    Kills: the ceiling dropping back to the observed 256 MiB kill point.
     """
     assert agentCouncilDockerGateway.I_PROXY_MEMORY_BYTES > (
         I_INSUFFICIENT_PROXY_CEILING_BYTES), (
@@ -1312,6 +1315,7 @@ def testTheEgressProxyCeilingClearsTheObservedKillPoint():
         "lose its egress mid-turn")
 
 
+@pytest.mark.falsification
 def testTheProxyRelayIsBoundedPerConnection():
     """Headroom is not a substitute for a bounded relay.
 
@@ -1320,6 +1324,8 @@ def testTheProxyRelayIsBoundedPerConnection():
     so one busy connection cannot grow without limit. If that ever
     became an unbounded read, no ceiling would be large enough and the
     OOM would come back looking like a capacity problem.
+
+    Kills: the relay read losing its per-chunk bound.
     """
     from vaibify.gui import agentCouncilEgress
     sSource = agentCouncilEgress.S_CONNECT_PROXY_SCRIPT

@@ -1380,9 +1380,13 @@ def test_chat_refuses_the_agent_token_lane_on_every_mutating_route(tmp_path):
     assert clientAgent.get(sBase).status_code == 403
 
 
+@pytest.mark.falsification
 def test_chat_routes_refuse_a_campaign_bound_to_another_principal(
         tOwnerClient, eventTurnGate):
-    """A foreign campaign answers 404 — the same answer an unknown id gets."""
+    """A foreign campaign answers 404 — the same answer an unknown id gets.
+
+    Kills: the read route skipping the principal match.
+    """
     client, app, _ = tOwnerClient
     sCampaignId = _sStartOneCampaign(client)
     eventTurnGate.set()
@@ -1411,6 +1415,7 @@ def test_chat_read_reports_a_closed_conversation_rather_than_404(
     assert response.json()["bOpen"] is False
 
 
+@pytest.mark.falsification
 def test_chat_open_refuses_a_project_with_no_claude_login(
         tOwnerClient, eventTurnGate, monkeypatch):
     """Opening builds a runner, so it passes start's login probe first.
@@ -1418,6 +1423,8 @@ def test_chat_open_refuses_a_project_with_no_claude_login(
     Discovering an absent login after a container has been created and
     destroyed would report a failed conversation where "log in" is the
     truth.
+
+    Kills: open skipping the login probe.
     """
     client, app, _ = tOwnerClient
     dictRecorded = {}
@@ -1464,6 +1471,7 @@ def test_chat_open_and_close_over_real_http(
     assert client.get(sBase).json()["bOpen"] is False
 
 
+@pytest.mark.falsification
 def test_chat_open_refuses_once_the_lease_was_released(
         tOwnerClient, eventTurnGate, monkeypatch):
     """A released project's council must not be talked to.
@@ -1472,6 +1480,9 @@ def test_chat_open_refuses_once_the_lease_was_released(
     before dropping the lease. A conversation is not a controller
     command, so it has to honour that gate explicitly or it becomes the
     one way to spend paid work against a project this hub gave up.
+
+    Kills: open ignoring closed council admission, and the twin that
+    gates close on admission like open.
     """
     client, app, _ = tOwnerClient
     _fnPatchChatGatewayForRoutes(monkeypatch, {})
@@ -1509,6 +1520,7 @@ T_CAMPAIGN_SCOPED_ACTIONS = (
 
 
 @pytest.mark.parametrize("sMethod,sSuffix,dictBody", T_CAMPAIGN_SCOPED_ACTIONS)
+@pytest.mark.falsification
 def test_every_campaign_action_accepts_a_chosen_directory(
         tmp_path, monkeypatch, sMethod, sSuffix, dictBody):
     """A project tracking several directories must still be ANSWERABLE.
@@ -1526,6 +1538,9 @@ def test_every_campaign_action_accepts_a_chosen_directory(
     DIRECTORY refusal, because that one is not about the campaign at
     all — it says the server could not tell which repository was meant
     after being told.
+
+    Kills: the respond route never forwarding its directory to the
+    resolver.
     """
     app = _fnBuildAppWithTmpStore(tmp_path)
     # A toolkit container: several tracked repositories, no open
@@ -1549,12 +1564,15 @@ def test_every_campaign_action_accepts_a_chosen_directory(
         f"given: {response.text[:200]}")
 
 
+@pytest.mark.falsification
 def test_a_campaign_action_still_refuses_an_untracked_directory(tmp_path,
                                                                 monkeypatch):
     """The falsification twin: the value is validated, never trusted.
 
     It becomes a container path, so a basename this project does not
     track must be refused rather than joined onto the workspace root.
+
+    Kills: dropping the untracked-directory guard.
     """
     app = _fnBuildAppWithTmpStore(tmp_path)
     app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)

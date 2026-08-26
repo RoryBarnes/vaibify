@@ -636,6 +636,7 @@ def _flistResultStream(sResultText):
     return [{"type": "result", "result": sResultText}]
 
 
+@pytest.mark.falsification
 def testAResultBehindAPreambleIsStillExtracted():
     """The live failure: one sentence of prose cost a whole paid turn.
 
@@ -644,6 +645,8 @@ def testAResultBehindAPreambleIsStillExtracted():
     text STARTED with a fence, so the block was never read, every field
     was reported missing at once, and a correct adversarial review was
     discarded.
+
+    Kills: removing the fence scan (the live failure).
     """
     sText = S_LIVE_PREAMBLE + "\n\n" + _fsFenceOne(
         _fdictSchemaShapedResult("the peer's Phase 4 is incomplete"))
@@ -655,6 +658,7 @@ def testAResultBehindAPreambleIsStillExtracted():
     assert "sRawResultText" not in dictExtracted
 
 
+@pytest.mark.falsification
 def testABareResultAndALeadingFenceBothStillWork():
     """The two shapes that already worked must keep working.
 
@@ -662,6 +666,8 @@ def testABareResultAndALeadingFenceBothStillWork():
     scan at all; the leading-fence case is the one the old unwrap
     handled, and a rewrite that fixed the preamble while breaking
     either of these would trade one discarded turn class for another.
+
+    Kills: dropping the whole-text parse path.
     """
     dictWanted = _fdictSchemaShapedResult()
     for sText in (json.dumps(dictWanted), _fsFenceOne(dictWanted),
@@ -672,8 +678,12 @@ def testABareResultAndALeadingFenceBothStillWork():
         assert dictExtracted == dictWanted, sText[:40]
 
 
+@pytest.mark.falsification
 def testTheLastFencedObjectWinsWhenAModelEmitsSeveral():
-    """The structured result is the turn's concluding deliverable."""
+    """The structured result is the turn's concluding deliverable.
+
+    Kills: the FIRST fenced object winning.
+    """
     sText = ("Here is an example of the shape I was given:\n\n"
              + _fsFenceOne({"sSummary": "EXAMPLE", "sVerdict": "accept"})
              + "\n\nAnd here is my actual answer:\n\n"
@@ -685,6 +695,7 @@ def testTheLastFencedObjectWinsWhenAModelEmitsSeveral():
     assert dictExtracted["sSummary"] == "ANSWER"
 
 
+@pytest.mark.falsification
 def testAFencedNonObjectNeverDisplacesARealResult():
     """A quoted array before the answer must not swallow the answer.
 
@@ -693,6 +704,8 @@ def testAFencedNonObjectNeverDisplacesARealResult():
     bites here: without it the LAST parsing block is the array, the
     result is discarded, and a turn that answered correctly is recorded
     as having returned nothing.
+
+    Kills: accepting non-object fenced blocks.
     """
     sBefore = ("The affected step indices are:\n\n```json\n[1, 2, 3]\n```"
                "\n\nAnd the result:\n\n"

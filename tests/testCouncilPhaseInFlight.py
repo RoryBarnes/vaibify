@@ -80,6 +80,7 @@ def testARecordFromABygoneRoundIsNotReportedAsRunning():
     assert fdictDescribeActivePhase(dictCampaign) is None
 
 
+@pytest.mark.falsification
 def testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber():
     """A round that has RESOLVED is finished, whatever the record says.
 
@@ -94,6 +95,8 @@ def testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber():
     clearing is what makes it unreachable, and a future engine that
     resolved a round on a different path would otherwise report a
     finished round as live with nothing to catch it.
+
+    Kills: the reader ignoring a resolved round.
     """
     dictCampaign = _fdictBuildCampaign(
         DICT_RUNNING_SYNTHESIS,
@@ -102,12 +105,16 @@ def testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber():
     assert fdictDescribeActivePhase(dictCampaign) is None
 
 
+@pytest.mark.falsification
 def testAnInterruptedCampaignReportsNothingRunning():
     """Leaving the planning state falsifies the record without rewriting it.
 
     Kills: guarding on the round alone. The interrupted transition
     happens with the round still open and still current, so a
     round-number check passes and the dead campaign keeps claiming work.
+
+    Kills: the reader ignoring the campaign state, so a crashed hub's
+    record reads as live work.
     """
     dictCampaign = _fdictBuildCampaign(DICT_RUNNING_SYNTHESIS,
                                        sState=S_STATE_INTERRUPTED)
@@ -158,6 +165,7 @@ def _tBuildCouncilObservingItselfMidTurn():
     return dictHolder["fixture"], listObservations
 
 
+@pytest.mark.falsification
 def testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord():
     """Observed from inside each turn, not asserted after the run.
 
@@ -165,6 +173,9 @@ def testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord():
     either only once the phase settles; and writing the phase for the
     barrier phases but not for synthesis, whose author is chosen by a
     fallback chain rather than by the loop.
+
+    Kills: the engine never recording the phase it runs, and never
+    recording who is running it.
     """
     fixtureCouncil, listObservations = (
         _tBuildCouncilObservingItselfMidTurn())
@@ -185,6 +196,7 @@ def testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord():
         "independentProposals", "crossReview", "synthesis"}
 
 
+@pytest.mark.falsification
 def testTheRecordIsClearedOnceNothingIsRunning():
     """A settled council must not keep claiming a phase.
 
@@ -192,6 +204,8 @@ def testTheRecordIsClearedOnceNothingIsRunning():
     guards above would not catch this one: a campaign that reached a
     human gate has an OPEN round with the current number, so only the
     clearing makes it honest.
+
+    Kills: the engine never clearing the in-flight record.
     """
     fixtureCouncil, _ = _tBuildCouncilObservingItselfMidTurn()
 

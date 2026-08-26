@@ -50,9 +50,14 @@ def _fnIsolateStoreWithATinyRing(serverHub):
     shutil.rmtree(sTempRoot, ignore_errors=True)
 
 
+@pytest.mark.falsification
 def testTheRetentionBoundaryAppearsInTheLogAndNowhereElse(
         pageDashboard, serverHub):
-    """It marks the console's own boundary, on the console's own tab."""
+    """It marks the console's own boundary, on the console's own tab.
+
+    Kills: dropping the marker, floating it above the tab bar, and
+    rendering it outside the log element.
+    """
     _fdictClaimAndActivate(pageDashboard, serverHub)
     _fnConveneThroughTheForm(pageDashboard)
 

@@ -13138,4 +13138,767 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
+    # ------------------------------------------------------------------
+    # Agent Council. Transcribed 2026-08-26 from the kill-confirmed
+    # session-local mutation scripts of the 2026-08-25/26 council
+    # sessions (chairbot chat, live phase, peer-hub isolation), each
+    # anchor re-verified against source at transcription time.
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseInFlight.py::'
+            'testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The engine never records the phase it is about to run, so the
+        # in-flight view goes blind to work in progress -- the shipped
+        # hang-looking regression this record exists to prevent.
+        old=(
+            '        self._fnRecordPhaseInFlight(dictRound, sPhase)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseInFlight.py::'
+            'testEveryTurnSeesItsOwnPhaseAndItsOwnNameInTheRecord'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The engine never records who is running, so every agent chip
+        # reads idle during a live phase.
+        old=(
+            '        self._fnRecordParticipantRunning(sParticipantId, True)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseInFlight.py::'
+            'testTheRecordIsClearedOnceNothingIsRunning'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old=(
+            '        self._fnRecordPhaseInFlight(None, "")\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseInFlight.py::'
+            'testAnInterruptedCampaignReportsNothingRunning'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # The reader stops checking the campaign state, so a record from
+        # a crashed hub reads as live work.
+        old='if not dictInFlight or dictCampaign.get("sState") != S_STATE_PLANNING:',
+        new='if not dictInFlight:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPhaseInFlight.py::'
+            'testAResolvedRoundIsNeverReportedAsRunningEvenAtItsOwnNumber'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        old='    if not listRounds or listRounds[-1].get("sResolution"):',
+        new='    if not listRounds:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPeerHubIsolation.py::'
+            'testALivePeersCampaignIsNotClassifiedInterrupted'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The startup classifier rewrites a live peer hub's checkpoint to
+        # interrupted -- the second half of the two-hub bug d7bf19d6 only
+        # half fixed.
+        old=(
+            '        if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(dictCampaign):\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPeerHubIsolation.py::'
+            'testALivePeersEgressIsNotSweptAtStartup'
+        ),
+        source='vaibify/gui/appFactory.py',
+        # The egress sweep destroys a live peer's CONNECT proxy and
+        # network, cutting egress for runners the reconcile just spared.
+        old=(
+            '        if dictCampaign is not None and (\n'
+            '                agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(\n'
+            '                    dictCampaign)):\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPeerHubIsolation.py::'
+            'testALivePeersCampaignIsNotClassifiedInterrupted'
+        ),
+        source='vaibify/gui/agentCouncilRegistry.py',
+        # The peer predicate reads the repository path where the flock is
+        # keyed by resource name -- the name-vs-id class of bug.
+        old=(
+            '        (dictCampaign.get("dictProjectIdentity") or {}).get(\n'
+            '            "sResourceName", ""))'
+        ),
+        new=(
+            '        (dictCampaign.get("dictProjectIdentity") or {}).get(\n'
+            '            "sProjectRepoPath", ""))'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheResearchersQuestionRidesStdinAndNeverArgv'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # The researcher's question is appended to the instruction that
+        # rides argv, where `ps` on the host can read it.
+        old=(
+            'agentCouncilCharter.fsComposeChatInstruction(\n'
+            '            dictCampaign, dictSession["dictParticipant"]))'
+        ),
+        new=(
+            'agentCouncilCharter.fsComposeChatInstruction(\n'
+            '            dictCampaign, dictSession["dictParticipant"])\n'
+            '        + dictSession["listMessages"][-1]["sText"])'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheWholeTranscriptIsQuotedBackOnEveryMessage'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        old='    for dictMessage in listMessages:',
+        new='    for dictMessage in listMessages[-1:]:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAMessageQuotesTheCampaignAsItStandsNowNotAtOpen'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # The campaign record is cached at open, so the chairbot answers
+        # about a plan its own council already replaced.
+        old='    dictCampaign = _fjsonReadCampaignNow(dictSession)',
+        new=(
+            '    dictCampaign = dictSession.setdefault(\n'
+            '        "dictCachedCampaign", _fjsonReadCampaignNow(dictSession))'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheStagedLoginIsGoneBeforeItsTarballIsDelivered'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # The staged host login outlives its delivery into the runner.
+        old=(
+            '    sStagedPath = dictSession["fsStageRunnerCredential"]()\n'
+            '    try:\n'
+            '        baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
+            '            sStagedPath)\n'
+            '    finally:\n'
+            '        secretManager.fnCleanupSecretFiles([sStagedPath])\n'
+            '    agentCouncilProviders.fnDeliverCredentialIntoRunner(\n'
+            '        dictSession["dictGateway"], dictSession["sHandle"], baCredentialTar)'
+        ),
+        new=(
+            '    sStagedPath = dictSession["fsStageRunnerCredential"]()\n'
+            '    baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
+            '        sStagedPath)\n'
+            '    agentCouncilProviders.fnDeliverCredentialIntoRunner(\n'
+            '        dictSession["dictGateway"], dictSession["sHandle"], baCredentialTar)\n'
+            '    secretManager.fnCleanupSecretFiles([sStagedPath])'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheChatsEgressScopeIsNotTheCampaignsOwn'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old='    return f"{sCampaignId}{S_CHAT_EGRESS_SCOPE_SUFFIX}"',
+        new='    return sCampaignId',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAnUnprovenDestructionRefusesToReportItselfSettled'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '        if sOutcome != agentCouncilRunner.S_OUTCOME_DESTROYED:\n'
+            '            listUnproven.append(dictDestroyed["sReason"])'
+        ),
+        new=(
+            '        if False:\n'
+            '            listUnproven.append(dictDestroyed["sReason"])'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAnUnprovenEgressTeardownAlsoRefusesToSettle'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '        if dictRemoved["saIndeterminateResources"]:\n'
+            '            listUnproven.append('
+        ),
+        new=(
+            '        if False and dictRemoved["saIndeterminateResources"]:\n'
+            '            listUnproven.append('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheReaperSparesAConversationWithAMessageInFlight'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '        if dictSession["sState"] == S_CHAT_STATE_ANSWERING:\n'
+            '            continue'
+        ),
+        new=(
+            '        if False:\n'
+            '            continue'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheAbsoluteCeilingClosesAConversationSomebodyKeepsWarm'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # Only the idle clock remains, so a conversation kept warm holds
+        # the runner and its credential window open forever.
+        old=(
+            '        dictSession["fOpenedMonotonic"] + F_CHAT_SESSION_CEILING_SECONDS\n'
+            '        - fNow,'
+        ),
+        new='        float("inf"),',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAnUnprovenConversationRefusesTheWholeRelease'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    listUnsettledCampaignIds = list(\n'
+            '        await agentCouncilChat.flistCloseChatSessionsForResource(\n'
+            '            dictControllerState, sResourceName))'
+        ),
+        new='    listUnsettledCampaignIds = []',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testCampaignDeletionRefusesOverAnUnprovenConversation'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    if not dictChatSettled["bSettled"]:\n'
+            '        raise CouncilCommandError('
+        ),
+        new=(
+            '    if False:\n'
+            '        raise CouncilCommandError('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAMessageInFlightMakesTheContainerBusyButAnIdleOneDoesNot'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old='        and dictSession["sState"] == S_CHAT_STATE_ANSWERING',
+        new='        and False',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAnEmptyStreamBecomesAnExplanationNotASilentFailure'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # A failed message is recorded as if the chairbot answered.
+        old=(
+            '        sAnswerText = await asyncio.to_thread(\n'
+            '            _fsRunChatMessageInRunner, dictSession)'
+        ),
+        new=(
+            '        try:\n'
+            '            sAnswerText = await asyncio.to_thread(\n'
+            '                _fsRunChatMessageInRunner, dictSession)\n'
+            '        except CouncilChatError:\n'
+            '            sAnswerText = "(no answer)"'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheTranscriptBoundRefusesRatherThanTruncating'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old='    if len(dictSession["listMessages"]) >= I_MAX_CHAT_MESSAGES:',
+        new='    if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testACampaignWhoseChairbotIsNotAParticipantRefuses'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '    raise CouncilChatError(\n'
+            '        "this campaign\'s recorded chairbot is not one of its "\n'
+            '        "participants, so there is nobody to ask")'
+        ),
+        new='    return dictCampaign["listParticipants"][0]',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testAnAdmissionRefusalBuildsNothingAndLeavesNoSession'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # A refusal after provisioning leaves the half-built egress scope
+        # and network behind.
+        old=(
+            '    except BaseException:\n'
+            '        await asyncio.to_thread(_fdictTearDownChatResources, dictSession)\n'
+            '        dictSessions.pop(sCampaignId, None)\n'
+            '        raise'
+        ),
+        new=(
+            '    except BaseException:\n'
+            '        dictSessions.pop(sCampaignId, None)\n'
+            '        raise'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testASecondOpenIsIdempotentAndBuildsNoSecondRunner'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '    if sCampaignId in dictSessions:\n'
+            '        return fdictDescribeChatSession(dictControllerState, sCampaignId)'
+        ),
+        new=(
+            '    if False:\n'
+            '        return fdictDescribeChatSession(dictControllerState, sCampaignId)'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheDescribedViewNeverInventsAResolvedModel'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '        "sResolvedModel": dictSession["dictModelIdentity"].get(\n'
+            '            "sResolvedModel", ""),'
+        ),
+        new='        "sResolvedModel": dictSession["sRequestedModel"],',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheChatInstructionSuspendsOnlyTheStructuredOutputClause'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # The chat clause replaces the whole charter instead of joining
+        # it, so the chairbot loses its standing instructions.
+        old=(
+            '    listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)\n'
+            '    listSections.append(S_CHAT_INSTRUCTION)'
+        ),
+        new='    listSections = [S_CHAT_INSTRUCTION]',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilChat.py::'
+            'testTheConversationsLifecycleIsRecordedInTheCampaignsEvents'
+        ),
+        source='vaibify/gui/agentCouncilChat.py',
+        # The researcher's message text leaks into the campaign event
+        # ring, which quotes into the durable record.
+        old='         "sDetail": dictMessage["sMessageId"]})',
+        new='         "sDetail": dictMessage["sText"]})',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testAgentActionRegistered'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        # Dropping a chat route from the human-only exclusion set. The
+        # naive twin (agent token still 403s) survives because the agent
+        # gate ALSO fails closed on unregistered mutating routes -- two
+        # guards, one outcome; registration is the real discriminator.
+        old=(
+            '    ("POST",\n'
+            '     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/open"),'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_chat_open_refuses_a_project_with_no_claude_login'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old=(
+            '            await asyncio.to_thread(\n'
+            '                _fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)\n'
+            '            return await _fdictOpenChatMapped('
+        ),
+        new='            return await _fdictOpenChatMapped(',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_chat_open_refuses_once_the_lease_was_released'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old=(
+            '            _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)\n'
+            '            # The same two gates start passes'
+        ),
+        new='            # The same two gates start passes',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_chat_routes_refuse_a_campaign_bound_to_another_principal'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old=(
+            '        _fjsonRequireCampaign(\n'
+            '            _fdictCampaignStore(requestHttp), sCampaignId, sName,\n'
+            '            sProjectRepoPath)\n'
+            '        return agentCouncilChat.fdictDescribeChatSession('
+        ),
+        new='        return agentCouncilChat.fdictDescribeChatSession(',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_chat_open_refuses_once_the_lease_was_released'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # The symmetric twin: gating close on admission would leave the
+        # only exit behind the gate it opens -- a released project could
+        # never settle its conversation.
+        old=(
+            '            # NOT gated on admission: closing is how a researcher makes\n'
+            '            # a released project releasable, so refusing it there would\n'
+            '            # leave the only exit behind the gate it opens.\n'
+            '            dictSettled = await agentCouncilChat.fdictCloseChatSession('
+        ),
+        new=(
+            '            _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)\n'
+            '            dictSettled = await agentCouncilChat.fdictCloseChatSession('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_every_campaign_action_accepts_a_chosen_directory'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old=(
+            '            dictCtx, requestHttp, sContainerId, sProjectDirectory)\n'
+            '        dictStore = _fdictCampaignStore(requestHttp)\n'
+            '        dictRegistry = _fdictCouncilRegistry(requestHttp)\n'
+            '\n'
+            '        dictControllerState = _fdictControllerState(requestHttp)\n'
+            '\n'
+            '        async def _fdictExecuteRespond():'
+        ),
+        new=(
+            '            dictCtx, requestHttp, sContainerId)\n'
+            '        dictStore = _fdictCampaignStore(requestHttp)\n'
+            '        dictRegistry = _fdictCouncilRegistry(requestHttp)\n'
+            '\n'
+            '        dictControllerState = _fdictControllerState(requestHttp)\n'
+            '\n'
+            '        async def _fdictExecuteRespond():'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_a_campaign_action_still_refuses_an_untracked_directory'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='        if sChosenDirectory not in listTracked:',
+        new='        if False:',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilFrontendContract.py::'
+            'test_every_council_action_sends_the_chosen_directory'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='var sUrl = _fsRoute(sPath) + _fsDirectoryQuery("?");',
+        new='var sUrl = _fsRoute(sPath);',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilFrontendContract.py::'
+            'test_server_identifiers_are_hidden_from_model_written_text'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Internal participant/campaign identifiers leak back into the
+        # researcher-facing decision list.
+        old=(
+            '                    _fsEscape(_fsHideInternalIdentifiers(\n'
+            '                        dictCampaign, dictQuestion.sQuestionText)) +'
+        ),
+        new='                    _fsEscape(dictQuestion.sQuestionText || "") +',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilFrontendContract.py::'
+            'test_decision_context_is_reachable_in_full'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The context collapses back to a dead 240-character ellipsis
+        # nothing can expand.
+        old='        return "<details class=\\"council-decision-context\\">" +',
+        new='        return "<p class=\\"council-decision-context\\">" + _fsEscape(sText.substring(0, 240)) + "\\u2026</p>"; //',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilProviders.py::'
+            'testAResultBehindAPreambleIsStillExtracted'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # Regress to the live failure: a model that talks before its
+        # fenced result loses the whole turn.
+        old='    listObjects = [jsonBlock for jsonBlock in',
+        new=(
+            '    return None\n'
+            '    listObjects = [jsonBlock for jsonBlock in'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilProviders.py::'
+            'testABareResultAndALeadingFenceBothStillWork'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        old=(
+            '    try:\n'
+            '        return json.loads(sResultText.strip())\n'
+            '    except ValueError:\n'
+            '        pass'
+        ),
+        new='    pass',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilProviders.py::'
+            'testTheLastFencedObjectWinsWhenAModelEmitsSeveral'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='    return listObjects[-1] if listObjects else None',
+        new='    return listObjects[0] if listObjects else None',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilProviders.py::'
+            'testAFencedNonObjectNeverDisplacesARealResult'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='                   if isinstance(jsonBlock, dict)]',
+        new='                   if jsonBlock is not None]',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerAccess.py::'
+            'testTheProxyRelayIsBoundedPerConnection'
+        ),
+        source='vaibify/gui/agentCouncilEgress.py',
+        old='            baChunk = await readerSource.read(I_RELAY_CHUNK_BYTES)',
+        new='            baChunk = await readerSource.read()',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerAccess.py::'
+            'testTheEgressProxyCeilingClearsTheObservedKillPoint'
+        ),
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        # The proxy memory ceiling drops back to the 256 MiB that a live
+        # council's snapshot upload was observed to kill.
+        old='I_PROXY_MEMORY_BYTES = 1024 * 1024 * 1024',
+        new='I_PROXY_MEMORY_BYTES = 256 * 1024 * 1024',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testTheRetentionBoundaryAppearsInTheLogAndNowhereElse'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        if (!_fbConsoleHasLostEarlierEvents()) return "";',
+        new='        if (true) return "";',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testTheRetentionBoundaryAppearsInTheLogAndNowhereElse'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The marker floats above the tab bar, outside the console the
+        # researcher is reading.
+        old=(
+            '        elBody.innerHTML = _fsTabBar(dictCampaign) +\n'
+            '            "<div class=\\"council-tab-content\\">" +'
+        ),
+        new=(
+            '        elBody.innerHTML = _fsTabBar(dictCampaign) +\n'
+            '            "<ul>" + _fsRetentionBoundaryRow() + "</ul>" +\n'
+            '            "<div class=\\"council-tab-content\\">" +'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testTheRetentionBoundaryAppearsInTheLogAndNowhereElse'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '        return "<ul class=\\"council-event-log\\">" + sBoundaryRow +\n'
+            '            listVisible.map(_fsOneEventRow).join("") + "</ul>";'
+        ),
+        new=(
+            '        return sBoundaryRow + "<ul class=\\"council-event-log\\">" +\n'
+            '            listVisible.map(_fsOneEventRow).join("") + "</ul>";'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testTheChairbotConversationRunsInTheBrowser'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '        _fnBindElement("btnCouncilChatAsk", _fnAskChairbot);\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testTheChairbotConversationRunsInTheBrowser'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '        _fnBindElement("btnCouncilChatOpen", _fnOpenChat);\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testAPollTickDoesNotWipeAHalfTypedQuestion'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The idle countdown enters the render signature, so every idle
+        # tick re-renders and wipes the half-typed question. The test's
+        # 30-second wait is load-bearing: a 9s wait spanned no idle tick
+        # and this mutation survived it (2026-08-25).
+        old=(
+            '        return ["chat", _dictState.sLastChatError ? "stale" : "fresh",\n'
+            '                dictChat.sState,'
+        ),
+        new=(
+            '        return ["chat", _dictState.sLastChatError ? "stale" : "fresh",\n'
+            '                dictChat.iIdleSecondsRemaining, dictChat.sState,'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testTheChairbotConversationRunsInTheBrowser'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The chat tab is never polled, so only the ask action's own
+        # refetch can deliver an answer -- the scripted runner's 3s delay
+        # is what makes the poll the only path.
+        old=(
+            '            if (_dictState.sActiveTab === "chat") {\n'
+            '                await _fnLoadChatQuietly();\n'
+            '                _fnRenderIfChanged();\n'
+            '            }'
+        ),
+        new=(
+            '            if (false) {\n'
+            '                await _fnLoadChatQuietly();\n'
+            '                _fnRenderIfChanged();\n'
+            '            }'
+        ),
+    ),
 ]

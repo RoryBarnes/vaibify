@@ -256,6 +256,7 @@ def _fnAskAndSettle(dictControllerState, sCampaignId, sQuestionText):
 # ----- containment: the question never reaches argv ---------------------
 
 
+@pytest.mark.falsification
 def testTheResearchersQuestionRidesStdinAndNeverArgv(monkeypatch, tmp_path):
     """A crafted question must not be able to become a flag or a model id.
 
@@ -263,6 +264,8 @@ def testTheResearchersQuestionRidesStdinAndNeverArgv(monkeypatch, tmp_path):
     researcher typed is quoted untrusted material on stdin. This is the
     same boundary the deliberation lane pins, asserted for the lane that
     takes text straight from a text box.
+
+    Kills: the question appended to the argv-visible instruction.
     """
     dictControllerState, _, dictCampaign, doubleGateway = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -279,6 +282,7 @@ def testTheResearchersQuestionRidesStdinAndNeverArgv(monkeypatch, tmp_path):
     assert sHostileQuestion in doubleGateway.listExecutedStdin[0]
 
 
+@pytest.mark.falsification
 def testTheChatInstructionSuspendsOnlyTheStructuredOutputClause(
         monkeypatch, tmp_path):
     """The charter still binds; only clause 7 is lifted.
@@ -286,6 +290,8 @@ def testTheChatInstructionSuspendsOnlyTheStructuredOutputClause(
     A chat clause that replaced the charter would drop the evidence
     discipline and the adversarial stance along with the schema — the
     two things that make a chairbot's answer worth more than a guess.
+
+    Kills: the chat clause replacing the whole charter.
     """
     dictControllerState, _, dictCampaign, doubleGateway = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -305,12 +311,15 @@ def testTheChatInstructionSuspendsOnlyTheStructuredOutputClause(
 # ----- memory: the transcript is the only memory ------------------------
 
 
+@pytest.mark.falsification
 def testTheWholeTranscriptIsQuotedBackOnEveryMessage(monkeypatch, tmp_path):
     """A reply the server does not quote is one the chairbot never said.
 
     Each message is a fresh headless run in a container that kept no
     conversational state, so the second message's prompt must carry the
     first exchange or the chairbot answers a follow-up blind.
+
+    Kills: quoting only the last message.
     """
     doubleGateway = GatewayDouble()
     doubleGateway.sScriptedAnswer = "Buffering dominates at this scale."
@@ -330,6 +339,7 @@ def testTheWholeTranscriptIsQuotedBackOnEveryMessage(monkeypatch, tmp_path):
         "the first prompt must carry the first question exactly once")
 
 
+@pytest.mark.falsification
 def testAMessageQuotesTheCampaignAsItStandsNowNotAtOpen(
         monkeypatch, tmp_path):
     """A conversation held open across a round must not quote a stale plan.
@@ -338,6 +348,8 @@ def testAMessageQuotesTheCampaignAsItStandsNowNotAtOpen(
     and the wrong one: the store hands out deep copies, so a cached one
     is frozen, and the chairbot would answer confidently about a plan
     its own council had already replaced.
+
+    Kills: caching the campaign record at open.
     """
     dictControllerState, dictStore, dictCampaign, doubleGateway = (
         _ftBuildOpenedChat(monkeypatch, tmp_path))
@@ -359,6 +371,7 @@ def testAMessageQuotesTheCampaignAsItStandsNowNotAtOpen(
 # ----- the credential window --------------------------------------------
 
 
+@pytest.mark.falsification
 def testTheStagedLoginIsGoneBeforeItsTarballIsDelivered(
         monkeypatch, tmp_path):
     """The host copy's life is the tarball build, not the conversation.
@@ -367,6 +380,8 @@ def testTheStagedLoginIsGoneBeforeItsTarballIsDelivered(
     container; it must not widen the window it sits on the researcher's
     disk. Asserted at the delivery call, the only moment where "already
     deleted" and "deleted eventually" differ.
+
+    Kills: the staged host login outliving its delivery.
     """
     del _LIST_STAGED_PATHS[:]
 
@@ -399,12 +414,15 @@ def testAConversationIsBoundedByIdleAndByAnAbsoluteCeiling(
     assert doubleGateway.listDestroyedHandles == ["handle-chat"]
 
 
+@pytest.mark.falsification
 def testTheAbsoluteCeilingClosesAConversationSomebodyKeepsWarm(
         monkeypatch, tmp_path):
     """The falsification twin: a busy conversation must still expire.
 
     Without this the idle bound is defeated by any browser that keeps
     asking, and the credential copy's residency becomes unbounded.
+
+    Kills: removing the absolute ceiling, leaving only the idle clock.
     """
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -421,12 +439,15 @@ def testTheAbsoluteCeilingClosesAConversationSomebodyKeepsWarm(
         chat.fiReapExpiredChatSessions(dictControllerState)) == 1
 
 
+@pytest.mark.falsification
 def testTheReaperSparesAConversationWithAMessageInFlight(
         monkeypatch, tmp_path):
     """Killing a message the researcher is waiting on reports a lie.
 
     The message has its own wall clock; reaping it here would surface a
     fault the model never had.
+
+    Kills: the reaper closing a session mid-message.
     """
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -444,12 +465,15 @@ def testTheReaperSparesAConversationWithAMessageInFlight(
 # ----- containment on the way out ---------------------------------------
 
 
+@pytest.mark.falsification
 def testTheChatsEgressScopeIsNotTheCampaignsOwn(monkeypatch, tmp_path):
     """A conversation and a deliberation must never contend for one name.
 
     Docker network and container names are unique per daemon, so a
     shared scope would make one of the two fail to provision — or worse,
     let one's teardown remove the other's live proxy.
+
+    Kills: the chat sharing the campaign's egress scope.
     """
     _, _, dictCampaign, doubleGateway = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -462,6 +486,7 @@ def testTheChatsEgressScopeIsNotTheCampaignsOwn(monkeypatch, tmp_path):
     assert sCampaignId not in doubleGateway.listNetworkScopes
 
 
+@pytest.mark.falsification
 def testAnUnprovenDestructionRefusesToReportItselfSettled(
         monkeypatch, tmp_path):
     """A daemon that could not prove absence must not read as a clean close.
@@ -469,6 +494,8 @@ def testAnUnprovenDestructionRefusesToReportItselfSettled(
     The session record is the in-process retry state: dropping it would
     leave a container nobody proved gone with nothing naming it but a
     label.
+
+    Kills: an unproven runner destruction reported as settled.
     """
     doubleGateway = GatewayDouble()
     doubleGateway.sDestroyOutcome = "quarantined"
@@ -502,8 +529,12 @@ def testAProvenCloseRemovesTheRunnerAndTheEgressAndDropsTheRecord(
     assert sCampaignId not in dictControllerState[chat.S_CHAT_SESSIONS_KEY]
 
 
+@pytest.mark.falsification
 def testAnUnprovenEgressTeardownAlsoRefusesToSettle(monkeypatch, tmp_path):
-    """A proxy nobody proved gone is a live path off the machine."""
+    """A proxy nobody proved gone is a live path off the machine.
+
+    Kills: an unproven egress teardown swallowed.
+    """
     doubleGateway = GatewayDouble()
     doubleGateway.bEgressRemovalProven = False
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
@@ -519,6 +550,7 @@ def testAnUnprovenEgressTeardownAlsoRefusesToSettle(monkeypatch, tmp_path):
 # ----- the release path -------------------------------------------------
 
 
+@pytest.mark.falsification
 def testAMessageInFlightMakesTheContainerBusyButAnIdleOneDoesNot(
         monkeypatch, tmp_path):
     """An idle conversation is drained; a live message refuses the release.
@@ -527,6 +559,8 @@ def testAMessageInFlightMakesTheContainerBusyButAnIdleOneDoesNot(
     an abandoned tab hold a container forever; treating a live message
     as idle would drop the lease under paid work the researcher is
     watching.
+
+    Kills: a message in flight not counting as busy.
     """
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
@@ -558,8 +592,12 @@ def testTheReleaseDrainClosesAConversationAndReportsAnUnprovenOne(
     assert sCampaignId not in dictControllerState[chat.S_CHAT_SESSIONS_KEY]
 
 
+@pytest.mark.falsification
 def testAnUnprovenConversationRefusesTheWholeRelease(monkeypatch, tmp_path):
-    """The falsification twin: the drain must not swallow an unproven close."""
+    """The falsification twin: the drain must not swallow an unproven close.
+
+    Kills: the release drain ignoring conversations.
+    """
     doubleGateway = GatewayDouble()
     doubleGateway.sDestroyOutcome = "quarantined"
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
@@ -573,6 +611,7 @@ def testAnUnprovenConversationRefusesTheWholeRelease(monkeypatch, tmp_path):
         dictCampaign["sCampaignId"]]
 
 
+@pytest.mark.falsification
 def testCampaignDeletionRefusesOverAnUnprovenConversation(
         monkeypatch, tmp_path):
     """Deleting the record would orphan what nobody proved gone.
@@ -580,6 +619,8 @@ def testCampaignDeletionRefusesOverAnUnprovenConversation(
     The startup sweep composes the conversation's proxy and network
     names from the CAMPAIGN id, so removing the record is removing the
     only handle anything has on a surviving resource.
+
+    Kills: deletion ignoring an unproven conversation.
     """
     doubleGateway = GatewayDouble()
     doubleGateway.sDestroyOutcome = "quarantined"
@@ -596,9 +637,13 @@ def testCampaignDeletionRefusesOverAnUnprovenConversation(
 # ----- refusals the researcher reads ------------------------------------
 
 
+@pytest.mark.falsification
 def testAnAdmissionRefusalBuildsNothingAndLeavesNoSession(
         monkeypatch, tmp_path):
-    """A refused conversation must leave no half-built record behind."""
+    """A refused conversation must leave no half-built record behind.
+
+    Kills: a refusal leaving the half-provisioned egress behind.
+    """
     doubleGateway = GatewayDouble()
     doubleGateway.bRefuseAdmission = True
 
@@ -612,9 +657,13 @@ def testAnAdmissionRefusalBuildsNothingAndLeavesNoSession(
     assert doubleGateway.listRemovedScopes
 
 
+@pytest.mark.falsification
 def testASecondOpenIsIdempotentAndBuildsNoSecondRunner(
         monkeypatch, tmp_path):
-    """A double-click must not leave a runner nobody holds a reference to."""
+    """A double-click must not leave a runner nobody holds a reference to.
+
+    Kills: a second open building a second runner.
+    """
     dictControllerState, dictStore, dictCampaign, doubleGateway = (
         _ftBuildOpenedChat(monkeypatch, tmp_path))
 
@@ -632,6 +681,7 @@ def testASecondOpenIsIdempotentAndBuildsNoSecondRunner(
     assert len(doubleGateway.listCreatedCampaignIds) == 1
 
 
+@pytest.mark.falsification
 def testAnEmptyStreamBecomesAnExplanationNotASilentFailure(
         monkeypatch, tmp_path):
     """A chairbot that produced nothing must say which bound it hit.
@@ -639,6 +689,8 @@ def testAnEmptyStreamBecomesAnExplanationNotASilentFailure(
     "No answer" and "killed at the time budget" are different
     diagnoses; a conversation that reported neither is how two wrong
     theories got argued from one record before.
+
+    Kills: a failed message recorded as if the chairbot answered.
     """
     doubleGateway = GatewayDouble()
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
@@ -661,8 +713,12 @@ def testAnEmptyStreamBecomesAnExplanationNotASilentFailure(
         "a failed message must not appear as an answered one")
 
 
+@pytest.mark.falsification
 def testTheTranscriptBoundRefusesRatherThanTruncating(monkeypatch, tmp_path):
-    """Dropping the middle would answer from a conversation nobody had."""
+    """Dropping the middle would answer from a conversation nobody had.
+
+    Kills: the transcript bound truncating instead of refusing.
+    """
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
     sCampaignId = dictCampaign["sCampaignId"]
@@ -680,8 +736,12 @@ def testTheTranscriptBoundRefusesRatherThanTruncating(monkeypatch, tmp_path):
     assert len(dictSession["listMessages"]) == chat.I_MAX_CHAT_MESSAGES
 
 
+@pytest.mark.falsification
 def testTheDescribedViewNeverInventsAResolvedModel(monkeypatch, tmp_path):
-    """An alias must never be laundered into a mechanically-recorded id."""
+    """An alias must never be laundered into a mechanically-recorded id.
+
+    Kills: echoing the requested alias as the resolved model.
+    """
     dictControllerState, _, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
     sCampaignId = dictCampaign["sCampaignId"]
@@ -729,9 +789,13 @@ def testTheChairbotAnsweringIsTheCampaignsRecordedPenHolder(
     assert listArgv[listArgv.index("--model") + 1] == "sonnet"
 
 
+@pytest.mark.falsification
 def testACampaignWhoseChairbotIsNotAParticipantRefuses(monkeypatch,
                                                        tmp_path):
-    """A corrupt record is not a reason to substitute somebody else's voice."""
+    """A corrupt record is not a reason to substitute somebody else's voice.
+
+    Kills: falling back to the first participant.
+    """
     dictCampaign = _fdictBuildCampaign()
     dictCampaign["sChairbotParticipantId"] = "participant-nobody"
 
@@ -741,6 +805,7 @@ def testACampaignWhoseChairbotIsNotAParticipantRefuses(monkeypatch,
     assert "nobody to ask" in str(errorRefusal.value)
 
 
+@pytest.mark.falsification
 def testTheConversationsLifecycleIsRecordedInTheCampaignsEvents(
         monkeypatch, tmp_path):
     """A conversation happened; the record says so without quoting it.
@@ -748,6 +813,8 @@ def testTheConversationsLifecycleIsRecordedInTheCampaignsEvents(
     The message TEXT is deliberately absent: a chat answer is not part
     of the plan's provenance, and putting prose in the deliberation
     console would make it look as though it were.
+
+    Kills: the researcher's message text leaking into the event ring.
     """
     dictControllerState, dictStore, dictCampaign, _ = _ftBuildOpenedChat(
         monkeypatch, tmp_path)

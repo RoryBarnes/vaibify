@@ -282,6 +282,7 @@ def _fdictBuildStoreHolding(sCampaignId, sResourceName, sState="planning"):
     return dictStore
 
 
+@pytest.mark.falsification
 def testALivePeersCampaignIsNotClassifiedInterrupted(tprocessLivePeerHub):
     """A working council must not be declared dead by a booting neighbour.
 
@@ -289,6 +290,9 @@ def testALivePeersCampaignIsNotClassifiedInterrupted(tprocessLivePeerHub):
     council another hub is running right now, and this pass could not
     tell them apart. It rewrote the peer's checkpoint — the record the
     peer's own hub reloads if it ever restarts.
+
+    Kills: the startup classifier ignoring a live peer, and the peer
+    predicate reading the repository path instead of the resource name.
     """
     from vaibify.gui import agentCouncilController, agentCouncilStore
 
@@ -322,6 +326,7 @@ def testAnOrphanedCampaignIsStillClassifiedInterrupted():
         dictStore, "campaign-orphan")["sState"] == "interrupted"
 
 
+@pytest.mark.falsification
 def testALivePeersEgressIsNotSweptAtStartup(tprocessLivePeerHub):
     """Removing a peer's proxy and network cuts its running turns' egress.
 
@@ -329,6 +334,8 @@ def testALivePeersEgressIsNotSweptAtStartup(tprocessLivePeerHub):
     was not, so a spared runner lost the network it reaches its provider
     through — a subtler kill than destroying the container, and one the
     runner-level test cannot see.
+
+    Kills: the startup egress sweep ignoring a live peer.
     """
     from vaibify.gui import appFactory
 

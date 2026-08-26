@@ -144,8 +144,14 @@ def _fdictAnswerAfterADeliberateDelay(*args, **kwargs):
     }
 
 
+@pytest.mark.falsification
 def testTheChairbotConversationRunsInTheBrowser(pageDashboard, serverHub):
-    """Open, ask, read the answer, and close — through the real UI."""
+    """Open, ask, read the answer, and close — through the real UI.
+
+    Kills: unbinding the Ask and Open buttons, and never polling the
+    chat tab (the scripted runner's 3s delay makes the poll the only
+    path).
+    """
     _fdictClaimAndActivate(pageDashboard, serverHub)
     _fnConveneThroughTheForm(pageDashboard)
     sCampaignId = _fsNewestCampaignId(serverHub)
@@ -187,6 +193,7 @@ def testTheChairbotConversationRunsInTheBrowser(pageDashboard, serverHub):
     assert pageDashboard.listConsoleErrors == []
 
 
+@pytest.mark.falsification
 def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     """The render-signature trap, driven rather than asserted in a string.
 
@@ -194,6 +201,9 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     countdown changes on every tick, so a signature that read it would
     replace the composer — and the researcher's half-typed question with
     it — every few seconds. Nothing but a real browser can show that.
+
+    Kills: the idle countdown entering the render signature (the 30s
+    wait is load-bearing; 9s spanned no idle tick).
     """
     _fdictClaimAndActivate(pageDashboard, serverHub)
     _fnConveneThroughTheForm(pageDashboard)
