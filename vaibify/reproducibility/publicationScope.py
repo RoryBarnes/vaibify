@@ -61,14 +61,46 @@ __all__ = [
     "TUPLE_LEVEL3_ENVELOPE_PATHS",
     "TUPLE_UNCOMPARED_PREFIXES",
     "TUPLE_UNCOMPARED_PATHS",
+    "I_PUBLICATION_SCOPE_VERSION",
+    "fbCachedScopeIsCurrent",
     "flistCollectComparisonPaths",
     "fsetSelectLevel2Paths",
     "fsetSelectLevel3Paths",
+    "flistSelectEnvelopePathsPresent",
+    "fdictCountAtLevel2",
     "fbPathIsCompared",
 ]
 
 
 S_PROJECTS_DIRECTORY = ".vaibify/projects"
+
+# What "Level 2 is published" MEANS, as a version.
+#
+# A cached verify is evidence for a claim, and the claim is defined by
+# the scope in force when the verify ran. When the scope grows, every
+# existing cache becomes evidence for a WEAKER claim than the one the
+# gate now makes -- and the gate could not tell, because a file that
+# was never compared is absent from `listDiverged` exactly like a file
+# that matched. That is not hypothetical: adding `project.json` to
+# Level 2 left every project's GitHub row showing a green check while
+# `project.json` sat beside it orange, never compared by anything.
+#
+# So the gate requires the cache to have been written under the
+# CURRENT scope. A mismatch is not a failure of publication, it is an
+# absence of evidence, and the remediation is one click of Verify now.
+#
+# Bump this whenever the membership rules change --
+# TUPLE_LEVEL3_ENVELOPE_PATHS, TUPLE_UNCOMPARED_*, or what
+# flistCollectComparisonPaths gathers. Do NOT bump it for a change
+# that only alters which of the two levels an already-compared path
+# lands in: the bytes were compared either way, and forcing a global
+# re-verify for a reclassification would spend the researcher's time
+# to learn nothing.
+#
+#   1  pre-split: the manifest set alone.
+#   2  the union of both levels, adding the reproducibility envelope
+#      and .vaibify/projects/*.json (2026-08-26).
+I_PUBLICATION_SCOPE_VERSION = 2
 
 # The reproducibility envelope: what a third party needs in order to
 # re-fetch and re-execute. Their presence is already checked by the L3
@@ -131,6 +163,21 @@ def _flistProjectDefinitionPaths(filesRepo):
     ]
 
 
+def fbCachedScopeIsCurrent(dictStatus):
+    """Return True iff a cached verify covered the CURRENT scope.
+
+    False for every cache written before scope versioning existed,
+    deliberately. Such a cache genuinely did not compare the files the
+    current scope includes, so treating its silence as agreement is
+    the defect this exists to remove -- and the researcher gets a row
+    that says "verify again", not one that says "unpublished".
+    """
+    return (
+        (dictStatus or {}).get("iScopeVersion")
+        == I_PUBLICATION_SCOPE_VERSION
+    )
+
+
 def fbPathIsCompared(sPath):
     """Return False for a tracked path no verify should compare."""
     if sPath in TUPLE_UNCOMPARED_PATHS:
@@ -142,6 +189,57 @@ def fsetSelectLevel3Paths(listPaths):
     """Return the envelope subset of ``listPaths``."""
     setEnvelope = set(TUPLE_LEVEL3_ENVELOPE_PATHS)
     return {sPath for sPath in listPaths if sPath in setEnvelope}
+
+
+def flistSelectEnvelopePathsPresent(filesRepo):
+    """Return the envelope paths that actually exist in the repo.
+
+    Every path probed here must be sampled by the poll snapshot
+    (``repoFiles.TUPLE_SNAPSHOT_CONTENT_PATHS``), because the adapter
+    the file-status poll passes raises ``KeyError`` for anything it did
+    not sample rather than guessing. The subset is pinned by
+    ``testPublicationScopeSeparatesTheLevels``.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    return [
+        sPath for sPath in TUPLE_LEVEL3_ENVELOPE_PATHS
+        if filesRepo.fbIsFile(sPath)
+    ]
+
+
+def fdictCountAtLevel2(dictStatus):
+    """Return ``{iTotalFiles, iMatching, iDivergedCount}`` over L2 only.
+
+    One verify writes one set of counts spanning both levels, so the
+    Level 2 rows would otherwise report an envelope divergence as a
+    reason the researcher's DATA is unpublished -- the exact statement
+    the split exists to prevent, and the one the gate stopped making
+    while the row kept making it.
+
+    A cache written before the split carries no ``listComparedPaths``.
+    Its compared set was entirely Level 2 material, so its aggregate
+    IS the Level 2 answer and is returned unchanged; no project loses
+    a verified row by upgrading.
+    """
+    listCompared = (dictStatus or {}).get("listComparedPaths")
+    iTotal = int((dictStatus or {}).get("iTotalFiles") or 0)
+    listDiverged = (dictStatus or {}).get("listDiverged") or []
+    if listCompared is None:
+        return {
+            "iTotalFiles": iTotal,
+            "iMatching": int((dictStatus or {}).get("iMatching") or 0),
+            "iDivergedCount": len(listDiverged),
+        }
+    setLevel2 = fsetSelectLevel2Paths(listCompared)
+    setDiverged = {
+        (dictEntry or {}).get("sPath") for dictEntry in listDiverged
+    }
+    iDiverged = len(setLevel2 & setDiverged)
+    return {
+        "iTotalFiles": len(setLevel2),
+        "iMatching": len(setLevel2) - iDiverged,
+        "iDivergedCount": iDiverged,
+    }
 
 
 def fsetSelectLevel2Paths(listPaths):

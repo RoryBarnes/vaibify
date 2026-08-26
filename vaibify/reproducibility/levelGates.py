@@ -1377,6 +1377,17 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bL3AttestationCurrent"] = (
         fbL3AttestationCurrent(filesRepo) if bRepo else False
     )
+    # Reported, but deliberately OUTSIDE the readiness all(): readiness
+    # asks whether the LOCAL envelope is complete and pinned, which is
+    # what attesting is about. Whether the PUBLISHED copy agrees is a
+    # publication question — it blocks L3 attainment (see
+    # `_fdictL3WorkflowChecks`) without making a researcher push before
+    # they can attest locally. It rides this payload so the PROOF tab
+    # can show the criterion; a blocker with no row is one the
+    # researcher meets as an unexplained dash.
+    dictResult["bEnvelopeInGithubMirror"] = (
+        fbEnvelopeMatchesGithubMirror(filesRepo) if bRepo else False
+    )
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
         fsCurrentManifestDigest(filesRepo) if bRepo else ""
@@ -1452,26 +1463,44 @@ def _fbCachedSyncStatusFullMatch(dictStatus):
     that compared nothing must not read as a full match, which is the
     property the old ``iTotal == 0`` guard supplied and which a purely
     divergence-based reading would lose.
+
+    And the cache must have been written under the CURRENT scope. This
+    function can only ask "did anything that WAS compared diverge?" --
+    a Level 2 file the verify never looked at is absent from
+    ``listDiverged`` in exactly the way a file that matched is absent.
+    So when ``project.json`` joined Level 2, every project's GitHub row
+    showed a green check with ``project.json`` sitting beside it
+    orange, never compared by anything. The scope version is what
+    separates "we looked and it agreed" from "we never looked", and
+    absence of evidence is answered with a re-verify, not a pass.
     """
+    from . import publicationScope
     if not dictStatus:
         return False
     iTotal = dictStatus.get("iTotalFiles", 0) or 0
     if iTotal == 0:
         return False
-    listCompared = dictStatus.get("listComparedPaths")
-    if listCompared is None:
-        # A cache written before the scope split. Everything such a
-        # verify compared WAS Level 2 material -- the envelope was not
-        # in the comparison set at all then -- so the aggregate is
-        # exactly the Level 2 answer, not an approximation of it. No
-        # re-verify is demanded for a claim the old cache can support
-        # on its own terms.
-        return (
-            dictStatus.get("iMatching") == iTotal
-            and not dictStatus.get("listDiverged")
-        )
-    from . import publicationScope
-    setLevel2 = publicationScope.fsetSelectLevel2Paths(listCompared)
+    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):
+        return False
+    # A writer always sets iMatching = iTotal - len(listDiverged), so a
+    # cache where they disagree has been hand-edited or truncated. Its
+    # divergence list cannot be trusted to be the whole story, and a
+    # publication claim is the wrong place to give a corrupt file the
+    # benefit of the doubt.
+    #
+    # Stated as the RELATION, never as `iMatching == iTotal`. Those
+    # counts are aggregates over both levels, so an envelope
+    # divergence legitimately drives iMatching below iTotal while
+    # Level 2 remains fully matched — demanding equality here would
+    # fail Level 2 for a stale requirements.lock, re-coupling the two
+    # rungs through the back door the split exists to close.
+    if dictStatus.get("iMatching") != iTotal - len(
+        dictStatus.get("listDiverged") or [],
+    ):
+        return False
+    setLevel2 = publicationScope.fsetSelectLevel2Paths(
+        dictStatus.get("listComparedPaths") or [],
+    )
     if not setLevel2:
         return False
     return not (setLevel2 & _fsetDivergedPathsOf(dictStatus))
@@ -2399,11 +2428,7 @@ def fbEnvelopeMatchesGithubMirror(filesRepo):
 def _flistEnvelopePathsOnDisk(filesRepo):
     """Return the envelope paths that actually exist in the repo."""
     from . import publicationScope
-    return [
-        sPath
-        for sPath in publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS
-        if filesRepo.fbIsFile(sPath)
-    ]
+    return publicationScope.flistSelectEnvelopePathsPresent(filesRepo)
 
 
 # The single criterion a host project reports, in place of the seven
