@@ -326,7 +326,16 @@ var VaibifyAgentCouncil = (function () {
                 _fdictToolbarState().sTitle, "warning");
             return;
         }
-        if (_dictState.sActiveCampaignId) {
+        /* Focus the active council ONLY while it is live or waiting on
+           the researcher (design 6.1: "focuses an active council
+           instead of starting a duplicate"). A settled or failed
+           campaign the researcher already closed must not capture the
+           button forever: that trapped a researcher in a loop where
+           every click reopened the same dead campaign and the chooser
+           was unreachable (2026-08-27). */
+        if (_dictState.sActiveCampaignId && (_fbActiveCampaignIsLive()
+                || _fbActiveCampaignNeedsHuman()
+                || _fbActiveCampaignPlanReady())) {
             _fnShowWorkspace();
             return;
         }
@@ -338,7 +347,25 @@ var VaibifyAgentCouncil = (function () {
     /* ------------------------------------------------------------------ */
 
     async function _fnOpenCreationChooser() {
+        /* The chooser appears IMMEDIATELY and fills in. It used to
+           await the campaign listing before rendering anything, which
+           on a project tracking nine directories meant ~10 seconds of
+           dead air after the click — indistinguishable from a button
+           that did nothing (2026-08-27). "Plan a change" is usable
+           from the first frame; only the listing arrives late. */
+        _fnRenderChooser(true);
+        _fnShowModal();
         await _fnRefreshSummaries();
+        /* Re-render only if the chooser is still what the modal shows:
+           the researcher may have opened the planning form while the
+           listing loaded, and clobbering it would discard their
+           question. */
+        if (document.getElementById("btnCouncilPlanChange")) {
+            _fnRenderChooser(false);
+        }
+    }
+
+    function _fnRenderChooser(bListingStillLoading) {
         var elBody = document.getElementById("agentCouncilModalBody");
         if (!elBody) return;
         elBody.innerHTML =
@@ -348,13 +375,17 @@ var VaibifyAgentCouncil = (function () {
             "class=\"btn btn-primary council-choice\">Plan a change</button>" +
             "<button type=\"button\" id=\"btnCouncilOpenExisting\" " +
             "class=\"btn council-choice\"" +
-            (_dictState.listSummaries.length ? "" : " disabled") +
+            (!bListingStillLoading && _dictState.listSummaries.length
+                ? "" : " disabled") +
             ">Continue a council (" +
-            _dictState.listSummaries.length + ")</button>" +
+            (bListingStillLoading
+                ? "…" : _dictState.listSummaries.length) +
+            ")</button>" +
             "</div>" +
-            _fsListRefusalNotice() +
-            _fsSummariesList();
-        _fnShowModal();
+            (bListingStillLoading
+                ? "<p class=\"council-open-when\">Loading past " +
+                  "councils…</p>"
+                : _fsListRefusalNotice() + _fsSummariesList());
         _fnBindChooser();
     }
 
@@ -459,7 +490,20 @@ var VaibifyAgentCouncil = (function () {
         var elOpen = document.getElementById("btnCouncilOpenExisting");
         if (elOpen && _dictState.listSummaries.length) {
             elOpen.addEventListener("click", function () {
-                _fnFocusCampaign(_dictState.listSummaries[0].sCampaignId);
+                /* The most recently active RESUMABLE council, falling
+                   back to the most recently active one — the same
+                   ordering the list below shows. listSummaries[0] was
+                   store-iteration order: it sent a researcher into an
+                   arbitrary campaign they could not identify
+                   (2026-08-27). */
+                var listSorted = _dictState.listSummaries.slice().sort(
+                    function (dictLeft, dictRight) {
+                        return (dictRight.fLastActivityEpoch || 0) -
+                            (dictLeft.fLastActivityEpoch || 0);
+                    });
+                var listResumable = listSorted.filter(_fbSummaryIsResumable);
+                _fnFocusCampaign((listResumable[0] ||
+                    listSorted[0]).sCampaignId);
             });
         }
         document.querySelectorAll(".council-open-row").forEach(
@@ -1122,9 +1166,24 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnFocusCampaign(sCampaignId) {
-        _fnHideModal();
+        /* Say something while the record loads: hiding the modal first
+           left a blank screen until the fetch returned, which read as
+           an unresponsive click (2026-08-27). And show the workspace
+           only when the campaign actually ADOPTED — on a load failure
+           the researcher goes back to the chooser with the error
+           toast, never into a workspace showing the wrong campaign. */
+        var elBody = document.getElementById("agentCouncilModalBody");
+        if (elBody) {
+            elBody.innerHTML = "<h2>Agent Council</h2>" +
+                "<p class=\"council-open-when\">Opening council…</p>";
+        }
         await _fnLoadCampaign(sCampaignId);
-        _fnShowWorkspace();
+        if (_dictState.sActiveCampaignId === sCampaignId) {
+            _fnHideModal();
+            _fnShowWorkspace();
+            return;
+        }
+        _fnOpenCreationChooser();
     }
 
     async function _fnLoadCampaign(sCampaignId) {
@@ -1205,19 +1264,22 @@ var VaibifyAgentCouncil = (function () {
             _dictState.listSummaries = [];
             return;
         }
+        /* In parallel, like the planning form's directory weigher: nine
+           tracked directories queried one after another held the
+           chooser's listing hostage for ~10 seconds (2026-08-27). */
         var listMerged = [];
-        for (var iIndex = 0; iIndex < listCandidates.length; iIndex += 1) {
+        await Promise.all(listCandidates.map(async function (sCandidate) {
             try {
                 var dictOne = await VaibifyApi.fdictGet(
                     _fsRoute("") + "?sProjectDirectory=" +
-                    encodeURIComponent(listCandidates[iIndex]));
+                    encodeURIComponent(sCandidate));
                 (dictOne.listCampaigns || []).forEach(
                     function (dictSummary) { listMerged.push(dictSummary); });
             } catch (errorOne) {
                 /* One unreadable directory must not hide the others. */
                 void errorOne;
             }
-        }
+        }));
         if (listMerged.length) _dictState.sLastListError = "";
         _dictState.listSummaries = listMerged;
     }
@@ -3237,7 +3299,21 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fnShowWorkspaceModalClose() {
+        /* Closing the workspace is NAVIGATION back to the chooser, not
+           a dead end: hiding it and leaving the campaign active meant
+           the next toolbar click reopened the same workspace, with no
+           path back to "Plan a change" (2026-08-27). A campaign that
+           is neither live nor waiting on the researcher is also
+           released as the active one, so a dead campaign cannot
+           recapture the button. */
         _fnHideWorkspace();
+        if (!_fbActiveCampaignIsLive() && !_fbActiveCampaignNeedsHuman()
+                && !_fbActiveCampaignPlanReady()) {
+            _dictState.sActiveCampaignId = "";
+            _dictState.dictCampaign = null;
+            _fnRenderToolbarButton();
+        }
+        _fnOpenCreationChooser();
     }
 
     function _fnBindElement(sId, fnHandler) {
