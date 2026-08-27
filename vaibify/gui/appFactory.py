@@ -344,10 +344,13 @@ def _fnRegisterCouncilLifecycle(app):
         if isinstance(dictStore, dict):
             await asyncio.to_thread(
                 agentCouncilStore.fdictReloadDurableCampaigns, dictStore)
-            # A reloaded campaign still in ``planning`` had a turn with
-            # no terminal record at the crash; it is classified as
-            # interrupted, never resumed (remediation R1) — the labeled
-            # runner reconcile below settles whatever that turn left.
+            # A reloaded ``planning`` campaign is classified as
+            # interrupted ONLY when its attempt record cannot prove a
+            # clean stop — a running attempt, or no record at all. A
+            # proven boundary stays in planning for the researcher's
+            # EXPLICIT resume; nothing relaunches here (amended
+            # section 3, 2026-08-27). The labeled runner reconcile
+            # below settles whatever an unproven turn left.
             await asyncio.to_thread(
                 agentCouncilController
                 .fiClassifyInterruptedCampaignsOnStartup, dictStore)

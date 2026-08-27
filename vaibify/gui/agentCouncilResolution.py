@@ -26,6 +26,7 @@ import copy
 
 from .agentCouncilCampaign import (
     LIST_EXHAUSTED_ROUND_EXITS,
+    SET_RETRYABLE_TURN_FAILURE_REASONS,
     S_GATE_BLOCKING_QUESTION,
     S_GATE_EXHAUSTED_ROUNDS,
     S_GATE_QUORUM_SHORTFALL,
@@ -48,6 +49,7 @@ from .agentCouncilCharter import (
 
 __all__ = [
     "fdictDescribeStoppingPoint",
+    "fsClassifyRetryEligibility",
     "RoundResolutionMixin",
     "TUPLE_DECISION_TIER_ORDER",
     "fdictDescribeActivePhase",
@@ -533,6 +535,14 @@ def fdictDescribeStoppingPoint(dictCampaign):
         # the route's alone.
         "sAttemptState": (dictAttempt or {}).get("sAttemptState", ""),
         "sOutcome": (dictAttempt or {}).get("sOutcome", ""),
+        "sAttemptPhase": (dictAttempt or {}).get("sPhase", ""),
+        # The record-derived recovery ACTION (continuation plan 2.5):
+        # answer | review | resume | none. bResumable alone conflated
+        # three different continuations — the resume route refuses
+        # needsHuman and planReady, whose actions are Answer and
+        # Review, and a listing must never offer an action the route
+        # then refuses (2026-08-27 review).
+        "sAction": "none",
         # Deliberately NO failed-phase attribution here. A scan of the
         # turn records cannot say which phase KILLED the campaign: a
         # participant failing during proposals is tolerated (marked
@@ -549,15 +559,18 @@ def fdictDescribeStoppingPoint(dictCampaign):
         dictStopping["sBlockedReason"] = (
             "this council is finished; convene a new one")
         return dictStopping
+    if sState in ("failed", "interrupted"):
+        sRetryRefusal = fsClassifyRetryEligibility(dictRound, dictAttempt)
+        if sRetryRefusal:
+            dictStopping["sBlockedReason"] = sRetryRefusal
+            return dictStopping
+        dictStopping["bResumable"] = True
+        dictStopping["sAction"] = "retry"
+        return dictStopping
     if sState not in ("planning", "needsHuman", "planReady"):
-        # Retrying a failed or interrupted phase is the attempt
-        # record's NEXT consumer (continuation plan 2.5/2.6) and is not
-        # built yet. Until it is, the listing must not offer an action
-        # the resume route then refuses — that disagreement is the
-        # answer-box-over-a-dead-runtime defect generalized.
         dictStopping["sBlockedReason"] = (
-            f"this council stopped at {sState!r}; retrying the failed "
-            "phase is not yet available — convene a fresh council")
+            f"this council stopped at {sState!r} and has no recovery "
+            "action; convene a fresh council")
         return dictStopping
     sIncoherent = _fsFindIncoherentTurn(dictRound)
     if sIncoherent:
@@ -574,7 +587,55 @@ def fdictDescribeStoppingPoint(dictCampaign):
             "baseline to continue against")
         return dictStopping
     dictStopping["bResumable"] = True
+    dictStopping["sAction"] = {
+        "needsHuman": "answer",
+        "planReady": "review",
+        "planning": "resume",
+    }[sState]
     return dictStopping
+
+
+def fsClassifyRetryEligibility(dictRound, dictAttempt):
+    """Name why the failed phase cannot be retried, or allow it ("").
+
+    Not every failure is retryable (continuation plan 2.6): the
+    whitelist admits reasons that fail DIFFERENTLY on a re-run — rate
+    limits, wall-clock kills, transient transport — and refuses the
+    rest by name, because an authentication failure or a
+    schema-invalid answer fails identically and spends the
+    researcher's subscription proving it. The retry target is the
+    LAST attempt — the one whose settled outcome terminated the
+    campaign — never a phase-order inference.
+    """
+    if dictAttempt is None:
+        return ("this council was checkpointed by an earlier hub "
+                "version that recorded no phase attempts, so the "
+                "failed phase cannot be identified; convene a fresh "
+                "council")
+    if dictAttempt.get("sAttemptState") != "outcomeSettled" or (
+            dictAttempt.get("sOutcome") not in (
+                "transitioned:failed", "transitioned:interrupted")):
+        return ("this council's last attempt did not settle as the "
+                "terminating failure, so there is nothing to retry; "
+                "convene a fresh council")
+    listBlockingReasons = sorted({
+        dictTurn.get("sFailureReason", "")
+        for dictTurn in (dictRound or {}).get(
+            "dictTurnsByPhase", {}).get(dictAttempt.get("sPhase"), [])
+        if dictTurn.get("sStatus") == "failed"
+        and (dictTurn.get("sFailureClass")
+             or _fsRootFailureReason(dictTurn.get("sFailureReason", "")))
+        not in SET_RETRYABLE_TURN_FAILURE_REASONS})
+    if listBlockingReasons:
+        return ("this failure repeats on a re-run ("
+                + "; ".join(listBlockingReasons)
+                + "); convene a fresh council")
+    return ""
+
+
+def _fsRootFailureReason(sFailureReason):
+    """Return the classification prefix of a recorded failure reason."""
+    return sFailureReason.split(":", 1)[0].strip()
 
 
 def _fsRefuseByAttemptState(dictRound, dictAttempt):

@@ -531,6 +531,91 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         if bMet:
             dictAttempt["sAttemptState"] = "turnsSettled"
 
+    def _fsDescribeCurrentAttemptBinding(self):
+        """Name the live attempt an evidence entry is written under.
+
+        Bound at WRITE time (continuation plan 2.6) so a later
+        retirement can mark exactly this attempt's entries retired --
+        excluded from the active history, never deleted.
+        """
+        listRounds = self.dictCampaign.get("listRounds") or []
+        dictAttempt = (listRounds[-1] if listRounds else {}).get(
+            "dictPhaseAttempt") or {}
+        if not dictAttempt:
+            return ""
+        return (f"{dictAttempt['sPhase']}"
+                f"#{dictAttempt['iAttemptNumber']}")
+
+    def fdictRetireTerminalAttempt(self):
+        """Retire the terminating attempt and restore its pre-phase state.
+
+        The researcher's ruling (continuation plan 2.5/2.6): a failure
+        re-runs the phase that failed, and the failed attempt is
+        retired into the record, never erased. Retirement is a
+        TRANSACTION over derived state -- a phase settles more than
+        turns -- restored from the snapshot the attempt captured
+        before its first launch, and the whole restoration rides the
+        planning transition's checkpoint atomically. The retired
+        attempt keeps its turns: a plan that reached consensus after
+        three re-rolls is not the same artifact as one that reached it
+        first time, and a reader must be able to tell.
+        """
+        dictRound = self.dictCampaign["listRounds"][-1]
+        dictAttempt = dictRound.get("dictPhaseAttempt")
+        if (not dictAttempt
+                or dictAttempt.get("sAttemptState") != "outcomeSettled"
+                or dictAttempt.get("sOutcome") not in (
+                    "transitioned:failed", "transitioned:interrupted")):
+            raise CouncilProtocolError(
+                "only an attempt whose settled outcome terminated the "
+                "campaign can be retired")
+        dictPre = dictAttempt.get("dictPrePhaseState") or {}
+        dictRound["bSynthesisSettled"] = dictPre.get(
+            "bSynthesisSettled", False)
+        dictRound["sSynthesisAuthorId"] = dictPre.get(
+            "sSynthesisAuthorId", "")
+        dictRound["bChairbotSubstituted"] = dictPre.get(
+            "bChairbotSubstituted", False)
+        dictRound["listFrozenVoterIds"] = copy.deepcopy(
+            dictPre.get("listFrozenVoterIds"))
+        dictRound["listDeferredQuestions"] = copy.deepcopy(
+            dictPre.get("listDeferredQuestions") or [])
+        dictRound["dictVetoVerdicts"] = copy.deepcopy(
+            dictPre.get("dictVetoVerdicts") or {})
+        dictRound["listUnresolvedObjections"] = copy.deepcopy(
+            dictPre.get("listUnresolvedObjections") or [])
+        self.dictCampaign["dictCandidatePlan"] = copy.deepcopy(
+            dictPre.get("dictCandidatePlan"))
+        for dictParticipant in self.dictCampaign["listParticipants"]:
+            dictFailure = (dictPre.get("dictParticipantFailures")
+                           or {}).get(dictParticipant["sParticipantId"])
+            if dictFailure is not None:
+                dictParticipant["bFailed"] = dictFailure["bFailed"]
+                dictParticipant["sFailureReason"] = dictFailure[
+                    "sFailureReason"]
+        listRetiredTurns = dictRound["dictTurnsByPhase"].pop(
+            dictAttempt["sPhase"], [])
+        dictRound.setdefault("listRetiredAttempts", []).append({
+            **copy.deepcopy(dictAttempt),
+            "listRetiredTurnRecords": listRetiredTurns,
+        })
+        dictRound["dictPhaseAttempt"] = None
+        dictRound["sResolution"] = ""
+        # The abandoned-questions rule (2.5): an interrupted attempt's
+        # questions were never collected, and retirement must not
+        # pretend they were handled -- re-running the phase
+        # regenerates them. No gate survives a retirement.
+        self.dictCampaign["dictPendingHumanGate"] = None
+        self._fnRecordResearcherDecision({
+            "sDecisionKind": "phaseRetried",
+            "sText": (f"attempt {dictAttempt['iAttemptNumber']} of "
+                      f"{dictAttempt['sPhase']} retired for re-run; "
+                      "its turns are preserved in the round's retired "
+                      "attempts"),
+        })
+        self._fnTransition(S_STATE_PLANNING, "phaseRetriedByResearcher")
+        return copy.deepcopy(self.dictCampaign)
+
     def _fnSettleAttemptOutcome(self, dictRound, sOutcome):
         """Settle the attempt's outcome, BEFORE the call that checkpoints.
 
@@ -754,6 +839,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 "sRejectedPayload", "")
         else:
             dictTurnRecord["sFailureReason"] = dictAttempt["sFailureReason"]
+            dictTurnRecord["sFailureClass"] = dictAttempt.get(
+                "sFailureClass", "")
             dictTurnRecord["sRejectedPayload"] = dictAttempt.get(
                 "sRejectedPayload", "")
         return dictTurnRecord
@@ -774,6 +861,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             sCompletion = await connectionForTurn.fsReportCompletion()
         except Exception as error:
             return {"sOutcome": "raised",
+                    "sFailureClass": "turnRaised",
                     "sFailureReason": f"turnRaised: {error}"}
         iResultBytes = len(json.dumps(dictRawResult, default=str)
                            .encode("utf-8"))
@@ -781,6 +869,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             "iMaximumOutputBytesPerTurn"]
         if iResultBytes > iOutputBudget:
             return {"sOutcome": "overBudget", "sCompletion": sCompletion,
+                    "sFailureClass": "outputByteBudgetExceeded",
                     "sFailureReason": "outputByteBudgetExceeded"}
         # An EMPTY result is not a schema problem, and running the
         # validator over it produces the worst of both: fifteen "must
@@ -795,6 +884,11 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         if sEmptyReason:
             return {
                 "sOutcome": "empty", "sCompletion": sCompletion,
+                # The MACHINE class beside the prose: the retry
+                # whitelist must tell a rate-limited empty turn from an
+                # authentication-failed one, and the explanation text
+                # buries the classifier's answer in a sentence.
+                "sFailureClass": sEmptyReason,
                 "sFailureReason": _fsExplainEmptyTurn(
                     sEmptyReason, dictRawResult),
                 "sRejectedPayload": _fsSummarizeRejectedPayload(

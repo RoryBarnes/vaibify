@@ -571,6 +571,10 @@ def _fdictBuildEntry(dictStore, dictCampaign, dictProvenance=None):
     dictBounds = dictStore["dictBounds"]
     dictEntry = {
         "dictCampaign": copy.deepcopy(dictCampaign),
+        # Set by the RELOAD path alone: registration always builds a
+        # fresh record, so only a reload can discover that a sidecar
+        # went missing under recorded activity.
+        "bProvenanceUnavailable": False,
         "iTurnsLaunched": int(
             (dictProvenance or {}).get("iTurnsLaunched") or 0),
         "ringEvents": CouncilEventRing(
@@ -629,9 +633,42 @@ def fsMintNextTurnId(dictStore, sCampaignId):
     dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} to launch a turn")
+    if dictEntry.get("bProvenanceUnavailable"):
+        # A zeroed counter would re-mint an identifier earlier work
+        # already used; with the history gone, only-rises cannot be
+        # proven, so nothing may mint.
+        raise ValueError(
+            f"campaign {sCampaignId!r} lost its provenance sidecar; "
+            "no further turn identifiers can be minted")
     dictEntry["iTurnsLaunched"] += 1
     _fnPersistEntryProvenance(dictEntry)
     return "turn-" + str(dictEntry["iTurnsLaunched"])
+
+
+def fnMarkEvidenceRetiredForAttempt(dictStore, sCampaignId,
+                                    sAttemptBinding):
+    """Mark a retired attempt's ledger entries, preserving them.
+
+    Evidence entries are never deleted (continuation plan 2.6):
+    retirement marks the entries the attempt's turns produced as
+    retired — excluded from the active history, preserved as the
+    provenance a reader needs to tell a first-try consensus from a
+    third re-roll. Persisted through the same sidecar as every other
+    ledger mutation.
+    """
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None or not sAttemptBinding:
+        return
+    for dictLedgerEntry in dictEntry["ledgerEvidence"].listRecordedEntries:
+        if dictLedgerEntry.get("sAttemptBinding") == sAttemptBinding:
+            dictLedgerEntry["bRetiredWithAttempt"] = True
+    _fnPersistEntryProvenance(dictEntry)
+
+
+def fbCampaignProvenanceUnavailable(dictStore, sCampaignId):
+    """Report whether a stored campaign lost its provenance sidecar."""
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    return bool(dictEntry and dictEntry.get("bProvenanceUnavailable"))
 
 
 def fjsonGetCampaignRecord(dictStore, sCampaignId):
@@ -672,9 +709,30 @@ def _fdictSummariseEntry(dictEntry):
         # position in a list nobody sorted.
         "fLastActivityEpoch": dictEntry[
             "checkpointDurable"].ffFindLastWrittenEpoch(),
-        "dictStoppingPoint": (
-            agentCouncilResolution.fdictDescribeStoppingPoint(dictCampaign)),
+        "dictStoppingPoint": _fdictDescribeStoppingPointForEntry(dictEntry),
     }
+
+
+def _fdictDescribeStoppingPointForEntry(dictEntry):
+    """The record's stopping point, overridden by lost provenance.
+
+    ``fdictDescribeStoppingPoint`` is a pure function of the campaign
+    record, and provenance loss is a STORE fact the record cannot see
+    — so the override lives here, where the entry is. A listing that
+    offered resume over a campaign whose evidence history is gone
+    would relaunch work the record can no longer account for.
+    """
+    from . import agentCouncilResolution
+    dictStopping = agentCouncilResolution.fdictDescribeStoppingPoint(
+        dictEntry["dictCampaign"])
+    if dictEntry.get("bProvenanceUnavailable"):
+        dictStopping["bResumable"] = False
+        dictStopping["sAction"] = "none"
+        dictStopping["sBlockedReason"] = (
+            "this campaign's provenance sidecar is missing or "
+            "unreadable, so its evidence history and identifiers "
+            "cannot be trusted; convene a fresh council")
+    return dictStopping
 
 
 def flistSummariseCampaigns(dictStore, fbSelectCampaign=None):
@@ -724,6 +782,17 @@ def fdictRecordCampaignEvidence(dictStore, sCampaignId, dictEvidenceEntry):
     dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} for evidence")
+    if dictEntry.get("bProvenanceUnavailable"):
+        # Recording into a rebuilt-empty ledger would mint evidence-1
+        # again and silently bless the loss with a fresh sidecar. The
+        # refusal shape is the ledger's own, so the caller reverts the
+        # claim to asserted exactly as for any other refusal.
+        return {"bRecorded": False,
+                "sRefusalReason": (
+                    "this campaign's provenance sidecar is missing or "
+                    "unreadable; its recorded history cannot be "
+                    "extended"),
+                "sEntryIdentifier": ""}
     dictOutcome = dictEntry["ledgerEvidence"].fdictRecordEvidence(
         dictEvidenceEntry)
     # Persisted on refusal too: the refusal COUNT is part of the
@@ -821,8 +890,19 @@ def fdictReloadDurableCampaigns(dictStore):
             continue
         dictProvenance = DurableCampaignCheckpoint(
             _fsCampaignDirectory(dictStore, sCampaignId)).fdictLoadProvenance()
-        dictStore["dictEntriesById"][sCampaignId] = _fdictBuildEntry(
-            dictStore, jsonRecord, dictProvenance)
+        dictEntry = _fdictBuildEntry(dictStore, jsonRecord, dictProvenance)
+        # A missing or unreadable sidecar under a record that already
+        # RAN is lost provenance, not an empty history: confirmed
+        # claims in the record cite ledger entries nobody holds
+        # anymore, and a rebuilt zero counter would re-mint
+        # identifiers earlier work already used. The campaign stays
+        # discoverable, but the entry is marked and every
+        # provenance-consuming lane refuses (2026-08-27 review). A
+        # record with no recorded turns lost nothing.
+        dictEntry["bProvenanceUnavailable"] = dictProvenance is None and any(
+            (dictRound or {}).get("dictTurnsByPhase")
+            for dictRound in jsonRecord.get("listRounds") or [])
+        dictStore["dictEntriesById"][sCampaignId] = dictEntry
         dictStore["listInsertionOrder"].append(sCampaignId)
         iReloaded += 1
     return {"iReloaded": iReloaded}

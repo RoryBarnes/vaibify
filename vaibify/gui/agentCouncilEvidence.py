@@ -73,6 +73,7 @@ class EvidenceDisciplineMixin:
             return
         dictEntry = {
             "sClaimIdentifier": self._fsMintClaimIdentifier(),
+            "sAttemptBinding": self._fsDescribeCurrentAttemptBinding(),
             "sCommandText": dictClaim.get("sCommandText", ""),
             "sStateForm": "baseline",
             "sSnapshotHash": dictExecution.get("sSnapshotHash", ""),
@@ -86,6 +87,7 @@ class EvidenceDisciplineMixin:
     def _fnRecordModifiedStateClaim(self, dictClaim):
         dictEntry = {
             "sClaimIdentifier": self._fsMintClaimIdentifier(),
+            "sAttemptBinding": self._fsDescribeCurrentAttemptBinding(),
             "sCommandText": dictClaim.get("sCommandText", ""),
             "sStateForm": "modifiedState",
             "sSnapshotHash": dictClaim.get("sSnapshotHash", ""),

@@ -1,0 +1,287 @@
+"""Falsification tests for retry and retirement (continuation plan 2.5/2.6).
+
+The researcher's ruling made executable: a failure re-runs the phase
+that failed, and the failed attempt is retired into the record — never
+erased. Each test plants a REAL terminal record (driven through the
+actual engine, captured as a crashed hub's checkpoint) into a durable
+store and retries it through the controller, with recording fake
+connections proving which phases actually re-ran.
+"""
+
+import asyncio
+import copy
+
+import pytest
+
+from tests.agentCouncilHarness import (
+    VersionRecordingCheckpoint,
+    fdictDecideCompleted,
+    fdictMakeTurnResult,
+    ffnDecideAllAccept,
+    fixtureBuildCouncil,
+)
+from tests.testCouncilResume import (  # noqa: F401
+    LIST_TWO_SPECS,
+    S_IMAGE_IDENTITY,
+    _RecordingAcceptConnection,
+    _tPlantCrashedCampaign,
+)
+from vaibify.gui import agentCouncilController
+from vaibify.gui import agentCouncilProviders
+from vaibify.gui import agentCouncilStore
+from vaibify.gui.agentCouncilCampaign import (
+    SET_RETRYABLE_TURN_FAILURE_REASONS,
+)
+
+
+def _fdictDriveToFailedSynthesis(sEmptyReason):
+    """Drive a real council whose synthesis authors all fail.
+
+    Returns the final checkpointed record: state failed, attempt
+    outcome transitioned:failed, with the machine failure class the
+    retry whitelist reads.
+    """
+    def _ffnDecide(sHandle, dictTurnRequest):
+        if dictTurnRequest["sPhase"] == "synthesis":
+            return fdictDecideCompleted(
+                {"sEmptyResultReason": sEmptyReason})
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    checkpointRecorder = VersionRecordingCheckpoint()
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecide, sChairbotHandle="alpha",
+        checkpoint=checkpointRecorder)
+    dictOut = fixtureCouncil.fdictDrive()
+    assert dictOut["sState"] == "failed", dictOut["sState"]
+    return copy.deepcopy(checkpointRecorder.listVersions[-1])
+
+
+def _fdictRetryToCompletion(dictStore, dictRegistry, dictControllerState,
+                            sCampaignId, monkeypatch, listPhaseLog):
+    """Run retry and await the continued drive task to settlement."""
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant:
+            _RecordingAcceptConnection(listPhaseLog))
+
+    async def _fdictRun():
+        dictRetried = (
+            await agentCouncilController.fdictRetryCampaignFailedPhase(
+                dictControllerState, dictStore, dictRegistry, sCampaignId,
+                S_IMAGE_IDENTITY))
+        dictRuntime = dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId)
+        if dictRuntime is not None and dictRuntime.get(
+                "taskDrive") is not None:
+            await dictRuntime["taskDrive"]
+        return dictRetried
+
+    return asyncio.run(_fdictRun())
+
+
+def testTheRetryWhitelistMirrorsTheProviderVocabulary():
+    """The pure module's strings track the provider classification.
+
+    The whitelist lives in the pure campaign module; the classifier
+    constants live with the provider adapter. A mirror nobody checks
+    is a second authority, so this pins every provider constant the
+    whitelist names.
+    """
+    assert agentCouncilProviders.S_FAILURE_RATE_LIMIT in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_FAILURE_KILLED_NO_EXIT_CODE in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_FAILURE_NO_RESULT_EVENT in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_FAILURE_CLEAN_EXIT in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_FAILURE_NON_ZERO_EXIT in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_EMPTY_BECAUSE_WALL_CLOCK in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    # The identical-on-re-run classes stay OUT.
+    assert agentCouncilProviders.S_FAILURE_AUTHENTICATION not in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert "outputByteBudgetExceeded" not in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
+
+
+@pytest.mark.falsification
+def testRetryRetiresTheFailedAttemptAndRerunsThePhase(
+        tmp_path, monkeypatch):
+    """The ruling end to end: retire, restore, re-run, and say so.
+
+    A rate-limited synthesis killed the campaign; retry restores the
+    round to its pre-synthesis state, moves the failed attempt AND its
+    turns into the retired record — a plan that reached consensus
+    after a re-roll must be tellable from one that reached it first
+    time — records the researcher decision, and re-runs ONLY synthesis
+    and veto to the same planReady a clean run reaches, with the new
+    attempt numbered 2.
+
+    Kills: retirement forgetting to restore the pre-phase state, so
+    bSynthesisSettled stays True and the re-run walks straight past
+    the phase it was asked to re-run.
+    """
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, _fdictDriveToFailedSynthesis("rateLimit")))
+    listPhaseLog = []
+
+    dictRetried = _fdictRetryToCompletion(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, listPhaseLog)
+
+    assert dictRetried["bRetried"] is True
+    assert dictRetried["sRetriedPhase"] == "synthesis"
+    assert dictRetried["iRetiredAttemptNumber"] == 1
+    assert set(listPhaseLog) == {"synthesis", "veto"}, listPhaseLog
+    dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    assert dictRecord["sState"] == "planReady"
+    dictRound = dictRecord["listRounds"][-1]
+    listRetired = dictRound.get("listRetiredAttempts") or []
+    assert len(listRetired) == 1
+    assert listRetired[0]["sPhase"] == "synthesis"
+    assert listRetired[0]["listRetiredTurnRecords"], (
+        "the retired attempt lost its turns — the provenance a reader "
+        "needs to tell a re-roll from a first try")
+    assert dictRound["dictPhaseAttempt"]["sPhase"] == "veto"
+    assert any(
+        dictDecision.get("sDecisionKind") == "phaseRetried"
+        for dictDecision in dictRecord.get("listResearcherDecisions") or [])
+    # The re-run attempt numbered itself above the retired one.
+    listRetiredSynthesis = [d for d in listRetired
+                            if d["sPhase"] == "synthesis"]
+    assert listRetiredSynthesis[0]["iAttemptNumber"] == 1
+
+
+@pytest.mark.falsification
+def testANonRetryableFailureIsRefusedWithItsReasonNamed(
+        tmp_path, monkeypatch):
+    """An authentication failure fails identically on a re-run.
+
+    Kills: the controller skipping the whitelist and re-spending the
+    researcher's subscription on a failure that cannot change.
+    """
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path,
+            _fdictDriveToFailedSynthesis("authenticationFailure")))
+
+    with pytest.raises(agentCouncilController.CouncilCommandError) as error:
+        _fdictRetryToCompletion(
+            dictStore, dictRegistry, dictControllerState, sCampaignId,
+            monkeypatch, [])
+    assert "authenticationFailure" in str(error.value)
+
+
+@pytest.mark.falsification
+def testAnInterruptedCampaignRetriesAfterItsReservationsSettle(
+        tmp_path, monkeypatch):
+    """Reconcile, then Retry (continuation plan 2.5).
+
+    An indeterminate turn interrupted the campaign. With a reservation
+    still unsettled the retry refuses and names reconcile; once the
+    registry is clean, the interrupted phase re-runs and the abandoned
+    questions are regenerated by the re-run rather than pretended
+    handled.
+
+    Kills: retry skipping the unsettled-work refusal for interrupted
+    campaigns.
+    """
+    from vaibify.gui import agentCouncilRegistry as registryModule
+
+    def _ffnDecideIndeterminate(sHandle, dictTurnRequest):
+        if (dictTurnRequest["sPhase"] == "crossReview"
+                and sHandle == "beta"):
+            return fdictDecideCompleted(
+                fdictMakeTurnResult(sVerdict="accept"),
+                sCompletion="indeterminate")
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    checkpointRecorder = VersionRecordingCheckpoint()
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideIndeterminate, sChairbotHandle="alpha",
+        checkpoint=checkpointRecorder)
+    dictOut = fixtureCouncil.fdictDrive()
+    assert dictOut["sState"] == "interrupted"
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, copy.deepcopy(checkpointRecorder.listVersions[-1])))
+
+    dictRegistry["dictReservationsById"]["reservation-1"] = {
+        "sCampaignId": sCampaignId,
+        "sStatus": registryModule.S_RESERVATION_QUARANTINED,
+    }
+    with pytest.raises(agentCouncilController.CouncilCommandError,
+                       match="vaibify reconcile"):
+        _fdictRetryToCompletion(
+            dictStore, dictRegistry, dictControllerState, sCampaignId,
+            monkeypatch, [])
+
+    del dictRegistry["dictReservationsById"]["reservation-1"]
+    listPhaseLog = []
+    dictRetried = _fdictRetryToCompletion(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, listPhaseLog)
+    assert dictRetried["sRetriedPhase"] == "crossReview"
+    assert "crossReview" in listPhaseLog
+    assert agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)["sState"] == "planReady"
+
+
+@pytest.mark.falsification
+def testRetiredEvidenceIsMarkedAndPreservedNeverDeleted(tmp_path):
+    """Ledger entries bound to a retired attempt survive, marked.
+
+    Kills: retirement deleting (or never marking) the retired
+    attempt's evidence — the history a reader needs to weigh a
+    re-rolled consensus.
+    """
+    dictStore, sCampaignId = _tBuildStoreWithBoundEvidence(tmp_path)
+
+    agentCouncilStore.fnMarkEvidenceRetiredForAttempt(
+        dictStore, sCampaignId, "synthesis#1")
+
+    ledgerEvidence = dictStore["dictEntriesById"][sCampaignId][
+        "ledgerEvidence"]
+    listEntries = ledgerEvidence.listRecordedEntries
+    assert [dictEntry["sAttemptBinding"] for dictEntry in listEntries] == [
+        "synthesis#1", "veto#1"]
+    assert listEntries[0].get("bRetiredWithAttempt") is True
+    assert listEntries[1].get("bRetiredWithAttempt") is None
+    # Marked state is durable: a reloaded store still holds it.
+    dictReloaded = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=dictStore["sDurableStoreRoot"])
+    agentCouncilStore.fdictReloadDurableCampaigns(dictReloaded)
+    listReloaded = dictReloaded["dictEntriesById"][sCampaignId][
+        "ledgerEvidence"].listRecordedEntries
+    assert listReloaded[0].get("bRetiredWithAttempt") is True
+
+
+def _tBuildStoreWithBoundEvidence(tmp_path):
+    """A store holding one campaign with two attempt-bound entries."""
+    from vaibify.gui.agentCouncilCampaign import (
+        fdictCreateCampaign, fdictCreateParticipant)
+    dictStore = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=str(tmp_path / "councils"))
+    dictCampaign = fdictCreateCampaign(
+        "How should the cache be keyed?",
+        [fdictCreateParticipant("claude", "model-a"),
+         fdictCreateParticipant("claude", "model-b")])
+    agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
+    for sBinding in ("synthesis#1", "veto#1"):
+        dictOutcome = agentCouncilStore.fdictRecordCampaignEvidence(
+            dictStore, dictCampaign["sCampaignId"], {
+                "sClaimIdentifier": f"claim-{sBinding}",
+                "sAttemptBinding": sBinding,
+                "sCommandText": "pytest tests/testCacheLayer.py",
+                "sStateForm": "baseline",
+                "sSnapshotHash": "sealed-content-identity-0001",
+                "sExecutionImageIdentity": "sha256:" + "cd34" * 16,
+                "iExitCode": 0,
+                "sOutputDigest": "sha256:" + "ef56" * 16,
+            })
+        assert dictOutcome["bRecorded"], dictOutcome
+    return dictStore, dictCampaign["sCampaignId"]

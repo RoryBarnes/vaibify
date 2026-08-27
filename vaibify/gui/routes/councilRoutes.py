@@ -914,6 +914,52 @@ def _fnRegisterResume(app, dictCtx):
             agentCouncilController.S_COMMAND_RESUME, _fdictExecuteResume)
 
 
+def _fnRegisterRetry(app, dictCtx):
+    """Register POST /api/agent-councils/{sContainerId}/{sCampaignId}/retry.
+
+    The failed-phase re-run (continuation plan 2.5): the terminating
+    attempt is retired into the record — never erased — and the walk
+    re-runs its phase. Paid work relaunching, so the same gates as
+    start and resume, in the same order.
+    """
+
+    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/retry")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictRetryCouncil(
+        sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
+    ):
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictRegistry = fdictCouncilRegistry(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
+
+        async def _fdictExecuteRetry():
+            fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            sImageReference = await ffnBuildImageResolver(
+                dictCtx, sContainerId)()
+            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            await asyncio.to_thread(
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+            dictRetried = (
+                await agentCouncilController.fdictRetryCampaignFailedPhase(
+                    dictControllerState, dictStore, dictRegistry,
+                    sCampaignId, sImageReference,
+                    fsStageRunnerCredential=ffnBuildCredentialStager(
+                        dictCtx, sContainerId)))
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId,
+                _fdictBuildEvent("campaignPhaseRetried",
+                                 dictRetried.get("sTurnId", "")))
+            return dictRetried
+
+        return await fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
+            agentCouncilController.S_COMMAND_RETRY, _fdictExecuteRetry)
+
+
 def _fnRegisterRespond(app, dictCtx):
     """Register POST /api/agent-councils/{sContainerId}/{sCampaignId}/respond."""
 
@@ -1241,6 +1287,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPollEvents(app, dictCtx)
     _fnRegisterRespond(app, dictCtx)
     _fnRegisterResume(app, dictCtx)
+    _fnRegisterRetry(app, dictCtx)
     _fnRegisterRequestStop(app, dictCtx)
     _fnRegisterExhaustedRoundExits(app, dictCtx)
     _fnRegisterAcceptPlan(app, dictCtx)

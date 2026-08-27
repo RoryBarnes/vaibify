@@ -38,6 +38,7 @@ __all__ = [
     "fsValidateCampaignName",
     "LIST_EXHAUSTED_ROUND_EXITS",
     "LIST_PROJECT_IDENTITY_KEYS",
+    "SET_RETRYABLE_TURN_FAILURE_REASONS",
     "S_CLAIM_ASSERTED",
     "S_CLAIM_BLOCKED",
     "S_CLAIM_CONFIRMED",
@@ -207,6 +208,26 @@ DICT_EMPTY_PROJECT_IDENTITY = {
 # campaign name is display-only, so whitespace collapses, 80 characters
 # fit a list row, and the first character must be alphanumeric so
 # every name sorts and renders predictably.
+# Turn-failure reasons a retry may honestly re-run (continuation plan
+# 2.6): a rate limit, a wall-clock kill, and the transient
+# transport/CLI classes fail differently on a second attempt; an
+# authentication failure or a schema-invalid answer fails identically
+# and would spend the researcher's subscription proving it. Mirrors
+# the provider classification constants in ``agentCouncilProviders``
+# (S_FAILURE_*), pinned by testTheRetryWhitelistMirrorsTheProvider
+# Vocabulary — this module stays pure, so the strings live here.
+SET_RETRYABLE_TURN_FAILURE_REASONS = frozenset({
+    "rateLimit",
+    "killedNoExitCode",
+    "noResultEvent",
+    "cleanExit",
+    "nonZeroExit",
+    "killedAtTurnWallClockBudget",
+    # An exception inside the connection layer: the in-process
+    # transport class, transient by nature.
+    "turnRaised",
+})
+
 I_MAX_CAMPAIGN_NAME_LENGTH = 80
 I_CAMPAIGN_NAME_WORDS_FROM_QUESTION = 6
 _RE_CAMPAIGN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 \-]*$")

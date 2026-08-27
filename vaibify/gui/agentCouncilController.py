@@ -54,6 +54,7 @@ __all__ = [
     "S_COMMAND_RESOLVE_OBJECTIONS",
     "S_COMMAND_RESPOND",
     "S_COMMAND_RESUME",
+    "S_COMMAND_RETRY",
     "S_COMMAND_REQUEST_STOP",
     "S_COMMAND_START",
     "S_COUNCIL_CONTROLLER_STATE_KEY",
@@ -64,6 +65,7 @@ __all__ = [
     "fdictAcceptCampaignPlan",
     "fdictContinueCampaignAfterResponse",
     "fdictResumeCampaignDeliberation",
+    "fdictRetryCampaignFailedPhase",
     "fdictGrantCampaignResolutionRound",
     "fdictRejectCampaignCandidate",
     "fdictResolveCampaignObjections",
@@ -106,6 +108,9 @@ S_COMMAND_CLOSE_CHAT = "closeChat"
 # plan section 4): never unattended, always from a boundary the durable
 # phase-attempt record proves coherent.
 S_COMMAND_RESUME = "resume"
+# Retire the terminating attempt and re-run its phase
+# (continuation plan 2.5/2.6).
+S_COMMAND_RETRY = "retryFailedPhase"
 
 LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_START,
@@ -120,6 +125,7 @@ LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_ASK_CHAIRBOT,
     S_COMMAND_CLOSE_CHAT,
     S_COMMAND_RESUME,
+    S_COMMAND_RETRY,
 ]
 
 # The command log is an observability convenience for the serialization
@@ -638,6 +644,12 @@ async def _fdictRebuildRuntimeNonDestructively(
     resources are released on failure exactly as the launch does, but
     no transition is written and no checkpoint runs.
     """
+    if agentCouncilStore.fbCampaignProvenanceUnavailable(
+            dictStore, sCampaignId):
+        raise CouncilCommandError(
+            "cannot resume: this campaign's provenance sidecar is "
+            "missing or unreadable, so its evidence history and turn "
+            "identifiers cannot be trusted; convene a fresh council")
     baSnapshotTar = _fbaAdmitRuntimeRebuild(
         dictStore, dictCampaign, sCampaignId, sImageReference, "resume")
     taskBuild = asyncio.ensure_future(asyncio.to_thread(
@@ -739,16 +751,109 @@ async def fdictResumeCampaignDeliberation(
             "engineCouncil"].fdictReplaySettlementFromTurnRecords()
         if dictReplayed["sState"] != agentCouncilCampaign.S_STATE_PLANNING:
             # The replayed settlement reached a gate or a terminal
-            # state: the record says so durably and there is no walk
-            # to continue. The rebuilt runtime STAYS registered — a
-            # gate's answer drives it next, and a terminal state is
-            # settled by the ordinary release/dispose paths.
+            # state: the record says so durably and there is no walk to
+            # continue. A gate KEEPS the rebuilt runtime — its answer
+            # drives it next — but a terminal state must release the
+            # runner access this resume just provisioned, or the proxy
+            # and network leak and the read route reports a dead
+            # campaign as live deliberation. Same discriminating
+            # helper the drive-settlement path uses.
+            await _fnReleaseRunnerAccessIfSettled(dictRuntime)
+            if dictReplayed["sState"] in LIST_NO_FURTHER_TURN_STATES:
+                dictControllerState["dictCampaignRuntime"].pop(
+                    sCampaignId, None)
             return {"bResumed": True, "sTurnId": "",
                     "sState": dictReplayed["sState"]}
     sTurnId = _fsSpawnDriveTask(
         dictRuntime, dictRuntime["engineCouncil"].fdictRunUntilBlocked)
     return {"bResumed": True, "sTurnId": sTurnId,
             "sState": dictRuntime["dictCampaign"]["sState"]}
+
+
+async def fdictRetryCampaignFailedPhase(
+        dictControllerState, dictStore, dictRegistry, sCampaignId,
+        sImageReference, fsStageRunnerCredential=None):
+    """Retire the terminating attempt and re-run its phase (2.5/2.6).
+
+    The retry target is the LAST attempt — the one whose settled
+    outcome terminated the campaign — never a phase-order inference.
+    Admission mirrors resume: the same unsettled-work refusal is what
+    makes "Reconcile, then Retry" real for an interrupted campaign
+    (a reservation nobody proved gone refuses right here), the same
+    identity pins, the same non-destructive rebuild. The whitelist
+    refuses failures that would repeat identically, with the reason
+    named. Retirement itself runs INSIDE the engine so the restored
+    pre-phase state and the planning transition land in one
+    checkpoint; the evidence marking precedes it, so a crash between
+    the two leaves entries marked for an attempt that is still
+    terminal — re-running retry is idempotent about that.
+    """
+    from . import agentCouncilResolution
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    if dictCampaign is None:
+        raise CouncilCommandError(
+            f"no stored campaign {sCampaignId!r} to retry")
+    dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
+        dictCampaign)
+    _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "retry")
+    if dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId) is not None:
+        raise CouncilCommandError(
+            "this campaign already has a live runtime; there is "
+            "nothing to retry")
+    _fnRefuseWhenResourceAdmissionClosed(
+        dictControllerState, dictCampaign, "retry")
+    _fnRefuseUnsettledCampaignWork(
+        dictRegistry, dictCampaign, sCampaignId, "retry")
+    if agentCouncilStore.fbCampaignProvenanceUnavailable(
+            dictStore, sCampaignId):
+        raise CouncilCommandError(
+            "cannot retry: this campaign's provenance sidecar is "
+            "missing or unreadable; convene a fresh council")
+    if dictCampaign["sState"] not in (
+            agentCouncilCampaign.S_STATE_FAILED,
+            agentCouncilCampaign.S_STATE_INTERRUPTED):
+        raise CouncilCommandError(
+            "only a failed or interrupted campaign can retry a phase; "
+            f"this one is {dictCampaign['sState']!r}")
+    listRounds = dictCampaign.get("listRounds") or []
+    dictRound = listRounds[-1] if listRounds else None
+    dictAttempt = (dictRound or {}).get("dictPhaseAttempt")
+    sRetryRefusal = agentCouncilResolution.fsClassifyRetryEligibility(
+        dictRound, dictAttempt)
+    if sRetryRefusal:
+        raise CouncilCommandError(f"cannot retry: {sRetryRefusal}")
+    baSnapshotTar = _fbaAdmitRuntimeRebuild(
+        dictStore, dictCampaign, sCampaignId, sImageReference, "retry")
+    taskBuild = asyncio.ensure_future(asyncio.to_thread(
+        _fdictBuildCampaignRuntime, dictControllerState, dictStore,
+        dictRegistry, sCampaignId, dictCampaign, sImageReference,
+        baSnapshotTar, fsStageRunnerCredential))
+    try:
+        dictRuntime = await asyncio.shield(taskBuild)
+    except BaseException:
+        await _fnAwaitBuildWorkerCompletion(taskBuild)
+        dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId)
+        if dictBuiltRuntime is not None:
+            dictBuiltRuntime["bLaunchInProgress"] = False
+            bAccessSettled = await asyncio.to_thread(
+                _fbReleaseRunnerAccessResources, dictBuiltRuntime)
+            if bAccessSettled:
+                dictControllerState["dictCampaignRuntime"].pop(
+                    sCampaignId, None)
+        raise
+    dictRuntime["bLaunchInProgress"] = False
+    agentCouncilStore.fnMarkEvidenceRetiredForAttempt(
+        dictStore, sCampaignId,
+        f"{dictAttempt['sPhase']}#{dictAttempt['iAttemptNumber']}")
+    dictRuntime["engineCouncil"].fdictRetireTerminalAttempt()
+    sTurnId = _fsSpawnDriveTask(
+        dictRuntime, dictRuntime["engineCouncil"].fdictRunUntilBlocked)
+    return {"bRetried": True, "sTurnId": sTurnId,
+            "sRetriedPhase": dictAttempt["sPhase"],
+            "iRetiredAttemptNumber": dictAttempt["iAttemptNumber"]}
 
 
 def _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction):
@@ -1321,13 +1426,27 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
 
 
 def fiClassifyInterruptedCampaignsOnStartup(dictStore):
-    """Classify reloaded mid-turn campaigns as interrupted, never resumed.
+    """Classify UNPROVEN mid-turn campaigns as interrupted on startup.
 
-    A campaign checkpointed in ``planning`` at a hub crash had a turn
-    with no terminal record; a restarted hub cannot account for that
-    turn's runners (the labelled-runner reconcile destroys or
-    quarantines them separately), so the record says interrupted.
-    Returns how many were classified.
+    The original rule rewrote EVERY reloaded ``planning`` campaign,
+    on the premise that planning-at-crash meant a turn with no
+    terminal record. The durable phase-attempt record (continuation
+    plan section 2) made that premise checkable — and often false: a
+    hub killed BETWEEN phases leaves ``outcomeSettled`` or
+    ``turnsSettled``, a boundary the researcher may explicitly resume
+    from. Classifying those interrupted made the resume feature
+    unreachable on any real restart, which the 2026-08-27 review
+    caught: the tests planted records without running this
+    lifecycle.
+
+    So the classifier now consults the record: an attempt still
+    ``running`` — launched runners nobody can account for (the
+    labelled-runner reconcile settles whatever they left) — or no
+    attempt record at all (a pre-feature checkpoint, never assumed
+    settled) classifies as interrupted; a proven boundary is left in
+    ``planning`` for the researcher's explicit resume. Nothing is
+    EVER relaunched here — startup classifies, only the researcher
+    resumes (amended §3).
 
     A campaign whose project is held by a LIVE PEER hub is left alone.
     The durable store is machine-wide, so this hub reloads a peer's
@@ -1345,6 +1464,8 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             continue
         if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(dictCampaign):
             continue
+        if _fbCampaignStoppedAtAProvenBoundary(dictCampaign):
+            continue
         agentCouncilCampaign.fnTransitionCampaignState(
             dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
             "hubRestartedWhileATurnHadNoTerminalRecord")
@@ -1352,6 +1473,29 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             dictStore, sCampaignId, dictCampaign)
         iClassified += 1
     return iClassified
+
+
+def _fbCampaignStoppedAtAProvenBoundary(dictCampaign):
+    """Report whether the durable attempt record proves a clean stop.
+
+    ``outcomeSettled`` at a walk-continuing outcome and
+    ``turnsSettled`` (recoverable by deterministic settlement replay)
+    are the boundaries resume admits (continuation plan 2.4); the
+    startup classifier must leave exactly those in ``planning`` or
+    the admission is unreachable. ``running`` and a missing record
+    stay classifiable — turns nobody can account for.
+    """
+    listRounds = dictCampaign.get("listRounds") or []
+    if not listRounds:
+        return False
+    dictAttempt = listRounds[-1].get("dictPhaseAttempt")
+    if not dictAttempt:
+        return False
+    sAttemptState = dictAttempt.get("sAttemptState", "")
+    if sAttemptState == "turnsSettled":
+        return True
+    return sAttemptState == "outcomeSettled" and dictAttempt.get(
+        "sOutcome") in ("advancedToNextPhase", "roundResolved")
 
 
 def _fnRequestRuntimeStopQuietly(dictRuntime):

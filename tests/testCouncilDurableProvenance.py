@@ -146,24 +146,77 @@ def testARefusalBudgetDoesNotRefillOnReload(tmp_path):
         "ledgerEvidence"].iRefusedEntryCount == 1
 
 
-def testAMissingSidecarStillReloadsWithAnHonestEmptyLedger(tmp_path):
-    """A campaign whose sidecar predates this feature must not vanish.
+def _fnGiveCampaignRecordedActivity(dictStore, sCampaignId):
+    """Checkpoint one settled turn into the record, as a real run does."""
+    jsonRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    jsonRecord["listRounds"] = [{
+        "iRoundNumber": 1,
+        "sResolution": "",
+        "dictTurnsByPhase": {
+            "independentProposals": [{"sStatus": "completed"}]},
+    }]
+    agentCouncilStore.fnCheckpointStoredCampaign(
+        dictStore, sCampaignId, jsonRecord)
 
-    Records checkpointed by a pre-sidecar hub have campaign.json and no
-    provenance.json; they reload with an empty ledger — honest, since
-    nothing durable recorded their entries — rather than failing.
+
+@pytest.mark.falsification
+def testALostSidecarUnderARunCampaignRefusesNotResets(tmp_path):
+    """Lost provenance is marked and refused, never silently rebuilt.
+
+    A record that already RAN carries confirmed claims citing ledger
+    entries; a rebuilt-empty ledger orphans every citation, re-mints
+    evidence-1, and a zeroed counter re-mints turn identifiers earlier
+    work already used. That is the original reload corruption wearing
+    a fresh coat (2026-08-27 review). The campaign stays DISCOVERABLE
+    — a researcher can still read it — but nothing may extend or
+    resume its history.
+
+    Kills: the reload treating a lost sidecar under recorded activity
+    as an honest empty history.
     """
     dictStore, sCampaignId = _fdictBuildStoreWithOneCampaign(tmp_path)
+    agentCouncilStore.fsMintNextTurnId(dictStore, sCampaignId)
     agentCouncilStore.fdictRecordCampaignEvidence(
         dictStore, sCampaignId, _fdictEvidenceEntry("claim-recorded"))
+    _fnGiveCampaignRecordedActivity(dictStore, sCampaignId)
     os.remove(os.path.join(
         str(tmp_path / "councils"), sCampaignId,
         agentCouncilStore.S_PROVENANCE_SIDECAR_BASENAME))
 
     dictReloaded = _fdictReloadFreshStore(tmp_path)
 
-    ledgerReloaded = dictReloaded["dictEntriesById"][sCampaignId][
-        "ledgerEvidence"]
-    assert ledgerReloaded.listRecordedEntries == []
+    assert agentCouncilStore.fbCampaignProvenanceUnavailable(
+        dictReloaded, sCampaignId)
+    # Still discoverable, but the listing says why it cannot continue.
+    listSummaries = agentCouncilStore.flistSummariseCampaigns(dictReloaded)
+    assert [dictSummary["sCampaignId"] for dictSummary in listSummaries] == [
+        sCampaignId]
+    assert listSummaries[0]["dictStoppingPoint"]["bResumable"] is False
+    assert "provenance sidecar" in listSummaries[0][
+        "dictStoppingPoint"]["sBlockedReason"]
+    # No new evidence, and no identifier reuse.
+    dictRefused = agentCouncilStore.fdictRecordCampaignEvidence(
+        dictReloaded, sCampaignId, _fdictEvidenceEntry("claim-later"))
+    assert dictRefused["bRecorded"] is False
+    assert "provenance sidecar" in dictRefused["sRefusalReason"]
+    with pytest.raises(ValueError, match="provenance sidecar"):
+        agentCouncilStore.fsMintNextTurnId(dictReloaded, sCampaignId)
+
+
+def testAFreshCampaignWithNoSidecarIsNotPunished(tmp_path):
+    """No sidecar under a record that never ran lost nothing.
+
+    A freshly registered campaign writes its sidecar at the first mint
+    or evidence record, so absence with no recorded turns is the
+    ordinary young-campaign state — refusing it would strand every
+    campaign a hub restarts under before its first turn.
+    """
+    dictStore, sCampaignId = _fdictBuildStoreWithOneCampaign(tmp_path)
+
+    dictReloaded = _fdictReloadFreshStore(tmp_path)
+
+    assert not agentCouncilStore.fbCampaignProvenanceUnavailable(
+        dictReloaded, sCampaignId)
     assert agentCouncilStore.fsMintNextTurnId(
         dictReloaded, sCampaignId) == "turn-1"

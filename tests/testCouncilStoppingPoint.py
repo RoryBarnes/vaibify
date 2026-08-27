@@ -108,21 +108,8 @@ def testTheDescriptorBlamesNoPhaseItCannotProve():
     assert "bRequiresRetry" not in dictStopping
 
 
-@pytest.mark.falsification
-def testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses():
-    """The listing offers only what the resume route would admit.
-
-    A failed campaign's attempt record is coherent (outcomeSettled,
-    transitioned:failed), so every record-level check passes — but its
-    recovery action is Retry, which is not built, and the resume route
-    refuses non-planning states. A listing that says "Can be
-    continued" over a route that answers 409 is the
-    answer-box-over-a-dead-runtime defect generalized.
-
-    Kills: the descriptor skipping the state admission and deriving
-    resumability from record coherence alone.
-    """
-    dictRecord = {
+def _fdictBuildFailedRecord(sFailureReason):
+    return {
         "sState": "failed",
         "dictProjectIdentity": {
             "sSnapshotIdentity": "sealed-content-identity-0001"},
@@ -132,7 +119,8 @@ def testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses():
             "dictTurnsByPhase": {
                 "independentProposals": [{"sStatus": "completed"}],
                 "crossReview": [{"sStatus": "completed"}],
-                "synthesis": [{"sStatus": "failed"}],
+                "synthesis": [{"sStatus": "failed",
+                               "sFailureReason": sFailureReason}],
             },
             "dictPhaseAttempt": {
                 "sPhase": "synthesis", "iRoundNumber": 1,
@@ -146,10 +134,29 @@ def testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses():
         }],
     }
 
-    dictStopping = fdictDescribeStoppingPoint(dictRecord)
 
-    assert dictStopping["bResumable"] is False
-    assert "not yet available" in dictStopping["sBlockedReason"]
+@pytest.mark.falsification
+def testOnlyARetryableFailureIsOfferedTheRetry():
+    """Not every failure is retryable (continuation plan 2.6).
+
+    A rate-limited synthesis fails differently on a re-run and is
+    offered Retry; an authentication failure fails identically and
+    would spend the researcher's subscription proving it — refused
+    with the reason NAMED, because a refusal that names its cause is
+    the difference between "log in again" and a mystery.
+
+    Kills: the whitelist admitting every failure reason.
+    """
+    dictRetryable = fdictDescribeStoppingPoint(
+        _fdictBuildFailedRecord("rateLimit"))
+    assert dictRetryable["sAction"] == "retry"
+    assert dictRetryable["bResumable"] is True
+
+    dictRefused = fdictDescribeStoppingPoint(
+        _fdictBuildFailedRecord("authenticationFailure"))
+    assert dictRefused["sAction"] == "none"
+    assert dictRefused["bResumable"] is False
+    assert "authenticationFailure" in dictRefused["sBlockedReason"]
 
 
 @pytest.mark.falsification
@@ -183,6 +190,50 @@ def testAMidPhaseRecordIsNotResumable():
 
     assert dictStopping["bResumable"] is False
     assert "still running" in dictStopping["sBlockedReason"]
+
+
+@pytest.mark.falsification
+def testTheActionVocabularyNamesEachRecoveryLane():
+    """answer, review, resume, none — never one flag for three lanes.
+
+    The resume route refuses needsHuman and planReady, whose real
+    continuations are Answer and Review; a listing keying everything
+    on bResumable offered the one action those states cannot take.
+
+    Kills: the action map collapsing every continuable state onto
+    resume.
+    """
+    dictBase = {
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "",
+            "dictTurnsByPhase": {
+                "independentProposals": [{"sStatus": "completed"}]},
+            "dictPhaseAttempt": {
+                "sPhase": "independentProposals", "iRoundNumber": 1,
+                "iAttemptNumber": 1,
+                "listEligibleParticipantIds": ["participant-a"],
+                "sCompletionRule": "allEligible",
+                "sAttemptState": "outcomeSettled",
+                "sOutcome": "advancedToNextPhase",
+                "dictPrePhaseState": {},
+            },
+        }],
+    }
+    for sState, sExpectedAction in (
+            ("needsHuman", "answer"),
+            ("planReady", "review"),
+            ("planning", "resume")):
+        dictStopping = fdictDescribeStoppingPoint(
+            {**dictBase, "sState": sState})
+        assert dictStopping["sAction"] == sExpectedAction, sState
+        assert dictStopping["bResumable"] is True
+    dictStopping = fdictDescribeStoppingPoint(
+        {**dictBase, "sState": "failed"})
+    assert dictStopping["sAction"] == "none"
+    assert dictStopping["bResumable"] is False
 
 
 @pytest.mark.falsification

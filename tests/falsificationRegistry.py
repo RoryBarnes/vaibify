@@ -14039,14 +14039,13 @@ def _fdictEntry(sRel):
             '        dictProvenance = DurableCampaignCheckpoint(\n'
             '            _fsCampaignDirectory(dictStore, sCampaignId)).'
             'fdictLoadProvenance()\n'
-            '        dictStore["dictEntriesById"][sCampaignId] = '
-            '_fdictBuildEntry(\n'
-            '            dictStore, jsonRecord, dictProvenance)'
+            '        dictEntry = _fdictBuildEntry(dictStore, jsonRecord, '
+            'dictProvenance)'
         ),
         new=(
-            '        dictStore["dictEntriesById"][sCampaignId] = '
-            '_fdictBuildEntry(\n'
-            '            dictStore, jsonRecord)'
+            '        dictProvenance = None\n'
+            '        dictEntry = _fdictBuildEntry(dictStore, jsonRecord, '
+            'dictProvenance)'
         ),
     ),
 
@@ -14437,16 +14436,13 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
-            'testAFailedCampaignIsNotOfferedAnActionTheRouteRefuses'
+            'testOnlyARetryableFailureIsOfferedTheRetry'
         ),
         source='vaibify/gui/agentCouncilResolution.py',
-        # Skip the state admission: the listing then derives
-        # resumability from record coherence alone and offers Resume on
-        # a failed campaign the route refuses.
-        old=(
-            '    if sState not in ("planning", "needsHuman", '
-            '"planReady"):'
-        ),
+        # The whitelist admits every failure reason: an authentication
+        # failure is offered a retry that fails identically, on the
+        # researcher's subscription.
+        old='    if listBlockingReasons:',
         new='    if False:',
     ),
 
@@ -14469,5 +14465,174 @@ def _fdictEntry(sRel):
             '        try {'
         ),
         new='        try {',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testAReplayThatTerminatesReleasesTheRebuiltRuntime'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The terminal replay outcome returns without releasing the
+        # runner access resume just provisioned: proxy and network
+        # leak, and the read route reports a dead campaign as live.
+        old=(
+            '            await _fnReleaseRunnerAccessIfSettled('
+            'dictRuntime)\n'
+            '            if dictReplayed["sState"] in '
+            'LIST_NO_FURTHER_TURN_STATES:\n'
+            '                dictControllerState["dictCampaignRuntime"]'
+            '.pop(\n'
+            '                    sCampaignId, None)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testARealRestartLeavesAProvenBoundaryResumable'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The classifier stops consulting the attempt record -- the
+        # pre-review behaviour that made resume unreachable on any
+        # real restart.
+        old=(
+            '        if _fbCampaignStoppedAtAProvenBoundary'
+            '(dictCampaign):\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilResume.py::'
+            'testARestartStillClassifiesAnUnprovenCampaignInterrupted'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Every attempt state reads as a proven boundary -- the
+        # classifier silently stops classifying anything with a
+        # record, and crash recovery dies without a test noticing.
+        old=(
+            '    sAttemptState = dictAttempt.get("sAttemptState", "")\n'
+            '    if sAttemptState == "turnsSettled":\n'
+            '        return True\n'
+            '    return sAttemptState == "outcomeSettled" and '
+            'dictAttempt.get(\n'
+            '        "sOutcome") in ("advancedToNextPhase", '
+            '"roundResolved")'
+        ),
+        new='    return True',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testALostSidecarUnderARunCampaignRefusesNotResets'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # The reload stops marking a lost sidecar: the original
+        # corruption returns -- empty ledger, zeroed counter,
+        # identifiers re-minted under records that cite them.
+        old=(
+            '        dictEntry["bProvenanceUnavailable"] = '
+            'dictProvenance is None and any(\n'
+            '            (dictRound or {}).get("dictTurnsByPhase")\n'
+            '            for dictRound in jsonRecord.get("listRounds") '
+            'or [])'
+        ),
+        new='        dictEntry["bProvenanceUnavailable"] = False',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilStoppingPoint.py::'
+            'testTheActionVocabularyNamesEachRecoveryLane'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # Every continuable state collapses onto resume -- the listing
+        # then offers needsHuman and planReady campaigns the one
+        # action their route refuses.
+        old=(
+            '    dictStopping["sAction"] = {\n'
+            '        "needsHuman": "answer",\n'
+            '        "planReady": "review",\n'
+            '        "planning": "resume",\n'
+            '    }[sState]'
+        ),
+        new='    dictStopping["sAction"] = "resume"',
+    ),
+
+    # ------------------------------------------------------------------
+    # Retry and retirement (continuation plan 2.5/2.6, 2026-08-27).
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRetry.py::'
+            'testRetryRetiresTheFailedAttemptAndRerunsThePhase'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # Retirement forgets to restore the pre-phase state:
+        # bSynthesisSettled stays True and the re-run walks straight
+        # past the phase it was asked to re-run.
+        old=(
+            '        dictRound["bSynthesisSettled"] = dictPre.get(\n'
+            '            "bSynthesisSettled", False)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRetry.py::'
+            'testANonRetryableFailureIsRefusedWithItsReasonNamed'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '    if sRetryRefusal:\n'
+            '        raise CouncilCommandError(f"cannot retry: '
+            '{sRetryRefusal}")'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise CouncilCommandError(f"cannot retry: '
+            '{sRetryRefusal}")'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRetry.py::'
+            'testAnInterruptedCampaignRetriesAfterItsReservationsSettle'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Retry stops consulting the unsettled-work refusal: a
+        # quarantined runner nobody proved gone gets a fresh drive
+        # beside it — "Reconcile, then Retry" silently loses its
+        # first half.
+        old=(
+            '    _fnRefuseUnsettledCampaignWork(\n'
+            '        dictRegistry, dictCampaign, sCampaignId, "retry")\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRetry.py::'
+            'testRetiredEvidenceIsMarkedAndPreservedNeverDeleted'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        if dictLedgerEntry.get("sAttemptBinding") == '
+            'sAttemptBinding:\n'
+            '            dictLedgerEntry["bRetiredWithAttempt"] = True'
+        ),
+        new=(
+            '        if False:\n'
+            '            dictLedgerEntry["bRetiredWithAttempt"] = True'
+        ),
     ),
 ]

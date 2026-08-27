@@ -134,6 +134,15 @@ def _tPlantCrashedCampaign(tmp_path, dictVersion,
     dictStore = agentCouncilStore.fdictCreateCampaignStore(
         sDurableStoreRoot=sRoot)
     agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictVersion)
+    # A campaign that genuinely ran wrote its provenance sidecar at
+    # every mint and evidence record; the planted crash must carry one
+    # or the provenance-loss guard (rightly) refuses the resume.
+    agentCouncilStore.DurableCampaignCheckpoint(
+        os.path.join(sRoot, sCampaignId)).fnCheckpointProvenance({
+            "iTurnsLaunched": 0,
+            "dictLedgerState": {"listRecordedEntries": [],
+                                "iRecordedTotalBytes": 0,
+                                "iRefusedEntryCount": 0}})
     return (dictStore, agentCouncilRegistry.fdictCreateCouncilRegistry(),
             agentCouncilController.fdictCreateCouncilControllerState(),
             sCampaignId)
@@ -164,6 +173,81 @@ def _fdictResumeToCompletion(dictStore, dictRegistry, dictControllerState,
 
 
 @pytest.mark.falsification
+def testARealRestartLeavesAProvenBoundaryResumable(tmp_path, monkeypatch):
+    """The full startup lifecycle, then resume — not a planted shortcut.
+
+    The 2026-08-27 review found resume unreachable in production: the
+    startup classifier rewrote EVERY non-peer planning campaign to
+    interrupted, and resume admits only planning — a composition
+    failure the earlier tests missed by calling the controller without
+    running the lifecycle. This test runs it: a second store over the
+    same durable root, RELOADED and CLASSIFIED exactly as
+    appFactory's startup does, must leave the proven boundary in
+    planning with zero classifications — and the resume must then
+    actually run to planReady.
+
+    Kills: the classifier ignoring the attempt record and classifying
+    proven boundaries interrupted.
+    """
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(tmp_path, _fdictCaptureMidWalkVersion()))
+
+    # The restart lifecycle, as fnReconcileCouncilOnStartup runs it.
+    dictReloaded = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=dictStore["sDurableStoreRoot"])
+    agentCouncilStore.fdictReloadDurableCampaigns(dictReloaded)
+    iClassified = (
+        agentCouncilController.fiClassifyInterruptedCampaignsOnStartup(
+            dictReloaded))
+
+    assert iClassified == 0, (
+        "the startup classifier rewrote a proven boundary")
+    dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        dictReloaded, sCampaignId)
+    assert dictRecord["sState"] == "planning"
+
+    listPhaseLog = []
+    dictResumed = _fdictResumeToCompletion(
+        dictReloaded, dictRegistry,
+        agentCouncilController.fdictCreateCouncilControllerState(),
+        sCampaignId, monkeypatch, listPhaseLog)
+    assert dictResumed["bResumed"] is True
+    assert agentCouncilStore.fjsonGetCampaignRecord(
+        dictReloaded, sCampaignId)["sState"] == "planReady"
+
+
+@pytest.mark.falsification
+def testARestartStillClassifiesAnUnprovenCampaignInterrupted(tmp_path):
+    """The twin: crash recovery must still recover.
+
+    A running attempt is turns nobody can account for; the SAME
+    lifecycle that spares the proven boundary must classify it — a
+    classifier that simply stopped classifying would pass the sparing
+    test and fail here.
+
+    Kills: the classifier treating every attempt state as a proven
+    boundary.
+    """
+    dictVersion = _fdictCaptureMidWalkVersion()
+    dictVersion["listRounds"][-1]["dictPhaseAttempt"]["sAttemptState"] = (
+        "running")
+    dictVersion["listRounds"][-1]["dictPhaseAttempt"]["sOutcome"] = ""
+    dictStore, _, _, sCampaignId = _tPlantCrashedCampaign(
+        tmp_path, dictVersion)
+
+    dictReloaded = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=dictStore["sDurableStoreRoot"])
+    agentCouncilStore.fdictReloadDurableCampaigns(dictReloaded)
+    iClassified = (
+        agentCouncilController.fiClassifyInterruptedCampaignsOnStartup(
+            dictReloaded))
+
+    assert iClassified == 1
+    assert agentCouncilStore.fjsonGetCampaignRecord(
+        dictReloaded, sCampaignId)["sState"] == "interrupted"
+
+
+@pytest.mark.falsification
 def testResumeContinuesTheWalkWithoutRerunningSettledPhases(
         tmp_path, monkeypatch):
     """The researcher's ruling made executable: continue, never re-run.
@@ -190,6 +274,72 @@ def testResumeContinuesTheWalkWithoutRerunningSettledPhases(
         dictStore, sCampaignId)
     assert dictRecord["sState"] == "planReady"
     assert set(listPhaseLog) == {"synthesis", "veto"}, listPhaseLog
+
+
+def _fdictCaptureIndeterminateTurnsSettledVersion():
+    """A turnsSettled checkpoint whose replay transitions to interrupted.
+
+    An indeterminate COMPLETION rides a completed status, so the
+    completion rule is met and turnsSettled checkpoints before
+    settlement fires the INTERRUPTED transition — a real crash window,
+    and the one whose replay ends somewhere terminal.
+    """
+    from tests.agentCouncilHarness import (
+        VersionRecordingCheckpoint as _Recorder)
+
+    def _ffnDecideIndeterminate(sHandle, dictTurnRequest):
+        if (dictTurnRequest["sPhase"] == "crossReview"
+                and sHandle == "beta"):
+            return fdictDecideCompleted(
+                fdictMakeTurnResult(sVerdict="accept"),
+                sCompletion="indeterminate")
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    checkpointRecorder = _Recorder()
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideIndeterminate, sChairbotHandle="alpha",
+        checkpoint=checkpointRecorder)
+    fixtureCouncil.fdictDrive()
+    listCandidates = [
+        dictVersion for dictVersion in checkpointRecorder.listVersions
+        if dictVersion["sState"] == "planning"
+        and dictVersion.get("listRounds")
+        and (dictVersion["listRounds"][-1].get("dictPhaseAttempt") or {}
+             ).get("sAttemptState") == "turnsSettled"
+        and (dictVersion["listRounds"][-1].get("dictPhaseAttempt") or {}
+             ).get("sPhase") == "crossReview"]
+    assert listCandidates, "no turnsSettled checkpoint before interruption"
+    return copy.deepcopy(listCandidates[-1])
+
+
+@pytest.mark.falsification
+def testAReplayThatTerminatesReleasesTheRebuiltRuntime(
+        tmp_path, monkeypatch):
+    """A terminal replay outcome must not strand the rebuilt runtime.
+
+    Resume provisions runner access before it knows where the replay
+    lands. When the replay reaches interrupted, there is no walk and
+    no gate — a runtime left registered leaks the proxy and network
+    and makes the read route report a dead campaign as live
+    deliberation.
+
+    Kills: the terminal replay outcome returning without releasing and
+    unregistering the runtime.
+    """
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, _fdictCaptureIndeterminateTurnsSettledVersion()))
+
+    dictResumed = _fdictResumeToCompletion(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, [])
+
+    assert dictResumed["sState"] == "interrupted"
+    dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    assert dictRecord["sState"] == "interrupted"
+    assert sCampaignId not in dictControllerState["dictCampaignRuntime"], (
+        "a terminal replay left the rebuilt runtime registered")
 
 
 @pytest.mark.falsification

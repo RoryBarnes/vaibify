@@ -336,13 +336,20 @@ def test_a_dead_deliberation_offers_resume_from_backend_truth():
     assert "_fsResumeSurface" in sComposer
     sSurface = _fsFunctionBody(sSource, "_fsResumeSurface")
     assert "dictStoppingPoint" in sSurface
-    assert "bResumable" in sSurface
+    # Keyed on the record-derived ACTION, not the conflating flag: the
+    # button renders only where the route would admit a resume.
+    assert 'sAction !== "resume"' in sSurface
     # The stop-clear choice is surfaced ON the control, and the action
     # posts the explicit flag.
     assert "clears the requested stop" in sSurface
     sAction = _fsFunctionBody(sSource, "_fnResumeCouncil")
     assert "/resume" in sAction
     assert "bClearStopRequest" in sAction
+    # The retry lane renders from the same record-derived action and
+    # posts the retry route.
+    sRetry = _fsFunctionBody(sSource, "_fsRetrySurface")
+    assert 'sAction !== "retry"' in sRetry
+    assert "/retry" in _fsFunctionBody(sSource, "_fnRetryCouncil")
 
 
 def test_candidate_plan_renders_the_engine_result_shape():

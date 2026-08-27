@@ -421,6 +421,11 @@ var VaibifyAgentCouncil = (function () {
         if (!dictStopping.bResumable) {
             return dictStopping.sBlockedReason || "cannot be continued";
         }
+        if (dictStopping.sAction === "retry") {
+            return "retry " + (dictStopping.sAttemptPhase ||
+                "the failed phase") + ", round " +
+                (dictStopping.iRoundNumber || 1);
+        }
         if (dictStopping.sNextPhase) {
             return "next: " + dictStopping.sNextPhase + ", round " +
                 (dictStopping.iRoundNumber || 1);
@@ -2199,9 +2204,30 @@ var VaibifyAgentCouncil = (function () {
             return _fsNeedsHumanCard(dictCampaign);
         }
         if (SET_TERMINAL_STATES[dictCampaign.sState]) {
-            return _fsHeldQuestionsCard(dictCampaign);
+            return _fsRetrySurface(dictCampaign) +
+                _fsHeldQuestionsCard(dictCampaign);
         }
         return _fsComposer(dictCampaign);
+    }
+
+    function _fsRetrySurface(dictCampaign) {
+        /* Rendered only when the durable record's own action says
+           retry: the terminating attempt is retired into the record
+           and its phase re-run. The whitelist already refused
+           failures that repeat identically, so a rendered button is
+           one the route will admit. */
+        var dictStopping = dictCampaign.dictStoppingPoint || {};
+        if (dictStopping.sAction !== "retry") return "";
+        return "<div class=\"council-composer\">" +
+            "<p class=\"council-hint\">This council stopped at a " +
+            "failure a re-run can survive (" +
+            _fsEscape(_fsDescribeStoppingPoint(dictStopping)) +
+            "). Retrying retires the failed attempt into the record " +
+            "and re-runs its phase — paid provider work.</p>" +
+            "<button type=\"button\" id=\"btnCouncilRetry\" " +
+            "class=\"btn btn-primary\">Retry the failed phase" +
+            "</button>" +
+            "</div>";
     }
 
     function _fsHeldQuestionsCard(dictCampaign) {
@@ -2264,7 +2290,7 @@ var VaibifyAgentCouncil = (function () {
            (reservations, image drift, archive validation) a listing
            cannot promise. */
         var dictStopping = dictCampaign.dictStoppingPoint || {};
-        if (!dictStopping.bResumable) {
+        if (dictStopping.sAction !== "resume") {
             return "<div class=\"council-composer\">" +
                 "<p class=\"council-hint\">This council is not " +
                 "running, and cannot be continued: " +
@@ -2824,6 +2850,7 @@ var VaibifyAgentCouncil = (function () {
         });
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
         _fnBindElement("btnCouncilResume", _fnResumeCouncil);
+        _fnBindElement("btnCouncilRetry", _fnRetryCouncil);
         _fnBindElement("btnCouncilAnswer", _fnAnswerQuestion);
         _fnBindElement("btnCouncilGrantRound", _fnGrantResolutionRound);
         _fnBindElement("btnCouncilResolveOverride", _fnResolveObjections);
@@ -2959,6 +2986,11 @@ var VaibifyAgentCouncil = (function () {
     async function _fnStopCouncil() {
         await _fnPostAction(
             "/" + _dictState.sActiveCampaignId + "/request-stop", undefined);
+    }
+
+    async function _fnRetryCouncil() {
+        await _fnPostAction(
+            "/" + _dictState.sActiveCampaignId + "/retry", undefined);
     }
 
     async function _fnResumeCouncil() {

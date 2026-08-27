@@ -4178,7 +4178,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (paid work relaunching passes the same gates start passes), the
     # stop-clear request body, and the GET response's liveness +
     # stopping-point pair the panel renders resume from.
-    "routes/councilRoutes.py": 1249,
+    # +47 (2026-08-27, review fix R2): the retry route, through
+    # the same paid-work gates as start and resume.
+    "routes/councilRoutes.py": 1296,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4229,7 +4231,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the sidecar is written and read by the same checkpoint class,
     # beside the same campaign record, with the same private-file
     # discipline as everything else the store persists.
-    "agentCouncilStore.py": 838,
+    # +80 (2026-08-27, review fixes R2/R3): lost provenance is
+    # MARKED on reload and refused by the mint and the evidence
+    # funnel (an absent sidecar under recorded activity is not an
+    # empty history), and retirement marks a retired attempt's ledger
+    # entries — preserved, never deleted.
+    "agentCouncilStore.py": 918,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4266,7 +4273,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the loop that writes it are one lifecycle; a separate module
     # would put every settlement call a hop away from the transition
     # it must precede (continuation plan section 2).
-    "agentCouncil.py": 1086,
+    # +94 (2026-08-27, review fix R2): retirement — the attempt
+    # binding evidence is written under, and the transaction that
+    # restores the pre-phase state, moves the attempt and its turns
+    # into the retired record, and re-enters planning in one
+    # checkpoint. Retirement inverts what the attempt captured, so it
+    # lives beside the capture.
+    "agentCouncil.py": 1180,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5340,7 +5353,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transactionality they deliberately invert; a separate module
     # would put the two failure disciplines a hop apart and invite the
     # wrong one being reused (which is exactly the 4.3 hazard).
-    "agentCouncilController.py": 1593,
+    # +144 (2026-08-27, review fix R2): the retry command — the
+    # same admission ladder as resume (which is the point: "Reconcile,
+    # then Retry" IS the unsettled-work refusal), the whitelist
+    # consultation, and the evidence marking that precedes the
+    # engine's retirement checkpoint.
+    "agentCouncilController.py": 1737,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5721,7 +5739,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # routes join the human-only exclusion set.
     # +1 (2026-08-26): the resume route joins the human-only
     # exclusion set beside its sibling council actions.
-    "actionCatalog.py": 1057,
+    # +1 (2026-08-27): the retry route joins the human-only
+    # exclusion set beside resume.
+    "actionCatalog.py": 1058,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
