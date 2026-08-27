@@ -226,6 +226,17 @@ class TestGenerateRequest(BaseModel):
     bForceOverwrite: bool = False
 
 
+class TestGenerateCategoryRequest(BaseModel):
+    """Body for the agent-safe deterministic generator.
+
+    One optional field, deliberately. Every flag that could select the
+    LLM branch or force an overwrite is ABSENT rather than defaulted,
+    so no request can carry one and no later edit can loosen a default
+    into a bypass.
+    """
+    sCategory: Optional[str] = None
+
+
 class FileUploadRequest(BaseModel):
     sFilename: str
     sDestination: str = "/workspace"
@@ -624,11 +635,39 @@ def _fsPlotStandardPath(sBasename):
     return f"{sBasename}_standard.png"
 
 
+# The formats a standard PNG can be produced from. The converters
+# below read PDF/PostScript only, so a raster source is COPIED: its
+# standard is the image itself. Before this split, a project whose
+# figures were already PNG had no path through here at all — pdftoppm
+# and gs each failed on the raster bytes, the trailing `|| true`
+# swallowed both, and the route reported a missing ghostscript that
+# was installed and working.
+T_VECTOR_PLOT_EXTENSIONS = (".pdf", ".ps", ".eps")
+T_RASTER_PLOT_EXTENSIONS = (".png",)
+
+
+def fbPlotFormatIsStandardizable(sBasename):
+    """Return True iff a standard PNG can be produced from this plot."""
+    sExtension = posixpath.splitext(sBasename)[1].lower()
+    return sExtension in T_VECTOR_PLOT_EXTENSIONS + T_RASTER_PLOT_EXTENSIONS
+
+
 def _fsBuildConvertCommand(sPlotPath, sOutputDir, sBasename):
-    """Build a shell command to convert a plot to a standard PNG."""
+    """Build a shell command to produce this plot's standard PNG.
+
+    Every branch ends in ``|| true`` so a failure never aborts the
+    ``&&``-joined chain of sibling plots. Nothing here reports success:
+    the existence check afterwards is the only arbiter, which is what
+    lets a per-format command be wrong without being silent.
+    """
     sStandardBase = posixpath.splitext(sBasename)[0]
     sStandardPng = posixpath.join(
         sOutputDir, _fsPlotStandardPath(sStandardBase))
+    if posixpath.splitext(sBasename)[1].lower() in T_RASTER_PLOT_EXTENSIONS:
+        return (
+            f"cp -f {fsShellQuote(sPlotPath)} "
+            f"{fsShellQuote(sStandardPng)} 2>/dev/null || true"
+        )
     sStandardPrefix = posixpath.join(
         sOutputDir, f"{sStandardBase}_standard")
     return (
@@ -1639,7 +1678,6 @@ async def fnRunTerminalSession(
     quarantines — and only then are the exit keystrokes and socket
     close of ``fnClose`` a mere courtesy instead of the only teardown.
     """
-    from . import terminalContainment
     sSessionId = session.sSessionId
     dictTerminalSessions[sSessionId] = session
     await websocket.send_json(
@@ -1659,11 +1697,73 @@ async def fnRunTerminalSession(
         )
     except WebSocketDisconnect:
         pass
+    except asyncio.CancelledError:
+        # Hub shutdown: uvicorn cancels every still-running task once
+        # its graceful window expires, and a terminal tab left open is
+        # exactly such a task. Exiting cleanly matches how every other
+        # long-lived loop here treats shutdown cancellation
+        # (serverLifespan's sweepers), and it is only honest because
+        # the teardown below runs first and is cancellation-proof, so
+        # by the time this returns the containment record is settled
+        # or quarantined. Re-raising instead put a full
+        # "Exception in ASGI application" traceback on the console of
+        # every clean shutdown with a terminal open, which reads as a
+        # crash. Logged rather than silent: the shutdown DID interrupt
+        # a live shell.
+        logger.info(
+            "Terminal session %s ended by hub shutdown; its "
+            "containment record was drained first", sSessionId,
+        )
     finally:
         taskReader.cancel()
-        await asyncio.to_thread(
-            terminalContainment.fdictDrainSessionRecord, session,
+        await _fnDrainAndCloseTerminalSession(
+            session, sSessionId, dictTerminalSessions,
         )
+
+
+async def _fnDrainAndCloseTerminalSession(
+    session, sSessionId, dictTerminalSessions,
+):
+    """Drain the containment record, then close — surviving cancellation.
+
+    A plain ``await`` here is not enough. One ``task.cancel()`` does
+    let a ``finally``'s await finish (verified, not assumed — the
+    opposite is the natural guess and it is wrong), but a cancel
+    arriving while the drain's blocking Docker probes are still in
+    flight makes that await raise, and then ``fnClose`` and the
+    registry removal never run at all. That is the shape seen on a
+    real shutdown.
+
+    The drain runs in a worker thread, which cannot be interrupted, so
+    abandoning the await would not stop it — it would only stop us
+    learning whether it PROVED the process group empty, which is the
+    single fact the record's honesty rests on. So the await is
+    shielded and then re-awaited.
+
+    A second cancellation ends the wait for good; nothing further can
+    be done in async-land, and the outcome stays safe because an
+    unproven record retains-and-quarantines rather than settling. The
+    lifespan shutdown hook's ``fdictDrainAllTerminalRecords`` is the
+    backstop, and it runs after task cancellation by uvicorn's own
+    ordering. ``fnClose`` and the registry pop are synchronous and sit
+    in a ``finally``, so they run on every path.
+    """
+    import contextlib
+
+    from . import terminalContainment
+
+    taskDrain = asyncio.create_task(
+        asyncio.to_thread(
+            terminalContainment.fdictDrainSessionRecord, session,
+        ),
+    )
+    try:
+        with contextlib.suppress(asyncio.CancelledError):
+            try:
+                await asyncio.shield(taskDrain)
+            except asyncio.CancelledError:
+                await taskDrain
+    finally:
         session.fnClose()
         dictTerminalSessions.pop(sSessionId, None)
 

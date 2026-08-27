@@ -27,6 +27,7 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
+from ..pipelineUtils import fbStepDirectoryConforms, fsSlugFromStepName
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     ffilesForWorkflow,
@@ -39,8 +40,8 @@ from ..routeScope import (
     ffnDeclareCarrierMode,
 )
 from ...reproducibility.aiDeclarationStep import (
-    S_DEFAULT_DECLARATION_DIRECTORY,
     S_DEFAULT_DECLARATION_FILENAME,
+    S_DEFAULT_DECLARATION_STEP_NAME,
     fbDeclarationFileExists,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
@@ -49,6 +50,7 @@ from ...reproducibility.aiDeclarationStep import (
 from ...reproducibility.levelGates import (
     fdictLevel2Gaps,
     fiProofLevel,
+    flistLevel1Blockers,
 )
 
 
@@ -100,16 +102,44 @@ def _fsValidateRelativePath(sRelativePath):
     return sClean
 
 
-def _fsValidateNewStepDirectory(dictWorkflow, sDirectory):
+def _fnRejectDirectoryDisagreeingWithName(sDirectory, sName):
+    """Raise 400 when a directory violates the name->slug contract.
+
+    The generic update-step path already 400s a rename for exactly
+    this reason, so that the directory, marker, and manifest can never
+    drift from the name. Creation had no such guard, which is how the
+    shipped declaration step came to be born non-conforming.
+    """
+    if fbStepDirectoryConforms(
+        {"sName": sName, "sDirectory": sDirectory},
+    ):
+        return
+    sExpected = fsSlugFromStepName(sName)
+    raise HTTPException(
+        400,
+        f"sDirectory '{sDirectory}' does not match the step name "
+        f"'{sName}' — the slug contract derives '{sExpected}'. "
+        f"Omit sDirectory to have it derived, or rename the step.",
+    )
+
+
+def _fsValidateNewStepDirectory(dictWorkflow, sDirectory, sName):
     """Return a validated, unique step directory or raise 400/409.
 
     Mirrors the load-time step-directory boundary rules (repo-relative,
     no ``..`` escape) and additionally requires uniqueness among the
     workflow's existing step directories so per-step state keys in
     state.json cannot collide.
+
+    An omitted directory is DERIVED from the step's own name rather
+    than defaulting to a constant: a caller who overrides ``sName``
+    and leaves ``sDirectory`` alone would otherwise get a step born
+    violating the slug contract, which the dashboard paints as a red
+    error against a step the product just built for them.
     """
-    sClean = (sDirectory or "").strip() or S_DEFAULT_DECLARATION_DIRECTORY
+    sClean = (sDirectory or "").strip() or fsSlugFromStepName(sName)
     _fnRejectEscapingPath(sClean, "sDirectory")
+    _fnRejectDirectoryDisagreeingWithName(sClean, sName)
     setExistingDirectories = {
         (dictStep.get("sDirectory") or "").strip()
         for dictStep in dictWorkflow.get("listSteps", []) or []
@@ -139,7 +169,30 @@ def _fsRequireProjectRepo(dictWorkflow):
 
 
 def _fnRegisterLevel2Readiness(app, dictCtx):
-    """Register GET /api/workflow/{sContainerId}/level2/readiness."""
+    """Register GET /api/workflow/{sContainerId}/level2/readiness.
+
+    Named for L2 but already the whole-ladder readiness endpoint: it
+    has always answered ``iProofLevel``, which is a statement about
+    every rung. ``listLevel1Blockers`` joins it rather than getting a
+    route of its own because the awaiting allow-list may only shrink,
+    and because one question -- "where does this project stand and
+    why" -- is better answered in one call than two.
+
+    That field is the only answer to "why is this project not at Level
+    1 yet" an agent can obtain. Before it, the blocker list was
+    computed on the dashboard's poll path and delivered only to the
+    browser, so an agent asked that question read project.json and
+    state.json and reconstructed an answer from raw fields. That is how
+    a researcher came to be told an unattested AI Declaration blocked
+    Level 1 (it does not -- that is a Level 2 criterion) and that
+    qualitative tests were user-only (they are not). Both were
+    inventions filling the space where a verdict should have been.
+
+    Each blocker carries ``sRemediationHint``: the same plain-English
+    sentence the dashboard shows the researcher ("Step has never been
+    verified -- click verify when satisfied"). That text, not the
+    ``sCriterion`` identifier, is what an agent should relay.
+    """
 
     @ffnAgentAction("check-l2-readiness")
     @app.get(
@@ -157,6 +210,16 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         return {
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictLevel2Gaps": dictGaps,
+            "listLevel1Blockers": flistLevel1Blockers(
+                dictWorkflow, {}, filesRepo,
+            ),
+            # Declared, never silent. The script-stale criterion needs
+            # the per-step mtime scan the poll builds from live session
+            # state, which this GET has no access to -- so the list can
+            # omit a script-stale blocker, and a caller reporting
+            # "nothing is blocking Level 1" from an empty list would be
+            # making a claim this route cannot support.
+            "bScriptStalenessEvaluated": False,
         }
 
 
@@ -259,15 +322,23 @@ def _fnRefuseDuplicateAiDeclarationStep(dictWorkflow):
 
 
 def _fdictBuildStepFromAddRequest(dictWorkflow, request):
-    """Translate the optional add-step body into a validated new step."""
+    """Translate the optional add-step body into a validated new step.
+
+    The name is resolved to its effective value FIRST, because the
+    directory is validated against it — deriving from the raw request
+    would check a custom directory against the default name.
+    """
+    sName = (
+        (request.sName or "").strip() or S_DEFAULT_DECLARATION_STEP_NAME
+    )
     sDirectory = _fsValidateNewStepDirectory(
-        dictWorkflow, request.sDirectory,
+        dictWorkflow, request.sDirectory, sName,
     )
     sDeclarationFile = _fsValidateRelativePath(
         request.sDeclarationFile,
     )
     return fdictBuildAiDeclarationStep(
-        sName=request.sName,
+        sName=sName,
         sDeclarationFile=sDeclarationFile,
         sDirectory=sDirectory,
     )

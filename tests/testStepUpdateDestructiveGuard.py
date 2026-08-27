@@ -99,6 +99,98 @@ def test_empty_input_data_files_blocked_without_confirm():
     assert "saInputDataFiles" in excInfo.value.detail
 
 
+def _fdictWorkflowWithTestCategories(dictTests):
+    return {"listSteps": [{
+        "sName": "S", "sDirectory": "s",
+        "saTestCommands": [], "saOutputDataFiles": [],
+        "dictTests": dictTests,
+    }]}
+
+
+S_QUANTITATIVE_COMMAND = "python -m pytest testQuantitative.py -v"
+S_QUALITATIVE_COMMAND = "python -m pytest testQualitative.py -v"
+
+
+def test_declaring_one_category_cannot_silently_drop_the_others():
+    """The hazard this guard exists for, stated as the caller hits it.
+
+    ``dictTests`` is assigned wholesale, so an agent declaring a
+    qualitative suite by sending only that category erases the
+    quantitative one. Nothing downstream raises -- the aggregators read
+    a missing category as absent and the derivation marks the vanished
+    axis ``unnecessary``, which counts GREEN. So the deletion would be
+    reported to the researcher as a passing step.
+    """
+    dictWorkflow = _fdictWorkflowWithTestCategories({
+        "dictQuantitative": {"saCommands": [S_QUANTITATIVE_COMMAND],
+                             "sFilePath": "testQuantitative.py"},
+    })
+    with pytest.raises(HTTPException) as excInfo:
+        _fnRequireDestructiveConfirm(
+            dictWorkflow, 0,
+            {"dictTests": {"dictQualitative": {
+                "saCommands": [S_QUALITATIVE_COMMAND],
+                "sFilePath": "testQualitative.py"}}},
+            False,
+        )
+    assert excInfo.value.status_code == 400
+    assert "dictQuantitative" in excInfo.value.detail
+    # The refusal must teach the fix, because an agent that cannot see
+    # why it was refused improvises a reason instead.
+    assert "wholesale" in excInfo.value.detail
+
+
+def test_sending_every_category_declares_without_refusal():
+    """The correct call is not refused: keep what you are not changing."""
+    dictWorkflow = _fdictWorkflowWithTestCategories({
+        "dictQuantitative": {"saCommands": [S_QUANTITATIVE_COMMAND],
+                             "sFilePath": "testQuantitative.py"},
+    })
+    _fnRequireDestructiveConfirm(
+        dictWorkflow, 0,
+        {"dictTests": {
+            "dictQuantitative": {"saCommands": [S_QUANTITATIVE_COMMAND],
+                                 "sFilePath": "testQuantitative.py"},
+            "dictQualitative": {"saCommands": [S_QUALITATIVE_COMMAND],
+                                "sFilePath": "testQualitative.py"}}},
+        False,
+    )
+
+
+def test_dropping_a_category_is_allowed_when_confirmed():
+    """Deleting a suite stays possible -- it just has to be meant."""
+    dictWorkflow = _fdictWorkflowWithTestCategories({
+        "dictQuantitative": {"saCommands": [S_QUANTITATIVE_COMMAND],
+                             "sFilePath": "testQuantitative.py"},
+    })
+    _fnRequireDestructiveConfirm(
+        dictWorkflow, 0, {"dictTests": {}}, True,
+    )
+
+
+def test_declaring_a_category_on_a_step_with_none_is_not_destructive():
+    dictWorkflow = _fdictWorkflowWithTestCategories({
+        "dictQualitative": {"saCommands": [], "sFilePath": ""},
+    })
+    _fnRequireDestructiveConfirm(
+        dictWorkflow, 0,
+        {"dictTests": {"dictQualitative": {
+            "saCommands": [S_QUALITATIVE_COMMAND],
+            "sFilePath": "testQualitative.py"}}},
+        False,
+    )
+
+
+def test_an_update_that_does_not_touch_dict_tests_is_unaffected():
+    dictWorkflow = _fdictWorkflowWithTestCategories({
+        "dictQuantitative": {"saCommands": [S_QUANTITATIVE_COMMAND],
+                             "sFilePath": "testQuantitative.py"},
+    })
+    _fnRequireDestructiveConfirm(
+        dictWorkflow, 0, {"sDescription": "prose"}, False,
+    )
+
+
 def test_step_update_request_accepts_input_declaration_fields():
     """The Pydantic whitelist must not silently drop the new fields."""
     from vaibify.gui.pipelineServer import StepUpdateRequest

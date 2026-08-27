@@ -11,6 +11,7 @@ from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     fdictRequireWorkflow,
+    fbPlotFormatIsStandardizable,
     _fsPlotStandardPath,
     _fsBuildConvertCommand,
 )
@@ -35,6 +36,32 @@ def _flistStandardizedBasenames(listPlots, sTargetFile):
             continue
         listResult.append(sBasename)
     return listResult
+
+
+def _fnRejectUnstandardizableFormats(listPlots, sTargetFile):
+    """Refuse before converting when no selected plot could convert.
+
+    The refusal names the format, because the message it replaces named
+    a cause that was never true: a PNG project got "Check that
+    ghostscript or poppler-utils is installed" while both were
+    installed and working, and the researcher had no way from that
+    sentence to reach the real answer.
+    """
+    listSelected = _flistStandardizedBasenames(listPlots, sTargetFile)
+    listUnsupported = [
+        sBasename for sBasename in listSelected
+        if not fbPlotFormatIsStandardizable(sBasename)
+    ]
+    if not listSelected or len(listUnsupported) < len(listSelected):
+        return
+    raise HTTPException(
+        400,
+        "Cannot make a standard from "
+        + ", ".join(listUnsupported)
+        + ". Vaibify renders PDF, PS and EPS figures to a standard "
+        "PNG and copies PNG ones; other formats are not supported. "
+        "Re-run the step with one of those figure formats.",
+    )
 
 
 def _fsFindPlotPath(listPlots, sFileName):
@@ -82,52 +109,54 @@ def _flistConvertToStandards(
     success for having done nothing.
     """
     listCommands = []
-    listConverted = []
+    listTargets = []
     for sResolved, sBasename in listPlots:
         if sTargetFile and sBasename != sTargetFile:
             continue
+        if not fbPlotFormatIsStandardizable(sBasename):
+            continue
         sOutputDir = posixpath.dirname(sResolved)
-        sCommand = _fsBuildConvertCommand(
-            sResolved, sOutputDir, sBasename)
-        listCommands.append(sCommand)
-        sBase = posixpath.splitext(sBasename)[0]
-        listConverted.append(_fsPlotStandardPath(sBase))
+        listCommands.append(_fsBuildConvertCommand(
+            sResolved, sOutputDir, sBasename))
+        sStandardName = _fsPlotStandardPath(
+            posixpath.splitext(sBasename)[0])
+        listTargets.append((
+            posixpath.join(sOutputDir, sStandardName), sStandardName,
+        ))
     if not listCommands:
         return []
     sFullCommand = " && ".join(listCommands)
     dictCtx["docker"].ftResultExecuteCommand(
         sContainerId, sFullCommand,
     )
-    return _flistVerifyConverted(
-        dictCtx, sContainerId, listPlots,
-        listConverted, sTargetFile,
-    )
+    return _flistVerifyConverted(dictCtx, sContainerId, listTargets)
 
 
-def _flistVerifyConverted(
-    dictCtx, sContainerId, listPlots, listConverted,
-    sTargetFile,
-):
-    """Return only the basenames whose standard PNGs exist.
+def _flistVerifyConverted(dictCtx, sContainerId, listTargets):
+    """Return the standard names that actually exist in the container.
+
+    Takes the ``(absolute path, standard name)`` pairs the conversion
+    itself built, so what is checked cannot drift from what was
+    converted. It used to zip the converted list against the FULL plot
+    list and re-apply the target filter -- but the converted list had
+    already been filtered, so the two ran offset whenever the target
+    was not the first plot in its step: the target's standard was
+    paired with a different plot's basename, the filter then dropped
+    it, and a conversion that had SUCCEEDED was reported to the
+    researcher as "Conversion failed".
 
     Runs inside the same worker as the conversion that produced them,
     so the check and the effect it checks cannot be separated by an
     ownership hand-over landing between them.
     """
     listVerified = []
-    for sConverted, (sResolved, sBasename) in zip(
-        listConverted, listPlots,
-    ):
-        if sTargetFile and sBasename != sTargetFile:
-            continue
-        sDir = posixpath.dirname(sResolved)
-        sFullPath = posixpath.join(sDir, sConverted)
+    for sAbsolutePath, sStandardName in listTargets:
         iExitCode, _ = dictCtx["docker"].ftResultExecuteCommand(
             sContainerId,
-            f"test -f {fsShellQuote(sFullPath)}",
+            f"test -f {fsShellQuote(sAbsolutePath)}",
         )
         if iExitCode == 0:
-            listVerified.append(sConverted)
+            listVerified.append(sStandardName)
     return listVerified
 
 
@@ -232,13 +261,17 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         if not listPlots:
             raise HTTPException(
                 400, "No plot files in this step")
+        _fnRejectUnstandardizableFormats(listPlots, sTargetFile)
         listConverted = await _flistConvertPlotsUnderTheDrain(
             dictCtx, sContainerId, listPlots, sTargetFile, request)
         if not listConverted:
             raise HTTPException(
-                500, "Conversion failed: no standard PNGs "
-                "were created. Check that ghostscript or "
-                "poppler-utils is installed in the container.")
+                500, "Conversion failed: no standard PNGs were "
+                "created for "
+                + ", ".join(_flistStandardizedBasenames(
+                    listPlots, sTargetFile))
+                + ". The figure files exist but the converter "
+                "produced nothing from them.")
         listStdBasenames = _flistStandardizedBasenames(
             listPlots, sTargetFile)
         dictVerification = dictStep.setdefault(

@@ -126,6 +126,12 @@ var VaibifyWorkflowRequirements = (function () {
             return (dictSync.iMatching || 0) > 0 ? "orange" : "red";
         }
         if (dictSync.bStale === true) return "orange";
+        // Verified completely, but against an older definition of what
+        // "published" covers — so files now in scope were never looked
+        // at, and their silence is not agreement. Orange, not red: the
+        // researcher has published nothing wrong, they just have no
+        // evidence about the newly-covered files yet.
+        if (dictSync.bScopeStale === true) return "orange";
         return "green";
     }
 
@@ -148,6 +154,13 @@ var VaibifyWorkflowRequirements = (function () {
         }
         if (dictSync.bStale === true) {
             sText += " · stale — re-verify";
+        }
+        // Says WHY the count is not enough. Without it the row reads
+        // "all files matching" beside an amber mark and an orange
+        // badge on a file the count never included, which is the
+        // shape a researcher reasonably reads as a bug.
+        if (dictSync.bScopeStale === true) {
+            sText += " · more files are covered now — verify again";
         }
         if (dictSync.sLastVerified) {
             sText += " · last verified " + dictSync.sLastVerified;
@@ -274,13 +287,23 @@ var VaibifyWorkflowRequirements = (function () {
         return false;
     }
 
-    function _fsRenderRemoteFileRows(sBadgeKey) {
+    function _fsRenderRemoteFileRows(sBadgeKey, listExcludePaths) {
         // Files this remote knows about, each with just this remote's
         // badge. Manuscript remotes (Overleaf, arXiv) list only
         // figure files. Empty when nothing is tracked yet.
         var listFiles = VaibifyGitBadges.flistFilesForRemote(sBadgeKey);
         if (sBadgeKey === "sOverleaf" || sBadgeKey === "sArxiv") {
             listFiles = listFiles.filter(_fbIsFigureFile);
+        }
+        // The Published-copies rows are Level 2 rows, so the envelope
+        // is not theirs to list: a researcher scanning them for why
+        // their DATA is unpublished must not find reproduce.sh among
+        // the answers. The excluded set comes from the backend, which
+        // owns the partition; the Level 3 row lists these instead.
+        if (listExcludePaths && listExcludePaths.length) {
+            listFiles = listFiles.filter(function (sPath) {
+                return listExcludePaths.indexOf(sPath) === -1;
+            });
         }
         if (listFiles.length === 0) {
             return '<div class="envelope-empty-note">' +
@@ -295,11 +318,12 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fsRenderSyncRequirementDetail(dictSync, sBadgeKey,
-                                            sHowto, sExtraHtml) {
+                                            sHowto, sExtraHtml,
+                                            listExcludePaths) {
         return '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">' +
             fnEscapeHtml(_fsDescribeSyncState(dictSync)) + '</div>' +
-            _fsRenderRemoteFileRows(sBadgeKey) +
+            _fsRenderRemoteFileRows(sBadgeKey, listExcludePaths) +
             '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + ' ' +
             '<a href="#" class="envelope-open-repos">' +
@@ -534,6 +558,59 @@ var VaibifyWorkflowRequirements = (function () {
             });
     }
 
+    function _flistEnvelopeMirrorRows(dictDetail) {
+        /* The Level 3 published-copy row, in its own section so it
+           reads as the parallel of the Level 2 "GitHub mirror" row
+           rather than as a sub-item of one. Zenodo has no twin here
+           by ruling (2026-08-26): a deposit is a data archive, and a
+           project that reproduces from the repository and archives
+           results to a DOI is doing nothing wrong. */
+        var bMatched = dictDetail.bEnvelopeInGithubMirror === true;
+        var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
+        return [{
+            sKey: "envelopeMirror", iLevel: 3,
+            sTitle: "GitHub mirror",
+            sState: bMatched ? "green" : "red",
+            fsDetail: function () {
+                // The per-file rows the Level 2 sync rows no longer
+                // carry. Without them the split is invisible: the
+                // envelope files vanish from one list and appear in
+                // none, which reads as vaibify having stopped
+                // checking them.
+                var sFiles = "";
+                for (var i = 0; i < listEnvelope.length; i++) {
+                    sFiles += _fsRenderFileRowWithBadges(
+                        listEnvelope[i], ["sGithub"]);
+                }
+                if (!sFiles) {
+                    sFiles = '<div class="envelope-empty-note">' +
+                        'No envelope files exist yet.</div>';
+                }
+                // Its own Verify-now, not a pointer at the Level 2
+                // row's: one verify compares both scopes in a single
+                // pass, so the action that resolves this row belongs
+                // on it. Sending the researcher to another section to
+                // press a button is how a row becomes a dead end.
+                var sVerify = '<div class="requirement-row-actions">' +
+                    '<button type="button" class="btn ' +
+                    'wf-verify-remote" data-service="github">' +
+                    'Verify now</button></div>';
+                if (bMatched) {
+                    return sFiles + '<div class="detail-note">The ' +
+                        'published reproduce script, manifest, ' +
+                        'dependency lock, environment snapshot and ' +
+                        'Dockerfile match the copies in this ' +
+                        'repository.</div>' + sVerify;
+                }
+                return sFiles + '<div class="detail-note">One of the ' +
+                    'envelope files differs from the copy on GitHub, ' +
+                    'or has not been compared with it. A third party ' +
+                    'reproducing from the published repository would ' +
+                    'not be running what you ran. Commit and push the ' +
+                    'current envelope, then verify.</div>' + sVerify;
+            }}];
+    }
+
     function _flistDeterminismRows(dictDetail) {
         return [{
             sKey: "determinism", iLevel: 3,
@@ -546,7 +623,7 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fdictSyncRow(sTitle, sKey, dictSync, sBadgeKey, sHowto,
-                           sExtraHtml) {
+                           sExtraHtml, listExcludePaths) {
         // Every sync row carries a Verify-now button: the row reports
         // the last verify result, so the action that moves it to the
         // passing state must be reachable from the row itself, not
@@ -561,7 +638,8 @@ var VaibifyWorkflowRequirements = (function () {
             fsDetail: function () {
                 return _fsRenderSyncRequirementDetail(
                     dictSync, sBadgeKey, sHowto,
-                    sVerifyButton + (sExtraHtml || ""));
+                    sVerifyButton + (sExtraHtml || ""),
+                    listExcludePaths);
             }};
     }
 
@@ -577,12 +655,15 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _flistPublishedCopiesRows(dictDetail) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
+        var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
         return [
             _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
-                "sGithub", "Push and re-verify from the Repos panel."),
+                "sGithub", "Push and re-verify from the Repos panel.",
+                "", listEnvelope),
             _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
                 "sZenodo",
-                "Publish or re-verify from the Repos panel."),
+                "Publish or re-verify from the Repos panel.",
+                "", listEnvelope),
             _fdictOverleafRow(dictDetail, dictSyncs),
             _fdictArxivRow(dictDetail, dictSyncs),
         ];
@@ -814,7 +895,7 @@ var VaibifyWorkflowRequirements = (function () {
                  return _fsRenderAiModelPromptsDetail(dictDetail);
              }},
             {sKey: "personalLayer", iLevel: 2,
-             sTitle: "Personal instruction layer",
+             sTitle: "Personal AI Configuration",
              sState: _fsLightStateFromBoolean(
                  dictDetail.bPersonalLayerDeclared === true),
              fsDetail: function () {
@@ -900,9 +981,21 @@ var VaibifyWorkflowRequirements = (function () {
     function _fsRenderFileRowWithBadges(sPath, aBadgeKeys) {
         // A clickable file row: the path opens in the figure/file
         // viewer, the badges show the remote sync state.
+        //
+        // `data-resolved` is what makes the badge ACTIONABLE. The
+        // global `.remote-badge` handler reads it off the enclosing
+        // .detail-item and bails when it is absent, so without it
+        // these badges opened no picklist at all — a researcher
+        // looking at an orange octocat here had no way to push the
+        // file, while the identical badge in a Step Viewer offered
+        // one. The value is repo-relative with an empty workdir,
+        // which is the same pair the badge lookup above uses and the
+        // form `git add` wants, since the push runs `cd <repo>` first.
         var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
             sPath, "");
-        return '<div class="detail-item tracked-file">' +
+        return '<div class="detail-item tracked-file" ' +
+            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +
+            'data-workdir="">' +
             VaibifyGitBadges.fsRenderBadgeRow(dictBadges, aBadgeKeys) +
             '<span class="detail-text wf-file-link" data-path="' +
             fnEscapeHtml(sPath) + '" title="Click to view">' +
@@ -966,10 +1059,23 @@ var VaibifyWorkflowRequirements = (function () {
         return sHtml + '</span>';
     }
 
+    /* Every level of the Project block is click-to-expand, and none of
+       them said so. A requirement whose light was red therefore read as
+       "you are blocked and there is nothing to do" rather than "open me
+       and I will tell you what to do" — which is exactly backwards,
+       because the detail body is where the fix lives. Step rows have
+       carried this triangle all along; the Project block simply never
+       got it. The click handlers dispatch on the closest matching
+       header, so a click that lands on the triangle still toggles. */
+    function _fsExpandTriangle(bOpen) {
+        return '<span class="expand-triangle">' +
+            (bOpen ? "▾" : "▸") + '</span> ';
+    }
+
     function _fsRenderRequirementRow(dictRow, setExpandedRows) {
-        // Mirrors a step row's banner: title on the left, the L1-L3
-        // level strip on the right, no expand button (click the
-        // banner to expand).
+        // Mirrors a step row's banner: triangle and title on the left,
+        // the L1-L3 level strip on the right; the banner is the
+        // expand control.
         var bOpen = setExpandedRows && setExpandedRows.has(dictRow.sKey);
         var dictStateByLevel = {};
         dictStateByLevel[dictRow.iLevel || 3] =
@@ -979,6 +1085,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-row-header" data-req="' +
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
+            _fsExpandTriangle(bOpen) +
             fnEscapeHtml(dictRow.sTitle) + '</span>' +
             _fsRenderLevelStrip(dictStateByLevel, dictRow.sTitle) +
             '</div>';
@@ -993,7 +1100,11 @@ var VaibifyWorkflowRequirements = (function () {
         software: "Software",
         artifacts: "Artifacts",
         determinism: "Determinism",
+        // No level in either title (researcher's ruling, 2026-08-26):
+        // each row's level strip already shows which column lights, so
+        // spelling it in the heading too is noise.
         publishedCopies: "Published copies",
+        publishedEnvelope: "Published envelope",
         ai: "AI",
         attestation: "Attestation",
     };
@@ -1104,6 +1215,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-group-header" data-group="' +
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
+            _fsExpandTriangle(bOpen) +
             _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
@@ -1157,7 +1269,8 @@ var VaibifyWorkflowRequirements = (function () {
             '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the banner ' +
-            'to collapse or expand.">Project' +
+            'to collapse or expand.">' +
+            _fsExpandTriangle(bOpen) + 'Project' +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';
@@ -1171,8 +1284,21 @@ var VaibifyWorkflowRequirements = (function () {
                  dictContext.bBinaryAddFormOpen === true)],
             ["artifacts", _flistArtifactRows(dictDetail), ""],
             ["determinism", _flistDeterminismRows(dictDetail), ""],
+            // Two parallel published-copy sections, one per level.
+            // "Published copies" answers Level 2 — is the generating
+            // DATA published — and "Published envelope" answers Level
+            // 3 — is what a third party needs in order to RE-RUN it
+            // published. Same comparison, same network pass, disjoint
+            // files. They are separate sections rather than one list
+            // because a researcher scanning for why their data is
+            // unpublished must not find a reproduce.sh problem among
+            // the answers; that coupling is what the scope split
+            // removed from the gates, and a merged section would put
+            // it straight back on the screen.
             ["publishedCopies",
              _flistPublishedCopiesRows(dictDetail), ""],
+            ["publishedEnvelope",
+             _flistEnvelopeMirrorRows(dictDetail), ""],
             ["ai", _flistAiRows(dictDetail, dictContext), ""],
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],

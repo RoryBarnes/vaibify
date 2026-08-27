@@ -39,12 +39,18 @@ var VaibifyGitBadges = (function () {
     };
 
     var _DICT_BADGE_TITLES = {
-        synced: "in sync with remote",
-        drifted: "local differs from last push",
+        synced: "verified identical to the published copy",
+        drifted: "differs from the published copy",
+        unknown: "not checked — run a verify, or the last badge "
+            + "refresh failed",
+        // Never a to-do: no verify compares these, so there is
+        // nothing the researcher could run to change this mark.
+        "not-compared": "not compared — vaibify does not check this "
+            + "file against published copies",
         dirty: "uncommitted local changes",
         untracked: "not tracked by git",
         ignored: "git-ignored",
-        none: "not synced to this remote",
+        none: "the remote does not have this file",
     };
 
     var _DICT_REMOTE_LABELS = {
@@ -137,11 +143,20 @@ var VaibifyGitBadges = (function () {
     }
 
     function _fdictPlaceholderBadges() {
+        /* A file the badge map has no entry for is one we know
+           NOTHING about -- not one we know is absent from every
+           remote. It returned "none" until 2026-08-25, whose tooltip
+           read "not synced to this remote", so an empty or
+           not-yet-loaded map stated a negative it had never checked.
+           That is what a researcher saw when the fetch failed: a full
+           column of confident grey. sGitState is deliberately absent
+           rather than guessed, so the declaration row's track/untrack
+           gate stays closed until real state arrives. */
         return {
-            sGithub: "none",
-            sOverleaf: "none",
-            sZenodo: "none",
-            sArxiv: "none",
+            sGithub: "unknown",
+            sOverleaf: "unknown",
+            sZenodo: "unknown",
+            sArxiv: "unknown",
         };
     }
 
@@ -207,6 +222,23 @@ var VaibifyGitBadges = (function () {
             : "";
     }
 
+    function _fnShowRefreshFailed(error) {
+        /* The failure twin of _fnShowRefreshPaused, and it reuses the
+           same slot on purpose: both mean "what you are looking at is
+           not a fresh reading", and two elements saying that could
+           disagree. The distinction lives in the text, because the
+           remedies differ -- a pause resolves itself when the project
+           finishes, a failure does not resolve at all. */
+        var elBadge = document.getElementById("refreshPausedBadge");
+        if (!elBadge) return;
+        elBadge.style.display = "";
+        elBadge.title = "Git badges could not be refreshed" +
+            (error && error.message ? ": " + error.message : "") +
+            ". They show the last reading, or 'not checked' if there " +
+            "has not been one. This is a vaibify problem, not a " +
+            "problem with your files.";
+    }
+
     function _fnApplyBadgeRefresh(dictResult) {
         if (!dictResult || typeof dictResult !== "object") return;
         /* A paused refresh carries no badge map, because the server
@@ -234,12 +266,17 @@ var VaibifyGitBadges = (function () {
         _dictState.sCurrentContainerId = sContainerId;
         return VaibifyApi.fdictGet(
             "/api/git/" + encodeURIComponent(sContainerId) + "/badges"
-        ).then(_fnApplyBadgeRefresh).catch(function () {
+        ).then(_fnApplyBadgeRefresh).catch(function (error) {
             /* A failed request is not a pause, and leaving the pause
                label up would attribute a broken connection to work the
-               researcher started. */
-            _fnShowRefreshPaused(false, "");
-            _dictState.dictBadges = {};
+               researcher started. It is not a verdict either: wiping
+               the map used to repaint every badge as "not synced to
+               this remote" and report that as fact, with nothing on
+               screen saying a request had failed. The last known map
+               now stands (as it does for a pause), an unloaded map
+               reads unknown rather than none, and the failure says so
+               out loud. */
+            _fnShowRefreshFailed(error);
         });
     }
 

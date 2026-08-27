@@ -988,3 +988,43 @@ def test_a_completed_pass_persists_its_stamp(fixtureIsolatedHome):
     assert scheduledReverify.fdictDescribeReverifySchedule()[
         "bEverRan"
     ] is True
+
+
+# --------- Scope version: what the verify was ANSWERING ---------
+
+
+def testVerifyStampsTheScopeItRanUnder(fixtureProjectRepo):
+    """A verify records which definition of "published" it used.
+
+    The gate refuses a cache whose scope predates the current one,
+    because a file the verify never looked at is missing from
+    ``listDiverged`` in exactly the way a file that matched is
+    missing. That refusal is only survivable if the writer stamps the
+    field — a scope check whose writer never sets it is not a check,
+    it is a permanent outage in which no project can reach Level 2.
+
+    So this drives the real verify rather than asserting the constant
+    against itself.
+    """
+    from vaibify.reproducibility import publicationScope
+
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    with patch(
+        "vaibify.reproducibility.githubMirror.fdictFetchRemoteHashes",
+        return_value={"step01/data.csv": S_DATA_SHA},
+    ):
+        dictStatus = scheduledReverify.fdictVerifyRemoteService(
+            fixtureProjectRepo, dictWorkflow, "github",
+        )
+    assert publicationScope.fbCachedScopeIsCurrent(dictStatus), (
+        "the verify wrote no scope version, so the gate will refuse "
+        f"its own fresh output forever: {dictStatus}"
+    )
+
+
+def testNeverVerifiedServiceIsNotScopeCurrent():
+    """The empty default must not present as evidence of anything."""
+    from vaibify.reproducibility import publicationScope
+
+    dictEmpty = scheduledReverify._fdictEmptyServiceStatus("github")
+    assert not publicationScope.fbCachedScopeIsCurrent(dictEmpty)

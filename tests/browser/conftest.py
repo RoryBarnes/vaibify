@@ -103,6 +103,7 @@ def _fnWaitUntilServing(iPort, fTimeoutSeconds=20.0):
 S_HOST_WORKFLOW_NAME = "hostLaneProject"
 S_HOST_STEP_NAME = "MakeNumbers"
 S_HOST_STEP_OUTPUT = "numbers.json"
+S_HOST_DECLARATION_STEP_NAME = "AI Declaration"
 
 _S_HOST_STEP_SCRIPT = """import argparse
 import json
@@ -150,8 +151,69 @@ def fdictHostWorkflowDocument():
             "saOutputDataFiles": [],
             "saPlotCommands": [],
             "saPlotFiles": [],
+        }, {
+            # A third step no journey runs, and that CANNOT be run:
+            # the declaration kind's command block is empty by
+            # construction, which is what the run-light column has to
+            # report honestly. Shaped exactly like the one
+            # fdictBuildAiDeclarationStep emits, including the
+            # slug-conforming directory, so a regression in either
+            # lands here.
+            "sName": S_HOST_DECLARATION_STEP_NAME,
+            "sStepId": "ai-declaration",
+            "sDirectory": "AIDeclaration",
+            "sStepKind": "ai-declaration",
+            "sDeclarationFile": "AI_USAGE.md",
+            "bRunEnabled": True,
+            "bPlotOnly": False,
+            "bInteractive": True,
+            "saDataCommands": [],
+            "saOutputDataFiles": [],
+            "saPlotCommands": [],
+            "saPlotFiles": [],
         }],
     }
+
+
+def fnOpenTheSeededHostWorkflow(
+    pageDashboard, serverHub, bAwaitProjectBlock=False,
+):
+    """Acknowledge the host warning and open the seeded workflow.
+
+    Ten test modules had a private copy of this, in four variants that
+    differed by one wait: five had gained
+    ``wait_for_selector(".project-block-header")`` and five had not.
+    That is the drift itself -- a shared step that had to agree with
+    itself and stopped -- so the wait is a parameter rather than a
+    coin flip, and a caller that needs the Project block says so.
+
+    It defaults OFF because that is what the majority did; turning it
+    on for everyone would be a behaviour change smuggled in as a
+    cleanup, and a test that deliberately reads the page before the
+    Project block renders would start reading it after.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
+        timeout=15000,
+    )
+    pageDashboard.click(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+        '.container-tile-main',
+    )
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
+    )
+    pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    pageDashboard.wait_for_selector(
+        f"text={S_HOST_STEP_NAME}", timeout=20000,
+    )
+    if bAwaitProjectBlock:
+        pageDashboard.wait_for_selector(
+            ".project-block-header", timeout=20000,
+        )
 
 
 def fnSeedRunnableHostWorkflow(sProjectDirectory):
@@ -171,14 +233,23 @@ def fnSeedRunnableHostWorkflow(sProjectDirectory):
         os.path.join(sStepDirectory, "makeNumbers.py"), "w",
     ) as fileScript:
         fileScript.write(_S_HOST_STEP_SCRIPT)
-    sSecondStageDirectory = os.path.join(
-        sProjectDirectory, "SecondStage",
-    )
-    os.makedirs(sSecondStageDirectory, exist_ok=True)
+    for sDirectoryName in ("SecondStage", "AIDeclaration"):
+        sStageDirectory = os.path.join(
+            sProjectDirectory, sDirectoryName,
+        )
+        os.makedirs(sStageDirectory, exist_ok=True)
+        with open(
+            os.path.join(sStageDirectory, ".gitkeep"), "w",
+        ) as fileKeep:
+            fileKeep.write("")
+    # One reproducibility-envelope file, so the Level 2 / Level 3
+    # published-copy split has something to be disjoint ABOUT. Without
+    # it both halves of that assertion pass vacuously: no envelope file
+    # exists, so none is misfiled into the Level 2 section either.
     with open(
-        os.path.join(sSecondStageDirectory, ".gitkeep"), "w",
-    ) as fileKeep:
-        fileKeep.write("")
+        os.path.join(sProjectDirectory, "reproduce.sh"), "w",
+    ) as fileReproduce:
+        fileReproduce.write("#!/bin/sh\necho reproduce\n")
     sProjectsDirectory = os.path.join(
         sProjectDirectory, ".vaibify", "projects",
     )

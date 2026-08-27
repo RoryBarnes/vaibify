@@ -156,7 +156,19 @@ var VaibifyPolling = (function () {
            to also unconditionally call VaibifyGitBadges.fnRefresh,
            which doubled the per-tick container exec load for no
            observable user benefit. The badge UI now updates only
-           when a sync operation actually bumps the server epoch. */
+           when a sync operation actually bumps the server epoch.
+
+           That handoff was incomplete until 2026-08-26. The epoch was
+           readable only from /pipeline/{id}/state, and THAT poll runs
+           only while a run is live -- so outside a run the owner was
+           never called and no badge refresh happened at all. A
+           researcher who clicked Verify now with nothing running got a
+           correct answer on the server and a stale screen forever.
+           The epoch now rides this payload too, and this tick asks the
+           same question of it. Still no unconditional refresh: the
+           per-tick exec load the handoff was protecting stays saved,
+           because a refresh happens only when the epoch actually
+           moved. */
         try {
             /* The epoch tells the server which workflow revision this
                tab has applied; a stale epoch makes the server attach
@@ -168,6 +180,7 @@ var VaibifyPolling = (function () {
                     VaibifyApp.fiGetWorkflowEpoch())
             );
             _fnReportPollSuccess("file-status");
+            _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictStatus);
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }

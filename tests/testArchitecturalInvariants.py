@@ -4549,7 +4549,34 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the file-status route's six ambient-admission save sites
     # are enumerated with their migration shape so the future
     # carrier migration starts from the examination, not from zero.
-    "routes/pipelineRoutes.py": 3217,
+    # +12 (2026-08-26): the file-status response now stamps
+    # iSyncEpoch onto its body. The epoch rode only
+    # /pipeline/{id}/state, whose poll runs solely while a run is
+    # live, so the dashboard's one poll-free invalidation signal was
+    # unobservable on an idle project — a researcher clicking Verify
+    # now got a correct server answer and a permanently stale screen.
+    # Most of the addition is the comment explaining why the stamp
+    # lands AFTER the ETag rather than before it.
+    # +8 (2026-08-26): bEnvelopeInGithubMirror on the requirements
+    # detail payload. The Level 3 half of the published-copy question
+    # needs a field of its own precisely because it must NOT ride the
+    # Level 2 sync rows -- that separation is the whole point of the
+    # scope split, and sharing a field would undo it in the UI after
+    # the gates had been carefully kept apart.
+    # +18 (2026-08-26): the scope split reaching the screen —
+    # listLevel3EnvelopePaths on the same payload, and
+    # _fdictProjectSyncSummary reporting the LEVEL 2 counts rather
+    # than the aggregate. The row beside the scope-aware gate was
+    # still reporting an envelope divergence as a reason the
+    # researcher's data was unpublished; most of the addition is the
+    # docstring saying so, because the aggregate version is the one
+    # that looks right.
+    # +7 (2026-08-26): bScopeStale on the sync summary, and the
+    # envelope path list the Level 2 rows subtract. Both exist so the
+    # SCREEN can say what the gate says — the row was reporting a
+    # complete match off counts that were complete for a question no
+    # longer being asked.
+    "routes/pipelineRoutes.py": 3262,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4578,7 +4605,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reports bConfigured for the same consumer — the test-generation
     # modal. Both sit at this module's existing seam: routes serving
     # test generation.
-    "routes/testRoutes.py": 878,
+    # +115 (2026-08-24): the agent-safe deterministic generator --
+    # its route, its forced-flag request type, and its category
+    # validator. Cohesive with the module (test routes), but this is
+    # the largest single growth here and testRoutes.py is now the
+    # module to watch: generation (writes files, declares categories)
+    # and execution (runs them, records verification) are a real fault
+    # line, and the next addition on either side should split along it
+    # rather than raise this number again. Not split now because the
+    # falsification registry keys entries to this path and a move is
+    # its own reviewed change, not a side effect of adding a route.
+    # 2026-08-27 (on merge): the merged file's REAL line count, per
+    # the standing merge rule — never the sum of the two sides.
+    "routes/testRoutes.py": 993,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5089,10 +5128,34 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # had already recorded a line or two of slack, and adding them
     # together would have compounded it into a ceiling nothing reaches
     # — a ratchet with slack is green for growth nobody justified.
+    # +26 (2026-08-24): the plot-standard format split. pdftoppm and gs
+    # read PDF/PostScript only, so a project whose figures were already
+    # PNG had no path through the converter at all -- both commands
+    # failed, `|| true` swallowed both, and the route blamed a
+    # ghostscript that was installed and working. The format table and
+    # its predicate live beside the command they select, because a
+    # reader asking "what can be standardized" and "what command runs"
+    # is asking one question, and the two answers drifting apart is the
+    # bug being fixed.
+    # +11 (2026-08-24): TestGenerateCategoryRequest. One optional
+    # field; every flag that could select the LLM branch or force an
+    # overwrite is ABSENT rather than defaulted, so no request can
+    # carry one and no later edit can loosen a default into a bypass.
+    # +61 (2026-08-25): _fnDrainAndCloseTerminalSession, extracted
+    # from fnRunTerminalSession's finally so the containment drain
+    # survives the cancellation uvicorn issues at shutdown. Mostly
+    # docstring: the async semantics are subtle enough that the
+    # natural reading of the code is wrong (one cancel does NOT skip
+    # an await in a finally; a cancel landing mid-drain does), and a
+    # reader who re-derives that from scratch will "simplify" the
+    # shield away. It sits beside its single caller rather than in a
+    # new module because it is that caller's teardown, not a
+    # reusable one.
     # +1 (2026-08-26): the councilChatRoutes registration line — the
     # chat lane split out of councilRoutes registers through the same
     # canonical _fnRegisterAllRoutes list as every other route module.
-    "pipelineServer.py": 2891,
+    # 2026-08-27 (on merge): the merged file's REAL line count again.
+    "pipelineServer.py": 2991,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5433,7 +5496,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +10 (2026-08-17, push retry): the add-variant push adopts the
     # staged variant's commit guard, with the docstring recording the
     # stranded-commits failure it closes.
-    "syncDispatcher.py": 1958,
+    # +16 (2026-08-26, single-file push): ftResultAddFileToGithub
+    # finally adopts the SAME commit guard — it had been left with the
+    # unguarded chain since 2026-07-02 and shipped that defect, so the
+    # docstring records the class-versus-instance miss and the
+    # non-obvious reason the grouping parentheses matter (a clean index
+    # stops under either parse; only a dirty one diverges). This entry
+    # falls again if the deprecated, caller-less
+    # ftResultPushScriptsToGithub is removed.
+    # +16 (2026-08-26, dedup): the three push variants' identical
+    # commit/push/report tail becomes _fsComposePublishSuffix. The
+    # extraction removes 12 duplicated lines and the docstring costs
+    # more than that back — deliberately, because the duplication had
+    # already caused a fix to land in two of three sites and forced
+    # iExpectedOccurrences=3 on two falsification entries. The history
+    # is the reason the seam exists, so it lives at the seam.
+    "syncDispatcher.py": 1990,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -5502,7 +5580,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
     "introspectionScript.py": 1214,
-    "testGenerator.py": 1063,
+    # +30 (2026-08-24): per-category deterministic generation. A
+    # researcher or agent asking for one tier must not have the other
+    # two silently rewritten underneath them, so each write is gated
+    # and an unrequested category is ABSENT from the result rather
+    # than empty in it.
+    "testGenerator.py": 1093,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -5746,11 +5829,24 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # future reader will ask why this route is not offered.
     # 1044 -> 1056 (2026-08-25): the three ask-the-chairbot mutating
     # routes join the human-only exclusion set.
+    # +13 (2026-08-24): report-l1-blockers. A second action name on the
+    # level2/readiness path -- the established pattern there, which
+    # report-l2-gaps already uses -- because the agent had no way to
+    # ask what blocks Level 1 and answered from raw project.json
+    # instead, twice inventing a rule that does not exist. The catalog
+    # is a flat registry whose whole purpose is to be one list; a
+    # split would give the agent two places to look.
+    # +16 (2026-08-24): generate-tests-deterministic. The agent-safe
+    # half of a dual-mode route: generate-tests can also reach an LLM,
+    # so it stays user-only, which had left an inversion where an agent
+    # hand-writing assertions was permitted and vaibify deriving them
+    # from the researcher's own data was not.
     # +1 (2026-08-26): the resume route joins the human-only
     # exclusion set beside its sibling council actions.
     # +1 (2026-08-27): the retry route joins the human-only
     # exclusion set beside resume.
-    "actionCatalog.py": 1058,
+    # 2026-08-27 (on merge): the merged file's REAL line count again.
+    "actionCatalog.py": 1087,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5793,7 +5889,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe is its own named function beside the collector rather than
     # a fifth line inside it -- the reason it costs a round trip is
     # the whole point and belongs where a reader will find it.
-    "routes/gitRoutes.py": 1120,
+    # +21 (2026-08-25): _fdictLoadCachedGithubStatus. The GitHub
+    # badge became a real comparison against the published copy
+    # rather than a reading of local porcelain, so the badge snapshot
+    # now carries the same cached verify the Level 2 cells read. It is
+    # a named function beside the collector, matching the arXiv loader
+    # directly above it -- the two answer the same question for two
+    # remotes and a reader who finds one expects the other.
+    "routes/gitRoutes.py": 1141,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
@@ -5855,7 +5958,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # post-save exact-source fingerprint, which the client adopts as
     # its acknowledged value so its own edit never trips the dispatch
     # freshness gate.
-    "routes/stepRoutes.py": 820,
+    # +42 (2026-08-24): the test-category destructive guard. dictTests
+    # is assigned wholesale by fnUpdateStep, so an agent declaring one
+    # category silently erases the others -- and the loss reads as a
+    # PASS, because the aggregators treat a missing category as absent
+    # and the derivation marks the vanished axis "unnecessary", which
+    # counts green. It sits beside the two guards that already answer
+    # "what may an update-step request destroy", because that is one
+    # question: a separate module would invite a second, drifting
+    # notion of which step edits are destructive, which is the bug
+    # class these guards exist to close.
+    "routes/stepRoutes.py": 862,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

@@ -57,6 +57,80 @@ class Falsification:
 # Each entry below is confirmed by tools/reconfirmFalsification.py to
 # actually kill its falsification test.
 LIST_FALSIFICATIONS = [
+    # --- 2026-08-26: guards added with the publication-scope work ---
+    # Every entry below defends a guard whose REMOVAL changes what the
+    # researcher is told. The pure selectors that came with the same
+    # change (fsetSelectLevel2Paths, fbPathIsCompared,
+    # flistCollectComparisonPaths) have unit tests and no entry: there
+    # is no guard to disable, so a mutation just breaks their own
+    # assertions directly.
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_the_route_summary_reports_the_level_two_counts'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    dictSummary = dict(publicationScope.fdictCountAtLevel2(dictStatus))',
+        new=('    dictSummary = {"iTotalFiles": int(dictStatus.get("iTotalFiles") or 0),'
+             ' "iMatching": int(dictStatus.get("iMatching") or 0),'
+             ' "iDivergedCount": len(dictStatus.get("listDiverged") or [])}'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_an_envelope_never_compared_does_not_pass'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not set(listOnDisk).issubset(setCompared):',
+        new='    if False:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_a_never_compared_file_gets_its_own_badge_not_an_orange_todo'
+        ),
+        source='vaibify/gui/badgeState.py',
+        old='    if not publicationScope.fbPathIsCompared(sRepoRelPath):',
+        new='    if False:',
+    ),
+    # The four JS guards. Deferred on a host with no browser, the way
+    # every other browser-nodeid entry is.
+    Falsification(
+        nodeid=(
+            'tests/browser/testPushRunsTheVerifyThatProvesIt.py::'
+            'test_only_a_successful_push_is_followed_by_a_verify'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old='        await _fnVerifyAfterSuccessfulPush(sRemoteKey, dictOutcome);',
+        new='        void 0;',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvelopeMirrorRowRenders.py::'
+            'test_the_two_published_sections_are_parallel_and_disjoint'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (listExcludePaths && listExcludePaths.length) {',
+        new='        if (false) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectBlockBadgesAreActionable.py::'
+            'test_clicking_a_project_block_badge_opens_its_picklist'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old="""            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +""",
+        new="""            '' +""",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnOlderScopeRendersAsVerifyAgain.py::'
+            'test_an_older_scope_paints_orange_and_says_verify_again'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictSync.bScopeStale === true) return "orange";',
+        new='        if (false) return "orange";',
+    ),
 
     Falsification(
         nodeid=(
@@ -1303,21 +1377,55 @@ LIST_FALSIFICATIONS = [
         old='    if iRefNumber > iStepCount:',
         new='    if iRefNumber >= iStepCount:',
     ),
+    # The divergence guard reached through its READER rather than its
+    # return, so this entry stays distinct from the one below that
+    # mutates the return itself. Two tests defend the same guard from
+    # different sides, and a shared mutation string would collapse
+    # them into one entry the registry cannot attribute.
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if dictStatus.get("listDiverged"):
-        return False""",
-        new="""    if False and dictStatus.get("listDiverged"):
-        return False""",
+        old="""        for dictEntry in (dictStatus.get("listDiverged") or [])""",
+        new="""        for dictEntry in []""",
     ),
     Falsification(
+        # Retargeted 2026-08-26 (twice). These two entries mutated the
+        # pre-split fallback branch, which no longer exists: a cache
+        # with no scope version is now refused outright rather than
+        # read on its own terms. This one moved to the
+        # internal-consistency check that survived the rewrite.
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_undercount_with_empty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if dictStatus.get("iMatching") != iTotal:
-        return False""",
-        new="""    if False and dictStatus.get("iMatching") != iTotal:
-        return False""",
+        old="""    if dictStatus.get("iMatching") != iTotal - len(""",
+        new="""    if False and dictStatus.get("iMatching") != iTotal - len(""",
+    ),
+    # Absence of evidence is not agreement. A cached verify written
+    # under an EARLIER definition of the published set is silent about
+    # the files the scope has since added, in exactly the way it is
+    # silent about files that matched -- so without this guard the gate
+    # reports a full match over a comparison nobody performed. That is
+    # not hypothetical: it is what shipped when project.json joined
+    # Level 2.
+    Falsification(
+        nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):""",
+        new="""    if False:""",
+    ),
+    # The writer half of the same guard. A scope check whose writer
+    # never stamps the field is not a check, it is an outage in which
+    # no project can ever reach Level 2 again.
+    Falsification(
+        nodeid='tests/testScheduledReverify.py::testVerifyStampsTheScopeItRanUnder',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,""",
+        new="""        "iScopeVersionRemoved": 0,""",
+    ),
+    Falsification(
+        nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_diverged_data_file_still_fails_level_two',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    return not (setLevel2 & _fsetDivergedPathsOf(dictStatus))""",
+        new="""    return True""",
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_verified_sha_empty_but_live_sha_present_is_not_synced',
@@ -2114,24 +2222,27 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
-    # 2026-08-17: the commit guard gained a second copy when
-    # ftResultPushToGithub adopted it, so both entries below mutate
-    # BOTH copies (iExpectedOccurrences=2) — the staged real-git tests
-    # still kill via the staged copy, and the add-variant copy has its
-    # own scoped entry further down.
+    # The commit guard had three byte-identical copies (2026-07-02
+    # added it to two variants, 2026-08-26 to the third after it
+    # shipped the unguarded chain to a researcher). Both entries below
+    # then needed iExpectedOccurrences=3, because mutating one copy of
+    # a three-copy guard changes nothing any test can observe.
+    #
+    # 2026-08-26: the tail was extracted to _fsComposePublishSuffix, so
+    # there is ONE copy and these mutate it directly. That is a
+    # strengthening, not bookkeeping — a single-copy guard is one a
+    # mutation can actually falsify.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"(git diff --cached --quiet || "\n        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)} && "',
-        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_commits_staged_changes_then_pushes_real_git',
         source='vaibify/gui/syncDispatcher.py',
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
-        iExpectedOccurrences=2,
     ),
 
     # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
@@ -3662,13 +3773,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_socket_close_drains_the_containment_record',
         source='vaibify/gui/pipelineServer.py',
-        old='''        taskReader.cancel()
-        await asyncio.to_thread(
+        # Retargeted 2026-08-25: the drain moved out of
+        # fnRunTerminalSession's finally into
+        # _fnDrainAndCloseTerminalSession so it survives the
+        # cancellation uvicorn issues at shutdown. The mutation is
+        # unchanged in spirit -- the teardown awaits something that
+        # drains NOTHING -- and still leaves the record unsettled.
+        old='''    taskDrain = asyncio.create_task(
+        asyncio.to_thread(
             terminalContainment.fdictDrainSessionRecord, session,
-        )
-        session.fnClose()''',
-        new='''        taskReader.cancel()
-        session.fnClose()''',
+        ),
+    )''',
+        new='''    taskDrain = asyncio.create_task(asyncio.sleep(0))''',
     ),
 
     # --- Slice 3d, real-container halves (cases 43, 44, 45). These
@@ -6971,6 +7087,14 @@ def _fdictEntry(sRel):
         # into the carrier, where _ftExtractStepInfo's IndexError
         # settles as a FAILED worker and quarantines the container over
         # a typo in the URL.
+        #
+        # Two copies since 2026-08-24, one per generator route: the
+        # agent-safe deterministic generator repeats the guard rather
+        # than sharing a wrapper, because the guard's whole point is
+        # that it fires BEFORE the carrier opens, and a shared helper
+        # called from inside one would not. Both are mutated, so
+        # neither copy can be the undefended one.
+        iExpectedOccurrences=2,
         old=(
             '        _fnRequireStepIndexBeforeGenerating('
             'dictWorkflow, iStepIndex)\n'
@@ -12539,17 +12663,15 @@ def _fdictEntry(sRel):
         # push error is unreachable (found live, 2026-08-17; the
         # staged variant's identical 2026-07-02 fix never reached this
         # sibling).
-        old=(
-            '        f"git {sHardening} add {sQuotedPaths} && "\n'
-            '        f"(git diff --cached --quiet || "\n'
-            '        f"git {sHardening} commit -m '
-            '{fsShellQuote(sCommitMessage)}) && "\n'
-        ),
-        new=(
-            '        f"git {sHardening} add {sQuotedPaths} && "\n'
-            '        f"git {sHardening} commit -m '
-            '{fsShellQuote(sCommitMessage)} && "\n'
-        ),
+        #
+        # Retargeted 2026-08-26: the guard was anchored on the add line
+        # of this one variant, and the tail is now composed once by
+        # _fsComposePublishSuffix. The mutation drops the `||` rather
+        # than the whole guard, which is what this test's substring
+        # assertion detects and keeps it distinct from the two entries
+        # that mutate the same line differently.
+        old='        f"(git diff --cached --quiet || "',
+        new='        f"(git diff --cached "',
     ),
     Falsification(
         nodeid=(

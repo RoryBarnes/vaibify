@@ -115,7 +115,17 @@ const VaibifyApp = (function () {
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
-        listLeftTabs: ["steps", "proof", "files", "logs"],
+        // "repos" joined this list on 2026-08-25. It was present only
+        // in the no-workflow mode, so the panel was unreachable
+        // exactly when a project was open -- while four
+        // researcher-facing pointers that render ONLY with a project
+        // open sent the reader to it: the PROOF tab's L2 GitHub and
+        // Zenodo rows (whose fix button is literally labelled "Open
+        // the Repos panel"), and the Project block's two
+        // published-copies hints. The button half-worked by accident
+        // -- a programmatic .click() fires on a display:none tab --
+        // so the panel opened with no tab to return to.
+        listLeftTabs: ["steps", "proof", "files", "repos", "logs"],
         sDefaultLeftTab: "steps",
         bShowRunMenu: true,
         bShowDagButton: true,
@@ -2626,13 +2636,13 @@ const VaibifyApp = (function () {
         },
         "not-in-github-mirror": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from GitHub mirror — commit " +
+            sLabel: "Published files differ from GitHub — commit " +
                 "and push from the Repos panel",
             sClass: "step-blocker-glyph-l2-mirror",
         },
         "not-in-zenodo-deposit": {
             sIcon: "⚠",
-            sLabel: "Outputs differ from Zenodo deposit — publish " +
+            sLabel: "Published files differ from Zenodo — publish " +
                 "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },
@@ -2754,6 +2764,21 @@ const VaibifyApp = (function () {
                 "manifest — generate it from the Artifacts section " +
                 "of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
+        },
+        /* The Level 3 half of the published-copy question. Its Level 2
+           twin is "not-in-github-mirror" above: same comparison, one
+           pass, different files. Level 3 owns the envelope because
+           the envelope is what a third party needs to re-execute —
+           and a published reproduce.sh that differs from the local
+           one means they would run something the researcher never
+           did. */
+        "envelope-not-in-github-mirror": {
+            sIcon: "⚠",
+            sLabel: "The reproduce script, manifest, dependency lock, " +
+                "environment snapshot or Dockerfile differs from the " +
+                "copy on GitHub, or has not been compared with it — " +
+                "push the envelope, then Verify now",
+            sClass: "step-blocker-glyph-l3-workflow-envelope",
         },
         "l3-attestation-stale": {
             sIcon: "⚠",
@@ -3604,11 +3629,20 @@ const VaibifyApp = (function () {
 
     var fsTestCategoryLabel = VaibifyUtilities.fsTestCategoryLabel;
 
+    /* "unnecessary" is the backend's value for a category that defines
+       no commands. It is a GREEN value there \u2014 stepPredicates and
+       truthDerivation both count it toward Level 1 \u2014 so rendering it
+       through the `|| "Untested"` fallback stated the opposite of what
+       the backend had derived, and a researcher reading "Untested" had
+       no way to tell a real gap from a category that is legitimately
+       N/A. It is shown grey rather than green: nothing was proven
+       here, there was simply nothing to prove. */
     function fsVerificationStateLabel(sState) {
         var dictLabels = {
             passed: "Passed", failed: "Failed",
             untested: "Untested", error: "Error",
             stale: "Stale",
+            unnecessary: "N/A",
             "passed-from-marker": "Passed",
             "outputs-changed": "Stale",
             "outputs-missing": "Missing",
@@ -3621,6 +3655,7 @@ const VaibifyApp = (function () {
             passed: "\u2713", failed: "\u2717",
             untested: "\u2014", error: "\u2717",
             stale: "\u26A0",
+            unnecessary: "\u25CB",
             "passed-from-marker": "\u2713",
             "outputs-changed": "\u26A0",
             "outputs-missing": "\u2717",

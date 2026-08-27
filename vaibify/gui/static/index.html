@@ -600,7 +600,19 @@
                 (Linux):</strong> Selects text even while a
                 full-screen program (an agent, vim, htop) is
                 capturing the mouse for its own scrolling and
-                clicks.</p>
+                clicks. To extend the selection beyond the visible
+                screen, keep dragging past the edge of the pane —
+                the terminal scrolls only once the pointer leaves
+                it.</p>
+                <p><strong>Shift+scroll:</strong> Scrolls the
+                terminal's own scrollback, including while a
+                full-screen program is capturing the wheel for
+                itself. Without it, a running agent leaves earlier
+                output unreachable.</p>
+                <p><strong>Copy all</strong> (in each pane's tab
+                bar): Puts the entire scrollback on the clipboard.
+                This needs no selection and no mouse, so it works
+                whatever is running.</p>
                 <p><strong>Kill button</strong> (red square on tab):
                 Kills the foreground process if Ctrl+C is unresponsive.</p>
                 <p><strong>Ctrl+Z / Cmd+Z</strong> is reserved by

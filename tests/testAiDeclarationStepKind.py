@@ -94,15 +94,61 @@ def test_builder_strips_and_keeps_custom_directory_and_name():
     assert dictStep["sDeclarationFile"] == "docs/AI_USAGE.md"
 
 
-def test_ai_declaration_step_l1_passes_when_user_attests():
+def test_ai_declaration_step_is_level_1_not_applicable():
+    """An unattested declaration does not block Level 1.
+
+    This test asserted the opposite until now, and was right when it
+    was written (``eec96c40``, 2026-05-21): the declaration's sign-off
+    WAS an L1 requirement. ``22931370`` (2026-07-02, "AI declaration
+    re-homed to Level 2") changed that -- ``flistLevel1Blockers`` emits
+    no blocker for the kind, ``_flistStepLevel1Requirements`` returns
+    no requirement, and the frontend mirrors both -- but the migration
+    missed ``fbStepIsAtLeastLevel1``, which kept demanding the
+    attestation, and missed this test, which kept certifying it.
+
+    The cost was not theoretical. The predicate is exported, so it
+    answers "does this step block L1" for anyone who asks, and it
+    answered wrongly for six weeks. The sign-off is enforced at LEVEL
+    2 as ``ai-declaration-unattested``.
+    """
     dictStep = fdictBuildAiDeclarationStep(
         "AI Declaration", S_DEFAULT_DECLARATION_FILENAME,
     )
-    assert fbStepIsAtLeastLevel1(dictStep) is False, (
-        "untested sUser must block L1 even for ai-declaration steps."
+    assert fbStepIsAtLeastLevel1(dictStep) is True, (
+        "an unattested declaration must not block L1: the gate emits "
+        "no L1 blocker for this kind, so the predicate that summarises "
+        "the gate must not disagree with it"
     )
     dictStep["dictVerification"]["sUser"] = "passed"
     assert fbStepIsAtLeastLevel1(dictStep) is True
+
+
+def test_the_l1_predicate_agrees_with_the_per_step_requirement_list():
+    """The drift guard, not another statement of the same fact.
+
+    Two independent answers to "what does L1 require of this step"
+    exist: the requirement list the dashboard cell renders, and the
+    boolean predicate callers ask. They disagreed for six weeks
+    because nothing compared them. A step with NO L1 requirements is
+    L1-not-applicable, so the predicate must answer True -- whatever
+    future ruling changes which kinds are carved out.
+    """
+    from vaibify.reproducibility.levelGates import (
+        _flistStepLevel1Requirements,
+    )
+    dictStep = fdictBuildAiDeclarationStep(
+        "AI Declaration", S_DEFAULT_DECLARATION_FILENAME,
+    )
+    listRequirements = _flistStepLevel1Requirements(dictStep, set())
+    assert listRequirements == [], (
+        "the per-step cell no longer treats an ai-declaration step as "
+        f"L1-not-applicable: {listRequirements}"
+    )
+    assert fbStepIsAtLeastLevel1(dictStep) is True, (
+        "the cell renders no L1 requirement for this step while the "
+        "predicate says it fails L1 -- the exact disagreement this "
+        "test exists to catch"
+    )
 
 
 def test_save_then_load_round_trips_step_kind(tmp_path):

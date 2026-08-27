@@ -1070,12 +1070,28 @@ def fbStepIsAtLeastLevel1(
     """
     if not isinstance(dictStep, dict):
         return False
-    if not fbStepIsAiDeclaration(dictStep) and (
-        _fbStepInputDataUndeclared(dictStep)
-    ):
+    if fbStepIsAiDeclaration(dictStep):
+        # L1-NOT-APPLICABLE, in full. The declaration is a publication
+        # artifact, so its sign-off is a LEVEL 2 criterion
+        # (``ai-declaration-unattested``) — which is exactly what
+        # ``flistLevel1Blockers`` and ``_flistStepLevel1Requirements``
+        # already say by emitting no blocker and no requirement for
+        # this kind.
+        #
+        # This predicate used to carve the kind out of the input-data
+        # rule only, and then demand ``fbStepUserApproved`` of it like
+        # any other step — so it answered False for a step the gate
+        # itself treats as not-applicable, and the disagreement was
+        # invisible because nothing in the package calls it. The JS
+        # mirror shipped this same bug once and the comment there
+        # records the symptom: the level sat at 0 forever while every
+        # step showed its check. A researcher was told an unapproved
+        # declaration blocked Level 1; it does not.
+        return True
+    if _fbStepInputDataUndeclared(dictStep):
         # A step whose input contract is unstated is not
         # self-consistent — the same rule the L1 blocker and cell
-        # enforce. ai-declaration steps are L1-not-applicable.
+        # enforce.
         return False
     if not fbStepUserApproved(dictStep):
         return False
@@ -1361,6 +1377,17 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bL3AttestationCurrent"] = (
         fbL3AttestationCurrent(filesRepo) if bRepo else False
     )
+    # Reported, but deliberately OUTSIDE the readiness all(): readiness
+    # asks whether the LOCAL envelope is complete and pinned, which is
+    # what attesting is about. Whether the PUBLISHED copy agrees is a
+    # publication question — it blocks L3 attainment (see
+    # `_fdictL3WorkflowChecks`) without making a researcher push before
+    # they can attest locally. It rides this payload so the PROOF tab
+    # can show the criterion; a blocker with no row is one the
+    # researcher meets as an unexplained dash.
+    dictResult["bEnvelopeInGithubMirror"] = (
+        fbEnvelopeMatchesGithubMirror(filesRepo) if bRepo else False
+    )
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
         fsCurrentManifestDigest(filesRepo) if bRepo else ""
@@ -1422,17 +1449,70 @@ def _fbCachedSyncStatusFresh(dictStatus, fMaxStaleHours):
 
 
 def _fbCachedSyncStatusFullMatch(dictStatus):
-    """Return True iff every manifest file matched the remote."""
+    """Return True iff every LEVEL 2 file matched the remote.
+
+    Scope-aware since 2026-08-26, and the reason is the whole point of
+    the split. The verify now compares the reproducibility envelope in
+    the same pass, so the aggregate ``iMatching``/``iTotalFiles`` this
+    used to read covers BOTH levels — reading them here would make
+    Level 2 fail because ``requirements.lock`` had drifted, which is
+    exactly the coupling the split exists to prevent. Level 2 asks
+    only about the paths Level 2 owns.
+
+    The counts are still consulted for the vacuity floor: a verify
+    that compared nothing must not read as a full match, which is the
+    property the old ``iTotal == 0`` guard supplied and which a purely
+    divergence-based reading would lose.
+
+    And the cache must have been written under the CURRENT scope. This
+    function can only ask "did anything that WAS compared diverge?" --
+    a Level 2 file the verify never looked at is absent from
+    ``listDiverged`` in exactly the way a file that matched is absent.
+    So when ``project.json`` joined Level 2, every project's GitHub row
+    showed a green check with ``project.json`` sitting beside it
+    orange, never compared by anything. The scope version is what
+    separates "we looked and it agreed" from "we never looked", and
+    absence of evidence is answered with a re-verify, not a pass.
+    """
+    from . import publicationScope
     if not dictStatus:
         return False
     iTotal = dictStatus.get("iTotalFiles", 0) or 0
     if iTotal == 0:
         return False
-    if dictStatus.get("iMatching") != iTotal:
+    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):
         return False
-    if dictStatus.get("listDiverged"):
+    # A writer always sets iMatching = iTotal - len(listDiverged), so a
+    # cache where they disagree has been hand-edited or truncated. Its
+    # divergence list cannot be trusted to be the whole story, and a
+    # publication claim is the wrong place to give a corrupt file the
+    # benefit of the doubt.
+    #
+    # Stated as the RELATION, never as `iMatching == iTotal`. Those
+    # counts are aggregates over both levels, so an envelope
+    # divergence legitimately drives iMatching below iTotal while
+    # Level 2 remains fully matched — demanding equality here would
+    # fail Level 2 for a stale requirements.lock, re-coupling the two
+    # rungs through the back door the split exists to close.
+    if dictStatus.get("iMatching") != iTotal - len(
+        dictStatus.get("listDiverged") or [],
+    ):
         return False
-    return True
+    setLevel2 = publicationScope.fsetSelectLevel2Paths(
+        dictStatus.get("listComparedPaths") or [],
+    )
+    if not setLevel2:
+        return False
+    return not (setLevel2 & _fsetDivergedPathsOf(dictStatus))
+
+
+def _fsetDivergedPathsOf(dictStatus):
+    """Return the repo-relative paths the last verify found diverged."""
+    return {
+        dictEntry.get("sPath", "")
+        for dictEntry in (dictStatus.get("listDiverged") or [])
+        if isinstance(dictEntry, dict)
+    }
 
 
 def fbWorkflowFullySyncedWithGithub(
@@ -1847,7 +1927,8 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
         dictWorkflow, dictStatus,
         sCriterion="not-in-github-mirror",
         sRemediationHint=(
-            "Outputs differ from GitHub mirror — push to clear blocker"
+            "Published files differ from the GitHub mirror — push to "
+            "clear blocker"
         ),
     )
 
@@ -1863,7 +1944,8 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
         dictWorkflow, dictStatus,
         sCriterion="not-in-zenodo-deposit",
         sRemediationHint=(
-            "Outputs differ from Zenodo deposit — archive to clear blocker"
+            "Published files differ from the Zenodo deposit — archive "
+            "to clear blocker"
         ),
     )
 
@@ -1957,9 +2039,59 @@ def _fsetDivergedPaths(dictStatus):
 
 
 def _flistStepDivergedFiles(dictStep, setDiverged):
-    """Return the step's output files that intersect ``setDiverged``."""
-    listFiles = _flistStepOutputFiles(dictStep)
+    """Return the step's published files that intersect ``setDiverged``."""
+    listFiles = _flistStepPublishedPaths(dictStep)
     return [sPath for sPath in listFiles if sPath in setDiverged]
+
+
+def _flistStepPublishedPaths(dictStep):
+    """Return every repo-relative path a step declares, any category.
+
+    The set the per-step sync projection intersects with the remote
+    divergence list. It must be a SUPERSET of what the reverify
+    compares, and until 2026-08-25 it was ``_flistStepOutputFiles`` —
+    a strict subset. Everything else the reverify hashes against
+    GitHub and Zenodo (inputs, scripts, test standards, generated test
+    files, and the AI declaration) was compared, found diverged,
+    recorded in ``syncStatus.json`` — and then dropped here, because
+    no step's output arrays contained it. No blocker was emitted, the
+    ``github-mirror`` requirement read satisfied, and the row rendered
+    a check. A researcher whose declaration file did not match GitHub
+    was told it did. The declaration made it unmissable because that
+    step has NO outputs at all, so its row could never be anything
+    but green; a diverged script had the same defect one file at a
+    time.
+
+    Over-inclusion is inert and under-inclusion is a false pass, which
+    is why this errs wide: ``setDiverged`` holds only paths the
+    reverify actually compared, so a path listed here that was never
+    compared simply cannot intersect it. That asymmetry is the reason
+    this is a separate collector rather than a reuse of
+    ``_flistStepDeclaredPaths`` — that one feeds the L3 manifest
+    check, where a path the manifest legitimately omits (standards,
+    declaration and test files are pinned only when the workflow
+    archives tests) would become a false FAILURE. The two sets are
+    close today and must be free to diverge; the direction each is
+    allowed to be wrong in is opposite.
+    """
+    from .manifestPaths import (
+        flistStepDeclarationRepoPaths,
+        flistStepInputRepoPaths,
+        flistStepScriptRepoPaths,
+        flistStepStandardsRepoPaths,
+    )
+    from .manifestWriter import flistStepTestFileRepoPaths
+
+    listPaths = list(_flistStepOutputFiles(dictStep))
+    for flistCollectCategory in (
+        flistStepInputRepoPaths,
+        flistStepScriptRepoPaths,
+        flistStepStandardsRepoPaths,
+        flistStepDeclarationRepoPaths,
+        flistStepTestFileRepoPaths,
+    ):
+        listPaths.extend(flistCollectCategory(dictStep) or [])
+    return [sPath for sPath in listPaths if sPath]
 
 
 def _fdictBuildSyncStepBlocker(
@@ -2248,7 +2380,55 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
             dictWorkflow,
         ),
+        "envelope-not-in-github-mirror":
+            fbEnvelopeMatchesGithubMirror(filesRepo),
     }
+
+
+def fbEnvelopeMatchesGithubMirror(filesRepo):
+    """Return True iff the published envelope matches the local one.
+
+    The Level 3 half of the published-copy question (2026-08-26). The
+    other L3 artifact criteria ask whether the envelope EXISTS and is
+    pinned; none of them asked whether the copy on GitHub is the same
+    file. A pushed ``reproduce.sh`` that has drifted from the local
+    one means a third party's reproduction runs something the
+    researcher never ran, and every surface reported Level 3 attained.
+
+    Unproven is a block, symmetric with the Level 2 gate: an envelope
+    nobody has compared cannot support a reproducibility claim. That
+    includes a cache from a hub whose verify did not yet cover the
+    envelope — detected by asking whether every envelope file that
+    exists on disk actually appears in the compared set, rather than
+    by trusting a non-empty list.
+
+    Vacuously true when the project has no envelope files at all,
+    deliberately: their absence is already reported by
+    ``dockerfile-not-pinned`` and its siblings, and a second blocker
+    saying the same thing would send the researcher looking for a
+    sync problem they do not have.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "github",
+    )
+    if not dictStatus or not dictStatus.get("sLastVerified"):
+        return False
+    if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    setCompared = set(dictStatus.get("listComparedPaths") or [])
+    listOnDisk = _flistEnvelopePathsOnDisk(filesRepo)
+    if not listOnDisk:
+        return True
+    if not set(listOnDisk).issubset(setCompared):
+        return False
+    return not (set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))
+
+
+def _flistEnvelopePathsOnDisk(filesRepo):
+    """Return the envelope paths that actually exist in the repo."""
+    from . import publicationScope
+    return publicationScope.flistSelectEnvelopePathsPresent(filesRepo)
 
 
 # The single criterion a host project reports, in place of the seven
@@ -2258,6 +2438,11 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
 S_L3_HOST_MODE_CRITERION = "host-mode"
 
 _DICT_L3_REMEDIATION_HINTS = {
+    "envelope-not-in-github-mirror":
+        "The reproduce script, manifest, dependency lock, environment "
+        "snapshot or Dockerfile differs from the copy on GitHub, or "
+        "has not been compared against it. Push the current envelope, "
+        "then click Verify now on the GitHub mirror row.",
     S_L3_HOST_MODE_CRITERION:
         "Level 3 requires a containerized project: it is defined by a "
         "pinned image digest and an in-container rerun. This project "
@@ -3343,8 +3528,8 @@ def _fdictBuildLevelCell(
     """Return one wire cell with state, counts, and regression flag.
 
     State precedence: the inactivity override (``not-started`` /
-    ``unassessed``) > ``not-applicable`` > ``unknown`` > the
-    count-derived states. ``bRegression`` is True when the level holds
+    ``unassessed``) > ``not-applicable`` > ``attained`` > ``partial``
+    > ``unknown`` > ``none``. ``bRegression`` is True when the level holds
     a high-water stamp (the add-only ratchet recorded a first
     attainment) but the current state is not ``attained``; a
     ``not-applicable`` cell never regresses — there is no requirement
@@ -3375,17 +3560,31 @@ def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
     per-step L1 on an ai-declaration step (whose sign-off is a Level
     2 requirement). It renders as ``not-applicable`` so an empty
     requirement set never reads as a vacuous attainment.
+
+    ``bUnknown`` ranks BELOW ``partial`` (2026-08-25 ruling). It used
+    to short-circuit ahead of the counts, so a single unknowable
+    requirement erased every requirement that was positively
+    satisfied — a researcher whose GitHub mirror verified and whose
+    Zenodo deposit had never been verified saw "?" rather than the
+    partial credit they had earned. That short-circuit was never what
+    kept an unknown cell out of ``attained``: ``iSatisfied`` counts
+    only ``bMet is True``, so any unknown requirement already forces
+    ``iSatisfied < iTotal``. It only ever converted ``partial`` (or
+    ``none``) into ``unknown``. ``unknown`` therefore now means what
+    it says — nothing is known to be satisfied and something is
+    unknowable — and ``none`` stays reserved for a positive
+    all-failed reading rather than for ignorance.
     """
     if sInactivityState:
         return sInactivityState
     if iTotal == 0:
         return "not-applicable"
-    if bUnknown:
-        return "unknown"
-    if iTotal > 0 and iSatisfied >= iTotal:
+    if iSatisfied >= iTotal and not bUnknown:
         return "attained"
     if iSatisfied > 0:
         return "partial"
+    if bUnknown:
+        return "unknown"
     return "none"
 
 

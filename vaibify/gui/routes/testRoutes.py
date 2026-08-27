@@ -39,6 +39,7 @@ from .. import workflowManager
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
+    TestGenerateCategoryRequest,
     TestGenerateRequest,
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
@@ -46,6 +47,7 @@ from ..pipelineServer import (
     fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
+from ..testGenerator import T_GENERATED_TEST_CATEGORIES
 from ..testStatusManager import (
     _LIST_TEST_CATEGORIES,
     _fdictBuildTestResponse,
@@ -407,6 +409,118 @@ def _fdictCommitTestDirectoryRemoval(
             "iHolderProcessGroup": os.getpgrp(),
         },
     )
+
+
+class _DeterministicGenerateRequest:
+    """The generator's request, with the LLM lane structurally absent.
+
+    Not a Pydantic model and not parsed from the body: it is
+    CONSTRUCTED by the handler with the flags fixed. A model that
+    accepted ``bUseApi`` and merely defaulted it False would let an
+    agent set it, and the whole point of the agent-safe generator is
+    that it cannot reach the LLM branch. Forcing at construction means
+    the refusal is a property of the type rather than of a validator
+    somebody can later relax.
+
+    ``bForceOverwrite`` is fixed False for the same reason: an agent
+    must not silently replace a test file the researcher edited. The
+    generator answers ``bNeedsOverwriteConfirm`` instead, and the agent
+    has to bring that back to them.
+    """
+
+    bUseApi = False
+    sApiKey = None
+    bDeterministic = True
+    bForceOverwrite = False
+
+
+def _fsetValidateGenerateCategories(sCategory):
+    """Return the category set to generate, or raise 400.
+
+    An absent category means all three -- the same default the
+    researcher's button has always had. A named one must be spelled
+    the way every other lane spells it.
+    """
+    if not sCategory:
+        return set(T_GENERATED_TEST_CATEGORIES)
+    if sCategory not in T_GENERATED_TEST_CATEGORIES:
+        raise HTTPException(
+            400,
+            f"Unknown test category: {sCategory}. Expected one of "
+            + ", ".join(T_GENERATED_TEST_CATEGORIES)
+            + ", or omit sCategory for all three.",
+        )
+    return {sCategory}
+
+
+def _fnRegisterDeterministicGenerate(app, dictCtx):
+    """Register POST /api/steps/{id}/{step}/generate-test-deterministic.
+
+    The agent-safe generator. ``generate-tests`` stays user-only
+    because it is TWO things behind one path -- deterministic
+    introspection, and an LLM round-trip selected when neither
+    ``bDeterministic`` nor ``bUseApi`` is set -- and the researcher
+    must review AI-authored test content. That marking left an
+    inversion: an agent hand-writing assertions through
+    ``save-and-run-test`` was permitted, while vaibify DERIVING the
+    same assertions mechanically from the researcher's own files was
+    not. The unreviewed path was open and the mechanical one closed.
+
+    This route is the mechanical one alone. It grants no capability the
+    agent lacked -- it could already write a test file and declare it
+    -- but it makes the grounded version reachable, so an agent asked
+    for qualitative tests can pin the columns and keys that are
+    actually in the data instead of the ones it believed were.
+    """
+
+    @ffnAgentAction("generate-tests-deterministic")
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}"
+        "/generate-test-deterministic"
+    )
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
+    async def fdictHandleGenerateDeterministic(
+        sContainerId: str, iStepIndex: int,
+        request: TestGenerateCategoryRequest, requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        from ..testGenerator import fdictGenerateAllTestsDeterministic
+        setCategories = _fsetValidateGenerateCategories(request.sCategory)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId
+        )
+        _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex)
+
+        def fdictGenerateTheCategories(
+            connectionDocker, sCid, iStep, dictFlow, dictVars,
+            bUseApi, sApiKey, sUser=None, bDeterministic=True,
+            bForceOverwrite=False,
+        ):
+            del bUseApi, sApiKey, sUser, bDeterministic, bForceOverwrite
+            return fdictGenerateAllTestsDeterministic(
+                connectionDocker, sCid, iStep, dictFlow, dictVars,
+                bForceOverwrite=False, setCategories=setCategories,
+            )
+
+        dictResult = await _fdictRunTestGeneration(
+            dictCtx, sContainerId, iStepIndex, dictWorkflow,
+            fdictGenerateTheCategories, _DeterministicGenerateRequest(),
+            requestHttp,
+        )
+        if dictResult.get("bNeedsOverwriteConfirm"):
+            return {
+                "bNeedsOverwriteConfirm": True,
+                "listModifiedFiles": dictResult.get(
+                    "listModifiedFiles", []
+                ),
+            }
+        _fnApplyGeneratedTests(
+            dictCtx, sContainerId, dictWorkflow,
+            iStepIndex, dictResult, requestHttp,
+        )
+        return _fdictBuildGenerateResponse(dictResult)
 
 
 def _fnRegisterTestGenerate(app, dictCtx):
@@ -873,6 +987,7 @@ def _fnRegisterTestRun(app, dictCtx):
 
 def fnRegisterAll(app, dictCtx):
     """Register all test management routes."""
+    _fnRegisterDeterministicGenerate(app, dictCtx)
     _fnRegisterTestGenerate(app, dictCtx)
     _fnRegisterTestSaveAndRun(app, dictCtx)
     _fnRegisterTestRun(app, dictCtx)
