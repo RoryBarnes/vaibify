@@ -2203,11 +2203,39 @@ var VaibifyAgentCouncil = (function () {
         if (dictCampaign.sState === "needsHuman") {
             return _fsNeedsHumanCard(dictCampaign);
         }
-        if (SET_TERMINAL_STATES[dictCampaign.sState]) {
+        /* Routed by the record's own recovery ACTION, not by a state
+           set: interrupted was in neither set, so an interrupted
+           retryable campaign rendered no surface at all — and a
+           failed one rendered a retry button beside a card telling
+           the researcher to convene a fresh council. */
+        var sRecoveryAction = (
+            (dictCampaign.dictStoppingPoint || {}).sAction) || "";
+        if (sRecoveryAction === "retry") {
             return _fsRetrySurface(dictCampaign) +
                 _fsHeldQuestionsCard(dictCampaign);
         }
+        if (SET_TERMINAL_STATES[dictCampaign.sState]
+                || dictCampaign.sState === "interrupted") {
+            return _fsBlockedRecoveryNote(dictCampaign) +
+                _fsHeldQuestionsCard(dictCampaign);
+        }
         return _fsComposer(dictCampaign);
+    }
+
+    function _fsBlockedRecoveryNote(dictCampaign) {
+        /* A failed or interrupted council with no offered action says
+           WHY, in the record's own words, instead of a silent dead
+           panel. */
+        if (dictCampaign.sState !== "failed"
+                && dictCampaign.sState !== "interrupted") {
+            return "";
+        }
+        var sReason = (dictCampaign.dictStoppingPoint || {})
+            .sBlockedReason || "";
+        if (!sReason) return "";
+        return "<div class=\"council-composer\">" +
+            "<p class=\"council-hint\">This council cannot be " +
+            "continued: " + _fsEscape(sReason) + "</p></div>";
     }
 
     function _fsRetrySurface(dictCampaign) {
@@ -2225,7 +2253,10 @@ var VaibifyAgentCouncil = (function () {
             "). Retrying retires the failed attempt into the record " +
             "and re-runs its phase — paid provider work.</p>" +
             "<button type=\"button\" id=\"btnCouncilRetry\" " +
-            "class=\"btn btn-primary\">Retry the failed phase" +
+            "class=\"btn btn-primary\">" +
+            (dictCampaign.bStopRequested
+                ? "Retry the failed phase (clears the requested stop)"
+                : "Retry the failed phase") +
             "</button>" +
             "</div>";
     }
@@ -2235,12 +2266,24 @@ var VaibifyAgentCouncil = (function () {
            about. If a later phase settles indeterminately the campaign
            is interrupted BEFORE any gate can open, and without this the
            questions sit on the round where nobody can read them —
-           real deliberation, silently unreachable. The council itself
-           cannot be resumed (its runners are unaccounted for), so what
-           is offered is the questions themselves, to carry into a fresh
-           one. */
+           real deliberation, silently unreachable. What the card SAYS
+           about them depends on the record's own action: beside a
+           Retry button, "convene a fresh council" and "cannot be
+           resumed" would contradict the control one line up. */
         var listHeld = dictCampaign.listHeldQuestions || [];
         if (!listHeld.length) return "";
+        var bRetryOffered = ((dictCampaign.dictStoppingPoint || {})
+            .sAction === "retry");
+        var sDisposition = bRetryOffered
+            ? "Retrying the failed phase re-runs the deliberation " +
+              "that raised them, so the re-run asks its own questions " +
+              "— these are kept here as the record of what this " +
+              "attempt wanted to know."
+            : "They were waiting for the plan they are about, which " +
+              "this council never reached. This campaign cannot be " +
+              "resumed, but the questions are not lost — they are " +
+              "the answers a fresh council would not have to ask " +
+              "for again.";
         var sRows = listHeld.map(function (dictQuestion) {
             return "<li>" + _fsEscape(dictQuestion.sQuestionText || "") +
                 " <span class=\"council-question-author\">(" +
@@ -2252,10 +2295,7 @@ var VaibifyAgentCouncil = (function () {
             "<h4>" + listHeld.length + " question" +
             (listHeld.length === 1 ? " was" : "s were") + " raised before " +
             "this council stopped</h4>" +
-            "<p>They were waiting for the plan they are about, which this " +
-            "council never reached. This campaign cannot be resumed, but " +
-            "the questions are not lost — they are the answers a fresh " +
-            "council would not have to ask for again.</p>" +
+            "<p>" + _fsEscape(sDisposition) + "</p>" +
             "<ol class=\"council-questions\">" + sRows + "</ol>" +
             "</div>";
     }
@@ -2989,8 +3029,11 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnRetryCouncil() {
+        var bClearsStop = Boolean(
+            (_dictState.dictCampaign || {}).bStopRequested);
         await _fnPostAction(
-            "/" + _dictState.sActiveCampaignId + "/retry", undefined);
+            "/" + _dictState.sActiveCampaignId + "/retry",
+            {bClearStopRequest: bClearsStop});
     }
 
     async function _fnResumeCouncil() {

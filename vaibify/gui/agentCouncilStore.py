@@ -713,6 +713,23 @@ def _fdictSummariseEntry(dictEntry):
     }
 
 
+def fdictDescribeStoredStoppingPoint(dictStore, sCampaignId):
+    """The store-aware stopping point, for the DETAIL lane.
+
+    The listing and the campaign detail must derive the same answer or
+    the list says "unusable" while the open panel offers Resume — the
+    2026-08-27 review's exact finding. One computation, two callers.
+    Falls back to the pure record derivation when the id is unknown to
+    this store (the caller has already 404'd unknown campaigns).
+    """
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None:
+        from . import agentCouncilResolution
+        return agentCouncilResolution.fdictDescribeStoppingPoint(
+            fjsonGetCampaignRecord(dictStore, sCampaignId) or {})
+    return _fdictDescribeStoppingPointForEntry(dictEntry)
+
+
 def _fdictDescribeStoppingPointForEntry(dictEntry):
     """The record's stopping point, overridden by lost provenance.
 

@@ -204,6 +204,36 @@ def testALostSidecarUnderARunCampaignRefusesNotResets(tmp_path):
         agentCouncilStore.fsMintNextTurnId(dictReloaded, sCampaignId)
 
 
+@pytest.mark.falsification
+def testTheListAndTheDetailAgreeOnLostProvenance(tmp_path):
+    """One store-aware stopping point, two endpoints, one answer.
+
+    The listing replaced the stopping point with the unusable state
+    while the detail route recomputed a PURE one from the record — so
+    the list said "unusable" and the open panel offered Resume, only
+    for the click to be refused (2026-08-27 review, second round).
+
+    Kills: the detail lane recomputing the stopping point without the
+    store's provenance knowledge.
+    """
+    dictStore, sCampaignId = _fdictBuildStoreWithOneCampaign(tmp_path)
+    agentCouncilStore.fsMintNextTurnId(dictStore, sCampaignId)
+    _fnGiveCampaignRecordedActivity(dictStore, sCampaignId)
+    os.remove(os.path.join(
+        str(tmp_path / "councils"), sCampaignId,
+        agentCouncilStore.S_PROVENANCE_SIDECAR_BASENAME))
+    dictReloaded = _fdictReloadFreshStore(tmp_path)
+
+    dictListed = agentCouncilStore.flistSummariseCampaigns(dictReloaded)[0][
+        "dictStoppingPoint"]
+    dictDetail = agentCouncilStore.fdictDescribeStoredStoppingPoint(
+        dictReloaded, sCampaignId)
+
+    assert dictDetail == dictListed
+    assert dictDetail["sAction"] == "none"
+    assert "provenance sidecar" in dictDetail["sBlockedReason"]
+
+
 def testAFreshCampaignWithNoSidecarIsNotPunished(tmp_path):
     """No sidecar under a record that never ran lost nothing.
 

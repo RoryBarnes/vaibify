@@ -772,7 +772,8 @@ async def fdictResumeCampaignDeliberation(
 
 async def fdictRetryCampaignFailedPhase(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        sImageReference, fsStageRunnerCredential=None):
+        sImageReference, fsStageRunnerCredential=None,
+        bClearStopRequest=False):
     """Retire the terminating attempt and re-run its phase (2.5/2.6).
 
     The retry target is the LAST attempt — the one whose settled
@@ -824,6 +825,21 @@ async def fdictRetryCampaignFailedPhase(
         dictRound, dictAttempt)
     if sRetryRefusal:
         raise CouncilCommandError(f"cannot retry: {sRetryRefusal}")
+    if dictCampaign.get("bStopRequested"):
+        # The same choice resume surfaces (4.2.5), for the same reason
+        # sharpened: retirement transitions to planning and spawns the
+        # drive, whose FIRST act on a set flag is to archive — so a
+        # kept flag turns "retry" into "silently destroy". Never
+        # silently cleared, never silently kept.
+        if not bClearStopRequest:
+            raise CouncilCommandError(
+                "a stop was requested before this council stopped, and "
+                "retrying would archive it immediately. Retry with the "
+                "stop cleared to re-run the phase, or convene a fresh "
+                "council if the stop should stand.")
+        dictCampaign["bStopRequested"] = False
+        dictCampaign.setdefault("listResearcherDecisions", []).append(
+            {"sDecisionKind": "stopRequestClearedOnRetry"})
     baSnapshotTar = _fbaAdmitRuntimeRebuild(
         dictStore, dictCampaign, sCampaignId, sImageReference, "retry")
     taskBuild = asyncio.ensure_future(asyncio.to_thread(

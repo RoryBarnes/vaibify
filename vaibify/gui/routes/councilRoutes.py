@@ -197,6 +197,18 @@ class CouncilRejectRequest(BaseModel):
     sReasonText: str = Field(default="", max_length=I_MAX_RESPONSE_LENGTH)
 
 
+class CouncilRetryRequest(BaseModel):
+    """Body for retrying a failed phase.
+
+    ``bClearStopRequest`` mirrors resume's: a stop requested before
+    the failure would archive the retried campaign the moment its
+    drive starts, so the clear must be the researcher's explicit,
+    recorded choice.
+    """
+
+    bClearStopRequest: bool = False
+
+
 class CouncilResumeRequest(BaseModel):
     """Body for resuming a crashed deliberation.
 
@@ -642,8 +654,13 @@ def _fnRegisterGetCouncil(app, dictCtx):
         # tell "deliberating" from "crashed and resumable" without
         # guessing. The listing shows the first; only the hub knows
         # the second.
+        # The STORE-AWARE derivation, same as the listing: a lost
+        # provenance sidecar is a store fact the pure record cannot
+        # see, and the detail view must not offer an action the list
+        # already called unusable.
         jsonCampaign["dictStoppingPoint"] = (
-            agentCouncilResolution.fdictDescribeStoppingPoint(jsonCampaign))
+            agentCouncilStore.fdictDescribeStoredStoppingPoint(
+                dictStore, sCampaignId))
         dictControllerState = fdictControllerState(requestHttp)
         jsonCampaign["bDeliberationLive"] = (
             sCampaignId in dictControllerState["dictCampaignRuntime"]
@@ -926,7 +943,8 @@ def _fnRegisterRetry(app, dictCtx):
     @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/retry")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRetryCouncil(
-        sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sContainerId: str, sCampaignId: str,
+        request: CouncilRetryRequest, requestHttp: Request,
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
@@ -948,7 +966,8 @@ def _fnRegisterRetry(app, dictCtx):
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
                     fsStageRunnerCredential=ffnBuildCredentialStager(
-                        dictCtx, sContainerId)))
+                        dictCtx, sContainerId),
+                    bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("campaignPhaseRetried",

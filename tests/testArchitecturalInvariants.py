@@ -4180,7 +4180,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stopping-point pair the panel renders resume from.
     # +47 (2026-08-27, review fix R2): the retry route, through
     # the same paid-work gates as start and resume.
-    "routes/councilRoutes.py": 1296,
+    # +19 (2026-08-27, review round 2): the retry request body
+    # (the explicit stop-clear choice) and the detail route adopting
+    # the store-aware stopping point.
+    "routes/councilRoutes.py": 1315,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4236,7 +4239,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # funnel (an absent sidecar under recorded activity is not an
     # empty history), and retirement marks a retired attempt's ledger
     # entries — preserved, never deleted.
-    "agentCouncilStore.py": 918,
+    # +17 (2026-08-27, review round 2): the store-aware stopping
+    # point gains its detail-lane entry point, so the list and the
+    # open panel derive one answer about lost provenance.
+    "agentCouncilStore.py": 935,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -5358,7 +5364,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # then Retry" IS the unsettled-work refusal), the whitelist
     # consultation, and the evidence marking that precedes the
     # engine's retirement checkpoint.
-    "agentCouncilController.py": 1737,
+    # +16 (2026-08-27, review round 2): retry surfaces the
+    # standing-stop choice exactly as resume does — a kept flag would
+    # archive the retried campaign the moment its drive starts.
+    "agentCouncilController.py": 1753,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

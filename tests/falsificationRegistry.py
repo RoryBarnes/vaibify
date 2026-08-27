@@ -14635,4 +14635,76 @@ def _fdictEntry(sRel):
             '            dictLedgerEntry["bRetiredWithAttempt"] = True'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Second review round (2026-08-27): the standing-stop retry, the
+    # list/detail agreement, and the coherent retry-plus-held-questions
+    # surface.
+    # ------------------------------------------------------------------
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRetry.py::'
+            'testARetryWithAStandingStopSurfacesTheChoice'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Retry ignores the standing stop: retirement enters planning,
+        # the drive sees the flag, and the campaign the researcher
+        # just asked to re-run archives itself.
+        old=(
+            '    if dictCampaign.get("bStopRequested"):\n'
+            '        # The same choice resume surfaces (4.2.5), for '
+            'the same reason'
+        ),
+        new=(
+            '    if False:\n'
+            '        # The same choice resume surfaces (4.2.5), for '
+            'the same reason'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilDurableProvenance.py::'
+            'testTheListAndTheDetailAgreeOnLostProvenance'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # The store-aware detail derivation stops consulting the
+        # entry: the list says unusable while the detail offers an
+        # action the route refuses.
+        old=(
+            '    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)\n'
+            '    if dictEntry is None:\n'
+            '        from . import agentCouncilResolution\n'
+            '        return agentCouncilResolution.'
+            'fdictDescribeStoppingPoint(\n'
+            '            fjsonGetCampaignRecord(dictStore, sCampaignId) '
+            'or {})\n'
+            '    return _fdictDescribeStoppingPointForEntry(dictEntry)'
+        ),
+        new=(
+            '    from . import agentCouncilResolution\n'
+            '    return agentCouncilResolution.'
+            'fdictDescribeStoppingPoint(\n'
+            '        fjsonGetCampaignRecord(dictStore, sCampaignId) '
+            'or {})'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetryOffer.py::'
+            'testARetryOfferAndItsHeldQuestionsTellOneStory'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The held-questions card ignores the record's action and tells
+        # the researcher to convene a fresh council one line under the
+        # Retry button.
+        old=(
+            '        var bRetryOffered = ((dictCampaign.dictStoppingPoint '
+            '|| {})\n'
+            '            .sAction === "retry");'
+        ),
+        new='        var bRetryOffered = false;',
+    ),
 ]

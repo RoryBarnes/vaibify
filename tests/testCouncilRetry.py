@@ -231,6 +231,68 @@ def testAnInterruptedCampaignRetriesAfterItsReservationsSettle(
         dictStore, sCampaignId)["sState"] == "planReady"
 
 
+def _fdictRetryClearingStop(dictStore, dictRegistry, dictControllerState,
+                            sCampaignId, monkeypatch, listPhaseLog):
+    """Retry with the stop explicitly cleared, to settlement."""
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant:
+            _RecordingAcceptConnection(listPhaseLog))
+
+    async def _fdictRun():
+        dictRetried = (
+            await agentCouncilController.fdictRetryCampaignFailedPhase(
+                dictControllerState, dictStore, dictRegistry, sCampaignId,
+                S_IMAGE_IDENTITY, bClearStopRequest=True))
+        dictRuntime = dictControllerState["dictCampaignRuntime"].get(
+            sCampaignId)
+        if dictRuntime is not None and dictRuntime.get(
+                "taskDrive") is not None:
+            await dictRuntime["taskDrive"]
+        return dictRetried
+
+    return asyncio.run(_fdictRun())
+
+
+@pytest.mark.falsification
+def testARetryWithAStandingStopSurfacesTheChoice(tmp_path, monkeypatch):
+    """A kept flag turns "retry" into "silently destroy".
+
+    Retirement transitions to planning and spawns the drive, whose
+    FIRST act on a set bStopRequested is to archive — the researcher
+    clicks Retry and watches the campaign vanish. The choice is
+    surfaced exactly as resume surfaces it: refused without the
+    explicit clear; with it, the clear lands as a recorded researcher
+    decision and the phase actually re-runs.
+
+    Kills: retry ignoring the standing stop request.
+    """
+    dictVersion = _fdictDriveToFailedSynthesis("rateLimit")
+    dictVersion["bStopRequested"] = True
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(tmp_path, dictVersion))
+
+    with pytest.raises(agentCouncilController.CouncilCommandError,
+                       match="stop was requested"):
+        _fdictRetryToCompletion(
+            dictStore, dictRegistry, dictControllerState, sCampaignId,
+            monkeypatch, [])
+
+    listPhaseLog = []
+    dictRetried = _fdictRetryClearingStop(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, listPhaseLog)
+    assert dictRetried["bRetried"] is True
+    dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    # The regression: without the guard, the drive archives instantly.
+    assert dictRecord["sState"] == "planReady"
+    assert dictRecord["bStopRequested"] is False
+    assert any(
+        dictDecision.get("sDecisionKind") == "stopRequestClearedOnRetry"
+        for dictDecision in dictRecord.get("listResearcherDecisions") or [])
+
+
 @pytest.mark.falsification
 def testRetiredEvidenceIsMarkedAndPreservedNeverDeleted(tmp_path):
     """Ledger entries bound to a retired attempt survive, marked.
