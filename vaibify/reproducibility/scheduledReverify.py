@@ -63,14 +63,17 @@ __all__ = [
     "fdictLoadManifestExpectedHashes",
     "fdictVerifyRemoteService",
     "fdictReadCachedSyncStatus",
+    "fdictReadSyncStatusDocument",
     "fnDeleteSyncStatus",
     "fnRecordLastReverifyIso",
     "fnWriteSyncStatus",
     "fdictRunReverifyForWorkflow",
     "fdictRunReverifyOnce",
+    "flistZenodoDeclaredRecords",
     "fnScheduleReverify",
     "fsArxivCacheDir",
     "fsReadLastReverifyIso",
+    "fsSyncStatusRelativePath",
 ]
 
 
@@ -218,9 +221,15 @@ def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
 
 
 def _fdictFetchHashesForService(
-    sService, dictConfig, listRelPaths, filesRepo,
+    sService, dictConfig, listRelPaths, filesRepo, dictExpected=None,
 ):
-    """Dispatch to the right mirror module for one service."""
+    """Dispatch to the right mirror module for one service.
+
+    ``dictExpected`` is consumed only by the Zenodo lane, whose
+    any-declared-record merge needs to know which remote hash counts
+    as agreement; the single-remote services compare one authority
+    and never look at it.
+    """
     if sService == "github":
         return _fdictFetchGithubHashes(dictConfig, listRelPaths)
     if sService == "overleaf":
@@ -231,7 +240,9 @@ def _fdictFetchHashesForService(
         return _fdictFetchArxivHashes(
             dictConfig, listRelPaths, filesRepo,
         )
-    return _fdictFetchZenodoHashes(dictConfig, listRelPaths)
+    return _fdictFetchZenodoHashes(
+        dictConfig, listRelPaths, dictExpected,
+    )
 
 
 def fsArxivCacheDir(filesRepo):
@@ -316,16 +327,126 @@ def _fdictFetchOverleafHashes(dictConfig, listRelPaths, filesRepo):
     }
 
 
-def _fdictFetchZenodoHashes(dictConfig, listRelPaths):
-    """Fetch Zenodo hashes; require sRecordId."""
-    sRecordId = dictConfig.get("sRecordId") or ""
-    if not sRecordId:
+def flistZenodoDeclaredRecords(dictZenodoConfig):
+    """Return every declared Zenodo record as ``[{sRecordId, sDoi}]``.
+
+    The primary ``dictRemotes.zenodo`` record leads, followed by its
+    ``listRecords`` entries — the additional deposits a researcher
+    declares. Zenodo's own GitHub integration archives a code release
+    as a SEPARATE record with its own DOI, so a well-behaved project
+    commonly holds a data deposit and a software deposit at once;
+    consulting only the primary would fire the archive criteria
+    falsely on the arrangement Zenodo itself promotes. Malformed
+    entries and duplicate record ids are skipped: a record the verify
+    cannot ask about must simply not be consulted, never crash the
+    verify that consults the others.
+    """
+    dictPrimary = (
+        dictZenodoConfig if isinstance(dictZenodoConfig, dict) else {}
+    )
+    listCandidates = [dictPrimary] + list(
+        dictPrimary.get("listRecords") or [],
+    )
+    listDeclared = []
+    setSeen = set()
+    for dictCandidate in listCandidates:
+        if not isinstance(dictCandidate, dict):
+            continue
+        sRecordId = str(dictCandidate.get("sRecordId") or "").strip()
+        if not sRecordId or sRecordId in setSeen:
+            continue
+        setSeen.add(sRecordId)
+        listDeclared.append({
+            "sRecordId": sRecordId,
+            "sDoi": str(dictCandidate.get("sDoi") or "").strip(),
+        })
+    return listDeclared
+
+
+def _fdictFetchZenodoHashes(dictConfig, listRelPaths, dictExpected):
+    """Fetch Zenodo hashes across every declared record.
+
+    A file agrees with Zenodo when ANY declared record serves its
+    bytes — the archive is the set of declared records, not one
+    deposit. A fetch failure on any declared record propagates: a
+    researcher who declared a record they cannot read needs the error,
+    not a verify that silently pretended the record was empty.
+    """
+    listRecords = flistZenodoDeclaredRecords(dictConfig)
+    if not listRecords:
         raise ReverifyConfigError(
             _fsDescribeMissingRemote("zenodo"))
     sService = dictConfig.get("sService") or "sandbox"
-    return zenodoClient.fdictFetchRemoteHashes(
-        sRecordId, listRelPaths=listRelPaths, sService=sService,
+    dictKeyByPath = _fdictUniqueBasenameByPath(listRelPaths)
+    listDepositKeys = sorted(set(dictKeyByPath.values()))
+    listFetched = [
+        _fdictMapDepositKeysBack(
+            zenodoClient.fdictFetchRemoteHashes(
+                dictRecord["sRecordId"],
+                listRelPaths=listDepositKeys, sService=sService,
+            ),
+            listRelPaths, dictKeyByPath,
+        )
+        for dictRecord in listRecords
+    ]
+    return _fdictMergeRecordHashes(
+        listRelPaths, listFetched, dictExpected,
     )
+
+
+def _fdictUniqueBasenameByPath(listRelPaths):
+    """Map each compared path to its deposit key; collisions excluded.
+
+    A Zenodo deposit is FLAT — the bucket API refuses path-containing
+    keys (probed 2026-08-27 on sandbox, both encodings) — so vaibify
+    uploads by basename and the verify must look files up the same
+    way. A basename two compared paths share identifies NEITHER, so
+    colliding paths get no key and read not-in-deposit: honestly
+    unverifiable, rather than matched to whichever file survived the
+    upload's silent overwrite.
+    """
+    dictCounts = {}
+    for sRelativePath in listRelPaths or []:
+        sBasename = posixpath.basename(sRelativePath)
+        dictCounts[sBasename] = dictCounts.get(sBasename, 0) + 1
+    return {
+        sRelativePath: posixpath.basename(sRelativePath)
+        for sRelativePath in listRelPaths or []
+        if dictCounts[posixpath.basename(sRelativePath)] == 1
+    }
+
+
+def _fdictMapDepositKeysBack(dictByDepositKey, listRelPaths, dictKeyByPath):
+    """Re-key one record's basename-keyed hashes onto the compared paths."""
+    return {
+        sRelativePath: dictByDepositKey.get(
+            dictKeyByPath.get(sRelativePath),
+        )
+        for sRelativePath in listRelPaths or []
+    }
+
+
+def _fdictMergeRecordHashes(listRelPaths, listFetched, dictExpected):
+    """Merge per-record hash maps under any-record-agrees semantics.
+
+    Per path: the expected hash when some declared record serves it
+    (agreement), else the first hash any record serves (a real remote
+    hash for the divergence entry), else None (in no record at all).
+    """
+    dictMerged = {}
+    for sRelativePath in listRelPaths or []:
+        listHashes = [
+            dictFetched.get(sRelativePath)
+            for dictFetched in listFetched
+        ]
+        sExpected = (dictExpected or {}).get(sRelativePath)
+        if sExpected is not None and sExpected in listHashes:
+            dictMerged[sRelativePath] = sExpected
+            continue
+        dictMerged[sRelativePath] = next(
+            (sHash for sHash in listHashes if sHash), None,
+        )
+    return dictMerged
 
 
 def fdictComputeLiveExpectedHashes(filesRepo, dictWorkflow):
@@ -466,7 +587,7 @@ def fdictVerifyRemoteService(
         )
     listRelPaths = sorted(dictExpected.keys())
     dictActual = _fdictFetchHashesForService(
-        sService, dictConfig, listRelPaths, filesRepo,
+        sService, dictConfig, listRelPaths, filesRepo, dictExpected,
     )
     listDiverged = _flistBuildDivergenceList(dictExpected, dictActual)
     iTotal = len(dictExpected)
@@ -515,7 +636,7 @@ def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
         )
 
 
-def _fsSyncStatusRelativePath():
+def fsSyncStatusRelativePath():
     """Return the repo-relative path of the workflow's syncStatus.json."""
     return posixpath.join(S_VAIBIFY_DIRECTORY, S_SYNC_STATUS_FILENAME)
 
@@ -527,7 +648,7 @@ def fdictReadCachedSyncStatus(filesRepo, sService):
     pre-Phase-2 file omits them, so callers can ``.get(...)`` against
     a stable shape without separately probing for the upgrade marker.
     """
-    dictAll = _fdictReadAllStatuses(filesRepo)
+    dictAll = fdictReadSyncStatusDocument(filesRepo)
     dictEntry = dictAll.get(sService)
     if not isinstance(dictEntry, dict):
         return _fdictEmptyServiceStatus(sService)
@@ -586,9 +707,9 @@ def fnWriteSyncStatus(filesRepo, dictStatus):
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sService = dictStatus["sService"]
-    sRelPath = _fsSyncStatusRelativePath()
+    sRelPath = fsSyncStatusRelativePath()
     with filesRepo.flockAcquireForFile(sRelPath):
-        dictAll = _fdictReadAllStatuses(filesRepo)
+        dictAll = fdictReadSyncStatusDocument(filesRepo)
         dictAll[sService] = dictStatus
         filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
 
@@ -603,19 +724,24 @@ def fnDeleteSyncStatus(filesRepo, sService):
     service cannot be lost. A missing file or absent entry is a no-op.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    sRelPath = _fsSyncStatusRelativePath()
+    sRelPath = fsSyncStatusRelativePath()
     with filesRepo.flockAcquireForFile(sRelPath):
-        dictAll = _fdictReadAllStatuses(filesRepo)
+        dictAll = fdictReadSyncStatusDocument(filesRepo)
         if sService not in dictAll:
             return
         del dictAll[sService]
         filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
 
 
-def _fdictReadAllStatuses(filesRepo):
-    """Return the full syncStatus.json dict, or an empty dict on error."""
+def fdictReadSyncStatusDocument(filesRepo):
+    """Return the full syncStatus.json dict, or an empty dict on error.
+
+    The document holds one entry per verified service plus the
+    ``dictProjectBookkeeping`` section ``syncBookkeeping`` owns; every
+    writer must carry the sections it does not own through unchanged.
+    """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    sRelPath = _fsSyncStatusRelativePath()
+    sRelPath = fsSyncStatusRelativePath()
     if not filesRepo.fbIsFile(sRelPath):
         return {}
     try:

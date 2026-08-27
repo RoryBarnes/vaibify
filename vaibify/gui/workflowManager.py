@@ -48,7 +48,9 @@ def fdictStepIdToIndex(dictWorkflow):
     return dictOut
 
 __all__ = [
+    "fbDeclareZenodoRecord",
     "fbDeriveUnnecessaryVerification",
+    "fbRemoveZenodoRecord",
     "fbStepRequiresTests",
     "fbValidateWorkflow",
     "fbWorkflowPathIsLegacyRootFile",
@@ -118,6 +120,7 @@ __all__ = [
     "ffResolveStepWallClockBudget",
     "fsResolveStepWorkdir",
     "fsResolveVariables",
+    "fsZenodoRecordIdFromDoi",
     "fsTestsDirectory",
     "fsToSyncStatusKey",
 ]
@@ -388,6 +391,17 @@ def fdictLoadWorkflowFromContainer(
     workflowMigrations.fiApplyMigrations(
         dictWorkflow, sProjectRepoPath=sRepoPath,
     )
+    # AFTER the migrations — a future-version file must be refused
+    # before another read is spent on its behalf, and the numbered
+    # migrations only ever touch FIELDED bookkeeping (a file old
+    # enough to need them predates the sidecar). BEFORE the
+    # legacy-remotes derivation, which must see the merged shape;
+    # sidecar values win over legacy fielded keys (see
+    # syncBookkeeping's module docstring).
+    _fnMergeSidecarBookkeeping(
+        connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+        sWorkflowPath,
+    )
     fnMigrateLegacyRemotes(dictWorkflow)
     sFailure = fsDescribeValidationFailure(dictWorkflow)
     if sFailure:
@@ -473,8 +487,77 @@ def _fsLegacyZenodoRecordId(dictWorkflow, sDoi):
     sDepositionId = str(dictWorkflow.get("sZenodoDepositionId") or "")
     if sDepositionId and sDepositionId != "0":
         return sDepositionId
-    matchDoi = re.search(r"/zenodo\.(\d+)$", sDoi)
+    return fsZenodoRecordIdFromDoi(sDoi)
+
+
+def fsZenodoRecordIdFromDoi(sDoi):
+    """Return the record id embedded in a genuine Zenodo DOI, or ``""``.
+
+    Zenodo DOI suffixes are always ``/zenodo.NNN``; a foreign DOI whose
+    suffix merely ends in ``zenodo.NNN`` must not have a record id
+    invented from it.
+    """
+    matchDoi = re.search(r"/zenodo\.(\d+)$", str(sDoi or "").strip())
     return matchDoi.group(1) if matchDoi else ""
+
+
+def fbDeclareZenodoRecord(dictWorkflow, sRecordId, sDoi=""):
+    """Declare an additional Zenodo record; return True when added.
+
+    Zenodo's own GitHub integration archives a code release as a
+    separate record with its own DOI, so a project legitimately holds
+    a data deposit AND a software deposit at once. Declaring the
+    second record is how the archive criteria come to consult it.
+    Idempotent: a record already declared — as the primary
+    ``dictRemotes.zenodo`` record or in ``listRecords`` — leaves the
+    workflow unchanged and returns False.
+    """
+    from vaibify.reproducibility.scheduledReverify import (
+        flistZenodoDeclaredRecords,
+    )
+    sCleanId = str(sRecordId or "").strip()
+    if not sCleanId:
+        return False
+    dictRemotes = dictWorkflow.setdefault("dictRemotes", {})
+    dictZenodo = dictRemotes.setdefault("zenodo", {})
+    setDeclared = {
+        dictRecord["sRecordId"]
+        for dictRecord in flistZenodoDeclaredRecords(dictZenodo)
+    }
+    if sCleanId in setDeclared:
+        return False
+    dictEntry = {"sRecordId": sCleanId}
+    sCleanDoi = str(sDoi or "").strip()
+    if sCleanDoi:
+        dictEntry["sDoi"] = sCleanDoi
+    dictZenodo.setdefault("listRecords", []).append(dictEntry)
+    return True
+
+
+def fbRemoveZenodoRecord(dictWorkflow, sRecordId):
+    """Remove a declared Zenodo record; return True when one was removed.
+
+    Only ``listRecords`` entries are removable: the primary record is
+    the deposit vaibify itself publishes to, recorded by the archive
+    flow, and is not a declaration this mutator owns.
+    """
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo") or {}
+    listRecords = dictZenodo.get("listRecords") or []
+    sCleanId = str(sRecordId or "").strip()
+    listKept = [
+        dictRecord for dictRecord in listRecords
+        if not (
+            isinstance(dictRecord, dict)
+            and str(dictRecord.get("sRecordId") or "").strip()
+            == sCleanId
+        )
+    ]
+    if len(listKept) == len(listRecords):
+        return False
+    dictZenodo["listRecords"] = listKept
+    return True
 
 
 def _fdictLegacyGithubEntry(dictWorkflow):
@@ -1121,6 +1204,57 @@ def _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath):
     return ContainerRepoFiles(connectionDocker, sContainerId, sRepoPath)
 
 
+def _fnMergeSidecarBookkeeping(
+    connectionDocker, sContainerId, dictWorkflow, sRepoPath,
+    sWorkflowPath,
+):
+    """Graft the syncStatus.json bookkeeping section into the load.
+
+    A workflow that cannot be attributed (no repo, or a project file
+    outside it) reads no section, so it keeps whatever legacy fielded
+    keys its project.json carries — the pre-migration shape.
+    """
+    from vaibify.reproducibility import syncBookkeeping
+    sWorkflowKey = stateManager.fsWorkflowKeyFromPath(
+        sWorkflowPath, sRepoPath,
+    )
+    if not sRepoPath or not sWorkflowKey:
+        return
+    dictBookkeeping = syncBookkeeping.fdictReadSyncBookkeeping(
+        _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath),
+        sWorkflowKey,
+    )
+    syncBookkeeping.fnMergeSyncBookkeepingIntoWorkflow(
+        dictWorkflow, dictBookkeeping,
+    )
+
+
+def _fnWriteSidecarBookkeeping(
+    connectionDocker, sContainerId, sRepoPath, sWorkflowPath,
+    dictBookkeeping,
+):
+    """Persist extracted bookkeeping BEFORE project.json is written.
+
+    Ordering is the safety property: if this write fails, the save
+    aborts with the previous project.json still on disk, so a legacy
+    fielded file keeps its keys; the reverse order could strip the
+    keys from the file and then lose them. An unattributable workflow
+    key skips the write, matching state.json's fail-conservative rule
+    — such a workflow has no repo to sync with, so its bookkeeping is
+    empty anyway.
+    """
+    from vaibify.reproducibility import syncBookkeeping
+    sWorkflowKey = stateManager.fsWorkflowKeyFromPath(
+        sWorkflowPath, sRepoPath,
+    )
+    if not sRepoPath or not sWorkflowKey:
+        return
+    syncBookkeeping.fnWriteSyncBookkeeping(
+        _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath),
+        sWorkflowKey, dictBookkeeping,
+    )
+
+
 def fdictCreateStep(
     sName,
     sDirectory,
@@ -1369,10 +1503,13 @@ def fnSaveWorkflowToContainer(
 ):
     """Serialize the merged workflow dict and persist it.
 
-    Splits the in-memory dict between ``project.json`` (declarative
-    fields) and ``.vaibify/state.json`` (per-machine runtime state)
-    before writing. Callers continue to mutate one merged dict; the
-    split is invisible upstream.
+    Splits the in-memory dict three ways before writing:
+    ``project.json`` (the declared definition), ``.vaibify/state.json``
+    (per-machine runtime state), and the ``.vaibify/syncStatus.json``
+    bookkeeping section (what a push/archive/verify produced — kept
+    out of the definition so the archived copy of ``project.json`` can
+    byte-match the local one forever). Callers continue to mutate one
+    merged dict; the split is invisible upstream.
     """
     from .pipelineUtils import (
         fnAttachStepLabels, fsDescribeRemoteDataPathConflict,
@@ -1407,7 +1544,13 @@ def fnSaveWorkflowToContainer(
         connectionDocker, sContainerId, sRepoPath,
     ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
-    sJson, dictState = _ftSplitAndSerializeWorkflow(dictWorkflow)
+    sJson, dictState, dictBookkeeping = _ftSplitAndSerializeWorkflow(
+        dictWorkflow,
+    )
+    _fnWriteSidecarBookkeeping(
+        connectionDocker, sContainerId, sRepoPath, sWorkflowPath,
+        dictBookkeeping,
+    )
     connectionDocker.fnWriteFile(
         sContainerId, sWorkflowPath, sJson.encode("utf-8")
     )
@@ -1425,20 +1568,26 @@ def fnSaveWorkflowToContainer(
 
 
 def _ftSplitAndSerializeWorkflow(dictWorkflow):
-    """Return ``(sDeclarativeJson, dictState)`` for the merged dict.
+    """Return ``(sDeclarativeJson, dictState, dictBookkeeping)``.
 
     The single serialization authority for project.json bytes: both
     the save path and :func:`fsComputeWorkflowFingerprint` go through
     it, so the fingerprint recorded after a save is byte-identical to
     what a later ``sha256sum`` of the file inside the container
-    reports.
+    reports. The bookkeeping extraction is unconditional for the same
+    reason: a save that sometimes kept the keys in project.json would
+    serialize bytes the fingerprint path cannot predict.
     """
+    from vaibify.reproducibility import syncBookkeeping
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, dictState = stateManager.ftSplitMergedDict(
         dictClean,
     )
+    dictBookkeeping = syncBookkeeping.fdictExtractSyncBookkeeping(
+        dictDeclarative,
+    )
     sJson = json.dumps(dictDeclarative, indent=2) + "\n"
-    return sJson, dictState
+    return sJson, dictState, dictBookkeeping
 
 
 def fsComputeWorkflowFingerprint(dictWorkflow):
@@ -1450,7 +1599,9 @@ def fsComputeWorkflowFingerprint(dictWorkflow):
     unlike the previous whole-second mtime baseline, which swallowed
     any agent edit landing in the same second as a backend save.
     """
-    sJson, _dictState = _ftSplitAndSerializeWorkflow(dictWorkflow)
+    sJson, _dictState, _dictBookkeeping = _ftSplitAndSerializeWorkflow(
+        dictWorkflow,
+    )
     return hashlib.sha256(sJson.encode("utf-8")).hexdigest()
 
 
@@ -1474,10 +1625,16 @@ def fsComputeSemanticWorkflowFingerprint(dictWorkflow):
     :func:`fsComputeWorkflowFingerprint`, which deliberately names
     exact bytes.
     """
+    from vaibify.reproducibility import syncBookkeeping
     dictClean = _fdictStripComputedFields(dictWorkflow)
     dictDeclarative, _dictState = stateManager.ftSplitMergedDict(
         dictClean,
     )
+    # The sidecar bookkeeping is a run's record of what was pushed,
+    # never part of the definition: without this a Zenodo archive or
+    # Overleaf push moved the attestation fingerprint and superseded
+    # every verification it had not touched.
+    syncBookkeeping.fdictExtractSyncBookkeeping(dictDeclarative)
     for dictStep in dictDeclarative.get("listSteps", []) or []:
         for dictRemote in dictStep.get("listRemoteData", []) or []:
             if not isinstance(dictRemote, dict):

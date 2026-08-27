@@ -123,6 +123,14 @@ def test_the_two_published_sections_are_parallel_and_disjoint(
         f"{dictLevel3['listRowTitles']}"
     )
 
+    # The permanent-archive twin (2026-08-26, reversing the same-day
+    # GitHub-only ruling): the section must also carry the Zenodo
+    # archive row, or the criterion blocks with nothing naming it.
+    assert "Zenodo archive" in " ".join(dictLevel3["listRowTitles"]), (
+        "the Level 3 section has no Zenodo archive row: "
+        f"{dictLevel3['listRowTitles']}"
+    )
+
     # The disjointness that IS the split. An envelope file listed in
     # the Level 2 section reports a reproducibility problem as a
     # reason the researcher's DATA is unpublished.

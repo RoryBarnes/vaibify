@@ -1188,3 +1188,100 @@ def test_manifest_pins_templated_figure_declarations(tmp_path):
     listPaths = [d["sPath"] for d in listEntries]
     assert "Plot/corner.pdf" in listPaths
     assert "KeplerFfdCorner/Plot/corner.pdf" not in listPaths
+
+
+# ----------------------------------------------------------------------
+# 9. Test-file path resolution: both fielded spellings, one join point.
+# ----------------------------------------------------------------------
+#
+# ``dictTests[*].sFilePath`` is recorded STEP-relative by the
+# quantitative and integrity test writers and REPO-relative (step
+# directory included) by the qualitative writer, and both spellings
+# exist in fielded project.json files. Taking the value verbatim
+# minted phantom repo-root ``tests/`` paths; every consumer that
+# hashes silently dropped them, so nothing surfaced until the Zenodo
+# archive opened one, crashed on FileNotFoundError, and the classifier
+# told the researcher to check their DOI (live, 2026-08-27).
+
+
+def test_step_relative_test_paths_resolve_into_the_step_directory():
+    from vaibify.reproducibility.manifestWriter import (
+        flistStepTestFileRepoPaths,
+    )
+    dictStep = {
+        "sDirectory": "AnalysisStep",
+        "dictTests": {
+            "dictQuantitative": {
+                "sFilePath": "tests/test_quantitative_analysis.py",
+            },
+            "dictIntegrity": {
+                "sFilePath": "tests/test_integrity_analysis.py",
+            },
+        },
+    }
+    assert flistStepTestFileRepoPaths(dictStep) == [
+        "AnalysisStep/tests/test_quantitative_analysis.py",
+        "AnalysisStep/tests/test_integrity_analysis.py",
+    ]
+
+
+def test_repo_relative_test_paths_pass_through_unchanged():
+    """The qualitative writer's spelling must not be double-joined."""
+    from vaibify.reproducibility.manifestWriter import (
+        flistStepTestFileRepoPaths,
+    )
+    dictStep = {
+        "sDirectory": "AnalysisStep",
+        "dictTests": {
+            "dictQualitative": {
+                "sFilePath": "AnalysisStep/tests/test_qualitative.py",
+            },
+        },
+    }
+    assert flistStepTestFileRepoPaths(dictStep) == [
+        "AnalysisStep/tests/test_qualitative.py",
+    ]
+
+
+@pytest.mark.falsification
+def test_both_spellings_of_one_file_yield_it_exactly_once():
+    """The category record and the test command name the SAME file.
+
+    Before the resolution fix the two spellings diverged — the
+    category's verbatim ``tests/...`` at the repo root (a ghost) and
+    the command's step-joined real path — so a push modal offered the
+    file twice and the archive crashed opening the ghost.
+
+    Kills: reverting ``fsResolveTestDeclarationPath``'s canonical-join
+    fallback to the verbatim ``fsToRepoRelative`` reading, which
+    re-mints the repo-root ghost beside the real path.
+    """
+    from vaibify.reproducibility.manifestWriter import (
+        flistStepTestFileRepoPaths,
+    )
+    dictStep = {
+        "sDirectory": "AnalysisStep",
+        "dictTests": {
+            "dictQuantitative": {
+                "sFilePath": "tests/test_quantitative_analysis.py",
+            },
+        },
+        "saTestCommands": [
+            "pytest tests/test_quantitative_analysis.py",
+        ],
+    }
+    assert flistStepTestFileRepoPaths(dictStep) == [
+        "AnalysisStep/tests/test_quantitative_analysis.py",
+    ]
+
+
+def test_a_step_with_no_directory_keeps_paths_repo_relative():
+    from vaibify.reproducibility.manifestWriter import (
+        flistStepTestFileRepoPaths,
+    )
+    dictStep = {
+        "dictTests": {
+            "dictQuantitative": {"sFilePath": "tests/test_root.py"},
+        },
+    }
+    assert flistStepTestFileRepoPaths(dictStep) == ["tests/test_root.py"]

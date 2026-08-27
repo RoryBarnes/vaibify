@@ -677,9 +677,11 @@ def testVerifyCountsDeclaredTestFilesInComparisonSet(tmp_path):
     """Declared test files are part of the remote comparison set."""
     sRepo = str(tmp_path / "project")
     dictWorkflow = _fdictWorkflowWithTestFile(sRepo)
+    # Keyed by DEPOSIT KEY (the basename): a Zenodo deposit is flat,
+    # so the verify requests basenames and maps them back.
     mockFetch = MagicMock(return_value={
-        "step01/data.csv": S_DATA_SHA,
-        "step01/tests/test_quantitative.py": S_TEST_SHA,
+        "data.csv": S_DATA_SHA,
+        "test_quantitative.py": S_TEST_SHA,
     })
     with patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
@@ -691,10 +693,7 @@ def testVerifyCountsDeclaredTestFilesInComparisonSet(tmp_path):
     assert dictStatus["iTotalFiles"] == 2
     assert dictStatus["iMatching"] == 2
     _argsCall, dictKwargs = mockFetch.call_args
-    assert (
-        "step01/tests/test_quantitative.py"
-        in dictKwargs["listRelPaths"]
-    )
+    assert "test_quantitative.py" in dictKwargs["listRelPaths"]
 
 
 def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
@@ -707,7 +706,7 @@ def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
     dictWorkflow = _fdictWorkflowWithTestFile(sRepo)
     with patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
-        return_value={"step01/data.csv": S_DATA_SHA},
+        return_value={"data.csv": S_DATA_SHA},
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
             sRepo, dictWorkflow, "zenodo",
@@ -755,7 +754,7 @@ def testVerifyExpectedHashesTrackCurrentFileContent(tmp_path):
     sRepo = str(tmp_path / "project")
     _fnWriteDataFile(sRepo)
     dictWorkflow = _fdictBuildWorkflow(sRepo)
-    dictRemote = {"step01/data.csv": S_DATA_SHA}
+    dictRemote = {"data.csv": S_DATA_SHA}
     with patch(
         "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
         return_value=dictRemote,

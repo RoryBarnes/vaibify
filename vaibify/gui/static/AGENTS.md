@@ -173,7 +173,10 @@ pattern wholesale.
   `_fdictL3WorkflowChecks` dict: `dockerfile-not-pinned`,
   `dependency-lock-missing`, `environment-snapshot-missing`,
   `image-not-published`, `reproduce-script-missing`,
-  `l3-attestation-stale`, `binaries-not-declared-or-waived`.
+  `l3-attestation-stale`, `binaries-not-declared-or-waived`,
+  `envelope-not-in-github-mirror`, `envelope-not-in-zenodo-archive`
+  (the published-envelope pair; the Zenodo remediation is "publish a
+  new deposit version", never "push").
 - Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
   `sScope`, `sCriterion`, `listOffendingFiles`,
   `listOffendingUpstreamSteps`, `sRemediationHint`. Per-step L3

@@ -277,6 +277,11 @@ var VaibifyModals = (function () {
     function fnShowErrorModal(sMessage) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
+        // The modal is shared with the sync flows, which retitle it
+        // "Sync Error"; every opener sets the title explicitly so a
+        // previous open cannot leak its heading into this one.
+        var elTitle = document.getElementById("modalErrorTitle");
+        if (elTitle) elTitle.textContent = "Pipeline Error";
         elContent.textContent = fsSanitizeErrorForUser(sMessage);
         elModal.style.display = "flex";
     }

@@ -124,6 +124,28 @@ class _MockDockerIsolation:
     ):
         self._dictFiles[sPath] = baContent
 
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        # Fail-closed typed read: only explicitly stored files exist,
+        # so the sidecar bookkeeping starts absent like a fresh repo.
+        return sPath in self._dictFiles
+
+    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+        import shlex
+        from collections import namedtuple
+        TExecResult = namedtuple("TExecResult", "iExitCode sStdout")
+        if sCommand.startswith("mkdir -p "):
+            return TExecResult(0, "")
+        if sCommand.startswith("mv -f "):
+            listParts = shlex.split(sCommand)
+            self._dictFiles[listParts[3]] = self._dictFiles.pop(
+                listParts[2],
+            )
+            return TExecResult(0, "")
+        iExitCode, sStdout = self.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+        return TExecResult(iExitCode, sStdout)
+
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-iso"
 

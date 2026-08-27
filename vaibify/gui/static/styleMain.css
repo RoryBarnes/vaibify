@@ -2861,6 +2861,77 @@ body.proof-level-3 .toolbar-label {
     text-decoration: underline;
 }
 
+/* Declared Zenodo records — the set the archive checks consult. */
+.zdc-records-header {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.zdc-records-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+}
+
+.zdc-record-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.zdc-record-doi {
+    color: var(--text-secondary);
+}
+
+.zdc-record-primary {
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 0 6px;
+}
+
+.zdc-record-remove {
+    background: transparent;
+    color: var(--highlight-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 1px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.zdc-record-remove:hover {
+    border-color: var(--highlight-color);
+}
+
+.zdc-record-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.zdc-record-add input {
+    flex: 1;
+    min-width: 200px;
+    font-size: 12px;
+    padding: 3px 6px;
+}
+
+.zdc-record-add-hint {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
 .modal.modal-directory-browser {
     width: 520px;
 }
@@ -5901,6 +5972,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l2-github-stale,
 .step-blocker-glyph-l2-zenodo-stale,
 .step-blocker-glyph-l2-ai-declaration,
+.step-blocker-glyph-l2-ai-models,
+.step-blocker-glyph-l2-personal-layer,
 .step-blocker-glyph-l2-figure,
 .step-blocker-glyph-l2-arxiv-submit,
 .step-blocker-glyph-l2-arxiv-mismatch,
@@ -5924,6 +5997,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l3-workflow-reproduce,
 .step-blocker-glyph-l3-workflow-attestation,
 .step-blocker-glyph-l3-workflow-envelope,
+.step-blocker-glyph-l3-workflow-envelope-zenodo,
 .step-blocker-glyph-l3-workflow-binaries {
     color: var(--color-orange);
 }

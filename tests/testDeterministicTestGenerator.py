@@ -358,10 +358,10 @@ def test_fdictGenerateAllTestsDeterministic_mock():
     assert "dictQualitative" in dictResult
     assert "dictQuantitative" in dictResult
     assert dictResult["dictIntegrity"]["sFilePath"].endswith(
-        "test_integrity.py"
+        "test_integrity_step01.py"
     )
     assert dictResult["dictQuantitative"]["sFilePath"].endswith(
-        "test_quantitative.py"
+        "test_quantitative_step01.py"
     )
     assert "sStandardsPath" in dictResult["dictQuantitative"]
     assert "sStandardsPath" in dictResult["dictIntegrity"]
@@ -2215,12 +2215,12 @@ def test_fdictGenerateAllTestsDeterministic_written_content():
     dictResult = fdictGenerateAllTestsDeterministic(
         mockConnection, "cid123", 0, dictWorkflow, {},
     )
-    sIntegrityPath = "/work/step01/tests/test_integrity.py"
-    sIntegrityStdPath = "/work/step01/tests/integrity_standards.json"
-    sQualitativePath = "/work/step01/tests/test_qualitative.py"
-    sQualitativeStdPath = "/work/step01/tests/qualitative_standards.json"
-    sQuantitativePath = "/work/step01/tests/test_quantitative.py"
-    sQuantitativeStdPath = "/work/step01/tests/quantitative_standards.json"
+    sIntegrityPath = "/work/step01/tests/test_integrity_step01.py"
+    sIntegrityStdPath = "/work/step01/tests/integrity_standards_step01.json"
+    sQualitativePath = "/work/step01/tests/test_qualitative_step01.py"
+    sQualitativeStdPath = "/work/step01/tests/qualitative_standards_step01.json"
+    sQuantitativePath = "/work/step01/tests/test_quantitative_step01.py"
+    sQuantitativeStdPath = "/work/step01/tests/quantitative_standards_step01.json"
     assert sIntegrityPath in dictWrittenFiles
     assert sIntegrityStdPath in dictWrittenFiles
     assert sQualitativePath in dictWrittenFiles
@@ -2287,11 +2287,11 @@ def test_fdictGenerateAllTestsDeterministic_no_data_files():
     dictResult = fdictGenerateAllTestsDeterministic(
         mockConnection, "cid123", 0, dictWorkflow, {},
     )
-    sIntegrityPath = "/work/step02/tests/test_integrity.py"
+    sIntegrityPath = "/work/step02/tests/test_integrity_step02.py"
     sIntegrityCode = dictWrittenFiles[sIntegrityPath].decode("utf-8")
     ast.parse(sIntegrityCode)
     assert "test_no_integrity_outputs" in sIntegrityCode
-    sQualitativePath = "/work/step02/tests/test_qualitative.py"
+    sQualitativePath = "/work/step02/tests/test_qualitative_step02.py"
     sQualitativeCode = dictWrittenFiles[sQualitativePath].decode(
         "utf-8",
     )

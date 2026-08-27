@@ -2944,6 +2944,27 @@ def testTheSyncTrackingToggleCommitsThroughTheSynchronousCarrier(
     )
 
 
+def testTheZenodoRecordDeclarationCommitsThroughTheSynchronousCarrier(
+    tclientGated,
+):
+    """POST /api/zenodo/{id}/records persists project.json under mode (a).
+
+    Kills: reverting ``fdictDeclareZenodoRecord``'s
+    ``fdictCommitWorkflowSave(...)`` call to
+    ``dictCtx["save"](sContainerId, dictWorkflow)``. On the enforced
+    branch that save reaches the write primitive with no admission
+    open at all, so the recorded mode is ``''``.
+    """
+    client, connectionDocker = tclientGated
+    client.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sRecordId": "424242"},
+    )
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
 @pytest.mark.falsification
 def testTheGitIdentityWriteRunsUnderTheDrain(tclientGated):
     """POST /api/github/{id}/identity runs git config under mode (b).
@@ -3075,6 +3096,14 @@ def testTheArxivCacheRewriteRunsUnderTheDrain(tclientGated):
     and reported the SAVE's mode as this carrier's, which would have
     failed the test for a correct migration.
 
+    Since the sidecar split (2026-08-27) the mode-(a) save ALSO
+    writes this file — the workflow's bookkeeping section rides the
+    save commit — so demanding lock-held of EVERY syncStatus write
+    would fail a correct migration. The two carriers' writes share a
+    path but not a mode: the verify's rewrite must still appear under
+    the drain, and nothing may reach the file on the ambient mint or
+    with no admission at all.
+
     Kills: reverting the verify hop to
     ``await asyncio.to_thread(_fdictRunArxivVerifyAfterConfig, ...)``.
     """
@@ -3084,14 +3113,26 @@ def testTheArxivCacheRewriteRunsUnderTheDrain(tclientGated):
             f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
             json={"sArxivId": "2401.12345"},
         )
-    _fnAssertSelectedRanUnder(
-        connectionDocker,
-        lambda dictReached: (
-            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
-            and "syncStatus" in dictReached["sPath"]
-        ),
+    listSyncModes = [
+        dictReached["sMode"]
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+        and "syncStatus" in dictReached["sPath"]
+    ]
+    assert mutationAdmission.S_ADMISSION_MODE_LOCK_HELD in listSyncModes, (
+        "the verify's sync-status cache rewrite never ran under the "
+        f"drain; the syncStatus write modes were {listSyncModes}"
+    )
+    setAllowedModes = {
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-        "write to the sync-status cache",
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    }
+    assert set(listSyncModes) <= setAllowedModes, (
+        "a syncStatus write ran outside both carriers: "
+        f"{listSyncModes}. Under "
+        f"{mutationAdmission.S_ADMISSION_MODE_REQUEST!r} the route is "
+        "still riding the legacy ambient mint; under '' it reached "
+        "the primitive with no admission at all."
     )
 
 

@@ -263,12 +263,28 @@ class TestFtResultPushStagedToGithub:
         assert iExit == 0
         assert "abc1234" in sOut
 
-    def test_does_not_run_git_add(self):
+    def test_stages_tracked_changes_before_the_commit_guard(self):
+        """The Repos-panel dirty-dot tooltip promises "click Push to
+        commit and push them", and nothing in the dashboard stages —
+        so the command stages tracked changes itself (2026-08-27
+        ruling; before this it committed only what was already
+        staged, and on a dirty repo the button silently published
+        nothing while claiming success). ``-u`` on purpose: untracked
+        files need the explicit selection of Push files… — a bare
+        ``add .`` or ``add -A`` would publish stray files nobody
+        chose."""
         fake = _FakeDockerConnection((0, ""))
         ftResultPushStagedToGithub(
             fake, "cid", "msg", "/workspace/proj")
         sCommand = fake.listCommands[0][1]
-        assert "git add" not in sCommand
+        assert " add -u && " in sCommand
+        assert "add -A" not in sCommand
+        assert "add ." not in sCommand
+        iAddIndex = sCommand.index(" add -u")
+        iGuardIndex = sCommand.index("git diff --cached --quiet")
+        assert iAddIndex < iGuardIndex, (
+            "staging must land before the commit guard reads the index"
+        )
 
     def test_command_contains_commit_push_revparse(self):
         fake = _FakeDockerConnection((0, ""))

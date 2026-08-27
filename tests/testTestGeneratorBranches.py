@@ -184,7 +184,9 @@ def test_writeQuantitativeFiles_requests_confirm_on_template_mismatch():
     assert dictResult.get("bNeedsOverwriteConfirm") is True
     # The standards JSON is written before the confirmation check.
     sPaths = [c.args[1] for c in mockDocker.fnWriteFile.call_args_list]
-    assert any("quantitative_standards.json" in p for p in sPaths)
+    assert any(
+        "quantitative_standards_step.json" in p for p in sPaths
+    ), sPaths
 
 
 def test_writeQuantitativeFiles_force_overwrite_writes_file():

@@ -28,6 +28,9 @@ var VaibifySyncManager = (function () {
             "internet connection.",
         verifyFailed: "Verification failed. The remote could not " +
             "be reached or returned an unexpected response.",
+        localFileMissing: "A selected file does not exist in the " +
+            "project, so nothing was sent to the remote. Re-run the " +
+            "step that produces it (or deselect it), then try again.",
         manifestMissing: "No manifest found. Generate one before " +
             "verifying.",
         conflict: "Remote has changes you don't have locally. " +
@@ -1277,6 +1280,21 @@ var VaibifySyncManager = (function () {
         elLink.href = sUrl;
         elLink.textContent = sHost +
             "/account/settings/applications/";
+        // The token help tooltip must name the SAME instance the link
+        // points at. Its static text once said "go to zenodo.org"
+        // unconditionally, which walked a researcher with Sandbox
+        // selected into creating a production token — rejected with a
+        // message about scopes.
+        var elHelp = document.getElementById("helpSetupToken");
+        if (elHelp) {
+            elHelp.setAttribute("title",
+                "On " + sHost + " (the link opens the right page): " +
+                "Account → Settings → Applications → Personal " +
+                "access tokens → New Token. Enable deposit:actions " +
+                "and deposit:write scopes. Sandbox and production " +
+                "are separate sites with separate accounts and " +
+                "tokens.");
+        }
     }
 
     function fnBindConnectionSetupEvents() {
@@ -1355,8 +1373,18 @@ var VaibifySyncManager = (function () {
     function _fnShowErrorModal(sMessage) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
+        // A sync failure is not a pipeline failure; the shared modal
+        // is retitled per opener (VaibifyModals sets it back for the
+        // pipeline flows), so a researcher's Zenodo problem stops
+        // being announced as a "Pipeline Error".
+        _fnSetErrorModalTitle();
         elContent.textContent = _fsSanitizeError(sMessage);
         elModal.style.display = "flex";
+    }
+
+    function _fnSetErrorModalTitle() {
+        var elTitle = document.getElementById("modalErrorTitle");
+        if (elTitle) elTitle.textContent = "Sync Error";
     }
 
     var _RE_GH_CLASSIC_TOKEN = /gh[oprsu]_[A-Za-z0-9]{20,}/g;
@@ -1391,6 +1419,7 @@ var VaibifySyncManager = (function () {
     function _fnShowErrorModalWithRaw(sTitle, sMessage, sRaw) {
         var elModal = document.getElementById("modalError");
         var elContent = document.getElementById("modalErrorContent");
+        _fnSetErrorModalTitle();
         var sBody = _fsSanitizeError(sTitle + "\n\n" + sMessage);
         var sHtml = VaibifyUtilities.fnEscapeHtml(sBody);
         var sRawClean = _fsSanitizeRawError(sRaw);
@@ -1425,6 +1454,19 @@ var VaibifySyncManager = (function () {
         if (!sContainerId || !sResolved) return;
         if (sRemoteKey === "sOverleaf") {
             fnOpenPushModal("overleaf");
+            return;
+        }
+        if (sRemoteKey === "sZenodo") {
+            // A Zenodo "sync" publishes a new deposit VERSION, and a
+            // version REPLACES the file set: vaibify clears the
+            // inherited files and uploads exactly the selection. A
+            // direct per-file push therefore published a version
+            // containing only the clicked file and silently shrank
+            // the public record (live, 2026-08-27). The modal serves
+            // the full publication union preselected, so leaving a
+            // file out of the archive is an act the researcher
+            // performs, never a side effect of one click.
+            fnOpenPushModal("zenodo");
             return;
         }
         var sCurrentState = _fsCurrentBadgeState(
@@ -2179,13 +2221,10 @@ var VaibifySyncManager = (function () {
             );
             return _fdictBuildPushOutcome(dictGh, "GitHub");
         }
-        if (sRemoteKey === "sZenodo") {
-            var dictZen = await VaibifyApi.fdictPost(
-                "/api/zenodo/" + sContainerId + "/archive",
-                {listFilePaths: [sResolved]}
-            );
-            return _fdictBuildPushOutcome(dictZen, "Zenodo");
-        }
+        // No Zenodo branch, deliberately: fnSyncFileToRemote diverts
+        // that service to the archive modal before this runs, and a
+        // reachable single-file archive here would re-create the
+        // shrunken-version footgun the divert exists to close.
         return {};
     }
 
