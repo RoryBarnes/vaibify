@@ -1767,19 +1767,6 @@ const VaibifyApp = (function () {
 
     /* --- Step List --- */
 
-    function _fsFindAiDeclarationFile() {
-        // The declaration file of the workflow's ai-declaration step,
-        // for the Project-block Publication "AI Declaration" row.
-        var listSteps = (_dictWorkflowState.dictWorkflow || {})
-            .listSteps || [];
-        for (var i = 0; i < listSteps.length; i++) {
-            if (listSteps[i].sStepKind === "ai-declaration") {
-                return listSteps[i].sDeclarationFile || "";
-            }
-        }
-        return "";
-    }
-
     function fdictBuildRenderContext() {
         return {
             dictStepStatus: _dictWorkflowState.dictStepStatus,
@@ -1795,7 +1782,6 @@ const VaibifyApp = (function () {
             bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
                 .sProjectRepoPath || "",
-            sAiDeclarationFile: _fsFindAiDeclarationFile(),
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
@@ -2088,6 +2074,16 @@ const VaibifyApp = (function () {
             _dictRenderedStepHashes[iIndex] = _fsComputeStepRenderHash(
                 step, iIndex, dictContext, dictVars);
         });
+        // The AI Declaration's only home is the step list; when the
+        // step is missing, its ghost row carries the add action. The
+        // boundary signature encodes the declaration step ("D"), so
+        // adding one triggers this full rebuild and retires the ghost.
+        var bHasDeclarationStep = listSteps.some(function (step) {
+            return step.sStepKind === "ai-declaration";
+        });
+        if (!bHasDeclarationStep) {
+            sHtml += VaibifyStepRenderer.fsRenderGhostAiDeclarationRow();
+        }
         elList.innerHTML = sHtml;
         _sLastBoundarySignature = sBoundary;
     }
@@ -2648,6 +2644,18 @@ const VaibifyApp = (function () {
                 "record agent involvement",
             sClass: "step-blocker-glyph-l2-ai-declaration",
         },
+        "ai-models-undeclared": {
+            sIcon: "⚠",
+            sLabel: "No AI model declared — declare each model " +
+                "used in the AI section of the Project block",
+            sClass: "step-blocker-glyph-l2-ai-models",
+        },
+        "personal-layer-unanswered": {
+            sIcon: "⚠",
+            sLabel: "Personal AI Configuration unanswered — answer " +
+                "in the AI section of the Project block",
+            sClass: "step-blocker-glyph-l2-personal-layer",
+        },
         "figure-not-frozen": {
             sIcon: "⚠",
             sLabel: "Plot not pushed to Overleaf at recorded commit — " +
@@ -2763,6 +2771,21 @@ const VaibifyApp = (function () {
                 "copy on GitHub, or has not been compared with it — " +
                 "push the envelope, then Verify now",
             sClass: "step-blocker-glyph-l3-workflow-envelope",
+        },
+        /* The permanent-archive half of the same pair (2026-08-26).
+           GitHub is not an archive — repos are renamed, made private,
+           deleted — so Level 3's re-execute claim also needs the
+           envelope in Zenodo. Deposits are immutable, so the
+           remediation is a new deposit version, never a push. */
+        "envelope-not-in-zenodo-archive": {
+            sIcon: "⚠",
+            sLabel: "The reproduce script, manifest, dependency lock, " +
+                "environment snapshot or Dockerfile is not in the " +
+                "Zenodo archive, or has not been compared with it — " +
+                "publish a new deposit version with the envelope " +
+                "(or declare the record that holds it), then " +
+                "Verify now",
+            sClass: "step-blocker-glyph-l3-workflow-envelope-zenodo",
         },
         "l3-attestation-stale": {
             sIcon: "⚠",

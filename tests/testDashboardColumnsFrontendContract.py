@@ -303,10 +303,19 @@ def test_proof_level2_section_includes_arxiv():
     iStart = sSource.find("_DICT_REQUIREMENT_CATALOG")
     sCatalog = sSource[iStart:sSource.find("function ", iStart)]
     for sKey in ("bGithubFullySynced", "bZenodoFullySynced",
-                 "bArxivFullySynced", "bAiDeclarationAttested"):
+                 "bArxivFullySynced", "bAiModelsDeclared",
+                 "bPersonalLayerDeclared"):
         assert sKey in sCatalog, (
             "Level 2 requirement missing from the catalog: " + sKey
         )
+    # The AI Declaration is a STEP (2026-08-27 ruling): its state
+    # renders on the step's own row only, and a catalog copy here was
+    # the double count the ruling removed. It still gates
+    # bAtLeastLevel2 on the wire.
+    assert "bAiDeclarationAttested" not in sCatalog, (
+        "the AI Declaration must not reappear as a project-level "
+        "catalog row — it is homed on its step"
+    )
     assert "bBinariesDeclaredOrWaived" in sCatalog, (
         "the software-declared check must be listed at Level 3 "
         "(the old card never displayed it)"

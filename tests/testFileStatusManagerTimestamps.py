@@ -531,9 +531,9 @@ def test_resolveTestSourcePaths_returns_three_canonical():
     listPaths = _flistResolveTestSourcePaths(
         dictStep, {"sRepoRoot": "/repo"},
     )
-    assert "/repo/stepA/tests/test_integrity.py" in listPaths
-    assert "/repo/stepA/tests/test_qualitative.py" in listPaths
-    assert "/repo/stepA/tests/test_quantitative.py" in listPaths
+    assert "/repo/stepA/tests/test_integrity_stepA.py" in listPaths
+    assert "/repo/stepA/tests/test_qualitative_stepA.py" in listPaths
+    assert "/repo/stepA/tests/test_quantitative_stepA.py" in listPaths
 
 
 def test_resolveTestSourcePaths_includes_user_tests():
@@ -556,9 +556,9 @@ def test_computeMaxTestSourceMtime_picks_latest_present():
     dictStep = _fdictBuildStepWithTests("stepA")
     dictWorkflow = {"listSteps": [dictStep]}
     dictModTimes = {
-        "/repo/stepA/tests/test_integrity.py": 1000,
-        "/repo/stepA/tests/test_qualitative.py": 2500,
-        "/repo/stepA/tests/test_quantitative.py": 1700,
+        "/repo/stepA/tests/test_integrity_stepA.py": 1000,
+        "/repo/stepA/tests/test_qualitative_stepA.py": 2500,
+        "/repo/stepA/tests/test_quantitative_stepA.py": 1700,
     }
     dictResult = _fdictComputeMaxTestSourceMtimeByStep(
         dictWorkflow, dictModTimes,
@@ -583,7 +583,7 @@ def test_computeMaxTestSourceMtime_subset_present():
     dictResult = _fdictComputeMaxTestSourceMtimeByStep(
         dictWorkflow,
         dictModTimes={
-            "/repo/stepA/tests/test_integrity.py": 5000,
+            "/repo/stepA/tests/test_integrity_stepA.py": 5000,
         },
         dictVars={"sRepoRoot": "/repo"},
     )
@@ -600,9 +600,9 @@ def test_computeMaxTestSourceMtime_preserves_zero_mtime():
     dictResult = _fdictComputeMaxTestSourceMtimeByStep(
         dictWorkflow,
         dictModTimes={
-            "/repo/stepA/tests/test_integrity.py": 0,
-            "/repo/stepA/tests/test_qualitative.py": 0,
-            "/repo/stepA/tests/test_quantitative.py": 0,
+            "/repo/stepA/tests/test_integrity_stepA.py": 0,
+            "/repo/stepA/tests/test_qualitative_stepA.py": 0,
+            "/repo/stepA/tests/test_quantitative_stepA.py": 0,
         },
         dictVars={"sRepoRoot": "/repo"},
     )
@@ -621,9 +621,9 @@ def test_computeTestCategoryMtimes_includes_all_three():
     dictResult = _fdictComputeTestCategoryMtimes(
         dictWorkflow,
         dictModTimes={
-            "/repo/stepA/tests/test_integrity.py": 1000,
-            "/repo/stepA/tests/test_qualitative.py": 2000,
-            "/repo/stepA/tests/test_quantitative.py": 3000,
+            "/repo/stepA/tests/test_integrity_stepA.py": 1000,
+            "/repo/stepA/tests/test_qualitative_stepA.py": 2000,
+            "/repo/stepA/tests/test_quantitative_stepA.py": 3000,
         },
         dictVars={"sRepoRoot": "/repo"},
     )
@@ -646,7 +646,7 @@ def test_computeTestCategoryMtimes_omits_missing_categories():
     dictResult = _fdictComputeTestCategoryMtimes(
         dictWorkflow,
         dictModTimes={
-            "/repo/stepA/tests/test_quantitative.py": 5000,
+            "/repo/stepA/tests/test_quantitative_stepA.py": 5000,
         },
         dictVars={"sRepoRoot": "/repo"},
     )
@@ -671,8 +671,8 @@ def test_computeTestCategoryMtimes_preserves_zero_mtime():
     dictResult = _fdictComputeTestCategoryMtimes(
         dictWorkflow,
         dictModTimes={
-            "/repo/stepA/tests/test_integrity.py": 0,
-            "/repo/stepA/tests/test_qualitative.py": 1000,
+            "/repo/stepA/tests/test_integrity_stepA.py": 0,
+            "/repo/stepA/tests/test_qualitative_stepA.py": 1000,
         },
         dictVars={"sRepoRoot": "/repo"},
     )

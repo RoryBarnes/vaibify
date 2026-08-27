@@ -89,6 +89,7 @@ __all__ = [
     "fiCountManifestEntries",
     "fbWorkflowArchivesTests",
     "flistStepTestFileRepoPaths",
+    "fsResolveTestDeclarationPath",
 ]
 
 
@@ -345,20 +346,38 @@ def flistStepTestFileRepoPaths(dictStep):
 
     Covers the ``sFilePath`` of every ``dictTests`` category and every
     ``.py`` file named in ``saTestCommands`` (the legacy unit-test
-    invocation, e.g. ``pytest tests/test_step01.py``). Command-derived
-    paths are resolved against the step directory because the test
-    commands run from the step's workdir.
+    invocation, e.g. ``pytest tests/test_step01.py``). All paths are
+    resolved against the step directory because the tests live in the
+    step's workdir; deduplicated because a file the category record
+    and a test command both name must not be offered to a push modal
+    (or pinned) twice.
     """
     listPaths = _flistTestCategoryFilePaths(dictStep)
     listPaths.extend(_flistTestCommandScriptPaths(dictStep))
-    return listPaths
+    listUnique = []
+    for sPath in listPaths:
+        if sPath not in listUnique:
+            listUnique.append(sPath)
+    return listUnique
 
 
 def _flistTestCategoryFilePaths(dictStep):
-    """Return repo-relative ``dictTests[*].sFilePath`` entries."""
+    """Return repo-relative ``dictTests[*].sFilePath`` entries.
+
+    ``sFilePath`` is recorded STEP-relative by the quantitative and
+    integrity test writers and REPO-relative (step directory included)
+    by the qualitative writer, and both spellings exist in fielded
+    project.json files, so the resolution accepts either. Taking the
+    value verbatim — as this did until 2026-08-27 — minted phantom
+    repo-root ``tests/`` paths. Every other consumer silently dropped
+    them (the manifest writer and the verify skip nonexistent files),
+    so nothing surfaced until the Zenodo archive opened one, crashed
+    on FileNotFoundError, and told the researcher to check their DOI.
+    """
     dictTests = dictStep.get("dictTests", {})
     if not isinstance(dictTests, dict):
         return []
+    sDirectory = dictStep.get("sDirectory", "") or ""
     listPaths = []
     for sCategory in TUPLE_TEST_CATEGORY_KEYS:
         dictCategory = dictTests.get(sCategory, {})
@@ -366,8 +385,27 @@ def _flistTestCategoryFilePaths(dictStep):
             continue
         sFilePath = dictCategory.get("sFilePath", "")
         if sFilePath and "{" not in sFilePath:
-            listPaths.append(fsToRepoRelative(sFilePath))
+            listPaths.append(
+                fsResolveTestDeclarationPath(sFilePath, sDirectory),
+            )
     return listPaths
+
+
+def fsResolveTestDeclarationPath(sFilePath, sDirectory):
+    """Resolve one test-file declaration to repo-relative form.
+
+    A value already anchored at the step directory (the qualitative
+    writer's spelling) passes through; anything else resolves through
+    the canonical step join, ``fsResolveStepPathToRepoPath`` — the
+    single join point every collector is required to use.
+    """
+    sVerbatim = fsToRepoRelative(sFilePath)
+    if sDirectory and (
+        sVerbatim == sDirectory
+        or sVerbatim.startswith(sDirectory + "/")
+    ):
+        return sVerbatim
+    return fsResolveStepPathToRepoPath(sFilePath, sDirectory)
 
 
 def _flistTestCommandScriptPaths(dictStep):

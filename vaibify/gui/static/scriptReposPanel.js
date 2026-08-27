@@ -86,7 +86,7 @@ var VaibifyReposPanel = (function () {
 
     function _fsRenderRowActions(dictRepo) {
         var bCanPush = !dictRepo.bMissing && !!dictRepo.sUrl;
-        var sTitle = "Push staged changes";
+        var sTitle = "Commit tracked changes and push";
         if (dictRepo.bMissing) {
             sTitle = "Missing — re-clone with terminal";
         } else if (!dictRepo.sUrl) {

@@ -104,8 +104,14 @@ _QUANTITATIVE_TEMPLATE_FOOTER = '''
 
 def _fdictLoadStandardsFile():
     """Load the quantitative standards JSON file."""
+    # The standards file carries the SAME step suffix as this test
+    # file ("test_quantitative_<step>.py" pairs with
+    # "quantitative_standards_<step>.json"), derived from __file__ so
+    # one template serves suffixed and legacy fixed names alike.
+    sSuffix = pathlib.Path(__file__).stem[len("test_quantitative"):]
     sJsonPath = str(
-        pathlib.Path(__file__).parent / "quantitative_standards.json"
+        pathlib.Path(__file__).parent
+        / ("quantitative_standards" + sSuffix + ".json")
     )
     with open(sJsonPath, encoding="utf-8") as fileHandle:
         return json.load(fileHandle)
@@ -173,8 +179,14 @@ except ImportError:
 
 def _fdictLoadIntegrityStandards():
     """Load the integrity standards JSON file."""
+    # The standards file carries the SAME step suffix as this test
+    # file ("test_integrity_<step>.py" pairs with
+    # "integrity_standards_<step>.json"), derived from __file__ so
+    # one template serves suffixed and legacy fixed names alike.
+    sSuffix = pathlib.Path(__file__).stem[len("test_integrity"):]
     sJsonPath = str(
-        pathlib.Path(__file__).parent / "integrity_standards.json"
+        pathlib.Path(__file__).parent
+        / ("integrity_standards" + sSuffix + ".json")
     )
     with open(sJsonPath, encoding="utf-8") as fileHandle:
         return json.load(fileHandle)
@@ -386,8 +398,14 @@ import pytest
 
 def _fdictLoadQualitativeStandards():
     """Load the qualitative standards JSON file."""
+    # The standards file carries the SAME step suffix as this test
+    # file ("test_qualitative_<step>.py" pairs with
+    # "qualitative_standards_<step>.json"), derived from __file__ so
+    # one template serves suffixed and legacy fixed names alike.
+    sSuffix = pathlib.Path(__file__).stem[len("test_qualitative"):]
     sJsonPath = str(
-        pathlib.Path(__file__).parent / "qualitative_standards.json"
+        pathlib.Path(__file__).parent
+        / ("qualitative_standards" + sSuffix + ".json")
     )
     with open(sJsonPath, encoding="utf-8") as fileHandle:
         return json.load(fileHandle)

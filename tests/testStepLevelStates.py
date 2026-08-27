@@ -18,6 +18,8 @@ cells are the workflow-attached requirements only — NOT an aggregate
 of the step rows (that is the scalar ``fiProofLevel`` gate).
 """
 
+import pytest
+
 from vaibify.reproducibility.levelGates import (
     fdictComputeStepLevelStates as _fdictComputeStepLevelStatesWire,
     fdictComputeStepLevelWarnings,
@@ -777,8 +779,8 @@ def testWorkflowScopeAllAttainedWhenCleanWithRepo():
     )
     assert dictStates == {
         "s1": _fdictCell("attained", 1, 1),
-        "s2": _fdictCell("attained", 2, 2),
-        "s3": _fdictCell("attained", 6, 6),
+        "s2": _fdictCell("attained", 4, 4),
+        "s3": _fdictCell("attained", 8, 8),
     }
 
 
@@ -789,8 +791,8 @@ def testWorkflowScopeRepoMissingZeroesEveryLevel():
         _fdictWorkflowWithCleanSteps(1, sProjectRepoPath=""), [], [],
     )
     assert dictStates["s1"] == _fdictCell("none", 0, 1)
-    assert dictStates["s2"] == _fdictCell("none", 0, 2)
-    assert dictStates["s3"] == _fdictCell("none", 0, 6)
+    assert dictStates["s2"] == _fdictCell("none", 0, 4)
+    assert dictStates["s3"] == _fdictCell("none", 0, 8)
 
 
 def testWorkflowScopeExcludesMissingAiDeclarationStep():
@@ -802,7 +804,7 @@ def testWorkflowScopeExcludesMissingAiDeclarationStep():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 2, 2)
+    assert dictStates["s2"] == _fdictCell("attained", 4, 4)
 
 
 def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
@@ -810,10 +812,25 @@ def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 1, 2)
+    assert dictStates["s2"] == _fdictCell("partial", 3, 4)
 
 
-def testWorkflowScopeBothCachesStaleReadsNone():
+@pytest.mark.falsification
+def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
+    """Green AI-provenance declarations earn the header partial credit.
+
+    The 2026-08-27 ruling: with both verify caches stale but the AI
+    model and Personal AI Configuration declarations satisfied, the
+    workflow L2 cell must read partial (orange), never none (red) —
+    the declarations are independent project-level checks, and a red
+    header beside green AI rows misled the researcher who had earned
+    the credit.
+
+    Kills: dropping ``ai-models-undeclared`` /
+    ``personal-layer-unanswered`` from
+    ``_T_WORKFLOW_LEVEL2_BASE_CRITERIA``, which collapses the counted
+    set back to the two verifies and turns this state red again.
+    """
     listLevel2 = [
         _fdictWorkflowBlocker(2, "github-verify-stale"),
         _fdictWorkflowBlocker(2, "zenodo-verify-stale"),
@@ -821,7 +838,20 @@ def testWorkflowScopeBothCachesStaleReadsNone():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("none", 0, 2)
+    assert dictStates["s2"] == _fdictCell("partial", 2, 4)
+
+
+def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
+    listLevel2 = [
+        _fdictWorkflowBlocker(2, "github-verify-stale"),
+        _fdictWorkflowBlocker(2, "zenodo-verify-stale"),
+        _fdictWorkflowBlocker(2, "ai-models-undeclared"),
+        _fdictWorkflowBlocker(2, "personal-layer-unanswered"),
+    ]
+    dictStates = fdictComputeWorkflowScopeLevelStates(
+        _fdictWorkflowWithCleanSteps(1), listLevel2, [],
+    )
+    assert dictStates["s2"] == _fdictCell("none", 0, 4)
 
 
 def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
@@ -837,7 +867,7 @@ def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 3, 4)
+    assert dictStates["s2"] == _fdictCell("partial", 5, 6)
 
 
 def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
@@ -846,7 +876,7 @@ def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, [], [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 2, 2)
+    assert dictStates["s2"] == _fdictCell("attained", 4, 4)
 
 
 def testWorkflowScopeIgnoresPerStepBlockerEntries():
@@ -863,7 +893,7 @@ def testWorkflowScopeLevel3BlockerOnlyDentsLevelThree():
         _fdictWorkflowWithCleanSteps(1), [], listLevel3,
     )
     assert dictStates["s2"]["sState"] == "attained"
-    assert dictStates["s3"] == _fdictCell("partial", 5, 6)
+    assert dictStates["s3"] == _fdictCell("partial", 7, 8)
 
 
 def testWorkflowScopeRegressionFlagFromWorkflowHighWater():

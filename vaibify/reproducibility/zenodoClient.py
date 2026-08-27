@@ -246,9 +246,19 @@ class ZenodoClient:
         return responseHttp.json()
 
     def _fsGetToken(self):
-        """Lazy-load the Zenodo token via secretManager."""
+        """Lazy-load the Zenodo token via secretManager, "" when absent.
+
+        Absence is an answer, not an error. Published records are
+        public, so the read paths (record fetch, file hashing) work
+        without a token — which is exactly the host-side verify's
+        situation: the researcher's token lives in the CONTAINER
+        keyring, and demanding one from the host keyring made every
+        hub-side verify die on a KeyError before any network call. A
+        mutating call sent without a token gets Zenodo's own 401,
+        surfaced as the actionable ``ZenodoAuthError``.
+        """
         if self._sToken is None:
-            self._sToken = _fsRetrieveToken(self._sService)
+            self._sToken = _fsRetrieveToken(self._sService) or ""
         return self._sToken
 
 
@@ -280,23 +290,32 @@ def fsZenodoTokenName(sService):
 
 
 def _fsRetrieveToken(sService="sandbox"):
-    """Retrieve the Zenodo token for ``sService`` via secretManager.
+    """Retrieve the Zenodo token for ``sService``, or ``""`` when absent.
 
     Reads the namespaced slot first (``zenodo_token_sandbox`` or
     ``zenodo_token_production``) and falls back to the legacy
     ``zenodo_token`` slot when the namespaced one is empty so users
-    migrating from the pre-namespaced layout keep working.
+    migrating from the pre-namespaced layout keep working. A store
+    holding neither returns ``""`` rather than raising: the caller may
+    be a read of a public record, which needs no token at all.
     """
     from vaibify.config.secretManager import fbSecretExists, fsRetrieveSecret
 
-    sNamespaced = fsZenodoTokenName(sService)
-    if fbSecretExists(sNamespaced, "keyring"):
-        return fsRetrieveSecret(sNamespaced, "keyring")
-    return fsRetrieveSecret("zenodo_token", "keyring")
+    for sSlot in (fsZenodoTokenName(sService), "zenodo_token"):
+        if fbSecretExists(sSlot, "keyring"):
+            return fsRetrieveSecret(sSlot, "keyring")
+    return ""
 
 
 def _fdictBuildAuthHeader(sToken):
-    """Return an Authorization header dict using Bearer scheme."""
+    """Return an Authorization header dict, empty when there is no token.
+
+    Sending ``Bearer <empty>`` would turn a public, tokenless read
+    into a 401; sending nothing lets Zenodo answer by resource — a
+    published record serves, a mutation refuses with its own 401.
+    """
+    if not sToken:
+        return {}
     return {"Authorization": f"Bearer {sToken}"}
 
 

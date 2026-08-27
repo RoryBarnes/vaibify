@@ -436,6 +436,24 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": False,
      "sDescription": "Set Zenodo title, creators, license, keywords. "
                      "User-only: researcher authorship / licensing."},
+    {"sName": "declare-zenodo-record", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo/{sContainerId}/records",
+     "bAgentSafe": True,
+     "sDescription": "Declare an additional Zenodo record the "
+                     "archive checks should consult (e.g. a software "
+                     "deposit made by Zenodo's GitHub integration). "
+                     "Args: {sRecordId: '123456'} or {sDoi: "
+                     "'10.5281/zenodo.123456'}. Declaring cannot fake "
+                     "agreement — files still have to hash-match."},
+    {"sName": "remove-zenodo-record", "sCategory": "sync",
+     "sMethod": "DELETE",
+     "sPath": "/api/zenodo/{sContainerId}/records/{sRecordId}",
+     "bAgentSafe": True,
+     "sDescription": "Stop consulting a previously declared Zenodo "
+                     "record. Only declared records are removable; "
+                     "the primary record belongs to the archive "
+                     "flow."},
     {"sName": "download-zenodo-dataset", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/zenodo/{sContainerId}/download",

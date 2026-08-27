@@ -13,11 +13,13 @@
 
    Everything renders verbatim from the poll's
    ``dictWorkflowEnvelopeDetail`` (the four render sections plus the
-   project-wide booleans bAiDeclarationAttested /
-   bRebuildAttestationCurrent / bOverleafBound / bArxivConfigured /
-   bAiModelsDeclared / bPersonalLayerDeclared /
+   project-wide booleans bRebuildAttestationCurrent / bOverleafBound /
+   bArxivConfigured / bAiModelsDeclared / bPersonalLayerDeclared /
    bProjectContextFileExists and the declared
    dictAiProvenance block for the Replay-axis AI section).
+   bAiDeclarationAttested still rides the wire but no project-level
+   row reads it: the AI Declaration is a step, and its state renders
+   on the step's own row only (2026-08-27 ruling).
    A null remote-sync cache renders the hollow "never verified"
    light — never green (the dashboard-ground-truth honesty rule).
 
@@ -331,24 +333,6 @@ var VaibifyWorkflowRequirements = (function () {
             (sExtraHtml || '') + '</div>';
     }
 
-    function _fsRenderDeclarationDetail(dictContext, sHowto) {
-        var sFile = dictContext.sAiDeclarationFile || "";
-        var sBody;
-        if (sFile) {
-            sBody = _fsRenderFileRowWithBadges(
-                sFile, ["sGithub", "sZenodo"]);
-        } else {
-            sBody = '<div class="ghost-ai-declaration-row">' +
-                '<span class="ghost-ai-declaration-label">' +
-                'No AI declaration step yet</span>' +
-                '<button class="btn btn-add-ai-declaration-step" ' +
-                'type="button">Add AI declaration step</button></div>';
-        }
-        return '<div class="requirement-row-detail">' + sBody +
-            '<div class="requirement-row-howto">' +
-            fnEscapeHtml(sHowto) + '</div></div>';
-    }
-
     function _fsRenderArtifactDetail(sKey, dictArtifact, sHowto) {
         // Every artifact shows its repo location (with git/Zenodo
         // badges — these files are canonical), plain-English guidance,
@@ -559,17 +543,53 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _flistEnvelopeMirrorRows(dictDetail) {
-        /* The Level 3 published-copy row, in its own section so it
-           reads as the parallel of the Level 2 "GitHub mirror" row
-           rather than as a sub-item of one. Zenodo has no twin here
-           by ruling (2026-08-26): a deposit is a data archive, and a
-           project that reproduces from the repository and archives
-           results to a DOI is doing nothing wrong. */
-        var bMatched = dictDetail.bEnvelopeInGithubMirror === true;
+        /* The Level 3 published-copy rows, in their own section so
+           they read as the parallel of the Level 2 sync rows rather
+           than as sub-items of one. Zenodo's twin joined on
+           2026-08-26, reversing a same-day GitHub-only ruling:
+           Level 3 claims a third party can re-fetch and re-execute,
+           and GitHub is not an archive — an envelope that lives only
+           there gives the claim the lifetime of a mutable host. */
         var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
-        return [{
-            sKey: "envelopeMirror", iLevel: 3,
-            sTitle: "GitHub mirror",
+        return [
+            _fdictEnvelopeRemoteRow(
+                "envelopeMirror", "GitHub mirror", "github",
+                "sGithub", listEnvelope,
+                dictDetail.bEnvelopeInGithubMirror === true,
+                'The published reproduce script, manifest, ' +
+                'dependency lock, environment snapshot and ' +
+                'Dockerfile match the copies in this repository.',
+                'One of the envelope files differs from the copy on ' +
+                'GitHub, or has not been compared with it. A third ' +
+                'party reproducing from the published repository ' +
+                'would not be running what you ran. Commit and push ' +
+                'the current envelope, then verify.'),
+            _fdictEnvelopeRemoteRow(
+                "envelopeArchive", "Zenodo archive", "zenodo",
+                "sZenodo", listEnvelope,
+                dictDetail.bEnvelopeInZenodoArchive === true,
+                'The envelope files are in the Zenodo archive under ' +
+                'a DOI. Zenodo versions are immutable, so this row ' +
+                'goes red after any envelope change and comes back ' +
+                'at your next published version — Level 3 describes ' +
+                'a published release, not the working tree.',
+                'One of the envelope files is not in the Zenodo ' +
+                'archive, differs from the archived copy, or has ' +
+                'not been compared with it. The DOI a reader ' +
+                'resolves in ten years must carry what they need to ' +
+                're-run this project. Publish a new deposit version ' +
+                'containing the envelope (or declare the Zenodo ' +
+                'record that already holds it), then verify.'),
+        ];
+    }
+
+    function _fdictEnvelopeRemoteRow(
+        sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
+        sMatchedNote, sDivergedNote,
+    ) {
+        return {
+            sKey: sKey, iLevel: 3,
+            sTitle: sTitle,
             sState: bMatched ? "green" : "red",
             fsDetail: function () {
                 // The per-file rows the Level 2 sync rows no longer
@@ -580,7 +600,7 @@ var VaibifyWorkflowRequirements = (function () {
                 var sFiles = "";
                 for (var i = 0; i < listEnvelope.length; i++) {
                     sFiles += _fsRenderFileRowWithBadges(
-                        listEnvelope[i], ["sGithub"]);
+                        listEnvelope[i], [sBadgeKey]);
                 }
                 if (!sFiles) {
                     sFiles = '<div class="envelope-empty-note">' +
@@ -593,22 +613,13 @@ var VaibifyWorkflowRequirements = (function () {
                 // press a button is how a row becomes a dead end.
                 var sVerify = '<div class="requirement-row-actions">' +
                     '<button type="button" class="btn ' +
-                    'wf-verify-remote" data-service="github">' +
+                    'wf-verify-remote" data-service="' +
+                    fnEscapeHtml(sService) + '">' +
                     'Verify now</button></div>';
-                if (bMatched) {
-                    return sFiles + '<div class="detail-note">The ' +
-                        'published reproduce script, manifest, ' +
-                        'dependency lock, environment snapshot and ' +
-                        'Dockerfile match the copies in this ' +
-                        'repository.</div>' + sVerify;
-                }
-                return sFiles + '<div class="detail-note">One of the ' +
-                    'envelope files differs from the copy on GitHub, ' +
-                    'or has not been compared with it. A third party ' +
-                    'reproducing from the published repository would ' +
-                    'not be running what you ran. Commit and push the ' +
-                    'current envelope, then verify.</div>' + sVerify;
-            }}];
+                var sNote = bMatched ? sMatchedNote : sDivergedNote;
+                return sFiles + '<div class="detail-note">' + sNote +
+                    '</div>' + sVerify;
+            }};
     }
 
     function _flistDeterminismRows(dictDetail) {
@@ -881,11 +892,13 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
-    function _flistAiRows(dictDetail, dictContext) {
-        // The Replay axis: which models did the work (declaration,
-        // Level 2 gating) and the researcher's AI Declaration
-        // sign-off — regrouped here from Attestation so the AI
-        // provenance material reads as one concern.
+    function _flistAiRows(dictDetail) {
+        // The Replay axis: the two project-level AI-provenance
+        // declarations, each an independent Level 2 check that also
+        // counts in the workflow-scope header cell. The AI
+        // Declaration sign-off is deliberately NOT a row here: it is
+        // a step, its state lives on the step's own row, and a
+        // project-level copy double-counted it (2026-08-27 ruling).
         return [
             {sKey: "aiModelPrompts", iLevel: 2,
              sTitle: "AI Model / Prompts",
@@ -901,16 +914,6 @@ var VaibifyWorkflowRequirements = (function () {
              fsDetail: function () {
                  return VaibifyPersonalLayer
                      .fsRenderPersonalLayerDetail(dictDetail);
-             }},
-            {sKey: "aiDeclaration", iLevel: 2,
-             sTitle: "AI Declaration",
-             sState: _fsLightStateFromBoolean(
-                 dictDetail.bAiDeclarationAttested === true),
-             fsDetail: function () {
-                 return _fsRenderDeclarationDetail(
-                     dictContext,
-                     "The declaration must be committed and attested " +
-                     "before Level 2.");
              }},
         ];
     }
@@ -1299,7 +1302,7 @@ var VaibifyWorkflowRequirements = (function () {
              _flistPublishedCopiesRows(dictDetail), ""],
             ["publishedEnvelope",
              _flistEnvelopeMirrorRows(dictDetail), ""],
-            ["ai", _flistAiRows(dictDetail, dictContext), ""],
+            ["ai", _flistAiRows(dictDetail), ""],
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],
         ];

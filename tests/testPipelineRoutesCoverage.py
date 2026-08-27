@@ -1668,8 +1668,8 @@ _DICT_ALL_ATTAINED_STEP_CELLS = {
 
 _DICT_ALL_ATTAINED_SCOPE_CELLS = {
     "s1": _fdictAttainedCell(1, 1),
-    "s2": _fdictAttainedCell(2, 2),
-    "s3": _fdictAttainedCell(6, 6),
+    "s2": _fdictAttainedCell(4, 4),
+    "s3": _fdictAttainedCell(8, 8),
 }
 
 _DICT_NO_WARNING = {
@@ -1805,6 +1805,9 @@ class TestPollLevelStatePayload:
             # there would re-couple the levels in the UI after the
             # gates had been deliberately kept apart.
             "bEnvelopeInGithubMirror",
+            # The permanent-archive twin (2026-08-26, reversing the
+            # same-day GitHub-only ruling).
+            "bEnvelopeInZenodoArchive",
             # Which files that answer is ABOUT. Sent rather than
             # mirrored in JavaScript so the partition keeps one
             # authority: the Level 2 rows subtract this set from their

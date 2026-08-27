@@ -123,7 +123,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # other — so the union of the two review sets lands one lower than
 # either lane's own count. The tracked-repos conf fetch row rode the
 # same branch already classified.
-I_UNCLASSIFIED_ROW_BUDGET = 285
+I_UNCLASSIFIED_ROW_BUDGET = 284
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -222,7 +222,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # to sit under the project's registered directory before the worker
 # opens, and the destination is composed, never accepted. Classified
 # on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 211
 
 
 # Every acquisition of a declared capability that still has no reviewed

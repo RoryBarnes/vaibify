@@ -34,6 +34,7 @@ __all__ = [
     "fsQualitativeStandardsPath",
     "fsQualitativeTemplateHash",
     "fsQualitativeTestPath",
+    "fsStepTestSuffix",
     "fsQuantitativeStandardsPath",
     "fsQuantitativeTemplateHash",
     "fsQuantitativeTestPath",
@@ -165,41 +166,87 @@ def fsTestFilePath(sDirectory, iStepIndex):
     return posixpath.join(sDirectory, sFilename)
 
 
+def fsStepTestSuffix(sStepDirectory):
+    """Return the step-derived filename suffix for generated tests.
+
+    The step directory's basename with its first letter lowered —
+    ``AiPowerOverTime`` → ``aiPowerOverTime`` — the convention the
+    fielded suffixed test names already follow. The suffix is what
+    keeps generated basenames unique across steps: a Zenodo deposit is
+    FLAT (the bucket API refuses path-containing keys, probed
+    2026-08-27), so two steps' identically-named ``test_qualitative.py``
+    silently overwrote each other in a published record (approved
+    ruling, 2026-08-27).
+    """
+    sBase = posixpath.basename((sStepDirectory or "").rstrip("/"))
+    if not sBase:
+        return ""
+    return sBase[0].lower() + sBase[1:]
+
+
+def _fsSuffixedTestFilename(sStem, sStepDirectory, sExtension):
+    """Compose ``<sStem>_<stepSuffix>.<ext>``, unsuffixed when no step."""
+    sSuffix = fsStepTestSuffix(sStepDirectory)
+    if sSuffix:
+        return f"{sStem}_{sSuffix}.{sExtension}"
+    return f"{sStem}.{sExtension}"
+
+
 def fsIntegrityTestPath(sStepDirectory):
     """Return the integrity test file path for a step."""
-    return posixpath.join(sStepDirectory, "tests", "test_integrity.py")
+    return posixpath.join(
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename("test_integrity", sStepDirectory, "py"),
+    )
 
 
 def fsQualitativeTestPath(sStepDirectory):
     """Return the qualitative test file path for a step."""
-    return posixpath.join(sStepDirectory, "tests", "test_qualitative.py")
+    return posixpath.join(
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename(
+            "test_qualitative", sStepDirectory, "py",
+        ),
+    )
 
 
 def fsQuantitativeTestPath(sStepDirectory):
     """Return the quantitative test file path for a step."""
     return posixpath.join(
-        sStepDirectory, "tests", "test_quantitative.py",
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename(
+            "test_quantitative", sStepDirectory, "py",
+        ),
     )
 
 
 def fsQuantitativeStandardsPath(sStepDirectory):
     """Return the quantitative standards JSON path for a step."""
     return posixpath.join(
-        sStepDirectory, "tests", "quantitative_standards.json",
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename(
+            "quantitative_standards", sStepDirectory, "json",
+        ),
     )
 
 
 def fsIntegrityStandardsPath(sStepDirectory):
     """Return the integrity standards JSON path for a step."""
     return posixpath.join(
-        sStepDirectory, "tests", "integrity_standards.json",
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename(
+            "integrity_standards", sStepDirectory, "json",
+        ),
     )
 
 
 def fsQualitativeStandardsPath(sStepDirectory):
     """Return the qualitative standards JSON path for a step."""
     return posixpath.join(
-        sStepDirectory, "tests", "qualitative_standards.json",
+        sStepDirectory, "tests",
+        _fsSuffixedTestFilename(
+            "qualitative_standards", sStepDirectory, "json",
+        ),
     )
 
 

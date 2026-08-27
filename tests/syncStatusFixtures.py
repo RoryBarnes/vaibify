@@ -30,6 +30,8 @@ Tests that want the corrupt shape ask for it explicitly through
 ``iMatchingOverride``, which reads as the deliberate act it is.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from vaibify.reproducibility.publicationScope import (
     I_PUBLICATION_SCOPE_VERSION,
 )
@@ -48,6 +50,19 @@ __all__ = [
 TUPLE_DEFAULT_COMPARED_PATHS = (
     "step01/data.csv", "step01/run.py", "step02/out.json",
 )
+
+
+def fsRecentVerifyIso(fHoursAgo=1.0):
+    """An ISO timestamp comfortably inside the freshness window.
+
+    Computed at call time, because a literal date in a fixture is a
+    time bomb: the 2026-08-26 literals passed all day and started
+    failing at midnight, when the 24-hour freshness window slid past
+    them -- six tests red with nothing wrong in the code.
+    """
+    return (
+        datetime.now(timezone.utc) - timedelta(hours=fHoursAgo)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def fdictBuildCachedVerify(

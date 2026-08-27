@@ -329,7 +329,9 @@ def test_fnPersistZenodoPublishRecord_handles_missing_fields():
         _fnPersistZenodoPublishRecord,
     )
     dictWf = {}
-    _fnPersistZenodoPublishRecord(dictWf, {"iDepositId": 7})
+    _fnPersistZenodoPublishRecord(
+        dictWf, {"iDepositId": 7}, "sandbox",
+    )
     assert dictWf["sZenodoDepositionId"] == "7"
     assert "sZenodoLatestDoi" not in dictWf
 

@@ -33,6 +33,7 @@ from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_SEPARATE_AUTHORITY,
+    S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
 from ..pipelineServer import (
@@ -46,6 +47,7 @@ from ..pipelineServer import (
     SyncTrackingRequest,
     WORKSPACE_ROOT,
     ZenodoMetadataRequest,
+    ZenodoRecordRequest,
     fdictRequireWorkflow,
     fnBumpSyncEpoch,
     fsValidatePathWithinRoot,
@@ -825,6 +827,31 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
+        # One resolution, before every consumer. The per-file badge
+        # action posts the badge-dictionary key, which is
+        # repo-relative; the modal posts absolute candidate paths.
+        # The existence pre-flight resolved both, but the upload
+        # script opened the RAW strings from the exec's working
+        # directory — so a repo-relative selection passed the
+        # pre-flight and then died in the container as
+        # LOCAL-FILE-ERROR, with a modal telling the researcher to
+        # re-run a step that had nothing to do with it (live,
+        # 2026-08-27, project.json).
+        request.listFilePaths = _flistResolveArchivePaths(
+            request.listFilePaths,
+            dictWorkflow.get("sProjectRepoPath") or "",
+        )
+        # The same existence pre-flight the GitHub push runs: name the
+        # missing selected files BEFORE any upload starts. Without it
+        # the in-container archive script crashed opening the first
+        # absent file, and the FileNotFoundError text ("No such file")
+        # classified as a REMOTE notFound — a researcher with four
+        # phantom paths in the push list was told to check their DOI.
+        _fnRefuseMissingPushFiles(
+            dictCtx["docker"], sContainerId, request.listFilePaths,
+            dictWorkflow.get("sProjectRepoPath") or "",
+        )
+        _fnRefuseBasenameCollisions(request.listFilePaths)
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
             syncDispatcher, dictCtx, sContainerId, dictWorkflow,
             request, requestHttp,
@@ -836,6 +863,62 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictResult, sZenodoService, requestHttp,
         )
         return dictResult
+
+
+def _flistResolveArchivePaths(listFilePaths, sProjectRepoPath):
+    """Resolve repo-relative archive selections to absolute paths.
+
+    The archive script opens each path from the exec's default
+    working directory, which is rarely the project repo, so every
+    selection must arrive absolute. Without a repo path the list is
+    returned unchanged — the pre-flight then reports honestly on
+    whatever the caller sent.
+    """
+    if not sProjectRepoPath:
+        return list(listFilePaths or [])
+    return [
+        sPath if sPath.startswith("/")
+        else posixpath.join(sProjectRepoPath, sPath)
+        for sPath in listFilePaths or []
+    ]
+
+
+def _fnRefuseBasenameCollisions(listFilePaths):
+    """Refuse an archive whose selection collides on basenames.
+
+    A Zenodo deposit is FLAT — the bucket API refuses path-containing
+    keys (probed 2026-08-27, both encodings) — so files upload under
+    their basenames and the second of a colliding pair silently
+    OVERWRITES the first: the published record is then missing a file
+    and says nothing. Live instance: two steps' ``test_qualitative.py``
+    and ``qualitative_standards.json`` went up, one of each came back.
+    Refusing with the pairs named is the Overleaf collision precedent
+    applied to the archive (approved ruling, 2026-08-27).
+    """
+    dictByBasename = {}
+    for sPath in listFilePaths or []:
+        dictByBasename.setdefault(
+            posixpath.basename(sPath), [],
+        ).append(sPath)
+    listCollisions = [
+        listPaths for listPaths in dictByBasename.values()
+        if len(listPaths) > 1
+    ]
+    if not listCollisions:
+        return
+    sPairs = "; ".join(
+        ", ".join(listPaths) for listPaths in listCollisions
+    )
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "These selected files share a filename, and a Zenodo "
+            "deposit is flat — uploading both would silently "
+            f"overwrite one: {sPairs}. Rename one of each pair "
+            "(regenerating the tests gives them step-specific "
+            "names), then archive again."
+        ),
+    )
 
 
 async def _ftPerformZenodoArchive(
@@ -894,7 +977,9 @@ async def _fnPersistZenodoArchiveSuccess(
     having. The save that follows is a mode-(a) synchronous commit
     whose bytes the journal can adjudicate.
     """
-    _fnPersistZenodoPublishRecord(dictWorkflow, dictResult)
+    _fnPersistZenodoPublishRecord(
+        dictWorkflow, dictResult, sZenodoService,
+    )
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, request.listFilePaths, "Zenodo",
     )
@@ -919,6 +1004,21 @@ async def _fnPersistZenodoArchiveSuccess(
         dictCtx, sContainerId, dictWorkflow, requestHttp,
         "The Zenodo archive record",
     )
+    # AFTER the save: fnSaveWorkflowToContainer derives
+    # dictRemotes.zenodo from the deposit id this archive just
+    # recorded, and the verify needs that record. The hop is the same
+    # shared best-effort one every other push route runs — the L2/L3
+    # cells read the VERIFY cache, never the push, so an archive
+    # without it left the Zenodo cells "?" until the researcher
+    # clicked Verify now on the deposit they had just published
+    # (live, 2026-08-27). A failed verify warns and never fails the
+    # archive; a fresh record can lag Zenodo's index briefly, and
+    # that surfaces as the warning rather than a silent gap.
+    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
+        dictCtx, sContainerId, dictWorkflow, "zenodo", requestHttp,
+    )
+    if sVerifyWarning:
+        dictResult["sPostPushVerifyWarning"] = sVerifyWarning
 
 
 def _fnRegisterZenodoDeposit(app, dictCtx):
@@ -944,6 +1044,134 @@ def _fdictBuildDepositSummary(dictWorkflow):
         "sHtmlUrl": dictWorkflow.get("sZenodoLatestUrl", ""),
         "sService": dictWorkflow.get("sZenodoService", ""),
     }
+
+
+def _fnRegisterZenodoRecords(app, dictCtx):
+    """Register the declared-record endpoints for the Zenodo archive.
+
+    Zenodo's own GitHub integration archives a code release as a
+    SEPARATE record with its own DOI, so a project legitimately holds
+    a data deposit AND a software deposit — both on Zenodo. Declaring
+    the second record is how the verify (and the Level 3
+    envelope-in-archive criterion) come to consult it; a criterion
+    checking only the primary record would fire falsely on the
+    arrangement Zenodo itself promotes.
+    """
+
+    @app.get("/api/zenodo/{sContainerId}/records")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictGetZenodoRecords(sContainerId: str):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        return {
+            "listRecords": _flistDeclaredRecordsOf(dictWorkflow),
+            "sPrimaryRecordId": _fsPrimaryRecordIdOf(dictWorkflow),
+        }
+
+    @ffnAgentAction("declare-zenodo-record")
+    @app.post("/api/zenodo/{sContainerId}/records")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareZenodoRecord(
+        sContainerId: str, request: ZenodoRecordRequest,
+        requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRecordId = _fsResolveDeclaredRecordId(request)
+        bAdded = workflowManager.fbDeclareZenodoRecord(
+            dictWorkflow, sRecordId, request.sDoi or "",
+        )
+        if bAdded:
+            fdictCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The Zenodo record declaration",
+            )
+        return {
+            "bAdded": bAdded,
+            "listRecords": _flistDeclaredRecordsOf(dictWorkflow),
+            "sPrimaryRecordId": _fsPrimaryRecordIdOf(dictWorkflow),
+        }
+
+    @ffnAgentAction("remove-zenodo-record")
+    @app.delete("/api/zenodo/{sContainerId}/records/{sRecordId}")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictRemoveZenodoRecord(
+        sContainerId: str, sRecordId: str, requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        bRemoved = workflowManager.fbRemoveZenodoRecord(
+            dictWorkflow, sRecordId,
+        )
+        if not bRemoved:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No declared Zenodo record '{sRecordId}' to "
+                    "remove. The primary record is managed by the "
+                    "archive flow and cannot be removed here."
+                ),
+            )
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Zenodo record removal",
+        )
+        return {
+            "bRemoved": True,
+            "listRecords": _flistDeclaredRecordsOf(dictWorkflow),
+            "sPrimaryRecordId": _fsPrimaryRecordIdOf(dictWorkflow),
+        }
+
+
+def _flistDeclaredRecordsOf(dictWorkflow):
+    """Return the declared Zenodo records, primary first."""
+    from vaibify.reproducibility import scheduledReverify
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo") or {}
+    return scheduledReverify.flistZenodoDeclaredRecords(dictZenodo)
+
+
+def _fsPrimaryRecordIdOf(dictWorkflow):
+    """Return the primary Zenodo record id, or an empty string.
+
+    The primary is the deposit vaibify itself publishes to; the modal
+    uses this to render it without a remove control, matching the
+    DELETE route's refusal to remove it.
+    """
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo") or {}
+    return str(dictZenodo.get("sRecordId") or "").strip()
+
+
+def _fsResolveDeclaredRecordId(request):
+    """Resolve the record id from the request, deriving it from the DOI.
+
+    Raises HTTP 400 when neither a numeric record id nor a genuine
+    Zenodo DOI is supplied — inventing a record id would make the
+    verify consult a deposit the researcher never named.
+    """
+    sRecordId = (request.sRecordId or "").strip()
+    if not sRecordId:
+        sRecordId = workflowManager.fsZenodoRecordIdFromDoi(
+            request.sDoi or "",
+        )
+    if not sRecordId or not sRecordId.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Provide a numeric Zenodo record id (sRecordId) or a "
+                "Zenodo DOI ending in /zenodo.<record-id> (sDoi)."
+            ),
+        )
+    return sRecordId
 
 
 def _fnRegisterZenodoMetadata(app, dictCtx):
@@ -1716,10 +1944,13 @@ def _ftRunServiceValidation(
         sZenodoService = syncDispatcher.fsZenodoInstanceToService(
             sZenodoInstance or "sandbox"
         )
-        bPass = syncDispatcher.fbValidateZenodoToken(
+        # The detail names what actually failed (missing container
+        # package / rejected by the named instance / no token / no
+        # network). It used to be dropped here, so every failure
+        # rendered as "check deposit scopes".
+        return syncDispatcher.ftResultValidateZenodoToken(
             connectionDocker, sContainerId, sZenodoService,
         )
-        return (bPass, "")
     if sService == "overleaf":
         return _ftRunOverleafValidation(
             syncDispatcher, connectionDocker,
@@ -1744,10 +1975,16 @@ def _fsOverleafRemediation(sStderrFragment):
 
 
 def _fsServiceRemediation(sService, sDetail=""):
-    """Return the user-facing remediation message for a service."""
+    """Return the user-facing remediation message for a service.
+
+    A service-supplied detail wins: it names the failure that actually
+    happened, where the generic fallback guesses at scopes and sends a
+    researcher whose real problem is a missing container package or a
+    wrong instance to the wrong fix.
+    """
     if sService == "overleaf":
         return _fsOverleafRemediation(sDetail)
-    return _S_ZENODO_REMEDIATION
+    return sDetail or _S_ZENODO_REMEDIATION
 
 
 def _fnCleanupCredential(
@@ -2037,6 +2274,19 @@ def _fnRegisterSyncRoutes(app, dictCtx):
             dictWorkflow)
         dictVars = dictCtx["variables"](sContainerId)
         sWorkflowRoot = dictCtx["workflowDir"](sContainerId)
+        if sService == "zenodo":
+            # Zenodo candidates are the full publication union — the
+            # gates compare project.json, the declaration, inputs and
+            # the envelope, so the modal must offer them too.
+            return syncDispatcher.flistCollectZenodoArchiveCandidates(
+                dictWorkflow, dictSync, dictVars, sWorkflowRoot,
+                ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+                fnPathsExist=lambda listPaths: (
+                    dictCtx["docker"].flistContainerPathsExist(
+                        sContainerId, listPaths,
+                    )
+                ),
+            )
         return syncDispatcher.flistCollectOutputFiles(
             dictWorkflow, dictSync, dictVars,
             sService or None, sWorkflowRoot,
@@ -2214,12 +2464,31 @@ def _fdictParseZenodoResult(sOut):
     return {}
 
 
-def _fnPersistZenodoPublishRecord(dictWorkflow, dictResult):
-    """Store deposit id + DOIs + HTML URL on the workflow."""
+def _fnPersistZenodoPublishRecord(
+    dictWorkflow, dictResult, sZenodoService,
+):
+    """Store deposit id + DOIs + HTML URL on the workflow.
+
+    Also advances ``dictRemotes.zenodo`` — the record every verify
+    consults. The legacy-remotes migration deliberately never
+    overwrites an existing entry, so after a SECOND publish the
+    legacy keys advanced while ``dictRemotes.zenodo.sRecordId`` kept
+    the first deposit's id, and the post-archive auto-verify compared
+    the fresh files against the old immutable version — "9 of 24
+    matching" about a deposit that had just been published complete
+    (live, 2026-08-27). A publish is new ground truth, not a
+    derivation; declared ``listRecords`` are preserved untouched.
+    """
     if dictResult.get("iDepositId"):
         dictWorkflow["sZenodoDepositionId"] = str(
             dictResult["iDepositId"]
         )
+        dictRemotes = dictWorkflow.setdefault("dictRemotes", {})
+        dictZenodo = dictRemotes.setdefault("zenodo", {})
+        dictZenodo["sRecordId"] = str(dictResult["iDepositId"])
+        dictZenodo["sService"] = sZenodoService
+        if dictResult.get("sDoi"):
+            dictZenodo["sDoi"] = dictResult["sDoi"]
     if dictResult.get("sDoi"):
         dictWorkflow["sZenodoLatestDoi"] = dictResult["sDoi"]
     if dictResult.get("sConceptDoi"):
@@ -3100,6 +3369,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterZenodoArchive(app, dictCtx)
     _fnRegisterZenodoMetadata(app, dictCtx)
     _fnRegisterZenodoDeposit(app, dictCtx)
+    _fnRegisterZenodoRecords(app, dictCtx)
     _fnRegisterGithubPush(app, dictCtx)
     _fnRegisterGithubAddFile(app, dictCtx)
     _fnRegisterGithubIdentity(app, dictCtx)
