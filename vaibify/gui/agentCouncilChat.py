@@ -34,12 +34,16 @@ staged and the host file deleted the instant its tarball is built, so
 no token sits at rest on the researcher's disk; that is unchanged here.
 What a session-scoped runner widens is the window the copy lives INSIDE
 the container — a turn's is one turn long, a conversation's is the
-conversation. So the session is bounded twice: idle
+conversation. So the RUNNER is bounded twice: idle
 (:data:`F_CHAT_IDLE_TIMEOUT_SECONDS`) so a closed browser tab cannot
 strand a runner holding a token, and absolute
 (:data:`F_CHAT_SESSION_CEILING_SECONDS`) so an open tab left overnight
 cannot either. Both are enforced by the reaper on the hub's own clock,
-never by the browser: a rule the client enforces is not a bound.
+never by the browser: a rule the client enforces is not a bound. What
+expiry destroys is the runner alone: the conversation RESTS — its
+transcript is the server's, quoted in full on every message — and the
+researcher's next question rebuilds a runner with a fresh credential
+window (ruling 2026-08-27: a conversation must survive a meeting).
 
 This module touches no Docker SDK — every daemon operation goes through
 ``agentCouncilDockerGateway``, the single council SDK authority — and
@@ -74,11 +78,14 @@ __all__ = [
     "S_CHAT_STATE_ANSWERING",
     "S_CHAT_STATE_FAILED",
     "S_CHAT_STATE_READY",
+    "S_CHAT_STATE_RESTING",
+    "fbChatAnswerInFlightForCampaign",
     "fbResourceHasChatMessageInFlight",
     "fdictAskChatQuestion",
     "fdictCloseChatSession",
     "fdictDescribeChatSession",
     "fdictOpenChatSession",
+    "fdictRestChatConversation",
     "flistCloseChatSessionsForResource",
     "fiReapExpiredChatSessions",
     "fsComposeChatEgressScope",
@@ -101,6 +108,12 @@ S_CHAT_EGRESS_SCOPE_SUFFIX = "-chat"
 S_CHAT_STATE_READY = "ready"
 S_CHAT_STATE_ANSWERING = "answering"
 S_CHAT_STATE_FAILED = "failed"
+# The conversation OUTLIVES its runner (researcher ruling 2026-08-27:
+# a conversation must survive a class or a meeting). The idle clock
+# bounds the credential copy's residency inside the runner, so what it
+# reaps is the RUNNER; the transcript stays, the session rests, and
+# the next question rebuilds a runner with a fresh credential window.
+S_CHAT_STATE_RESTING = "resting"
 
 # One chat message's wall clock. Far shorter than a deliberation turn's
 # hour: a turn explores a repository with tool calls, an answer about
@@ -232,6 +245,21 @@ def fbResourceHasChatMessageInFlight(dictControllerState, sResourceName):
             dictControllerState).values())
 
 
+def fbChatAnswerInFlightForCampaign(dictControllerState, sCampaignId):
+    """Report whether THIS campaign's conversation is mid-answer.
+
+    The campaign-work gate's chat half: an idle conversation is drained
+    before deliberation continues, but an answer in flight is paid
+    provider work the researcher is waiting on, so the caller refuses
+    with the real reason instead of destroying it mid-turn.
+    """
+    dictSession = _fdictSessionsByCampaign(dictControllerState).get(
+        sCampaignId)
+    if dictSession is None:
+        return False
+    return dictSession["sState"] == S_CHAT_STATE_ANSWERING
+
+
 # ----- opening ----------------------------------------------------------
 
 
@@ -287,6 +315,7 @@ def _fdictCreateSessionRecord(dictOpenRequest):
         "sRequestedModel": dictParticipant["sRequestedModel"],
         "dictParticipant": dictParticipant,
         "sState": S_CHAT_STATE_READY,
+        "bSuspending": False,
         "sFailureReason": "",
         "sPendingMessageId": "",
         "listMessages": [],
@@ -448,6 +477,8 @@ async def fdictAskChatQuestion(dictControllerState, sCampaignId,
     """
     dictSession = _fdictRequireSession(dictControllerState, sCampaignId)
     _fnRefuseUnaskableQuestion(dictSession, sQuestionText)
+    if dictSession["sState"] == S_CHAT_STATE_RESTING:
+        await _fnWakeRestingChatRunner(dictSession)
     dictMessage = _fdictAppendMessage(
         dictSession, agentCouncilCharter.S_CHAT_AUTHOR_RESEARCHER,
         sQuestionText)
@@ -470,6 +501,10 @@ def _fnRefuseUnaskableQuestion(dictSession, sQuestionText):
     """Refuse a message this session cannot honestly serve."""
     if dictSession["bClosing"]:
         raise CouncilChatError("this conversation is closing")
+    if dictSession.get("bSuspending"):
+        raise CouncilChatError(
+            "the chairbot's runner is being rested; ask again in a "
+            "moment")
     if dictSession["sState"] == S_CHAT_STATE_ANSWERING:
         raise CouncilChatError(
             "the chairbot is still answering the previous message")
@@ -486,6 +521,30 @@ def _fnRefuseUnaskableQuestion(dictSession, sQuestionText):
             "Close it and open a fresh one.")
     if not sQuestionText.strip():
         raise CouncilChatError("a question must not be empty")
+
+
+async def _fnWakeRestingChatRunner(dictSession):
+    """Rebuild a resting conversation's runner before its next message.
+
+    A new runner means a new credential window, so both clocks restart
+    with it: the ceilings bound the RUNNER'S residency, and this is a
+    different runner. A rebuild that fails marks the session FAILED
+    with the reason — the researcher reads why, and the transcript is
+    still theirs to close.
+    """
+    try:
+        await asyncio.to_thread(_fnBuildChatRunner, dictSession)
+    except BaseException as error:
+        await asyncio.to_thread(_fdictTearDownChatResources, dictSession)
+        dictSession["sState"] = S_CHAT_STATE_FAILED
+        dictSession["sFailureReason"] = (
+            "the chairbot's runner could not be rebuilt after resting: "
+            + str(error))
+        raise
+    fNow = time.monotonic()
+    dictSession["fOpenedMonotonic"] = fNow
+    dictSession["fLastActivityMonotonic"] = fNow
+    dictSession["sState"] = S_CHAT_STATE_READY
 
 
 def _fdictAppendMessage(dictSession, sAuthor, sText):
@@ -715,7 +774,7 @@ async def flistCloseChatSessionsForResource(dictControllerState,
 
 
 async def fiReapExpiredChatSessions(dictControllerState):
-    """Close every conversation past its idle or absolute bound.
+    """Rest every conversation past its idle or absolute bound.
 
     Runs on the hub's own clock so a browser that was closed, crashed,
     or simply navigated away cannot strand a runner holding a copied
@@ -723,18 +782,80 @@ async def fiReapExpiredChatSessions(dictControllerState):
     has its own wall clock, the researcher is waiting on it, and
     killing it here would report a fault the model never had.
 
-    Returns how many were closed.
+    What expiry destroys is the RUNNER — the credential copy's
+    residency, which is the thing the clocks bound — never the
+    conversation: the transcript is re-sent in full on every message,
+    so a rested session's next question rebuilds a runner and
+    continues where it left off (researcher ruling 2026-08-27: a
+    conversation must survive a meeting or a class). Only a FAILED
+    session past its bound is fully closed, because it refuses further
+    messages anyway. Returns how many sessions were acted on.
     """
-    iClosed = 0
+    iActedOn = 0
     for sCampaignId, dictSession in list(
             _fdictSessionsByCampaign(dictControllerState).items()):
-        if dictSession["sState"] == S_CHAT_STATE_ANSWERING:
+        if dictSession["sState"] in (
+                S_CHAT_STATE_ANSWERING, S_CHAT_STATE_RESTING):
             continue
         if _ffFindSecondsUntilDeadline(dictSession) > 0:
             continue
-        logger.info(
-            "Closing idle chairbot conversation for campaign %s",
-            sCampaignId)
-        await fdictCloseChatSession(dictControllerState, sCampaignId)
-        iClosed += 1
-    return iClosed
+        if dictSession["sState"] == S_CHAT_STATE_FAILED:
+            logger.info(
+                "Closing failed chairbot conversation for campaign %s",
+                sCampaignId)
+            await fdictCloseChatSession(dictControllerState, sCampaignId)
+        else:
+            logger.info(
+                "Resting idle chairbot conversation for campaign %s "
+                "(runner destroyed, transcript kept)", sCampaignId)
+            await _fdictRestChatSession(dictSession)
+        iActedOn += 1
+    return iActedOn
+
+
+async def fdictRestChatConversation(dictControllerState, sCampaignId):
+    """Rest this campaign's conversation so its runner settles; report.
+
+    The campaign-work drain's chat half: recording a decision must
+    settle the conversation's runner reservation, but CLOSING the
+    conversation would destroy a transcript the researcher may still
+    want — resting settles the same reservation and keeps it. A
+    FAILED session is closed instead (it refuses messages anyway),
+    and an already-resting or absent one settles at once.
+    """
+    dictSession = _fdictSessionsByCampaign(dictControllerState).get(
+        sCampaignId)
+    if dictSession is None or dictSession["sState"] == (
+            S_CHAT_STATE_RESTING):
+        return {"bSettled": True, "sOutcome": "", "sReason": ""}
+    if dictSession["sState"] == S_CHAT_STATE_FAILED:
+        return await fdictCloseChatSession(dictControllerState, sCampaignId)
+    return await _fdictRestChatSession(dictSession)
+
+
+async def _fdictRestChatSession(dictSession):
+    """Destroy the runner and egress; keep the conversation, RESTING.
+
+    ``bSuspending`` refuses a question that lands mid-teardown — the
+    honest answer is "ask again in a moment", never a message routed
+    into a runner being destroyed. An unproven teardown marks the
+    session FAILED with the reason, exactly as a close would: a
+    resting state may only be entered over resources proven gone.
+    """
+    dictSession["bSuspending"] = True
+    try:
+        dictSettled = await asyncio.to_thread(
+            _fdictTearDownChatResources, dictSession)
+        await _fnAwaitAnswerWorker(dictSession)
+        if dictSettled["bSettled"]:
+            dictSession["sState"] = S_CHAT_STATE_RESTING
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictSession["dictStore"], dictSession["sCampaignId"],
+                {"sEventKind": "chairbotChatResting", "sTurnId": "",
+                 "sDetail": dictSession["sSessionId"]})
+        else:
+            dictSession["sState"] = S_CHAT_STATE_FAILED
+            dictSession["sFailureReason"] = dictSettled["sReason"]
+        return dictSettled
+    finally:
+        dictSession["bSuspending"] = False

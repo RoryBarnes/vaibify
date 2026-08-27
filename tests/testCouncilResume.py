@@ -452,6 +452,71 @@ def testResumeRefusesOverAnUnsettledReservation(tmp_path, monkeypatch):
             monkeypatch, [])
 
 
+def testResumeRestsAnIdleChatConversationFirst(tmp_path, monkeypatch):
+    """An idle chairbot conversation is RESTED, never a refusal.
+
+    The conversation's runner holds a live reservation on the campaign
+    (one runner per conversation), so before this drain the researcher
+    who asked the chairbot one question was refused every subsequent
+    campaign action — "Record decision" included — with instructions
+    to run reconcile over a perfectly healthy conversation
+    (2026-08-27). Rested, not closed: the transcript survives the
+    decision, and the researcher's next question wakes the chairbot.
+    """
+    from vaibify.gui import agentCouncilChat
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(tmp_path, _fdictCaptureMidWalkVersion()))
+    dictControllerState[agentCouncilChat.S_CHAT_SESSIONS_KEY] = {
+        sCampaignId: {
+            "sSessionId": "chat-drain-test", "sCampaignId": sCampaignId,
+            "sState": agentCouncilChat.S_CHAT_STATE_READY,
+            "dictGateway": None, "sHandle": "",
+            "bEgressProvisioned": False, "taskAnswer": None,
+            "bClosing": False, "bSuspending": False,
+            "listMessages": [{"sMessageId": "message-1",
+                              "sAuthor": "researcher",
+                              "sText": "kept?",
+                              "fRecordedEpoch": 0.0}],
+            "dictStore": dictStore,
+        }}
+    _fdictResumeToCompletion(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, [])
+    dictSession = dictControllerState[
+        agentCouncilChat.S_CHAT_SESSIONS_KEY][sCampaignId]
+    assert dictSession["sState"] == agentCouncilChat.S_CHAT_STATE_RESTING
+    assert dictSession["listMessages"][0]["sText"] == "kept?"
+
+
+def testCampaignWorkRefusesWhileAChatAnswerIsInFlight(
+        tmp_path, monkeypatch):
+    """A mid-answer conversation refuses with its own reason, undrained.
+
+    An answer in flight is paid provider work the researcher is
+    waiting on; draining it would destroy the turn silently, and the
+    old unsettled-reservation wording would send them to reconcile.
+    """
+    from vaibify.gui import agentCouncilChat
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(tmp_path, _fdictCaptureMidWalkVersion()))
+    dictSession = {
+        "sSessionId": "chat-answering-test", "sCampaignId": sCampaignId,
+        "sState": agentCouncilChat.S_CHAT_STATE_ANSWERING,
+        "dictGateway": None, "sHandle": "",
+        "bEgressProvisioned": False, "taskAnswer": None,
+        "bClosing": False, "dictStore": dictStore,
+    }
+    dictControllerState[agentCouncilChat.S_CHAT_SESSIONS_KEY] = {
+        sCampaignId: dictSession}
+    with pytest.raises(agentCouncilController.CouncilCommandError,
+                       match="still answering"):
+        _fdictResumeToCompletion(
+            dictStore, dictRegistry, dictControllerState, sCampaignId,
+            monkeypatch, [])
+    assert dictControllerState[agentCouncilChat.S_CHAT_SESSIONS_KEY] == {
+        sCampaignId: dictSession}
+
+
 @pytest.mark.falsification
 def testResumeRefusesAPeerHeldCampaign(tmp_path, monkeypatch):
     """Another live hub's campaign is not this hub's to drive.

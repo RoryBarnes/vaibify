@@ -410,7 +410,7 @@ def test_no_optimistic_state_transition():
     assert "_fnReloadActiveCampaign" in sSource
     # The action helper refetches the record after every POST rather
     # than mutating a local copy.
-    iAction = sSource.find("async function _fnPostAction")
+    iAction = sSource.find("async function _fbPostAction")
     iEnd = sSource.find("function _fnCopyBrief", iAction)
     sBody = sSource[iAction:iEnd]
     assert "_fnReloadActiveCampaign" in sBody, (
@@ -457,7 +457,12 @@ def test_chat_says_what_the_chairbot_cannot_do():
     iEnd = sSource.find("function _fsChatStatusLine", iClosed)
     sTab = sSource[iClosed:iEnd]
     assert "cannot accept a plan" in sTab
-    assert "closes itself" in sTab
+    # The lifecycle sentence follows the resting semantics (2026-08-27):
+    # an idle conversation's RUNNER rests and the next question wakes
+    # it — the researcher must be told the conversation itself stays.
+    assert "rest" in sTab
+    assert "wakes it" in sTab
+    assert "conversation itself stays" in sTab
 
 
 def test_chat_transcript_is_backend_truth_never_composed_locally():
@@ -467,7 +472,7 @@ def test_chat_transcript_is_backend_truth_never_composed_locally():
     message indistinguishable from an accepted one.
     """
     sSource = _fsCouncilSource()
-    iAction = sSource.find("async function _fnPostChatAction")
+    iAction = sSource.find("async function _fbPostChatAction")
     iEnd = sSource.find("async function _fnLoadChatQuietly", iAction)
     sBody = sSource[iAction:iEnd]
     assert "_fnLoadChatQuietly" in sBody, (
@@ -573,7 +578,7 @@ def test_every_council_action_sends_the_chosen_directory():
     Kills: actions posting without the directory query.
     """
     sSource = _fsCouncilSource()
-    for sHelper in ("_fnPostAction", "_fnPostChatAction"):
+    for sHelper in ("_fbPostAction", "_fbPostChatAction"):
         assert "_fsDirectoryQuery" in _fsFunctionBody(
             sSource, sHelper), sHelper
 

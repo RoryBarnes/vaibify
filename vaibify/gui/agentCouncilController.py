@@ -555,6 +555,34 @@ def _fsSpawnDriveTask(dictRuntime, ffnAdvanceEngine):
     return sTurnId
 
 
+async def _fnSettleChatConversationBeforeCampaignWork(
+        dictControllerState, sCampaignId, sAction):
+    """Rest this campaign's chairbot conversation so its runner settles.
+
+    The conversation's runner holds a live reservation on the campaign
+    (one runner per conversation), so an open chat turned every
+    "Record decision" into the unsettled-work refusal and sent the
+    researcher to reconcile over a perfectly healthy conversation
+    (2026-08-27). The conversation is RESTED here, not closed: the
+    runner is destroyed with absence proven — which is all the
+    unsettled gate needs — while the transcript stays, and the
+    researcher's next question wakes it. An answer still in flight is
+    paid provider work and refuses with the real reason instead of
+    being destroyed mid-turn. A teardown the daemon could not prove
+    leaves the reservation quarantined, and the unsettled gate that
+    follows then refuses honestly.
+    """
+    from . import agentCouncilChat
+    if agentCouncilChat.fbChatAnswerInFlightForCampaign(
+            dictControllerState, sCampaignId):
+        raise CouncilCommandError(
+            f"cannot {sAction}: the chairbot is still answering a "
+            "conversation message; wait for its answer (or close the "
+            "conversation), then retry.")
+    await agentCouncilChat.fdictRestChatConversation(
+        dictControllerState, sCampaignId)
+
+
 def _fnRefuseUnsettledCampaignWork(dictRegistry, dictCampaign,
                                    sCampaignId, sAction):
     """Refuse over ANY unsettled reservation, request, or peer claim.
@@ -703,6 +731,8 @@ async def fdictResumeCampaignDeliberation(
             "nothing to resume")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "resume")
+    await _fnSettleChatConversationBeforeCampaignWork(
+        dictControllerState, sCampaignId, "resume")
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, "resume")
     if dictCampaign["sState"] != agentCouncilCampaign.S_STATE_PLANNING:
@@ -805,6 +835,8 @@ async def fdictRetryCampaignFailedPhase(
             "nothing to retry")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "retry")
+    await _fnSettleChatConversationBeforeCampaignWork(
+        dictControllerState, sCampaignId, "retry")
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, "retry")
     if agentCouncilStore.fbCampaignProvenanceUnavailable(
@@ -1051,6 +1083,8 @@ async def _fdictRequireOrRebuildRuntime(
             "hub restarted since it ran; convene a fresh council")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, sAction)
+    await _fnSettleChatConversationBeforeCampaignWork(
+        dictControllerState, sCampaignId, sAction)
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, sAction)
     return await _fdictRebuildRuntimeNonDestructively(

@@ -126,6 +126,7 @@ var VaibifyAgentCouncil = (function () {
         _dictState.dictChat = null;
         _dictState.listDraftParticipants = [];
         _dictState.iChairbotIndex = 0;
+        _fnResetDraftFields();
         _fnResetSnapshotScope();
         _setKnownEventSequences.clear();
         _fnHideWorkspace();
@@ -368,6 +369,11 @@ var VaibifyAgentCouncil = (function () {
     function _fnRenderChooser(bListingStillLoading) {
         var elBody = document.getElementById("agentCouncilModalBody");
         if (!elBody) return;
+        /* The count is of councils that can actually be CONTINUED —
+           the button's own promise — never the full history's length;
+           the unusable ones stay readable in the list below. */
+        var iResumable = _dictState.listSummaries.filter(
+            _fbSummaryIsResumable).length;
         elBody.innerHTML =
             "<h2>Agent Council</h2>" +
             "<div class=\"council-chooser\">" +
@@ -375,11 +381,9 @@ var VaibifyAgentCouncil = (function () {
             "class=\"btn btn-primary council-choice\">Plan a change</button>" +
             "<button type=\"button\" id=\"btnCouncilOpenExisting\" " +
             "class=\"btn council-choice\"" +
-            (!bListingStillLoading && _dictState.listSummaries.length
-                ? "" : " disabled") +
+            (!bListingStillLoading && iResumable ? "" : " disabled") +
             ">Continue a council (" +
-            (bListingStillLoading
-                ? "…" : _dictState.listSummaries.length) +
+            (bListingStillLoading ? "…" : iResumable) +
             ")</button>" +
             "</div>" +
             (bListingStillLoading
@@ -488,22 +492,26 @@ var VaibifyAgentCouncil = (function () {
             elPlan.addEventListener("click", _fnOpenPlanningForm);
         }
         var elOpen = document.getElementById("btnCouncilOpenExisting");
-        if (elOpen && _dictState.listSummaries.length) {
+        if (elOpen && !elOpen.disabled) {
             elOpen.addEventListener("click", function () {
-                /* The most recently active RESUMABLE council, falling
-                   back to the most recently active one — the same
-                   ordering the list below shows. listSummaries[0] was
-                   store-iteration order: it sent a researcher into an
-                   arbitrary campaign they could not identify
-                   (2026-08-27). */
-                var listSorted = _dictState.listSummaries.slice().sort(
+                /* The most recently active RESUMABLE council, in the
+                   same ordering the list below shows. Two earlier
+                   shapes both misfired on 2026-08-27:
+                   listSummaries[0] was store-iteration order (an
+                   arbitrary campaign the researcher could not
+                   identify), and a most-recent fallback sent them
+                   into an unusable campaign whose gate then invited
+                   answers it would refuse. No resumable council
+                   disables the button instead. */
+                var listResumable = _dictState.listSummaries.filter(
+                    _fbSummaryIsResumable).sort(
                     function (dictLeft, dictRight) {
                         return (dictRight.fLastActivityEpoch || 0) -
                             (dictLeft.fLastActivityEpoch || 0);
                     });
-                var listResumable = listSorted.filter(_fbSummaryIsResumable);
-                _fnFocusCampaign((listResumable[0] ||
-                    listSorted[0]).sCampaignId);
+                if (listResumable.length) {
+                    _fnFocusCampaign(listResumable[0].sCampaignId);
+                }
             });
         }
         document.querySelectorAll(".council-open-row").forEach(
@@ -1230,8 +1238,10 @@ var VaibifyAgentCouncil = (function () {
         _dictState.sActiveTab = "council";
         _dictState.sRenderSignature = "";
         /* The conversation belongs to the campaign, so switching
-           campaigns must not show the previous one's transcript. */
+           campaigns must not show the previous one's transcript — and
+           neither must its half-written drafts. */
         _dictState.dictChat = null;
+        _fnResetDraftFields();
         _fnRenderToolbarButton();
     }
 
@@ -1658,9 +1668,11 @@ var VaibifyAgentCouncil = (function () {
             return;
         }
         _fnNoticeWallClockKills(dictCampaign);
+        _fnHarvestDraftInputs(elBody);
         elBody.innerHTML = _fsTabBar(dictCampaign) +
             "<div class=\"council-tab-content\">" +
             _fsActiveTabContent(dictCampaign) + "</div>";
+        _fnRestoreDraftInputs(elBody);
         _fnBindWorkspace(dictCampaign);
         if (_dictState.bActionPending) {
             /* Derived HERE, in the render path, from module state: a
@@ -1672,6 +1684,59 @@ var VaibifyAgentCouncil = (function () {
                 function (elButton) { elButton.disabled = true; });
         }
         _dictState.sRenderSignature = _fsWorkspaceSignature();
+    }
+
+    /* Everything the researcher has typed but not submitted, held
+       ACROSS renders and tab flips. A flip to the Council tab removed
+       the chat textarea from the DOM entirely, so a per-render
+       harvest was not enough: the draft must survive while its field
+       is absent and refill it when the tab returns (2026-08-27).
+       Cleared on campaign switch and on successful submission —
+       merge-on-harvest handles the rest (a field the researcher
+       emptied deliberately drops its draft). */
+    var _dictDraftFields = {dictById: {}, listDecisionAnswers: []};
+
+    function _fnResetDraftFields() {
+        _dictDraftFields.dictById = {};
+        _dictDraftFields.listDecisionAnswers = [];
+    }
+
+    function _fnHarvestDraftInputs(elBody) {
+        elBody.querySelectorAll("textarea, input[type=text]").forEach(
+            function (elField) {
+                if (!elField.id) return;
+                if (elField.value) {
+                    _dictDraftFields.dictById[elField.id] = elField.value;
+                } else {
+                    delete _dictDraftFields.dictById[elField.id];
+                }
+            });
+        /* The per-decision answer boxes have no ids, so they are keyed
+           by position — stable because the decision list renders in
+           record order. Present boxes overwrite their positions;
+           absent ones (another tab is showing) keep their drafts. */
+        elBody.querySelectorAll(".council-decision-answer").forEach(
+            function (elField, iIndex) {
+                _dictDraftFields.listDecisionAnswers[iIndex] =
+                    elField.value;
+            });
+    }
+
+    function _fnRestoreDraftInputs(elBody) {
+        Object.keys(_dictDraftFields.dictById).forEach(function (sId) {
+            var elField = document.getElementById(sId);
+            if (elField && !elField.value) {
+                elField.value = _dictDraftFields.dictById[sId];
+            }
+        });
+        elBody.querySelectorAll(".council-decision-answer").forEach(
+            function (elField, iIndex) {
+                if (!elField.value
+                        && _dictDraftFields.listDecisionAnswers[iIndex]) {
+                    elField.value =
+                        _dictDraftFields.listDecisionAnswers[iIndex];
+                }
+            });
     }
 
     function _fsTabBar(dictCampaign) {
@@ -2163,6 +2228,7 @@ var VaibifyAgentCouncil = (function () {
         roundOpened: "round opened",
         phaseStarted: "phase started",
         stateTransition: "state changed",
+        chairbotChatResting: "chairbot resting (conversation kept)",
         providerEvent: "",
     };
 
@@ -2562,11 +2628,49 @@ var VaibifyAgentCouncil = (function () {
         return sBody;
     }
 
+    function _fsUnanswerableGateCard(dictCampaign, dictGate, dictStopping) {
+        var sQuestionRows = (dictGate.listQuestions || []).map(
+            function (dictQuestion) {
+                return "<li>" + _fsEscape(_fsHideInternalIdentifiers(
+                    dictCampaign, dictQuestion.sQuestionText)) +
+                    " <span class=\"council-question-author\">(raised " +
+                    "by " + _fsEscape(_fsAgentLabelForId(
+                        dictCampaign,
+                        dictQuestion.sRaisedByParticipantId || "")) +
+                    ")</span></li>";
+            }).join("");
+        return "<div class=\"council-needs-human\">" +
+            "<h4>This council's questions can be read, not answered</h4>" +
+            "<p class=\"council-chat-failure\">" +
+            _fsEscape(dictStopping.sBlockedReason) + "</p>" +
+            (sQuestionRows
+                ? "<ol class=\"council-questions\">" + sQuestionRows +
+                    "</ol>"
+                : "") +
+            "<p class=\"council-hint\">Close this council and choose " +
+            "Plan a change to convene a fresh one — its questions are " +
+            "above for reference.</p>" +
+            "</div>";
+    }
+
     function _fsBlockingQuestionCard(dictCampaign, dictGate) {
         /* The ENGINE'S gate shape (remediation R6): a list of
            questions, each carrying who raised it. The quorum-shortfall
            gate shares this renderer — its single server-raised
            question rides the same list. */
+        /* An unanswerable gate says so FIRST. The store can rule a
+           campaign unusable (a lost provenance sidecar) while its
+           record still holds a needsHuman gate; rendering live answer
+           boxes then invited a researcher to type thirteen answers
+           into a form whose submission was always going to be refused
+           (2026-08-27). The questions stay readable — they are the
+           record — but nothing pretends they can be answered. */
+        var dictStopping = dictCampaign.dictStoppingPoint || {};
+        if (dictStopping.bResumable === false
+                && dictStopping.sBlockedReason) {
+            return _fsUnanswerableGateCard(dictCampaign, dictGate,
+                dictStopping);
+        }
         var listQuestions = dictGate.listQuestions || [];
         var listDecisions = dictCampaign.listGateDecisions || [];
         var sQuestionRows = listQuestions.map(function (dictQuestion) {
@@ -2815,8 +2919,9 @@ var VaibifyAgentCouncil = (function () {
             "reviewed, and every message spends this project's provider " +
             "subscription. The chairbot answers only: " +
             "it cannot accept a plan, clear an objection or start a " +
-            "round. The conversation closes itself after a while " +
-            "idle, and after two hours regardless.</p>" +
+            "round. An idle conversation lets its runner rest — your " +
+            "login never sits in an idle container — and your next " +
+            "question wakes it; the conversation itself stays.</p>" +
             "<button type=\"button\" id=\"btnCouncilChatOpen\" " +
             "class=\"btn\">Open conversation</button>";
     }
@@ -2829,11 +2934,14 @@ var VaibifyAgentCouncil = (function () {
             ? "<span class=\"council-chip council-chip-deliberating\">" +
               "answering…</span> "
             : "";
+        var sWindow = dictChat.sState === "resting"
+            ? "resting — your next question wakes the chairbot"
+            : "the runner rests after " + Math.round(
+                dictChat.iIdleSecondsRemaining / 60) +
+                " min idle (the conversation stays)";
         return "<p class=\"council-chat-status\">" + sBusy + sModel +
             " · " + dictChat.iMessagesRemaining + " messages left · " +
-            "closes after " + Math.round(
-                dictChat.iIdleSecondsRemaining / 60) + " min idle" +
-            "</p>" + _fsChatFailure(dictChat);
+            sWindow + "</p>" + _fsChatFailure(dictChat);
     }
 
     function _fsChatFailure(dictChat) {
@@ -2859,7 +2967,10 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsChatComposer(dictChat) {
-        var bBlocked = dictChat.sState !== "ready"
+        /* "resting" composes like "ready": the ask is what wakes the
+           runner, so a disabled box would make resting a dead end. */
+        var bBlocked = (dictChat.sState !== "ready"
+            && dictChat.sState !== "resting")
             || dictChat.iMessagesRemaining <= 0;
         return "<div class=\"council-composer\">" +
             "<textarea id=\"councilChatQuestion\" rows=\"3\" " +
@@ -2875,28 +2986,38 @@ var VaibifyAgentCouncil = (function () {
     }
 
     async function _fnOpenChat() {
-        await _fnPostChatAction("/chat/open");
+        await _fbPostChatAction("/chat/open");
     }
 
     async function _fnAskChairbot() {
         var sQuestion = _fsReadValue("councilChatQuestion");
         if (!sQuestion) return;
-        await _fnPostChatAction("/chat/ask", {sQuestionText: sQuestion});
+        var bAccepted = await _fbPostChatAction(
+            "/chat/ask", {sQuestionText: sQuestion});
+        if (bAccepted) {
+            /* The question was delivered; keeping it in the box (or in
+               the draft store, which would refill the box on the next
+               render) would resubmit-bait every later click. */
+            delete _dictDraftFields.dictById.councilChatQuestion;
+            var elField = document.getElementById("councilChatQuestion");
+            if (elField) elField.value = "";
+        }
     }
 
     async function _fnCloseChat() {
-        await _fnPostChatAction("/chat/close");
+        await _fbPostChatAction("/chat/close");
     }
 
-    async function _fnPostChatAction(sSuffix, dictBody) {
+    async function _fbPostChatAction(sSuffix, dictBody) {
         /* Never optimistic: the transcript on screen is refetched from
            the server after the action, so a message the backend
            refused never appears as one it accepted. Same one-action
-           discipline as _fnPostAction: paid work is never
+           discipline as _fbPostAction: paid work is never
            double-submitted by a double-click. */
-        if (_dictState.bActionPending) return;
+        if (_dictState.bActionPending) return false;
         _dictState.bActionPending = true;
         _fnRenderWorkspace();
+        var bAccepted = false;
         try {
             var sPath = _fsRoute(
                 "/" + _dictState.sActiveCampaignId + sSuffix)
@@ -2906,6 +3027,7 @@ var VaibifyAgentCouncil = (function () {
             } else {
                 await VaibifyApi.fdictPost(sPath, dictBody);
             }
+            bAccepted = true;
         } catch (error) {
             VaibifyApp.fnShowToast(
                 "Chairbot: " + (error.message || String(error)), "error");
@@ -2915,6 +3037,7 @@ var VaibifyAgentCouncil = (function () {
         await _fnLoadChatQuietly();
         _fnRenderWorkspace();
         _fnStartPolling();
+        return bAccepted;
     }
 
     async function _fnLoadChatQuietly() {
@@ -2984,9 +3107,12 @@ var VaibifyAgentCouncil = (function () {
         if (!listBlocks.length) {
             var sAnswer = _fsReadValue("councilAnswer");
             if (!sAnswer) return;
-            await _fnPostAction(
+            var bSent = await _fbPostAction(
                 "/" + _dictState.sActiveCampaignId + "/respond",
                 {sResponseText: sAnswer});
+            if (bSent) {
+                delete _dictDraftFields.dictById.councilAnswer;
+            }
             return;
         }
         var listDecisionAnswers = [];
@@ -3025,9 +3151,16 @@ var VaibifyAgentCouncil = (function () {
                 "the council never gets an answer to.");
             return;
         }
-        await _fnPostAction("/" + _dictState.sActiveCampaignId + "/respond",
+        var bRecorded = await _fbPostAction(
+            "/" + _dictState.sActiveCampaignId + "/respond",
             {sResponseText: "(composed from per-decision answers)",
              listDecisionAnswers: listDecisionAnswers});
+        if (bRecorded) {
+            /* The gate closed on these answers; kept drafts would
+               refill the NEXT gate's boxes with answers to questions
+               it never asked. */
+            _dictDraftFields.listDecisionAnswers = [];
+        }
     }
 
     function _fnShowGateNotice(sMessage) {
@@ -3044,7 +3177,7 @@ var VaibifyAgentCouncil = (function () {
     async function _fnGrantResolutionRound() {
         var iRounds = parseInt(
             _fsReadValue("councilGrantRounds") || "1", 10);
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/grant-resolution-round",
             {iGrantedRounds: iRounds > 0 ? iRounds : 1});
     }
@@ -3074,26 +3207,26 @@ var VaibifyAgentCouncil = (function () {
                 "before the final veto.", "error");
             return;
         }
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/resolve-objections",
             {dictDispositionByObjectionId: dictDispositions});
     }
 
     async function _fnRejectCandidate() {
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/reject-candidate",
             {sReasonText: _fsReadValue("councilRejectReason") || ""});
     }
 
     async function _fnStopCouncil() {
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/request-stop", undefined);
     }
 
     async function _fnRetryCouncil() {
         var bClearsStop = Boolean(
             (_dictState.dictCampaign || {}).bStopRequested);
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/retry",
             {bClearStopRequest: bClearsStop});
     }
@@ -3105,7 +3238,7 @@ var VaibifyAgentCouncil = (function () {
            records that clear as a researcher decision. */
         var bClearsStop = Boolean(
             (_dictState.dictCampaign || {}).bStopRequested);
-        await _fnPostAction(
+        await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/resume",
             {bClearStopRequest: bClearsStop});
     }
@@ -3139,7 +3272,7 @@ var VaibifyAgentCouncil = (function () {
             (dictResult.sLocalPlanPath || ""), "success");
     }
 
-    async function _fnPostAction(sPath, dictBody) {
+    async function _fbPostAction(sPath, dictBody) {
         /* The directory rides EVERY action, not just the reads. A
            project tracking several directories with no workflow open
            resolves to no repository, and the server rightly refuses to
@@ -3165,13 +3298,14 @@ var VaibifyAgentCouncil = (function () {
             VaibifyApp.fnShowToast(
                 "Action failed: " + (error.message || String(error)),
                 "error");
-            return;
+            return false;
         } finally {
             _dictState.bActionPending = false;
             _fnRenderWorkspace();
         }
         await _fnReloadActiveCampaign();
         _fnStartPolling();
+        return true;
     }
 
     async function _fnCopyBrief(dictCampaign) {

@@ -13502,7 +13502,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/agentCouncilChat.py',
         old=(
-            '        if dictSession["sState"] == S_CHAT_STATE_ANSWERING:\n'
+            '        if dictSession["sState"] in (\n'
+            '                S_CHAT_STATE_ANSWERING, S_CHAT_STATE_RESTING):\n'
             '            continue'
         ),
         new=(
@@ -14581,12 +14582,16 @@ def _fdictEntry(sRel):
         # The chat action helper loses its pending-state suppression:
         # a double-click submits the paid message twice.
         old=(
-            '        if (_dictState.bActionPending) return;\n'
+            '        if (_dictState.bActionPending) return false;\n'
             '        _dictState.bActionPending = true;\n'
             '        _fnRenderWorkspace();\n'
+            '        var bAccepted = false;\n'
             '        try {'
         ),
-        new='        try {',
+        new=(
+            '        var bAccepted = false;\n'
+            '        try {'
+        ),
     ),
 
     Falsification(

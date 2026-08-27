@@ -5443,7 +5443,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +16 (2026-08-27, review round 2): retry surfaces the
     # standing-stop choice exactly as resume does — a kept flag would
     # archive the retried campaign the moment its drive starts.
-    "agentCouncilController.py": 1753,
+    # 1753 -> 1787 (2026-08-27): campaign work rests the chairbot
+    # conversation before the unsettled gate — an open chat's runner
+    # reservation turned every "Record decision" into a reconcile
+    # instruction over a healthy conversation.
+    "agentCouncilController.py": 1787,
+    # NEW at 857 (2026-08-27): the conversation now outlives its
+    # runner (researcher ruling — it must survive a meeting or a
+    # class). Resting, waking, and the campaign-work drain predicate
+    # are the same lifecycle the module already owned; the clocks
+    # changed from bounding the conversation to bounding only the
+    # runner's credential residency.
+    "agentCouncilChat.py": 861,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

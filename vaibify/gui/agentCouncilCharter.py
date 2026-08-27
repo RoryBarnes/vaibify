@@ -78,7 +78,15 @@ S_PHASE_VETO = "veto"
 # against a plan instead of against nothing. That is only worth doing if
 # the chairbot is told to place them, which is an instruction change, so
 # it moves the version.
-S_CHARTER_VERSION = "1.3.0"
+# 1.4.0 (2026-08-27): the pen-holder is told to sort held questions
+# into DECISIONS before anchoring — two questions settled by the same
+# researcher choice share one plan item even when their wording,
+# phase, or authors differ. A live gate asked the researcher five
+# near-identical decisions because overlapping questions were anchored
+# to different items, and the grouping machinery deliberately judges
+# no similarity itself: the chairbot's anchoring is the sole
+# consolidation authority, so the instruction is where the fix lives.
+S_CHARTER_VERSION = "1.4.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
@@ -152,13 +160,17 @@ DICT_PHASE_INSTRUCTIONS = {
         "quoted proposals and critiques into one candidate plan that "
         "answers every surviving objection or names it as unresolved. "
         "The quoted material may carry HELD QUESTIONS a participant "
-        "needs the researcher to answer. For each one, write a plan "
-        "item covering the work it blocks and state in that item which "
-        "question id it waits on, so the researcher reads the question "
-        "beside the decision it governs. Where two participants asked "
-        "the same thing, place both ids on the one item — never merge "
-        "their wording, because the evidence each cited is what makes "
-        "them separate questions."),
+        "needs the researcher to answer. Before anchoring them, sort "
+        "them into DECISIONS: two questions are one decision when a "
+        "single researcher choice would settle both, even if their "
+        "wording, phase, or authors differ. Write one plan item per "
+        "decision, covering the work it blocks, and state in that item "
+        "every question id it waits on, so the researcher reads each "
+        "question beside the choice it governs and answers it exactly "
+        "once. Questions left on separate items are asked twice — the "
+        "researcher answers per item. Never merge or rewrite the "
+        "question texts themselves: the evidence each cited is what "
+        "makes them separate questions; only the anchoring is shared."),
     S_PHASE_VETO: (
         "PHASE: veto. Judge the quoted candidate plan's substance, not "
         "its wording. Return verdict 'accept' only if no blocking "

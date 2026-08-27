@@ -397,7 +397,14 @@ def testTheStagedLoginIsGoneBeforeItsTarballIsDelivered(
 
 def testAConversationIsBoundedByIdleAndByAnAbsoluteCeiling(
         monkeypatch, tmp_path):
-    """Both clocks close a conversation; neither depends on the browser."""
+    """Both clocks destroy the RUNNER; neither destroys the conversation.
+
+    The clocks bound the credential copy's residency inside the
+    container, and that is all they bound: the transcript stays, the
+    session RESTS, and the researcher's next question rebuilds a
+    runner (researcher ruling 2026-08-27 — a conversation must survive
+    a meeting or a class).
+    """
     dictControllerState, _, dictCampaign, doubleGateway = _ftBuildOpenedChat(
         monkeypatch, tmp_path)
     sCampaignId = dictCampaign["sCampaignId"]
@@ -410,8 +417,44 @@ def testAConversationIsBoundedByIdleAndByAnAbsoluteCeiling(
         chat.F_CHAT_IDLE_TIMEOUT_SECONDS + 1)
     assert asyncio.run(
         chat.fiReapExpiredChatSessions(dictControllerState)) == 1
-    assert sCampaignId not in dictControllerState[chat.S_CHAT_SESSIONS_KEY]
     assert doubleGateway.listDestroyedHandles == ["handle-chat"]
+    dictRested = dictControllerState[chat.S_CHAT_SESSIONS_KEY][sCampaignId]
+    assert dictRested["sState"] == chat.S_CHAT_STATE_RESTING
+    # A resting session is settled state, not a pending expiry: the
+    # next reaper pass must not act on it again.
+    assert asyncio.run(
+        chat.fiReapExpiredChatSessions(dictControllerState)) == 0
+
+
+def testARestingConversationWakesOnTheNextQuestion(monkeypatch, tmp_path):
+    """Asking wakes a rested conversation: fresh runner, transcript kept.
+
+    The wake is also a fresh credential window — both clocks restart
+    with the rebuilt runner, because they bound the runner's
+    residency, not the conversation's life.
+    """
+    dictControllerState, _, dictCampaign, doubleGateway = _ftBuildOpenedChat(
+        monkeypatch, tmp_path)
+    sCampaignId = dictCampaign["sCampaignId"]
+    dictSession = dictControllerState[chat.S_CHAT_SESSIONS_KEY][sCampaignId]
+    _fnAskAndSettle(dictControllerState, sCampaignId, "first question")
+    iMessagesBeforeRest = len(dictSession["listMessages"])
+
+    dictSession["fLastActivityMonotonic"] -= (
+        chat.F_CHAT_IDLE_TIMEOUT_SECONDS + 1)
+    asyncio.run(chat.fiReapExpiredChatSessions(dictControllerState))
+    assert dictSession["sState"] == chat.S_CHAT_STATE_RESTING
+    fOpenedWhileResting = dictSession["fOpenedMonotonic"]
+
+    _fnAskAndSettle(dictControllerState, sCampaignId, "second question")
+    assert dictSession["sState"] == chat.S_CHAT_STATE_READY
+    assert dictSession["sHandle"]
+    assert len(dictSession["listMessages"]) > iMessagesBeforeRest
+    listTexts = [dictMessage["sText"]
+                 for dictMessage in dictSession["listMessages"]]
+    assert "first question" in listTexts
+    assert "second question" in listTexts
+    assert dictSession["fOpenedMonotonic"] > fOpenedWhileResting
 
 
 @pytest.mark.falsification
