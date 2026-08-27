@@ -14707,4 +14707,28 @@ def _fdictEntry(sRel):
         ),
         new='        var bRetryOffered = false;',
     ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_the_list_and_detail_endpoints_agree_over_http'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # The detail route reverts to the pure record derivation: the
+        # list says unusable while the open panel offers an action the
+        # route refuses -- and the store-level agreement test cannot
+        # see it.
+        old=(
+            '        jsonCampaign["dictStoppingPoint"] = (\n'
+            '            agentCouncilStore.fdictDescribeStoredStoppingPoint'
+            '(\n'
+            '                dictStore, sCampaignId))'
+        ),
+        new=(
+            '        jsonCampaign["dictStoppingPoint"] = (\n'
+            '            agentCouncilResolution.fdictDescribeStoppingPoint'
+            '(\n'
+            '                jsonCampaign))'
+        ),
+    ),
 ]

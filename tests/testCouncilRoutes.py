@@ -492,6 +492,49 @@ def test_accept_plan_writes_local_only_not_the_project(
     assert response.json()["sPlanSha256"] == sExpectedSha256
 
 
+# ── the two provenance-aware read endpoints agree ────────────────
+
+@pytest.mark.falsification
+def test_the_list_and_detail_endpoints_agree_over_http(
+        tOwnerClient, eventTurnGate):
+    """The disagreement happened between ENDPOINTS, so drive them.
+
+    The store-level agreement test compares two store functions and
+    stays green if the detail ROUTE quietly reverts to the pure
+    record derivation — the reviewer's exact gap. This one corrupts
+    the sidecar, restarts the store the way a rebooted hub would, and
+    compares the actual HTTP responses.
+
+    Kills: the detail route recomputing a stopping point without the
+    store's provenance knowledge.
+    """
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    sCampaignId = _sStartOneCampaign(client)
+    from vaibify.gui import agentCouncilCampaign
+    _fnWaitForCampaignState(
+        app, sCampaignId, agentCouncilCampaign.S_STATE_PLAN_READY)
+    sStoreRoot = app.state.dictCouncilCampaignStore["sDurableStoreRoot"]
+    os.remove(os.path.join(
+        sStoreRoot, sCampaignId,
+        agentCouncilStore.S_PROVENANCE_SIDECAR_BASENAME))
+    dictReloaded = agentCouncilStore.fdictCreateCampaignStore(
+        sDurableStoreRoot=sStoreRoot)
+    agentCouncilStore.fdictReloadDurableCampaigns(dictReloaded)
+    app.state.dictCouncilCampaignStore = dictReloaded
+
+    dictListed = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}").json()[
+        "listCampaigns"][0]["dictStoppingPoint"]
+    dictDetail = client.get(
+        f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}").json()[
+        "dictCampaign"]["dictStoppingPoint"]
+
+    assert dictDetail == dictListed
+    assert dictDetail["sAction"] == "none"
+    assert "provenance sidecar" in dictDetail["sBlockedReason"]
+
+
 # ── the plan.md deliverable ──────────────────────────────────────
 
 @pytest.mark.falsification
