@@ -127,6 +127,28 @@ class MockDockerSync:
     ):
         self._dictFiles[sPath] = baContent
 
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        # Fail-closed typed read: only explicitly stored files exist,
+        # so the sidecar bookkeeping starts absent like a fresh repo.
+        return sPath in self._dictFiles
+
+    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+        import shlex
+        from collections import namedtuple
+        TExecResult = namedtuple("TExecResult", "iExitCode sStdout")
+        if sCommand.startswith("mkdir -p "):
+            return TExecResult(0, "")
+        if sCommand.startswith("mv -f "):
+            listParts = shlex.split(sCommand)
+            self._dictFiles[listParts[3]] = self._dictFiles.pop(
+                listParts[2],
+            )
+            return TExecResult(0, "")
+        iExitCode, sStdout = self.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+        return TExecResult(iExitCode, sStdout)
+
     def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
         return "exec-id-sync"
 
@@ -459,8 +481,8 @@ def test_setup_zenodo_validation_fails(clientHttp):
     _mockDockerInstance._iSyncExitCode = 0
     _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=False,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(False, ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -473,6 +495,43 @@ def test_setup_zenodo_validation_fails(clientHttp):
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
     assert "validation failed" in dictResult["sMessage"]
+
+
+def test_setup_zenodo_failure_detail_reaches_the_response(clientHttp):
+    """The classified failure detail must arrive, not the generic text.
+
+    Asserted with a value the fallback cannot produce (the
+    threaded-parameter lesson: a detail accepted and dropped is
+    indistinguishable from its default at every call site). Dropping
+    ``sDetail`` anywhere between the validator and ``sMessage``
+    regresses every failure to "check deposit scopes" — the message
+    that sent a researcher with a valid token and a requests-less
+    container to their Zenodo settings page.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "ok"
+    sDistinctDetail = (
+        "DISTINCT-CLASSIFIED-DETAIL the container is missing "
+        "'requests'"
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(False, sDistinctDetail),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "zenodo",
+                "sToken": "my_zenodo_token",
+            },
+        )
+    dictResult = responseHttp.json()
+    assert dictResult["bConnected"] is False
+    assert sDistinctDetail in dictResult["sMessage"], (
+        "the validator's classified detail was dropped on the way to "
+        f"the researcher: {dictResult['sMessage']!r}"
+    )
 
 
 # ── Line 237: DAG endpoint failure returns 500 ──────────────────
@@ -787,8 +846,8 @@ def test_setup_zenodo_validation_failure_restores_snapshot(clientHttp):
     ) as mockCopy, patch(
         "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
     ) as mockDelete, patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=False,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(False, ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -827,8 +886,8 @@ def test_setup_zenodo_validation_failure_without_previous_deletes(
     ), patch(
         "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
     ) as mockDelete, patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=False,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(False, ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1061,8 +1120,8 @@ def test_setup_zenodo_validation_passes(clientHttp):
         "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
         return_value=None,
     ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=True,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(True, ""),
     ), patch(
         "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
         return_value=None,
@@ -1092,8 +1151,8 @@ def test_setup_zenodo_stores_token_in_sandbox_slot_by_default(
         "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
         return_value=None,
     ) as mockStore, patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=True,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(True, ""),
     ):
         clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1118,8 +1177,8 @@ def test_setup_zenodo_stores_production_token_in_production_slot(
         "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
         return_value=None,
     ) as mockStore, patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=True,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(True, ""),
     ) as mockValidate:
         clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1144,8 +1203,8 @@ def test_setup_zenodo_persists_service_on_success(clientHttp):
         "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
         return_value=None,
     ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateZenodoToken",
-        return_value=True,
+        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
+        return_value=(True, ""),
     ), patch(
         "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
     ) as mockSave:
@@ -1810,7 +1869,7 @@ def test_fnPersistZenodoPublishRecord_writes_fields():
         "sDoi": "10.5281/zenodo.7",
         "sConceptDoi": "10.5281/zenodo.6",
         "sHtmlUrl": "https://sandbox.zenodo.org/records/7",
-    })
+    }, "sandbox")
     assert dictWorkflow["sZenodoDepositionId"] == "7"
     assert dictWorkflow["sZenodoLatestDoi"] == "10.5281/zenodo.7"
     assert dictWorkflow["sZenodoConceptDoi"] == "10.5281/zenodo.6"
@@ -1826,7 +1885,7 @@ def test_fnPersistZenodoPublishRecord_skips_empty_fields():
     dictWorkflow = {"sZenodoLatestDoi": "existing"}
     _fnPersistZenodoPublishRecord(dictWorkflow, {
         "sDoi": "", "sHtmlUrl": "", "iDepositId": 0,
-    })
+    }, "sandbox")
     assert dictWorkflow.get("sZenodoLatestDoi") == "existing"
     assert "sZenodoDepositionId" not in dictWorkflow
 
@@ -2100,6 +2159,57 @@ def test_fiReadParentDepositId_negative_returns_zero():
     from vaibify.gui.routes.syncRoutes import _fiReadParentDepositId
     assert _fiReadParentDepositId(
         {"sZenodoDepositionId": "-5"}) == 0
+
+
+@pytest.mark.falsification
+def test_zenodo_archive_resolves_repo_relative_selections(clientHttp):
+    """A repo-relative selection reaches the upload script absolute.
+
+    The per-file badge action posts the badge-dictionary key, which
+    is repo-relative, while the archive script opens each path from
+    the exec's default working directory — so the raw string passed
+    the (resolving) existence pre-flight and then died in the
+    container as LOCAL-FILE-ERROR, with a modal telling the
+    researcher to re-run a step that had nothing to do with it
+    (live, 2026-08-27, project.json).
+
+    Kills: dropping the ``_flistResolveArchivePaths`` call from the
+    archive route.
+    """
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sWorkflowName": "Test Pipeline",
+        "sZenodoService": "sandbox",
+        "sProjectRepoPath": "/workspace/repo",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 999, '
+                     '"sDoi": "10.5072/zenodo.999", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ) as mockArchive, patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": [
+                ".vaibify/projects/project.json",
+                "/workspace/repo/StepOne/data.h5",
+            ]},
+        )
+    assert responseHttp.status_code == 200
+    listSent = mockArchive.call_args[0][3]
+    assert listSent == [
+        "/workspace/repo/.vaibify/projects/project.json",
+        "/workspace/repo/StepOne/data.h5",
+    ]
 
 
 def test_zenodo_archive_passes_parent_deposit_id_to_dispatcher(clientHttp):
@@ -2618,3 +2728,322 @@ def test_fsSuggestCanonicalTarget_multiple_dirs_returns_empty():
     assert _fsSuggestCanonicalTarget(
         listCaseCollisions, "figures",
     ) == ""
+
+
+# ── Declared Zenodo records ─────────────────────────────────────
+
+
+def test_declare_zenodo_record_adds_and_is_idempotent(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseFirst = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sRecordId": "424242"},
+    )
+    assert responseFirst.status_code == 200
+    dictFirst = responseFirst.json()
+    assert dictFirst["bAdded"] is True
+    assert {"sRecordId": "424242", "sDoi": ""} in dictFirst["listRecords"]
+    responseSecond = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sRecordId": "424242"},
+    )
+    assert responseSecond.json()["bAdded"] is False
+
+
+def test_declare_zenodo_record_derives_the_id_from_a_doi(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sDoi": "10.5281/zenodo.777777"},
+    )
+    assert responseHttp.status_code == 200
+    listRecords = responseHttp.json()["listRecords"]
+    assert {
+        "sRecordId": "777777", "sDoi": "10.5281/zenodo.777777",
+    } in listRecords
+
+
+def test_declare_zenodo_record_refuses_a_foreign_doi(clientHttp):
+    """Inventing a record id would make the verify consult a deposit
+    the researcher never named."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sDoi": "10.9999/notzenodo.123"},
+    )
+    assert responseHttp.status_code == 400
+
+
+def test_remove_zenodo_record_round_trip(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    clientHttp.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/records",
+        json={"sRecordId": "515151"},
+    )
+    responseRemove = clientHttp.delete(
+        f"/api/zenodo/{S_CONTAINER_ID}/records/515151",
+    )
+    assert responseRemove.status_code == 200
+    assert responseRemove.json()["bRemoved"] is True
+    responseAgain = clientHttp.delete(
+        f"/api/zenodo/{S_CONTAINER_ID}/records/515151",
+    )
+    assert responseAgain.status_code == 404
+
+
+# ── Zenodo archive existence pre-flight ─────────────────────────
+
+
+@pytest.mark.falsification
+def test_zenodo_archive_refuses_when_a_selected_file_is_missing(
+    clientHttp,
+):
+    """A nonexistent selected file 400s with its name, before any upload.
+
+    The live 2026-08-27 shape: phantom repo-root ``tests/`` paths in
+    the push list made the in-container archive script crash on
+    FileNotFoundError, and the classifier reported the missing LOCAL
+    file as a remote notFound — "Check your project ID or DOI."
+
+    Kills: dropping the ``_fnRefuseMissingPushFiles`` call from the
+    archive route — the misdirected DOI message returns for every lane.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._setMissingPaths = {"/workspace/ghost.json"}
+    listArchiveCommands = []
+
+    def _ftRecordArchive(sContainerId, sCommand):
+        listArchiveCommands.append(sCommand)
+        return (0, "")
+
+    try:
+        with patch.object(
+            _mockDockerInstance, "ftResultExecuteCommand",
+            _ftRecordArchive,
+        ):
+            responseHttp = clientHttp.post(
+                f"/api/zenodo/{S_CONTAINER_ID}/archive",
+                json={"listFilePaths": ["/workspace/ghost.json"]},
+            )
+    finally:
+        _mockDockerInstance._setMissingPaths = set()
+    assert responseHttp.status_code == 400
+    sDetail = responseHttp.json()["detail"]
+    assert "/workspace/ghost.json" in sDetail
+    assert "do not exist" in sDetail
+    assert listArchiveCommands == [], (
+        "the refusal must precede any container upload command"
+    )
+
+
+def test_zenodo_archive_proceeds_when_the_existence_probe_fails(
+    clientHttp,
+):
+    """A probe hiccup must not veto the archive — the upload is the truth."""
+    _fnConnectToContainer(clientHttp)
+
+    def _flistRaise(sContainerId, listPaths):
+        raise OSError("daemon hiccup")
+
+    _mockDockerInstance._iSyncExitCode = 1
+    _mockDockerInstance._sSyncOutput = "some upload failure"
+    with patch.object(
+        _mockDockerInstance, "flistContainerPathsExist", _flistRaise,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/run.py"]},
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is False, (
+        "the archive must have been ATTEMPTED (and failed on the mock) "
+        "rather than refused by the broken probe"
+    )
+
+
+@pytest.mark.falsification
+def test_zenodo_archive_success_refreshes_the_verify_cache(clientHttp):
+    """A successful archive runs the shared post-push verify hop.
+
+    The L2/L3 cells read the VERIFY cache, never the push, so an
+    archive that only recorded digests left the Zenodo cells "?"
+    until the researcher clicked Verify now on the deposit they had
+    just published (live, 2026-08-27). GitHub and Overleaf pushes
+    already run this hop; the archive was the odd one out.
+
+    Kills: dropping the ``fsRefreshVerifyCacheAfterPush`` call from
+    ``_fnPersistZenodoArchiveSuccess``.
+    """
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = (
+        'ZENODO_RESULT={"iDepositId": 77, '
+        '"sDoi": "10.5281/zenodo.77", "sConceptDoi": "", '
+        '"sHtmlUrl": ""}'
+    )
+    listVerifiedServices = []
+
+    async def _fsRecordVerify(
+        dictCtx, sContainerId, dictWorkflow, sService,
+        requestHttp=None,
+    ):
+        listVerifiedServices.append(sService)
+        return ""
+
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fsRefreshVerifyCacheAfterPush",
+        _fsRecordVerify,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.npy"]},
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    assert listVerifiedServices == ["zenodo"], (
+        "the archive succeeded and the verify hop did not run — the "
+        "Zenodo cells stay '?' until a manual Verify now"
+    )
+
+
+def test_zenodo_archive_failure_skips_the_verify_hop(clientHttp):
+    """A failed archive must not verify: there is nothing new to prove."""
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 1
+    _mockDockerInstance._sSyncOutput = "HTTP 500 something broke"
+    listVerifiedServices = []
+
+    async def _fsRecordVerify(
+        dictCtx, sContainerId, dictWorkflow, sService,
+        requestHttp=None,
+    ):
+        listVerifiedServices.append(sService)
+        return ""
+
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fsRefreshVerifyCacheAfterPush",
+        _fsRecordVerify,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.npy"]},
+        )
+    assert responseHttp.json()["bSuccess"] is False
+    assert listVerifiedServices == []
+
+
+@pytest.mark.falsification
+def test_zenodo_archive_refuses_basename_collisions(clientHttp):
+    """Colliding basenames 400 with both paths named, before any upload.
+
+    A Zenodo deposit is flat, so the second of a colliding pair
+    silently OVERWRITES the first — the live 2026-08-27 deposit lost
+    one step's test_qualitative.py and qualitative_standards.json
+    this way, and nothing said so.
+
+    Kills: dropping the ``_fnRefuseBasenameCollisions`` call from the
+    archive route — the silent data loss returns.
+    """
+    _fnConnectToContainer(clientHttp)
+    listArchiveCommands = []
+
+    def _ftRecordArchive(sContainerId, sCommand):
+        listArchiveCommands.append(sCommand)
+        return (0, "")
+
+    with patch.object(
+        _mockDockerInstance, "ftResultExecuteCommand", _ftRecordArchive,
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": [
+                "/workspace/StepAlpha/tests/test_qualitative.py",
+                "/workspace/StepBeta/tests/test_qualitative.py",
+            ]},
+        )
+    assert responseHttp.status_code == 400
+    sDetail = responseHttp.json()["detail"]
+    assert "StepAlpha/tests/test_qualitative.py" in sDetail
+    assert "StepBeta/tests/test_qualitative.py" in sDetail
+    assert "overwrite" in sDetail
+    assert listArchiveCommands == []
+
+
+# ── The publish record advances, and the modal offers the union ──
+
+
+@pytest.mark.falsification
+def test_a_new_publish_advances_the_verify_record():
+    """A second publish must move ``dictRemotes.zenodo`` with it.
+
+    The legacy-remotes migration deliberately never overwrites an
+    existing entry, so after archive v2 the legacy keys advanced while
+    the record every verify consults kept deposit v1 — the
+    post-archive auto-verify then compared the fresh files against
+    the old immutable version and reported them diverged (live,
+    2026-08-27: "9 of 24 matching" about a complete deposit).
+
+    Kills: dropping the ``dictRemotes`` update from
+    ``_fnPersistZenodoPublishRecord``.
+    """
+    from vaibify.gui.routes.syncRoutes import (
+        _fnPersistZenodoPublishRecord,
+    )
+    dictWorkflow = {
+        "dictRemotes": {"zenodo": {
+            "sRecordId": "111", "sDoi": "10.5072/zenodo.111",
+            "sService": "sandbox",
+            "listRecords": [{"sRecordId": "42"}],
+        }},
+    }
+    _fnPersistZenodoPublishRecord(
+        dictWorkflow,
+        {"iDepositId": 222, "sDoi": "10.5072/zenodo.222"},
+        "sandbox",
+    )
+    dictZenodo = dictWorkflow["dictRemotes"]["zenodo"]
+    assert dictZenodo["sRecordId"] == "222", dictZenodo
+    assert dictZenodo["sDoi"] == "10.5072/zenodo.222"
+    assert dictZenodo["listRecords"] == [{"sRecordId": "42"}], (
+        "declared records are the researcher's; a publish must not "
+        "touch them"
+    )
+
+
+@pytest.mark.falsification
+def test_zenodo_candidates_cover_the_publication_union(clientHttp):
+    """The push modal must offer every file the Zenodo gates compare.
+
+    The gates compare the full union — project definition, AI
+    declaration, inputs, envelope — and the candidate list carried
+    only outputs, scripts and tests, so those files sat permanently
+    diverged with no way to publish them (live, 2026-08-27).
+
+    Kills: reverting the zenodo branch of ``flistGetSyncFiles`` to
+    the outputs-only collector.
+    """
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/sync/{S_CONTAINER_ID}/files?sService=zenodo",
+    )
+    assert responseHttp.status_code == 200
+    listPaths = [
+        dictFile["sPath"] for dictFile in responseHttp.json()
+    ]
+    assert any(
+        sPath.endswith("MANIFEST.sha256") for sPath in listPaths
+    ), listPaths
+
+
+def test_github_candidates_stay_outputs_scoped(clientHttp):
+    """The union widening is Zenodo's; the git push flows are git's."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/sync/{S_CONTAINER_ID}/files?sService=github",
+    )
+    listPaths = [
+        dictFile["sPath"] for dictFile in responseHttp.json()
+    ]
+    assert not any(
+        sPath.endswith("MANIFEST.sha256") for sPath in listPaths
+    ), listPaths

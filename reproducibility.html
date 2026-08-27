@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev1147 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev1151 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=757ce5a2"></script>
+      <script src="_static/documentation_options.js?v=7e422132"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -75,7 +75,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#remote-mirror-verification">Remote-mirror verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#known-limitations">Known limitations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-a-workflow">Publishing a Workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#archiving-to-zenodo">Archiving to Zenodo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#archiving-to-zenodo">Archiving to Zenodo</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-publish-record-lives-in-the-sidecar-not-in-project-json">The publish record lives in the sidecar, not in project.json</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#version-pinning">Version Pinning</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#network-isolation">Network Isolation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#sharing-results">Sharing Results</a></li>
@@ -208,6 +211,33 @@ limitations</a>); the hashes recorded in
 <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> describe the bytes the original run produced, and
 those bytes can be redistributed and verified anywhere coreutils is
 installed.</p>
+<p>Level 3 also requires the <strong>published-envelope pair</strong> (2026-08-26,
+superseding a same-day GitHub-only ruling): the envelope files must
+match the copies on the GitHub mirror <strong>and</strong> be present in the
+Zenodo archive. GitHub is not an archive — repositories are renamed,
+made private, force-pushed, deleted — so an envelope that lives only
+there gives the re-execute claim the lifetime of a mutable host. The
+Zenodo check consults every <strong>declared record</strong>
+(<code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.listRecords</span></code> plus the primary deposit), because
+Zenodo’s own GitHub integration archives code releases as separate
+records with their own DOIs; a file agrees with Zenodo when any
+declared record serves its bytes. Records with per-file entries are
+comparable; a record holding only a release tarball is not (a
+documented limitation — publish the envelope through vaibify to make
+it verifiable). Zenodo deposits are <strong>flat</strong> — the bucket API refuses
+path-containing keys — so files upload under their basenames and the
+verify matches a repo path to its basename only when that basename is
+unique among the compared files; two paths sharing a basename are
+honestly unverifiable, and the archive refuses such a selection
+outright, because the second upload would silently overwrite the
+first in the published record. Vaibify-generated test and standards
+files carry a step-derived suffix (<code class="docutils literal notranslate"><span class="pre">test_qualitative_&lt;step&gt;.py</span></code>)
+precisely so this never happens to generated projects. Because Zenodo deposits are immutable, restoring
+agreement after an envelope change costs a new published deposit
+version rather than a push: <strong>Level 3 is a release-time property</strong>,
+red through most of a project’s life and green at publication
+moments. That is deliberate — “reproducible” describes a published
+artifact, not a state the working tree drifts through.</p>
 </section>
 <section id="the-reproducibility-envelope">
 <h2>The Reproducibility Envelope<a class="headerlink" href="#the-reproducibility-envelope" title="Link to this heading"></a></h2>
@@ -488,6 +518,33 @@ setting), and return a DOI.</p>
 <p>Authentication with Zenodo is handled through the host’s credential
 manager. Vaibify never stores tokens in configuration files or
 environment variables.</p>
+<section id="the-publish-record-lives-in-the-sidecar-not-in-project-json">
+<h3>The publish record lives in the sidecar, not in project.json<a class="headerlink" href="#the-publish-record-lives-in-the-sidecar-not-in-project-json" title="Link to this heading"></a></h3>
+<p>A Zenodo deposit is immutable, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> is part of what an
+archive uploads — so if the archive then recorded its own success
+<em>into</em> <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (deposit id, DOIs, per-file digests), the local
+file would necessarily diverge from the copy it had just published,
+and re-archiving would mint a new deposit id that changed the file
+again: a treadmill by construction. That is exactly what happened
+until 2026-08-27.</p>
+<p>The fix is structural. <code class="docutils literal notranslate"><span class="pre">project.json</span></code> holds only the definition the
+researcher declares; everything a push, archive, or verify <em>produces</em>
+— the per-file <code class="docutils literal notranslate"><span class="pre">dictSyncStatus</span></code>, the Zenodo publish record, and the
+produced <code class="docutils literal notranslate"><span class="pre">dictRemotes</span></code> fields such as <code class="docutils literal notranslate"><span class="pre">overleaf.sLastPushCommit</span></code> and
+<code class="docutils literal notranslate"><span class="pre">zenodo.sRecordId</span></code> — is split out on save into a per-workflow
+<code class="docutils literal notranslate"><span class="pre">dictProjectBookkeeping</span></code> section of
+<code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code>, which is deliberately
+outside the publication comparison scope. The in-memory workflow dict
+stays merged (the load path grafts the section back in), so the
+dashboard and routes see one shape. The module that owns the split is
+<a class="reference download internal" download="" href="_downloads/43b5dec9324e524fe49c522616bec8fa/syncBookkeeping.py"><span class="xref download myst">syncBookkeeping.py</span></a>.</p>
+<p>Legacy projects migrate automatically: their fielded keys are read
+from <code class="docutils literal notranslate"><span class="pre">project.json</span></code> until the first save moves them into the sidecar,
+after which the archived and local copies of <code class="docutils literal notranslate"><span class="pre">project.json</span></code> can
+byte-match indefinitely. Sidecar values win over fielded ones on
+load, so restoring an old definition from git history does not roll
+back the record of what was actually published.</p>
+</section>
 </section>
 <section id="version-pinning">
 <h2>Version Pinning<a class="headerlink" href="#version-pinning" title="Link to this heading"></a></h2>

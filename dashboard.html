@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev1147 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev1151 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=757ce5a2"></script>
+      <script src="_static/documentation_options.js?v=7e422132"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -499,7 +499,7 @@ collapsible sections:</p>
 <td><p>The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>AI</strong></p></td>
-<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, Personal AI Configuration (the researcher’s private host-side agent configuration, accounted for — Level 2), and the AI Declaration (the researcher’s signed statement — Level 2).</p></td>
+<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and Personal AI Configuration (the researcher’s private host-side agent configuration, accounted for — Level 2). Both count in the project row’s Level 2 cell. The AI Declaration (the researcher’s signed statement) is not a row here — it is a step, and its state lives on the step’s own row.</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Attestation</strong></p></td>
 <td><p>The rebuild attestation (Level 3).</p></td>
@@ -741,11 +741,15 @@ excluded from the met count when absent, since it never blocks a
 level).</p></li>
 <li><p><strong>Level 2</strong>: GitHub mirror; Zenodo deposit; arXiv manuscript
 (opt-in — checked only when an arXiv submission is recorded, since
-posting happens outside vaibify on its own timeline); AI
-Declaration attested; AI model declared (every model used, with
-vendor, ID, and dates — closed-weights models pass by declaration);
-Personal AI Configuration answered (none / exists-but-withheld /
-included — any answer meets it; disclosure is never required).</p></li>
+posting happens outside vaibify on its own timeline); AI model
+declared (every model used, with vendor, ID, and dates —
+closed-weights models pass by declaration); Personal AI
+Configuration answered (none / exists-but-withheld / included —
+any answer meets it; disclosure is never required). The AI
+Declaration’s attestation still gates Level 2 but is homed on its
+own step row (2026-08-27 ruling — a project-level copy
+double-counted it); when the step is missing, a ghost row at the
+bottom of the step list carries the add action.</p></li>
 </ul>
 <p>The AI rows’ deep links land on the specific requirement row in the
 Project block’s AI section — the link switches tabs, expands the
@@ -753,7 +757,13 @@ group and row, and scrolls it into view.</p>
 <ul class="simple">
 <li><p><strong>Level 3</strong>: Manifest complete; Dependency lock; Environment
 snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
-Software declared; Rebuild attestation.</p></li>
+Software declared; Envelope published (the envelope files match the
+copies on the GitHub mirror); Envelope archived (the envelope files
+are in the Zenodo archive — Zenodo versions are immutable, so this
+row goes red after any envelope change and comes back at the next
+published deposit version; that is expected, because Level 3
+describes a published release, not the working tree); Rebuild
+attestation.</p></li>
 </ul>
 <p>The Level 3 section ends with the verification machinery: the
 <strong>Verify Level 3 Reproducibility</strong> button (enabled only when the

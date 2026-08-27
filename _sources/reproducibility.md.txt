@@ -94,6 +94,34 @@ limitations](#known-limitations)); the hashes recorded in
 those bytes can be redistributed and verified anywhere coreutils is
 installed.
 
+Level 3 also requires the **published-envelope pair** (2026-08-26,
+superseding a same-day GitHub-only ruling): the envelope files must
+match the copies on the GitHub mirror **and** be present in the
+Zenodo archive. GitHub is not an archive — repositories are renamed,
+made private, force-pushed, deleted — so an envelope that lives only
+there gives the re-execute claim the lifetime of a mutable host. The
+Zenodo check consults every **declared record**
+(`dictRemotes.zenodo.listRecords` plus the primary deposit), because
+Zenodo's own GitHub integration archives code releases as separate
+records with their own DOIs; a file agrees with Zenodo when any
+declared record serves its bytes. Records with per-file entries are
+comparable; a record holding only a release tarball is not (a
+documented limitation — publish the envelope through vaibify to make
+it verifiable). Zenodo deposits are **flat** — the bucket API refuses
+path-containing keys — so files upload under their basenames and the
+verify matches a repo path to its basename only when that basename is
+unique among the compared files; two paths sharing a basename are
+honestly unverifiable, and the archive refuses such a selection
+outright, because the second upload would silently overwrite the
+first in the published record. Vaibify-generated test and standards
+files carry a step-derived suffix (`test_qualitative_<step>.py`)
+precisely so this never happens to generated projects. Because Zenodo deposits are immutable, restoring
+agreement after an envelope change costs a new published deposit
+version rather than a push: **Level 3 is a release-time property**,
+red through most of a project's life and green at publication
+moments. That is deliberate — "reproducible" describes a published
+artifact, not a state the working tree drifts through.
+
 ## The Reproducibility Envelope
 
 An honest L3 claim covers three tiers. Vaibify writes one file per
@@ -395,6 +423,35 @@ setting), and return a DOI.
 Authentication with Zenodo is handled through the host's credential
 manager. Vaibify never stores tokens in configuration files or
 environment variables.
+
+### The publish record lives in the sidecar, not in project.json
+
+A Zenodo deposit is immutable, and `project.json` is part of what an
+archive uploads — so if the archive then recorded its own success
+*into* `project.json` (deposit id, DOIs, per-file digests), the local
+file would necessarily diverge from the copy it had just published,
+and re-archiving would mint a new deposit id that changed the file
+again: a treadmill by construction. That is exactly what happened
+until 2026-08-27.
+
+The fix is structural. `project.json` holds only the definition the
+researcher declares; everything a push, archive, or verify *produces*
+— the per-file `dictSyncStatus`, the Zenodo publish record, and the
+produced `dictRemotes` fields such as `overleaf.sLastPushCommit` and
+`zenodo.sRecordId` — is split out on save into a per-workflow
+`dictProjectBookkeeping` section of
+`<projectRepo>/.vaibify/syncStatus.json`, which is deliberately
+outside the publication comparison scope. The in-memory workflow dict
+stays merged (the load path grafts the section back in), so the
+dashboard and routes see one shape. The module that owns the split is
+[syncBookkeeping.py](../vaibify/reproducibility/syncBookkeeping.py).
+
+Legacy projects migrate automatically: their fielded keys are read
+from `project.json` until the first save moves them into the sidecar,
+after which the archived and local copies of `project.json` can
+byte-match indefinitely. Sidecar values win over fielded ones on
+load, so restoring an old definition from git history does not roll
+back the record of what was actually published.
 
 ## Version Pinning
 

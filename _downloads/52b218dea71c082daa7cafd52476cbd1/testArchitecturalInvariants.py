@@ -1964,6 +1964,54 @@ def testContainerUserUidIsOneThousand():
     )
 
 
+def testContainerImageInstallsTheHelperCommandDependencies():
+    """The image must pip-install what vaibify's OWN container code imports.
+
+    The Zenodo token validation is inline Python importing ``keyring``
+    and ``requests``, and the staged ``zenodoClient.py`` imports
+    ``requests``. These are vaibify dependencies, never the project's:
+    for months the Dockerfile installed only ``keyring``, so a project
+    whose own requirements did not happen to include ``requests``
+    could not validate a token or publish a deposit, and the
+    ``ModuleNotFoundError`` surfaced to the researcher as "token not
+    accepted — check that the token has deposit scopes".
+
+    Both halves are asserted: the sources still exert the force (they
+    import the module), and the Dockerfile still supplies it with an
+    explicit install. Either half changing alone fails here.
+    """
+    sDispatcherSource = fsReadSource(
+        PACKAGE_DIR / "gui" / "syncDispatcher.py",
+    )
+    sClientSource = fsReadSource(
+        PACKAGE_DIR / "reproducibility" / "zenodoClient.py",
+    )
+    assert "import keyring, requests" in sDispatcherSource, (
+        "the inline Zenodo validation no longer imports keyring + "
+        "requests; update this invariant to whatever its transport "
+        "now is, and check the Dockerfile installs it"
+    )
+    assert "import requests" in sClientSource, (
+        "the staged zenodoClient no longer imports requests; update "
+        "this invariant to its new transport"
+    )
+    sDockerfileSource = fsReadSource(
+        PACKAGE_DIR / "containerImage" / "Dockerfile",
+    )
+    sInstallLines = " ".join(
+        sLine for sLine in sDockerfileSource.splitlines()
+        if "pip install" in sLine
+    )
+    for sPackage in ("keyring", "requests"):
+        assert re.search(rf"\b{sPackage}\b", sInstallLines), (
+            f"the Dockerfile has no explicit 'pip install {sPackage}' "
+            "while vaibify's in-container helpers import it — the "
+            "package is then present only when the researcher's own "
+            "requirements pull it in, and a project without it "
+            "cannot validate a Zenodo token or publish a deposit"
+        )
+
+
 def testManifestWriterKnowsEverySaPathListInGuiSource():
     """Every ``sa<Word>Files`` literal referenced by gui/repro source code
     must appear in ``manifestWriter._OUTPUT_KEYS``.
@@ -4250,7 +4298,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # SCREEN can say what the gate says — the row was reporting a
     # complete match off counts that were complete for a question no
     # longer being asked.
-    "routes/pipelineRoutes.py": 3262,
+    # +6 (2026-08-26): bEnvelopeInZenodoArchive joins the poll
+    # envelope beside its GitHub twin — the permanent-archive half
+    # of the published-envelope pair. Cohesive with poll assembly.
+    # +22 (2026-08-27): the custom-test detector matches template
+    # hashes by category prefix, so step-suffixed generated names
+    # keep their edit detection.
+    "routes/pipelineRoutes.py": 3290,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4378,7 +4432,37 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the bounded, userinfo-redacted output snippet on the
     # failed-push log line — both answers to walkthrough failures
     # that were diagnosable only from a dismissed browser modal.
-    "routes/syncRoutes.py": 3177,
+    # +111 (2026-08-26): the declared-record endpoints for the
+    # Zenodo archive (declare / remove / list). Zenodo's GitHub
+    # integration archives code releases as separate records, so
+    # the archive criteria consult a declared SET; these routes
+    # are how a researcher names its members. One route group,
+    # same registration pattern as the metadata endpoints beside
+    # it.
+    # +20 (2026-08-26, same change): the primary-record annotation on
+    # the record responses and the typed-read declaration on the
+    # listing route, both demanded by the accounting ratchets.
+    # +9 (2026-08-27): the Zenodo validation detail threads to the
+    # response (comment + remediation docstring) instead of being
+    # dropped into "check deposit scopes".
+    # +10 (2026-08-27): the archive reuses the GitHub push's
+    # existence pre-flight, naming missing selected files before any
+    # upload starts.
+    # +16 (2026-08-27): the archive runs the shared post-push verify
+    # hop, so the Zenodo cells stop reading "?" about a deposit the
+    # researcher just published.
+    # +38 (2026-08-27): the archive refuses basename collisions in
+    # the selection (a flat deposit silently overwrites the second of
+    # a pair; approved ruling).
+    # +34 (2026-08-27): a publish advances dictRemotes.zenodo (the
+    # record every verify consults), and the Zenodo file list serves
+    # the full publication union.
+    # +32 (2026-08-27): the archive route resolves repo-relative
+    # selections before the pre-flight and the upload script — the
+    # per-file badge action posts the badge-dictionary key, and the
+    # raw string passed the resolving pre-flight then died in the
+    # container as LOCAL-FILE-ERROR.
+    "routes/syncRoutes.py": 3447,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4412,7 +4496,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # silent eviction of an open project surfaces later as an
     # unexplained no-project-open refusal, and cost an afternoon of
     # remote diagnosis.
-    "fileStatusManager.py": 2222,
+    # +29 (2026-08-27): per-category test paths read the RECORDED
+    # dictTests sFilePath first (ground truth for legacy and
+    # agent-chosen names), falling back to the generator's
+    # step-suffixed derivation.
+    "fileStatusManager.py": 2251,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -4527,7 +4615,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # first-vs-last ``.vaibify`` bug could be fixed in one and left
     # standing in the other. Both derivers stay in this module on
     # purpose: a repo root derived in two places is the defect.
-    "workflowManager.py": 2642,
+    # +72 (2026-08-26): the declared-Zenodo-record mutators
+    # (fbDeclareZenodoRecord / fbRemoveZenodoRecord) and the DOI
+    # record-id extractor shared with the legacy migration. They
+    # live beside the dictRemotes derivation they extend; parsing
+    # stays with scheduledReverify.flistZenodoDeclaredRecords so
+    # the routes and the verify cannot disagree about "declared".
+    # +85 (2026-08-27): the sidecar-bookkeeping seams of the
+    # project.json split (_fnMergeSidecarBookkeeping on load,
+    # _fnWriteSidecarBookkeeping on save). The extraction and the
+    # sidecar file live in reproducibility/syncBookkeeping.py; only
+    # the glue that knows the connection, the repo path, and the
+    # workflow key stays here, because load/save orchestration is
+    # this module's one responsibility and a fourth home for it
+    # would smear the split across another hop.
+    "workflowManager.py": 2799,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -4806,7 +4908,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shield away. It sits beside its single caller rather than in a
     # new module because it is that caller's teardown, not a
     # reusable one.
-    "pipelineServer.py": 2988,
+    # +5 (2026-08-26): ZenodoRecordRequest — the declare-record
+    # body model, beside the other Zenodo request models.
+    "pipelineServer.py": 2993,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5044,6 +5148,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stops under either parse; only a dirty one diverges). This entry
     # falls again if the deprecated, caller-less
     # ftResultPushScriptsToGithub is removed.
+    # -110 (2026-08-26, deletion): ftResultPushScriptsToGithub and the
+    # four helpers only it reached are gone. Deprecated, caller-less,
+    # and the least safe command path in the module -- `git add -A`
+    # with no hardening flags at all, where every sibling carries the
+    # protocol/symlink/submodule guards. Deleting it removed three
+    # rows from the audited ledgers, one of them an UNCLASSIFIED
+    # arbitrary-command site.
     # +16 (2026-08-26, dedup): the three push variants' identical
     # commit/push/report tail becomes _fsComposePublishSuffix. The
     # extraction removes 12 duplicated lines and the docstring costs
@@ -5051,7 +5162,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # already caused a fix to land in two of three sites and forced
     # iExpectedOccurrences=3 on two falsification entries. The history
     # is the reason the seam exists, so it lives at the seam.
-    "syncDispatcher.py": 1990,
+    # +90 (2026-08-27): the Zenodo validation failure classifier —
+    # ftResultValidateZenodoToken and fsClassifyZenodoValidationFailure.
+    # Every failure (missing container package, instance rejection, no
+    # token, no network) used to collapse into "check deposit scopes";
+    # the classifier lives beside the validation whose output it names.
+    # +18 (2026-08-27): the archive script marks local file errors
+    # distinctly and the classifier checks the marker FIRST, so a
+    # missing local file can never again classify as a remote
+    # notFound ("check your DOI").
+    # +60 (2026-08-27): flistCollectZenodoArchiveCandidates — the
+    # Zenodo push-modal candidates are the publication union the
+    # gates actually compare, existence-filtered.
+    # +9 (2026-08-27): the Repos-panel staged push stages tracked
+    # changes (git add -u) before the guarded commit, so the
+    # dirty-dot tooltip's "click Push to commit and push them"
+    # becomes true.
+    "syncDispatcher.py": 2057,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -5125,7 +5252,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # two silently rewritten underneath them, so each write is gated
     # and an unrequested category is ABSENT from the result rather
     # than empty in it.
-    "testGenerator.py": 1093,
+    # +47 (2026-08-27): generated test and standards filenames are
+    # step-suffixed (fsStepTestSuffix), so two steps can never mint
+    # the same basename into a flat Zenodo deposit.
+    "testGenerator.py": 1140,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -5363,7 +5493,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # so it stays user-only, which had left an inversion where an agent
     # hand-writing assertions was permitted and vaibify deriving them
     # from the researcher's own data was not.
-    "actionCatalog.py": 1050,
+    # +18 (2026-08-26): declare-zenodo-record /
+    # remove-zenodo-record. Both agent-safe: declaring a record
+    # cannot fake agreement (files still hash-match or not), and
+    # removing one only weakens the claim.
+    "actionCatalog.py": 1068,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5561,7 +5695,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-21): the dependency scan's scope entry and the note
     # that it writes nothing — a POST only because its input is a
     # list, still gated because it reads the researcher's own files.
-    "routeScope.py": 969,
+    # +3 (2026-08-26): the declared-Zenodo-records listing GET
+    # acknowledged in SET_CONTAINER_READ_ROUTES.
+    "routeScope.py": 972,
 }
 
 

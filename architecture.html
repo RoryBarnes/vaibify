@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev1147 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev1151 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=757ce5a2"></script>
+      <script src="_static/documentation_options.js?v=7e422132"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -67,6 +67,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-git-repo">Project = git repo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-json-is-a-definition-the-sidecar-records-what-happened">project.json is a definition; the sidecar records what happened</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#single-browser-session-per-container">Single browser session per container</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a><ul>
@@ -544,6 +545,51 @@ companion invariant <code class="docutils literal notranslate"><span class="pre"
 bans the literal <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code> in any module
 under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> — enforcing that marker paths are always
 resolved from the active project’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
+</section>
+<section id="project-json-is-a-definition-the-sidecar-records-what-happened">
+<h2>project.json is a definition; the sidecar records what happened<a class="headerlink" href="#project-json-is-a-definition-the-sidecar-records-what-happened" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">project.json</span></code> is compared byte-for-byte against its published copies
+(GitHub and, at Level 3, the immutable Zenodo archive). Until
+2026-08-27 it also carried what publishing <em>produced</em> — the deposit
+id, the DOIs, the per-file last-pushed digests — so an archive that
+uploaded the file then rewrote it, and the local copy could never
+again match the copy it had just published. Re-archiving minted a new
+deposit id and changed it again: a treadmill by construction, and a
+second, quieter defect rode along — writing <code class="docutils literal notranslate"><span class="pre">dictSyncStatus</span></code> inside
+the definition moved the semantic attestation fingerprint, so every
+publish superseded verifications it had not touched.</p>
+<p>The persistence split resolves both by sorting every field by <em>who
+writes it</em>:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">project.json</span></code></strong> — what the researcher declares: steps, commands,
+variables, remote bindings (<code class="docutils literal notranslate"><span class="pre">sOverleafProjectId</span></code>,
+<code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.listRecords</span></code>, <code class="docutils literal notranslate"><span class="pre">dictZenodoMetadata</span></code>).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code></strong> — what this machine observed:
+verification results, run statistics (see <code class="docutils literal notranslate"><span class="pre">stateManager.py</span></code>;
+gitignored, per-machine).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">.vaibify/syncStatus.json</span></code>, section <code class="docutils literal notranslate"><span class="pre">dictProjectBookkeeping</span></code></strong> —
+what a push, archive, or verify produced: <code class="docutils literal notranslate"><span class="pre">dictSyncStatus</span></code>, the
+Zenodo publish record, <code class="docutils literal notranslate"><span class="pre">dictRemotes.overleaf.sLastPushCommit</span></code>,
+<code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.sRecordId</span></code>/<code class="docutils literal notranslate"><span class="pre">sDoi</span></code>/<code class="docutils literal notranslate"><span class="pre">sService</span></code>,
+<code class="docutils literal notranslate"><span class="pre">dictRemotes.github.sCommittedSha</span></code>. Owned by
+<code class="docutils literal notranslate"><span class="pre">reproducibility/syncBookkeeping.py</span></code>, keyed by the workflow’s
+repo-relative path (the state.json schema-v3 namespacing lesson),
+written under the same lock as the per-service verify caches that
+share the file, and deliberately outside the publication comparison
+scope.</p></li>
+</ul>
+<p>The in-memory dict every route and the frontend sees is the <em>merged</em>
+shape: load grafts the state and the bookkeeping back in, save splits
+them out again. Sidecar values win over same-named keys still present
+in a legacy fielded <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, because restoring an old
+definition from git must not roll back the record of what was
+actually published; a legacy file migrates automatically on its first
+save. The scope version (<code class="docutils literal notranslate"><span class="pre">publicationScope.I_PUBLICATION_SCOPE_VERSION</span></code>)
+was bumped with the split: a cache written against the fielded shape
+is evidence about bytes the definition no longer contains.
+<code class="docutils literal notranslate"><span class="pre">tests/testProjectBookkeepingSidecar.py</span></code> pins the headline property —
+serialize, publish, serialize again, and the definition’s bytes are
+identical.</p>
 </section>
 <section id="single-browser-session-per-container">
 <h2>Single browser session per container<a class="headerlink" href="#single-browser-session-per-container" title="Link to this heading"></a></h2>
@@ -1218,7 +1264,12 @@ protocol.</p></li>
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/pipeline_state.json</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> — project CRUD, variable resolution, step
 references, dependency graph. Uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> because it operates
-on container paths.</p></li>
+on container paths. Its save path splits the merged in-memory dict
+three ways: the declared definition to <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, per-machine
+runtime state to <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code> (<code class="docutils literal notranslate"><span class="pre">stateManager.py</span></code>), and
+push/archive-produced bookkeeping to the <code class="docutils literal notranslate"><span class="pre">.vaibify/syncStatus.json</span></code>
+sidecar (<code class="docutils literal notranslate"><span class="pre">reproducibility/syncBookkeeping.py</span></code>) — see “project.json
+is a definition” below.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code> — file-status polling, mtime tracking, step
 invalidation, verification freshness. The formal verification state
 machine is documented in its module docstring.</p></li>
@@ -1377,7 +1428,20 @@ step — L1: the repository exists; L2: sync-verify freshness plus
 the arXiv criteria (only when an arXiv submission is recorded — the
 arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
-binary declarations). A Project-row L1 check above red step rows is
+binary declarations) plus the published-envelope pair — the envelope
+matches the GitHub mirror AND is present in the Zenodo archive
+(2026-08-26, superseding a same-day GitHub-only ruling: GitHub is not
+an archive, and within v1.0’s closed world of two remotes “the
+envelope is in the permanent archive” reduces to “the envelope is in
+Zenodo”). The Zenodo verify consults every DECLARED record
+(<code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.listRecords</span></code> plus the primary), because Zenodo’s
+own GitHub integration archives code releases as separate records; a
+file agrees with Zenodo when ANY declared record serves its bytes.
+Deposits are immutable, so the Zenodo conjunct makes Level 3 a
+release-time property — red through most of a project’s life, green
+at publication moments — which is judged correct: “reproducible”
+describes a published artifact, not a state the working tree drifts
+through. A Project-row L1 check above red step rows is
 therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.</p>
