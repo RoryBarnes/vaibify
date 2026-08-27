@@ -89,12 +89,15 @@ __all__ = [
 ]
 
 import asyncio
+import logging
 import threading
 import time
 
 from vaibify.config import operationJournal
 from . import browserSession
 from . import containerOwnership
+
+logger = logging.getLogger("vaibify")
 
 # Lifecycle timing knobs (design §2.5), env-overridable. Only the reap
 # grace (containerOwnership._F_GRACE_SECONDS) is consumed today; the
@@ -408,6 +411,10 @@ def _ftReserveForStartUnderLocks(
     # the previous era's closed admission and never convene a council
     # again.
     _fnReopenCouncilAdmission(appState, sName)
+    logger.info(
+        "START reservation minted for container %r (session %s)",
+        sName, sBrowserSessionId[:8] or "<unbound>",
+    )
     return (S_START_RESERVED, {}, recordOwner)
 
 
@@ -542,6 +549,10 @@ async def ftReleaseExplicit(
             })
         sBusyMessage = _fsReleaseBusyReason(appState, sName, bForce)
         if sBusyMessage:
+            logger.info(
+                "RELEASE of container %r refused busy: %s",
+                sName, sBusyMessage,
+            )
             return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
         # Council admission closes ATOMICALLY before anything awaits:
         # the busy check alone is check-then-act — a respond authorized
@@ -584,6 +595,9 @@ async def ftReleaseExplicit(
             "sMessage": f"Container '{sName}' was not released; its "
                         "ownership changed during the request.",
         })
+    logger.info(
+        "RELEASE of container %r committed by its owning session", sName,
+    )
     return (S_RELEASE_RELEASED, {})
 
 
@@ -1118,6 +1132,12 @@ def _ftCommitTransfer(
         dictStore, sCapability, sNewSessionId, sNewCredential, sNewLease,
         iNewGeneration,
     )
+    logger.info(
+        "OWNERSHIP of container %r transferred from session %s to "
+        "session %s (generation %d)",
+        sName, sOldSessionId[:8] or "<unbound>", sNewSessionId[:8],
+        iNewGeneration,
+    )
     return ({
         "sContainerName": sName,
         "sSessionId": sNewSessionId,
@@ -1259,6 +1279,14 @@ def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
         return []
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     sSessionId = recordOwner.sBrowserSessionId
+    logger.warning(
+        "SESSION orphaned for container %r (session %s): %d live "
+        "socket(s), %.0fs since a socket was last seen; the credential "
+        "is revoked, the container's work and flock are retained",
+        sName, sSessionId[:8] or "<unbound>",
+        recordOwner.iLiveConnectionCount,
+        time.monotonic() - recordOwner.fLastSeenMonotonic,
+    )
     # (a) The credential authorizes nothing from this statement on.
     browserSession.fbRevokeSessionById(dictStore, sSessionId)
     # (d) Unused capabilities die with the session (tickets and
@@ -1419,6 +1447,12 @@ async def fnExpireIdleBrowserSessions(appState):
         recordOwner = dictContainerOwners.get(sName) if sName else None
         if not _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
             continue
+        logger.info(
+            "SESSION %s expired (age %.0fs, idle %.0fs%s); revoking",
+            sSessionId[:8], dictLifetime["fAgeSeconds"],
+            dictLifetime["fIdleSeconds"],
+            f", owner of container {sName!r}" if sName else "",
+        )
         await _fnCommitSessionExpiry(
             appState, dictStore, sName, recordOwner, sSessionId,
         )

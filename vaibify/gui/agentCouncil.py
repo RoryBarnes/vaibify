@@ -35,6 +35,7 @@ transitions belong to this engine alone; callers never mutate
 import asyncio
 import copy
 import json
+import logging
 
 from .agentCouncilCampaign import (
     CouncilConfigurationError,
@@ -96,6 +97,8 @@ from .agentCouncilCharter import (
 )
 from .agentCouncilEvidence import EvidenceDisciplineMixin
 from .agentCouncilResolution import RoundResolutionMixin
+
+logger = logging.getLogger("vaibify")
 
 __all__ = [
     "CouncilConfigurationError",
@@ -843,6 +846,16 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 "sFailureClass", "")
             dictTurnRecord["sRejectedPayload"] = dictAttempt.get(
                 "sRejectedPayload", "")
+        if dictTurnRecord["sStatus"] == "failed":
+            logger.warning(
+                "COUNCIL turn failed in campaign %s: participant %s "
+                "(model %r), phase %s, round %d: %s",
+                self.dictCampaign["sCampaignId"],
+                dictParticipant["sParticipantId"],
+                dictParticipant.get("sRequestedModel", ""),
+                sPhase, dictRound["iRoundNumber"],
+                dictTurnRecord["sFailureReason"],
+            )
         return dictTurnRecord
 
     async def _fdictDriveConnection(self, dictParticipant, dictRequest):

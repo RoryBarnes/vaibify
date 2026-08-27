@@ -4066,7 +4066,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # decision 6) — a host project's credential is UNMINTED, not
     # undelivered, and the branch lives inside the mint so no caller
     # can forget it.
-    "containerOwnership.py": 907,
+    # 907 -> 952 (2026-08-27): every ownership transition announces
+    # itself in the log. A live hub lost a session's lease with zero
+    # operator-visible trace; the lines live at the commit points they
+    # describe (tests/testLifecycleLogging.py pins them).
+    "containerOwnership.py": 952,
     # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
     # default cap when the three exhausted-round exit routes and the
     # credential-gate refusal joined it. One cohesive responsibility —
@@ -4285,7 +4289,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # into the retired record, and re-enters planning in one
     # checkpoint. Retirement inverts what the attempt captured, so it
     # lives beside the capture.
-    "agentCouncil.py": 1180,
+    # 1180 -> 1193 (2026-08-27): a failed turn logs a WARNING naming
+    # the campaign, participant, model, and reason — the dashboard
+    # showed a model failure the hub log knew nothing about
+    # (tests/testLifecycleLogging.py pins the line).
+    "agentCouncil.py": 1193,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5344,7 +5352,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # its own release-busy clause with its own words. Widening the
     # council clause would have sent the researcher to "stop the
     # council", which does not end a conversation.
-    "sessionLifecycle.py": 1546,
+    # 1546 -> 1580 (2026-08-27): the orphan commit, session expiry,
+    # release outcomes, transfer, and start reservation each log the
+    # transition they commit (tests/testLifecycleLogging.py pins the
+    # orphan line — the one whose silence made a lease loss
+    # undiagnosable).
+    "sessionLifecycle.py": 1580,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
