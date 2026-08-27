@@ -91,6 +91,34 @@ def testTheContextModuleNeverConstructsItsOwnClient():
 # ── the gateway refuses an unknown handle ──────────────────────────
 
 
+class _RecordingDockerImageApi:
+    """Record the immutable proxy-image pull request."""
+
+    def __init__(self):
+        self.listCalls = []
+
+    def pull(self, sImageReference):
+        self.listCalls.append(("pull", sImageReference))
+
+
+class _ImageAwareDockerDouble:
+    """Expose only the image collection needed by the resolver."""
+
+    def __init__(self):
+        self.api = _RecordingDockerImageApi()
+
+
+def testTheProxyImageIsPulledByItsPinnedReference():
+    """Every launch resolves the exact reviewed digest before create."""
+    dockerRecording = _ImageAwareDockerDouble()
+
+    gateway._fnEnsureProxyImageAvailable(dockerRecording)
+
+    assert dockerRecording.api.listCalls == [
+        ("pull", gateway.agentCouncilEgress.S_PROXY_IMAGE),
+    ]
+
+
 def _fdictBuildGatewayWithRegistry(dockerCouncil=None):
     dictRegistry = registry.fdictCreateCouncilRegistry()
     return gateway.fdictCreateCouncilDockerGateway(

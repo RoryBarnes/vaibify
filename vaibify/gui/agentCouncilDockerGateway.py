@@ -705,15 +705,13 @@ def _fnAttachToDefaultBridge(dockerCouncil, sContainerId):
         )
 
 
-def _fnRemoveContainerQuietly(dockerCouncil, sContainerId):
-    """Force-remove a container, tolerating one already gone."""
-    moduleDocker = _fmoduleGetDocker()
+def _fnEnsureProxyImageAvailable(dockerCouncil):
+    """Resolve the source-pinned proxy image into the local daemon."""
     try:
-        dockerCouncil.api.remove_container(sContainerId, force=True, v=True)
-    except moduleDocker.errors.NotFound:
-        pass
-    except Exception:
-        pass
+        dockerCouncil.api.pull(agentCouncilEgress.S_PROXY_IMAGE)
+    except Exception as error:
+        raise agentCouncilEgress.EgressSetupError(
+            f"pinned egress proxy image pull failed: {error}")
 
 
 def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
@@ -740,6 +738,7 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
     sNetworkName = agentCouncilEgress.fsComposeNetworkName(sCampaignId)
     sProxyName = agentCouncilEgress.fsComposeProxyContainerName(sCampaignId)
     dockerCouncil = dictGateway["dockerCouncil"]
+    _fnEnsureProxyImageAvailable(dockerCouncil)
     try:
         containerProxy = dockerCouncil.containers.create(
             agentCouncilEgress.S_PROXY_IMAGE,
@@ -780,7 +779,7 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
         return _fsReadProxyInternalAddress(
             dockerCouncil, sContainerId, sNetworkName)
     except Exception:
-        _fnRemoveContainerQuietly(dockerCouncil, sContainerId)
+        fdictDestroyRunnerAndProveAbsence(dockerCouncil, sContainerId)
         raise
 
 

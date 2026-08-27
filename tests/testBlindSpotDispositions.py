@@ -181,10 +181,10 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fnCopyProxyScriptIntoContainer|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|_fnEnsureProxyImageAvailable|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fnKillContainerQuietly|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilDockerGateway.py|_fnRemoveContainerQuietly|"
-    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fsReadProxyInternalAddress|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fsRemoveInternalNetwork|"
