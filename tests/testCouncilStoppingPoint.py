@@ -159,6 +159,46 @@ def testOnlyARetryableFailureIsOfferedTheRetry():
     assert "authenticationFailure" in dictRefused["sBlockedReason"]
 
 
+def _fdictBuildMisfiledLimitRecord(sRawResultText):
+    """A record shaped exactly like the 2026-08-27 live failure.
+
+    The validator filed the CLI's limit message as a schema failure:
+    no failure class, an invalidStructuredResultAfterRepair reason,
+    and a rejected payload that is precisely the raw-text wrap.
+    """
+    import json as moduleJson
+    dictRecord = _fdictBuildFailedRecord(
+        "invalidStructuredResultAfterRepair: 'sSummary' must be a "
+        "non-empty string")
+    dictRecord["listRounds"][0]["dictTurnsByPhase"]["synthesis"][0][
+        "sRejectedPayload"] = moduleJson.dumps(
+        {"sRawResultText": sRawResultText})
+    return dictRecord
+
+
+def testAMisfiledLimitRefusalIsRescuedIntoRetry():
+    """A recorded limit message unlocks Retry; other prose stays blocked.
+
+    Two live agents hit an org spend limit and both records read
+    "convene a fresh council" over a failure that resets at a stated
+    time (2026-08-27). The stopping point is recomputed on every read,
+    so the rescue reads the same recorded evidence — only the exact
+    raw-text wrap carrying a limit-shaped message — and files it
+    honestly. Genuine schema garbage keeps its refusal: retrying it
+    spends the researcher's subscription proving the same thing.
+    """
+    dictRescued = fdictDescribeStoppingPoint(_fdictBuildMisfiledLimitRecord(
+        "You've hit your org's monthly spend limit - your session "
+        "limit resets 1:40am (UTC)"))
+    assert dictRescued["sAction"] == "retry"
+    assert dictRescued["bResumable"] is True
+
+    dictStillBlocked = fdictDescribeStoppingPoint(
+        _fdictBuildMisfiledLimitRecord("here is my plan as prose"))
+    assert dictStillBlocked["sAction"] == "none"
+    assert dictStillBlocked["bResumable"] is False
+
+
 @pytest.mark.falsification
 def testAMidPhaseRecordIsNotResumable():
     """A turn the record shows launched but never settled blocks resume.

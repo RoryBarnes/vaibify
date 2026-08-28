@@ -67,6 +67,8 @@ __all__ = [
     "S_FAILURE_NO_RESULT_EVENT",
     "S_FAILURE_AUTHENTICATION",
     "S_FAILURE_RATE_LIMIT",
+    "S_FAILURE_CLI_ERROR_RESULT",
+    "fsClassifyErrorResultShape",
     "RunnerCredentialError",
     "ClaudeRunnerConnection",
     "flistComposeClaudeArgv",
@@ -160,6 +162,11 @@ S_FAILURE_KILLED_NO_EXIT_CODE = "killedNoExitCode"
 S_FAILURE_NO_RESULT_EVENT = "noResultEvent"
 S_FAILURE_AUTHENTICATION = "authenticationFailure"
 S_FAILURE_RATE_LIMIT = "rateLimit"
+# The CLI marked its result an error but the text matches no known
+# shape. Distinct from the schema-invalid class on purpose: the model
+# never answered, so the validator's fifteen "must be an array" lines
+# would describe an answer that does not exist.
+S_FAILURE_CLI_ERROR_RESULT = "cliReportedErrorResult"
 # The CLI's own stream-json event type for a rate limit. Distinct from
 # the result event's error text: a rate limit can truncate a turn
 # BEFORE any result event exists.
@@ -280,7 +287,43 @@ def fdictExtractStructuredResult(listEvents, dictExecution=None):
     jsonParsed = _fjsonParseResultText(sResultText)
     if isinstance(jsonParsed, dict):
         return jsonParsed
+    if dictResultEvent.get("is_error"):
+        # The CLI marked this result a FAILURE: the text is its error
+        # message, never a malformed answer. Running the validator over
+        # it filed a live usage-limit refusal as fifteen schema
+        # violations, and the retry gate then refused a failure that
+        # resets on its own (2026-08-27). Classified from the CLI's
+        # OWN verdict, never from event co-occurrence — inferring a
+        # limit from a rate_limit_event's presence misdiagnosed two
+        # councils (2026-08-24).
+        return {
+            "sRawResultText": "",
+            "sEmptyResultReason": (
+                fsClassifyErrorResultShape(sResultText)
+                or S_FAILURE_CLI_ERROR_RESULT),
+            "sCliErrorText": sResultText[:500],
+            "bResultEventReportedError": True,
+            "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
+        }
     return {"sRawResultText": sResultText}
+
+
+def fsClassifyErrorResultShape(sErrorText):
+    """Classify the CLI's own error verdict by its text shape.
+
+    Consulted only for a result the CLI itself marked ``is_error``.
+    "limit" alone is deliberately enough for the limit class: the CLI
+    words usage, spend, session, and rate limits differently, every
+    one of them resets, and over-matching costs one wasted retry click
+    where under-matching strands a recoverable campaign behind
+    "convene a fresh council".
+    """
+    sLowered = sErrorText.lower()
+    if "limit" in sLowered:
+        return S_FAILURE_RATE_LIMIT
+    if "auth" in sLowered or "credential" in sLowered:
+        return S_FAILURE_AUTHENTICATION
+    return ""
 
 
 def fsExtractResultText(listEvents):
@@ -490,11 +533,10 @@ def fsClassifyTurnFailure(iExitCode, listEvents):
     if dictResultEvent is None:
         return S_FAILURE_NO_RESULT_EVENT
     if dictResultEvent.get("is_error"):
-        sErrorText = json.dumps(dictResultEvent, default=str).lower()
-        if "rate" in sErrorText and "limit" in sErrorText:
-            return S_FAILURE_RATE_LIMIT
-        if "auth" in sErrorText or "credential" in sErrorText:
-            return S_FAILURE_AUTHENTICATION
+        sShapeClass = fsClassifyErrorResultShape(
+            json.dumps(dictResultEvent, default=str))
+        if sShapeClass:
+            return sShapeClass
     if iExitCode != 0:
         return S_FAILURE_NON_ZERO_EXIT
     return S_FAILURE_CLEAN_EXIT

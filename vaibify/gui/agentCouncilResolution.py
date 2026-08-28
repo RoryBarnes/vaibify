@@ -23,6 +23,7 @@ the method-resolution order.
 """
 
 import copy
+import json
 
 from .agentCouncilCampaign import (
     LIST_EXHAUSTED_ROUND_EXITS,
@@ -625,12 +626,36 @@ def fsClassifyRetryEligibility(dictRound, dictAttempt):
         if dictTurn.get("sStatus") == "failed"
         and (dictTurn.get("sFailureClass")
              or _fsRootFailureReason(dictTurn.get("sFailureReason", "")))
-        not in SET_RETRYABLE_TURN_FAILURE_REASONS})
+        not in SET_RETRYABLE_TURN_FAILURE_REASONS
+        and not _fbRejectedPayloadCarriesACliLimitMessage(dictTurn)})
     if listBlockingReasons:
         return ("this failure repeats on a re-run ("
                 + "; ".join(listBlockingReasons)
                 + "); convene a fresh council")
     return ""
+
+
+def _fbRejectedPayloadCarriesACliLimitMessage(dictTurn):
+    """Rescue a limit refusal mis-filed as a schema failure.
+
+    Records written before 2026-08-27 wrapped the CLI's usage-limit
+    message as raw result text, so the validator filed it as fifteen
+    schema violations and this gate refused a failure that resets on
+    its own — a live council was told "convene a fresh council" over a
+    spend limit. The stopping point is recomputed on every read, so
+    this reads the SAME recorded evidence and files it honestly: only
+    a payload that is exactly the raw-text wrap, carrying a
+    limit-shaped message, qualifies.
+    """
+    try:
+        jsonPayload = json.loads(dictTurn.get("sRejectedPayload") or "")
+    except ValueError:
+        return False
+    if not isinstance(jsonPayload, dict):
+        return False
+    if set(jsonPayload) != {"sRawResultText"}:
+        return False
+    return "limit" in str(jsonPayload.get("sRawResultText") or "").lower()
 
 
 def _fsRootFailureReason(sFailureReason):

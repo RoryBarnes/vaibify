@@ -103,6 +103,40 @@ def testStructuredResultExtractionSurfacesUnparseableForRepair():
     listProse = [{"type": "result", "result": "here is my plan, no JSON"}]
     dictExtracted = providers.fdictExtractStructuredResult(listProse)
     assert dictExtracted == {"sRawResultText": "here is my plan, no JSON"}
+
+
+def testAnErrorResultIsClassifiedNeverFiledAsASchemaFailure():
+    """The CLI's own error verdict routes to a diagnosis, not the validator.
+
+    A live usage-limit refusal ("You've hit your org's monthly spend
+    limit ... your session limit resets 1:40am") was wrapped as raw
+    text, failed all fifteen schema fields, and the retry gate then
+    refused a failure that resets on its own (2026-08-27). The CLI's
+    ``is_error`` verdict is the discriminator — never event
+    co-occurrence, which misdiagnosed two councils (2026-08-24) — and
+    the CLI's message rides the diagnosis so the researcher reads the
+    reset time.
+    """
+    sLimitText = ("You've hit your org's monthly spend limit - your "
+                  "session limit resets 1:40am (UTC)")
+    dictLimit = providers.fdictExtractStructuredResult(
+        [{"type": "result", "result": sLimitText, "is_error": True,
+          "subtype": "error_during_execution"}])
+    assert dictLimit["sEmptyResultReason"] == providers.S_FAILURE_RATE_LIMIT
+    assert sLimitText in dictLimit["sCliErrorText"]
+    assert dictLimit["sRawResultText"] == ""
+
+    dictAuth = providers.fdictExtractStructuredResult(
+        [{"type": "result", "is_error": True,
+          "result": "the OAuth credential is invalid"}])
+    assert dictAuth["sEmptyResultReason"] == (
+        providers.S_FAILURE_AUTHENTICATION)
+
+    dictUnknown = providers.fdictExtractStructuredResult(
+        [{"type": "result", "is_error": True,
+          "result": "something else went wrong"}])
+    assert dictUnknown["sEmptyResultReason"] == (
+        providers.S_FAILURE_CLI_ERROR_RESULT)
     # An empty stream still yields an empty raw text — the validator's
     # trigger — but now carries its diagnosis alongside, so this asserts
     # the contract rather than the exact dict.

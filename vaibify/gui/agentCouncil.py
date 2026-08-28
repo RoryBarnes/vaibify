@@ -186,6 +186,17 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
         "turn can see.",
     "resultEventCarriedNoText":
         "the assistant finished but its answer was empty.",
+    "rateLimit":
+        "the provider refused this turn at a usage, spend, or rate "
+        "limit (rateLimit). Nothing is wrong with the council; retry "
+        "the failed phase once the limit's window resets.",
+    "authenticationFailure":
+        "the provider refused the runner's login "
+        "(authenticationFailure). Re-run the project's login check, "
+        "then retry the failed phase.",
+    "cliReportedErrorResult":
+        "the CLI reported an error instead of an answer "
+        "(cliReportedErrorResult).",
 }
 
 
@@ -201,9 +212,14 @@ def _fsExplainEmptyTurn(sEmptyReason, dictRawResult):
     sProgress = (
         f" It had produced {iAssistant} messages before stopping."
         if iAssistant else "")
+    # The CLI's own words, when it reported the failure itself — a
+    # usage-limit message names the reset time, which is the one fact
+    # the researcher plans around.
+    sCliError = (dictRawResult or {}).get("sCliErrorText") or ""
+    sCliSentence = f" The CLI said: {sCliError}" if sCliError else ""
     return "emptyTurn: " + DICT_EMPTY_TURN_EXPLANATIONS.get(
         sEmptyReason, f"the turn returned nothing ({sEmptyReason}).",
-    ) + sProgress
+    ) + sProgress + sCliSentence
 
 
 def _fsSummarizeRejectedPayload(dictRawResult):

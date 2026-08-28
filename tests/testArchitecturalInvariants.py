@@ -4293,7 +4293,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the campaign, participant, model, and reason — the dashboard
     # showed a model failure the hub log knew nothing about
     # (tests/testLifecycleLogging.py pins the line).
-    "agentCouncil.py": 1193,
+    # 1193 -> 1209 (2026-08-27): the limit/auth/cli-error empty-turn
+    # explanations, carrying the CLI's own message so the researcher
+    # reads the reset time.
+    "agentCouncil.py": 1209,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -4378,7 +4381,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a code fence to be the FIRST thing in the text. A live council
     # discarded a complete, schema-valid cross-review because one
     # sentence of preamble preceded the block.
-    "agentCouncilProviders.py": 1096,
+    # 1096 -> 1138 (2026-08-27): an is_error result routes to a
+    # classified diagnosis instead of the schema validator — a live
+    # usage-limit refusal was filed as fifteen schema violations and
+    # the retry gate refused a failure that resets on its own.
+    "agentCouncilProviders.py": 1138,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
