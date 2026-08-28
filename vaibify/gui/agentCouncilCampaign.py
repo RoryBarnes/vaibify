@@ -78,6 +78,8 @@ __all__ = [
     "fdictCreateCampaign",
     "fdictCreateParticipant",
     "fdictRestoreCampaignFromMetadata",
+    "flistReinstateTransientlyFailedParticipants",
+    "fsFindLatestFailureClassForParticipant",
     "fnTransitionCampaignState",
 ]
 
@@ -339,6 +341,66 @@ def fdictCreateParticipant(sProvider, sRequestedModel, sRole=""):
         "bFailed": False,
         "sFailureReason": "",
     }
+
+
+def fsFindLatestFailureClassForParticipant(dictCampaign, sParticipantId):
+    """Return the machine class of a participant's most recent failure.
+
+    Read from the durable TURN records rather than the participant,
+    because that is where the class lives and where it lives for
+    campaigns checkpointed before participants carried one. Falls back
+    to the reason's own leading class token, which is how a record
+    written before the class field carries it.
+    """
+    sLatestClass = ""
+    for dictRound in dictCampaign.get("listRounds") or []:
+        for listTurns in (dictRound.get("dictTurnsByPhase") or {}).values():
+            for dictTurn in listTurns:
+                if dictTurn.get("sParticipantId") != sParticipantId:
+                    continue
+                if dictTurn.get("sStatus") != "failed":
+                    continue
+                sLatestClass = (
+                    dictTurn.get("sFailureClass")
+                    or str(dictTurn.get("sFailureReason") or "").split(
+                        ":", 1)[0].strip()
+                    or sLatestClass)
+    return sLatestClass
+
+
+def flistReinstateTransientlyFailedParticipants(dictCampaign):
+    """Return participants retired by a TRANSIENT failure to the roster.
+
+    A participant is retired the moment any turn of theirs fails, and
+    nothing ever cleared the flag — so one rate limit removed a model
+    for the life of the campaign, and with two participants the next
+    blip collapsed the council into a quorum shortfall (live,
+    2026-08-28: a spend limit in round 4 retired one of two models and
+    the round's veto then had no voters at all).
+
+    The retry whitelist already knows which failures do not repeat, so
+    it is the authority here too: a rate limit, a killed runner, a
+    transport fault come back; an authentication failure or a
+    schema-invalid answer stays retired, because those fail identically
+    and a reinstated participant would only fail again.
+
+    The failed TURN records are untouched — they are the provenance
+    that this participant missed work, and a reader must always be
+    able to see it. Returns the reinstated participants so the caller
+    can record what it did.
+    """
+    listReinstated = []
+    for dictParticipant in dictCampaign.get("listParticipants") or []:
+        if not dictParticipant.get("bFailed"):
+            continue
+        sFailureClass = fsFindLatestFailureClassForParticipant(
+            dictCampaign, dictParticipant["sParticipantId"])
+        if sFailureClass not in SET_RETRYABLE_TURN_FAILURE_REASONS:
+            continue
+        dictParticipant["bFailed"] = False
+        dictParticipant["sFailureReason"] = ""
+        listReinstated.append(dictParticipant)
+    return listReinstated
 
 
 def _fdictValidateSettings(dictRequestedSettings):

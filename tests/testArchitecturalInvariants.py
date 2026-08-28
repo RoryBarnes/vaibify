@@ -5503,7 +5503,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # against the daemon before it can refuse a retry, and the refusal
     # that survives names the hub restart rather than a reconcile
     # command that has never touched council reservations.
-    "agentCouncilController.py": 1895,
+    # 1895 -> 1931 (2026-08-28): a participant retired by a TRANSIENT
+    # failure rejoins when the researcher continues the council — one
+    # rate limit used to retire a model for the campaign's life, and
+    # with two participants the next blip was a quorum shortfall
+    # nothing could leave.
+    "agentCouncilController.py": 1931,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

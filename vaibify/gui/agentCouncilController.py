@@ -1138,6 +1138,36 @@ def _fbaReadSealedSnapshot(dictStore, sCampaignId):
         dictStore["sDurableStoreRoot"], sCampaignId)
 
 
+def _fnReinstateTransientlyFailedParticipants(dictStore, sCampaignId,
+                                             dictCampaign):
+    """Return environment-felled participants to the roster, on the record.
+
+    Runs at every continuation — the moment the researcher asks the
+    council to carry on — because that is when a transient failure has
+    demonstrably passed. Recorded as an event rather than done
+    silently: a participant that missed a round is a fact about the
+    deliberation, and the failed turn records stay exactly where they
+    were.
+    """
+    listReinstated = (
+        agentCouncilCampaign.flistReinstateTransientlyFailedParticipants(
+            dictCampaign))
+    if not listReinstated:
+        return
+    for dictParticipant in listReinstated:
+        agentCouncilStore.fdictAppendCampaignEvent(
+            dictStore, sCampaignId,
+            {"sEventKind": "participantReinstated", "sTurnId": "",
+             "sDetail": dictParticipant["sParticipantId"]})
+        logger.info(
+            "COUNCIL reinstated participant %s (model %r) in campaign %s: "
+            "its failure was a transient class the retry whitelist admits",
+            dictParticipant["sParticipantId"],
+            dictParticipant.get("sRequestedModel", ""), sCampaignId)
+    agentCouncilStore.fnCheckpointStoredCampaign(
+        dictStore, sCampaignId, dictCampaign)
+
+
 async def _fdictRequireOrRebuildRuntime(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         sAction, dictRebuildMaterials=None):
@@ -1158,6 +1188,8 @@ async def _fdictRequireOrRebuildRuntime(
     if dictRuntime is not None:
         _fnRefuseWhenResourceAdmissionClosed(
             dictControllerState, dictRuntime["dictCampaign"], sAction)
+        _fnReinstateTransientlyFailedParticipants(
+            dictStore, sCampaignId, dictRuntime["dictCampaign"])
         return dictRuntime
     if dictRebuildMaterials is None:
         raise CouncilCommandError(
@@ -1176,6 +1208,10 @@ async def _fdictRequireOrRebuildRuntime(
             "hub restarted since it ran; convene a fresh council")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, sAction)
+    # Both branches of this seam reinstate: a hub restart must not be
+    # the thing that decides whether a rate-limited model rejoins.
+    _fnReinstateTransientlyFailedParticipants(
+        dictStore, sCampaignId, dictCampaign)
     await _fnSettleChatConversationBeforeCampaignWork(
         dictControllerState, sCampaignId, sAction)
     await asyncio.to_thread(

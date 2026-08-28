@@ -509,3 +509,84 @@ def testAQuarantineTheDaemonCannotDisproveStillRefuses(
             dictStore, dictRegistry, dictControllerState, sCampaignId,
             monkeypatch, [])
     assert "reservation-live" in dictRegistry["dictReservationsById"]
+
+
+# ----- participants felled by the environment come back (2026-08-28) ----
+
+
+def _fdictDriveWithATransientReviewFailure(sEmptyReason):
+    """Drive a real council where beta's cross-review fails transiently."""
+    def _ffnDecide(sHandle, dictTurnRequest):
+        if (dictTurnRequest["sPhase"] == "crossReview"
+                and sHandle == "beta"):
+            return fdictDecideCompleted({"sEmptyResultReason": sEmptyReason})
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecide, sChairbotHandle="alpha")
+    return fixtureCouncil.fdictDrive()
+
+
+def testAParticipantFelledByALimitRejoinsAndRestoresTheQuorum():
+    """A rate limit must not retire a model for the whole campaign.
+
+    Live (2026-08-28): a spend limit in round 4 retired one of two
+    models; nothing ever cleared the flag, the round's veto then had
+    no eligible voter at all, and the campaign fell into a quorum
+    shortfall it could never leave. The retry whitelist already knows
+    this failure does not repeat.
+    """
+    from vaibify.gui.agentCouncilCampaign import (
+        flistReinstateTransientlyFailedParticipants,
+    )
+    dictCampaign = _fdictDriveWithATransientReviewFailure("rateLimit")
+    dictBeta = [dictParticipant
+                for dictParticipant in dictCampaign["listParticipants"]
+                if dictParticipant["sRequestedModel"] == "model-b"][0]
+    assert dictBeta["bFailed"] is True, "the premise failed"
+
+    listReinstated = flistReinstateTransientlyFailedParticipants(
+        dictCampaign)
+
+    assert [dictParticipant["sRequestedModel"]
+            for dictParticipant in listReinstated] == ["model-b"]
+    assert dictBeta["bFailed"] is False
+    assert dictBeta["sFailureReason"] == ""
+    # Two distinct surviving models again — the quorum floor's own test.
+    setSurviving = {
+        (dictParticipant["sProvider"], dictParticipant["sRequestedModel"])
+        for dictParticipant in dictCampaign["listParticipants"]
+        if not dictParticipant["bFailed"]}
+    assert len(setSurviving) == 2
+    # The failed TURN record stays: a participant that missed work must
+    # remain visible in the record that says so.
+    listFailedTurns = [
+        dictTurn
+        for dictRound in dictCampaign["listRounds"]
+        for listTurns in dictRound["dictTurnsByPhase"].values()
+        for dictTurn in listTurns
+        if dictTurn["sStatus"] == "failed"]
+    assert listFailedTurns, "the provenance of the missed turn was erased"
+
+
+def testAParticipantThatFailsIdenticallyStaysRetired():
+    """An authentication failure repeats; reinstating it wastes a turn.
+
+    The discriminator, not a blanket amnesty: the retry whitelist is
+    the same authority both paths consult.
+    """
+    from vaibify.gui.agentCouncilCampaign import (
+        flistReinstateTransientlyFailedParticipants,
+    )
+    dictCampaign = _fdictDriveWithATransientReviewFailure(
+        "authenticationFailure")
+    dictBeta = [dictParticipant
+                for dictParticipant in dictCampaign["listParticipants"]
+                if dictParticipant["sRequestedModel"] == "model-b"][0]
+    assert dictBeta["bFailed"] is True
+
+    listReinstated = flistReinstateTransientlyFailedParticipants(
+        dictCampaign)
+
+    assert listReinstated == []
+    assert dictBeta["bFailed"] is True
