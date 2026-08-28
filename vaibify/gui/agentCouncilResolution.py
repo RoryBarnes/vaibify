@@ -636,17 +636,24 @@ def fsClassifyRetryEligibility(dictRound, dictAttempt):
 
 
 def _fbRejectedPayloadCarriesACliLimitMessage(dictTurn):
-    """Rescue a limit refusal mis-filed as a schema failure.
+    """Rescue a transient refusal recorded under a non-retryable class.
 
-    Records written before 2026-08-27 wrapped the CLI's usage-limit
-    message as raw result text, so the validator filed it as fifteen
-    schema violations and this gate refused a failure that resets on
-    its own — a live council was told "convene a fresh council" over a
-    spend limit. The stopping point is recomputed on every read, so
-    this reads the SAME recorded evidence and files it honestly: only
-    a payload that is exactly the raw-text wrap, carrying a
-    limit-shaped message, qualifies.
+    Two record shapes, both from live councils on 2026-08-27, both
+    refused with "convene a fresh council" over failures that heal on
+    their own. Before the error-result classifier, the CLI's
+    usage-limit message was wrapped as raw result text and failed
+    every schema field — so only a payload that is exactly the
+    raw-text wrap, carrying a limit-shaped message, qualifies. And a
+    connection-refused turn classified before the network class
+    existed carries the CLI's own words in its recorded reason. The
+    stopping point is recomputed on every read, so both rescues read
+    the SAME recorded evidence and file it honestly.
     """
+    if dictTurn.get("sFailureClass") == "cliReportedErrorResult":
+        sReason = str(dictTurn.get("sFailureReason") or "").lower()
+        if ("connection" in sReason or "refused" in sReason
+                or "timeout" in sReason or "unreachable" in sReason):
+            return True
     try:
         jsonPayload = json.loads(dictTurn.get("sRejectedPayload") or "")
     except ValueError:

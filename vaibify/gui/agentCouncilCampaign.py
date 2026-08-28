@@ -226,6 +226,10 @@ SET_RETRYABLE_TURN_FAILURE_REASONS = frozenset({
     # An exception inside the connection layer: the in-process
     # transport class, transient by nature.
     "turnRaised",
+    # The CLI could not reach the provider — a refused connection, a
+    # dead proxy, a mid-restart Docker VM. The network healing is
+    # exactly the case a re-run serves (2026-08-27).
+    "networkUnreachable",
 })
 
 I_MAX_CAMPAIGN_NAME_LENGTH = 80

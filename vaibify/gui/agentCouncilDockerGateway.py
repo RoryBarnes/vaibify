@@ -706,12 +706,38 @@ def _fnAttachToDefaultBridge(dockerCouncil, sContainerId):
 
 
 def _fnEnsureProxyImageAvailable(dockerCouncil):
-    """Resolve the source-pinned proxy image into the local daemon."""
+    """Pull the source-pinned proxy image into the local daemon.
+
+    Called only on a PROVEN miss — the create's own ``ImageNotFound``
+    (see :func:`_fcontainerCreateProxyOrPullOnMiss`) — never as a
+    pre-flight: pull-always refused a researcher's retry over broken
+    registry DNS while the pinned image sat on disk (2026-08-27).
+    """
     try:
         dockerCouncil.api.pull(agentCouncilEgress.S_PROXY_IMAGE)
     except Exception as error:
         raise agentCouncilEgress.EgressSetupError(
             f"pinned egress proxy image pull failed: {error}")
+
+
+def _fcontainerCreateProxyOrPullOnMiss(dockerCouncil,
+                                       fcontainerCreateProxy):
+    """Create the proxy from the local pinned image; pull only on a miss.
+
+    Presence is proven by the create itself: the reference is
+    digest-pinned, so a local image that satisfies it IS the reviewed
+    bytes, and the pull runs only for a daemon that does not hold them
+    (a fresh CI runner). A separate presence probe was the first shape
+    of this fix, but it added a docker-SDK blind-spot site against a
+    ratchet that may only fall — and the create was already going to
+    answer the presence question.
+    """
+    moduleDocker = _fmoduleGetDocker()
+    try:
+        return fcontainerCreateProxy()
+    except moduleDocker.errors.ImageNotFound:
+        _fnEnsureProxyImageAvailable(dockerCouncil)
+        return fcontainerCreateProxy()
 
 
 def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
@@ -738,9 +764,9 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
     sNetworkName = agentCouncilEgress.fsComposeNetworkName(sCampaignId)
     sProxyName = agentCouncilEgress.fsComposeProxyContainerName(sCampaignId)
     dockerCouncil = dictGateway["dockerCouncil"]
-    _fnEnsureProxyImageAvailable(dockerCouncil)
-    try:
-        containerProxy = dockerCouncil.containers.create(
+
+    def fcontainerCreateProxy():
+        return dockerCouncil.containers.create(
             agentCouncilEgress.S_PROXY_IMAGE,
             command=agentCouncilEgress.flistComposeProxyCommand(
                 saHostnames, iaPorts, dictAddressMap),
@@ -765,6 +791,10 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
                     dictGateway.get("sResourceName", ""),
             },
         )
+
+    try:
+        containerProxy = _fcontainerCreateProxyOrPullOnMiss(
+            dockerCouncil, fcontainerCreateProxy)
     except Exception as error:
         raise agentCouncilEgress.EgressSetupError(
             f"failed to create the egress proxy container {sProxyName}: "

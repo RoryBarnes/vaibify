@@ -217,7 +217,10 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
     "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|fsCreateCampaignInternalNetwork|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
-    "gui/agentCouncilDockerGateway.py|fsLaunchAllowlistProxy|"
+    # The proxy create moved into a named closure on 2026-08-27 so the
+    # pull could become miss-only without a new blind-spot site; the
+    # same reviewed egress judgement covers it at its new attribution.
+    "gui/agentCouncilDockerGateway.py|fcontainerCreateProxy|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/commitCarrier.py|fdictLaunchGatedHelperProcess|"
     "opaque-subprocess-command|0": {

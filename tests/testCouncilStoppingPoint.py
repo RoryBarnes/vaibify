@@ -199,6 +199,37 @@ def testAMisfiledLimitRefusalIsRescuedIntoRetry():
     assert dictStillBlocked["bResumable"] is False
 
 
+def _fdictBuildCliErrorRecord(sFailureReason):
+    """A record whose failed turn carries the pre-network-class shape."""
+    dictRecord = _fdictBuildFailedRecord(sFailureReason)
+    dictRecord["listRounds"][0]["dictTurnsByPhase"]["synthesis"][0][
+        "sFailureClass"] = "cliReportedErrorResult"
+    return dictRecord
+
+
+def testAConnectionRefusedCliErrorIsRescuedIntoRetry():
+    """A network-shaped CLI error unlocks Retry; other errors stay blocked.
+
+    A live retry died with "API Error: Connection refused" over a
+    mid-restart Docker VM, classified cliReportedErrorResult before
+    the network class existed — and the gate refused a failure that
+    heals on its own (2026-08-27). An unrecognized CLI error keeps its
+    refusal: nothing says a re-run changes it.
+    """
+    dictRescued = fdictDescribeStoppingPoint(_fdictBuildCliErrorRecord(
+        "emptyTurn: the CLI reported an error instead of an answer "
+        "(cliReportedErrorResult). The CLI said: API Error: Connection "
+        "refused (ConnectionRefused)"))
+    assert dictRescued["sAction"] == "retry"
+    assert dictRescued["bResumable"] is True
+
+    dictStillBlocked = fdictDescribeStoppingPoint(_fdictBuildCliErrorRecord(
+        "emptyTurn: the CLI reported an error instead of an answer "
+        "(cliReportedErrorResult). The CLI said: something exploded"))
+    assert dictStillBlocked["sAction"] == "none"
+    assert dictStillBlocked["bResumable"] is False
+
+
 @pytest.mark.falsification
 def testAMidPhaseRecordIsNotResumable():
     """A turn the record shows launched but never settled blocks resume.

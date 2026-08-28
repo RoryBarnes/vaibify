@@ -1214,8 +1214,15 @@ var VaibifyAgentCouncil = (function () {
            SWITCHING campaigns and wrong after accepting a plan or
            answering a question in the one already open. */
         try {
+            /* The directory rides EVERY request on a multi-directory
+               project — exactly as _fbPostAction's comment rules — and
+               this refresh was the one reader that forgot it: the
+               retry itself succeeded and the refresh then toasted
+               "tracks several directories" over a campaign whose
+               repository was pinned at convene (2026-08-27). */
             var dictResult = await VaibifyApi.fdictGet(
-                _fsRoute("/" + _dictState.sActiveCampaignId));
+                _fsRoute("/" + _dictState.sActiveCampaignId)
+                + _fsDirectoryQuery("?", _dictState.sActiveCampaignId));
             _dictState.dictCampaign = dictResult.dictCampaign || null;
         } catch (error) {
             VaibifyApp.fnShowToast(

@@ -102,21 +102,49 @@ class _RecordingDockerImageApi:
 
 
 class _ImageAwareDockerDouble:
-    """Expose only the image collection needed by the resolver."""
+    """Expose only the image-pull surface the resolver consults."""
 
     def __init__(self):
         self.api = _RecordingDockerImageApi()
 
 
-def testTheProxyImageIsPulledByItsPinnedReference():
-    """Every launch resolves the exact reviewed digest before create."""
+def testTheProxyCreatePullsThePinnedImageOnlyOnAMiss():
+    """The create proves presence; the pull runs only on ImageNotFound.
+
+    The pin is content-addressed, so a local image that satisfies the
+    create IS the reviewed bytes; a pull-always resolver refused a
+    researcher's retry over broken registry DNS while those bytes sat
+    on disk (2026-08-27).
+    """
+    import docker as moduleDocker
     dockerRecording = _ImageAwareDockerDouble()
+    listCreateCalls = []
 
-    gateway._fnEnsureProxyImageAvailable(dockerRecording)
+    def fcontainerCreateMissingOnce():
+        listCreateCalls.append("create")
+        if len(listCreateCalls) == 1:
+            raise moduleDocker.errors.ImageNotFound("pinned image absent")
+        return {"sProxy": "created"}
 
+    dictCreated = gateway._fcontainerCreateProxyOrPullOnMiss(
+        dockerRecording, fcontainerCreateMissingOnce)
+
+    assert dictCreated == {"sProxy": "created"}
+    assert listCreateCalls == ["create", "create"]
     assert dockerRecording.api.listCalls == [
         ("pull", gateway.agentCouncilEgress.S_PROXY_IMAGE),
     ]
+
+
+def testAPresentPinnedImageIsNeverRePulled():
+    """A create the local image satisfies touches no network at all."""
+    dockerRecording = _ImageAwareDockerDouble()
+
+    dictCreated = gateway._fcontainerCreateProxyOrPullOnMiss(
+        dockerRecording, lambda: {"sProxy": "created"})
+
+    assert dictCreated == {"sProxy": "created"}
+    assert dockerRecording.api.listCalls == []
 
 
 def _fdictBuildGatewayWithRegistry(dockerCouncil=None):

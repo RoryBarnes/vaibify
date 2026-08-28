@@ -684,9 +684,26 @@ async def _fdictRebuildRuntimeNonDestructively(
         _fdictBuildCampaignRuntime, dictControllerState, dictStore,
         dictRegistry, sCampaignId, dictCampaign, sImageReference,
         baSnapshotTar, fsStageRunnerCredential))
+    return await _fdictAwaitRuntimeBuild(
+        dictControllerState, sCampaignId, taskBuild)
+
+
+async def _fdictAwaitRuntimeBuild(dictControllerState, sCampaignId,
+                                  taskBuild):
+    """Await a runtime build; clean up and translate faults on failure.
+
+    ONE copy, because there were two: the egress-fault translation
+    landed in the resume rebuild while the retry kept an identical
+    block, and a researcher's retry still died as an unhandled 500
+    (2026-08-27) — the divergence bug that is the style guide's first
+    extraction trigger. An infrastructure fault carries its reason to
+    the researcher as the route's own refusal; the campaign record is
+    untouched either way (this helper cannot even reach the store), so
+    fixing the cause and retrying is exactly right.
+    """
     try:
         dictRuntime = await asyncio.shield(taskBuild)
-    except BaseException:
+    except BaseException as errorBuild:
         await _fnAwaitBuildWorkerCompletion(taskBuild)
         dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].get(
             sCampaignId)
@@ -697,6 +714,12 @@ async def _fdictRebuildRuntimeNonDestructively(
             if bAccessSettled:
                 dictControllerState["dictCampaignRuntime"].pop(
                     sCampaignId, None)
+        from . import agentCouncilEgress
+        if isinstance(errorBuild, agentCouncilEgress.EgressSetupError):
+            raise CouncilCommandError(
+                "this council's runtime could not be rebuilt: "
+                f"{errorBuild}. The campaign record is untouched; fix "
+                "the cause and retry.") from errorBuild
         raise
     dictRuntime["bLaunchInProgress"] = False
     return dictRuntime
@@ -878,21 +901,8 @@ async def fdictRetryCampaignFailedPhase(
         _fdictBuildCampaignRuntime, dictControllerState, dictStore,
         dictRegistry, sCampaignId, dictCampaign, sImageReference,
         baSnapshotTar, fsStageRunnerCredential))
-    try:
-        dictRuntime = await asyncio.shield(taskBuild)
-    except BaseException:
-        await _fnAwaitBuildWorkerCompletion(taskBuild)
-        dictBuiltRuntime = dictControllerState["dictCampaignRuntime"].get(
-            sCampaignId)
-        if dictBuiltRuntime is not None:
-            dictBuiltRuntime["bLaunchInProgress"] = False
-            bAccessSettled = await asyncio.to_thread(
-                _fbReleaseRunnerAccessResources, dictBuiltRuntime)
-            if bAccessSettled:
-                dictControllerState["dictCampaignRuntime"].pop(
-                    sCampaignId, None)
-        raise
-    dictRuntime["bLaunchInProgress"] = False
+    dictRuntime = await _fdictAwaitRuntimeBuild(
+        dictControllerState, sCampaignId, taskBuild)
     agentCouncilStore.fnMarkEvidenceRetiredForAttempt(
         dictStore, sCampaignId,
         f"{dictAttempt['sPhase']}#{dictAttempt['iAttemptNumber']}")

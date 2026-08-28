@@ -197,6 +197,11 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
     "cliReportedErrorResult":
         "the CLI reported an error instead of an answer "
         "(cliReportedErrorResult).",
+    "networkUnreachable":
+        "the runner could not reach the provider (networkUnreachable) "
+        "— a refused connection or dead proxy, commonly a Docker "
+        "daemon or VM mid-restart. Retry once the environment "
+        "settles.",
 }
 
 

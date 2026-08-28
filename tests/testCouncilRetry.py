@@ -99,6 +99,8 @@ def testTheRetryWhitelistMirrorsTheProviderVocabulary():
         SET_RETRYABLE_TURN_FAILURE_REASONS)
     assert agentCouncilProviders.S_EMPTY_BECAUSE_WALL_CLOCK in (
         SET_RETRYABLE_TURN_FAILURE_REASONS)
+    assert agentCouncilProviders.S_FAILURE_NETWORK_UNREACHABLE in (
+        SET_RETRYABLE_TURN_FAILURE_REASONS)
     # The identical-on-re-run classes stay OUT.
     assert agentCouncilProviders.S_FAILURE_AUTHENTICATION not in (
         SET_RETRYABLE_TURN_FAILURE_REASONS)
@@ -174,6 +176,37 @@ def testANonRetryableFailureIsRefusedWithItsReasonNamed(
             dictStore, dictRegistry, dictControllerState, sCampaignId,
             monkeypatch, [])
     assert "authenticationFailure" in str(error.value)
+
+
+def testARetryBuildFaultAnswersAsARefusalNotAServerError(
+        tmp_path, monkeypatch):
+    """An egress fault during the retry's rebuild carries its reason.
+
+    The translation first landed only on the resume rebuild; the retry
+    kept an identical build block and a researcher's retry died as an
+    unhandled 500 — the click looked like nothing at all (2026-08-27).
+    Both paths now share one build-await helper, and this drives the
+    RETRY one.
+    """
+    from vaibify.gui import agentCouncilEgress
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, _fdictDriveToFailedSynthesis("rateLimit")))
+
+    def _fnRaiseEgressFault(dictRuntime, dictParticipant):
+        raise agentCouncilEgress.EgressSetupError(
+            "pinned egress proxy image pull failed: registry DNS down")
+
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        _fnRaiseEgressFault)
+    with pytest.raises(agentCouncilController.CouncilCommandError) as error:
+        asyncio.run(agentCouncilController.fdictRetryCampaignFailedPhase(
+            dictControllerState, dictStore, dictRegistry, sCampaignId,
+            S_IMAGE_IDENTITY))
+    assert "could not be rebuilt" in str(error.value)
+    assert "registry DNS down" in str(error.value)
+    assert "record is untouched" in str(error.value)
 
 
 @pytest.mark.falsification

@@ -14508,25 +14508,26 @@ def _fdictEntry(sRel):
         # transactionality -- transition to failed and checkpoint --
         # which destroys the exact record the rescue exists to reach.
         old=(
-            '            if bAccessSettled:\n'
-            '                dictControllerState["dictCampaignRuntime"].pop(\n'
-            '                    sCampaignId, None)\n'
-            '        raise\n'
-            '    dictRuntime["bLaunchInProgress"] = False\n'
-            '    return dictRuntime'
+            '    return await _fdictAwaitRuntimeBuild(\n'
+            '        dictControllerState, sCampaignId, taskBuild)\n'
+            '\n'
+            '\n'
+            'async def _fdictAwaitRuntimeBuild('
         ),
         new=(
-            '            if bAccessSettled:\n'
-            '                dictControllerState["dictCampaignRuntime"].pop(\n'
-            '                    sCampaignId, None)\n'
+            '    try:\n'
+            '        return await _fdictAwaitRuntimeBuild(\n'
+            '            dictControllerState, sCampaignId, taskBuild)\n'
+            '    except BaseException:\n'
             '        agentCouncilCampaign.fnTransitionCampaignState(\n'
             '            dictCampaign, agentCouncilCampaign.S_STATE_FAILED,\n'
             '            "resumeRebuildFailed")\n'
             '        agentCouncilStore.fnCheckpointStoredCampaign(\n'
             '            dictStore, sCampaignId, dictCampaign)\n'
             '        raise\n'
-            '    dictRuntime["bLaunchInProgress"] = False\n'
-            '    return dictRuntime'
+            '\n'
+            '\n'
+            'async def _fdictAwaitRuntimeBuild('
         ),
     ),
 

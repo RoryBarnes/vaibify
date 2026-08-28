@@ -4296,7 +4296,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1193 -> 1209 (2026-08-27): the limit/auth/cli-error empty-turn
     # explanations, carrying the CLI's own message so the researcher
     # reads the reset time.
-    "agentCouncil.py": 1209,
+    # 1209 -> 1214 (2026-08-27): the network-unreachable
+    # explanation.
+    "agentCouncil.py": 1214,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -4328,7 +4330,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rose to 1 GiB, and the reason it rose — seven observed OOM
     # kills, and why headroom is not the real fix — is recorded
     # beside the constant rather than in a commit message.
-    "agentCouncilDockerGateway.py": 914,
+    # 914 -> 927 (2026-08-27): the proxy-image resolver probes local
+    # presence by the digest pin before pulling — pull-always refused
+    # a retry over broken registry DNS while the reviewed bytes sat on
+    # disk.
+    # 927 -> 943 (2026-08-27): the presence probe became
+    # create-then-pull-on-miss so the blind-spot ratchet could keep
+    # falling; the create moved into a named closure the retry helper
+    # drives.
+    "agentCouncilDockerGateway.py": 943,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4385,7 +4395,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # classified diagnosis instead of the schema validator — a live
     # usage-limit refusal was filed as fifteen schema violations and
     # the retry gate refused a failure that resets on its own.
-    "agentCouncilProviders.py": 1138,
+    # 1138 -> 1149 (2026-08-27): the network-unreachable class —
+    # a live retry died "Connection refused" over a mid-restart VM and
+    # the gate refused a failure that heals on its own.
+    "agentCouncilProviders.py": 1149,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5454,7 +5467,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # conversation before the unsettled gate — an open chat's runner
     # reservation turned every "Record decision" into a reconcile
     # instruction over a healthy conversation.
-    "agentCouncilController.py": 1787,
+    # 1787 -> 1798 (2026-08-27): an egress-provisioning fault on a
+    # runtime rebuild carries its reason back as the route's refusal —
+    # a retry died as an unhandled 500 and the click looked like
+    # nothing.
+    "agentCouncilController.py": 1798,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

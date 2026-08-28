@@ -68,6 +68,7 @@ __all__ = [
     "S_FAILURE_AUTHENTICATION",
     "S_FAILURE_RATE_LIMIT",
     "S_FAILURE_CLI_ERROR_RESULT",
+    "S_FAILURE_NETWORK_UNREACHABLE",
     "fsClassifyErrorResultShape",
     "RunnerCredentialError",
     "ClaudeRunnerConnection",
@@ -167,6 +168,12 @@ S_FAILURE_RATE_LIMIT = "rateLimit"
 # never answered, so the validator's fifteen "must be an array" lines
 # would describe an answer that does not exist.
 S_FAILURE_CLI_ERROR_RESULT = "cliReportedErrorResult"
+# The CLI could not REACH the provider: a refused connection, a dead
+# proxy, a mid-restart Docker VM. Transient by nature — the retry
+# whitelist admits it, because the network healing is exactly the case
+# a re-run serves (a live council hit this over a stale daemon,
+# 2026-08-27).
+S_FAILURE_NETWORK_UNREACHABLE = "networkUnreachable"
 # The CLI's own stream-json event type for a rate limit. Distinct from
 # the result event's error text: a rate limit can truncate a turn
 # BEFORE any result event exists.
@@ -323,6 +330,10 @@ def fsClassifyErrorResultShape(sErrorText):
         return S_FAILURE_RATE_LIMIT
     if "auth" in sLowered or "credential" in sLowered:
         return S_FAILURE_AUTHENTICATION
+    if ("connection" in sLowered or "refused" in sLowered
+            or "timeout" in sLowered or "unreachable" in sLowered
+            or "network" in sLowered):
+        return S_FAILURE_NETWORK_UNREACHABLE
     return ""
 
 

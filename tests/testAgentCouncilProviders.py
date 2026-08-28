@@ -132,6 +132,13 @@ def testAnErrorResultIsClassifiedNeverFiledAsASchemaFailure():
     assert dictAuth["sEmptyResultReason"] == (
         providers.S_FAILURE_AUTHENTICATION)
 
+    dictNetwork = providers.fdictExtractStructuredResult(
+        [{"type": "result", "is_error": True,
+          "result": "API Error: Connection refused - a firewall or "
+                    "proxy may be blocking it (ConnectionRefused)"}])
+    assert dictNetwork["sEmptyResultReason"] == (
+        providers.S_FAILURE_NETWORK_UNREACHABLE)
+
     dictUnknown = providers.fdictExtractStructuredResult(
         [{"type": "result", "is_error": True,
           "result": "something else went wrong"}])
