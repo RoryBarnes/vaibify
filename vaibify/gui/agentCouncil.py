@@ -190,6 +190,10 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
         "the assistant stopped without returning an answer. Nothing in "
         "the stream reported an error, so the cause is outside what the "
         "turn can see.",
+    # Composed rather than fixed: the SIGKILL case earns the exit code
+    # and the acquittal of the council's own bounds. See
+    # _fsExplainKilledRunner.
+    "runnerKilledByTheEnvironment": "",
     "resultEventCarriedNoText":
         "the assistant finished but its answer was empty.",
     "rateLimit":
@@ -211,6 +215,50 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
 }
 
 
+# SIGKILL: 128 + 9. Docker reports it for a kernel OOM kill, a
+# daemon-side kill, and a `docker kill` alike, so the code alone never
+# names a culprit — which is exactly why the card must say what it
+# has RULED OUT rather than guess.
+I_EXIT_CODE_SIGKILL = 137
+
+
+def _fsExplainKilledRunner(dictRawResult):
+    """Explain a runner the environment killed, or "" when it did not.
+
+    A turn that ends with no result event and a SIGKILL exit is not a
+    model that stopped talking: something destroyed its container. The
+    record already carried the exit code and every bound's flag, and
+    the card said only "the cause is outside what the turn can see" —
+    true, and twenty minutes of reading JSON short of useful (live,
+    2026-08-28: two round-4 synthesis turns killed at 42s and 92s with
+    every council bound clean).
+
+    Only claims the ACQUITTAL, never a culprit: the council's own
+    limits did not fire. Which outside agent did the killing — a
+    kernel OOM the daemon failed to flag, a daemon fault, a VM under
+    pressure — is not something this record can prove, and a card that
+    guessed would send a researcher to the wrong fix.
+    """
+    if dictRawResult.get("jsonExitCode") != I_EXIT_CODE_SIGKILL:
+        return ""
+    if (dictRawResult.get("bWallClockExceeded")
+            or dictRawResult.get("bOutputCapExceeded")
+            or dictRawResult.get("bOomKilled")):
+        # A bound DID fire; its own explanation is the honest one and
+        # already carries the remedy.
+        return ""
+    return (
+        f"the runner was killed (exit {I_EXIT_CODE_SIGKILL}, SIGKILL) "
+        "part-way through its turn, and none of the council's own "
+        "bounds fired — not the turn's time budget, not its output "
+        "cap, and the container reported no out-of-memory kill. "
+        "Something outside the council stopped it, so this is an "
+        "environment fault (a Docker daemon or VM problem), not a "
+        "council one. Retrying is reasonable once the environment is "
+        "healthy."
+    )
+
+
 def _fsExplainEmptyTurn(sEmptyReason, dictRawResult):
     """Render an empty turn in words a researcher can act on.
 
@@ -228,9 +276,14 @@ def _fsExplainEmptyTurn(sEmptyReason, dictRawResult):
     # the researcher plans around.
     sCliError = (dictRawResult or {}).get("sCliErrorText") or ""
     sCliSentence = f" The CLI said: {sCliError}" if sCliError else ""
-    return "emptyTurn: " + DICT_EMPTY_TURN_EXPLANATIONS.get(
-        sEmptyReason, f"the turn returned nothing ({sEmptyReason}).",
-    ) + sProgress + sCliSentence
+    # The kill explanation REPLACES the class's own wording: "the
+    # assistant stopped without returning an answer" describes a model
+    # that fell silent, which is the wrong story for a container that
+    # was destroyed under it.
+    sKilled = _fsExplainKilledRunner(dictRawResult or {})
+    sExplanation = sKilled or DICT_EMPTY_TURN_EXPLANATIONS.get(
+        sEmptyReason, f"the turn returned nothing ({sEmptyReason}).")
+    return "emptyTurn: " + sExplanation + sProgress + sCliSentence
 
 
 def _fsSummarizeRejectedPayload(dictRawResult):

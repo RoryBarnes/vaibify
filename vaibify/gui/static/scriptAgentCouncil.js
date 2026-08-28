@@ -2064,7 +2064,8 @@ var VaibifyAgentCouncil = (function () {
         }
         if (dictTurn.sStatus === "failed") {
             return "<span class=\"council-turn council-turn-failed\" " +
-                "title=\"" + _fsEscape(dictTurn.sFailureReason || "") +
+                "title=\"" + _fsEscape(_fsReadableFailureReason(
+                    dictTurn.sFailureReason)) +
                 "\">" + _fsEscape(sModel) + " ✗ failed</span>";
         }
         return "<span class=\"council-turn\">" + _fsEscape(sModel) +
@@ -2099,7 +2100,8 @@ var VaibifyAgentCouncil = (function () {
         }
         if (dictParticipant.bFailed) {
             return "<span class=\"council-chip council-chip-failed\">" +
-                "failed: " + _fsEscape(dictParticipant.sFailureReason || "") +
+                "failed: " + _fsEscape(_fsReadableFailureReason(
+                    dictParticipant.sFailureReason)) +
                 "</span>";
         }
         /* An agent whose own turn has settled must not read
@@ -2856,6 +2858,21 @@ var VaibifyAgentCouncil = (function () {
     /* ------------------------------------------------------------------ */
     /* Plan tab and accepted-plan actions (section 6.6)                   */
     /* ------------------------------------------------------------------ */
+
+    /* A recorded failure reason opens with its MACHINE class —
+       "emptyTurn: ...", "invalidStructuredResultAfterRepair: ..." —
+       which the record needs and a researcher does not. The screen
+       showed "failed: emptyTurn: the provider refused this turn..."
+       (reported live 2026-08-28); the class stays in the record and,
+       where one is worth naming, inside the prose itself. Only a
+       leading single camelCase token is stripped, so a reason that
+       opens with a sentence keeps every word. */
+    var _RE_LEADING_MACHINE_CLASS = /^[a-z][A-Za-z0-9]*:\s+/;
+
+    function _fsReadableFailureReason(sRecordedReason) {
+        return String(sRecordedReason || "")
+            .replace(_RE_LEADING_MACHINE_CLASS, "");
+    }
 
     function _fsPatchSection(dictResult) {
         /* An implementation council's deliverable. Rendered as the

@@ -749,3 +749,20 @@ def test_an_implementation_council_offers_no_further_implementation():
     assert "git apply" in sBody, (
         "an accepted patch must say the researcher applies it; vaibify "
         "never writes it into the project")
+
+
+def test_a_displayed_failure_drops_its_leading_machine_class():
+    """"failed: emptyTurn: ..." is internal vocabulary on a screen.
+
+    A researcher read exactly that (2026-08-28). The class stays in the
+    durable record — the retry whitelist reads it — and is stripped
+    only where the reason is rendered.
+    """
+    sSource = _fsCouncilSource()
+    assert "_fsReadableFailureReason" in sSource
+    sBody = _fsFunctionBody(sSource, "_fsReadableFailureReason")
+    assert "_RE_LEADING_MACHINE_CLASS" in sBody
+    # Both failure surfaces go through it: the per-turn chip's tooltip
+    # and the participant's failure line.
+    sParticipant = _fsFunctionBody(sSource, "_fsParticipantStatusChip")
+    assert "_fsReadableFailureReason" in sParticipant

@@ -4313,7 +4313,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the patch artifact. One cohesive protocol addition across the
     # modules that already own each seam — no module gained a
     # second responsibility.
-    "agentCouncil.py": 1271,
+    # 1271 -> 1318 (2026-08-28): a SIGKILLed runner says so, names the
+    # exit code, and ACQUITS the council's own bounds — the record held
+    # all of it while the card said only "the cause is outside what the
+    # turn can see".
+    "agentCouncil.py": 1324,
     "agentCouncilCharter.py": 931,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
@@ -5492,7 +5496,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the patch artifact. One cohesive protocol addition across the
     # modules that already own each seam — no module gained a
     # second responsibility.
-    "agentCouncilController.py": 1810,
+    # 1810 -> 1841 (2026-08-28): a spent runtime record no longer
+    # blocks the retry it exists for; the refusal that survives names
+    # the startup sweep.
+    # 1841 -> 1895 (2026-08-28): a stale quarantine is RE-PROVED
+    # against the daemon before it can refuse a retry, and the refusal
+    # that survives names the hub restart rather than a reconcile
+    # command that has never touched council reservations.
+    "agentCouncilController.py": 1895,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

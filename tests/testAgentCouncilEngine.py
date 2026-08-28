@@ -957,3 +957,57 @@ def testAPlanningTurnReturningPatchKeysIsRejected():
     dictMissing = fdictValidateTurnResult(
         fdictMakeTurnResult(), bRequirePatch=True)
     assert not dictMissing["bValid"]
+
+
+# ----- a killed runner names the exit code (2026-08-28) -----------------
+
+
+def testAKilledRunnerIsNamedAsAnEnvironmentFaultNotASilentModel():
+    """SIGKILL with every council bound clean is an environment fault.
+
+    Two live round-4 synthesis turns died at 42s and 92s with exit 137
+    and every bound false; the card said only "the cause is outside
+    what the turn can see" while the record held the exit code all
+    along. The card now states the ACQUITTAL — no council bound fired
+    — and never guesses a culprit the record cannot prove.
+    """
+    from vaibify.gui.agentCouncil import _fsExplainEmptyTurn
+    sExplanation = _fsExplainEmptyTurn("noResultEvent", {
+        "jsonExitCode": 137, "bWallClockExceeded": False,
+        "bOutputCapExceeded": False, "bOomKilled": False,
+        "dictEventTypeCounts": {"assistant": 15}})
+    assert "exit 137" in sExplanation
+    assert "none of the council's own bounds fired" in sExplanation
+    assert "environment fault" in sExplanation
+    # It had produced work before dying — the progress line survives.
+    assert "15 messages" in sExplanation
+
+
+def testABoundThatDidFireKeepsItsOwnExplanationAndRemedy():
+    """A wall-clock or cap kill is OURS, and must keep its remedy.
+
+    Both exit 137. Letting the environment wording win would tell a
+    researcher to fix their Docker daemon when the answer is to raise
+    the turn budget.
+    """
+    from vaibify.gui.agentCouncil import _fsExplainEmptyTurn
+    sWallClock = _fsExplainEmptyTurn("killedAtTurnWallClockBudget", {
+        "jsonExitCode": 137, "bWallClockExceeded": True,
+        "dictEventTypeCounts": {}})
+    assert "time budget" in sWallClock
+    assert "environment fault" not in sWallClock
+
+    sOutOfMemory = _fsExplainEmptyTurn("runnerOutOfMemory", {
+        "jsonExitCode": 137, "bOomKilled": True,
+        "dictEventTypeCounts": {}})
+    assert "ran out of memory" in sOutOfMemory
+    assert "environment fault" not in sOutOfMemory
+
+
+def testAnOrdinarySilentStopIsNotCalledAKill():
+    """No SIGKILL, no kill wording — the classes stay distinct."""
+    from vaibify.gui.agentCouncil import _fsExplainEmptyTurn
+    sSilent = _fsExplainEmptyTurn("noResultEvent", {
+        "jsonExitCode": 0, "dictEventTypeCounts": {}})
+    assert "stopped without returning an answer" in sSilent
+    assert "exit 137" not in sSilent

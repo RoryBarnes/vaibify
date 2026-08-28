@@ -583,6 +583,56 @@ async def _fnSettleChatConversationBeforeCampaignWork(
         dictControllerState, sCampaignId)
 
 
+def _fnReproveQuarantinedReservationsBlocking(dictRegistry, sCampaignId):
+    """Re-ask the daemon whether each quarantined runner is really gone.
+
+    A quarantine records that a teardown could not be PROVEN — the
+    daemon was unreachable or errored at the moment it was asked — not
+    that a runner exists. Nothing ever re-asked, so a stale quarantine
+    refused every later retry and the only way through was a hub
+    restart, whose startup reconciliation asks exactly this question
+    (2026-08-28, live: two quarantines over runners the daemon had
+    already forgotten, on the retry the researcher needed).
+
+    Only QUARANTINED reservations are re-proved. A pending or live one
+    represents a runner that may be working right now, and settling it
+    from here would race the launch that owns it. An absent answer
+    settles as destroyed; PRESENT and INDETERMINATE both leave the
+    quarantine standing, so the refusal below still fires — the
+    distinction this probe exists to preserve.
+    """
+    from . import agentCouncilDockerGateway
+    listQuarantined = [
+        dictReservation for dictReservation
+        in dictRegistry["dictReservationsById"].values()
+        if dictReservation["sCampaignId"] == sCampaignId
+        and dictReservation["sStatus"]
+        == agentCouncilRegistry.S_RESERVATION_QUARANTINED
+        and dictReservation.get("sContainerId")]
+    if not listQuarantined:
+        return
+    try:
+        dockerCouncil = agentCouncilDockerGateway.fdockerCreateCouncilClient()
+    except Exception:
+        # The daemon cannot be asked at all; every quarantine stands.
+        return
+    for dictReservation in list(listQuarantined):
+        try:
+            dictProbe = agentCouncilDockerGateway.fdictProbeRunnerAbsence(
+                dockerCouncil, dictReservation["sContainerId"])
+        except Exception:
+            continue
+        if dictProbe["sAnswer"] != agentCouncilRunner.S_ABSENCE_ABSENT:
+            continue
+        agentCouncilRegistry.fdictSettleReservation(
+            dictRegistry, dictReservation["sReservationId"],
+            agentCouncilRunner.S_OUTCOME_DESTROYED,
+            iExpectedEpoch=dictReservation["iEpoch"])
+        logger.info(
+            "COUNCIL re-proved a quarantined runner absent for campaign "
+            "%s; its reservation is settled", sCampaignId)
+
+
 def _fnRefuseUnsettledCampaignWork(dictRegistry, dictCampaign,
                                    sCampaignId, sAction):
     """Refuse over ANY unsettled reservation, request, or peer claim.
@@ -607,8 +657,10 @@ def _fnRefuseUnsettledCampaignWork(dictRegistry, dictCampaign,
             for dictRequest in dictRegistry["dictApiRequestsById"].values()):
         raise CouncilCommandError(
             f"cannot {sAction}: this campaign still has unsettled "
-            "runner reservations or requests nobody proved gone. Run "
-            "vaibify reconcile, then retry.")
+            "runner reservations or requests nobody proved gone. "
+            "Restart the hub — its startup reconciliation re-asks the "
+            "daemon and settles whatever is already gone — then try "
+            "again.")
     if agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(dictCampaign):
         raise CouncilCommandError(
             f"cannot {sAction}: another live hub holds this campaign's "
@@ -747,15 +799,14 @@ async def fdictResumeCampaignDeliberation(
     dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
         dictCampaign)
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "resume")
-    if dictControllerState["dictCampaignRuntime"].get(
-            sCampaignId) is not None:
-        raise CouncilCommandError(
-            "this campaign already has a live runtime; there is "
-            "nothing to resume")
+    _fnDiscardSettledRuntimeOrRefuse(
+        dictControllerState, sCampaignId, "resume")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "resume")
     await _fnSettleChatConversationBeforeCampaignWork(
         dictControllerState, sCampaignId, "resume")
+    await asyncio.to_thread(
+        _fnReproveQuarantinedReservationsBlocking, dictRegistry, sCampaignId)
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, "resume")
     if dictCampaign["sState"] != agentCouncilCampaign.S_STATE_PLANNING:
@@ -851,15 +902,14 @@ async def fdictRetryCampaignFailedPhase(
     dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
         dictCampaign)
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "retry")
-    if dictControllerState["dictCampaignRuntime"].get(
-            sCampaignId) is not None:
-        raise CouncilCommandError(
-            "this campaign already has a live runtime; there is "
-            "nothing to retry")
+    _fnDiscardSettledRuntimeOrRefuse(
+        dictControllerState, sCampaignId, "retry")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "retry")
     await _fnSettleChatConversationBeforeCampaignWork(
         dictControllerState, sCampaignId, "retry")
+    await asyncio.to_thread(
+        _fnReproveQuarantinedReservationsBlocking, dictRegistry, sCampaignId)
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, "retry")
     if agentCouncilStore.fbCampaignProvenanceUnavailable(
@@ -912,6 +962,39 @@ async def fdictRetryCampaignFailedPhase(
     return {"bRetried": True, "sTurnId": sTurnId,
             "sRetriedPhase": dictAttempt["sPhase"],
             "iRetiredAttemptNumber": dictAttempt["iAttemptNumber"]}
+
+
+def _fnDiscardSettledRuntimeOrRefuse(dictControllerState, sCampaignId,
+                                     sAction):
+    """Drop an inert runtime record, or refuse over an unproven one.
+
+    A runtime stays REGISTERED after its drive settles, so an
+    indeterminate egress teardown keeps its retry state and the
+    startup sweep stays the durable backstop. Read as "work is live",
+    that made every in-process failure unretryable until the hub
+    restarted: a researcher whose council died at a spend limit — the
+    case retry exists for — was told "there is nothing to retry", and
+    the only way through was a restart nobody documented (2026-08-28).
+
+    A live drive is already refused above; a build in flight and
+    resources nobody proved gone are refused HERE, each naming what
+    it is waiting for. Anything else is a spent record, and the
+    rebuild that follows replaces it.
+    """
+    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
+    if dictRuntime is None:
+        return
+    if dictRuntime.get("bLaunchInProgress"):
+        raise CouncilCommandError(
+            f"cannot {sAction}: this campaign's runtime is still being "
+            "built; wait for it to settle")
+    if dictRuntime.get("dictRunnerAccess") is not None:
+        raise CouncilCommandError(
+            f"cannot {sAction}: a previous attempt's runner network "
+            "could not be proven gone, so its resources are still "
+            "accounted for. Restart the hub — its startup sweep "
+            "settles them — then retry.")
+    dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
 
 
 def _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction):
@@ -1095,6 +1178,8 @@ async def _fdictRequireOrRebuildRuntime(
         dictControllerState, dictCampaign, sAction)
     await _fnSettleChatConversationBeforeCampaignWork(
         dictControllerState, sCampaignId, sAction)
+    await asyncio.to_thread(
+        _fnReproveQuarantinedReservationsBlocking, dictRegistry, sCampaignId)
     _fnRefuseUnsettledCampaignWork(
         dictRegistry, dictCampaign, sCampaignId, sAction)
     return await _fdictRebuildRuntimeNonDestructively(
