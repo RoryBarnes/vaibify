@@ -86,7 +86,14 @@ S_PHASE_VETO = "veto"
 # to different items, and the grouping machinery deliberately judges
 # no similarity itself: the chairbot's anchoring is the sole
 # consolidation authority, so the instruction is where the fix lives.
-S_CHARTER_VERSION = "1.4.0"
+# 1.5.0 (2026-08-28, researcher ruling): the question channel carries
+# only answerable choices. A live gate presented a note that opened
+# "resolved by evidence and therefore NOT escalated, recorded so the
+# researcher is not asked" AS a question — the agent had the right
+# judgement and no channel for it. Findings worth the researcher's
+# attention but not their decision go into evidence and the plan
+# document, marked for emphasis, never into a question.
+S_CHARTER_VERSION = "1.5.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
@@ -124,7 +131,12 @@ it.
 6. Escalate genuine judgment calls. When a material choice cannot be
 settled from evidence, raise it as a blocking question stating the
 alternatives, their consequences, and the member positions, rather than
-guessing. Do not escalate what evidence can decide.
+guessing. Do not escalate what evidence can decide. The question
+channel carries only choices the researcher must own: every entry in
+it must be answerable. A finding worth the researcher's attention but
+not their decision — including a peer's question your own evidence has
+since resolved — belongs in your evidence and in the plan document,
+marked for emphasis, never raised as a question.
 
 7. Structured output. Return the server-owned turn schema: summary,
 assumptions, evidence, mathematical claims, architecture claims,
