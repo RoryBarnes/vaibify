@@ -13630,4 +13630,114 @@ def _fdictEntry(sRel):
         old='    sStagedName = os.path.basename(sInput)\n',
         new='    sStagedName = sInput\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_a_forward_stage_reference_is_not_exempt'
+        ),
+        # Record every stage name up front instead of as the scan
+        # passes each FROM. The multi-stage case still passes, so the
+        # exemption reads as working -- while a FROM naming a stage
+        # declared BELOW it is waived, which Docker itself rejects.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '    dictArgDefaults = _fdictCollectArgDefaults(listLines)\n'
+            '    setStageNames = set()\n'
+        ),
+        new=(
+            '    dictArgDefaults = _fdictCollectArgDefaults(listLines)\n'
+            '    setStageNames = {\n'
+            '        m.group(1).strip().lower() for m in (\n'
+            '            _REGEX_FROM_STAGE_NAME.match(\n'
+            '                _fsStripLineComment(x).strip()) '
+            'for x in listLines)\n'
+            '        if m\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_arg_default_that_is_a_floating_tag_is_unpinned'
+        ),
+        # Skip any FROM that references an ARG instead of judging the
+        # RESOLVED text. The pinned case still passes, so the fix looks
+        # done -- while every floating-tag base hidden behind a
+        # variable is waived, which is the check's whole purpose.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '        sResolved = _fsResolveArgReferences(sImage, '
+            'dictArgDefaults)\n'
+        ),
+        new=(
+            '        sResolved = _fsResolveArgReferences(sImage, '
+            'dictArgDefaults)\n'
+            '        if "$" in sImage:\n'
+            '            _fnRecordStageName(matchStage, setStageNames)\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_the_chain_is_stitched_in_application_order'
+        ),
+        # Point every overlay at the base instead of at its
+        # predecessor. The file still builds and still passes the
+        # lint; it simply drops all but the last overlay's work, so
+        # the artifact misdescribes the image it claims to document.
+        source='vaibify/reproducibility/dockerfileComposer.py',
+        old='        sPreviousStage = sStageName\n',
+        new='        sPreviousStage = S_BASE_STAGE_NAME\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_a_researcher_authored_dockerfile_is_never_overwritten'
+        ),
+        # Treat any existing Dockerfile as replaceable. A button press
+        # then destroys the file that may actually build the
+        # researcher's image -- the provenance this feature exists to
+        # record.
+        source='vaibify/reproducibility/imageDockerfileExport.py',
+        old='    if fbTextWasGeneratedByVaibify(sExisting):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_trailing_shell_is_not_read_as_a_package_list'
+        ),
+        # The old extractor: delete the separators and keep reading, so
+        # every word of a trailing command becomes an unpinned-package
+        # finding. Invisible while every apt block was waived, because
+        # the marker short-circuits the check entirely.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '    return _fsTruncateAtShellSeparator(\n'
+            '        sStripped[matchInstall.end():],\n'
+            '    )\n'
+        ),
+        new=(
+            '    return sStripped[matchInstall.end():].replace(\n'
+            '        "&&", " ").replace(";", " ")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_the_compiler_toolchain_is_pinned_and_not_waived'
+        ),
+        # Waive the toolchain block like every other apt block. The
+        # pins stay textually present, so a reader still sees exact
+        # versions -- but the lint stops enforcing them and a later
+        # edit can drop them silently. This is the guard that keeps a
+        # rebuild from swapping a compiler without telling anyone.
+        source='vaibify/containerImage/Dockerfile',
+        old='            rpcsvc-proto=1.4.2-0ubuntu7; then \\\n',
+        new=(
+            '            rpcsvc-proto=1.4.2-0ubuntu7; then '
+            '# allow-unpinned \\\n'
+        ),
+    ),
 ]

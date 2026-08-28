@@ -242,6 +242,130 @@ This tier records what the container layer cannot pin by digest alone,
 without claiming to bit-pin floating-point arithmetic across CPU
 architectures.
 
+### The Dockerfile is provenance; the digest is reproduction
+
+PROOF Level 3 also asks for a pinned `Dockerfile` at the repository
+root. A vaibify project has none by default, because the image is
+built from vaibify's own packaged Dockerfiles as a *chain* — the base,
+then one `docker build` per enabled feature overlay, each handed the
+previous image as `BASE_IMAGE`. The **Copy image Dockerfile into repo**
+action on the Dockerfile row composes that chain into a single
+multi-stage file you can commit.
+
+Read what it is for, because the distinction decides how much its
+contents matter:
+
+- **It records how the image was made.** Every stage is one step of
+  the real build chain, in the order it ran.
+- **It is not the reproduction recipe.** `reproduce.sh` runs
+  `docker pull` against `dictContainer.sImageDigest` and never builds.
+  A verifier gets byte-identical layers — the same compiler, the same
+  system libraries, the same everything — without consulting the
+  Dockerfile at all.
+
+So rebuilding from that file is a *fallback*, used only if the image
+itself becomes unavailable, and it does not reconstruct the original
+environment. That is a property of `apt-get install` reaching a live
+archive at build time, not of anything vaibify chose.
+
+### What is pinned in the image, and what floats
+
+The **entire toolchain closure** is version-pinned — all 45 packages
+that `apt-get install --no-install-recommends gcc g++ make` resolves on
+top of the pinned base image. Nothing in the compile-and-link path is
+left floating:
+
+| Group | Examples | Why it is pinned |
+|---|---|---|
+| Compiler | `gcc`, `gcc-13`, `cpp-13`, `g++-13`, `libgcc-13-dev`, `libstdc++-13-dev` | A binary compiled by a different compiler is a different binary, and can differ in the last significant figures. |
+| Assembler / linker | `binutils`, `libbinutils`, `libctf0`, `libsframe1` | `as` and `ld` decide the emitted object and its layout. |
+| C library + headers | `libc6`, `libc6-dev`, `libc-bin`, `linux-libc-dev`, `libcrypt-dev` | Headers and the libc a binary is linked against. |
+| gcc's math libraries | `libisl23`, `libmpc3`, `libmpfr6` | These perform gcc's **constant folding**, so they can change emitted numeric values. |
+| Runtime libraries | `libgomp1`, `libquadmath0`, `libatomic1`, sanitizers | Linked into binaries built with OpenMP, `__float128`, atomics, or `-fsanitize`. |
+| Build driver | `make` | |
+
+Two package families need both names pinned. `gcc` is a *metapackage*
+at `4:13.2.0-7ubuntu1` that depends on `gcc-13 (>= ...)`, so pinning
+`gcc` alone leaves the actual compiler free to float; the version
+reported by `gcc --version`, and recorded in `dictSystemTools.sGcc`, is
+`gcc-13`'s. The same applies to `cpp`/`cpp-13` and `g++`/`g++-13`.
+
+**Partial pinning is worse than either extreme.** A pinned `libc6-dev`
+whose `libc6` has moved on is not a looser constraint — it is an
+*unsatisfiable* one, and apt fails with a dependency conflict rather
+than a missing-version message. Pin the closure or pin nothing.
+
+What is deliberately *not* pinned here: anything already present in the
+base image and not upgraded by this block. Those are fixed by the base
+image digest, which is the stronger guarantee — they cannot float while
+the digest holds. Also unpinned are the packages that cannot reach a
+numerical result (editors, viewers, `graphviz`, `poppler-utils`, LaTeX,
+X11); their apt blocks carry an explicit `# allow-unpinned` marker.
+
+### Regenerating the pin list after a base-image bump
+
+```
+docker run --rm <BASE_IMAGE> sh -c 'apt-get update -qq >/dev/null \
+  && apt-get install -s -y --no-install-recommends gcc g++ make \
+  | grep "^Inst "'
+```
+
+Take the version in **parentheses**, not the one in brackets. An
+upgrade line reads `Inst libc6 [old] (new ...)`, so reading the
+bracketed field pins the version being *replaced*. `libc6` and
+`libc-bin` are upgrades from the base image and are exactly the two
+this gets silently wrong.
+
+The `-x86-64-linux-gnu` package names are safe to pin because the
+pinned base digest resolves to a single-architecture `linux/amd64`
+image, not a multi-arch manifest list. Repointing `BASE_IMAGE` at
+another architecture requires regenerating the whole list; the build
+diagnostic says so, because otherwise that failure looks identical to a
+withdrawn version.
+
+### When a pinned toolchain version disappears
+
+Ubuntu removes superseded package versions from the archive pool
+within weeks or months of a new one landing. With the full closure
+pinned this happens more often than it would with a handful of pins —
+that is the accepted cost of the guarantee, not a regression. When it
+happens, `docker build` **stops with a non-zero exit**:
+
+```
+vaibify: the pinned compiler toolchain is no longer available.
+...
+This build stopped on purpose.
+```
+
+**This is the intended behaviour, not a bug to route around.** The
+alternative — leaving the toolchain unpinned — is a rebuild that
+quietly swaps the compiler underneath a researcher who believes they
+reproduced something. A loud failure hands you the decision; a silent
+substitution takes it away from you.
+
+The diagnostic prints the three options, and prints `apt-cache policy`
+for the affected packages so the currently available versions are on
+screen when you choose:
+
+1. **Reproduce the original.** Do not rebuild. Pull the published
+   image by digest — `reproduce.sh` already does exactly this. The
+   original toolchain is inside that image, which is why the digest,
+   not the Dockerfile, is what Level 3 rests on.
+2. **Accept a newer toolchain.** Update the pins in the toolchain
+   block, then **re-run and re-verify**. Your outputs may legitimately
+   change; the manifest hashes will say so, which is the honest signal
+   that a result moved because its compiler did.
+3. **Fetch the old packages.** `snapshot.ubuntu.com` serves the
+   archive as it stood on a given date. Point apt at the snapshot
+   covering the image's build date (`iSourceDateEpoch` in
+   `environment.json` dates it) and keep the pins as they are.
+
+Option 1 is right for verifying published work. Option 2 is right when
+you are moving the project forward and are prepared to re-establish
+its results. Option 3 is right when you must rebuild *and* must keep
+the original toolchain — the most faithful of the three, and the most
+work.
+
 ## The verification ceremony: `vaibify reproduce`
 
 For users who want one command instead of three,

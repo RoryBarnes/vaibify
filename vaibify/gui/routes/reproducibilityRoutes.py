@@ -25,12 +25,14 @@ __all__ = ["fnRegisterAll"]
 
 import asyncio
 import logging
+import posixpath
 import time
 
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import ffnAgentAction
+from ..serverMiddleware import fbRequestRidesAgentLane
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
@@ -481,6 +483,122 @@ def _fnPersistAttestation(
         fnWriteAttestation(filesRepo, dictAttestation)
     except OSError as errorCaught:
         logger.error("Could not persist L3 attestation: %s", errorCaught)
+
+
+def _fnRegisterCopyImageDockerfile(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/level3/dockerfile.
+
+    BROWSER-ONLY, and enforced twice: the catalog marks it not
+    agent-safe, and the handler rejects the agent lane itself. The
+    catalog gate would be enough for the mutation, but not for the
+    capability -- this route reads the researcher's registry and their
+    ``vaibify.yml``, both HOST files outside the workspace volume,
+    which is a reach the catalog cannot express.
+    """
+
+    @ffnAgentAction("copy-image-dockerfile")
+    @app.post(
+        "/api/workflow/{sContainerId}/level3/dockerfile"
+    )
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictCopyImageDockerfile(
+        sContainerId: str, requestHttp: Request,
+    ):
+        if fbRequestRidesAgentLane(requestHttp):
+            raise HTTPException(
+                403,
+                "Copying the image Dockerfile reads host files and is "
+                "the researcher's call; it is not available to the "
+                "in-container agent.",
+            )
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        return await _fdictCopyDockerfileUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, sProjectRepo, requestHttp,
+        )
+
+
+async def _fdictCopyDockerfileUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, sProjectRepo, requestHttp,
+):
+    """Compose, write and re-pin under ONE carrier.
+
+    Same shape and same reason as the reproduce-script route: the
+    manifest re-pin is what makes the file count to the L3 check, so a
+    hand-over landing between the write and the re-pin would leave a
+    Dockerfile the manifest does not know about.
+    """
+    def fdictCopyTheDockerfile(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictWriteDockerfileThenRepin(
+                dictCtx, sContainerId, dictWorkflow, sProjectRepo,
+            ),
+        )
+
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictCopyTheDockerfile, "image-dockerfile",
+        requestHttp,
+    )
+
+
+def _fdictWriteDockerfileThenRepin(
+    dictCtx, sContainerId, dictWorkflow, sProjectRepo,
+):
+    """Write the composed Dockerfile into the repo, then re-pin."""
+    from ...reproducibility import imageDockerfileExport
+    from ...reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sRefusal = imageDockerfileExport.fsRefusalIfDockerfileNotReplaceable(
+        filesRepo,
+    )
+    if sRefusal:
+        return {"bWritten": False, "sRefusal": sRefusal}
+    sText = imageDockerfileExport.fsBuildImageDockerfileText(
+        sContainerId, _fsRecordedImageDigest(filesRepo),
+    )
+    # Through the repo adapter, not a direct connection write: the
+    # path stays repo-relative (the adapter owns the join and the
+    # container-user ownership stamp), which is how the dependency
+    # lock tier writes and keeps this route from composing container
+    # paths of its own.
+    try:
+        filesRepo.fnWriteTextAtomic(S_DOCKERFILE_FILENAME, sText)
+    except OSError as errorCaught:
+        raise HTTPException(
+            500, f"Could not write Dockerfile: {errorCaught}",
+        ) from errorCaught
+    return {
+        "bWritten": True,
+        "sRefusal": "",
+        "sDockerfilePath": posixpath.join(
+            sProjectRepo, S_DOCKERFILE_FILENAME,
+        ),
+        "bManifestRefreshed": _fbRepinManifestOrWarn(
+            dictCtx, sContainerId, dictWorkflow,
+        ),
+    }
+
+
+def _fsRecordedImageDigest(filesRepo):
+    """Return the digest from environment.json, or '' when unavailable.
+
+    Stamped into the generated header as provenance only. Absence is
+    not an error: the header simply omits the line, because a missing
+    digest is a separate criterion with its own row and inventing a
+    placeholder here would put an unverifiable string in a file whose
+    whole purpose is to be trustworthy.
+    """
+    import json
+    try:
+        return str(json.loads(
+            filesRepo.fsReadText(".vaibify/environment.json"),
+        ).get("dictContainer", {}).get("sImageDigest") or "")
+    except (OSError, KeyError, ValueError, TypeError):
+        return ""
 
 
 def _fnRegisterGenerateScript(app, dictCtx):
@@ -1000,6 +1118,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterAttestation(app, dictCtx)
     _fnRegisterVerify(app, dictCtx)
     _fnRegisterGenerateScript(app, dictCtx)
+    _fnRegisterCopyImageDockerfile(app, dictCtx)
     _fnRegisterDeclareBinaries(app, dictCtx)
     _fnRegisterCaptureBinary(app, dictCtx)
     _fnRegisterDeclareDeterminism(app, dictCtx)

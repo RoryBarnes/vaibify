@@ -7,6 +7,15 @@ package is pinned to a specific version (or carries a
 ``SOURCE_DATE_EPOCH`` value is set via ``ENV`` or ``ARG`` so build
 artefacts are timestamp-deterministic.
 
+Two forms are NOT external base images and are exempt from the digest
+rule: ``scratch``, and a reference to a stage this same file declared
+earlier with ``AS``. A multi-stage file's later ``FROM`` lines name
+build products, which have no digest to pin and need none -- the
+pinning that matters already happened at the stage they descend from.
+That exemption is what makes a composed image chain (vaibify's base
+plus its feature overlays, emitted as one multi-stage file) lintable
+at all.
+
 Each helper returns a list of human-readable issue strings rather
 than booleans so the dashboard can render an actionable per-line
 gap list. The composition function ``flistLintDockerfile`` is what
@@ -37,6 +46,9 @@ S_DOCKERFILE_FILENAME = "Dockerfile"
 S_ALLOW_UNPINNED_MARKER = "# allow-unpinned"
 
 _REGEX_FROM = re.compile(r"^\s*FROM\s+(.+?)(?:\s+AS\s+\S+)?\s*$", re.IGNORECASE)
+_REGEX_FROM_STAGE_NAME = re.compile(
+    r"^\s*FROM\s+.+?\s+AS\s+(\S+)\s*$", re.IGNORECASE,
+)
 _REGEX_DIGEST = re.compile(r"@sha256:[0-9a-f]{64}\b")
 _REGEX_APT_INSTALL = re.compile(
     r"apt(?:-get)?\s+install\b", re.IGNORECASE,
@@ -45,6 +57,13 @@ _REGEX_APT_PACKAGE_VERSIONED = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9.+\-]*=[^\s]+$",
 )
 _REGEX_APT_FLAG = re.compile(r"^-")
+_REGEX_ARG_DEFAULT = re.compile(
+    r"^\s*ARG\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+_REGEX_ARG_REFERENCE = re.compile(
+    r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)",
+)
 _REGEX_SDE = re.compile(
     r"^\s*(?:ENV|ARG)\s+SOURCE_DATE_EPOCH(?:\s|=)",
     re.IGNORECASE,
@@ -78,7 +97,22 @@ def flistLintDockerfile(filesRepo):
 
 
 def flistCheckBaseImageDigests(listLines):
-    """Return one issue per ``FROM`` line lacking a ``@sha256:`` digest."""
+    """Return one issue per ``FROM`` line lacking a ``@sha256:`` digest.
+
+    ``FROM ${VAR}`` is resolved against the ARG defaults declared
+    above it before the digest is looked for. The parameterised form
+    is how a Dockerfile is written when the base is meant to be
+    overridable, and vaibify's own image uses it -- with a digest in
+    the default. Judging the literal ``FROM`` text called that
+    unpinned, which is false: an unspecified build gets the default,
+    and the default is a digest.
+
+    An ARG with NO default stays an issue. It resolves to whatever
+    the builder passed, which the file does not record, so nothing
+    here can vouch for it.
+    """
+    dictArgDefaults = _fdictCollectArgDefaults(listLines)
+    setStageNames = set()
     listIssues = []
     for iIndex, sLine in enumerate(listLines, start=1):
         sStripped = _fsStripLineComment(sLine).strip()
@@ -86,15 +120,51 @@ def flistCheckBaseImageDigests(listLines):
         if not matchFrom:
             continue
         sImage = matchFrom.group(1).strip()
-        if sImage.lower() == "scratch":
+        matchStage = _REGEX_FROM_STAGE_NAME.match(sStripped)
+        if sImage.lower() == "scratch" or sImage.lower() in setStageNames:
+            _fnRecordStageName(matchStage, setStageNames)
             continue
-        if _REGEX_DIGEST.search(sImage):
-            continue
-        listIssues.append(
-            f"Line {iIndex}: base image '{sImage}' is not pinned by "
-            "@sha256: digest"
-        )
+        sResolved = _fsResolveArgReferences(sImage, dictArgDefaults)
+        if not _REGEX_DIGEST.search(sResolved):
+            listIssues.append(
+                f"Line {iIndex}: base image '{sImage}' is not pinned by "
+                "@sha256: digest"
+            )
+        _fnRecordStageName(matchStage, setStageNames)
     return listIssues
+
+
+def _fnRecordStageName(matchStage, setStageNames):
+    """Remember a ``FROM ... AS <name>`` stage name, lower-cased."""
+    if matchStage:
+        setStageNames.add(matchStage.group(1).strip().lower())
+
+
+def _fdictCollectArgDefaults(listLines):
+    """Return ``{sArgName: sDefault}`` for every ARG carrying a default."""
+    dictDefaults = {}
+    for sLine in listLines:
+        matchArg = _REGEX_ARG_DEFAULT.match(
+            _fsStripLineComment(sLine).strip(),
+        )
+        if matchArg:
+            dictDefaults[matchArg.group(1)] = matchArg.group(2).strip()
+    return dictDefaults
+
+
+def _fsResolveArgReferences(sImage, dictArgDefaults):
+    """Substitute ``${NAME}`` / ``$NAME`` with their declared defaults.
+
+    One pass, not a fixed point: a default that is itself a reference
+    is left unresolved and so reported, which is the safe direction --
+    this function may only ever turn an issue into a non-issue when it
+    can see a literal digest.
+    """
+    def _fsReplace(matchReference):
+        sName = matchReference.group(1) or matchReference.group(2)
+        return dictArgDefaults.get(sName, matchReference.group(0))
+
+    return _REGEX_ARG_REFERENCE.sub(_fsReplace, sImage)
 
 
 def flistCheckAptVersionPins(listLines):
@@ -167,14 +237,39 @@ def _flistFindUnpinnedAptPackages(iLine, sLogicalLine):
 
 
 def _fsExtractAptPayload(sLogicalLine):
-    """Return the token list after ``apt[-get] install`` minus comments."""
+    """Return the package tokens of the ``apt[-get] install`` statement.
+
+    TRUNCATES at the first shell separator rather than deleting the
+    separator and keeping what follows. The install statement ends
+    there; everything after it is a different command, and reading it
+    as a package list turns ``&& rm -rf /var/lib/apt/lists/*`` into a
+    complaint that ``rm`` is unpinned.
+
+    That bug was invisible for as long as every apt block in the image
+    either ended at the package list or carried an ``allow-unpinned``
+    marker, because the marker short-circuits this function entirely.
+    The first block to be pinned AND followed by shell (the compiler
+    toolchain, with its failure diagnostic) reported 296 issues, one
+    per word of the error message.
+    """
     sStripped = _fsStripLineComment(sLogicalLine)
     sStripped = sStripped.replace("\\", " ")
     matchInstall = _REGEX_APT_INSTALL.search(sStripped)
     if not matchInstall:
         return ""
-    sAfter = sStripped[matchInstall.end():]
-    return sAfter.replace("&&", " ").replace(";", " ")
+    return _fsTruncateAtShellSeparator(
+        sStripped[matchInstall.end():],
+    )
+
+
+def _fsTruncateAtShellSeparator(sAfterInstall):
+    """Return sAfterInstall up to the first ``&&``, ``||``, ``|`` or ``;``."""
+    iCut = len(sAfterInstall)
+    for sSeparator in ("&&", "||", "|", ";"):
+        iFound = sAfterInstall.find(sSeparator)
+        if 0 <= iFound < iCut:
+            iCut = iFound
+    return sAfterInstall[:iCut]
 
 
 def _fsStripLineComment(sLine):

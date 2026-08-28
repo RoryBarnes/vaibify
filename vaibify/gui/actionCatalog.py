@@ -628,6 +628,20 @@ LIST_AGENT_ACTIONS = [
                      "root. Idempotent; safe to invoke whenever the "
                      "readiness card flags the script as absent or "
                      "out of date."},
+    {"sName": "copy-image-dockerfile", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/level3/dockerfile",
+     "bAgentSafe": False,
+     "sDescription": "Compose the container image's build chain (the "
+                     "base Dockerfile plus each enabled feature "
+                     "overlay, in order) into one multi-stage "
+                     "Dockerfile at the project repo root, then re-pin "
+                     "the manifest. Refuses to overwrite a Dockerfile "
+                     "vaibify did not generate. USER-ONLY twice over: "
+                     "it reads the researcher's registry and "
+                     "vaibify.yml, which are HOST files outside the "
+                     "workspace volume, and the handler rejects the "
+                     "agent lane itself."},
     {"sName": "view-l3-attestation", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/attestation",
