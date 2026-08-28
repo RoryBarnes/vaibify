@@ -4304,7 +4304,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-08-27): the custom-test detector matches template
     # hashes by category prefix, so step-suffixed generated names
     # keep their edit detection.
-    "routes/pipelineRoutes.py": 3290,
+    # +8 (2026-08-27): bNoStandaloneBinaries joins the envelope
+    # detail, so the Software row can tell "not answered yet" from
+    # "answered: none" instead of showing an unanswered "?" forever.
+    "routes/pipelineRoutes.py": 3298,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5730,7 +5733,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # list, still gated because it reads the researcher's own files.
     # +3 (2026-08-26): the declared-Zenodo-records listing GET
     # acknowledged in SET_CONTAINER_READ_ROUTES.
-    "routeScope.py": 972,
+    # +3 (2026-08-28): the determinism scan joins the container-read
+    # allowlist, which is a frozen ratchet that must be edited
+    # explicitly to acknowledge a new owned-container read.
+    "routeScope.py": 975,
 }
 
 

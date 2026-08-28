@@ -2234,6 +2234,14 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+        # The waiver half of the binary declaration. Without it the
+        # Software row could not tell "no binaries declared yet" from
+        # "the researcher answered: there are none", so an answered
+        # project kept showing an unanswered "?" and the only way to
+        # set the waiver was to declare a package and delete it.
+        "bNoStandaloneBinaries": bool(
+            (dictWorkflow or {}).get("bNoStandaloneBinaries", False)
+        ),
         # The Level 3 half of the published-copy question. Its Level 2
         # twin lives in dictRemoteSyncs; this pair is scoped to the
         # reproducibility envelope, which the L2 rows deliberately do

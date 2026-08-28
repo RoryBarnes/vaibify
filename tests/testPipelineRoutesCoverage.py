@@ -1791,6 +1791,12 @@ class TestPollLevelStatePayload:
             "listBinaries", "dictArtifacts",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
+            # Added 2026-08-27. The Software row could not tell "no
+            # binaries declared yet" from "the researcher answered:
+            # there are none", so it showed an unanswered "?" forever
+            # and the waiver was reachable only as a side effect of
+            # deleting the last declared package.
+            "bNoStandaloneBinaries",
             "bOverleafBound", "bArxivConfigured",
             "dictAiProvenance", "bAiModelsDeclared",
             "bPersonalLayerDeclared",

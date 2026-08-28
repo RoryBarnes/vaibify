@@ -306,6 +306,9 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/sync/{sContainerId}/{sService}/status"),
     ("GET", "/api/workflow/{sContainerId}/dag"),
     ("GET", "/api/workflow/{sContainerId}/dag/export"),
+    # Reads each step script's TEXT out of the owned container to scan
+    # it for determinism anti-patterns. No host path, no write.
+    ("GET", "/api/workflow/{sContainerId}/determinism/scan"),
     ("GET", "/api/workflow/{sContainerId}/level2/readiness"),
     ("GET", "/api/workflow/{sContainerId}/level3/attestation"),
     ("GET", "/api/workflow/{sContainerId}/level3/readiness"),

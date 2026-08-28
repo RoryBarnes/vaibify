@@ -339,7 +339,7 @@ var VaibifyWorkflowRequirements = (function () {
         // and a direct action where one exists: envelope artifacts
         // regenerate on demand, reproduce.sh has its generator, the
         // manifest additionally offers a hash check, and the
-        // Dockerfile is user-authored (guidance only).
+        // Dockerfile can be composed from the image's own build chain.
         var sActions = '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + '</div>';
         if (_SET_REGENERABLE_ARTIFACTS[sKey] === true) {
@@ -361,8 +361,22 @@ var VaibifyWorkflowRequirements = (function () {
                 "generate-reproduce-script", "",
                 "Generate reproduce.sh");
         }
+        if (sKey === "dockerfile") {
+            // The image is built from vaibify's own packaged
+            // Dockerfiles, which are not in the researcher's repo, so
+            // this row used to be red with nothing to click. The
+            // action composes the real chain (base + enabled overlays,
+            // in order) into one multi-stage file. It refuses to
+            // overwrite a Dockerfile vaibify did not generate, so it
+            // is safe to offer unconditionally.
+            sActions += _fsRenderActionButton(
+                "copy-image-dockerfile", "",
+                "Copy image Dockerfile into repo");
+        }
         return '<div class="requirement-row-detail">' +
             _fsRenderArtifactFileRow(sKey) +
+            '<div class="requirement-row-howto detail-badge-scope">' +
+            fnEscapeHtml(_S_BADGE_SCOPE_NOTE) + '</div>' +
             _fsRenderEnvelopeMarkHeader([
                 ["F", "File — does this artifact exist in the " +
                     "project repository?"],
@@ -404,8 +418,13 @@ var VaibifyWorkflowRequirements = (function () {
                 '</div>' +
                 '<div class="requirement-row-howto">These rules tell ' +
                 'a verifier how exactly a rerun must match your ' +
-                'results. There is no separate rules file — this is ' +
-                'the exact entry stored in project.json:</div>' +
+                'results. <b>bAcceptBlasVariance</b>: you accept tiny ' +
+                'last-digit differences from linear-algebra thread ' +
+                'ordering. <b>dOmpNumThreads</b>: the OpenMP thread ' +
+                'count a rerun must use (absent = unpinned). There ' +
+                'is no separate rules file — this is the exact entry ' +
+                'stored in project.json, shown so you can see what ' +
+                'was recorded, not so you edit it by hand:</div>' +
                 '<pre class="determinism-raw">"dictDeterminism": ' +
                 fnEscapeHtml(JSON.stringify(dictDeterminism, null, 2)) +
                 '</pre>' +
@@ -414,7 +433,7 @@ var VaibifyWorkflowRequirements = (function () {
                 '</div>' +
                 _fsRenderDeterminismForm(dictDeterminism) +
                 _fsRenderActionButton("delete-determinism", "",
-                    "Delete rules…") + '</div>';
+                    "Delete rules…", true) + '</div>';
         }
         return '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">No repeatability ' +
@@ -449,15 +468,29 @@ var VaibifyWorkflowRequirements = (function () {
             'class="determinism-omp-threads" value="' +
             fnEscapeHtml(sThreads) + '"> (leave blank for ' +
             'unpinned)</label></details>' +
+            '<div class="requirement-row-howto">Not sure? Scan the ' +
+            'step scripts for patterns that would make a rerun ' +
+            'differ — clock-derived seeds, os.urandom, /dev/urandom, ' +
+            'the secrets module. A clean scan means none of those ' +
+            'were found; it is not proof of determinism, so the ' +
+            'declaration below is still yours to make.</div>' +
+            _fsRenderActionButton("scan-determinism", "",
+                "Scan scripts for non-determinism") +
             _fsRenderActionButton("declare-determinism", "",
                 "Declare rules") + '</div>';
     }
 
-    function _fsRenderActionButton(sAction, sArg, sLabel) {
+    function _fsRenderActionButton(sAction, sArg, sLabel, bDestructive) {
         // A button that runs a project action in place (the
         // functionality that used to live only on the PROOF card).
+        // bDestructive paints it red — the same signal
+        // .container-menu-item.danger already uses — so an action that
+        // discards work does not look like the one beside it that
+        // records work. Both still confirm before acting; this is the
+        // signal available BEFORE the click.
         return '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn wf-action-btn" ' +
+            '<button type="button" class="btn wf-action-btn' +
+            (bDestructive ? ' wf-action-danger' : '') + '" ' +
             'data-wf-action="' + fnEscapeHtml(sAction) + '" ' +
             'data-wf-arg="' + fnEscapeHtml(sArg || "") + '">' +
             fnEscapeHtml(sLabel) + '</button></div>';
@@ -488,20 +521,56 @@ var VaibifyWorkflowRequirements = (function () {
         return "red";
     }
 
+    function _fdictNoBinariesRow(bWaived) {
+        /* An empty list is not an answer, and this row used to render
+           one as "?" forever while its guidance offered only "Add
+           package…". The L3 gate accepts exactly two coherent states —
+           a waiver, or a non-empty declaration — so a project with no
+           binaries (most pure-Python ones) had no reachable way to
+           satisfy it except declaring a package and deleting it, which
+           set the waiver as a side effect nobody could guess. */
+        if (bWaived) {
+            return {
+                sKey: "software-none", iLevel: 3,
+                sTitle: "No standalone binaries (declared)",
+                sState: "green",
+                fsDetail: function () {
+                    return _fsRenderPlainDetail(
+                        "You have declared that this project calls " +
+                        "no standalone scientific binaries, so there " +
+                        "are no external versions or hashes to pin.",
+                        "Adding a package below retracts the " +
+                        "declaration automatically.");
+                }};
+        }
+        return {
+            sKey: "software-none", iLevel: 3,
+            sTitle: "No declared binaries",
+            sState: "unknown",
+            fsDetail: function () {
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-howto">' +
+                    fnEscapeHtml(
+                        "Level 3 asks one question here, and an empty " +
+                        "list does not answer it: does this project " +
+                        "call standalone scientific binaries? If it " +
+                        "does, add each one below and capture its " +
+                        "version and hash. If it does not — a " +
+                        "pure-Python project, say — declare that, and " +
+                        "the row is satisfied.") +
+                    '</div>' +
+                    _fsRenderActionButton(
+                        "declare-no-binaries", "",
+                        "This project uses no standalone binaries") +
+                    '</div>';
+            }};
+    }
+
     function _flistSoftwareRows(dictDetail) {
         var listBinaries = dictDetail.listBinaries || [];
         if (listBinaries.length === 0) {
-            return [{
-                sKey: "software-none", iLevel: 3,
-                sTitle: "No declared binaries",
-                sState: "unknown",
-                fsDetail: function () {
-                    return _fsRenderPlainDetail(
-                        "No scientific binaries are declared.",
-                        "Add packages with the 'Add package…' " +
-                        "button below, then use 'Capture version " +
-                        "+ SHA' on each package's row.");
-                }}];
+            return [_fdictNoBinariesRow(
+                dictDetail.bNoStandaloneBinaries === true)];
         }
         return listBinaries.map(function (dictBinary) {
             return {
@@ -524,7 +593,7 @@ var VaibifyWorkflowRequirements = (function () {
                             dictBinary.sBinaryPath || "") + '">' +
                         'Capture version + SHA</button> ' +
                         '<button type="button" ' +
-                        'class="btn wf-action-btn" ' +
+                        'class="btn wf-action-btn wf-action-danger" ' +
                         'data-wf-action="remove-binary" ' +
                         'data-wf-arg="' + fnEscapeHtml(
                             dictBinary.sBinaryPath || "") + '">' +
@@ -583,14 +652,42 @@ var VaibifyWorkflowRequirements = (function () {
         ];
     }
 
+    function _fsEnvelopeRemoteRowState(bMatched, sBadgeKey, listEnvelope) {
+        /* Three states, because the per-file badges beside this row
+           already speak a three-state vocabulary and the row must not
+           contradict them: blue/synced = checked and matching, orange
+           = NOBODY HAS LOOKED, red = checked and it differs.
+
+           This row used to be `bMatched ? green : red`, so an envelope
+           file that no verify had ever compared painted the row red —
+           an alarm meaning "differs" over a file nothing had proven
+           anything about, sitting next to that same file's honest
+           orange octocat.
+
+           The GATE is unchanged and still blocks on unproven: an
+           envelope nobody compared cannot support a reproducibility
+           claim. Only the colour distinguishes "not proven" from
+           "proven wrong", which is the distinction the researcher
+           acts on — a verify versus a push. */
+        if (bMatched) return "green";
+        for (var i = 0; i < listEnvelope.length; i++) {
+            var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+                listEnvelope[i], "") || {};
+            if (dictBadges[sBadgeKey] === "drifted") return "red";
+        }
+        return "orange";
+    }
+
     function _fdictEnvelopeRemoteRow(
         sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
         sMatchedNote, sDivergedNote,
     ) {
+        var sState = _fsEnvelopeRemoteRowState(
+            bMatched, sBadgeKey, listEnvelope);
         return {
             sKey: sKey, iLevel: 3,
             sTitle: sTitle,
-            sState: bMatched ? "green" : "red",
+            sState: sState,
             fsDetail: function () {
                 // The per-file rows the Level 2 sync rows no longer
                 // carry. Without them the split is invisible: the
@@ -616,7 +713,19 @@ var VaibifyWorkflowRequirements = (function () {
                     'wf-verify-remote" data-service="' +
                     fnEscapeHtml(sService) + '">' +
                     'Verify now</button></div>';
-                var sNote = bMatched ? sMatchedNote : sDivergedNote;
+                // Three notes for three states. Telling a researcher
+                // a file "differs" when nothing has compared it sends
+                // them to push a file that may already be identical;
+                // the unchecked case names the verify instead.
+                var sNote = sDivergedNote;
+                if (bMatched) {
+                    sNote = sMatchedNote;
+                } else if (sState === "orange") {
+                    sNote = 'No verify has compared every envelope ' +
+                        'file against this remote yet, so vaibify ' +
+                        'cannot say whether they match. Nothing here ' +
+                        'is known to differ. Run Verify now.';
+                }
                 return sFiles + '<div class="detail-note">' + sNote +
                     '</div>' + sVerify;
             }};
@@ -952,10 +1061,15 @@ var VaibifyWorkflowRequirements = (function () {
             "tools, captured so the compute environment is exact. " +
             "Recaptured automatically at each Level 1 pass, or on " +
             "demand with the button below.",
-        dockerfile: "The Dockerfile is yours to edit: pin the base " +
-            "image to an exact digest (FROM <image>@sha256:…) so " +
-            "the build environment is reproducible. You can ask the " +
-            "in-container agent to pin it for you.",
+        dockerfile: "Your container image is built from vaibify's " +
+            "own Dockerfiles, which are not in this repository — so " +
+            "this row starts red with nothing you could have done " +
+            "about it. Copy composes them (the base plus each " +
+            "feature overlay, in the order they were applied) into " +
+            "one multi-stage Dockerfile here, and refuses to " +
+            "overwrite a Dockerfile you wrote. It records HOW the " +
+            "image was made; reproduction itself runs from the " +
+            "pinned image digest, not from a rebuild.",
         reproduceScript: "One script, at the repository " +
             "root, that reruns the whole project. It must match " +
             "the current manifest; Generate rewrites it and makes " +
@@ -980,6 +1094,21 @@ var VaibifyWorkflowRequirements = (function () {
         manifest: true, dependencyLock: true,
         environmentSnapshot: true,
     };
+
+    // Says, once per artifact row, what those inline badges are and
+    // are NOT. The row's own light answers existence + the artifact's
+    // Level 3 check; whether the published copies AGREE is a separate
+    // requirement, answered by the "Published envelope" section. A
+    // green row beside an orange octocat is both marks telling the
+    // truth about different questions, but nothing on screen said so,
+    // so the row read as claiming the badges were fine.
+    var _S_BADGE_SCOPE_NOTE =
+        'The badges show each published copy: blue = checked and ' +
+        'matching, orange = not checked yet, red = differs. This ' +
+        "row's own status does not depend on them — it asks whether " +
+        'the file exists and meets its Level 3 check. Whether the ' +
+        'published copies agree is asked by the Published envelope ' +
+        'section below, and Level 3 needs both.';
 
     function _fsRenderFileRowWithBadges(sPath, aBadgeKeys) {
         // A clickable file row: the path opens in the figure/file

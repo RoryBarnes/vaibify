@@ -218,6 +218,23 @@ html, body {
     color: var(--color-red, #e74c3c);
 }
 
+/* Destructive row actions ("Delete rules...", "Remove package...").
+   RED, matching .container-menu-item.danger, and deliberately NOT
+   orange: orange already means "not checked yet" on every badge and
+   level cell in this UI, so spending it on "dangerous" would make one
+   colour carry two unrelated meanings on the same screen. The trailing
+   ellipsis in the label and the confirm dialog are the other two
+   signals; this is the one visible before the click. */
+.btn.wf-action-danger {
+    color: var(--color-red-text);
+    border-color: var(--color-red);
+}
+
+.btn.wf-action-danger:hover {
+    background: var(--color-red);
+    color: var(--bg-primary);
+}
+
 .container-menu-separator {
     height: 1px;
     background: var(--border-color);

@@ -13705,6 +13705,22 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testUnprovenEnvelopeIsNotAnAlarm.py::'
+            'test_the_project_block_stops_making_unactionable_claims'
+        ),
+        # The two-state row restored: an envelope file nobody has
+        # compared paints the row RED, which in the badge vocabulary
+        # beside it means "checked, and it differs". The gate is
+        # unchanged either way, so nothing else in the suite notices.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        var sState = _fsEnvelopeRemoteRowState(\n'
+            '            bMatched, sBadgeKey, listEnvelope);\n'
+        ),
+        new='        var sState = bMatched ? "green" : "red";\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileComposition.py::'
             'test_trailing_shell_is_not_read_as_a_package_list'
         ),
@@ -13792,5 +13808,20 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDestructiveActionsLookDestructive.py::'
+            'test_delete_rules_is_painted_destructive_and_declare_is_not'
+        ),
+        # Paint the destructive action like every other button. "Delete
+        # rules..." then renders identically to "Declare rules"
+        # directly above it -- the pair a researcher read as one
+        # repeated control, which is how this styling came to be asked
+        # for. The confirm dialog still fires; this removes the only
+        # signal available BEFORE the click.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old="            (bDestructive ? ' wf-action-danger' : '') + '\" ' +\n",
+        new="            '\" ' +\n",
     ),
 ]

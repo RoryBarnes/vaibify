@@ -22,6 +22,8 @@ __all__ = [
     "S_OMP_NUM_THREADS_KEY",
     "S_MKL_CBWR_KEY",
     "flistAuditScriptAntiPatterns",
+    "flistAuditScriptSource",
+    "fdictScanWorkflowScripts",
     "fbWorkflowDeclaresDeterminism",
     "flistAuditWorkflow",
 ]
@@ -49,6 +51,11 @@ _REGEX_OS_URANDOM = re.compile(r"\bos\.urandom\s*\(")
 def flistAuditScriptAntiPatterns(sScriptPath):
     """Return issue strings for determinism anti-patterns in one script.
 
+    Reads from the HOST filesystem. A workflow's scripts live inside
+    the container, so the dashboard scan uses
+    :func:`flistAuditScriptSource` with text fetched through the repo
+    adapter instead; this entry point stays for host-side callers.
+
     Empty list means the script is clean for the patterns this gate
     knows about. A file that does not exist returns one issue so the
     caller does not silently accept a missing reference.
@@ -56,7 +63,27 @@ def flistAuditScriptAntiPatterns(sScriptPath):
     pathScript = Path(sScriptPath)
     if not pathScript.is_file():
         return [f"Script not found: '{sScriptPath}'"]
-    sSource = pathScript.read_text(encoding="utf-8", errors="replace")
+    return flistAuditScriptSource(
+        pathScript.read_text(encoding="utf-8", errors="replace"),
+        sScriptPath,
+    )
+
+
+def flistAuditScriptSource(sSource, sScriptPath):
+    """Return issue strings for anti-patterns in already-read source.
+
+    The detectors were always source-based; only the file read was
+    host-bound, which is why the scanner shipped for months with no
+    caller anywhere in the GUI -- a container project's scripts are
+    not on the host to be opened.
+
+    WHAT AN EMPTY LIST MEANS: no *anti-pattern* was found. It is NOT
+    proof the script is deterministic, and it says nothing about
+    ordinary seeded RNG, unstable dict/set iteration, wall-clock
+    branching, or parallel reduction order. The determinism
+    declaration remains the researcher's assertion; this only removes
+    the cases a machine can see.
+    """
     listIssues = []
     listIssues.extend(_flistFindClockSeeds(sSource, sScriptPath))
     listIssues.extend(_flistFindTorchNondeterministicOptOut(
@@ -64,6 +91,45 @@ def flistAuditScriptAntiPatterns(sScriptPath):
     listIssues.extend(_flistFindUrandomReads(sSource, sScriptPath))
     listIssues.extend(_flistFindSecretsModuleUse(sSource, sScriptPath))
     return listIssues
+
+
+def fdictScanWorkflowScripts(dictWorkflow, filesRepo):
+    """Scan every step script for determinism anti-patterns.
+
+    Returns ``{listIssues, listScanned, listUnreadable}``. An
+    unreadable script is reported separately rather than counted
+    clean: "we could not look" and "we looked and found nothing" are
+    different answers, and only the second supports a declaration.
+    """
+    from .manifestPaths import flistStepScriptRepoPaths
+    from .repoFiles import ffilesEnsureRepoFiles
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listIssues, listScanned, listUnreadable = [], [], []
+    for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        for sPath in flistStepScriptRepoPaths(dictStep):
+            _fnScanOneScript(
+                filesRepo, sPath, listIssues, listScanned, listUnreadable,
+            )
+    return {
+        "listIssues": listIssues,
+        "listScanned": sorted(set(listScanned)),
+        "listUnreadable": sorted(set(listUnreadable)),
+    }
+
+
+def _fnScanOneScript(
+    filesRepo, sPath, listIssues, listScanned, listUnreadable,
+):
+    """Scan one script, recording it as scanned or unreadable."""
+    try:
+        sSource = filesRepo.fsReadText(sPath)
+    except (OSError, KeyError, ValueError, UnicodeDecodeError):
+        listUnreadable.append(sPath)
+        return
+    listScanned.append(sPath)
+    listIssues.extend(flistAuditScriptSource(sSource, sPath))
 
 
 def _flistFindClockSeeds(sSource, sScriptPath):

@@ -3299,6 +3299,59 @@ const VaibifyApp = (function () {
             sToast: "Package declared. Now capture its version and " +
                 "hash from its row.",
         },
+        "scan-determinism": {
+            sPath: "/determinism/scan",
+            sMethod: "GET",
+            fdictAfterResponse: function (dictResult) {
+                var dictSafe = dictResult || {};
+                var listIssues = dictSafe.listIssues || [];
+                var listUnreadable = dictSafe.listUnreadable || [];
+                if (listIssues.length > 0) {
+                    return {sMessage: listIssues.length +
+                        " non-determinism finding(s): " +
+                        listIssues.slice(0, 3).join("; "),
+                        sType: "warning"};
+                }
+                if (listUnreadable.length > 0) {
+                    return {sMessage: "No anti-patterns found, but " +
+                        listUnreadable.length + " script(s) could " +
+                        "not be read: " + listUnreadable.join(", ") +
+                        ". That is not the same as clean.",
+                        sType: "warning"};
+                }
+                // Deliberately not "your workflow is deterministic":
+                // the scan finds known anti-patterns and cannot see
+                // seeded RNG or iteration order.
+                return {sMessage: "Scanned " +
+                    (dictSafe.listScanned || []).length +
+                    " script(s); none of the known non-determinism " +
+                    "patterns found. This does not prove " +
+                    "determinism — the declaration is still yours.",
+                    sType: "info"};
+            },
+        },
+        "declare-no-binaries": {
+            // The waiver, reachable directly. It used to be settable
+            // only as a side effect of removing the last declared
+            // package, which no researcher would discover.
+            sPath: "/binaries/declare",
+            fdictBody: function () {
+                return {
+                    bNoStandaloneBinaries: true,
+                    listDeclaredBinaries: [],
+                };
+            },
+            dictConfirm: {
+                sTitle: "Declare no standalone binaries",
+                sMessage: "Confirm that this project calls no " +
+                    "standalone scientific binaries — only Python " +
+                    "packages pinned in requirements.lock. This is a " +
+                    "claim Level 3 records; adding a package later " +
+                    "retracts it automatically.",
+            },
+            sToast: "Declared: this project uses no standalone " +
+                "binaries.",
+        },
         "remove-binary": {
             sPath: "/binaries/declare",
             fdictBody: _fdictReadBinaryRemoval,
@@ -3366,6 +3419,31 @@ const VaibifyApp = (function () {
                     (listBad[0].sPath || listBad[0]) + "). Re-run " +
                     "the project or regenerate the envelope.",
                     sType: "warning"};
+            },
+        },
+        "copy-image-dockerfile": {
+            sPath: "/level3/dockerfile",
+            bOfferCommitAfterGenerate: true,
+            fdictAfterResponse: function (dictResult) {
+                // A refusal is a 200 carrying sRefusal, not an error:
+                // declining to overwrite the researcher's own
+                // Dockerfile is the route working correctly, and
+                // surfacing it as a failure would read as a bug.
+                var dictSafe = dictResult || {};
+                if (dictSafe.sRefusal) {
+                    return {sMessage: dictSafe.sRefusal,
+                        sType: "warning"};
+                }
+                if (dictSafe.bManifestRefreshed === true) {
+                    return {sMessage: "Dockerfile composed from the " +
+                        "image's build chain and pinned in the " +
+                        "manifest — the check will pass on the next " +
+                        "status poll.", sType: "info"};
+                }
+                return {sMessage: "Dockerfile was written, but " +
+                    "re-pinning the manifest failed — click " +
+                    "'Regenerate now' on the Manifest row, then " +
+                    "check the hub log.", sType: "warning"};
             },
         },
         "generate-reproduce-script": {
@@ -3536,6 +3614,11 @@ const VaibifyApp = (function () {
             var dictResult;
             if (dictAction.sMethod === "DELETE") {
                 dictResult = await VaibifyApi.fnDelete(sUrl);
+            } else if (dictAction.sMethod === "GET") {
+                // Read-only actions (the determinism scan) ask a
+                // question rather than changing anything; posting to
+                // a GET route answers 405.
+                dictResult = await VaibifyApi.fdictGet(sUrl);
             } else {
                 dictResult = await VaibifyApi.fdictPost(sUrl, oBody);
             }

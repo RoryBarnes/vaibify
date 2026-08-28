@@ -610,6 +610,22 @@ LIST_AGENT_ACTIONS = [
                      "hashes. Returns listProblems (empty = clean); "
                      "format-only — actual install verification is "
                      "pip install --require-hashes."},
+    {"sName": "scan-determinism", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/determinism/scan",
+     "bAgentSafe": True,
+     "sDescription": "Scan every step script for determinism "
+                     "ANTI-PATTERNS: clock-derived seeds, os.urandom, "
+                     "/dev/urandom, the secrets module, and torch "
+                     "non-determinism opt-outs. Returns {listIssues, "
+                     "listScanned, listUnreadable, sScopeNote}. "
+                     "Read-only. An empty listIssues means none of "
+                     "those patterns were found -- it is NOT proof "
+                     "the workflow is deterministic and does not "
+                     "discharge the declaration, which is the "
+                     "researcher's assertion. Report it that way; "
+                     "listUnreadable names scripts that could not be "
+                     "read, which is not the same as clean."},
     {"sName": "delete-determinism", "sCategory": "verification",
      "sMethod": "DELETE",
      "sPath": "/api/workflow/{sContainerId}/determinism",

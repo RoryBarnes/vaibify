@@ -485,6 +485,50 @@ def _fnPersistAttestation(
         logger.error("Could not persist L3 attestation: %s", errorCaught)
 
 
+def _fnRegisterScanDeterminism(app, dictCtx):
+    """Register GET /api/workflow/{sContainerId}/determinism/scan.
+
+    Read-only. The scanner behind it (``determinismGate``) has existed
+    since the L3 gate landed and had no caller anywhere in the GUI,
+    because it read HOST paths and a container project's scripts are
+    not on the host. It now reads through the repo adapter, so the
+    researcher can ask the question instead of guessing at it.
+    """
+
+    @ffnAgentAction("scan-determinism")
+    @app.get(
+        "/api/workflow/{sContainerId}/determinism/scan"
+    )
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictScanDeterminism(sContainerId: str):
+        from ...reproducibility.determinismGate import (
+            fdictScanWorkflowScripts,
+        )
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictResult = await asyncio.to_thread(
+            fdictScanWorkflowScripts,
+            dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        )
+        # The caveat travels WITH the result, not just in the docs: a
+        # clean scan is the absence of detectable anti-patterns, never
+        # a proof of determinism, and a caller that reports it as one
+        # has overstated the guarantee on the researcher's behalf.
+        dictResult["sScopeNote"] = (
+            "Finds clock-derived seeds, os.urandom, /dev/urandom, the "
+            "secrets module, and torch non-determinism opt-outs. A "
+            "clean result means none of those were found -- not that "
+            "the workflow is deterministic. Seeded RNG, set/dict "
+            "iteration order and parallel reduction order are not "
+            "detectable here, so the declaration remains your "
+            "assertion."
+        )
+        return dictResult
+
+
 def _fnRegisterCopyImageDockerfile(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/dockerfile.
 
@@ -1119,6 +1163,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterVerify(app, dictCtx)
     _fnRegisterGenerateScript(app, dictCtx)
     _fnRegisterCopyImageDockerfile(app, dictCtx)
+    _fnRegisterScanDeterminism(app, dictCtx)
     _fnRegisterDeclareBinaries(app, dictCtx)
     _fnRegisterCaptureBinary(app, dictCtx)
     _fnRegisterDeclareDeterminism(app, dictCtx)
