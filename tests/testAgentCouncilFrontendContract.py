@@ -678,3 +678,32 @@ def test_the_chooser_distinguishes_identical_questions():
         "rows are identified by the question alone, which is identical "
         "for a researcher iterating on one prompt")
     assert "_fsDescribeStoppingPoint" in sRow
+
+
+def test_researcher_decisions_render_prose_never_raw_json():
+    """Every recorded decision lands on a sentence, never serialized JSON.
+
+    Three phaseRetried records rendered as raw JSON under "Your
+    decisions" in a live gate (2026-08-28). The renderer prefers the
+    record's own prose fields and falls back to a kind translation —
+    a JSON.stringify fallback is the defect, not a safety net.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsResearcherDecisions")
+    assert "sText" in sBody
+    assert "sDecisionKind" in sBody
+    assert "JSON.stringify" not in sBody
+
+
+def test_excised_identifier_debris_is_swept_with_its_connectives():
+    """Stripping question ids must also sweep their orphaned wrapper.
+
+    The charter tells the chairbot to write "(waits on question-x and
+    question-y)"; excising the ids alone left "(waits on and )"
+    rendered verbatim in a live gate (2026-08-28).
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsHideInternalIdentifiers")
+    assert "waits on" in sBody, (
+        "the connective sweep is gone; excised ids leave their "
+        "empty '(waits on and )' wrapper on screen")

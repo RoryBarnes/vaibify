@@ -2164,13 +2164,29 @@ var VaibifyAgentCouncil = (function () {
             " to prove absence.</p>";
     }
 
+    /* Decision kinds that carry no prose of their own. Machine records
+       stay machine-shaped in the durable file; the panel translates. */
+    var DICT_DECISION_KIND_PROSE = {
+        phaseRetried: "a failed phase was retired and re-run",
+        stopRequestClearedOnRetry:
+            "a standing stop request was cleared so the retry could run",
+    };
+
     function _fsResearcherDecisions(dictCampaign) {
         var listDecisions = dictCampaign.listResearcherDecisions || [];
         if (!listDecisions.length) return "";
         var sRows = listDecisions.map(function (dictDecision) {
-            return "<li>" + _fsEscape(
-                dictDecision.sDecision || JSON.stringify(dictDecision)) +
-                "</li>";
+            /* Prose first, in preference order; NEVER raw JSON — a
+               researcher read three serialized phaseRetried records
+               under "Your decisions" (2026-08-28). Every record shape
+               lands on a sentence, worst case naming its kind. */
+            var sProse = dictDecision.sText || dictDecision.sDecision
+                || dictDecision.sResponseText
+                || DICT_DECISION_KIND_PROSE[dictDecision.sDecisionKind]
+                || ("a decision of kind '"
+                    + (dictDecision.sDecisionKind || "unknown")
+                    + "' was recorded");
+            return "<li>" + _fsEscape(sProse) + "</li>";
         }).join("");
         return "<h4>Your decisions</h4><ul class=\"council-decisions\">" +
             sRows + "</ul>";
@@ -2557,9 +2573,15 @@ var VaibifyAgentCouncil = (function () {
             });
         sCleaned = sCleaned.replace(_RE_QUESTION_IDENTIFIER, "");
         /* The debris an excised id leaves: an empty bracket, a doubled
-           space, a leading dash where the id used to be. */
-        return sCleaned.replace(/\(\s*\)/g, "")
+           space, a leading dash where the id used to be \u2014 and, since
+           the charter tells the chairbot to write "waits on
+           question-x and question-y", a parenthetical holding only
+           its connectives: "(waits on and )" rendered verbatim in a
+           live gate (2026-08-28). */
+        return sCleaned
+            .replace(/\((?:\s|,|;|and|or|waits on)*\)/g, "")
             .replace(/\s{2,}/g, " ")
+            .replace(/\s+([:;,.])/g, "$1")
             .replace(/^[\s\u2014\u2013-]+/, "")
             .trim();
     }
