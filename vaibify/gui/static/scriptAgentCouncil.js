@@ -99,6 +99,12 @@ var VaibifyAgentCouncil = (function () {
            because the server recorded it, so a message that failed to
            reach the runner cannot look like one that did. */
         dictChat: null,
+        /* Set ONLY while the convene form is being opened to implement
+           an accepted plan: the source campaign id the server loads
+           the sealed plan from, plus what the form pre-fills. Cleared
+           on teardown and on campaign switch, so a later ordinary
+           convene can never inherit it. */
+        dictImplementationSeed: null,
     };
 
     /* ------------------------------------------------------------------ */
@@ -126,6 +132,7 @@ var VaibifyAgentCouncil = (function () {
         _dictState.dictChat = null;
         _dictState.listDraftParticipants = [];
         _dictState.iChairbotIndex = 0;
+        _dictState.dictImplementationSeed = null;
         _fnResetDraftFields();
         _fnResetSnapshotScope();
         _setKnownEventSequences.clear();
@@ -348,6 +355,10 @@ var VaibifyAgentCouncil = (function () {
     /* ------------------------------------------------------------------ */
 
     async function _fnOpenCreationChooser() {
+        /* Backing out to the chooser abandons an implementation seed:
+           the next "Plan a change" must be an ordinary planning
+           council, not one silently still carrying a plan. */
+        _dictState.dictImplementationSeed = null;
         /* The chooser appears IMMEDIATELY and fills in. It used to
            await the campaign listing before rendering anything, which
            on a project tracking nine directories meant ~10 seconds of
@@ -603,7 +614,30 @@ var VaibifyAgentCouncil = (function () {
         _fnRenderSnapshotScope();
     }
 
+    function _fsComposeImplementationQuestion(dictSeed) {
+        /* A DEFAULT the researcher edits, never a hidden instruction:
+           what the form shows is exactly what the council receives. */
+        return "Implement the accepted plan from \"" +
+            (dictSeed.sSourceCampaignName || dictSeed.sSourceCampaignId) +
+            "\" as a patch against this repository.";
+    }
+
     function _fnSeedDraftParticipants() {
+        var dictSeed = _dictState.dictImplementationSeed;
+        if (dictSeed && dictSeed.listParticipants.length >= 2) {
+            /* The planning council's own roster: the models that wrote
+               the plan are the ones that know what it meant. Copied,
+               then editable like any other convene. */
+            _dictState.listDraftParticipants =
+                dictSeed.listParticipants.map(function (dictParticipant) {
+                    return {sProvider: dictParticipant.sProvider,
+                            sRequestedModel:
+                                dictParticipant.sRequestedModel,
+                            sRole: ""};
+                });
+            _dictState.iChairbotIndex = 0;
+            return;
+        }
         var listProviders = _flistSupportedProviders();
         var sFirst = listProviders.length ? listProviders[0] : "";
         var sSecond = listProviders.length > 1 ? listProviders[1] : sFirst;
@@ -743,12 +777,28 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsPlanningFormMarkup() {
-        return "<h2>Plan a change</h2>" +
+        var dictSeed = _dictState.dictImplementationSeed;
+        return (dictSeed
+            ? "<h2>Implement a plan</h2>" +
+              "<p class=\"council-hint\">This council implements the " +
+              "accepted plan from <strong>" +
+              _fsEscape(dictSeed.sSourceCampaignName ||
+                        dictSeed.sSourceCampaignId) +
+              "</strong>. The plan is loaded from its sealed artifact " +
+              "on the server — you never paste it. The council returns " +
+              "a reviewed patch for you to apply by hand; it never " +
+              "writes your project.</p>"
+            : "<h2>Plan a change</h2>") +
             _fsDirectoryChoiceMarkup() +
             "<div id=\"councilSnapshotScope\"></div>" +
-            "<label class=\"council-field\">Question" +
+            "<label class=\"council-field\">" +
+            (dictSeed ? "Direction for the implementers" : "Question") +
             "<textarea id=\"councilQuestion\" rows=\"4\" " +
-            "placeholder=\"What change should the council plan?\">" +
+            "placeholder=\"" + (dictSeed
+                ? "Anything the implementers should know beyond the plan"
+                : "What change should the council plan?") + "\">" +
+            _fsEscape(dictSeed ? _fsComposeImplementationQuestion(dictSeed)
+                      : "") +
             "</textarea></label>" +
             "<div id=\"councilParticipants\"></div>" +
             "<button type=\"button\" id=\"btnCouncilAddParticipant\" " +
@@ -1067,6 +1117,15 @@ var VaibifyAgentCouncil = (function () {
             sProjectDirectory: _fsReadValue("councilDirectory"),
             listExcludedPaths: Array.from(_dictState.setExcludedPaths),
         };
+        var dictSeed = _dictState.dictImplementationSeed;
+        if (dictSeed) {
+            /* The kind and the SOURCE ID only — never the plan text.
+               The server loads the sealed artifact from the source
+               campaign it names, so a client cannot substitute a plan
+               the council never accepted. */
+            dictBody.sCampaignKind = "implementation";
+            dictBody.sSourceCampaignId = dictSeed.sSourceCampaignId;
+        }
         /* Convening is a SINGLE request that does a great deal before
            it answers: resolve the image, check the credential gate and
            the login, capture the repository snapshot, build one runner
@@ -1080,6 +1139,7 @@ var VaibifyAgentCouncil = (function () {
             var dictResult = await VaibifyApi.fdictPost(
                 _fsRoute("/start"), dictBody);
             fnFinishBusy();
+            _dictState.dictImplementationSeed = null;
             _fnAdoptCampaign(dictResult.sCampaignId, dictResult.dictCampaign);
             _fnHideModal();
             _fnShowWorkspace();
@@ -2797,6 +2857,31 @@ var VaibifyAgentCouncil = (function () {
     /* Plan tab and accepted-plan actions (section 6.6)                   */
     /* ------------------------------------------------------------------ */
 
+    function _fsPatchSection(dictResult) {
+        /* An implementation council's deliverable. Rendered as the
+           diff it is — escaped, never interpreted — with the files it
+           touches and every declared departure from the plan, because
+           a deviation the researcher does not read is a deviation
+           nobody agreed to. */
+        if (!dictResult.sPatchUnifiedDiff) return "";
+        var sSection = "<h5>Patch</h5>" +
+            "<pre class=\"council-patch\">" +
+            _fsEscape(dictResult.sPatchUnifiedDiff) + "</pre>";
+        var listFiles = dictResult.listFilesTouched || [];
+        if (listFiles.length) {
+            sSection += "<p class=\"council-hint\">Files touched: " +
+                _fsEscape(listFiles.join(", ")) + "</p>";
+        }
+        var listDeviations = dictResult.listDeviationsFromPlan || [];
+        if (listDeviations.length) {
+            sSection += "<h5>Departures from the accepted plan</h5><ul>" +
+                listDeviations.map(function (sEntry) {
+                    return "<li>" + _fsEscape(String(sEntry)) + "</li>";
+                }).join("") + "</ul>";
+        }
+        return sSection;
+    }
+
     function _fsCandidatePlanBody(dictPlan) {
         /* The engine's real candidate shape (remediation R6): the
            synthesis result lives at dictCandidatePlan.dictResult, and
@@ -2806,6 +2891,7 @@ var VaibifyAgentCouncil = (function () {
         var dictResult = dictPlan.dictResult || {};
         var sParts = "<p class=\"council-plan-summary\">" +
             _fsEscape(dictResult.sSummary || "") + "</p>";
+        sParts += _fsPatchSection(dictResult);
         var listItems = dictResult.listPlanItems || [];
         if (listItems.length) {
             sParts += "<h5>Plan</h5><ol>" + listItems.map(function (sItem) {
@@ -2891,10 +2977,7 @@ var VaibifyAgentCouncil = (function () {
            a control posting a transition the protocol does not have
            would either fail or fabricate one. */
         if (SET_TERMINAL_STATES[dictCampaign.sState]) {
-            return "<p class=\"council-plan-accepted\">This plan was " +
-                "accepted. Give the saved plan and its implementation " +
-                "brief to a fresh implementation agent — the council " +
-                "does not implement it.</p>";
+            return _fsAcceptedPlanActions(dictCampaign);
         }
         return "<div class=\"council-plan-actions\">" +
             "<button type=\"button\" id=\"btnCouncilAcceptPlan\" " +
@@ -2906,6 +2989,58 @@ var VaibifyAgentCouncil = (function () {
             "<button type=\"button\" id=\"btnCouncilRejectPlan\" " +
             "class=\"btn danger\">Reject</button>" +
             "</div>";
+    }
+
+    function _fsAcceptedPlanActions(dictCampaign) {
+        /* An IMPLEMENTATION council's own accepted patch is the end of
+           the line — it implements nothing further, and offering to
+           would invite a council of councils nobody asked for. */
+        if (dictCampaign.sCampaignKind === "implementation") {
+            return "<p class=\"council-plan-accepted\">This patch was " +
+                "accepted and saved. Apply it yourself with " +
+                "<code>git apply</code> — vaibify never writes it into " +
+                "your project.</p>";
+        }
+        if (dictCampaign.sState !== "planAccepted") {
+            return "<p class=\"council-plan-accepted\">This council is " +
+                "finished.</p>";
+        }
+        return "<p class=\"council-plan-accepted\">You accepted this " +
+            "plan. A new council can implement it — it produces a " +
+            "reviewed patch you apply by hand, never an applied " +
+            "change.</p>" +
+            "<div class=\"council-plan-actions\">" +
+            "<button type=\"button\" id=\"btnCouncilImplementPlan\" " +
+            "class=\"btn btn-primary\">Implement plan with new " +
+            "council</button>" +
+            "<button type=\"button\" id=\"btnCouncilCopyBrief\" " +
+            "class=\"btn\">Copy implementation brief</button>" +
+            "<button type=\"button\" id=\"btnCouncilDownloadPlan\" " +
+            "class=\"btn\">Download</button>" +
+            "</div>";
+    }
+
+    function _fnOpenImplementationForm() {
+        /* The convene form, pre-seeded — NOT a one-click launch. The
+           disclosure, the participants, the settings and the cost are
+           the same consent surface every council passes through; an
+           implementation council spends the same paid provider work,
+           so it earns the same screen. */
+        var dictCampaign = _dictState.dictCampaign || {};
+        _dictState.dictImplementationSeed = {
+            sSourceCampaignId: _dictState.sActiveCampaignId,
+            sSourceCampaignName: dictCampaign.sCampaignName || "",
+            listParticipants: (dictCampaign.listParticipants || []).map(
+                function (dictParticipant) {
+                    return {sProvider: dictParticipant.sProvider,
+                            sRequestedModel:
+                                dictParticipant.sRequestedModel,
+                            sRole: ""};
+                }),
+        };
+        _fnHideWorkspace();
+        _fnOpenPlanningForm();
+        _fnShowModal();
     }
 
     /* ------------------------------------------------------------------ */
@@ -3109,6 +3244,8 @@ var VaibifyAgentCouncil = (function () {
         _fnBindElement("btnCouncilGrantRound", _fnGrantResolutionRound);
         _fnBindElement("btnCouncilResolveOverride", _fnResolveObjections);
         _fnBindElement("btnCouncilReject", _fnRejectCandidate);
+        _fnBindElement("btnCouncilImplementPlan",
+                       _fnOpenImplementationForm);
         _fnBindElement("btnCouncilChatOpen", _fnOpenChat);
         _fnBindElement("btnCouncilChatAsk", _fnAskChairbot);
         _fnBindElement("btnCouncilChatClose", _fnCloseChat);

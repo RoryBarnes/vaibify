@@ -1471,6 +1471,18 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
         dictHolder["dictCampaign"], dictAccepted["dictCandidatePlan"] or {})
     sLocalPlanPath = agentCouncilStore.fsAcceptCampaignPlanLocally(
         dictStore, sCampaignId, sPlanMarkdown)
+    # An implementation campaign's deliverable is the PATCH: the raw
+    # unified diff lands beside the markdown, apply-clean by hand and
+    # never applied by vaibify (design review question 19).
+    from . import agentCouncilCharter
+    sLocalPatchPath = ""
+    if agentCouncilCharter.fbIsImplementationCampaign(
+            dictHolder["dictCampaign"]):
+        sPatchText = ((dictAccepted["dictCandidatePlan"] or {}).get(
+            "dictResult") or {}).get("sPatchUnifiedDiff", "")
+        if sPatchText:
+            sLocalPatchPath = agentCouncilStore.fsAcceptCampaignPatchLocally(
+                dictStore, sCampaignId, sPatchText)
     # The artifact's content identity, sealed into the event stream at
     # acceptance: a later reader can prove the plan.md they hold is the
     # one the researcher accepted, byte for byte.
@@ -1480,6 +1492,7 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
         {"sEventKind": "planArtifactSealed", "sTurnId": "",
          "sDetail": f"sha256:{sPlanSha256}"})
     return {"bAccepted": True, "sLocalPlanPath": sLocalPlanPath,
+            "sLocalPatchPath": sLocalPatchPath,
             "sPlanSha256": sPlanSha256,
             "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
                 dictStore, sCampaignId)}

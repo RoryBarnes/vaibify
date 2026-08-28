@@ -33,6 +33,16 @@ from vaibify.gui.agentCouncilStore import (
 )
 
 
+def fdictMakePatchTurnResult(sPatchUnifiedDiff="--- a/f\n+++ b/f\n",
+                             **dictOverrides):
+    """A schema-valid PATCH turn result: base result + the patch keys."""
+    dictResult = fdictMakeTurnResult(**dictOverrides)
+    dictResult["sPatchUnifiedDiff"] = sPatchUnifiedDiff
+    dictResult["listFilesTouched"] = ["f"]
+    dictResult["listDeviationsFromPlan"] = []
+    return dictResult
+
+
 def fdictMakeTurnResult(sVerdict="accept", listBlockingObjections=None,
                         listOpenQuestions=None, listEvidence=None,
                         listPlanItems=None, sSummary="a plausible summary",
@@ -186,7 +196,8 @@ class VersionRecordingCheckpoint:
 
 def fixtureBuildCouncil(listSpecs, ffnDecide, dictSettings=None,
                         sChairbotHandle="", ledger=None, listEventRing=None,
-                        ffnBaselineExecute=None, checkpoint=None):
+                        ffnBaselineExecute=None, checkpoint=None,
+                        sCampaignKind="planning", sSeedPlanDocument=""):
     """Assemble a campaign, fake connections and a wired engine.
 
     ``listSpecs`` is a list of dicts each carrying ``sHandle``,
@@ -207,7 +218,9 @@ def fixtureBuildCouncil(listSpecs, ffnDecide, dictSettings=None,
     sChairbotId = dictHandleToId.get(sChairbotHandle, "")
     dictCampaign = fdictCreateCampaign(
         "How should the change be implemented?", listParticipants,
-        dictSettings=dictSettings, sChairbotParticipantId=sChairbotId)
+        dictSettings=dictSettings, sChairbotParticipantId=sChairbotId,
+        sCampaignKind=sCampaignKind,
+        sSeedPlanDocument=sSeedPlanDocument)
     recorder = CouncilRecorder()
     dictConnections = {
         dictParticipant["sParticipantId"]: FakeCouncilConnection(

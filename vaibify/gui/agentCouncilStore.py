@@ -364,6 +364,7 @@ S_ACCEPTED_PLAN_BASENAME = "plan.md"
 # no longer existed, the next entry re-minted evidence-1, and the
 # counter's only-rises contract broke on reload.
 S_PROVENANCE_SIDECAR_BASENAME = "provenance.json"
+S_ACCEPTED_PATCH_BASENAME = "implementation.patch"
 
 S_CREDENTIAL_REDACTION_MARKER = "[redacted-credential]"
 
@@ -523,6 +524,31 @@ class DurableCampaignCheckpoint:
             self.sCampaignDirectory, S_ACCEPTED_PLAN_BASENAME)
         _fnWritePrivateFileAtomically(sPlanPath, sSanitized)
         return sPlanPath
+
+    def fsWriteAcceptedPatch(self, sPatchText):
+        """Write the accepted implementation patch beside the plan.
+
+        The raw unified diff, apply-clean with ``git apply`` — the
+        markdown document contextualizes it, this file is the artifact
+        the researcher applies BY HAND (design review question 19:
+        never applied by vaibify, never written into the project).
+        """
+        _fnEnsurePrivateDirectory(self.sCampaignDirectory)
+        sSanitized = fjsonRedactCredentialsInRecord(sPatchText)
+        sPatchPath = os.path.join(
+            self.sCampaignDirectory, S_ACCEPTED_PATCH_BASENAME)
+        _fnWritePrivateFileAtomically(sPatchPath, sSanitized)
+        return sPatchPath
+
+    def fsReadAcceptedPlanText(self):
+        """Return the sealed accepted-plan artifact, or "" when absent."""
+        sPlanPath = os.path.join(
+            self.sCampaignDirectory, S_ACCEPTED_PLAN_BASENAME)
+        try:
+            with open(sPlanPath, encoding="utf-8") as filePlan:
+                return filePlan.read()
+        except OSError:
+            return ""
 
 
 def fdictCreateCampaignStore(sDurableStoreRoot=None, dictBounds=None):
@@ -839,6 +865,22 @@ def fdictCollectCampaignEvents(dictStore, sCampaignId, iAfterSequence):
             dictEntry["ringEvents"].iHighestRetainedSequence),
         "bEvictionHasOccurred": dictEntry["ringEvents"].bEvictionHasOccurred,
     }
+
+
+def fsAcceptCampaignPatchLocally(dictStore, sCampaignId, sPatchText):
+    """Write an implementation campaign's accepted patch; return its path."""
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None:
+        raise ValueError(f"no stored campaign {sCampaignId!r} to accept")
+    return dictEntry["checkpointDurable"].fsWriteAcceptedPatch(sPatchText)
+
+
+def fsReadAcceptedPlanText(dictStore, sCampaignId):
+    """Return a campaign's sealed accepted-plan text, or "" when absent."""
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None:
+        return ""
+    return dictEntry["checkpointDurable"].fsReadAcceptedPlanText()
 
 
 def fsAcceptCampaignPlanLocally(dictStore, sCampaignId, sPlanText):

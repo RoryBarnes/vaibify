@@ -4187,7 +4187,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +19 (2026-08-27, review round 2): the retry request body
     # (the explicit stop-clear choice) and the detail route adopting
     # the store-aware stopping point.
-    "routes/councilRoutes.py": 1315,
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    "routes/councilRoutes.py": 1372,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4246,7 +4251,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +17 (2026-08-27, review round 2): the store-aware stopping
     # point gains its detail-lane entry point, so the list and the
     # open panel derive one answer about lost provenance.
-    "agentCouncilStore.py": 935,
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    "agentCouncilStore.py": 977,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4298,7 +4308,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reads the reset time.
     # 1209 -> 1214 (2026-08-27): the network-unreachable
     # explanation.
-    "agentCouncil.py": 1214,
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    "agentCouncil.py": 1271,
+    "agentCouncilCharter.py": 931,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5471,7 +5487,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # runtime rebuild carries its reason back as the route's refusal —
     # a retry died as an unhandled 500 and the click looked like
     # nothing.
-    "agentCouncilController.py": 1798,
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    "agentCouncilController.py": 1810,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

@@ -41,10 +41,13 @@ from .agentCouncilCampaign import (
     S_VERDICT_UNDETERMINED,
 )
 from .agentCouncilCharter import (
+    S_PHASE_CONFORMANCE_REVIEW,
     S_PHASE_CROSS_REVIEW,
+    S_PHASE_IMPLEMENTATION,
     S_PHASE_PROPOSAL,
     S_PHASE_SYNTHESIS,
     S_PHASE_VETO,
+    fbIsImplementationCampaign,
     _fsMintIdentifier,
 )
 
@@ -269,12 +272,24 @@ class RoundResolutionMixin:
                             dictTurnRecord["sParticipantId"],
                             set()).add(sPhase)
         setQualifyingModels = set()
+        bImplementationWalk = fbIsImplementationCampaign(self.dictCampaign)
         for dictParticipant in self._flistActiveParticipants():
             setPhases = dictPhasesByParticipant.get(
                 dictParticipant["sParticipantId"], set())
-            if S_PHASE_PROPOSAL in setPhases and (
+            if bImplementationWalk:
+                # One pen, several judges: only the author writes, so
+                # the planning predicate (a proposal AND a review) can
+                # never be met by a reviewer. Any completed substantive
+                # phase qualifies; two distinct models across the pen
+                # and its judges is the floor's meaning here.
+                bQualifies = bool(setPhases & {
+                    S_PHASE_IMPLEMENTATION, S_PHASE_CONFORMANCE_REVIEW,
+                    S_PHASE_SYNTHESIS, S_PHASE_VETO})
+            else:
+                bQualifies = S_PHASE_PROPOSAL in setPhases and (
                     S_PHASE_CROSS_REVIEW in setPhases
-                    or S_PHASE_VETO in setPhases):
+                    or S_PHASE_VETO in setPhases)
+            if bQualifies:
                 setQualifyingModels.add((dictParticipant["sProvider"],
                                          dictParticipant["sRequestedModel"]))
         return len(setQualifyingModels)
@@ -502,6 +517,12 @@ SET_TERMINAL_BY_CHOICE = frozenset(
 LIST_FIRST_ROUND_PHASES = ["independentProposals", "crossReview",
                            "synthesis", "veto"]
 LIST_LATER_ROUND_PHASES = ["crossReview", "synthesis", "veto"]
+# The implementation-council walk mirrors (2026-08-28): same
+# mirror-of-the-engine contract the planning lists carry.
+LIST_IMPLEMENTATION_FIRST_ROUND_PHASES = [
+    "implementation", "conformanceReview", "synthesis", "veto"]
+LIST_IMPLEMENTATION_LATER_ROUND_PHASES = [
+    "conformanceReview", "synthesis", "veto"]
 
 
 def fdictDescribeStoppingPoint(dictCampaign):
@@ -527,8 +548,10 @@ def fdictDescribeStoppingPoint(dictCampaign):
     dictStopping = {
         "sState": sState,
         "iRoundNumber": (dictRound or {}).get("iRoundNumber", 0),
-        "sLastSettledPhase": _fsFindLastSettledPhase(dictRound),
-        "sNextPhase": _fsFindNextPhase(dictRound),
+        "sLastSettledPhase": _fsFindLastSettledPhase(
+            dictRound, fbIsImplementationCampaign(dictCampaign)),
+        "sNextPhase": _fsFindNextPhase(
+            dictRound, fbIsImplementationCampaign(dictCampaign)),
         # The durable attempt record's own words (continuation plan
         # 2.2): what recovery may act on is exactly what the record
         # supports, and the route re-derives the same answer at the
@@ -707,22 +730,28 @@ def _fsFindIncoherentTurn(dictRound):
     return ""
 
 
-def _fsFindLastSettledPhase(dictRound):
+def _fsFindLastSettledPhase(dictRound, bImplementationWalk=False):
     """Return the last phase of the open round that produced turns."""
     dictByPhase = (dictRound or {}).get("dictTurnsByPhase") or {}
-    listWalked = [sPhase for sPhase in LIST_FIRST_ROUND_PHASES
+    listFirst = (LIST_IMPLEMENTATION_FIRST_ROUND_PHASES
+                 if bImplementationWalk else LIST_FIRST_ROUND_PHASES)
+    listWalked = [sPhase for sPhase in listFirst
                   if sPhase in dictByPhase]
     return listWalked[-1] if listWalked else ""
 
 
-def _fsFindNextPhase(dictRound):
+def _fsFindNextPhase(dictRound, bImplementationWalk=False):
     """Return the phase the engine would run next in the open round."""
     if dictRound is None or dictRound.get("sResolution"):
         return ""
+    listFirst = (LIST_IMPLEMENTATION_FIRST_ROUND_PHASES
+                 if bImplementationWalk else LIST_FIRST_ROUND_PHASES)
+    listLater = (LIST_IMPLEMENTATION_LATER_ROUND_PHASES
+                 if bImplementationWalk else LIST_LATER_ROUND_PHASES)
     listOrder = (["veto"] if dictRound.get("bFinalVetoRound")
-                 else LIST_FIRST_ROUND_PHASES
+                 else listFirst
                  if dictRound.get("iRoundNumber") == 1
-                 else LIST_LATER_ROUND_PHASES)
+                 else listLater)
     for sPhase in listOrder:
         if sPhase == "synthesis":
             if not dictRound.get("bSynthesisSettled"):

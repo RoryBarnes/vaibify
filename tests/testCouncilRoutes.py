@@ -32,6 +32,7 @@ from unittest.mock import patch
 
 from vaibify.gui import (
     actionCatalog,
+    agentCouncilCampaign,
     agentCouncilContext,
     agentCouncilController,
     agentCouncilRegistry,
@@ -1758,3 +1759,88 @@ def test_a_campaign_action_still_refuses_an_untracked_directory(tmp_path,
 
     assert response.status_code == 400, response.text
     assert "tracked directories" in response.text
+
+
+# ── implementation councils are seeded server-side (2026-08-28) ────
+
+def _sPlantAcceptedPlanningCampaign(app, sPlanText="THE ACCEPTED PLAN"):
+    """Register an ACCEPTED planning campaign with a sealed artifact."""
+    dictStore = getattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY)
+    dictCampaign = agentCouncilCampaign.fdictCreateCampaign(
+        "How should the sampler be changed?",
+        [agentCouncilCampaign.fdictCreateParticipant("claude", "modelOne"),
+         agentCouncilCampaign.fdictCreateParticipant("claude", "modelTwo")],
+        dictProjectIdentity={
+            **agentCouncilCampaign.DICT_EMPTY_PROJECT_IDENTITY,
+            "sResourceName": S_CONTAINER_NAME,
+            "sProjectRepoPath": S_PROJECT_REPO,
+        })
+    dictCampaign["sState"] = agentCouncilCampaign.S_STATE_PLAN_ACCEPTED
+    agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
+    agentCouncilStore.fsAcceptCampaignPlanLocally(
+        dictStore, dictCampaign["sCampaignId"], sPlanText)
+    return dictCampaign["sCampaignId"]
+
+
+def test_an_implementation_council_is_seeded_from_the_sealed_plan(
+        tOwnerClient):
+    """The seed is loaded SERVER-SIDE from the source campaign's artifact.
+
+    The client sends a kind and a source id, never plan text — so no
+    caller can hand the implementers a plan the council never accepted.
+    """
+    client, app, _ = tOwnerClient
+    sSourceId = _sPlantAcceptedPlanningCampaign(
+        app, sPlanText="THE SEALED PLAN: change x to y")
+    dictBody = dict(DICT_START_BODY)
+    dictBody["sCampaignKind"] = "implementation"
+    dictBody["sSourceCampaignId"] = sSourceId
+
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=dictBody)
+
+    assert response.status_code == 200, response.text
+    dictCampaign = response.json()["dictCampaign"]
+    assert dictCampaign["sCampaignKind"] == "implementation"
+    assert dictCampaign["sSourceCampaignId"] == sSourceId
+    assert "THE SEALED PLAN" in dictCampaign["sSeedPlanDocument"]
+
+
+def test_an_implementation_council_refuses_an_unaccepted_source(
+        tOwnerClient):
+    """Only an ACCEPTED plan can be implemented.
+
+    A draft, a gate, or a failed council has no reviewed deliverable;
+    implementing one would hand an implementer text no veto ever
+    passed.
+    """
+    client, app, _ = tOwnerClient
+    dictStore = getattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY)
+    sSourceId = _sPlantAcceptedPlanningCampaign(app)
+    agentCouncilStore.fnCheckpointStoredCampaign(
+        dictStore, sSourceId,
+        {**agentCouncilStore.fjsonGetCampaignRecord(dictStore, sSourceId),
+         "sState": "planning"})
+    dictBody = dict(DICT_START_BODY)
+    dictBody["sCampaignKind"] = "implementation"
+    dictBody["sSourceCampaignId"] = sSourceId
+
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=dictBody)
+
+    assert response.status_code == 409, response.text
+    assert "accepted" in response.text
+
+
+def test_an_implementation_council_names_a_source(tOwnerClient):
+    """A kind with no source is refused rather than seeded with nothing."""
+    client, _, _ = tOwnerClient
+    dictBody = dict(DICT_START_BODY)
+    dictBody["sCampaignKind"] = "implementation"
+
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start", json=dictBody)
+
+    assert response.status_code == 400, response.text

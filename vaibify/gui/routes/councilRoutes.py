@@ -147,6 +147,12 @@ class CouncilStartRequest(BaseModel):
     listExcludedPaths: list[str] = Field(
         default_factory=list,
         max_length=dockerConnection.I_REPOSITORY_WEIGHT_LARGEST_FILES)
+    # Implementation councils only: which completed planning council
+    # this one implements. The SEED — the accepted plan document — is
+    # loaded server-side from that campaign's sealed artifact, never
+    # from client text.
+    sCampaignKind: str = Field(default="planning", max_length=32)
+    sSourceCampaignId: str = Field(default="", max_length=128)
 
 
 class CouncilDecisionAnswer(BaseModel):
@@ -365,7 +371,8 @@ def _fsResolveChairbotId(listParticipants, iChairbotIndex):
 
 
 def _fdictCreateCampaignFromRequest(request, dictProjectIdentity,
-                                    saExistingNames=None):
+                                    saExistingNames=None,
+                                    sSeedPlanDocument=""):
     """Build a draft campaign record from a validated start request.
 
     ``saExistingNames`` are the names already taken in this project, so
@@ -391,6 +398,9 @@ def _fdictCreateCampaignFromRequest(request, dictProjectIdentity,
             dictProjectIdentity=dictProjectIdentity,
             sCampaignName=agentCouncilCampaign.fsComposeUniqueCampaignName(
                 request.sCampaignName, request.sQuestion, saExistingNames),
+            sCampaignKind=request.sCampaignKind,
+            sSeedPlanDocument=sSeedPlanDocument,
+            sSourceCampaignId=request.sSourceCampaignId,
         )
     except agentCouncilCampaign.CouncilConfigurationError as error:
         raise HTTPException(400, str(error))
@@ -774,6 +784,46 @@ def _fnRegisterPollEvents(app, dictCtx):
         return dictEvents
 
 
+def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
+                            sProjectRepoPath):
+    """Load the sealed accepted plan an implementation council implements.
+
+    Server-side only, from the source campaign's own artifact: the
+    source must belong to the SAME principal (a foreign campaign's
+    plan is not this project's to implement) and must be ACCEPTED —
+    the seed is the reviewed deliverable, so a draft, gate, or failed
+    campaign has nothing to implement yet.
+    """
+    if not sSourceCampaignId:
+        raise HTTPException(
+            400, "an implementation council names the completed "
+            "planning council it implements")
+    jsonSource = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sSourceCampaignId)
+    if jsonSource is None:
+        raise HTTPException(
+            404, f"no planning council '{sSourceCampaignId}' to implement")
+    if not agentCouncilCampaign.fbCampaignMatchesPrincipal(
+            jsonSource, sName, sProjectRepoPath):
+        raise HTTPException(
+            409, "the source council belongs to a different project or "
+            "repository")
+    if jsonSource.get("sState") != (
+            agentCouncilCampaign.S_STATE_PLAN_ACCEPTED):
+        raise HTTPException(
+            409, "only an accepted plan can be implemented; review and "
+            "accept the plan first")
+    sSealedPlan = agentCouncilStore.fsReadAcceptedPlanText(
+        dictStore, sSourceCampaignId)
+    if sSealedPlan:
+        return sSealedPlan
+    # An accepted campaign whose artifact file is gone (host app-data
+    # cleaned by hand): recompose from the record — the same composer
+    # acceptance used, over the same durable record.
+    return agentCouncilController.fsComposePlanMarkdown(
+        jsonSource, jsonSource.get("dictCandidatePlan") or {})
+
+
 def _fnRegisterStartCouncil(app, dictCtx):
     """Register POST /api/agent-councils/{sContainerId}/start."""
 
@@ -792,6 +842,12 @@ def _fnRegisterStartCouncil(app, dictCtx):
             dictCtx, requestHttp, sContainerId, request.sProjectDirectory)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
+        sSeedPlanDocument = ""
+        if request.sCampaignKind == (
+                agentCouncilCampaign.S_CAMPAIGN_KIND_IMPLEMENTATION):
+            sSeedPlanDocument = _fsLoadAcceptedPlanSeed(
+                dictStore, request.sSourceCampaignId, sName,
+                sProjectRepoPath)
         dictCampaign = _fdictCreateCampaignFromRequest(
             request,
             {
@@ -806,7 +862,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     dictStore,
                     fbSelectCampaign=lambda dictOther:
                         agentCouncilCampaign.fbCampaignMatchesPrincipal(
-                            dictOther, sName, sProjectRepoPath))])
+                            dictOther, sName, sProjectRepoPath))],
+            sSeedPlanDocument=sSeedPlanDocument)
 
         dictControllerState = fdictControllerState(requestHttp)
         sCampaignId = dictCampaign["sCampaignId"]

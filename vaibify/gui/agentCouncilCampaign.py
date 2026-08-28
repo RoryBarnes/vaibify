@@ -20,6 +20,8 @@ import copy
 import re
 
 from .agentCouncilCharter import (
+    S_CAMPAIGN_KIND_IMPLEMENTATION,
+    S_CAMPAIGN_KIND_PLANNING,
     S_CHARTER_TEXT,
     S_CHARTER_VERSION,
     _fsMintIdentifier,
@@ -39,6 +41,10 @@ __all__ = [
     "LIST_EXHAUSTED_ROUND_EXITS",
     "LIST_PROJECT_IDENTITY_KEYS",
     "SET_RETRYABLE_TURN_FAILURE_REASONS",
+    "S_CAMPAIGN_KIND_PLANNING",
+    "S_CAMPAIGN_KIND_IMPLEMENTATION",
+    "TUPLE_CAMPAIGN_KINDS",
+    "fsReadCampaignKind",
     "S_CLAIM_ASSERTED",
     "S_CLAIM_BLOCKED",
     "S_CLAIM_CONFIRMED",
@@ -216,6 +222,18 @@ DICT_EMPTY_PROJECT_IDENTITY = {
 # the provider classification constants in ``agentCouncilProviders``
 # (S_FAILURE_*), pinned by testTheRetryWhitelistMirrorsTheProvider
 # Vocabulary — this module stays pure, so the strings live here.
+# The kind vocabulary lives in the charter (the import leaf) and is
+# re-exported here as domain vocabulary. Old records carry no kind and
+# read as planning.
+TUPLE_CAMPAIGN_KINDS = (
+    S_CAMPAIGN_KIND_PLANNING, S_CAMPAIGN_KIND_IMPLEMENTATION)
+
+
+def fsReadCampaignKind(dictCampaign):
+    """Return the campaign's protocol kind, defaulting old records."""
+    return dictCampaign.get("sCampaignKind") or S_CAMPAIGN_KIND_PLANNING
+
+
 SET_RETRYABLE_TURN_FAILURE_REASONS = frozenset({
     "rateLimit",
     "killedNoExitCode",
@@ -398,7 +416,8 @@ def fbCampaignMatchesPrincipal(dictCampaign, sResourceName,
 
 def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
                         sChairbotParticipantId="", dictProjectIdentity=None,
-                        sCampaignName=""):
+                        sCampaignName="", sCampaignKind="planning",
+                        sSeedPlanDocument="", sSourceCampaignId=""):
     """Create the durable campaign record in state draft.
 
     Requires at least two participants covering two distinct
@@ -407,9 +426,27 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
     version and text are recorded immutably (section 5.5). The project
     identity triple binds the campaign to its lease principal and repo
     (remediation R2); the engine never reads it, the routes always do.
+
+    ``sCampaignKind`` selects the protocol walk: a PLANNING council
+    deliberates a plan; an IMPLEMENTATION council produces a reviewed
+    PATCH against the sealed snapshot, seeded with an accepted plan
+    (``sSeedPlanDocument``, loaded server-side from the source
+    campaign named by ``sSourceCampaignId`` — never client-supplied
+    text). Ruling (design review question 19): no runner ever holds a
+    writable path to the live project; the patch is applied by the
+    researcher's own hand or not at all.
     """
     if not sQuestion:
         raise CouncilConfigurationError("the council question is required")
+    if sCampaignKind not in TUPLE_CAMPAIGN_KINDS:
+        raise CouncilConfigurationError(
+            f"unknown campaign kind '{sCampaignKind}'; one of "
+            f"{list(TUPLE_CAMPAIGN_KINDS)}")
+    if sCampaignKind == S_CAMPAIGN_KIND_IMPLEMENTATION and not (
+            sSeedPlanDocument):
+        raise CouncilConfigurationError(
+            "an implementation council needs the accepted plan it "
+            "implements; convene it from a completed planning council")
     if len(listParticipants) < 2:
         raise CouncilConfigurationError(
             "a council needs at least two participants")
@@ -429,6 +466,12 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
     return {
         "sCampaignId": _fsMintIdentifier("campaign"),
         "sCampaignName": sCampaignName or "Council",
+        # Not in LIST_CAMPAIGN_REQUIRED_KEYS: campaigns checkpointed by
+        # an earlier hub carry no kind and must restore as planning —
+        # every read goes through .get with the planning default.
+        "sCampaignKind": sCampaignKind,
+        "sSeedPlanDocument": sSeedPlanDocument,
+        "sSourceCampaignId": sSourceCampaignId,
         "sState": S_STATE_DRAFT,
         "dictProjectIdentity": _fdictValidateProjectIdentity(
             dictProjectIdentity),

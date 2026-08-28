@@ -7283,6 +7283,22 @@ body.council-workspace-open #mainLayout {
     overflow-y: auto;
 }
 
+/* The implementation council's deliverable: a unified diff, shown as
+   the monospaced text it is. Scrolls in BOTH directions inside its own
+   box — a diff wraps into unreadability, and a page that scrolls
+   sideways to follow it is worse. */
+.council-patch {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    white-space: pre;
+    max-height: 40vh;
+    overflow: auto;
+}
+
 .council-plan-actions {
     display: flex;
     flex-wrap: wrap;

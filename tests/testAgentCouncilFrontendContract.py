@@ -707,3 +707,45 @@ def test_excised_identifier_debris_is_swept_with_its_connectives():
     assert "waits on" in sBody, (
         "the connective sweep is gone; excised ids leave their "
         "empty '(waits on and )' wrapper on screen")
+
+
+def test_the_implementation_button_sends_a_source_id_never_plan_text():
+    """The client names the source council; the server loads the plan.
+
+    Posting plan TEXT would let a caller hand implementers a plan no
+    council accepted — the seed is loaded server-side from the source
+    campaign's sealed artifact, so the body carries only the kind and
+    the id.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnConveneCouncil")
+    assert "sCampaignKind" in sBody
+    assert "sSourceCampaignId" in sBody
+    assert "sSeedPlanDocument" not in sBody, (
+        "the convene body must never carry plan text; the server loads "
+        "the sealed artifact from the source campaign")
+
+
+def test_implementing_a_plan_opens_the_consent_form_not_a_launch():
+    """The button opens the convene form; it never starts a council.
+
+    An implementation council spends the same paid provider work as
+    any other, so it passes the same disclosure, participant and
+    settings screen.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnOpenImplementationForm")
+    assert "_fnOpenPlanningForm" in sBody
+    assert "/start" not in sBody, (
+        "the button must not convene directly — the consent form is "
+        "the gate every council passes")
+
+
+def test_an_implementation_council_offers_no_further_implementation():
+    """A patch implements nothing further — no council of councils."""
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsAcceptedPlanActions")
+    assert 'sCampaignKind === "implementation"' in sBody
+    assert "git apply" in sBody, (
+        "an accepted patch must say the researcher applies it; vaibify "
+        "never writes it into the project")

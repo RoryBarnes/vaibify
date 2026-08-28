@@ -38,6 +38,16 @@ __all__ = [
     "S_PHASE_PROPOSAL",
     "S_PHASE_SYNTHESIS",
     "S_PHASE_VETO",
+    "S_PHASE_IMPLEMENTATION",
+    "S_PHASE_CONFORMANCE_REVIEW",
+    "S_CAMPAIGN_KIND_PLANNING",
+    "S_CAMPAIGN_KIND_IMPLEMENTATION",
+    "fbIsImplementationCampaign",
+    "fbTurnRequiresPatchSchema",
+    "DICT_IMPLEMENTATION_PHASE_INSTRUCTIONS",
+    "LIST_PATCH_RESULT_STRING_KEYS",
+    "LIST_PATCH_RESULT_ARRAY_KEYS",
+    "fsComposePatchSchemaExtension",
     "S_QUOTED_MATERIAL_LABEL",
     "fdictBuildQuotedEntry",
     "fdictComposeTurnRequest",
@@ -51,6 +61,35 @@ __all__ = [
 ]
 
 S_PHASE_PROPOSAL = "independentProposals"
+# The implementation-council walk (researcher direction 2026-08-28;
+# phase order settled 2026-08-25): a single-author patch, adversarial
+# conformance review against the seeded plan, patch revision, veto.
+S_PHASE_IMPLEMENTATION = "implementation"
+S_PHASE_CONFORMANCE_REVIEW = "conformanceReview"
+
+# The two protocol kinds. Defined HERE because the charter is the
+# import leaf (campaign imports charter): the campaign module
+# re-exports them as the domain vocabulary.
+S_CAMPAIGN_KIND_PLANNING = "planning"
+S_CAMPAIGN_KIND_IMPLEMENTATION = "implementation"
+
+
+def fbIsImplementationCampaign(dictCampaign):
+    """Read the campaign kind; records from older hubs are planning."""
+    return (dictCampaign.get("sCampaignKind")
+            or S_CAMPAIGN_KIND_PLANNING) == S_CAMPAIGN_KIND_IMPLEMENTATION
+
+
+def fbTurnRequiresPatchSchema(dictCampaign, sPhase):
+    """Report whether this turn's result must carry the patch keys.
+
+    The pen phases of an implementation council — the initial
+    implementation and each synthesis revision — produce the diff;
+    reviews and vetoes judge it under the base schema.
+    """
+    if not fbIsImplementationCampaign(dictCampaign):
+        return False
+    return sPhase in (S_PHASE_IMPLEMENTATION, S_PHASE_SYNTHESIS)
 S_PHASE_CROSS_REVIEW = "crossReview"
 S_PHASE_SYNTHESIS = "synthesis"
 S_PHASE_VETO = "veto"
@@ -93,16 +132,27 @@ S_PHASE_VETO = "veto"
 # judgement and no channel for it. Findings worth the researcher's
 # attention but not their decision go into evidence and the plan
 # document, marked for emphasis, never into a question.
-S_CHARTER_VERSION = "1.5.0"
+# 1.6.0 (2026-08-28, researcher direction): implementation councils.
+# Clause 1 is kind-qualified — a planning council's deliverable is a
+# plan, an implementation council's is a reviewed PATCH against the
+# sealed snapshot, and neither is ever an applied change (design
+# review question 19: no runner holds a writable path to the live
+# project; the researcher applies the patch by hand or not at all).
+# The patch schema extension and the implementation/conformance-review
+# phase instructions land with it.
+S_CHARTER_VERSION = "1.6.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
 1. Role and its limits. You are one of several independent models
-convened to produce an implementation plan for a proposed change. You
-are not the sole author. You do not implement code, approve your own or
-any plan, launch an implementer, invoke host actions, or take any
-effect outside your disposable copy of the project. Your deliverable is
-analysis, not action.
+convened to produce either an implementation plan for a proposed
+change (a PLANNING council) or a reviewed patch that implements an
+accepted plan (an IMPLEMENTATION council). You are
+not the sole author. You do not approve your own work, launch an implementer,
+invoke host actions, or take any effect outside your disposable copy
+of the project. A patch is text the researcher may apply by hand —
+never an applied change, and never applied by you. Your deliverable
+is analysis or reviewed patch text, not action.
 
 2. Consensus is not proof. The council's strongest permitted conclusion
 is: no known blocking objection remains after independent proposals,
@@ -189,6 +239,44 @@ DICT_PHASE_INSTRUCTIONS = {
         "objection survives; otherwise 'blockingObjection' with the "
         "objections stated, or 'needsHuman' for a judgment call the "
         "researcher must own."),
+    S_PHASE_IMPLEMENTATION: (
+        "PHASE: implementation. You hold the pen. Implement the quoted "
+        "ACCEPTED PLAN as one unified diff against the sealed snapshot "
+        "you are working in — the plan is the specification, and the "
+        "researcher's recorded decisions inside it are settled: do not "
+        "relitigate them. Where the code forces a departure from the "
+        "plan, record it in listDeviationsFromPlan with the reason; "
+        "where the plan is genuinely ambiguous and the choice is the "
+        "researcher's, raise a blocking question. Your patch is text "
+        "the researcher applies by hand; nothing you produce executes."),
+    S_PHASE_CONFORMANCE_REVIEW: (
+        "PHASE: conformance review. The quoted material carries the "
+        "ACCEPTED PLAN and the candidate PATCH. Your job is to falsify "
+        "the patch's claim to implement the plan: name every plan item "
+        "the patch misses, contradicts, or silently reinterprets; every "
+        "hunk that changes what no plan item asked for; every deviation "
+        "not declared in listDeviationsFromPlan; and any defect in the "
+        "patch itself. Judge conformance and correctness, never "
+        "restyle."),
+}
+
+# Kind overrides for the phases whose base wording is plan-flavored.
+# Selected by fsComposeTurnInstruction when the campaign kind is
+# implementation; absent phases fall through to the base dict.
+DICT_IMPLEMENTATION_PHASE_INSTRUCTIONS = {
+    S_PHASE_SYNTHESIS: (
+        "PHASE: patch revision. You hold the pen for this round. Fold "
+        "the quoted conformance reviews into one revised unified diff "
+        "that answers every surviving objection or names it as "
+        "unresolved, and keep listDeviationsFromPlan complete and "
+        "current. Never merge a reviewer's wording into the patch "
+        "unexamined; the plan remains the specification."),
+    S_PHASE_VETO: (
+        "PHASE: veto. Judge the quoted candidate patch's substance "
+        "against the accepted plan, not its style. Return verdict "
+        "'accept' only if no blocking objection survives; otherwise "
+        "'blockingObjection' with the objections stated, or "
+        "'needsHuman' for a judgment call the researcher must own."),
 }
 
 # The two authors a chat transcript can carry, spelled here because the
@@ -299,18 +387,58 @@ LIST_TURN_RESULT_ARRAY_KEYS = [
     "listOpenQuestions", "listBlockingObjections",
 ]
 
+# The keys a PATCH turn adds to the base schema — only the
+# implementation and synthesis phases of an implementation council
+# require them; every other turn rejects them as unknown. The diff had
+# no honest home in the one fixed shape, which is the named blocker
+# that deferred the implementation council (2026-08-25); the schema is
+# per-phase now, generated and validated from these same lists.
+LIST_PATCH_RESULT_STRING_KEYS = ["sPatchUnifiedDiff"]
+LIST_PATCH_RESULT_ARRAY_KEYS = ["listFilesTouched",
+                                "listDeviationsFromPlan"]
+
+
+def fsComposePatchSchemaExtension():
+    """Render the patch-phase schema addition a model is shown.
+
+    Generated from the same key lists the validator enforces, so the
+    shown and the enforced cannot drift — the property the base schema
+    already holds.
+    """
+    return (
+        "PATCH RESULT EXTENSION. In THIS phase your result object must "
+        "ALSO carry, beside every base key: "
+        "'sPatchUnifiedDiff' (a non-empty unified diff against the "
+        "sealed snapshot, apply-clean with 'git apply'), "
+        "'listFilesTouched' (array of repository-relative paths), and "
+        "'listDeviationsFromPlan' (array of strings: each place the "
+        "patch departs from the accepted plan, with why; [] when it "
+        "follows the plan exactly)."
+    )
+
 
 def _fsMintIdentifier(sKindPrefix):
     return f"{sKindPrefix}-{uuid.uuid4().hex[:12]}"
 
 
-def fdictValidateTurnResult(dictCandidate):
-    """Validate a structured turn result against the schema (section 8.5)."""
+def fdictValidateTurnResult(dictCandidate, bRequirePatch=False):
+    """Validate a structured turn result against the schema (section 8.5).
+
+    ``bRequirePatch`` widens the schema to the patch extension for the
+    implementation and synthesis phases of an implementation council;
+    everywhere else the patch keys stay UNKNOWN and are rejected, so a
+    planning turn cannot smuggle a diff.
+    """
+    listStringKeys = list(LIST_TURN_RESULT_STRING_KEYS)
+    listArrayKeys = list(LIST_TURN_RESULT_ARRAY_KEYS)
+    if bRequirePatch:
+        listStringKeys.extend(LIST_PATCH_RESULT_STRING_KEYS)
+        listArrayKeys.extend(LIST_PATCH_RESULT_ARRAY_KEYS)
     listProblems = []
     if not isinstance(dictCandidate, dict):
         return {"bValid": False,
                 "listProblems": ["result is not a mapping"]}
-    for sKeyName in LIST_TURN_RESULT_STRING_KEYS:
+    for sKeyName in listStringKeys:
         jsonValue = dictCandidate.get(sKeyName)
         if not isinstance(jsonValue, str) or not jsonValue:
             listProblems.append(f"'{sKeyName}' must be a non-empty string")
@@ -318,12 +446,11 @@ def fdictValidateTurnResult(dictCandidate):
         listProblems.append(
             f"'sVerdict' must be one of {list(TUPLE_TURN_VERDICTS)}, not "
             f"{dictCandidate.get('sVerdict')!r}")
-    for sKeyName in LIST_TURN_RESULT_ARRAY_KEYS:
+    for sKeyName in listArrayKeys:
         listProblems.extend(
             _flistFindArrayProblems(sKeyName, dictCandidate.get(sKeyName)))
     listUnknownKeys = sorted(
-        set(dictCandidate) - set(LIST_TURN_RESULT_STRING_KEYS)
-        - set(LIST_TURN_RESULT_ARRAY_KEYS))
+        set(dictCandidate) - set(listStringKeys) - set(listArrayKeys))
     if listUnknownKeys:
         listProblems.append(
             f"unknown keys are not part of the schema: {listUnknownKeys}")
@@ -526,7 +653,13 @@ def fsComposeTurnInstruction(dictCampaign, dictParticipant, sPhase,
     looks like.
     """
     listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)
-    listSections.append(DICT_PHASE_INSTRUCTIONS[sPhase])
+    if fbIsImplementationCampaign(dictCampaign) and (
+            sPhase in DICT_IMPLEMENTATION_PHASE_INSTRUCTIONS):
+        listSections.append(DICT_IMPLEMENTATION_PHASE_INSTRUCTIONS[sPhase])
+    else:
+        listSections.append(DICT_PHASE_INSTRUCTIONS[sPhase])
+    if fbTurnRequiresPatchSchema(dictCampaign, sPhase):
+        listSections.append(fsComposePatchSchemaExtension())
     if bRepairRequest:
         listSections.append(fsComposeRepairInstruction(listSchemaProblems))
     return "\n\n".join(listSections)
@@ -636,6 +769,15 @@ def flistBuildQuotedMaterial(dictCampaign, dictRound, sPhase, sParticipantId):
     """
     listQuoted = [fdictBuildQuotedEntry(
         "researcherQuestion", "researcher", dictCampaign["sQuestion"])]
+    if fbIsImplementationCampaign(dictCampaign) and dictCampaign.get(
+            "sSeedPlanDocument"):
+        # The accepted plan IS the specification, quoted on every turn
+        # of an implementation council — untrusted channel, like all
+        # researcher-adjacent text, so an instruction embedded in a
+        # plan stays data.
+        listQuoted.append(fdictBuildQuotedEntry(
+            "acceptedPlan", "researcher",
+            dictCampaign["sSeedPlanDocument"]))
     for dictResponse in dictCampaign["listResearcherResponses"]:
         listQuoted.append(fdictBuildQuotedEntry(
             "researcherResponse", "researcher",
@@ -651,13 +793,22 @@ def flistBuildQuotedMaterial(dictCampaign, dictRound, sPhase, sParticipantId):
         _flistPhaseSpecificQuotes(dictCampaign, dictRound, sPhase,
                                   sParticipantId))
     bBlind = (dictCampaign["dictSettings"]["bPeerAnonymity"]
-              and sPhase == S_PHASE_CROSS_REVIEW)
+              and sPhase in (S_PHASE_CROSS_REVIEW,
+                             S_PHASE_CONFORMANCE_REVIEW))
     return flistBlindQuotedMaterial(listQuoted) if bBlind else listQuoted
 
 
 def _flistPhaseSpecificQuotes(dictCampaign, dictRound, sPhase, sParticipantId):
-    if sPhase == S_PHASE_PROPOSAL:
+    if sPhase in (S_PHASE_PROPOSAL, S_PHASE_IMPLEMENTATION):
         return []
+    if sPhase == S_PHASE_CONFORMANCE_REVIEW:
+        # The candidate patch under review: adopted by the
+        # implementation phase in round 1 and by every synthesis
+        # revision after, so the candidate record always carries it.
+        listQuoted = []
+        if dictCampaign["dictCandidatePlan"] is not None:
+            listQuoted.append(_fdictCandidateQuote(dictCampaign))
+        return listQuoted
     listQuoted = []
     bFirstRound = dictRound["iRoundNumber"] == 1
     if sPhase == S_PHASE_CROSS_REVIEW:
@@ -668,6 +819,13 @@ def _flistPhaseSpecificQuotes(dictCampaign, dictRound, sPhase, sParticipantId):
         else:
             listQuoted.append(_fdictCandidateQuote(dictCampaign))
     elif sPhase == S_PHASE_SYNTHESIS:
+        if fbIsImplementationCampaign(dictCampaign):
+            if dictCampaign["dictCandidatePlan"] is not None:
+                listQuoted.append(_fdictCandidateQuote(dictCampaign))
+            listQuoted.extend(_flistResultQuotes(
+                dictRound, S_PHASE_CONFORMANCE_REVIEW, "peerCritique"))
+            listQuoted.extend(_flistHeldQuestionQuotes(dictRound))
+            return listQuoted
         if bFirstRound:
             listQuoted.extend(_flistResultQuotes(
                 dictRound, S_PHASE_PROPOSAL, "peerProposal"))

@@ -891,3 +891,69 @@ def testARepairIsNotSpentOnATurnThatReturnedNothing():
     fixture.fdictDrive()
     assert len(listAttempts) == 1, (
         f"the empty turn was retried {len(listAttempts)} times")
+
+
+# ----- the implementation-council walk (2026-08-28) ---------------------
+
+
+def testAnImplementationCouncilWalksPenReviewReviseVetoToPlanReady():
+    """The implementation walk end to end, with the patch as candidate.
+
+    Round 1 runs implementation (single author — the chairbot),
+    conformance review by every participant, a synthesis revision, and
+    the veto; a clean run lands planReady with the candidate carrying
+    the patch keys. The phase order is the 2026-08-25 settled design;
+    the researcher-facing button rests on this walk.
+    """
+    from tests.agentCouncilHarness import fdictMakePatchTurnResult
+
+    def _ffnDecide(sHandle, dictTurnRequest):
+        sPhase = dictTurnRequest["sPhase"]
+        if sPhase in ("implementation", "synthesis"):
+            return fdictDecideCompleted(fdictMakePatchTurnResult(
+                sPatchUnifiedDiff="--- a/src/f.c\n+++ b/src/f.c\n@@ -1 +1 @@\n-x\n+y\n"))
+        return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecide, sChairbotHandle="alpha",
+        sCampaignKind="implementation",
+        sSeedPlanDocument="THE ACCEPTED PLAN: change x to y in src/f.c")
+    dictSettled = fixtureCouncil.fdictDrive()
+
+    assert dictSettled["sState"] == "planReady"
+    dictRoundOne = dictSettled["listRounds"][0]
+    listWalked = [sPhase for sPhase in (
+        "implementation", "conformanceReview", "synthesis", "veto")
+        if sPhase in dictRoundOne["dictTurnsByPhase"]
+        or (sPhase == "synthesis" and dictRoundOne["bSynthesisSettled"])]
+    assert listWalked == [
+        "implementation", "conformanceReview", "synthesis", "veto"]
+    dictCandidate = dictSettled["dictCandidatePlan"]["dictResult"]
+    assert dictCandidate["sPatchUnifiedDiff"].startswith("--- a/src/f.c")
+    assert dictCandidate["listFilesTouched"] == ["f"]
+    # The implementation phase ran exactly one author: the chairbot.
+    listImplementationTurns = dictRoundOne["dictTurnsByPhase"][
+        "implementation"]
+    assert len(listImplementationTurns) == 1
+
+
+def testAPlanningTurnReturningPatchKeysIsRejected():
+    """The patch keys stay UNKNOWN outside an implementation council.
+
+    A planning turn that smuggles a diff must fail validation — the
+    per-phase schema widens for the pen phases of an implementation
+    council and nowhere else.
+    """
+    from vaibify.gui.agentCouncilCharter import fdictValidateTurnResult
+    from tests.agentCouncilHarness import fdictMakePatchTurnResult
+    dictValidation = fdictValidateTurnResult(fdictMakePatchTurnResult())
+    assert not dictValidation["bValid"]
+    assert any("unknown keys" in sProblem
+               for sProblem in dictValidation["listProblems"])
+    dictWidened = fdictValidateTurnResult(
+        fdictMakePatchTurnResult(), bRequirePatch=True)
+    assert dictWidened["bValid"]
+    # And a patch phase REQUIRES the diff: the base shape alone fails.
+    dictMissing = fdictValidateTurnResult(
+        fdictMakeTurnResult(), bRequirePatch=True)
+    assert not dictMissing["bValid"]

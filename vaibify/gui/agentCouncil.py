@@ -95,6 +95,12 @@ from .agentCouncilCharter import (
     flistBuildQuotedMaterial,
     fsComposeTurnInstruction,
 )
+from .agentCouncilCharter import (
+    S_PHASE_CONFORMANCE_REVIEW,
+    S_PHASE_IMPLEMENTATION,
+    fbIsImplementationCampaign,
+    fbTurnRequiresPatchSchema,
+)
 from .agentCouncilEvidence import EvidenceDisciplineMixin
 from .agentCouncilResolution import RoundResolutionMixin
 
@@ -368,8 +374,16 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         return dictRound
 
     def _fsNextPhaseForRound(self, dictRound):
+        bImplementationWalk = fbIsImplementationCampaign(self.dictCampaign)
         if dictRound["bFinalVetoRound"]:
             listPhaseOrder = [S_PHASE_VETO]
+        elif bImplementationWalk and dictRound["iRoundNumber"] == 1:
+            listPhaseOrder = [S_PHASE_IMPLEMENTATION,
+                              S_PHASE_CONFORMANCE_REVIEW,
+                              S_PHASE_SYNTHESIS, S_PHASE_VETO]
+        elif bImplementationWalk:
+            listPhaseOrder = [S_PHASE_CONFORMANCE_REVIEW,
+                              S_PHASE_SYNTHESIS, S_PHASE_VETO]
         elif dictRound["iRoundNumber"] == 1:
             listPhaseOrder = [S_PHASE_PROPOSAL, S_PHASE_CROSS_REVIEW,
                               S_PHASE_SYNTHESIS, S_PHASE_VETO]
@@ -391,6 +405,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self._fnRecordPhaseInFlight(dictRound, sPhase)
         if sPhase == S_PHASE_SYNTHESIS:
             await self._fnRunSynthesisPhase(dictRound)
+        elif sPhase == S_PHASE_IMPLEMENTATION:
+            await self._fnRunImplementationPhase(dictRound)
         elif sPhase == S_PHASE_VETO:
             await self._fnRunVetoPhase(dictRound)
         else:
@@ -928,7 +944,10 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 "sRejectedPayload": _fsSummarizeRejectedPayload(
                     dictRawResult),
             }
-        dictValidation = fdictValidateTurnResult(dictRawResult)
+        dictValidation = fdictValidateTurnResult(
+            dictRawResult,
+            bRequirePatch=fbTurnRequiresPatchSchema(
+                self.dictCampaign, dictRequest["sPhase"]))
         if not dictValidation["bValid"]:
             return {"sOutcome": "invalid", "sCompletion": sCompletion,
                     "listProblems": dictValidation["listProblems"],
@@ -976,6 +995,43 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self._fnSettleAttemptOutcome(dictRound, "transitioned:failed")
         self._fnTransition(S_STATE_FAILED, "noParticipantCouldSynthesize")
 
+    async def _fnRunImplementationPhase(self, dictRound):
+        """Single-author patch production with the synthesis fallback
+        chain: the chairbot holds the pen; on its failure the next
+        configured participant takes it, recorded, never a silent
+        stall. The completed patch becomes the candidate the
+        conformance review quotes. bSynthesisSettled stays False —
+        the round still revises the patch after review."""
+        sChairbotId = self.dictCampaign["sChairbotParticipantId"]
+        listAuthorOrder = sorted(
+            self._flistActiveParticipants(),
+            key=lambda dictParticipant:
+                dictParticipant["sParticipantId"] != sChairbotId)
+        for dictParticipant in listAuthorOrder:
+            listQuotedMaterial = flistBuildQuotedMaterial(
+                self.dictCampaign, dictRound, S_PHASE_IMPLEMENTATION,
+                dictParticipant["sParticipantId"])
+            dictTurnRecord = await self._fdictExecuteTurn(
+                dictRound, dictParticipant, S_PHASE_IMPLEMENTATION,
+                listQuotedMaterial)
+            if dictTurnRecord["sStatus"] == "completed":
+                bSubstituted = (dictParticipant["sParticipantId"]
+                                != sChairbotId)
+                if bSubstituted:
+                    self._fnEmitEvent("chairbotSubstituted", {
+                        "sConfiguredChairbotId": sChairbotId,
+                        "sSubstituteAuthorId":
+                            dictParticipant["sParticipantId"]})
+                dictRound["sSynthesisAuthorId"] = (
+                    dictParticipant["sParticipantId"])
+                dictRound["bChairbotSubstituted"] = bSubstituted
+                self._fnAdoptCandidatePlan(dictRound, dictTurnRecord)
+                return
+        dictRound["sResolution"] = "implementationFailed"
+        self._fnMarkAttemptTurnsSettled(dictRound)
+        self._fnSettleAttemptOutcome(dictRound, "transitioned:failed")
+        self._fnTransition(S_STATE_FAILED, "noParticipantCouldImplement")
+
     def _fnAdoptCandidatePlan(self, dictRound, dictTurnRecord):
         dictPrevious = self.dictCampaign["dictCandidatePlan"] or {}
         self.dictCampaign["dictCandidatePlan"] = {
@@ -997,7 +1053,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         substantive role this round, minus the synthesis author. A
         frozen voter that then vanishes is undetermined, never dropped."""
         setSubstantiveIds = set()
-        for sPhase in (S_PHASE_PROPOSAL, S_PHASE_CROSS_REVIEW):
+        for sPhase in (S_PHASE_PROPOSAL, S_PHASE_CROSS_REVIEW,
+                       S_PHASE_IMPLEMENTATION, S_PHASE_CONFORMANCE_REVIEW):
             for dictTurnRecord in dictRound["dictTurnsByPhase"].get(
                     sPhase, []):
                 if dictTurnRecord["sStatus"] == "completed":
