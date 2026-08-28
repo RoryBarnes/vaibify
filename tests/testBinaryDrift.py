@@ -129,7 +129,10 @@ def test_drifted_binary_fails_l3_for_the_implicit_dependent(tmp_path):
     dictWorkflow = _fdictWorkflow(sRepo, sBin, [{
         "sName": "MaxLikelihood", "sDirectory": "MaxLev",
         "saDataCommands": ["maxlev config.in"],
-        "saOutputDataFiles": ["MaxLev/out.json"],  # repo-relative
+        # Step-relative: the collectors prefix sDirectory, so this
+        # resolves to "MaxLev/out.json". Declaring the repo-relative
+        # form resolved to "MaxLev/MaxLev/out.json".
+        "saOutputDataFiles": ["out.json"],
         "saBinaryDependencies": ["vplanet"],
     }])
 

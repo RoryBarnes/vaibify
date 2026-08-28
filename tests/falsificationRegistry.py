@@ -13740,4 +13740,57 @@ def _fdictEntry(sRel):
             '# allow-unpinned \\\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testStepGateAgreesWithManifestWriter.py::'
+            'test_a_templated_plot_path_never_reaches_a_caller_unresolved'
+        ),
+        # The shipped defect: the gate reads raw declarations while the
+        # manifest writer resolves them, so a correct manifest is
+        # searched for names it cannot contain. The step reports
+        # missing-from-manifest forever and the remediation text sends
+        # the researcher to refresh the manifest, which rewrites the
+        # very paths the gate is not asking for.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    from .manifestPaths import flistStepOutputRepoPaths\n'
+            '    # SORTED, because these lists are user-visible (the '
+            'dashboard marks\n'
+            '    # each offending file) and delegation would otherwise '
+            'make the\n'
+            '    # display order an artefact of TUPLE_OUTPUT_KEYS in '
+            'another module.\n'
+            '    # The manifest writer sorts its own final list for the '
+            'same reason.\n'
+            '    return sorted(flistStepOutputRepoPaths(dictStep, '
+            'dictTemplateValues))\n'
+        ),
+        new=(
+            '    return [\n'
+            '        sPath\n'
+            '        for sKey in ("saOutputDataFiles", "saPlotFiles")\n'
+            '        for sPath in (dictStep.get(sKey, []) or [])\n'
+            '        if isinstance(sPath, str) and sPath\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepGateAgreesWithManifestWriter.py::'
+            'test_both_per_step_contexts_carry_the_same_reader_keys'
+        ),
+        # Drop the key from the SECOND context builder, which is how
+        # this actually went wrong: threading it into one of two
+        # independently-built contexts. The per-step reader then
+        # raises KeyError on the poll path -- a 500 that blanks every
+        # badge and level cell.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    dictContext["dictTemplateValues"] = '
+            'fdictWorkflowTemplateValues(\n'
+            '        dictWorkflow,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
 ]

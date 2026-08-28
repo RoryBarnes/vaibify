@@ -52,6 +52,7 @@ from .manifestWriter import (
     flistParseManifestLines,
 )
 from .repoFiles import ffilesEnsureRepoFiles, fsRepoRootOf
+from .manifestPaths import fdictWorkflowTemplateValues
 from .reproduceScriptGenerator import S_REPRODUCE_SCRIPT_FILENAME
 from .stepPredicates import (
     _T_GREEN_VERIF_VALUES,
@@ -575,7 +576,9 @@ def _fdictUpstreamModifiedBlocker(
     listUpstreamIndices = sorted(_flistOffendingUpstream(
         iStepIndex, dictNewModTimes, dictUpstreamByStep,
     ))
-    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    listOffendingFiles = _flistStepOutputFiles(
+        dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+    )
     dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
@@ -786,7 +789,9 @@ def _fdictAxisNotGreenBlocker(
         "sScope": "step",
         "sCriterion": "axis-not-green",
         "sSubState": sSubState,
-        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingFiles": _flistStepOutputFiles(
+            dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+        ),
         "listOffendingUpstreamSteps": [],
         "sRemediationHint": _fsAxisNotGreenHint(dictStep),
     }
@@ -849,7 +854,9 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     *re-verify-or-re-run* remediation; each offending file also
     carries the same fact in ``dictOffendingFileHints``.
     """
-    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    listOffendingFiles = _flistStepOutputFiles(
+        dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+    )
     sFileHint = "This output changed after you verified — re-verify or re-run"
     dictBlocker = {
         "iLevel": 1,
@@ -977,7 +984,9 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
         "sScope": "step",
         "sCriterion": "script-stale",
-        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingFiles": _flistStepOutputFiles(
+            dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+        ),
         "listOffendingUpstreamSteps": [],
         "sRemediationHint":
             "Script edited after output — re-run step to clear blocker",
@@ -986,14 +995,36 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     return dictBlocker
 
 
-def _flistStepOutputFiles(dictStep):
-    """Return repo-relative data + plot file paths declared on a step."""
-    listFiles = []
-    for sKey in ("saOutputDataFiles", "saPlotFiles"):
-        for sPath in dictStep.get(sKey, []) or []:
-            if isinstance(sPath, str) and sPath:
-                listFiles.append(sPath)
-    return listFiles
+def _flistStepOutputFiles(dictStep, dictTemplateValues):
+    """Return repo-relative data + plot file paths declared on a step.
+
+    Delegates to the SAME collector the manifest writer uses, because
+    the two must agree about what a step's outputs are called. This
+    used to return the raw declarations, which disagreed twice over:
+    a non-templated file kept no step-directory prefix
+    (``aiPowerFits.json`` vs ``AiPowerOverTime/aiPowerFits.json``) and
+    a templated one kept its literal token
+    (``{sPlotDirectory}/fig.{sFigureType}`` vs ``Plot/fig.png``).
+
+    The L3 manifest check then searched a correctly-written manifest
+    for names it does not contain, so the step reported
+    ``missing-from-manifest`` permanently and told the researcher to
+    refresh the manifest -- which rewrites exactly the resolved paths
+    this function was not asking for. No action could clear it. The
+    same raw list fed the per-step SYNC projection, where the failure
+    is the opposite and worse: paths that cannot intersect the
+    diverged set produce no blocker, i.e. a false pass.
+
+    ``dictTemplateValues`` has NO default on purpose. A default would
+    let a missed call site fall back to the broken behaviour silently;
+    without one, the missed hop is a TypeError.
+    """
+    from .manifestPaths import flistStepOutputRepoPaths
+    # SORTED, because these lists are user-visible (the dashboard marks
+    # each offending file) and delegation would otherwise make the
+    # display order an artefact of TUPLE_OUTPUT_KEYS in another module.
+    # The manifest writer sorts its own final list for the same reason.
+    return sorted(flistStepOutputRepoPaths(dictStep, dictTemplateValues))
 
 
 def _flistOffendingUpstream(
@@ -2084,7 +2115,10 @@ def _flistPerStepSyncBlockers(
     for iStepIndex, dictStep in enumerate(listSteps):
         if not isinstance(dictStep, dict):
             continue
-        listOffending = _flistStepDivergedFiles(dictStep, setDiverged)
+        listOffending = _flistStepDivergedFiles(
+            dictStep, setDiverged,
+            fdictWorkflowTemplateValues(dictWorkflow),
+        )
         if not listOffending:
             continue
         listBlockers.append(_fdictBuildSyncStepBlocker(
@@ -2105,13 +2139,13 @@ def _fsetDivergedPaths(dictStatus):
     return setPaths
 
 
-def _flistStepDivergedFiles(dictStep, setDiverged):
+def _flistStepDivergedFiles(dictStep, setDiverged, dictTemplateValues):
     """Return the step's published files that intersect ``setDiverged``."""
-    listFiles = _flistStepPublishedPaths(dictStep)
+    listFiles = _flistStepPublishedPaths(dictStep, dictTemplateValues)
     return [sPath for sPath in listFiles if sPath in setDiverged]
 
 
-def _flistStepPublishedPaths(dictStep):
+def _flistStepPublishedPaths(dictStep, dictTemplateValues):
     """Return every repo-relative path a step declares, any category.
 
     The set the per-step sync projection intersects with the remote
@@ -2149,7 +2183,7 @@ def _flistStepPublishedPaths(dictStep):
     )
     from .manifestWriter import flistStepTestFileRepoPaths
 
-    listPaths = list(_flistStepOutputFiles(dictStep))
+    listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     for flistCollectCategory in (
         flistStepInputRepoPaths,
         flistStepScriptRepoPaths,
@@ -2695,6 +2729,10 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
     return {
         "dictManifestPathHashes": dictManifestHashes,
         "setManifestPaths": set(dictManifestHashes.keys()),
+        # Carried on the context so the per-step collectors resolve
+        # declared outputs exactly as the manifest writer wrote them.
+        # Computed once per poll rather than per step.
+        "dictTemplateValues": fdictWorkflowTemplateValues(dictWorkflow),
         "setNondeterministicSteps": _fsetNondeterministicSteps(
             dictWorkflow,
         ),
@@ -2913,14 +2951,14 @@ def _fdictBuildL3StepEntry(
     }
 
 
-def _flistStepDeclaredPaths(dictStep):
+def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
     """Return repo-relative outputs + scripts + standards for a step."""
     from .manifestPaths import (
         flistStepDeclarationRepoPaths,
         flistStepScriptRepoPaths,
         flistStepStandardsRepoPaths,
     )
-    listPaths = list(_flistStepOutputFiles(dictStep))
+    listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     listPaths.extend(flistStepScriptRepoPaths(dictStep))
     listPaths.extend(flistStepStandardsRepoPaths(dictStep))
     listPaths.extend(flistStepDeclarationRepoPaths(dictStep))
@@ -2931,7 +2969,9 @@ def _flistStepPathsMissingFromManifest(dictStep, dictContext):
     """Return step-declared paths absent from MANIFEST.sha256."""
     setManifest = dictContext["setManifestPaths"]
     listMissing = []
-    for sPath in _flistStepDeclaredPaths(dictStep):
+    for sPath in _flistStepDeclaredPaths(
+        dictStep, dictContext["dictTemplateValues"],
+    ):
         if sPath not in setManifest:
             listMissing.append(sPath)
     return listMissing
@@ -3257,6 +3297,13 @@ def _fdictStepProjectionContext(
     )
     dictContext["listDeclaredBinaries"] = (
         _flistDeclaredBinariesNormalized(dictWorkflow)
+    )
+    # The SECOND context that per-step readers consult (the first is
+    # _fdictL3PerStepContext). Both must carry this, because a step's
+    # declared outputs have to be spelled the way the manifest writer
+    # spelled them no matter which context the reader was handed.
+    dictContext["dictTemplateValues"] = fdictWorkflowTemplateValues(
+        dictWorkflow,
     )
     return dictContext
 
@@ -3610,6 +3657,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
         ]
     setApplicable = _fsetStepApplicableLevel3Criteria(
         dictStep, dictContext["listDeclaredBinaries"],
+        dictContext["dictTemplateValues"],
     )
     setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
     return [
@@ -3630,7 +3678,9 @@ def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
     return (iSatisfied, iTotal)
 
 
-def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
+def _fsetStepApplicableLevel3Criteria(
+    dictStep, listDeclaredBinaries, dictTemplateValues,
+):
     """Return the L3 criteria with a non-empty domain on this step.
 
     A criterion applies only when the step owns something it can fail
@@ -3646,7 +3696,7 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
     if not isinstance(dictStep, dict):
         return set()
     setApplicable = set()
-    if _flistStepDeclaredPaths(dictStep):
+    if _flistStepDeclaredPaths(dictStep, dictTemplateValues):
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")

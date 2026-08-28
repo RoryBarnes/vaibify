@@ -13,6 +13,8 @@ The L3 blocker list pins both the per-step criteria
 import hashlib
 import json
 
+import posixpath
+
 import pytest
 
 from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
@@ -114,7 +116,7 @@ def testMissingFromManifestCriterionFires(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -139,7 +141,7 @@ def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -166,6 +168,9 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     fires.
     """
     sRel = "A/data.csv"
+    # Declared step-relative; sRel is the repo-relative path it
+    # resolves to, and the one written to disk and pinned.
+    sRelDeclared = "data.csv"
     pathStep = fixtureL3Repo / "A"
     pathStep.mkdir()
     (fixtureL3Repo / sRel).write_text("x\n")
@@ -181,7 +186,7 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [sRelDeclared],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],
@@ -207,11 +212,18 @@ def _fnSeedStepDataFile(pathRepo, sRel):
 
 
 def _fdictWaivedWorkflowWithCommand(sCommand, sRel):
-    """Build a falsely-waivered workflow whose step runs ``sCommand``."""
+    """Build a falsely-waivered workflow whose step runs ``sCommand``.
+
+    ``sRel`` is the repo-relative path on disk; the step DECLARES it
+    step-relative, because flistStepOutputRepoPaths joins sDirectory.
+    Declaring the repo-relative form would resolve to "A/A/data.csv",
+    raising a missing-from-manifest blocker that dominates the
+    priority order and masks the binary criterion under test.
+    """
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [posixpath.basename(sRel)],
         "saPlotFiles": [],
         "saDataCommands": [sCommand],
         "saPlotCommands": [],
@@ -257,6 +269,9 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
 ):
     """A declared binary referenced but not in environment.json fires."""
     sRel = "A/data.csv"
+    # Declared step-relative; sRel is the repo-relative path it
+    # resolves to, and the one written to disk and pinned.
+    sRelDeclared = "data.csv"
     (fixtureL3Repo / "A").mkdir()
     (fixtureL3Repo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
@@ -271,7 +286,7 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [sRelDeclared],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],
