@@ -865,7 +865,7 @@ def test_regenerate_envelope_runs_and_returns_readiness(
     from unittest.mock import patch
     with patch(
         "vaibify.reproducibility.dataArchiver."
-        "fnGenerateReproducibilityEnvelope",
+        "fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate, patch(
         "vaibify.gui.routes.reproducibilityRoutes.fdictL3ReadinessGaps",
         return_value={"bManifest": True},

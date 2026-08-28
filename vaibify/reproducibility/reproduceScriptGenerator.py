@@ -30,6 +30,7 @@ from vaibify.reproducibility.repoFiles import fsShellQuotePosix
 
 __all__ = [
     "S_REPRODUCE_SCRIPT_FILENAME",
+    "S_REPRODUCTION_REPO_ROOT",
     "fsGenerateReproduceScript",
     "fsRenderReproduceScript",
     "flistRenderStepCommands",
@@ -37,6 +38,16 @@ __all__ = [
 
 
 S_REPRODUCE_SCRIPT_FILENAME = "reproduce.sh"
+
+# The repo root AS THE REPRODUCER SEES IT. The generated script runs
+# ``docker run -v "$PWD":/work -w /work``, so every step command must
+# be substituted against this root, never against the authoring
+# container's ``/workspace/<repo>``: that path names a directory the
+# reproducer's container does not have. Absolute paths under this root
+# are correct from inside any step directory the body ``cd``s into,
+# which relative ones would not be. Changing this constant means
+# changing the ``docker run`` mount in the preamble with it.
+S_REPRODUCTION_REPO_ROOT = "/work"
 
 # The reproduction body (step comments and commands) is delivered to
 # the container's shell through a *quoted* heredoc, never through a
@@ -133,6 +144,7 @@ def fsRenderReproduceScript(dictWorkflow):
     the container heredoc body; the host shell never interprets them.
     """
     listStepLines = flistRenderStepCommands(dictWorkflow)
+    _fnRejectUnresolvedTokens(listStepLines)
     sBody = "\n".join(listStepLines)
     if sBody:
         sBody = sBody + "\n"
@@ -172,21 +184,71 @@ def flistRenderStepCommands(dictWorkflow):
     paths inside the step's working tree the way the live runner does.
     Steps with no commands (e.g., ai-declaration) are skipped.
     """
+    dictVariables = _fdictBuildReproductionVariables(dictWorkflow)
     listLines = []
     for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
-        listLines.extend(_flistRenderOneStep(dictStep))
+        listLines.extend(_flistRenderOneStep(dictStep, dictVariables))
     return listLines
 
 
-def _flistRenderOneStep(dictStep):
+def _fdictBuildReproductionVariables(dictWorkflow):
+    """Return the substitution variables as seen from the reproduction mount.
+
+    The same two builders the live runner uses, rebuilt against
+    :data:`S_REPRODUCTION_REPO_ROOT`. Sharing the builders is the
+    point: a private copy here would drift from the runner, and a
+    reproduction that resolves its paths differently from the run it
+    reproduces is not a reproduction.
+    """
+    from vaibify.gui.workflowManager import (
+        fdictBuildGlobalVariablesForRoot,
+        fdictBuildStepVariables,
+    )
+    dictWorkflow = dictWorkflow or {}
+    dictVariables = fdictBuildGlobalVariablesForRoot(
+        dictWorkflow, S_REPRODUCTION_REPO_ROOT,
+    )
+    listSteps = _flistStepsSafeToIndex(dictWorkflow.get("listSteps"))
+    if listSteps:
+        dictVariables.update(
+            fdictBuildStepVariables(
+                {"listSteps": listSteps}, dictVariables,
+            ),
+        )
+    return dictVariables
+
+
+def _flistStepsSafeToIndex(listSteps):
+    """Return listSteps with non-dict entry replaced by an empty step.
+
+    This renderer skips a corrupt step rather than refusing the whole
+    script, and the shared variable builder does not -- it indexes
+    ``sStepId`` straight off each entry. REPLACED, never filtered: the
+    deprecated positional ``{StepNN.stem}`` form is keyed on position,
+    so dropping an entry would silently renumber every step after it
+    and resolve those tokens to the wrong file. An empty dict declares
+    no outputs, so it contributes no variables and holds its place.
+    """
+    if not isinstance(listSteps, list):
+        return []
+    return [
+        dictStep if isinstance(dictStep, dict) else {}
+        for dictStep in listSteps
+    ]
+
+
+def _flistRenderOneStep(dictStep, dictVariables):
     """Return the shell lines for one step's commands."""
     if not isinstance(dictStep, dict):
         return []
-    listCommands = _flistGatherStepCommands(dictStep)
+    listCommands = _flistGatherStepCommands(dictStep, dictVariables)
     if not listCommands:
         return []
+    from vaibify.gui.workflowManager import fsResolveCommand
     sName = _fsSanitizeCommentText(dictStep.get("sName", "?"))
-    sDirectory = (dictStep.get("sDirectory") or "").strip()
+    sDirectory = fsResolveCommand(
+        (dictStep.get("sDirectory") or "").strip(), dictVariables,
+    )
     listLines = [f"# Step: {sName}"]
     if sDirectory and sDirectory != ".":
         listLines.append(f"( cd {_fsShellQuote(sDirectory)} && \\")
@@ -214,15 +276,50 @@ def _fsSanitizeCommentText(sValue):
     return " ".join(sCleaned.split()) or "?"
 
 
-def _flistGatherStepCommands(dictStep):
-    """Return data-then-plot commands for one step, skipping empties."""
+def _flistGatherStepCommands(dictStep, dictVariables):
+    """Return data-then-plot commands for one step, skipping empties.
+
+    Each command is substituted the way the live runner substitutes
+    it. Copying the raw text instead emitted a script that created a
+    literal ``{sPlotDirectory}`` directory and failed on the first
+    cross-step path -- while ``fbVerifyReproduceScript`` reported it
+    green, because that gate checks existence and manifest membership,
+    not whether the script can run.
+    """
+    from vaibify.gui.workflowManager import fsResolveCommand
     listOut = []
     for sKey in ("saDataCommands", "saPlotCommands"):
         for sCommand in dictStep.get(sKey, []) or []:
             sStripped = (sCommand or "").strip()
             if sStripped:
-                listOut.append(sStripped)
+                listOut.append(
+                    fsResolveCommand(sStripped, dictVariables),
+                )
     return listOut
+
+
+def _fnRejectUnresolvedTokens(listStepLines):
+    """Refuse to emit a script still carrying vaibify template tokens.
+
+    The same fail-loud stance as :func:`_fnRejectDelimiterForgery`,
+    for the same reason: a script that cannot execute is worse than no
+    script, because the L3 gate that reads it reports a green row
+    either way and the researcher only finds out at the end of an
+    hours-long rebuild. A residual token here means the workflow
+    references an output no step declares -- ``resolve-commands``
+    reports which.
+    """
+    from vaibify.gui.workflowManager import flistResidualWorkflowTokens
+    listTokens = []
+    for sLine in listStepLines:
+        listTokens.extend(flistResidualWorkflowTokens(sLine))
+    if listTokens:
+        raise ValueError(
+            "reproduce.sh commands carry unresolved tokens "
+            + ", ".join(sorted(set(listTokens)))
+            + "; every cross-step reference must name a declared "
+            + "output (see resolve-commands)."
+        )
 
 
 def _fsShellQuote(sValue):

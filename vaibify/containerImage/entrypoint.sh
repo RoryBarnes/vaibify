@@ -858,7 +858,7 @@ Usage:
 **Diagnosing a failed run from inside the container.** When a pipeline reports exit-code -9999 ("runner disappeared") or the dashboard shows a step stuck in an unknown state:
 
 - "what killed the last run?" → \`vaibify-do get-pipeline-state\` — returns the reconciled \`pipeline_state.json\` with \`sFailureReason\` (symptom, e.g. \`heartbeat_stale\`) and \`sFailureCauseHost\` (the actual host exception, e.g. an ASGI WebSocket close). \`iActiveStepAtDeath\` names the step that was running when the runner died.
-- "show the host log for this container" → \`vaibify-do get-host-log-tail --lines 200\` (or \`--lines=200\`) — returns the last N lines of \`~/.vaibify/vaibify.log\` filtered to lines tagged with this container id, plus a \`listIncidents\` ring of recent host exceptions for the same id.
+- "show the host log for this container" → \`vaibify-do get-host-log-tail --lines 200\` (or \`--lines=200\`) — returns \`{bSanitized: true, listIncidents: [...]}\`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw \`~/.vaibify/vaibify.log\` spans every container and carries host paths, so it is withheld from the agent lane by design — only the dashboard sees \`listLines\`. An empty \`listIncidents\` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
@@ -1008,6 +1008,7 @@ it permanent:
 1. Create or update the file `<repo>/.vaibify/requirements.txt` in the vaibified repository.
 2. Add one line per package with a version constraint: `lightkurve>=2.0`
 3. The vaibify entrypoint installs these automatically on container startup.
+4. It is also the dependency source PROOF Level 3 compiles \`requirements.lock\` from, if the repo root carries no \`pyproject.toml\`, \`requirements.in\` or \`requirements.txt\`. So keeping this file honest is what makes the L3 dependency row reachable — you do not need to author a second declaration to satisfy it. Note the lock is compiled by the vaibify backend on the RESEARCHER'S HOST, not in this container; installing a lock generator in here changes nothing.
 
 ### Rules
 

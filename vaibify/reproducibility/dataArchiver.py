@@ -57,7 +57,7 @@ def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
     """
     dictProvenance = _fdictLoadOrCreateProvenance(sWorkdir)
     listChanged = flistDetectChangedOutputs(dictProvenance, dictWorkflow)
-    fnGenerateReproducibilityEnvelope(
+    fdictGenerateReproducibilityEnvelope(
         sWorkdir, dictWorkflow,
         sContainerName=config.get("sContainerName"),
         listHostBinaries=config.get("listHostBinaries"),
@@ -69,9 +69,9 @@ def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
     _fnSaveProvenanceFile(dictProvenance, sWorkdir)
 
 
-def fnGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
-                                      sContainerName=None,
-                                      listHostBinaries=None):
+def fdictGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
+                                         sContainerName=None,
+                                         listHostBinaries=None):
     """Write the three-tier PROOF Level 3 reproducibility envelope.
 
     ``filesRepo`` is a project-repo path string (host clone) or a
@@ -87,50 +87,96 @@ def fnGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
     ``.vaibify/environment.json`` via ``environmentSnapshot`` only when
     ``sContainerName`` is supplied. Each tier's failure is isolated so
     a partial envelope is preferred over no envelope.
+
+    Returns ``{sArtifactPath: {bWritten, sSkipReason}}``. Isolating a
+    failure is not the same as hiding it: with only a log to go on,
+    the sole caller-visible signal was a readiness flag that stayed
+    false, which reads identically to "regeneration is not what fixes
+    this gate". The reason travels back with the result so the caller
+    can say which tier skipped and why.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    _fnWriteManifestTier(filesRepo, dictWorkflow)
-    _fnWriteLockTier(filesRepo)
-    _fnWriteEnvironmentTier(
-        filesRepo, sContainerName, listHostBinaries,
+    return {
+        "MANIFEST.sha256": _fdictWriteManifestTier(
+            filesRepo, dictWorkflow, sContainerName,
+        ),
+        "requirements.lock": _fdictWriteLockTier(
+            filesRepo, sContainerName,
+        ),
+        ".vaibify/environment.json": _fdictWriteEnvironmentTier(
+            filesRepo, sContainerName, listHostBinaries,
+        ),
+    }
+
+
+def _fdictTierOutcome(sSkipReason=""):
+    """Return one tier's result record; empty reason means written."""
+    return {
+        "bWritten": not sSkipReason,
+        "sSkipReason": sSkipReason,
+    }
+
+
+def _fnLogTierFailure(sMessage, sContainerName):
+    """Log a tier failure so the in-container agent can also read it.
+
+    Tagging the record with ``sContainerId`` is what puts it in the
+    per-container incident ring; an untagged record is dropped by
+    ``HostIncidentHandler`` and reaches the host log only, which the
+    agent lane of ``get-host-log-tail`` deliberately withholds. So an
+    untagged warning here was, from the agent's side, no signal at
+    all -- a failed tier was indistinguishable from a no-op.
+    """
+    logger.warning(
+        "Reproducibility envelope: %s", sMessage,
+        extra={"sContainerId": sContainerName or ""},
     )
 
 
-def _fnWriteManifestTier(filesRepo, dictWorkflow):
-    """Write MANIFEST.sha256 (Tier 1); log and swallow any failure."""
+def _fdictWriteManifestTier(filesRepo, dictWorkflow, sContainerName):
+    """Write MANIFEST.sha256 (Tier 1); report and swallow any failure."""
     from vaibify.reproducibility import manifestWriter
     try:
         manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
     except (OSError, ValueError) as error:
-        logger.warning(
-            "Reproducibility envelope: MANIFEST.sha256 write "
-            "failed for '%s': %s", fsRepoRootOf(filesRepo), error,
+        sReason = (
+            f"MANIFEST.sha256 write failed for "
+            f"'{fsRepoRootOf(filesRepo)}': {error}"
         )
+        _fnLogTierFailure(sReason, sContainerName)
+        return _fdictTierOutcome(sReason)
+    return _fdictTierOutcome()
 
 
-def _fnWriteLockTier(filesRepo):
-    """Write requirements.lock (Tier 2); log and swallow any failure."""
+def _fdictWriteLockTier(filesRepo, sContainerName):
+    """Write requirements.lock (Tier 2); report and swallow any failure."""
     from vaibify.reproducibility import dependencyPinning
     try:
         dependencyPinning.fnGenerateRequirementsLock(filesRepo)
     except FileNotFoundError as error:
-        logger.warning(
-            "Reproducibility envelope: requirements.lock skipped "
-            "for '%s': %s", fsRepoRootOf(filesRepo), error,
+        sReason = (
+            f"requirements.lock skipped for "
+            f"'{fsRepoRootOf(filesRepo)}': {error}"
         )
     except subprocess.CalledProcessError as error:
-        logger.warning(
-            "Reproducibility envelope: uv compile failed for "
-            "'%s' (exit %s): %s",
-            fsRepoRootOf(filesRepo), error.returncode, error.stderr,
+        sReason = (
+            f"lock compile failed for '{fsRepoRootOf(filesRepo)}' "
+            f"(exit {error.returncode}): {error.stderr}"
         )
+    else:
+        return _fdictTierOutcome()
+    _fnLogTierFailure(sReason, sContainerName)
+    return _fdictTierOutcome(sReason)
 
 
-def _fnWriteEnvironmentTier(filesRepo, sContainerName,
-                             listHostBinaries):
+def _fdictWriteEnvironmentTier(filesRepo, sContainerName,
+                               listHostBinaries):
     """Write .vaibify/environment.json (Tier 3); skip when container absent."""
     if not sContainerName:
-        return
+        return _fdictTierOutcome(
+            "no container supplied; environment.json needs a running "
+            "container's image digest"
+        )
     from vaibify.reproducibility import environmentSnapshot
     try:
         dictEnvironment = _fdictBuildEnvironmentPayload(
@@ -141,10 +187,13 @@ def _fnWriteEnvironmentTier(filesRepo, sContainerName,
         )
     except (FileNotFoundError, OSError,
             subprocess.CalledProcessError) as error:
-        logger.warning(
-            "Reproducibility envelope: environment.json failed "
-            "for '%s': %s", fsRepoRootOf(filesRepo), error,
+        sReason = (
+            f"environment.json failed for "
+            f"'{fsRepoRootOf(filesRepo)}': {error}"
         )
+        _fnLogTierFailure(sReason, sContainerName)
+        return _fdictTierOutcome(sReason)
+    return _fdictTierOutcome()
 
 
 def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,

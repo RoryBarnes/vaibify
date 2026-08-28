@@ -89,9 +89,8 @@ Every canonical file's hash matches an immutable public authority
 1. Confirm L1 first.
 2. Envelope present at the repo root: `MANIFEST.sha256`,
    `requirements.lock`, `.vaibify/environment.json` (regenerated
-   automatically at the L1 crossing; if missing, use the CLI helpers
-   — `vaibify-do --describe generate-l3-envelope` — never write them
-   by hand).
+   automatically at the L1 crossing; if missing, run
+   `vaibify-do regenerate-envelope` — never write them by hand).
 3. **Commit the canonical state before any push.** Run
    `vaibify-do manifest-check` → `listNeedsCommit` is the exact set
    of canonical files awaiting commit; if non-empty, run
@@ -130,11 +129,23 @@ from source.
    six verifiers (manifest complete, dependency lock hash-pinned,
    environment digest-pinned, Dockerfile pinned, reproduce.sh pinned,
    determinism declared). Drive the rest from its gap dict.
-3. `vaibify-do audit-determinism` — determinism-focused view (RNG
-   seeds, BLAS pinning); translate into a per-step fix list.
-4. `vaibify-do generate-l3-envelope` and
-   `vaibify-do generate-reproduce-script` — regenerate whatever the
-   readiness card flags.
+3. `vaibify-do audit-determinism` — determinism-focused view; read
+   `listDeterminismIssues` for what the verdict was computed from and
+   translate into a per-step fix list. A project whose scripts contain
+   no RNG at all still fails this row until the researcher declares
+   `dictDeterminism` or accepts the BLAS waiver: the gate asks what
+   they assert, not what the code happens to do. Say so rather than
+   hunting for a seed that is not there.
+4. `vaibify-do regenerate-envelope` — the WRITER. It rewrites
+   `MANIFEST.sha256`, `requirements.lock` and
+   `.vaibify/environment.json`, and returns `dictTierResults`; read
+   it, because a tier that could not run reports `bWritten: false`
+   with an `sSkipReason` and the readiness gap alone cannot tell that
+   apart from "regeneration is not what fixes this gate". Then
+   `vaibify-do generate-reproduce-script` for `reproduce.sh`.
+   `generate-l3-envelope` is READ-ONLY despite its name — a
+   diagnostic view, not a regeneration. Calling it and expecting
+   files to change is a documented dead end.
 5. `vaibify-do view-l3-attestation` — has the rebuild been done, and
    why is the badge lit or not.
 6. USER-ONLY, surface never invoke: `pin-base-image-digest`

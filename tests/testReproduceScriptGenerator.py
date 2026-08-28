@@ -319,3 +319,110 @@ def test_ordinary_script_has_exactly_one_terminator_line():
         if sLine == _S_HEREDOC_DELIMITER
     )
     assert iTerminators == 1
+
+
+# --------------------------------------------------------------------
+# Token expansion (2026-08-27). The renderer used to copy step command
+# strings verbatim, so every emitted script created a literal
+# "{sPlotDirectory}" directory and failed on the first cross-step path
+# -- while fbVerifyReproduceScript reported the row GREEN, because it
+# checked existence and manifest membership and never whether the
+# script could run. These assert the substitution, the root it
+# substitutes against, and the refusal that replaces a silent bad
+# emit.
+# --------------------------------------------------------------------
+
+
+def _fdictWorkflowWithTokens():
+    """Return a two-step workflow whose commands carry both token kinds."""
+    return {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+        "listSteps": [
+            {
+                "sName": "Fit Curves", "sStepId": "fitcurves",
+                "sDirectory": "FitCurves",
+                "saOutputDataFiles": ["fits.json"],
+                "saPlotFiles": [
+                    "{sPlotDirectory}/fits.{sFigureType}",
+                ],
+                "saDataCommands": ["python fit.py --output fits.json"],
+                "saPlotCommands": [
+                    "python plot.py {sPlotDirectory}/fits.{sFigureType}",
+                ],
+            },
+            {
+                "sName": "Contour", "sStepId": "contour",
+                "sDirectory": "Contour",
+                "saDataCommands": [
+                    "python grid.py --fits {step:fitcurves.fits}",
+                ],
+            },
+        ],
+    }
+
+
+def test_global_tokens_are_expanded_not_copied():
+    """A {sPlotDirectory}/{sFigureType} pair must not survive rendering."""
+    listLines = flistRenderStepCommands(_fdictWorkflowWithTokens())
+    sBody = "\n".join(listLines)
+    assert "{sPlotDirectory}" not in sBody
+    assert "{sFigureType}" not in sBody
+    assert "/work/Plot/fits.png" in sBody
+
+
+def test_cross_step_tokens_resolve_to_the_reproduction_root():
+    """A {step:...} reference resolves under the mount, not /workspace.
+
+    The distinction is the whole point: substituting against the
+    authoring container's root would emit /workspace/<repo>/... paths,
+    which name a directory the reproducer's container does not have.
+    Asserting merely "no token survived" would pass for that bug.
+    """
+    listLines = flistRenderStepCommands(_fdictWorkflowWithTokens())
+    sBody = "\n".join(listLines)
+    assert "{step:fitcurves.fits}" not in sBody
+    assert "/work/FitCurves/fits.json" in sBody
+    assert "/workspace" not in sBody
+
+
+def test_render_refuses_a_token_naming_no_declared_output():
+    """An unresolvable cross-step token fails loud instead of emitting."""
+    dictWorkflow = _fdictWorkflowWithTokens()
+    dictWorkflow["listSteps"][1]["saDataCommands"] = [
+        "python grid.py --fits {step:fitcurves.nosuchstem}",
+    ]
+    with pytest.raises(ValueError) as errorInfo:
+        fsRenderReproduceScript(dictWorkflow)
+    assert "nosuchstem" in str(errorInfo.value)
+
+
+def test_shell_brace_idioms_are_not_mistaken_for_tokens():
+    """awk '{print $1}' must render untouched.
+
+    A blanket "reject any {...}" guard would reject working scripts,
+    and the guard would then have to be switched off -- which is how a
+    guard becomes decoration. Only vaibify's own vocabulary counts.
+    """
+    dictWorkflow = _fdictWorkflowWithTokens()
+    dictWorkflow["listSteps"][1]["saDataCommands"] = [
+        "awk '{print $1}' input.txt > out.txt",
+    ]
+    sBody = "\n".join(flistRenderStepCommands(dictWorkflow))
+    assert "awk '{print $1}' input.txt" in sBody
+
+
+def test_reproduction_root_matches_the_mount_in_the_preamble():
+    """Pin the substitution root to the docker run -w it must agree with.
+
+    Two independently-typed strings that must be equal: the constant
+    commands are substituted against, and the working directory the
+    generated `docker run` actually uses. Editing one and not the
+    other yields a script whose every path is wrong, with nothing
+    else in the suite noticing.
+    """
+    from vaibify.reproducibility.reproduceScriptGenerator import (
+        S_REPRODUCTION_REPO_ROOT, _S_SCRIPT_PREAMBLE,
+    )
+    assert f'-w {S_REPRODUCTION_REPO_ROOT} ' in _S_SCRIPT_PREAMBLE
+    assert f'-v "$PWD":{S_REPRODUCTION_REPO_ROOT} ' in _S_SCRIPT_PREAMBLE

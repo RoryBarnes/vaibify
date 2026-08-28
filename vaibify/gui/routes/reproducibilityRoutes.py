@@ -41,10 +41,10 @@ from ..routeContext import (
     fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
+    S_CARRIER_TYPED_READ,
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_MODE_C_DURABLE,
-    S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
 from ...reproducibility.repoFiles import (
@@ -883,7 +883,9 @@ async def _fdictRegenerateEnvelopeUnderTheDrain(
 
     The generator writes three files across three tiers and isolates
     each tier's own failure, on the stated principle that a partial
-    envelope beats no envelope. Those handlers cannot absorb a carrier
+    envelope beats no envelope. Its per-tier verdicts ride the
+    response as ``dictTierResults``, because an isolated failure the
+    caller cannot see is indistinguishable from a no-op. Those handlers cannot absorb a carrier
     refusal -- ``ControlPlaneRefusalError`` descends from ``Exception``
     alone, and every tier catches a narrower type (verified at the
     console) -- so a forgotten carrier still raises out of the worker.
@@ -913,11 +915,12 @@ def _fdictGenerateEnvelopeThenReadGaps(
     await the ``to_thread`` hop the generation used to make.
     """
     from ...reproducibility import dataArchiver
-    dataArchiver.fnGenerateReproducibilityEnvelope(
+    dictTierResults = dataArchiver.fdictGenerateReproducibilityEnvelope(
         filesRepo, dictWorkflow,
         sContainerId, dictWorkflow.get("saHostBinaries"),
     )
     return {
+        "dictTierResults": dictTierResults,
         "dictL3ReadinessGaps": fdictL3ReadinessGaps(
             dictWorkflow, filesRepo,
         ),

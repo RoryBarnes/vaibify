@@ -91,7 +91,7 @@ def test_happy_path_writes_all_three_tiers(tmp_path):
         "fdictCaptureSystemTools",
         return_value=_fdictFakeSystemTools(),
     ):
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             str(tmp_path), dictWorkflow,
             sContainerName="vaibify-test",
         )
@@ -114,7 +114,7 @@ def test_tier_two_skipped_when_uv_missing(tmp_path, caplog):
         return_value=False,
     ):
         with caplog.at_level("WARNING", logger="vaibify"):
-            dataArchiver.fnGenerateReproducibilityEnvelope(
+            dataArchiver.fdictGenerateReproducibilityEnvelope(
                 str(tmp_path), dictWorkflow,
             )
     assert (tmp_path / _MANIFEST_FILENAME).is_file()
@@ -138,7 +138,7 @@ def test_tier_three_skipped_when_container_none(tmp_path):
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=False,
     ):
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             str(tmp_path), dictWorkflow, sContainerName=None,
         )
     assert (tmp_path / _MANIFEST_FILENAME).is_file()
@@ -178,17 +178,24 @@ def test_partial_failure_tier_two_does_not_block_others(tmp_path, caplog):
         return_value=_fdictFakeSystemTools(),
     ):
         with caplog.at_level("WARNING", logger="vaibify"):
-            dataArchiver.fnGenerateReproducibilityEnvelope(
+            dictTiers = dataArchiver.fdictGenerateReproducibilityEnvelope(
                 str(tmp_path), dictWorkflow,
                 sContainerName="vaibify-test",
             )
     assert (tmp_path / _MANIFEST_FILENAME).is_file()
     assert not (tmp_path / _LOCK_FILENAME).is_file()
     assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()
+    # "lock compile failed", not "uv compile failed": the generator is
+    # whichever of uv / python -m uv / piptools resolved first, so
+    # naming uv in the message was wrong for two of the three.
     assert any(
-        "uv compile failed" in rec.getMessage()
+        "lock compile failed" in rec.getMessage()
         for rec in caplog.records
     )
+    # The verdict must also reach the CALLER, not the log alone -- the
+    # log is the one channel the in-container agent cannot read.
+    assert dictTiers[_LOCK_FILENAME]["bWritten"] is False
+    assert "resolution failed" in dictTiers[_LOCK_FILENAME]["sSkipReason"]
 
 
 # ----------------------------------------------------------------------
@@ -204,11 +211,11 @@ def test_tier_one_is_byte_exact_on_repeat(tmp_path):
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=False,
     ):
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             str(tmp_path), dictWorkflow,
         )
         baFirst = (tmp_path / _MANIFEST_FILENAME).read_bytes()
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             str(tmp_path), dictWorkflow,
         )
         baSecond = (tmp_path / _MANIFEST_FILENAME).read_bytes()
@@ -233,7 +240,7 @@ def test_tier_one_is_byte_exact_on_repeat(tmp_path):
 )
 @patch(
     "vaibify.reproducibility.dataArchiver."
-    "fnGenerateReproducibilityEnvelope",
+    "fdictGenerateReproducibilityEnvelope",
 )
 def test_fnArchiveOutputs_invokes_envelope_generator(
     mockEnvelope, mockLoad, mockDetect, mockUpload, mockUpdate, mockSave,

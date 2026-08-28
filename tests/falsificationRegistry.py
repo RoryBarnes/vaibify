@@ -7987,6 +7987,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
             '    return {\n'
+            '        "dictTierResults": dictTierResults,\n'
             '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
             '            dictWorkflow, filesRepo,\n'
             '        ),\n'
@@ -7996,6 +7997,7 @@ def _fdictEntry(sRel):
             '    import concurrent.futures\n'
             '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
             '        return {\n'
+            '            "dictTierResults": dictTierResults,\n'
             '            "dictL3ReadinessGaps": pool.submit(\n'
             '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
             '            ).result(),\n'
@@ -13552,5 +13554,80 @@ def _fdictEntry(sRel):
             '        return\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_global_tokens_are_expanded_not_copied'
+        ),
+        # Back to copying command text verbatim -- the shipped defect.
+        # Every emitted script then creates a literal
+        # "{sPlotDirectory}" directory and dies on the first
+        # cross-step path, while the L3 row stays green.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old=(
+            '                listOut.append(\n'
+            '                    fsResolveCommand(sStripped, dictVariables),\n'
+            '                )\n'
+        ),
+        new='                listOut.append(sStripped)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_cross_step_tokens_resolve_to_the_reproduction_root'
+        ),
+        # Substitute against the AUTHORING container's root instead of
+        # the reproduction mount. Every token still resolves, so a
+        # "no token survived" assertion passes -- and every path in
+        # the emitted script names a directory the reproducer does
+        # not have. This is why that test asserts the root.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old="S_REPRODUCTION_REPO_ROOT = \"/work\"\n",
+        new="S_REPRODUCTION_REPO_ROOT = \"/workspace/project\"\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGateRejectsResidualTokens.py::'
+            'test_gate_reads_the_script_not_only_its_presence'
+        ),
+        # The gate back to presence-plus-manifest, which reports an
+        # unrunnable script green and sends the researcher into an
+        # hours-long rebuild to find out.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if flistResidualWorkflowTokens(sScript):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvelopeTierResultsAreVisible.py::'
+            'test_a_tier_failure_reaches_the_per_container_incident_ring'
+        ),
+        # Drop the sContainerId tag. HostIncidentHandler discards every
+        # untagged record, so the failure reaches the host log only --
+        # which the agent lane of get-host-log-tail withholds. The
+        # warning still "is logged"; the agent still sees nothing.
+        source='vaibify/reproducibility/dataArchiver.py',
+        old=(
+            '        "Reproducibility envelope: %s", sMessage,\n'
+            '        extra={"sContainerId": sContainerName or ""},\n'
+        ),
+        new='        "Reproducibility envelope: %s", sMessage,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLockInputFallsBackToVaibifyRequirements.py::'
+            'test_a_subdirectory_input_compiles_through_the_staging_path'
+        ),
+        # Stage under the candidate's RELATIVE path again. For a
+        # repo-root input the join is harmless, so only a candidate in
+        # a subdirectory exposes it -- the staging directory has no
+        # .vaibify/ and the open() fails.
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='    sStagedName = os.path.basename(sInput)\n',
+        new='    sStagedName = sInput\n',
     ),
 ]

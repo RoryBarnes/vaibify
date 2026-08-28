@@ -1318,20 +1318,33 @@ def fbVerifyDockerfilePinned(filesRepo):
 
 
 def fbVerifyReproduceScript(filesRepo, dictWorkflow):
-    """Return True iff ``reproduce.sh`` exists and is in MANIFEST.sha256.
+    """Return True iff ``reproduce.sh`` exists, is manifested, and can run.
 
     Presence-on-disk alone is insufficient: an unhashed copy could
     be tampered with. The script's repo-relative path must appear
     in the parsed manifest entries so a downstream consumer's
     ``sha256sum -c`` would detect drift.
+
+    Nor is presence-plus-manifest sufficient, which is what this gate
+    used to ask. A script whose commands still carry vaibify template
+    tokens is hashed, pinned, and unrunnable -- it creates a literal
+    ``{sPlotDirectory}`` directory and fails on the first cross-step
+    path. Reporting that green sends the researcher into an
+    hours-long rebuild to discover it, so the residue is checked here
+    too. Renderer-side rejection alone would not cover it: scripts
+    emitted before the renderer resolved tokens are already on disk.
     """
+    from vaibify.gui.workflowManager import flistResidualWorkflowTokens
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
         return False
     try:
         listEntries = flistParseManifestLines(filesRepo)
+        sScript = filesRepo.fsReadText(S_REPRODUCE_SCRIPT_FILENAME)
     except (FileNotFoundError, OSError, ValueError) as error:
         fnReRaiseControlPlaneRefusal(error)
+        return False
+    if flistResidualWorkflowTokens(sScript):
         return False
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     return S_REPRODUCE_SCRIPT_FILENAME in setPaths
@@ -1412,6 +1425,12 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bEnvelopeInZenodoArchive"] = (
         fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
     )
+    # The determinism row's own detail. bDeterminismDeclared is a
+    # verdict with no subject: an agent asked "what is wrong with
+    # determinism here" had a false boolean and nothing else, so
+    # audit-determinism could only echo the readiness card. These are
+    # the issues the verdict is computed FROM.
+    dictResult["listDeterminismIssues"] = flistAuditWorkflow(dictWorkflow)
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
         fsCurrentManifestDigest(filesRepo) if bRepo else ""
@@ -2599,7 +2618,11 @@ _DICT_L3_REMEDIATION_HINTS = {
         "archive the tarball with the deposit), then re-capture the "
         "environment snapshot.",
     "reproduce-script-missing":
-        "Generate reproduce.sh and pin it in MANIFEST.sha256.",
+        "Generate reproduce.sh and pin it in MANIFEST.sha256. A "
+        "script already present fails this too when its commands "
+        "still carry unresolved {token} references; regenerating it "
+        "resolves them, and resolve-commands reports any that name "
+        "no declared output.",
     "l3-attestation-stale":
         "Re-run the L3 verification to refresh the attestation.",
     "binaries-not-declared-or-waived":

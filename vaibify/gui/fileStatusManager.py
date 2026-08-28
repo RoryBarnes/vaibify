@@ -2036,7 +2036,7 @@ def _fnRefreshEnvelopeIfLevel1(
         return
     try:
         from vaibify.reproducibility import dataArchiver
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             filesRepo, dictWorkflow,
             sContainerName=sContainerId,
             listHostBinaries=dictWorkflow.get("saHostBinaries"),

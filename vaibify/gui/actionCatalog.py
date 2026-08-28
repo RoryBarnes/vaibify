@@ -568,11 +568,16 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
      "bAgentSafe": True,
      "sDescription": "Read-only diagnostic view of the determinism row "
-                     "of the L3 readiness card (RNG seeds, BLAS "
-                     "pinning, non-deterministic kernels). Returns the "
-                     "same JSON as check-l3-readiness; the CLI extracts "
-                     "the determinism row and renders it as prose. "
-                     "Does not modify the workflow or the project repo."},
+                     "of the L3 readiness card. Returns the same JSON "
+                     "as check-l3-readiness; read bDeterminismDeclared "
+                     "for the verdict and listDeterminismIssues for "
+                     "what produced it (a missing dictDeterminism "
+                     "block or BLAS waiver, and any step flagged "
+                     "bUnseededRandomnessWarning). A project with no "
+                     "RNG still needs the declaration or the waiver: "
+                     "the gate asks what you assert, not what the "
+                     "scripts happen to do. Does not modify the "
+                     "workflow or the project repo."},
     {"sName": "generate-l3-envelope", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
@@ -872,12 +877,19 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/pipeline/{sContainerId}/host-log-tail",
      "bAgentSafe": True,
      "saQueryFields": ["iLines"],
-     "sDescription": "Return the last N lines of ~/.vaibify/vaibify.log "
-                     "filtered to this container. Args: {iLines: int, "
-                     "default 200, cap 1000}. Read-only; lets an "
-                     "in-container agent self-diagnose a run that died "
-                     "with exit-code -9999 by reading the actual host "
-                     "trigger instead of the symptom in pipeline_state.json."},
+     "sDescription": "Return recent host-side diagnostics for this "
+                     "container. Args: {iLines: int, default 200, cap "
+                     "1000}; --lines is accepted as an alias. Read-only. "
+                     "THE AGENT LANE RECEIVES NO LOG LINES: the raw log "
+                     "spans every container and carries host paths, so "
+                     "an agent token gets {bSanitized: true, "
+                     "listIncidents: [...]} only -- an allowlisted view "
+                     "of host exceptions tagged with this container id. "
+                     "An empty listIncidents means nothing was recorded "
+                     "against this container, NOT that nothing went "
+                     "wrong; a failure logged without that tag is not "
+                     "visible here at all. The browser lane also gets "
+                     "listLines from ~/.vaibify/vaibify.log."},
     {"sName": "get-pipeline-state", "sCategory": "diagnostics",
      "sMethod": "GET",
      "sPath": "/api/pipeline/{sContainerId}/state",

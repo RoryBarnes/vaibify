@@ -2913,7 +2913,7 @@ SET_REPRO_FILES_ENTRY_POINTS = frozenset({
     "fsCurrentManifestDigest", "fbL3AttestationCurrent",
     "fdictReadCachedSyncStatus", "fnWriteSyncStatus",
     "fdictVerifyRemoteService", "fdictLoadManifestExpectedHashes",
-    "fnGenerateReproducibilityEnvelope",
+    "fdictGenerateReproducibilityEnvelope",
     "fbManifestExists", "fsetStaleOutputsAgainstManifest",
     "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
     "fdictClassifyFalsificationApplicability",
@@ -4629,7 +4629,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow key stays here, because load/save orchestration is
     # this module's one responsibility and a fourth home for it
     # would smear the split across another hop.
-    "workflowManager.py": 2799,
+    # +45 (2026-08-27): fdictBuildGlobalVariablesForRoot and
+    # flistResidualWorkflowTokens. Both belong to this module's one
+    # responsibility -- it is the authority on what a workflow's
+    # template vocabulary IS -- and both exist so reproduce.sh
+    # resolves paths through the same builders as the live run
+    # instead of a second, drifting copy in reproducibility/.
+    "workflowManager.py": 2844,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5497,7 +5503,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # remove-zenodo-record. Both agent-safe: declaring a record
     # cannot fake agreement (files still hash-match or not), and
     # removing one only weakens the claim.
-    "actionCatalog.py": 1068,
+    # +12 (2026-08-27): audit-determinism and get-host-log-tail
+    # descriptions corrected. Both had promised the agent something
+    # the backend does not do (prose rendering; raw log lines on the
+    # agent lane), and a catalog entry is the only spec an agent
+    # reads before calling.
+    # +14 (2026-08-27): copy-image-dockerfile. The L3 Dockerfile row
+    # was unreachable for every project — the image is built from
+    # vaibify's own packaged Dockerfiles, which are not in the
+    # researcher's repo — so the action composes the build chain into
+    # one they can commit.
+    # +16 (2026-08-28): scan-determinism. The scanner behind it
+    # shipped with no caller anywhere in the GUI because it read HOST
+    # paths, and a container project's scripts are not on the host.
+    "actionCatalog.py": 1110,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5665,7 +5684,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # durable launch itself, which replaces a bare asyncio.create_task
     # that no authority outside this module could see. **No route in
     # this module is awaiting any longer.**
-    "routes/reproducibilityRoutes.py": 1005,
+    # +3 (2026-08-27): dictTierResults joins the envelope response,
+    # so an isolated tier failure is distinguishable from a no-op.
+    # +117 (2026-08-27): the copy-image-dockerfile route. Same
+    # write-then-repin shape as the reproduce-script route beside it
+    # (one carrier, because the manifest re-pin is what makes the file
+    # count to the L3 check). The composition and the host-side
+    # gathering deliberately live in reproducibility/ rather than
+    # here: this module owns routing, and the logic is testable
+    # without HTTP where it sits. The write goes through the repo
+    # adapter rather than a direct connection call, which keeps the
+    # mutation-capable reach outside the gateways from growing.
+    # +44 (2026-08-28): the determinism scan route. Read-only, and
+    # it carries its own scope caveat in the response so a caller
+    # cannot report "clean" as "deterministic".
+    "routes/reproducibilityRoutes.py": 1173,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
