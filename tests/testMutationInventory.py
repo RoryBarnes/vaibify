@@ -134,7 +134,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # are now reviewed and classified (the capture's get_archive handle
 # fetch and the per-turn credential extraction read), so the council
 # contributes ZERO unclassified rows and the ratchet resumes falling.
-I_UNCLASSIFIED_ROW_BUDGET = 285
+# 285 -> 284 (2026-08-29, merging main): both sides had moved this
+# ratchet in opposite directions, so neither number could be assumed.
+# A fresh scan of the MERGED tree says 284 -- main's reduction survives
+# because the council's own rows are all classified -- and the ratchet
+# test named the value rather than leaving it to be guessed.
+I_UNCLASSIFIED_ROW_BUDGET = 284
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -233,7 +238,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 285
 # to sit under the project's registered directory before the worker
 # opens, and the destination is composed, never accepted. Classified
 # on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 211
 
 
 # Every acquisition of a declared capability that still has no reviewed

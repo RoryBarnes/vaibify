@@ -125,18 +125,6 @@ var VaibifyProofTab = (function () {
                  "verify it.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
-            {sStateKey: "bAiDeclarationAttested",
-             sLabel: "AI Declaration attested",
-             sWhat: "A committed, signed declaration of how AI was " +
-                 "used to build this project — part of the " +
-                 "published record.",
-             sHow: "Add the AI Declaration step, review the " +
-                 "declaration file, sign off, and commit it (the " +
-                 "AI section of the Project block).",
-             sFixTabPanel: "steps",
-             sFixLabel: "Open the Main tab",
-             sFixRequirementGroup: "ai",
-             sFixRequirementRow: "aiDeclaration"},
             {sStateKey: "bAiModelsDeclared",
              sLabel: "AI model declared",
              sWhat: "Every AI model used on the project is declared " +
@@ -276,6 +264,24 @@ var VaibifyProofTab = (function () {
                  "never ran.",
              sHow: "Commit and push the envelope, then use Verify " +
                  "now on the GitHub mirror row in the Project block.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bEnvelopeInZenodoArchive",
+             sLabel: "Envelope archived",
+             sWhat: "The same envelope files are in the Zenodo " +
+                 "archive. GitHub is not an archive — repositories " +
+                 "are renamed, made private, or deleted — so the " +
+                 "re-run claim also needs the envelope under a DOI. " +
+                 "Zenodo versions are immutable, so this row goes " +
+                 "red after any envelope change and comes back at " +
+                 "your next published version. That is expected: " +
+                 "Level 3 describes a published release, not the " +
+                 "working tree.",
+             sHow: "Publish a new deposit version containing the " +
+                 "envelope (or declare the Zenodo record that " +
+                 "already holds it, e.g. a software deposit from " +
+                 "Zenodo's GitHub integration), then use Verify now " +
+                 "on the Zenodo row in the Project block.",
              sFixTabPanel: "repos",
              sFixLabel: "Open the Repos panel"},
             {sStateKey: "bL3AttestationCurrent",

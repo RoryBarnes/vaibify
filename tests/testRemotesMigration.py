@@ -238,6 +238,10 @@ def test_migrated_legacy_workflow_unblocks_verify_409_guard(
     dictWorkflow = _fdictLegacyKeyedWorkflow()
     fnMigrateLegacyRemotes(dictWorkflow)
     dictRemoteHashes = {"d/f.pdf": sPlotSha}
+    if sService == "zenodo":
+        # A Zenodo deposit is flat: the verify requests DEPOSIT keys
+        # (basenames) and maps them back onto the compared paths.
+        dictRemoteHashes = {"f.pdf": sPlotSha}
     if sService == "overleaf":
         overleafSync.fnRecordOverleafPushManifest(
             sRepo, "commit1", ["d/f.pdf"], "figures",
@@ -272,18 +276,43 @@ def test_migrated_legacy_workflow_unblocks_verify_409_guard(
 
 
 def test_migrated_remotes_round_trip_through_save():
+    """Declared bindings persist; produced identity leaves the file.
+
+    Until the sidecar migration (2026-08-27) the saved project.json
+    carried the derived ``dictRemotes.zenodo`` identity. That identity
+    is advanced by every publish, so persisting it in the definition
+    is what made the archived copy diverge; it now rides the
+    bookkeeping split instead, and the declared Overleaf binding is
+    what remains in the file.
+    """
     mockDocker = MagicMock()
     dictWorkflow = _fdictMinimalWorkflow(
         sOverleafProjectId="abc123",
         sZenodoDepositionId="42",
     )
-    fnSaveWorkflowToContainer(
-        mockDocker, "cid", dictWorkflow, sWorkflowPath="/w.json",
+    with patch(
+        "vaibify.gui.workflowManager._fnWriteSidecarBookkeeping",
+    ) as mockSidecar, patch(
+        "vaibify.gui.stateManager.fnSaveStateToContainer",
+    ), patch(
+        "vaibify.gui.stateManager.fnEnsureVaibifyGitignore",
+    ):
+        fnSaveWorkflowToContainer(
+            mockDocker, "cid", dictWorkflow,
+            sWorkflowPath="/workspace/repo/.vaibify/projects/w.json",
+        )
+    baPayload = next(
+        tCall.args[2] for tCall in mockDocker.fnWriteFile.call_args_list
+        if tCall.args[1].endswith("projects/w.json")
     )
-    (_, _, baPayload), _ = mockDocker.fnWriteFile.call_args
     dictWritten = json.loads(baPayload.decode("utf-8"))
     assert dictWritten["dictRemotes"]["overleaf"] == {
         "sProjectId": "abc123",
     }
-    assert dictWritten["dictRemotes"]["zenodo"]["sRecordId"] == "42"
+    assert "zenodo" not in dictWritten["dictRemotes"]
+    assert "sZenodoDepositionId" not in dictWritten
     assert dictWritten["sOverleafProjectId"] == "abc123"
+    dictBookkeeping = mockSidecar.call_args[0][4]
+    assert dictBookkeeping["sZenodoDepositionId"] == "42"
+    assert dictBookkeeping[
+        "dictRemoteBookkeeping"]["zenodo"]["sRecordId"] == "42"

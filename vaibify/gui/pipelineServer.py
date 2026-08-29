@@ -303,6 +303,11 @@ class ZenodoMetadataRequest(BaseModel):
     sRelatedGithubUrl: Optional[str] = ""
 
 
+class ZenodoRecordRequest(BaseModel):
+    sRecordId: Optional[str] = ""
+    sDoi: Optional[str] = ""
+
+
 class CreateWorkflowRequest(BaseModel):
     sWorkflowName: str
     sFileName: str

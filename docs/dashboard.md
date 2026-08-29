@@ -363,7 +363,7 @@ collapsible sections:
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
-| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, Personal AI Configuration (the researcher's private host-side agent configuration, accounted for — Level 2), and the AI Declaration (the researcher's signed statement — Level 2). |
+| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and Personal AI Configuration (the researcher's private host-side agent configuration, accounted for — Level 2). Both count in the project row's Level 2 cell. The AI Declaration (the researcher's signed statement) is not a row here — it is a step, and its state lives on the step's own row. |
 | **Attestation** | The rebuild attestation (Level 3). |
 
 The AI section is where the process provenance lives. Every AI model
@@ -568,18 +568,28 @@ tab's Project block. The requirements are:
   level).
 - **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript
   (opt-in — checked only when an arXiv submission is recorded, since
-  posting happens outside vaibify on its own timeline); AI
-  Declaration attested; AI model declared (every model used, with
-  vendor, ID, and dates — closed-weights models pass by declaration);
-  Personal AI Configuration answered (none / exists-but-withheld /
-  included — any answer meets it; disclosure is never required).
+  posting happens outside vaibify on its own timeline); AI model
+  declared (every model used, with vendor, ID, and dates —
+  closed-weights models pass by declaration); Personal AI
+  Configuration answered (none / exists-but-withheld / included —
+  any answer meets it; disclosure is never required). The AI
+  Declaration's attestation still gates Level 2 but is homed on its
+  own step row (2026-08-27 ruling — a project-level copy
+  double-counted it); when the step is missing, a ghost row at the
+  bottom of the step list carries the add action.
 
 The AI rows' deep links land on the specific requirement row in the
 Project block's AI section — the link switches tabs, expands the
 group and row, and scrolls it into view.
 - **Level 3**: Manifest complete; Dependency lock; Environment
   snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
-  Software declared; Rebuild attestation.
+  Software declared; Envelope published (the envelope files match the
+  copies on the GitHub mirror); Envelope archived (the envelope files
+  are in the Zenodo archive — Zenodo versions are immutable, so this
+  row goes red after any envelope change and comes back at the next
+  published deposit version; that is expected, because Level 3
+  describes a published release, not the working tree); Rebuild
+  attestation.
 
 The Level 3 section ends with the verification machinery: the
 **Verify Level 3 Reproducibility** button (enabled only when the

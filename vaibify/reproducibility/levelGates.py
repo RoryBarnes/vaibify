@@ -5,7 +5,9 @@ dashboard theme. ``fiProofLevel`` short-circuits up the ladder. All
 three rungs are implemented here: L1 (Self-Consistent), L2
 (Publication) via ``_fbComputeLevel2``'s seven conjuncts, and L3
 (Reproducible) via ``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s
-seven verifiers plus a current L3 attestation. L4 and L5 are outside
+seven verifiers plus a current L3 attestation plus the
+published-envelope pair (envelope matching the GitHub mirror and
+present in the Zenodo archive). L4 and L5 are outside
 vaibify's scope by design; see ``docs/reproducibility.md``.
 
 Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
@@ -66,6 +68,8 @@ __all__ = [
     "fbAtLeastLevel2",
     "fbAtLeastLevel3",
     "fbL3ReadinessOK",
+    "fbEnvelopeMatchesGithubMirror",
+    "fbEnvelopeMatchesZenodoArchive",
     "fbStepIsAtLeastLevel1",
     "fbVerifyDependencyLock",
     "fbVerifyDeterminismDeclared",
@@ -228,6 +232,11 @@ def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
         "sPlotDirectory", "sProjectRepoPath", "sFigureType",
         "listDeclaredBinaries", "bNoStandaloneBinaries",
         "dictDeterminism", "dictRemotes", "dictAttestation",
+        # The AI-provenance declarations feed the workflow-scope
+        # ai-models-undeclared / personal-layer-unanswered blockers;
+        # without this key a model declared after the first poll
+        # left its blocker cached until an unrelated edit.
+        "dictAiProvenance",
     )}
 
 
@@ -1176,10 +1185,18 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
 
     L3 requires L2 plus a green readiness check (the seven orthogonal
     verifiers composed by ``fbL3ReadinessOK``) plus a non-stale,
-    ``passed`` L3 attestation on file. The expensive rebuild that
-    produces the attestation is the only L3 criterion that touches a
-    multi-hour operation; the other seven are cheap and re-evaluated on
-    every level recompute.
+    ``passed`` L3 attestation on file, plus the published-envelope
+    pair: the envelope matches the GitHub mirror AND is present in the
+    Zenodo archive. The pair sits here rather than in readiness so a
+    researcher can attest a complete LOCAL envelope before publishing
+    it — but the LEVEL is not attained until the copies a third party
+    would fetch agree. Because Zenodo deposits are immutable, the
+    Zenodo conjunct makes Level 3 a release-time property: any
+    envelope change drops it until the researcher publishes a new
+    deposit version. The expensive rebuild that produces the
+    attestation is the only L3 criterion that touches a multi-hour
+    operation; the others are cheap and re-evaluated on every level
+    recompute.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel2(dictWorkflow, filesRepo):
@@ -1187,6 +1204,10 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
     if not fbL3AttestationCurrent(filesRepo):
+        return False
+    if not fbEnvelopeMatchesGithubMirror(filesRepo):
+        return False
+    if not fbEnvelopeMatchesZenodoArchive(filesRepo):
         return False
     return True
 
@@ -1379,14 +1400,17 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     )
     # Reported, but deliberately OUTSIDE the readiness all(): readiness
     # asks whether the LOCAL envelope is complete and pinned, which is
-    # what attesting is about. Whether the PUBLISHED copy agrees is a
-    # publication question — it blocks L3 attainment (see
-    # `_fdictL3WorkflowChecks`) without making a researcher push before
-    # they can attest locally. It rides this payload so the PROOF tab
-    # can show the criterion; a blocker with no row is one the
-    # researcher meets as an unexplained dash.
+    # what attesting is about. Whether the PUBLISHED copies agree is a
+    # publication question — the pair blocks L3 attainment (they are
+    # conjuncts of `fbAtLeastLevel3`) without making a researcher push
+    # or publish before they can attest locally. They ride this
+    # payload so the PROOF tab can show each criterion; a blocker with
+    # no row is one the researcher meets as an unexplained dash.
     dictResult["bEnvelopeInGithubMirror"] = (
         fbEnvelopeMatchesGithubMirror(filesRepo) if bRepo else False
+    )
+    dictResult["bEnvelopeInZenodoArchive"] = (
+        fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
     )
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
@@ -1789,11 +1813,20 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     an untracked manuscript does not surface a fake gap.
     ``bAiDeclarationAttested`` requires the step to exist AND carry
     the researcher's sign-off — the declaration is a publication
-    artifact, so both halves are L2 requirements.
+    artifact, so both halves are L2 requirements. Since the
+    2026-08-27 double-count ruling no PROJECT-LEVEL row renders it —
+    the AI Declaration is a step and displays only on its own step
+    row (or the step-list ghost row when absent) — but it stays in
+    this wire dict and in the ``bAtLeastLevel2`` conjunction: the
+    boolean is the aggregate over every requirement wherever it is
+    homed, exactly as L1 aggregates per-step verification.
     ``bAiModelsDeclared`` gates L2 the same way (undeclared is its
     only failing state), as does ``bPersonalLayerDeclared`` (the
     personal-layer question answered with any of its three statuses —
-    disclosure is never required); ``bProjectContextFileExists`` and
+    disclosure is never required); both also count in the
+    workflow-scope L2 header cell via the ``ai-models-undeclared`` /
+    ``personal-layer-unanswered`` blockers.
+    ``bProjectContextFileExists`` and
     ``bPromptRecordCurrent`` are informational only — they feed the
     optional PROOF rows and never join the conjunction (the Prompt
     Record follows the arXiv rule: unconfigured is trivially True).
@@ -1905,6 +1938,9 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
         dictWorkflow,
     ))
+    listBlockers.extend(_flistAiProvenanceLevel2Blockers(
+        dictWorkflow,
+    ))
     listBlockers.extend(_flistOverleafLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
@@ -2001,7 +2037,19 @@ def _fbSyncCacheStale(dictStatus):
     as stale for blocker-surfacing purposes: the dashboard should tell
     the researcher to verify, not silently emit per-step rows from
     empty divergence data.
+
+    So does a cache verified under an EARLIER publication scope. Both
+    mean the same thing to the researcher -- the evidence does not
+    answer the question now being asked, and the fix is one Verify now
+    -- and the criterion is named for the verification being stale,
+    not for the clock. Without this the gate refused Level 2 on scope
+    while the blocker list said nothing about GitHub at all, which is
+    a refusal with no reason attached: exactly the unexplained-dash
+    failure the Level 3 envelope row was given a criterion to avoid.
     """
+    from . import publicationScope
+    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):
+        return True
     return not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS)
 
 
@@ -2138,6 +2186,54 @@ def _fdictZenodoVerifyStaleBlocker():
         "listOffendingUpstreamSteps": [],
         "sRemediationHint":
             "Zenodo sync check is stale — re-verify to refresh status",
+    }
+
+
+def _flistAiProvenanceLevel2Blockers(dictWorkflow):
+    """Return the workflow-scope AI-provenance L2 blockers.
+
+    Two independent project-level declarations gate Level 2 beside the
+    published-copy criteria: the models that did the work
+    (``ai-models-undeclared``) and the Personal AI Configuration
+    answer (``personal-layer-unanswered``). Both count in the
+    workflow-scope L2 header cell (2026-08-27 ruling), so a satisfied
+    declaration earns the header partial credit even while a verify
+    cache is stale. The AI *Declaration* is deliberately absent here:
+    it is a step, its attestation surfaces on the step's own row, and
+    counting it at this scope as well is the double count the ruling
+    removed.
+    """
+    listBlockers = []
+    if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):
+        listBlockers.append(_fdictWorkflowScopeLevel2Blocker(
+            sCriterion="ai-models-undeclared",
+            sRemediationHint=(
+                "Declare each AI model used in the AI section of "
+                "the Project block"
+            ),
+        ))
+    if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):
+        listBlockers.append(_fdictWorkflowScopeLevel2Blocker(
+            sCriterion="personal-layer-unanswered",
+            sRemediationHint=(
+                "Answer the Personal AI Configuration question in "
+                "the AI section of the Project block"
+            ),
+        ))
+    return listBlockers
+
+
+def _fdictWorkflowScopeLevel2Blocker(sCriterion, sRemediationHint):
+    """Build one workflow-scope L2 blocker entry from its two texts."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sRemediationHint,
     }
 
 
@@ -2382,6 +2478,8 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         ),
         "envelope-not-in-github-mirror":
             fbEnvelopeMatchesGithubMirror(filesRepo),
+        "envelope-not-in-zenodo-archive":
+            fbEnvelopeMatchesZenodoArchive(filesRepo),
     }
 
 
@@ -2394,6 +2492,36 @@ def fbEnvelopeMatchesGithubMirror(filesRepo):
     file. A pushed ``reproduce.sh`` that has drifted from the local
     one means a third party's reproduction runs something the
     researcher never ran, and every surface reported Level 3 attained.
+    """
+    return _fbEnvelopeMatchesRemote(filesRepo, "github")
+
+
+def fbEnvelopeMatchesZenodoArchive(filesRepo):
+    """Return True iff the envelope is in the Zenodo archive, matching.
+
+    The permanent-archive half of the same question (2026-08-26,
+    superseding the same day's GitHub-only ruling). GitHub is not an
+    archive — repositories are renamed, made private, force-pushed,
+    deleted — so an envelope that lives only there gives the Level 3
+    claim the lifetime of a mutable host. Within v1.0's closed world
+    of two remotes, "the envelope is in the permanent archive"
+    reduces to "the envelope is in Zenodo". The verify consults every
+    DECLARED record (``scheduledReverify.flistZenodoDeclaredRecords``),
+    so a software deposit made by Zenodo's own GitHub integration
+    counts once it is declared.
+
+    Zenodo deposits are immutable, so restoring agreement costs a new
+    published deposit version rather than a push. Level 3 is therefore
+    a release-time property — red through most of a project's life and
+    green at publication moments — which is judged correct:
+    "reproducible" describes a published artifact, not a state the
+    working tree drifts through.
+    """
+    return _fbEnvelopeMatchesRemote(filesRepo, "zenodo")
+
+
+def _fbEnvelopeMatchesRemote(filesRepo, sService):
+    """Shared envelope-agreement check against one remote's sync cache.
 
     Unproven is a block, symmetric with the Level 2 gate: an envelope
     nobody has compared cannot support a reproducibility claim. That
@@ -2410,7 +2538,7 @@ def fbEnvelopeMatchesGithubMirror(filesRepo):
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
-        filesRepo, "github",
+        filesRepo, sService,
     )
     if not dictStatus or not dictStatus.get("sLastVerified"):
         return False
@@ -2443,6 +2571,14 @@ _DICT_L3_REMEDIATION_HINTS = {
         "snapshot or Dockerfile differs from the copy on GitHub, or "
         "has not been compared against it. Push the current envelope, "
         "then click Verify now on the GitHub mirror row.",
+    "envelope-not-in-zenodo-archive":
+        "The reproduce script, manifest, dependency lock, environment "
+        "snapshot or Dockerfile is not in the Zenodo archive, differs "
+        "from the archived copy, or has not been compared against it. "
+        "Zenodo versions are immutable, so publish a new deposit "
+        "version containing the envelope (or declare the Zenodo "
+        "record that already holds it), then click Verify now on the "
+        "Zenodo row.",
     S_L3_HOST_MODE_CRITERION:
         "Level 3 requires a containerized project: it is defined by a "
         "pinned image digest and an in-container rerun. This project "
@@ -3006,6 +3142,12 @@ _T_STEP_LEVEL3_CRITERIA = (
 
 _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
     "github-verify-stale", "zenodo-verify-stale",
+    # The AI-provenance declarations count here (2026-08-27 ruling):
+    # they are independent project-level checks, so a green one earns
+    # the header cell partial credit — without them a project whose
+    # only gap was two stale verify caches read "none" (red) while
+    # its AI rows sat green in the Project block.
+    "ai-models-undeclared", "personal-layer-unanswered",
 )
 
 _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
@@ -3016,6 +3158,7 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
     "dockerfile-not-pinned", "dependency-lock-missing",
     "environment-snapshot-missing", "reproduce-script-missing",
     "l3-attestation-stale", "binaries-not-declared-or-waived",
+    "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
 )
 
 
@@ -3820,10 +3963,15 @@ def fdictComputeWorkflowScopeLevelStates(
     Same independent-cell wire shape as the per-step projection, over
     the workflow-scope requirement sets: L1 — project repo present
     (one requirement); L2 — github/zenodo verify freshness plus the
-    two arXiv criteria when an arXiv submission is recorded, EXCLUDING
-    ``missing-ai-declaration-step`` (re-homed to the ghost
-    AI-declaration step row); L3 — the six workflow-scope checks in
-    :data:`_T_WORKFLOW_LEVEL3_CRITERIA`. Workflow cells never report
+    two AI-provenance declarations (models, Personal AI
+    Configuration) plus the two arXiv criteria when an arXiv
+    submission is recorded, EXCLUDING
+    ``missing-ai-declaration-step`` (the AI Declaration is a STEP —
+    its state lives on the step's own row and ghost row only, never
+    counted at this scope, per the 2026-08-27 double-count ruling);
+    L3 — the workflow-scope checks in
+    :data:`_T_WORKFLOW_LEVEL3_CRITERIA`, including the
+    published-envelope pair. Workflow cells never report
     ``not-started`` or ``unknown``: at this scope a stale verify cache
     is itself the unsatisfied requirement, not missing information.
     ``bRegression`` reads ``dictWorkflowLevelHighWater``. A missing

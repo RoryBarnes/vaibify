@@ -436,6 +436,52 @@ bans the literal `/workspace/.vaibify/test_markers` in any module
 under `vaibify/gui/` — enforcing that marker paths are always
 resolved from the active project's `sProjectRepoPath`.
 
+## project.json is a definition; the sidecar records what happened
+
+`project.json` is compared byte-for-byte against its published copies
+(GitHub and, at Level 3, the immutable Zenodo archive). Until
+2026-08-27 it also carried what publishing *produced* — the deposit
+id, the DOIs, the per-file last-pushed digests — so an archive that
+uploaded the file then rewrote it, and the local copy could never
+again match the copy it had just published. Re-archiving minted a new
+deposit id and changed it again: a treadmill by construction, and a
+second, quieter defect rode along — writing `dictSyncStatus` inside
+the definition moved the semantic attestation fingerprint, so every
+publish superseded verifications it had not touched.
+
+The persistence split resolves both by sorting every field by *who
+writes it*:
+
+- **`project.json`** — what the researcher declares: steps, commands,
+  variables, remote bindings (`sOverleafProjectId`,
+  `dictRemotes.zenodo.listRecords`, `dictZenodoMetadata`).
+- **`.vaibify/state.json`** — what this machine observed:
+  verification results, run statistics (see `stateManager.py`;
+  gitignored, per-machine).
+- **`.vaibify/syncStatus.json`, section `dictProjectBookkeeping`** —
+  what a push, archive, or verify produced: `dictSyncStatus`, the
+  Zenodo publish record, `dictRemotes.overleaf.sLastPushCommit`,
+  `dictRemotes.zenodo.sRecordId`/`sDoi`/`sService`,
+  `dictRemotes.github.sCommittedSha`. Owned by
+  `reproducibility/syncBookkeeping.py`, keyed by the workflow's
+  repo-relative path (the state.json schema-v3 namespacing lesson),
+  written under the same lock as the per-service verify caches that
+  share the file, and deliberately outside the publication comparison
+  scope.
+
+The in-memory dict every route and the frontend sees is the *merged*
+shape: load grafts the state and the bookkeeping back in, save splits
+them out again. Sidecar values win over same-named keys still present
+in a legacy fielded `project.json`, because restoring an old
+definition from git must not roll back the record of what was
+actually published; a legacy file migrates automatically on its first
+save. The scope version (`publicationScope.I_PUBLICATION_SCOPE_VERSION`)
+was bumped with the split: a cache written against the fielded shape
+is evidence about bytes the definition no longer contains.
+`tests/testProjectBookkeepingSidecar.py` pins the headline property —
+serialize, publish, serialize again, and the definition's bytes are
+identical.
+
 ## Single browser session per container
 
 This section is normative: it is the single source of truth for the
@@ -1102,7 +1148,12 @@ These carry the core execution logic:
   `/workspace/.vaibify/pipeline_state.json`.
 - `workflowManager.py` — project CRUD, variable resolution, step
   references, dependency graph. Uses `posixpath` because it operates
-  on container paths.
+  on container paths. Its save path splits the merged in-memory dict
+  three ways: the declared definition to `project.json`, per-machine
+  runtime state to `.vaibify/state.json` (`stateManager.py`), and
+  push/archive-produced bookkeeping to the `.vaibify/syncStatus.json`
+  sidecar (`reproducibility/syncBookkeeping.py`) — see "project.json
+  is a definition" below.
 - `fileStatusManager.py` — file-status polling, mtime tracking, step
   invalidation, verification freshness. The formal verification state
   machine is documented in its module docstring.
@@ -1258,7 +1309,20 @@ step — L1: the repository exists; L2: sync-verify freshness plus
 the arXiv criteria (only when an arXiv submission is recorded — the
 arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
-binary declarations). A Project-row L1 check above red step rows is
+binary declarations) plus the published-envelope pair — the envelope
+matches the GitHub mirror AND is present in the Zenodo archive
+(2026-08-26, superseding a same-day GitHub-only ruling: GitHub is not
+an archive, and within v1.0's closed world of two remotes "the
+envelope is in the permanent archive" reduces to "the envelope is in
+Zenodo"). The Zenodo verify consults every DECLARED record
+(`dictRemotes.zenodo.listRecords` plus the primary), because Zenodo's
+own GitHub integration archives code releases as separate records; a
+file agrees with Zenodo when ANY declared record serves its bytes.
+Deposits are immutable, so the Zenodo conjunct makes Level 3 a
+release-time property — red through most of a project's life, green
+at publication moments — which is judged correct: "reproducible"
+describes a published artifact, not a state the working tree drifts
+through. A Project-row L1 check above red step rows is
 therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.

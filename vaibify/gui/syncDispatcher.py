@@ -30,6 +30,8 @@ from .pipelineUtils import fsShellQuote
 __all__ = [
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
+    "fsClassifyZenodoValidationFailure",
+    "ftResultValidateZenodoToken",
     "fsZenodoInstanceToService",
     "fsZenodoTokenNameForInstance",
     "SET_VALID_ZENODO_INSTANCES",
@@ -40,6 +42,7 @@ __all__ = [
     "fdictSyncResult",
     "flistCheckOverleafConflicts",
     "flistCollectOutputFiles",
+    "flistCollectZenodoArchiveCandidates",
     "flistDetectOverleafCaseCollisions",
     "flistExtractAllScriptPaths",
     "flistGetDirtyFiles",
@@ -64,7 +67,6 @@ __all__ = [
     "ftResultGenerateDagSvg",
     "ftResultGenerateLatex",
     "ftResultPullFromOverleaf",
-    "ftResultPushScriptsToGithub",
     "ftResultPushStagedToGithub",
     "ftResultPushToGithub",
     "ftResultPushToOverleaf",
@@ -144,8 +146,19 @@ _LIST_AUTHOR_IDENTITY_PATTERNS = [
 
 
 def fdictClassifyError(iExitCode, sOutput):
-    """Classify a sync command failure by scanning output text."""
+    """Classify a sync command failure by scanning output text.
+
+    The local-file marker is checked FIRST, because its payload is a
+    repr'd FileNotFoundError whose text ("No such file or directory")
+    also matches the remote not-found patterns below — the ordering is
+    what keeps a missing local file from being reported as a failed
+    remote lookup.
+    """
     sLower = sOutput.lower()
+    if "local-file-error" in sLower:
+        return {
+            "sErrorType": "localFileMissing", "sMessage": sOutput,
+        }
     for sPattern in _LIST_AUTHOR_IDENTITY_PATTERNS:
         if sPattern in sLower:
             return {
@@ -196,10 +209,15 @@ def fsPythonCommand(sImportLine, sFunctionCall, sResourceId):
     so the resulting Python source is syntactically valid.
 
     Every program built here imports ``vaibify``, ``keyring`` or
-    ``requests``, so it runs on the interpreter that HAS them: the
-    image's ``python3`` in a container, and vaibify's own interpreter
-    on the host, where ``python3`` is whatever the researcher's PATH
-    resolves and routinely has none of them.
+    ``requests``, so it runs on the interpreter that HAS them:
+    vaibify's own interpreter on the host (where ``python3`` is
+    whatever the researcher's PATH resolves and routinely has none of
+    them), and the image's ``python3`` in a container — where
+    ``keyring`` and ``requests`` are installed EXPLICITLY by the
+    Dockerfile. That explicitness is load-bearing: for months this
+    sentence claimed the image had ``requests`` while only projects
+    whose own requirements pulled it in could validate a Zenodo
+    token, and the failure surfaced as "token not accepted".
     """
     if sImportLine:
         sScript = sImportLine + "; " + sFunctionCall
@@ -542,6 +560,13 @@ try:
     _r = client.fdictPublishDraft(iDid)
 except SystemExit as _se:
     _abort(_se.code)
+except (FileNotFoundError, PermissionError, IsADirectoryError) as _fe:
+    # A local file problem, marked as one. Without the marker the
+    # FileNotFoundError text ("No such file or directory") matched the
+    # remote not-found patterns and the researcher was told to check
+    # their DOI. Narrow types on purpose: requests' ConnectionError is
+    # an OSError too, and a network drop must not be labelled local.
+    _abort('LOCAL-FILE-ERROR (not a Zenodo problem): ' + repr(_fe))
 except ZenodoError as _ze:
     _abort('HTTP ' + str(_ze))
 except Exception as _e:
@@ -666,18 +691,27 @@ def ftResultPushToGithub(
 def ftResultPushStagedToGithub(
     connectionDocker, sContainerId, sCommitMessage, sWorkdir,
 ):
-    """Commit staged changes (if any) in sWorkdir and push to origin.
+    """Stage tracked changes, commit (if any), and push to origin.
 
-    Does NOT run ``git add``. Returns (iExitCode, sCombinedOutput).
-    Hardened alongside ``ftResultPushToGithub``. The commit is
-    skipped when the index matches HEAD (``git diff --cached
-    --quiet`` exits 0), so a repo that is already committed but
-    ahead of origin still pushes — an unconditional ``git commit``
-    fails with "nothing to commit" there and the push never runs.
+    Returns (iExitCode, sCombinedOutput). Hardened alongside
+    ``ftResultPushToGithub``. ``git add -u`` stages modifications and
+    deletions of TRACKED files only (2026-08-27 ruling): the Repos
+    panel's dirty-dot tooltip always promised "click Push to commit
+    and push them", but until this the command committed only what
+    was already staged — and nothing in the dashboard stages — so on
+    a dirty repo the button silently published nothing while claiming
+    success. Untracked files stay excluded on purpose; publishing a
+    file nobody ever added needs the explicit selection of
+    "Push files…". The commit is still skipped when the index matches
+    HEAD (``git diff --cached --quiet`` exits 0), so a repo that is
+    already committed but ahead of origin still pushes — an
+    unconditional ``git commit`` fails with "nothing to commit" there
+    and the push never runs.
     """
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
+        f"git {sHardening} add -u && "
         + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
@@ -721,115 +755,6 @@ def flistGetDirtyFiles(connectionDocker, sContainerId, sWorkdir):
         if dictEntry is not None:
             listResults.append(dictEntry)
     return listResults
-
-
-def _flistBuildStepCopyCommandList(dictWorkflow):
-    """Build per-step copy commands for scripts and archive plots."""
-    dictDirMap = workflowManager.fdictBuildStepDirectoryMap(dictWorkflow)
-    listCommands = []
-    for iStep, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        sCamelDir = dictDirMap.get(iStep, "")
-        if not sCamelDir:
-            continue
-        listScripts = workflowManager.flistExtractStepScripts(dictStep)
-        sStepDir = dictStep.get("sDirectory", "")
-        listArchivePlots = _flistArchivePlotPaths(
-            dictStep, sStepDir, workflowManager.fsGetPlotCategory)
-        if not listScripts and not listArchivePlots:
-            continue
-        listCommands.append(
-            _fsBuildStepCopyCommands(
-                sStepDir, sCamelDir, listScripts, listArchivePlots
-            )
-        )
-    return listCommands
-
-
-def ftResultPushScriptsToGithub(
-    connectionDocker, sContainerId,
-    dictWorkflow, sCommitMessage, sWorkdir,
-):
-    """Organize scripts + archive PNGs into camelCase dirs and push.
-
-    Deprecated: the workspace-as-git-repo model (Phase 1+) treats the
-    workspace itself as the repo. Retained for one release cycle so
-    existing callers keep working; prefer direct ``git push`` plus the
-    dashboard manifest check.
-    """
-    listCommands = _flistBuildStepCopyCommandList(dictWorkflow)
-    if not listCommands:
-        return (1, "No scripts found to push")
-    sGitIgnore = stateContract.fsGenerateGitignore(dictWorkflow)
-    sReadme = _fsGenerateReadme(dictWorkflow)
-    sSetup = " && ".join(listCommands)
-    sGitCommand = (
-        f"cd {fsShellQuote(sWorkdir)} && {sSetup} && "
-        f"echo {fsShellQuote(sGitIgnore)} > .gitignore && "
-        f"echo {fsShellQuote(sReadme)} > README.md && "
-        f"git add -A && "
-        f"git commit -m {fsShellQuote(sCommitMessage)} && "
-        f"git push && git rev-parse --short HEAD"
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, sGitCommand
-    )
-
-
-def _flistArchivePlotPaths(dictStep, sStepDir, fsGetCategory):
-    """Return absolute paths of archive plot PDFs for PNG conversion."""
-    listPaths = []
-    for sFile in dictStep.get("saPlotFiles", []):
-        if fsGetCategory(dictStep, sFile) != "archive":
-            continue
-        sAbsPath = sFile if sFile.startswith("/") else (
-            f"{sStepDir}/{sFile}" if sStepDir else sFile
-        )
-        listPaths.append(sAbsPath)
-    return listPaths
-
-
-def _fsBuildStepCopyCommands(
-    sStepDir, sCamelDir, listScripts, listArchivePlots
-):
-    """Build shell commands to populate a camelCase step dir."""
-    sMkdir = f"mkdir -p {fsShellQuote(sCamelDir)}"
-    listCopy = [sMkdir]
-    for sScript in listScripts:
-        sSrc = f"{sStepDir}/{sScript}" if sStepDir else sScript
-        sDest = f"{sCamelDir}/{posixpath.basename(sScript)}"
-        listCopy.append(
-            f"cp {fsShellQuote(sSrc)} {fsShellQuote(sDest)}"
-        )
-    for sPlotPath in listArchivePlots:
-        sBasename = posixpath.splitext(
-            posixpath.basename(sPlotPath))[0]
-        sPng = f"{sCamelDir}/{sBasename}.png"
-        listCopy.append(
-            f"pdftoppm -png -r 150 -singlefile "
-            f"{fsShellQuote(sPlotPath)} "
-            f"{fsShellQuote(sCamelDir + '/' + sBasename)} "
-            f"2>/dev/null || cp {fsShellQuote(sPlotPath)} "
-            f"{fsShellQuote(sPng)} 2>/dev/null || true"
-        )
-    return " && ".join(listCopy)
-
-
-def _fsGenerateReadme(dictWorkflow):
-    """Return a README.md summarizing the workflow."""
-    sName = dictWorkflow.get("sWorkflowName", "Vaibify Workflow")
-    sTitle = dictWorkflow.get("sProjectTitle", sName)
-    listLines = [f"# {sTitle}", "", "## Pipeline Steps", ""]
-    for iStep, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
-        sStepName = dictStep.get("sName", f"Step {iStep + 1}")
-        listLines.append(f"{iStep + 1}. {sStepName}")
-    listLines.append("")
-    listLines.append("Generated by [Vaibify]"
-                     "(https://github.com/RoryBarnes/vaibify)")
-    return "\n".join(listLines)
 
 
 def ftResultAddFileToGithub(
@@ -1381,13 +1306,31 @@ _DICT_ZENODO_VALIDATION_ENDPOINT = {
 def fbValidateZenodoToken(
     connectionDocker, sContainerId, sService="sandbox",
 ):
-    """Test a Zenodo token by listing deposits on the chosen service.
+    """Return True iff the stored Zenodo token validates (detail dropped)."""
+    return ftResultValidateZenodoToken(
+        connectionDocker, sContainerId, sService,
+    )[0]
+
+
+def ftResultValidateZenodoToken(
+    connectionDocker, sContainerId, sService="sandbox",
+):
+    """Test a Zenodo token; return ``(bPass, sRemediationDetail)``.
 
     ``sService`` is the ZenodoClient service key (``"sandbox"`` or
     ``"zenodo"``). Validation hits the same instance the token was
     issued for; sandbox tokens are rejected by production and vice
     versa. The inline command uses only ``keyring`` and ``requests``
-    because the container does not have the vaibify package installed.
+    because the container does not have the vaibify package installed;
+    both are installed EXPLICITLY by the image Dockerfile, because a
+    check that borrowed them from the researcher's own requirements
+    worked only for projects that happened to depend on them.
+
+    On failure the detail names what actually failed — a missing
+    container package, a rejection by the named instance, no token in
+    the container keyring, or no network — because every one of those
+    used to be reported as "check that the token has deposit scopes",
+    which sent a researcher with a valid token to the wrong fix.
     """
     if sService not in _DICT_ZENODO_VALIDATION_ENDPOINT:
         raise ValueError(f"Invalid Zenodo service: {sService}")
@@ -1396,7 +1339,72 @@ def fbValidateZenodoToken(
         sContainerId,
         _fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId),
     )
-    return iExit == 0 and "ok" in sOut
+    if iExit == 0 and "ok" in sOut:
+        return (True, "")
+    return (
+        False, fsClassifyZenodoValidationFailure(sOut, sService),
+    )
+
+
+def _fsZenodoHostForService(sService):
+    """Return the API host a ZenodoClient service key names."""
+    return "zenodo.org" if sService == "zenodo" else "sandbox.zenodo.org"
+
+
+def fsClassifyZenodoValidationFailure(sOut, sService):
+    """Name the failure a validation exec's output records.
+
+    Classifies into fixed messages rather than echoing the raw output:
+    the output of a command that handles credentials is not UI text.
+    The one fragment carried through is a missing module NAME, which
+    the researcher needs verbatim.
+    """
+    sHost = _fsZenodoHostForService(sService)
+    sOther = _fsZenodoHostForService(
+        "sandbox" if sService == "zenodo" else "zenodo",
+    )
+    sLower = (sOut or "").lower()
+    matchModule = re.search(
+        r"no module named '?([A-Za-z0-9_.]+)'?", sLower,
+    )
+    if matchModule:
+        return (
+            "The container is missing the Python package "
+            f"'{matchModule.group(1)}', which vaibify's Zenodo check "
+            "runs on — the token was never tested. Rebuild the "
+            "project image with the current vaibify (its image "
+            "installs the package), or install it in the running "
+            "container."
+        )
+    if "no-token" in sLower:
+        return (
+            "No token reached the container's credential store, so "
+            "nothing was tested. Try connecting again; if this "
+            "repeats, the container keyring is broken."
+        )
+    if "401" in sLower or "403" in sLower:
+        return (
+            f"{sHost} rejected the token. Check that the token was "
+            f"created on {sHost} — not {sOther}; the two instances "
+            "have separate accounts and tokens, and the instance "
+            "selector above chooses which one is tested — and that "
+            "it has the deposit:write and deposit:actions scopes."
+        )
+    if (
+        "connectionerror" in sLower or "timeout" in sLower
+        or "temporary failure" in sLower or "name resolution" in sLower
+        or "newconnectionerror" in sLower
+    ):
+        return (
+            f"The container could not reach {sHost} at all — this is "
+            "a network problem, not a token problem. Check the "
+            "container's network access, then try again."
+        )
+    return (
+        f"Validation against {sHost} failed for an unrecognized "
+        "reason. Check that the token was created on that instance "
+        "with deposit:write and deposit:actions scopes."
+    )
 
 
 def _fsBuildZenodoValidationCommand(sUrl, sSlot, sResourceId):
@@ -1811,6 +1819,65 @@ _FROZENSET_OVERLEAF_EXTENSIONS = frozenset({
     ".tex", ".pdf", ".png", ".jpg", ".jpeg",
     ".eps", ".svg", ".bib",
 })
+
+
+def flistCollectZenodoArchiveCandidates(
+    dictWorkflow, dictSyncStatus, dictVars, sWorkflowRoot, filesRepo,
+    fnPathsExist=None,
+):
+    """Collect the Zenodo push-modal candidates: the PUBLICATION union.
+
+    The L2/L3 Zenodo gates compare the full union — the project
+    definition, the AI declaration, declared inputs, and the
+    reproducibility envelope — but the candidate list carried only
+    outputs, scripts and tests, so a researcher could never publish a
+    deposit the gates would accept: the gates compared files the
+    modal offered no way to upload, and project.json, the declaration
+    and the envelope sat permanently diverged (live, 2026-08-27).
+    Extras are existence-filtered through ``fnPathsExist`` (batched,
+    best-effort: a probe failure includes them all and the archive
+    pre-flight names any that are truly absent).
+    """
+    from vaibify.reproducibility import publicationScope
+    listFiles = flistCollectOutputFiles(
+        dictWorkflow, dictSyncStatus, dictVars, "zenodo",
+        sWorkflowRoot,
+    )
+    setListed = {dictFile.get("sPath") for dictFile in listFiles}
+    listExtras = []
+    for sPath in publicationScope.flistCollectComparisonPaths(
+        dictWorkflow, filesRepo,
+    ):
+        sAbsolute = (
+            posixpath.join(sWorkflowRoot, sPath)
+            if sWorkflowRoot and not sPath.startswith("/") else sPath
+        )
+        if sAbsolute not in setListed:
+            listExtras.append(sAbsolute)
+    listExtras = _flistFilterToExistingPaths(listExtras, fnPathsExist)
+    for sAbsolute in listExtras:
+        listFiles.append({
+            "sPath": sAbsolute,
+            "sCategory": "archive",
+            "dictSync": _fdictLookupSyncForPath(
+                sAbsolute, dictSyncStatus, sWorkflowRoot,
+            ),
+        })
+    return listFiles
+
+
+def _flistFilterToExistingPaths(listPaths, fnPathsExist):
+    """Drop paths the batched probe says are absent; keep all on failure."""
+    if fnPathsExist is None or not listPaths:
+        return listPaths
+    try:
+        listFlags = fnPathsExist(listPaths)
+    except OSError:
+        return listPaths
+    return [
+        sPath for sPath, bExists in zip(listPaths, listFlags)
+        if bExists
+    ]
 
 
 def flistCollectOutputFiles(

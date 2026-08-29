@@ -241,15 +241,17 @@ def test_fdictGenerateAllTests_creates_three_categories(
     assert "dictIntegrity" in dictResult
     assert "dictQualitative" in dictResult
     assert "dictQuantitative" in dictResult
+    # Step-suffixed since 2026-08-27: two steps must never mint the
+    # same basename into a flat Zenodo deposit.
     assert dictResult["dictIntegrity"]["sFilePath"].endswith(
-        "test_integrity.py"
-    )
+        "test_integrity_step01.py"
+    ), dictResult["dictIntegrity"]["sFilePath"]
     assert dictResult["dictQualitative"]["sFilePath"].endswith(
-        "test_qualitative.py"
-    )
+        "test_qualitative_step01.py"
+    ), dictResult["dictQualitative"]["sFilePath"]
     assert dictResult["dictQuantitative"]["sFilePath"].endswith(
-        "test_quantitative.py"
-    )
+        "test_quantitative_step01.py"
+    ), dictResult["dictQuantitative"]["sFilePath"]
 
 
 # -----------------------------------------------------------------------

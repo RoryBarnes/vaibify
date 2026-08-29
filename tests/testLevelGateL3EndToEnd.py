@@ -42,8 +42,18 @@ from vaibify.reproducibility.publicationScope import (
 # which definition of the published set it ran under and which paths
 # it compared. Without them the gate refuses -- correctly: a file the
 # verify never looked at is missing from listDiverged in exactly the
-# way a file that matched is missing.
-_LIST_COMPARED = ["step01/data.csv"]
+# way a file that matched is missing. The compared set covers the
+# envelope files the fixture writes, because Level 3 now requires the
+# published-envelope pair (GitHub mirror + Zenodo archive) and each
+# gate checks that every envelope file ON DISK was actually compared.
+_LIST_COMPARED = [
+    "step01/data.csv",
+    "MANIFEST.sha256",
+    "requirements.lock",
+    S_REPRODUCE_SCRIPT_FILENAME,
+    ".vaibify/environment.json",
+    S_DOCKERFILE_FILENAME,
+]
 
 def _fsIsoNow(fHoursAgo=0.0):
     dtNow = datetime.now(timezone.utc) - timedelta(hours=fHoursAgo)
@@ -55,14 +65,16 @@ def _fnWriteSyncStatus(tmp_path):
     pathDir.mkdir(parents=True, exist_ok=True)
     dictPayload = {
         "github": {
-            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "iTotalFiles": len(_LIST_COMPARED),
+            "iMatching": len(_LIST_COMPARED), "listDiverged": [],
             "listComparedPaths": _LIST_COMPARED,
             "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
-            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "iTotalFiles": len(_LIST_COMPARED),
+            "iMatching": len(_LIST_COMPARED), "listDiverged": [],
             "listComparedPaths": _LIST_COMPARED,
             "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),

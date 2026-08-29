@@ -328,18 +328,13 @@ def _flistResolveTestSourcePaths(dictStep, dictVars):
     consumed me? Falls back to the empty list when the step defines
     no tests (interactive / plot-only).
     """
-    from .testGenerator import (
-        fsIntegrityTestPath, fsQualitativeTestPath,
-        fsQuantitativeTestPath,
-    )
     sStepDir = dictStep.get("sDirectory", "")
     if not sStepDir:
         return []
     sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
     listSources = [
-        fsIntegrityTestPath(sStepDir),
-        fsQualitativeTestPath(sStepDir),
-        fsQuantitativeTestPath(sStepDir),
+        _fsCategoryTestRepoPath(dictStep, sCategory, sStepDir)
+        for sCategory in _T_TEST_CATEGORY_KEYS
     ]
     for dictUserTest in dictStep.get(
         "dictTests", {}).get("listUserTests", []):
@@ -388,6 +383,48 @@ def _fdictComputeMaxTestSourceMtimeByStep(
 
 _T_TEST_CATEGORY_KEYS = ("integrity", "qualitative", "quantitative")
 
+_DICT_CATEGORY_TO_TESTS_KEY = {
+    "integrity": "dictIntegrity",
+    "qualitative": "dictQualitative",
+    "quantitative": "dictQuantitative",
+}
+
+
+def _fsCategoryTestRepoPath(dictStep, sCategory, sStepDir):
+    """Return one category's repo-relative test path, recorded first.
+
+    The RECORDED ``dictTests[*].sFilePath`` is the ground truth —
+    legacy fixed names and agent-chosen names alike live only there —
+    resolved through the manifest writer's single join point so a
+    step-relative recording cannot mint a repo-root ghost. A step
+    with nothing recorded falls back to the generator's derivation,
+    which is step-suffixed since 2026-08-27. Re-deriving
+    unconditionally was how a project whose agent named its tests
+    ``test_quantitative_<step>.py`` had per-category mtimes that
+    silently tracked a file that did not exist.
+    """
+    from vaibify.reproducibility.manifestWriter import (
+        fsResolveTestDeclarationPath,
+    )
+    dictCategory = (dictStep.get("dictTests") or {}).get(
+        _DICT_CATEGORY_TO_TESTS_KEY[sCategory],
+    )
+    sRecorded = ""
+    if isinstance(dictCategory, dict):
+        sRecorded = dictCategory.get("sFilePath") or ""
+    if sRecorded and "{" not in sRecorded:
+        return fsResolveTestDeclarationPath(sRecorded, sStepDir)
+    from .testGenerator import (
+        fsIntegrityTestPath, fsQualitativeTestPath,
+        fsQuantitativeTestPath,
+    )
+    dictBuilders = {
+        "integrity": fsIntegrityTestPath,
+        "qualitative": fsQualitativeTestPath,
+        "quantitative": fsQuantitativeTestPath,
+    }
+    return dictBuilders[sCategory](sStepDir)
+
 
 def _fdictResolveCategoryTestPaths(dictStep, dictVars):
     """Return {category: container_abs_path} for the canonical 3.
@@ -396,24 +433,16 @@ def _fdictResolveCategoryTestPaths(dictStep, dictVars):
     UI display, which is keyed on the three canonical categories
     surfaced as Run buttons in the step renderer.
     """
-    from .testGenerator import (
-        fsIntegrityTestPath, fsQualitativeTestPath,
-        fsQuantitativeTestPath,
-    )
     sStepDir = dictStep.get("sDirectory", "")
     if not sStepDir:
         return {}
     sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
     return {
-        "integrity": _fsAbsolutizeTestPath(
-            fsIntegrityTestPath(sStepDir), sRepoRoot,
-        ),
-        "qualitative": _fsAbsolutizeTestPath(
-            fsQualitativeTestPath(sStepDir), sRepoRoot,
-        ),
-        "quantitative": _fsAbsolutizeTestPath(
-            fsQuantitativeTestPath(sStepDir), sRepoRoot,
-        ),
+        sCategory: _fsAbsolutizeTestPath(
+            _fsCategoryTestRepoPath(dictStep, sCategory, sStepDir),
+            sRepoRoot,
+        )
+        for sCategory in _T_TEST_CATEGORY_KEYS
     }
 
 

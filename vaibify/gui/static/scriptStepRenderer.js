@@ -1601,6 +1601,20 @@ var VaibifyStepRenderer = (function () {
        complete body for the expanded step detail; the standard step
        header (number, name, status dot) is unchanged. */
 
+    function fsRenderGhostAiDeclarationRow() {
+        // The step list is the AI Declaration's ONLY home (2026-08-27
+        // ruling — the Project-block row double-counted it). When the
+        // step is missing, this ghost row is where the requirement
+        // surfaces and where the add action lives; deleting it would
+        // leave a project with no way to create the step from the UI.
+        return '<div class="ghost-ai-declaration-row">' +
+            '<span class="ghost-ai-declaration-label">' +
+            'AI Declaration step — required for Level 2, ' +
+            'not yet added</span>' +
+            '<button class="btn btn-add-ai-declaration-step" ' +
+            'type="button">Add AI declaration step</button></div>';
+    }
+
     function fsRenderAiDeclarationBody(step, iIndex, dictContext) {
         var sFilePath = (step.sDeclarationFile || "").trim();
         var sHtml = '<div class="ai-declaration-block" ' +
@@ -1786,6 +1800,7 @@ var VaibifyStepRenderer = (function () {
         fsFormatDuration: fsFormatDuration,
         fsFormatUnixTimestamp: fsFormatUnixTimestamp,
         fsRenderAiDeclarationBody: fsRenderAiDeclarationBody,
+        fsRenderGhostAiDeclarationRow: fsRenderGhostAiDeclarationRow,
         fnFillAiDeclarationPreviews: fnFillAiDeclarationPreviews,
     };
 })();

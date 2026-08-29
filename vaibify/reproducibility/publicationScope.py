@@ -39,16 +39,39 @@ and each gate reads the paths it owns. The partition is derived here
 rather than stamped into ``syncStatus.json``, so no persisted schema
 changes and a cache written by an older hub still answers correctly.
 
-**The Level 3 envelope criterion is GitHub-only, deliberately
-(2026-08-26 ruling).** The symmetric Zenodo criterion was considered
-and declined: a Zenodo deposit is a data archive, and a workflow that
-never places ``reproduce.sh`` or the ``Dockerfile`` in its deposit is
-doing nothing wrong. Applying the criterion there would block Level 3
-for every project that archives data to a DOI and reproduces from the
-repository — which is the ordinary arrangement. Reproduction fetches
-from the repo; the DOI is the citable archive of results. If that ever
-stops being true for a project, the honest form is an opt-in per
-project, not an unconditional criterion.
+**The Level 3 envelope criterion covers BOTH remotes (2026-08-26,
+superseding an earlier same-day ruling).** It was first GitHub-only,
+on the grounds that a Zenodo deposit is a data archive and a project
+reproducing from the repository is doing nothing wrong. That was
+reversed: Level 3 claims a third party can re-fetch and re-execute,
+and GitHub is not an archive — repos are renamed, made private,
+force-pushed, deleted. An envelope that lives only there gives the
+claim the lifetime of a mutable host, so the reader who arrives after
+the link rots has the data and no way to run it, while Level 3 told
+them otherwise.
+
+The objection that the envelope might be archived somewhere else does
+not apply to vaibify v1.0, which supports exactly two remotes. Within
+that closed world "the envelope is in the permanent archive" reduces
+to "the envelope is in Zenodo"; the criterion generalises to "at least
+one active repo and one complete archive" when more backends exist.
+
+Two things landed WITH the Zenodo criterion rather than after it.
+Zenodo's own GitHub integration archives a code release as a separate
+record with its own DOI, so a project legitimately has a data deposit
+AND a software deposit — both on Zenodo — and a check against the
+single declared ``dictRemotes.zenodo`` record would fire falsely on
+the arrangement Zenodo promotes; the verify therefore consults every
+DECLARED record (``dictRemotes.zenodo.listRecords`` plus the primary),
+and a file agrees with Zenodo when ANY declared record serves its
+bytes. And Zenodo deposits are immutable, so re-agreement costs a new
+published version rather than a push: Level 3 is a release-time
+property, red through most of a project's life and green at
+publication. That is judged correct, and the UI says so rather than
+leaving it to a researcher's surprise.
+
+The criterion has its own name — ``envelope-not-in-zenodo-archive`` —
+because its remediation is "publish a deposit version", not "push".
 """
 
 import posixpath
@@ -97,10 +120,29 @@ S_PROJECTS_DIRECTORY = ".vaibify/projects"
 # re-verify for a reclassification would spend the researcher's time
 # to learn nothing.
 #
+#
+# Version 3 is the one bump that is about the COMPARISON AUTHORITY
+# rather than the membership: the Zenodo verify began consulting every
+# declared record instead of the single primary one. A version-2
+# Zenodo cache is evidence about one deposit, not about the archive --
+# its divergence entries say "not in THE record" where the Level 3
+# criterion now asks "not in ANY declared record" -- so it cannot
+# answer the current question and must not pretend to.
+#
 #   1  pre-split: the manifest set alone.
 #   2  the union of both levels, adding the reproducibility envelope
 #      and .vaibify/projects/*.json (2026-08-26).
-I_PUBLICATION_SCOPE_VERSION = 2
+#   3  the Zenodo comparison consults every declared record
+#      (2026-08-26, same day -- the multi-record widening shipped
+#      with the envelope-not-in-zenodo-archive criterion).
+#   4  project.json stopped carrying the mutable sync bookkeeping
+#      (dictSyncStatus and the Zenodo publish record moved to the
+#      syncStatus.json sidecar, 2026-08-27). The membership did not
+#      change, but what a compared project.json MEANS did: a
+#      version-3 verdict about it -- match or divergence -- is a
+#      statement about bytes the definition no longer contains, so
+#      it cannot answer whether the CURRENT definition is published.
+I_PUBLICATION_SCOPE_VERSION = 4
 
 # The reproducibility envelope: what a third party needs in order to
 # re-fetch and re-execute. Their presence is already checked by the L3

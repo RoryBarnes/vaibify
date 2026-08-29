@@ -1331,8 +1331,16 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
         source='vaibify/reproducibility/levelGates.py',
-        old="""    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):""",
-        new="""    if False:""",
+        # Anchored on its own `return False`: the identical condition
+        # now also guards blocker surfacing in _fbSyncCacheStale, and
+        # they are different guarantees -- one refuses the Level 2
+        # claim, the other makes the refusal say why. A shared
+        # mutation would test neither precisely.
+        old=(
+            "    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):"
+            "\n        return False"
+        ),
+        new="    if False:\n        return False",
     ),
     Falsification(
         nodeid='tests/testScheduledReverify.py::testVerifyStampsTheScopeItRanUnder',
@@ -14250,5 +14258,279 @@ def _fdictEntry(sRel):
             '            and not dictRound.get("bDeliberationSummaryRound")])'
         ),
         new='            if not dictRound["bFinalVetoRound"]])',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPerFileZenodoSyncOpensTheModal.py::'
+            'test_a_per_file_zenodo_sync_never_publishes_directly'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old=(
+            '        if (sRemoteKey === "sZenodo") {\n'
+            '            // A Zenodo "sync" publishes a new deposit'
+            ' VERSION, and a\n'
+            '            // version REPLACES the file set: vaibify'
+            ' clears the\n'
+            '            // inherited files and uploads exactly the'
+            ' selection. A\n'
+            '            // direct per-file push therefore published'
+            ' a version\n'
+            '            // containing only the clicked file and'
+            ' silently shrank\n'
+            '            // the public record (live, 2026-08-27).'
+            ' The modal serves\n'
+            '            // the full publication union preselected,'
+            ' so leaving a\n'
+            '            // file out of the archive is an act the'
+            ' researcher\n'
+            '            // performs, never a side effect of one'
+            ' click.\n'
+            '            fnOpenPushModal("zenodo");\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_resolves_repo_relative_selections'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        request.listFilePaths = _flistResolveArchivePaths('
+            '\n'
+            '            request.listFilePaths,\n'
+            '            dictWorkflow.get("sProjectRepoPath") or "",\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepLevelStates.py::'
+            'testWorkflowScopeStaleCachesWithGreenAiProvenance'
+            'ReadPartial'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    "ai-models-undeclared", "personal-layer-unanswered"'
+            ',\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_a_publish_does_not_change_the_serialized_definition'
+        ),
+        source='vaibify/reproducibility/syncBookkeeping.py',
+        old='    "dictSyncStatus",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_publish_bookkeeping_does_not_move_the_'
+            'attestation_fingerprint'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        old=(
+            '    syncBookkeeping.fdictExtractSyncBookkeeping('
+            'dictDeclarative)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_sidecar_values_win_over_legacy_fielded_keys'
+        ),
+        source='vaibify/reproducibility/syncBookkeeping.py',
+        old='    if not dictBookkeeping:\n        return',
+        new='    if True:\n        return',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_a_new_publish_advances_the_verify_record'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        dictRemotes = dictWorkflow.setdefault('
+             '"dictRemotes", {})\n'
+             '        dictZenodo = dictRemotes.setdefault('
+             '"zenodo", {})\n'
+             '        dictZenodo["sRecordId"] = '
+             'str(dictResult["iDepositId"])\n'
+             '        dictZenodo["sService"] = sZenodoService\n'
+             '        if dictResult.get("sDoi"):\n'
+             '            dictZenodo["sDoi"] = dictResult["sDoi"]\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_candidates_cover_the_publication_union'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        if sService == "zenodo":\n'
+            '            # Zenodo candidates are the full publication '
+            'union — the',
+        new='        if False:\n'
+            '            # Zenodo candidates are the full publication '
+            'union — the',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_colliding_basenames_read_not_in_deposit'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=('        if dictCounts[posixpath.basename(sRelativePath)]'
+             ' == 1'),
+        new='        if True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_refuses_basename_collisions'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseBasenameCollisions('
+             'request.listFilePaths)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGeneratorPure.py::'
+            'test_generated_test_names_carry_the_step_suffix'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        old='    return sBase[0].lower() + sBase[1:]',
+        new='    return ""',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_success_refreshes_the_verify_cache'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(\n'
+             '        dictCtx, sContainerId, dictWorkflow, "zenodo", '
+             'requestHttp,\n'
+             '    )\n'
+             '    if sVerifyWarning:\n'
+             '        dictResult["sPostPushVerifyWarning"] = '
+             'sVerifyWarning'),
+        new=('    sVerifyWarning = ""\n'
+             '    if sVerifyWarning:\n'
+             '        dictResult["sPostPushVerifyWarning"] = '
+             'sVerifyWarning'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testManifestWriter.py::'
+            'test_both_spellings_of_one_file_yield_it_exactly_once'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        old='    return fsResolveStepPathToRepoPath(sFilePath, sDirectory)',
+        new='    return sVerbatim',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_refuses_when_a_selected_file'
+            '_is_missing'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseMissingPushFiles(\n'
+             '            dictCtx["docker"], sContainerId, '
+             'request.listFilePaths,\n'
+             '            dictWorkflow.get("sProjectRepoPath") or "",\n'
+             '        )\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncTestGenFull.py::'
+            'test_a_local_file_error_never_classifies_as_remote'
+            '_not_found'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=('    if "local-file-error" in sLower:\n'
+             '        return {\n'
+             '            "sErrorType": "localFileMissing", '
+             '"sMessage": sOutput,\n'
+             '        }'),
+        new=('    if False:\n'
+             '        return {\n'
+             '            "sErrorType": "localFileMissing", '
+             '"sMessage": sOutput,\n'
+             '        }'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_missing_zenodo_archive_refuses_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if not fbEnvelopeMatchesZenodoArchive(filesRepo):\n'
+             '        return False'),
+        new=('    if False:\n'
+             '        return False'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_drifted_github_envelope_refuses_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if not fbEnvelopeMatchesGithubMirror(filesRepo):\n'
+             '        return False'),
+        new=('    if False:\n'
+             '        return False'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_the_refusal_names_itself_in_the_blocker_list'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('        "envelope-not-in-zenodo-archive":\n'
+             '            fbEnvelopeMatchesZenodoArchive(filesRepo),\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_file_agrees_with_zenodo_when_any_declared_record'
+            '_serves_it'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=('        if sExpected is not None and sExpected in '
+             'listHashes:\n'
+             '            dictMerged[sRelativePath] = sExpected\n'
+             '            continue'),
+        new=('        if False:\n'
+             '            dictMerged[sRelativePath] = sExpected\n'
+             '            continue'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_version_two_cache_is_no_longer_scope_current'
+        ),
+        source='vaibify/reproducibility/publicationScope.py',
+        old='I_PUBLICATION_SCOPE_VERSION = 4',
+        new='I_PUBLICATION_SCOPE_VERSION = 3',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):\n        return True',
+        new='    if False:\n        return True',
     ),
 ]

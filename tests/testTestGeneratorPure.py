@@ -54,22 +54,73 @@ def test_fsBuildPrompt_includes_directory():
 
 def test_fsIntegrityTestPath():
     from vaibify.gui.testGenerator import fsIntegrityTestPath
-    assert fsIntegrityTestPath("/work/step01") == "/work/step01/tests/test_integrity.py"
+    assert fsIntegrityTestPath("/work/step01") == (
+        "/work/step01/tests/test_integrity_step01.py"
+    )
 
 
 def test_fsQualitativeTestPath():
     from vaibify.gui.testGenerator import fsQualitativeTestPath
-    assert fsQualitativeTestPath("/work/step01") == "/work/step01/tests/test_qualitative.py"
+    assert fsQualitativeTestPath("/work/step01") == (
+        "/work/step01/tests/test_qualitative_step01.py"
+    )
 
 
 def test_fsQuantitativeTestPath():
     from vaibify.gui.testGenerator import fsQuantitativeTestPath
-    assert fsQuantitativeTestPath("/work/step01") == "/work/step01/tests/test_quantitative.py"
+    assert fsQuantitativeTestPath("/work/step01") == (
+        "/work/step01/tests/test_quantitative_step01.py"
+    )
+
+
+@pytest.mark.falsification
+def test_generated_test_names_carry_the_step_suffix():
+    """Two steps must never generate the same basename.
+
+    A Zenodo deposit is flat, so identical basenames from different
+    steps silently overwrite each other in the published record —
+    two steps' fixed-name test_qualitative.py went up and one came
+    back (live, 2026-08-27; approved ruling the same day).
+
+    Kills: emptying ``fsStepTestSuffix``, which returns every
+    generated filename to the fixed colliding spelling.
+    """
+    import posixpath
+    from vaibify.gui.testGenerator import (
+        fsIntegrityStandardsPath,
+        fsIntegrityTestPath,
+        fsQualitativeStandardsPath,
+        fsQualitativeTestPath,
+        fsQuantitativeStandardsPath,
+        fsQuantitativeTestPath,
+    )
+    for fsBuildPath in (
+        fsIntegrityTestPath, fsQualitativeTestPath,
+        fsQuantitativeTestPath, fsIntegrityStandardsPath,
+        fsQualitativeStandardsPath, fsQuantitativeStandardsPath,
+    ):
+        sFirst = posixpath.basename(fsBuildPath("StepAlpha"))
+        sSecond = posixpath.basename(fsBuildPath("StepBeta"))
+        assert sFirst != sSecond, fsBuildPath.__name__
+
+
+def test_the_step_suffix_lowers_the_first_letter():
+    """AiPowerOverTime -> aiPowerOverTime, the fielded convention."""
+    from vaibify.gui.testGenerator import (
+        fsQualitativeTestPath, fsStepTestSuffix,
+    )
+    assert fsStepTestSuffix("AiPowerOverTime") == "aiPowerOverTime"
+    assert fsStepTestSuffix("") == ""
+    assert fsQualitativeTestPath("AiPowerOverTime") == (
+        "AiPowerOverTime/tests/test_qualitative_aiPowerOverTime.py"
+    )
 
 
 def test_fsQuantitativeStandardsPath():
     from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
-    assert fsQuantitativeStandardsPath("/work/step01") == "/work/step01/tests/quantitative_standards.json"
+    assert fsQuantitativeStandardsPath("/work/step01") == (
+        "/work/step01/tests/quantitative_standards_step01.json"
+    )
 
 
 # -----------------------------------------------------------------------
@@ -110,7 +161,9 @@ def test_fsBuildQuantitativeTestCode():
     assert "import numpy as np" in sCode
     assert "import pytest" in sCode
     assert "np.allclose" in sCode
-    assert "quantitative_standards.json" in sCode
+    # The standards filename is composed from __file__ so one
+    # template serves suffixed and legacy fixed names alike.
+    assert '"quantitative_standards" + sSuffix + ".json"' in sCode
     assert "test_quantitative_benchmark" in sCode
 
 

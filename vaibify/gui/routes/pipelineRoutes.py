@@ -2235,11 +2235,17 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
         # The Level 3 half of the published-copy question. Its Level 2
-        # twin lives in dictRemoteSyncs; this one is scoped to the
+        # twin lives in dictRemoteSyncs; this pair is scoped to the
         # reproducibility envelope, which the L2 rows deliberately do
-        # not cover (2026-08-26).
+        # not cover (2026-08-26). The Zenodo half is the
+        # permanent-archive claim added the same day: an envelope that
+        # lives only on a mutable host is not archived.
         "bEnvelopeInGithubMirror": (
             levelGates.fbEnvelopeMatchesGithubMirror(filesRepo)
+            if bHasRepo else False
+        ),
+        "bEnvelopeInZenodoArchive": (
+            levelGates.fbEnvelopeMatchesZenodoArchive(filesRepo)
             if bHasRepo else False
         ),
         # The envelope paths that actually exist, so the Level 2 rows
@@ -3030,13 +3036,35 @@ def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
 def _flistFindCustomTestFiles(
     dictFileHashes, dictExpectedHashes,
 ):
-    """Return filenames whose hash differs from the template."""
+    """Return filenames whose hash differs from their category template.
+
+    Matched by category PREFIX, not exact name: generated tests are
+    step-suffixed (``test_qualitative_<step>.py``) since 2026-08-27,
+    and the exact-name lookup this replaced would have silently
+    stopped detecting edits the day the names gained suffixes — the
+    legacy fixed names still match via the exact branch.
+    """
     listCustom = []
-    for sFilename, sExpected in dictExpectedHashes.items():
-        sActual = dictFileHashes.get(sFilename)
-        if sActual is not None and sActual != sExpected:
+    for sFilename, sActual in sorted(dictFileHashes.items()):
+        sExpected = _fsExpectedHashForTestFilename(
+            sFilename, dictExpectedHashes,
+        )
+        if sExpected is not None and sActual != sExpected:
             listCustom.append(sFilename)
     return listCustom
+
+
+def _fsExpectedHashForTestFilename(sFilename, dictExpectedHashes):
+    """Return the template hash a filename's category pins, or None."""
+    if sFilename in dictExpectedHashes:
+        return dictExpectedHashes[sFilename]
+    for sTemplateName, sExpected in dictExpectedHashes.items():
+        sStem = sTemplateName[: -len(".py")]
+        if sFilename.startswith(sStem + "_") and sFilename.endswith(
+            ".py",
+        ):
+            return sExpected
+    return None
 
 
 def _fnRegisterManifestVerify(app, dictCtx):

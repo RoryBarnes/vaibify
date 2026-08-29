@@ -30,6 +30,15 @@ from vaibify.reproducibility.levelGates import (
 )
 
 
+from tests.syncStatusFixtures import fdictBuildCachedVerify
+
+# These fixtures declare five compared files because the blockers they
+# assert are PER-STEP projections of the divergence list, and the step
+# outputs must be inside the compared set for a divergence to project.
+_LIST_COMPARED_FIVE = [
+    "A/data.csv", "B/data.csv", "A/run.py", "B/run.py", "C/out.json",
+]
+
 # ------------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------------
@@ -77,29 +86,30 @@ def _fdictAiDeclarationStep():
 def _fdictFreshGithubCache(listDiverged=None):
     """Return a syncStatus dict whose github entry verifies cleanly now."""
     return {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 5,
-            "iMatching": 5 - len(listDiverged or []),
-            "listDiverged": listDiverged or [],
-            "sCommittedShaVerified": "abc123",
-        },
+        "github": fdictBuildCachedVerify(
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listComparedPaths=_LIST_COMPARED_FIVE,
+            listDivergedPaths=[
+                dictEntry["sPath"] for dictEntry in (listDiverged or [])
+            ],
+            sCommittedShaVerified="abc123",
+        ),
     }
 
 
 def _fdictFreshZenodoCache(listDiverged=None):
     """Return a syncStatus dict whose zenodo entry verifies cleanly now."""
     return {
-        "zenodo": {
-            "sService": "zenodo",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 5,
-            "iMatching": 5 - len(listDiverged or []),
-            "listDiverged": listDiverged or [],
-            "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
-        },
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo",
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            listComparedPaths=_LIST_COMPARED_FIVE,
+            listDivergedPaths=[
+                dictEntry["sPath"] for dictEntry in (listDiverged or [])
+            ],
+            sZenodoDoi="10.1000/example",
+            sEndpointVerified="sandbox",
+        ),
     }
 
 
@@ -338,6 +348,59 @@ def testAiDeclarationPresentSuppressesWorkflowScope(tmp_path):
         if dictEntry["sCriterion"] == "missing-ai-declaration-step"
     ]
     assert listDecl == []
+
+
+def testUndeclaredAiProvenanceFiresWorkflowScopeBlockers(tmp_path):
+    """Undeclared models / unanswered layer surface as workflow-scope
+    L2 blockers, so both count in the header cell (2026-08-27 ruling)."""
+    sProjectRepo = str(tmp_path)
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": _fdictFreshGithubCache()["github"],
+        "zenodo": _fdictFreshZenodoCache()["zenodo"],
+    })
+    dictWorkflow = {
+        "listSteps": [_fdictGreenStep(sName="A")],
+    }
+    listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+    for sCriterion in (
+        "ai-models-undeclared", "personal-layer-unanswered",
+    ):
+        listMatching = [
+            dictEntry for dictEntry in listBlockers
+            if dictEntry["sCriterion"] == sCriterion
+        ]
+        assert len(listMatching) == 1, sCriterion
+        dictEntry = listMatching[0]
+        assert dictEntry["iLevel"] == 2
+        assert dictEntry["sScope"] == "workflow"
+        assert dictEntry["iStepIndex"] == -1
+        assert dictEntry["sRemediationHint"]
+
+
+def testDeclaredAiProvenanceSuppressesWorkflowScopeBlockers(tmp_path):
+    sProjectRepo = str(tmp_path)
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": _fdictFreshGithubCache()["github"],
+        "zenodo": _fdictFreshZenodoCache()["zenodo"],
+    })
+    dictWorkflow = {
+        "listSteps": [_fdictGreenStep(sName="A")],
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
+            "dictPersonalLayer": {"sStatus": "none"},
+        },
+    }
+    listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+    setCriteria = {
+        dictEntry["sCriterion"] for dictEntry in listBlockers
+    }
+    assert "ai-models-undeclared" not in setCriteria
+    assert "personal-layer-unanswered" not in setCriteria
 
 
 def testUnattestedAiDeclarationFiresPerStepLevel2Blocker(tmp_path):

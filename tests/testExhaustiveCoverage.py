@@ -27,7 +27,6 @@ from vaibify.gui.pipelineRunner import (
 )
 from vaibify.gui.syncDispatcher import (
     _fsBuildTestMarkerScript,
-    _flistBuildStepCopyCommandList,
     fsPythonCommand,
 )
 from vaibify.gui.workflowManager import (
@@ -435,38 +434,6 @@ class TestFdictBuildVariables:
 # ---------------------------------------------------------------
 
 
-class TestFlistBuildStepCopyCommandList:
-    def test_builds_commands_for_steps_with_scripts(self):
-        dictWorkflow = {
-            "listSteps": [
-                {"sName": "Build Model",
-                 "sDirectory": "/work/step01",
-                 "saDataCommands": ["python run.py"],
-                 "saPlotCommands": [],
-                 "saPlotFiles": [],
-                 "saOutputDataFiles": []},
-            ],
-        }
-        listCmds = _flistBuildStepCopyCommandList(dictWorkflow)
-        assert len(listCmds) >= 1
-        assert "mkdir" in listCmds[0]
-
-    def test_empty_workflow(self):
-        assert _flistBuildStepCopyCommandList(
-            {"listSteps": []}) == []
-
-    def test_step_with_no_scripts(self):
-        dictWorkflow = {
-            "listSteps": [
-                {"sName": "Empty",
-                 "sDirectory": "/work/step01",
-                 "saDataCommands": [],
-                 "saPlotCommands": [],
-                 "saPlotFiles": [],
-                 "saOutputDataFiles": []},
-            ],
-        }
-        assert _flistBuildStepCopyCommandList(dictWorkflow) == []
 
 
 class TestFsBuildTestMarkerScript:

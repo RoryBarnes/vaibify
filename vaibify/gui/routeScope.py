@@ -327,6 +327,9 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/workflows/{sContainerId}"),
     ("GET", "/api/zenodo/{sContainerId}/deposit"),
     ("GET", "/api/zenodo/{sContainerId}/metadata"),
+    # Acknowledged 2026-08-26: the declared-record listing for the
+    # Zenodo archive checks. Reads only the in-memory workflow.
+    ("GET", "/api/zenodo/{sContainerId}/records"),
 })
 
 

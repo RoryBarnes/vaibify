@@ -1637,7 +1637,7 @@ def test_fsRetrieveToken_falls_back_to_legacy_slot():
     )
     with patch(
         "vaibify.config.secretManager.fbSecretExists",
-        return_value=False,
+        side_effect=lambda sName, sBackend: sName == "zenodo_token",
     ), patch(
         "vaibify.config.secretManager.fsRetrieveSecret",
         return_value="legacy_token",
@@ -1645,6 +1645,40 @@ def test_fsRetrieveToken_falls_back_to_legacy_slot():
         sToken = _fsRetrieveToken("sandbox")
     assert sToken == "legacy_token"
     assert mockRetrieve.call_args[0][0] == "zenodo_token"
+
+
+def test_fsRetrieveToken_returns_empty_when_no_slot_exists():
+    """Absence is an answer: public-record reads need no token.
+
+    This used to raise KeyError out of the legacy retrieve, which is
+    how every HOST-side Zenodo verify died before any network call —
+    the researcher's token lives in the CONTAINER keyring, and a
+    published record is public anyway (live, 2026-08-27).
+    """
+    from vaibify.reproducibility.zenodoClient import (
+        _fsRetrieveToken,
+    )
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists",
+        return_value=False,
+    ), patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+    ) as mockRetrieve:
+        sToken = _fsRetrieveToken("sandbox")
+    assert sToken == ""
+    mockRetrieve.assert_not_called()
+
+
+def test_a_tokenless_client_sends_no_authorization_header():
+    """``Bearer <empty>`` would 401 a public read; send nothing."""
+    from vaibify.reproducibility.zenodoClient import (
+        _fdictBuildAuthHeader,
+    )
+    assert _fdictBuildAuthHeader("") == {}
+    assert _fdictBuildAuthHeader(None) == {}
+    assert _fdictBuildAuthHeader("tok") == {
+        "Authorization": "Bearer tok",
+    }
 
 
 def test_fsRetrieveToken_prefers_namespaced_sandbox_slot():

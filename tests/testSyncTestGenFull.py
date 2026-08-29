@@ -12,7 +12,6 @@ from vaibify.gui.syncDispatcher import (
     ftResultPullFromOverleaf,
     ftResultArchiveToZenodo,
     ftResultPushToGithub,
-    ftResultPushScriptsToGithub,
     ftResultAddFileToGithub,
     ftResultGenerateLatex,
     fdictCheckConnectivity,
@@ -392,6 +391,96 @@ def test_fbValidateZenodoToken_rejects_invalid_service():
         fbValidateZenodoToken(mockDocker, "cid", "production")
 
 
+# -----------------------------------------------------------------------
+# syncDispatcher: ftResultValidateZenodoToken failure classification.
+#
+# Every failure used to render as "check that the token has deposit
+# scopes", which sent a researcher whose container lacked `requests`
+# (a valid token, never tested) to their Zenodo settings page.
+# -----------------------------------------------------------------------
+
+
+def _fsValidationDetail(iExitCode, sOutput, sService="sandbox"):
+    from vaibify.gui.syncDispatcher import ftResultValidateZenodoToken
+    mockDocker = _fMockDocker(iExitCode, sOutput)
+    bPass, sDetail = ftResultValidateZenodoToken(
+        mockDocker, "cid", sService,
+    )
+    assert bPass is False
+    return sDetail
+
+
+def test_a_missing_container_module_is_named_not_blamed_on_scopes():
+    sDetail = _fsValidationDetail(
+        1,
+        "Traceback (most recent call last):\n"
+        "  File \"<string>\", line 1, in <module>\n"
+        "ModuleNotFoundError: No module named 'requests'\n",
+    )
+    assert "'requests'" in sDetail
+    assert "scopes" not in sDetail, (
+        "a crash before any network call must not tell the "
+        f"researcher to check their token's scopes: {sDetail}"
+    )
+
+
+def test_a_rejection_names_the_instance_that_rejected():
+    sDetail = _fsValidationDetail(
+        1, "requests.exceptions.HTTPError: 401 Client Error",
+        sService="sandbox",
+    )
+    assert "sandbox.zenodo.org rejected" in sDetail
+    # "zenodo.org" alone is a substring of the sandbox host, so the
+    # other-instance hint is asserted by its distinguishing phrase.
+    assert "not zenodo.org" in sDetail, (
+        "the likeliest cause of a rejection is a token minted on the "
+        f"OTHER instance; the message must name it: {sDetail}"
+    )
+
+
+def test_a_production_rejection_points_the_other_way():
+    sDetail = _fsValidationDetail(
+        1, "403 FORBIDDEN", sService="zenodo",
+    )
+    assert "zenodo.org rejected" in sDetail
+    assert "sandbox.zenodo.org" in sDetail
+
+
+def test_a_missing_token_says_nothing_was_tested():
+    sDetail = _fsValidationDetail(1, "no-token")
+    assert "nothing was tested" in sDetail
+
+
+def test_a_network_failure_is_not_a_token_problem():
+    sDetail = _fsValidationDetail(
+        1,
+        "requests.exceptions.ConnectionError: "
+        "HTTPSConnectionPool(host='sandbox.zenodo.org', port=443)",
+    )
+    assert "network problem" in sDetail
+    assert "not a token problem" in sDetail
+
+
+def test_an_unrecognized_failure_still_names_the_instance():
+    sDetail = _fsValidationDetail(1, "something odd happened")
+    assert "sandbox.zenodo.org" in sDetail
+
+
+def test_raw_validation_output_never_reaches_the_message():
+    """The exec handles credentials; its output is not UI text."""
+    sMarker = "SECRETLOOKINGSTRING12345"
+    sDetail = _fsValidationDetail(1, f"boom {sMarker}")
+    assert sMarker not in sDetail
+
+
+def test_a_passing_validation_carries_no_detail():
+    from vaibify.gui.syncDispatcher import ftResultValidateZenodoToken
+    mockDocker = _fMockDocker(0, "ok\n")
+    assert ftResultValidateZenodoToken(
+        mockDocker, "cid", "sandbox",
+    ) == (True, "")
+
+
 def test_fsZenodoInstanceToService_maps_sandbox():
     from vaibify.gui.syncDispatcher import fsZenodoInstanceToService
     assert fsZenodoInstanceToService("sandbox") == "sandbox"
@@ -762,19 +851,7 @@ def test_ftResultGenerateDagSvg_failure():
 
 
 # -----------------------------------------------------------------------
-# syncDispatcher: ftResultPushScriptsToGithub
 # -----------------------------------------------------------------------
-
-
-def test_ftResultPushScriptsToGithub_no_scripts():
-    mockDocker = _fMockDocker()
-    dictWorkflow = {"listSteps": []}
-    iExit, sOut = ftResultPushScriptsToGithub(
-        mockDocker, "cid", dictWorkflow,
-        "commit msg", "/workspace",
-    )
-    assert iExit == 1
-    assert "No scripts" in sOut
 
 
 # -----------------------------------------------------------------------
@@ -1177,3 +1254,40 @@ def test_flistBuildDagEdges_merges_cached_deps():
     dictCached = {0: {2}}
     listLines = _flistBuildDagEdges(dictWorkflow, dictCached)
     assert any("step1 -> step3" in sLine for sLine in listLines)
+
+
+# -----------------------------------------------------------------------
+# syncDispatcher: fdictClassifyError — a local file problem is local.
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_local_file_error_never_classifies_as_remote_not_found():
+    """The archive script's marker outranks the not-found patterns.
+
+    The payload deliberately contains BOTH the marker and the
+    "not found" / "no such" text a repr'd FileNotFoundError carries,
+    because that collision is the live failure: a phantom local path
+    was reported as a failed remote lookup and the researcher was told
+    to check their DOI.
+
+    Kills: dropping the local-file-error check from
+    ``fdictClassifyError``, which returns the misclassification.
+    """
+    from vaibify.gui.syncDispatcher import fdictClassifyError
+    sOutput = (
+        "LOCAL-FILE-ERROR (not a Zenodo problem): FileNotFoundError("
+        "\"File not found: '/workspace/proj/tests/test_a.py'\") "
+        "| orphan draft 42 deleted"
+    )
+    dictResult = fdictClassifyError(1, sOutput)
+    assert dictResult["sErrorType"] == "localFileMissing", dictResult
+
+
+def test_a_real_remote_not_found_still_classifies_as_not_found():
+    """The complement: the marker check must not swallow real 404s."""
+    from vaibify.gui.syncDispatcher import fdictClassifyError
+    dictResult = fdictClassifyError(
+        1, "HTTP Zenodo record '99' not found. (404)",
+    )
+    assert dictResult["sErrorType"] == "notFound", dictResult

@@ -191,7 +191,14 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
 # pins the backend for every user (including root), which is what
 # vaibify's docker exec defaults to; the keyringrc.cfg written later
 # is a belt-and-suspenders backup for interactive shells that read it.
-RUN pip install --no-cache-dir keyring keyrings.alt
+# requests rides along because it is a VAIBIFY dependency, not a
+# project one: the in-container Zenodo token validation and the staged
+# zenodoClient.py both import it. Without this explicit install it was
+# only present when the researcher's own requirements happened to pull
+# it in, so a project with no requests dependency could not validate a
+# Zenodo token or publish a deposit — and the failure surfaced as
+# "token not accepted".
+RUN pip install --no-cache-dir keyring keyrings.alt requests
 ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
 
 # Mutation-testing engine for the per-step falsification attestation
