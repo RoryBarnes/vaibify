@@ -42,7 +42,7 @@ from vaibify.gui import (
     pipelineServer,
 )
 from vaibify.gui import councilRouteGuards
-from vaibify.gui.routes import councilRoutes
+from vaibify.gui.routes import councilChatRoutes, councilRoutes
 from vaibify.config import registryManager
 from tests.agentCouncilHarness import fdictMakeTurnResult
 from tests.sessionTokenTestHelper import fsBootstrapCredential
@@ -1759,6 +1759,276 @@ def test_a_campaign_action_still_refuses_an_untracked_directory(tmp_path,
 
     assert response.status_code == 400, response.text
     assert "tracked directories" in response.text
+
+
+# ── an existing campaign IS the answer to "which directory" ───────
+
+# Every campaign-scoped route, taken from the route table below rather
+# than trusted from this list — the list is what each one has to be SENT
+# to be exercised.
+T_EVERY_CAMPAIGN_SCOPED_ROUTE = (
+    ("GET", "", None),
+    ("GET", "/events", None),
+    ("GET", "/plan.md", None),
+    ("POST", "/respond", {"sResponseText": "the content-hash policy"}),
+    ("POST", "/resume", {"bClearStopRequest": False}),
+    ("POST", "/retry", {"bClearStopRequest": False}),
+    ("POST", "/request-stop", None),
+    ("POST", "/grant-resolution-round", {"iGrantedRounds": 1}),
+    ("POST", "/resolve-objections", {"dictDispositionByObjectionId": {}}),
+    ("POST", "/reject-candidate", {"sReasonText": "not now"}),
+    ("POST", "/accept-plan", None),
+    ("GET", "/chat", None),
+    ("POST", "/chat/open", None),
+    ("POST", "/chat/ask", {"sQuestionText": "why?"}),
+    ("POST", "/chat/close", None),
+    ("DELETE", "", None),
+)
+
+# Deliberately NOT one of the tracked names below: a resolved repo equal
+# to this one can only have come from the campaign's own record.
+S_UNTRACKED_CAMPAIGN_REPO = "/workspace/project-repo"
+LIST_TRACKED_SIBLINGS = ["analysisRepo", "modelRepo", "plottingRepo",
+                         "samplerRepo"]
+
+
+def _sPlantCampaignBoundTo(app, sProjectRepoPath,
+                           sState=agentCouncilCampaign.S_STATE_PLANNING):
+    """Register a started campaign whose identity names one repository."""
+    dictStore = getattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY)
+    dictCampaign = agentCouncilCampaign.fdictCreateCampaign(
+        "Which sampler settings converge fastest?",
+        [agentCouncilCampaign.fdictCreateParticipant("claude", "modelOne"),
+         agentCouncilCampaign.fdictCreateParticipant("claude", "modelTwo")],
+        dictProjectIdentity={
+            **agentCouncilCampaign.DICT_EMPTY_PROJECT_IDENTITY,
+            "sResourceName": S_CONTAINER_NAME,
+            "sProjectRepoPath": sProjectRepoPath,
+        })
+    dictCampaign["sState"] = sState
+    agentCouncilStore.fdictRegisterStartedCampaign(dictStore, dictCampaign)
+    # A sealed archive, so the routes that seed a runner from one reach
+    # their own preconditions instead of dying on a missing file — the
+    # directory resolution under test happens long before either.
+    sSnapshotDirectory = agentCouncilContext.fsResolveSnapshotDirectory(
+        dictStore["sDurableStoreRoot"], dictCampaign["sCampaignId"])
+    os.makedirs(sSnapshotDirectory, exist_ok=True)
+    with tarfile.open(os.path.join(
+            sSnapshotDirectory,
+            agentCouncilContext.S_SNAPSHOT_ARCHIVE_BASENAME), "w"):
+        pass
+    return dictCampaign["sCampaignId"]
+
+
+def _tMultiDirectoryClient(tmp_path, monkeypatch):
+    """A toolkit project: many tracked repos, no workflow open.
+
+    The exact shape the defect needs — with a workflow open or a single
+    tracked directory the resolver answers without ever consulting a
+    campaign, so a fixture in either shape cannot reach this bug. That
+    is why it shipped.
+    """
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    app.state.dictRouteContext["workflows"].pop(S_CONTAINER_ID, None)
+    monkeypatch.setattr(
+        councilRouteGuards, "flistTrackedDirectoryNames",
+        lambda dictCtx, sContainerId: list(LIST_TRACKED_SIBLINGS))
+    # A real campaign gets FURTHER than the unknown id the older
+    # directory tests used: chat/open reaches the runner gateway, and
+    # unpatched it dials the developer's live Docker daemon.
+    _fnPatchChatGatewayForRoutes(monkeypatch, {})
+    sCredential, sLease = _tEstablishOwnership(
+        app, S_CONTAINER_NAME, S_CONTAINER_ID)
+    return app, TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease,
+    })
+
+
+@pytest.mark.parametrize(
+    "sMethod,sSuffix,dictBody", T_EVERY_CAMPAIGN_SCOPED_ROUTE)
+@pytest.mark.falsification
+def test_a_campaign_scoped_route_reads_the_repo_off_its_own_campaign(
+        tmp_path, monkeypatch, sMethod, sSuffix, dictBody):
+    """An action on an EXISTING campaign asks no question it has answered.
+
+    Reported live on 2026-08-29: "Accept and save plan" on a finished
+    council answered "this project tracks several directories ..., so a
+    council needs to be told which one it is about". The campaign had
+    been deliberating about one of them for an hour and records which.
+
+    Teaching the accept button to send the query is the INSTANCE fix.
+    The class is that a campaign-scoped route re-derives the repository
+    from the project instead of reading the record, so every one of them
+    is driven here with no query at all.
+
+    Not "200": each route has lifecycle preconditions of its own and
+    most refuse a freshly planted campaign for reasons that ARE about
+    the campaign. What must never appear is the directory refusal, which
+    is not about the campaign at all.
+
+    Kills: dropping the campaign-record lookup from
+    ``ftResolveCouncilPrincipal``; failing to thread ``sCampaignId``
+    into any one route's resolver call.
+    """
+    app, client = _tMultiDirectoryClient(tmp_path, monkeypatch)
+    with client:
+        sCampaignId = _sPlantCampaignBoundTo(app, S_UNTRACKED_CAMPAIGN_REPO)
+        response = client.request(
+            sMethod,
+            f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}{sSuffix}",
+            json=dictBody)
+
+    assert "needs to be told which one" not in response.text, (
+        f"{sMethod} {sSuffix} asked which directory a campaign bound to "
+        f"{S_UNTRACKED_CAMPAIGN_REPO} was about: {response.text[:200]}")
+    assert "no council campaign" not in response.text, (
+        f"{sMethod} {sSuffix} resolved a principal the campaign does not "
+        f"match: {response.text[:200]}")
+
+
+@pytest.mark.falsification
+def test_the_bound_repository_is_the_record_s_and_not_a_tracked_guess(
+        tmp_path, monkeypatch):
+    """The resolved repo is the RECORD's, provably — not a lucky pick.
+
+    The previous test asserts an absence. This one names the value: the
+    campaign is bound to a directory that appears nowhere in the tracked
+    set, so a resolver that guessed from the project could not produce
+    it, and the listing filtered by that principal would be empty.
+
+    Kills: resolving the campaign's repo from anything but the record.
+    """
+    app, client = _tMultiDirectoryClient(tmp_path, monkeypatch)
+    with client:
+        sCampaignId = _sPlantCampaignBoundTo(app, S_UNTRACKED_CAMPAIGN_REPO)
+        dictSeen = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}").json()
+
+    assert dictSeen["dictCampaign"]["dictProjectIdentity"][
+        "sProjectRepoPath"] == S_UNTRACKED_CAMPAIGN_REPO
+
+
+@pytest.mark.falsification
+def test_a_campaign_repo_path_outside_the_workspace_is_refused(
+        tmp_path, monkeypatch):
+    """The record is read, never trusted: it still becomes a container path.
+
+    A stored path is not attacker-supplied the way a query parameter is,
+    so the guard is containment in the project root rather than
+    tracked-set membership — but it IS a guard, and a record naming
+    ``/etc`` must refuse rather than resolve.
+
+    Kills: returning the recorded path without validating it.
+    """
+    app, client = _tMultiDirectoryClient(tmp_path, monkeypatch)
+    with client:
+        sCampaignId = _sPlantCampaignBoundTo(
+            app, "/workspace/../etc/shadow-repo")
+        response = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}")
+
+    assert response.status_code == 403, response.text
+    assert "traversal" in response.text.lower()
+
+
+@pytest.mark.falsification
+def test_an_unknown_campaign_id_still_gets_the_directory_refusal(
+        tmp_path, monkeypatch):
+    """An id with no record must not resolve further than it used to.
+
+    The lookup returns empty for an unknown id rather than refusing, so
+    the caller falls through to the derivation it always used. Refusing
+    inside the lookup would answer a distinguishable code for a
+    mistyped id and leak that the resolution got further than an
+    unknown campaign should.
+
+    Kills: raising, or inventing a repo, for an unknown campaign id.
+    """
+    app, client = _tMultiDirectoryClient(tmp_path, monkeypatch)
+    with client:
+        response = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/campaign-never-stored")
+
+    assert response.status_code == 409, response.text
+    assert "needs to be told which one" in response.text
+
+
+@pytest.mark.falsification
+def test_resume_and_retry_reach_their_gates_over_real_http(
+        tmp_path, monkeypatch):
+    """Both routes passed a name they never bound, and 500'd on every call.
+
+    ``_ffTurnBudgetSeconds(dictCampaign)`` names nothing in either
+    handler's scope, so each raised ``NameError`` the moment the
+    campaign matched. The suite stayed green because no test drove
+    either route over HTTP — ``testCouncilResume.py`` and
+    ``testCouncilRetry.py`` both exercise the controller directly.
+
+    Kills: reading the turn budget from an unbound name in resume or
+    retry.
+    """
+    app, client = _tMultiDirectoryClient(tmp_path, monkeypatch)
+    with client:
+        sCampaignId = _sPlantCampaignBoundTo(app, S_UNTRACKED_CAMPAIGN_REPO)
+        sBase = f"/api/agent-councils/{S_CONTAINER_ID}/{sCampaignId}"
+        dictResponses = {
+            sVerb: client.post(f"{sBase}/{sVerb}",
+                               json={"bClearStopRequest": False})
+            for sVerb in ("resume", "retry")}
+
+    for sVerb, response in dictResponses.items():
+        assert response.status_code != 500, (
+            f"{sVerb} raised inside the handler: {response.text[:300]}")
+
+
+def test_every_campaign_scoped_route_binds_its_campaign_id(tmp_path):
+    """The structural half: a new route cannot forget, only be rejected.
+
+    Enumerated from the REAL route table, so a campaign-scoped route
+    added tomorrow is covered without editing a list here. Each such
+    handler must hand its ``sCampaignId`` to the principal resolver;
+    without it the resolver re-derives the repository and the class of
+    bug above comes straight back on the new route.
+    """
+    import ast
+
+    app = _fnBuildAppWithTmpStore(tmp_path)
+    setCampaignScopedHandlers = {
+        route.endpoint.__name__
+        for route in app.routes
+        if "/api/agent-councils/" in getattr(route, "path", "")
+        and "{sCampaignId}" in getattr(route, "path", "")
+    }
+    assert len(setCampaignScopedHandlers) >= 12, setCampaignScopedHandlers
+
+    setBinding = set()
+    for sModulePath in (councilRoutes.__file__,
+                        councilChatRoutes.__file__):
+        with open(sModulePath, encoding="utf-8") as fileModule:
+            treeModule = ast.parse(fileModule.read())
+        for nodeFunction in ast.walk(treeModule):
+            if not isinstance(nodeFunction, ast.AsyncFunctionDef):
+                continue
+            if nodeFunction.name not in setCampaignScopedHandlers:
+                continue
+            for nodeCall in ast.walk(nodeFunction):
+                if not isinstance(nodeCall, ast.Call):
+                    continue
+                sCalled = (nodeCall.func.attr
+                           if isinstance(nodeCall.func, ast.Attribute)
+                           else getattr(nodeCall.func, "id", ""))
+                if sCalled != "ftResolveCouncilPrincipal":
+                    continue
+                if len(nodeCall.args) >= 5 or any(
+                        keyword.arg == "sCampaignId"
+                        for keyword in nodeCall.keywords):
+                    setBinding.add(nodeFunction.name)
+
+    assert setBinding == setCampaignScopedHandlers, (
+        "these campaign-scoped handlers resolve the principal without "
+        "binding their campaign: "
+        f"{sorted(setCampaignScopedHandlers - setBinding)}")
 
 
 # ── implementation councils are seeded server-side (2026-08-28) ────
