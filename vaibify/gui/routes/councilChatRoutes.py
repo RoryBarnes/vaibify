@@ -57,7 +57,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
     ):
         from .. import agentCouncilChat
         sName, sProjectRepoPath = councilRouteGuards.ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         councilRouteGuards.fjsonRequireCampaign(
             councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,
             sName, sProjectRepoPath)
@@ -71,7 +71,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = councilRouteGuards.ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)
         dictControllerState = councilRouteGuards.fdictControllerState(
             requestHttp)
@@ -119,7 +119,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
     ):
         from .. import agentCouncilChat
         sName, sProjectRepoPath = councilRouteGuards.ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)
         dictControllerState = councilRouteGuards.fdictControllerState(
             requestHttp)
@@ -147,7 +147,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
     ):
         from .. import agentCouncilChat
         sName, sProjectRepoPath = councilRouteGuards.ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)
         dictControllerState = councilRouteGuards.fdictControllerState(
             requestHttp)

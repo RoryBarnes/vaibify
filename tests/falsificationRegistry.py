@@ -13776,7 +13776,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/councilRoutes.py',
         old=(
-            '            dictCtx, requestHttp, sContainerId, sProjectDirectory)\n'
+            '            dictCtx, requestHttp, sContainerId, sProjectDirectory,'
+            ' sCampaignId)\n'
             '        dictStore = fdictCampaignStore(requestHttp)\n'
             '        dictRegistry = fdictCouncilRegistry(requestHttp)\n'
             '\n'
@@ -13785,7 +13786,8 @@ def _fdictEntry(sRel):
             '        async def _fdictExecuteRespond():'
         ),
         new=(
-            '            dictCtx, requestHttp, sContainerId)\n'
+            '            dictCtx, requestHttp, sContainerId,'
+            ' sCampaignId=sCampaignId)\n'
             '        dictStore = fdictCampaignStore(requestHttp)\n'
             '        dictRegistry = fdictCouncilRegistry(requestHttp)\n'
             '\n'
@@ -14857,6 +14859,129 @@ def _fdictEntry(sRel):
             '            agentCouncilResolution.fdictDescribeStoppingPoint'
             '(\n'
             '                jsonCampaign))'
+        ),
+    ),
+
+    # --- 2026-08-29: a campaign IS the answer to "which directory" ---
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_a_campaign_scoped_route_reads_the_repo_off_its_own_campaign'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        # The defect itself: every campaign-scoped route goes back to
+        # re-deriving the repository from the project, and a container
+        # tracking several directories refuses all sixteen of them.
+        old=(
+            '    sBoundRepoPath = fsRepositoryBoundToCampaign(\n'
+            '        fdictCampaignStore(requestHttp), sContainerId, '
+            'sCampaignId)\n'
+            '    if sBoundRepoPath:\n'
+            '        return sName, sBoundRepoPath\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_the_bound_repository_is_the_record_s_and_not_a_tracked_guess'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        # The lookup stays, but answers about a directory the project
+        # happens to track instead of the one the record names -- the
+        # plausible-looking wrong answer an absence assertion misses.
+        old='    if not sRecorded:\n        return ""\n',
+        new='    sRecorded = ""\n    if not sRecorded:\n        return ""\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_a_campaign_repo_path_outside_the_workspace_is_refused'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        # The stored path is trusted rather than validated, so a record
+        # naming a path outside the project root becomes a container
+        # path the council operates on.
+        old=(
+            '    sRoot = posixpath.normpath(projectRoots.fsResolveProjectRoot(\n'
+            '        sContainerId, WORKSPACE_ROOT))\n'
+            '    sNormalized = fsValidatePathWithinRoot(sRecorded, sRoot)\n'
+            '    return "" if sNormalized == sRoot else sNormalized'
+        ),
+        new='    return sRecorded',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_an_unknown_campaign_id_still_gets_the_directory_refusal'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        # Refusing inside the lookup answers a distinguishable code for
+        # a mistyped id, leaking that resolution got further than an
+        # unknown campaign should.
+        old='    if not sRecorded:\n        return ""\n',
+        new=(
+            '    if not sRecorded:\n'
+            '        raise HTTPException(404, "no council campaign")\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRoutes.py::'
+            'test_resume_and_retry_reach_their_gates_over_real_http'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # Both handlers read the turn budget from a name they never
+        # bind -- NameError, 500, on every resume and every retry.
+        old=(
+            '            jsonCampaign = fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled(sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(jsonCampaign))'
+        ),
+        new=(
+            '            fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled(sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(dictCampaign))'
+        ),
+        iExpectedOccurrences=2,
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilAcceptCarriesItsDirectory.py::'
+            'testAcceptingAPlanSendsTheCampaignsOwnDirectory'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The reported instance: the accept button composes a bare URL,
+        # which the backend fix now tolerates -- so only a test that
+        # reads the SENT request can see it.
+        old=(
+            '                _fsRoute("/" + _dictState.sActiveCampaignId\n'
+            '                    + "/accept-plan")\n'
+            '                + _fsDirectoryQuery("?"));'
+        ),
+        new=(
+            '                _fsRoute("/" + _dictState.sActiveCampaignId\n'
+            '                    + "/accept-plan"));'
         ),
     ),
 ]
