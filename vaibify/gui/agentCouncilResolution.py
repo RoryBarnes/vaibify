@@ -41,8 +41,10 @@ from .agentCouncilCampaign import (
     S_VERDICT_UNDETERMINED,
 )
 from .agentCouncilCharter import (
+    S_NOTED_FINDINGS_KEY,
     S_PHASE_CONFORMANCE_REVIEW,
     S_PHASE_CROSS_REVIEW,
+    S_PHASE_DELIBERATION_SUMMARY,
     S_PHASE_IMPLEMENTATION,
     S_PHASE_PROPOSAL,
     S_PHASE_SYNTHESIS,
@@ -58,6 +60,7 @@ __all__ = [
     "TUPLE_DECISION_TIER_ORDER",
     "fdictDescribeActivePhase",
     "flistDescribeHeldQuestions",
+    "flistDescribeNotedFindings",
     "flistGroupGateQuestionsIntoDecisions",
 ]
 
@@ -176,6 +179,47 @@ def flistDescribeHeldQuestions(dictCampaign):
     if not listRounds:
         return []
     return list(listRounds[-1].get("listDeferredQuestions") or [])
+
+
+def flistDescribeNotedFindings(dictCampaign):
+    """Return the notes participants recorded under charter clause 6.
+
+    Derived on READ from the durable turn records, like the decision
+    grouping beside it: nothing is written at gate-open, so a campaign
+    already sitting at a gate gains its notes the moment the hub
+    carrying this code serves it, and a note cannot go stale against
+    the record it came from.
+
+    Every round is scanned rather than the gate's own. A note is not a
+    question — re-reading one costs the researcher a line, while losing
+    one is precisely the failure this channel exists to end — and the
+    closing deliberation-summary round holds no peer turns at all, so a
+    gate-round scan would show nothing on the very gate that most needs
+    them. Identical texts collapse; the first author to say it keeps
+    the attribution.
+    """
+    listNoted = []
+    setSeenTexts = set()
+    for dictRound in dictCampaign.get("listRounds") or []:
+        for sPhase, listTurnRecords in sorted(
+                (dictRound.get("dictTurnsByPhase") or {}).items()):
+            for dictTurnRecord in listTurnRecords:
+                if dictTurnRecord.get("sStatus") != "completed":
+                    continue
+                for sNoteText in (dictTurnRecord.get("dictResult")
+                                  or {}).get(S_NOTED_FINDINGS_KEY) or []:
+                    sNoteText = str(sNoteText).strip()
+                    if not sNoteText or sNoteText in setSeenTexts:
+                        continue
+                    setSeenTexts.add(sNoteText)
+                    listNoted.append({
+                        "sNoteText": sNoteText,
+                        "sRaisedByParticipantId":
+                            dictTurnRecord.get("sParticipantId", ""),
+                        "sPhase": sPhase,
+                        "iRoundNumber": dictRound.get("iRoundNumber", 0),
+                    })
+    return listNoted
 
 
 def fdictDescribeActivePhase(dictCampaign):
@@ -523,6 +567,9 @@ LIST_IMPLEMENTATION_FIRST_ROUND_PHASES = [
     "implementation", "conformanceReview", "synthesis", "veto"]
 LIST_IMPLEMENTATION_LATER_ROUND_PHASES = [
     "conformanceReview", "synthesis", "veto"]
+# The closing round of a council that never converged: one phase, both
+# kinds. Mirrored here under the same contract as the lists above.
+LIST_DELIBERATION_SUMMARY_ROUND_PHASES = [S_PHASE_DELIBERATION_SUMMARY]
 
 
 def fdictDescribeStoppingPoint(dictCampaign):
@@ -748,7 +795,9 @@ def _fsFindNextPhase(dictRound, bImplementationWalk=False):
                  if bImplementationWalk else LIST_FIRST_ROUND_PHASES)
     listLater = (LIST_IMPLEMENTATION_LATER_ROUND_PHASES
                  if bImplementationWalk else LIST_LATER_ROUND_PHASES)
-    listOrder = (["veto"] if dictRound.get("bFinalVetoRound")
+    listOrder = (LIST_DELIBERATION_SUMMARY_ROUND_PHASES
+                 if dictRound.get("bDeliberationSummaryRound")
+                 else ["veto"] if dictRound.get("bFinalVetoRound")
                  else listFirst
                  if dictRound.get("iRoundNumber") == 1
                  else listLater)

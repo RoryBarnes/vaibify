@@ -7339,6 +7339,94 @@ body.council-workspace-open #mainLayout {
     margin-top: 8px;
 }
 
+.council-exits-why {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+/* Abandoning is not a third way forward, so it does not sit in the
+   exits row where it read as one. */
+.council-abandon {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.council-abandon h5 {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* The closing artifact of a council that never converged. Bordered
+   like a quotation rather than like the gate, because it is a reading
+   surface with nothing to answer. */
+.council-deliberation-summary {
+    margin: 8px 0 16px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--text-muted);
+    background: var(--bg-input);
+}
+
+.council-deliberation-summary h5 {
+    margin: 0 0 4px;
+    color: var(--text-secondary);
+}
+
+.council-deliberation-summary h6 {
+    margin: 12px 0 4px;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.council-summary-caveat,
+.council-summary-absent {
+    margin: 0 0 8px;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+/* Clause 6's notes channel, rendered BESIDE the decision gate. The
+   gate is a bordered orange card of numbered questions with answer
+   boxes; this is a flat bulleted aside with none. The two must be
+   tellable apart before either is read. */
+.council-notes {
+    display: block;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--border-color);
+    background: transparent;
+}
+
+.council-notes h4 {
+    margin: 0 0 4px;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.council-notes-why {
+    margin: 0 0 8px;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.council-notes-list {
+    list-style: disc;
+    margin: 0 0 0 20px;
+    padding-left: 4px;
+    color: var(--text-secondary);
+}
+
 .council-plan-text {
     background: var(--bg-input);
     border: 1px solid var(--border-color);

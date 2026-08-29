@@ -837,3 +837,68 @@ def test_convene_names_the_agent_whose_model_is_unchosen():
     # the ruling, not an oversight.
     sSeed = _fsFunctionBody(sSource, "_fnSeedDraftParticipants")
     assert 'sRequestedModel: ""' in sSeed
+
+
+def test_notes_render_beside_the_gate_not_inside_it():
+    """Charter 1.7.0's notes channel has a rendering, and a distinct one.
+
+    The gate is a numbered question list with answer boxes; a note is a
+    finding that needs no answer. Rendered inside the gate it would read
+    as one more thing the researcher must decide, which is the whole
+    defect the field exists to remove — four items opening "Emphasis,
+    not a decision: ..." arrived as questions in a live gate because
+    there was nowhere else to put them.
+    """
+    sSource = _fsCouncilSource()
+    assert "_fsNotedFindingsPanel" in sSource
+    assert "listGateNotes" in sSource
+    assert "sNoteText" in sSource
+    # A SIBLING of the gate card, appended after it — the panel is
+    # concatenated onto the card rather than composed into it.
+    sNeedsHuman = _fsFunctionBody(sSource, "_fsNeedsHumanCard")
+    assert "_fsNotedFindingsPanel(dictCampaign)" in sNeedsHuman
+    sPanel = _fsFunctionBody(sSource, "_fsNotedFindingsPanel")
+    # Nothing to answer with, and told so in as many words.
+    assert "textarea" not in sPanel
+    assert "council-decision-answer" not in sPanel
+    assert "needs an answer" in sPanel
+    # Distinguishable at a glance: its own container class and an
+    # unnumbered list, where the gate's questions are <ol> numbered.
+    assert "council-notes" in sPanel
+    assert "<ul class=\\\"council-notes-list\\\">" in sPanel
+    sCss = _fsReadStaticFile("styleMain.css")
+    assert ".council-notes {" in sCss
+    assert ".council-notes-list {" in sCss
+
+
+def test_the_exhausted_gate_shows_a_summary_never_called_a_plan():
+    """A council that never converged produced no plan, and must not
+    appear to have produced one (researcher direction 2026-08-29)."""
+    sSource = _fsCouncilSource()
+    assert "_fsDeliberationSummarySection" in sSource
+    sSection = _fsFunctionBody(sSource, "_fsDeliberationSummarySection")
+    assert "dictDeliberationSummary" in sSection
+    assert "Deliberation summary" in sSection
+    assert "not a plan" in sSection
+    for sSummaryKey in ("listPositionsProposed", "listPointsOfDisagreement",
+                        "listEvidenceBehindEachPosition"):
+        assert sSummaryKey in sSection, sSummaryKey
+    # The heading a summary is rendered under must never be "Plan": the
+    # candidate plan's own renderer owns that word.
+    assert "<h5>Plan</h5>" not in sSection
+
+
+def test_the_exhausted_gate_offers_two_ways_forward_and_an_abandon():
+    """Exits are two; rejecting is abandoning, not a third way forward."""
+    sSource = _fsCouncilSource()
+    sCard = _fsFunctionBody(sSource, "_fsExhaustedRoundCard")
+    iExits = sCard.find("council-exits")
+    iAbandon = sCard.find("council-abandon")
+    assert 0 < iExits < iAbandon, sCard
+    sForward = sCard[iExits:iAbandon]
+    assert "btnCouncilGrantRound" in sForward
+    assert "btnCouncilResolveOverride" in sForward
+    assert "Implement as-is" in sForward
+    assert "btnCouncilReject" not in sForward, (
+        "abandoning must not sit among the ways forward")
+    assert "btnCouncilReject" in sCard[iAbandon:]

@@ -97,9 +97,12 @@ from .agentCouncilCharter import (
 )
 from .agentCouncilCharter import (
     S_PHASE_CONFORMANCE_REVIEW,
+    S_PHASE_DELIBERATION_SUMMARY,
     S_PHASE_IMPLEMENTATION,
+    fbCharterAsksForNotedFindings,
     fbIsImplementationCampaign,
     fbTurnRequiresPatchSchema,
+    fbTurnRequiresSummarySchema,
 )
 from .agentCouncilEvidence import EvidenceDisciplineMixin
 from .agentCouncilResolution import RoundResolutionMixin
@@ -132,6 +135,7 @@ __all__ = [
     "S_GATE_EXHAUSTED_ROUNDS",
     "S_GATE_QUORUM_SHORTFALL",
     "S_PHASE_CROSS_REVIEW",
+    "S_PHASE_DELIBERATION_SUMMARY",
     "S_PHASE_PROPOSAL",
     "S_PHASE_SYNTHESIS",
     "S_PHASE_VETO",
@@ -391,9 +395,14 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         listRounds = self.dictCampaign["listRounds"]
         if listRounds and not listRounds[-1]["sResolution"]:
             return listRounds[-1]
-        iOpenedRounds = len([dictRound for dictRound in listRounds
-                             if not dictRound["bFinalVetoRound"]])
+        iOpenedRounds = len([
+            dictRound for dictRound in listRounds
+            if not dictRound["bFinalVetoRound"]
+            and not dictRound.get("bDeliberationSummaryRound")])
         if listRounds and iOpenedRounds >= self._fiRoundBudget():
+            dictSummaryRound = self._fdictOpenDeliberationSummaryRound()
+            if dictSummaryRound is not None:
+                return dictSummaryRound
             self._fnOpenExhaustedGate()
             return None
         dictRound = {
@@ -426,9 +435,56 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                           {"iRoundNumber": dictRound["iRoundNumber"]})
         return dictRound
 
+    def _fdictOpenDeliberationSummaryRound(self):
+        """Open the closing summary round, or None if one already ran.
+
+        A council that ran out of rounds without converging used to
+        simply stop, handing the researcher an objection list and
+        nothing that said what the argument had been about (researcher
+        direction 2026-08-29). It now spends one more chairbot turn
+        writing a DELIBERATION SUMMARY first.
+
+        The round is excluded from the budget for the same reason the
+        final veto round is: counting it would consume the grant the
+        researcher may be about to make. It is keyed to the budget it
+        closes, so granting more rounds and exhausting them again earns
+        a fresh summary of the argument as it then stands, while a
+        re-entry into an already-summarised exhaustion does not loop.
+        """
+        iBudget = self._fiRoundBudget()
+        for dictRound in self.dictCampaign["listRounds"]:
+            if (dictRound.get("bDeliberationSummaryRound")
+                    and dictRound.get("iRoundBudgetAtSummary") == iBudget):
+                return None
+        dictRound = {
+            "iRoundNumber": len(self.dictCampaign["listRounds"]) + 1,
+            "bFinalVetoRound": False,
+            "bDeliberationSummaryRound": True,
+            "iRoundBudgetAtSummary": iBudget,
+            "dictTurnsByPhase": {},
+            "bSynthesisSettled": True,
+            "sSynthesisAuthorId": "",
+            "bChairbotSubstituted": False,
+            # None, so _fnOpenFinalVetoRound keeps reading the last
+            # round that actually froze a voter set.
+            "listFrozenVoterIds": None,
+            "dictVetoVerdicts": {},
+            "listUnresolvedObjections": [],
+            "listDeferredQuestions": [],
+            "dictPhaseAttempt": None,
+            "listRetiredAttempts": [],
+            "sResolution": "",
+        }
+        self.dictCampaign["listRounds"].append(dictRound)
+        self._fnEmitEvent("deliberationSummaryRoundOpened",
+                          {"iRoundNumber": dictRound["iRoundNumber"]})
+        return dictRound
+
     def _fsNextPhaseForRound(self, dictRound):
         bImplementationWalk = fbIsImplementationCampaign(self.dictCampaign)
-        if dictRound["bFinalVetoRound"]:
+        if dictRound.get("bDeliberationSummaryRound"):
+            listPhaseOrder = [S_PHASE_DELIBERATION_SUMMARY]
+        elif dictRound["bFinalVetoRound"]:
             listPhaseOrder = [S_PHASE_VETO]
         elif bImplementationWalk and dictRound["iRoundNumber"] == 1:
             listPhaseOrder = [S_PHASE_IMPLEMENTATION,
@@ -458,6 +514,8 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self._fnRecordPhaseInFlight(dictRound, sPhase)
         if sPhase == S_PHASE_SYNTHESIS:
             await self._fnRunSynthesisPhase(dictRound)
+        elif sPhase == S_PHASE_DELIBERATION_SUMMARY:
+            await self._fnRunDeliberationSummaryPhase(dictRound)
         elif sPhase == S_PHASE_IMPLEMENTATION:
             await self._fnRunImplementationPhase(dictRound)
         elif sPhase == S_PHASE_VETO:
@@ -543,7 +601,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
 
     def _ftDescribeAttemptEligibility(self, dictRound, sPhase):
         """Return (ordered eligible participant ids, completion rule)."""
-        if sPhase == S_PHASE_SYNTHESIS:
+        if sPhase in (S_PHASE_SYNTHESIS, S_PHASE_DELIBERATION_SUMMARY):
             sChairbotId = self.dictCampaign["sChairbotParticipantId"]
             listAuthorOrder = sorted(
                 self._flistActiveParticipants(),
@@ -779,6 +837,16 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 self._fnTransition(S_STATE_INTERRUPTED,
                                    "turnSettledIndeterminately")
                 return
+        if sPhase == S_PHASE_DELIBERATION_SUMMARY:
+            # The closing turn of a council that never converged: the
+            # gate opens HERE rather than inside the phase, so the
+            # crashed-mid-settlement recovery path
+            # (fdictReplaySettlementFromTurnRecords) opens it too, and
+            # a hub that died between the summary turn and the gate
+            # does not resume into a round with nothing left to run.
+            self._fnSettleAttemptOutcome(dictRound, "gateOpened")
+            self._fnOpenExhaustedGate()
+            return
         if sPhase == S_PHASE_VETO:
             # The veto attempt's outcome is the ROUND's resolution,
             # written by _fnResolveRoundTermination when the walk
@@ -885,9 +953,19 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             self.dictConnections[dictParticipant["sParticipantId"]],
             "dictModelIdentity", None) or {})
         if dictTurnRecord["sStatus"] == "failed":
-            dictParticipant["bFailed"] = True
-            dictParticipant["sFailureReason"] = (
-                dictTurnRecord["sFailureReason"])
+            # A failed CLOSING turn retires nobody. Every other phase
+            # retires the participant because the council still has
+            # work for it and a broken model must not carry that work;
+            # the deliberation summary is the last turn of a spent
+            # council, and retiring its authors emptied the roster —
+            # so the researcher's own next move, a final veto on the
+            # candidate they chose to override, met a quorum shortfall
+            # instead of voters. The failed TURN record stays, as it
+            # always does.
+            if sPhase != S_PHASE_DELIBERATION_SUMMARY:
+                dictParticipant["bFailed"] = True
+                dictParticipant["sFailureReason"] = (
+                    dictTurnRecord["sFailureReason"])
         elif dictTurnRecord["dictResult"] is not None:
             self._fnProcessEvidenceClaims(dictTurnRecord)
         dictRound["dictTurnsByPhase"].setdefault(sPhase, []).append(
@@ -1000,7 +1078,10 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         dictValidation = fdictValidateTurnResult(
             dictRawResult,
             bRequirePatch=fbTurnRequiresPatchSchema(
-                self.dictCampaign, dictRequest["sPhase"]))
+                self.dictCampaign, dictRequest["sPhase"]),
+            bRequireNotes=fbCharterAsksForNotedFindings(self.dictCampaign),
+            bRequireSummary=fbTurnRequiresSummarySchema(
+                dictRequest["sPhase"]))
         if not dictValidation["bValid"]:
             return {"sOutcome": "invalid", "sCompletion": sCompletion,
                     "listProblems": dictValidation["listProblems"],
@@ -1047,6 +1128,60 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self._fnMarkAttemptTurnsSettled(dictRound)
         self._fnSettleAttemptOutcome(dictRound, "transitioned:failed")
         self._fnTransition(S_STATE_FAILED, "noParticipantCouldSynthesize")
+
+    async def _fnRunDeliberationSummaryPhase(self, dictRound):
+        """The chairbot's closing turn on a council that never converged.
+
+        Same pen and same fallback chain as synthesis, and deliberately
+        NOT stored in ``dictCandidatePlan``: what it writes is a
+        deliberation summary, and a record that filed it as a candidate
+        plan would make every reader downstream — the Plan tab, the
+        plan.md composer, the veto quotes — present a consensus that
+        does not exist.
+
+        A summary that cannot be written is recorded and the walk goes
+        on: the researcher's exits out of an exhausted council must not
+        depend on one more provider turn succeeding, which is exactly
+        the turn most likely to fail on a council that has already
+        spent its budget.
+        """
+        sChairbotId = self.dictCampaign["sChairbotParticipantId"]
+        listAuthorOrder = sorted(
+            self._flistActiveParticipants(),
+            key=lambda dictParticipant:
+                dictParticipant["sParticipantId"] != sChairbotId)
+        for dictParticipant in listAuthorOrder:
+            listQuotedMaterial = flistBuildQuotedMaterial(
+                self.dictCampaign, dictRound, S_PHASE_DELIBERATION_SUMMARY,
+                dictParticipant["sParticipantId"])
+            dictTurnRecord = await self._fdictExecuteTurn(
+                dictRound, dictParticipant, S_PHASE_DELIBERATION_SUMMARY,
+                listQuotedMaterial)
+            if dictTurnRecord["sStatus"] != "completed":
+                continue
+            bSubstituted = dictParticipant["sParticipantId"] != sChairbotId
+            if bSubstituted:
+                self._fnEmitEvent("chairbotSubstituted", {
+                    "sConfiguredChairbotId": sChairbotId,
+                    "sSubstituteAuthorId":
+                        dictParticipant["sParticipantId"]})
+            dictRound["sSynthesisAuthorId"] = (
+                dictParticipant["sParticipantId"])
+            dictRound["bChairbotSubstituted"] = bSubstituted
+            self.dictCampaign["dictDeliberationSummary"] = {
+                "iRoundNumber": dictRound["iRoundNumber"],
+                "sAuthorParticipantId": dictParticipant["sParticipantId"],
+                "bChairbotSubstituted": bSubstituted,
+                "dictResult": copy.deepcopy(dictTurnRecord["dictResult"]),
+            }
+            dictRound["sResolution"] = "deliberationSummarised"
+            self._fnEmitEvent("deliberationSummaryWritten", {
+                "iRoundNumber": dictRound["iRoundNumber"],
+                "sAuthorParticipantId": dictParticipant["sParticipantId"]})
+            return
+        dictRound["sResolution"] = "deliberationSummaryUnavailable"
+        self._fnEmitEvent("deliberationSummaryUnavailable", {
+            "iRoundNumber": dictRound["iRoundNumber"]})
 
     async def _fnRunImplementationPhase(self, dictRound):
         """Single-author patch production with the synthesis fallback

@@ -546,6 +546,13 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
         "listRounds": [],
         "iGrantedAdditionalRounds": 0,
         "dictCandidatePlan": None,
+        # What a council that never converged wrote instead of a plan
+        # (charter 1.7.0). Deliberately its OWN key: filing it beside
+        # the candidate would let every reader downstream present a
+        # consensus that was never reached. Not in
+        # LIST_CAMPAIGN_REQUIRED_KEYS — campaigns checkpointed by an
+        # earlier hub carry no such key — so every read uses .get.
+        "dictDeliberationSummary": None,
         "dictPendingHumanGate": None,
         "listResearcherDecisions": [],
         "listResearcherResponses": [],

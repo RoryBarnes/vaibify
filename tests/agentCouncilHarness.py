@@ -43,11 +43,21 @@ def fdictMakePatchTurnResult(sPatchUnifiedDiff="--- a/f\n+++ b/f\n",
     return dictResult
 
 
+def fdictMakeDeliberationSummaryResult(**dictOverrides):
+    """A schema-valid DELIBERATION SUMMARY result: base + summary keys."""
+    dictResult = fdictMakeTurnResult(**dictOverrides)
+    dictResult["listPositionsProposed"] = ["keep the integrator"]
+    dictResult["listPointsOfDisagreement"] = ["whether the cost is bounded"]
+    dictResult["listEvidenceBehindEachPosition"] = ["asserted: a benchmark"]
+    return dictResult
+
+
 def fdictMakeTurnResult(sVerdict="accept", listBlockingObjections=None,
                         listOpenQuestions=None, listEvidence=None,
                         listPlanItems=None, sSummary="a plausible summary",
                         listRejectedAlternatives=None,
                         listVerificationRequirements=None,
+                        listNotedFindings=None,
                         listStopConditions=None):
     """Build one schema-valid structured turn result (section 8.5).
 
@@ -70,6 +80,7 @@ def fdictMakeTurnResult(sVerdict="accept", listBlockingObjections=None,
         "listVerificationRequirements": list(
             listVerificationRequirements or []),
         "listStopConditions": list(listStopConditions or []),
+        "listNotedFindings": list(listNotedFindings or []),
         "listOpenQuestions": list(listOpenQuestions or []),
         "listBlockingObjections": list(listBlockingObjections or []),
     }

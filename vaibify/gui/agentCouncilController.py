@@ -1449,6 +1449,42 @@ def _fdictCollectResolvedModelsByParticipant(dictCampaign):
     return dictResolvedModels
 
 
+def _flistComposeDeliberationSummaryLines(dictCampaign):
+    """Render the closing summary of a council that never converged.
+
+    Written into the plan document because a plan the researcher
+    reached by overriding an unresolved council is exactly the plan
+    whose reader most needs to know the council never agreed — and the
+    heading says "deliberation summary", never "plan", in the one
+    artifact that outlives the dashboard.
+    """
+    dictSummary = dictCampaign.get("dictDeliberationSummary") or {}
+    dictResult = dictSummary.get("dictResult") or {}
+    if not dictResult:
+        return []
+    listLines = [
+        "## Deliberation summary — the council did NOT converge",
+        "",
+        "This council's rounds ran out with objections outstanding. The "
+        "text below is its chairbot's account of the argument, not an "
+        "agreed plan.",
+        "",
+        str(dictResult.get("sSummary", "")),
+        "",
+    ]
+    for sResultKey, sHeading in (
+            ("listPositionsProposed", "Positions proposed"),
+            ("listPointsOfDisagreement", "Where the council divided"),
+            ("listEvidenceBehindEachPosition",
+             "What each side had to stand on")):
+        listEntries = dictResult.get(sResultKey) or []
+        if listEntries:
+            listLines.append(f"### {sHeading}")
+            listLines.extend(f"- {jsonEntry}" for jsonEntry in listEntries)
+            listLines.append("")
+    return listLines
+
+
 def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan,
                           sStalenessStatement=""):
     """Render the council's own candidate into the plan.md text.
@@ -1528,6 +1564,14 @@ def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan,
              False),
             ("listCounterexamplesAttempted", "Counterexamples attempted",
              False),
+            # Charter clause 6's own words: a noted finding belongs "in
+            # your evidence and in the plan document". This heading is
+            # the plan-document half of that promise, and it is worded
+            # so a reader cannot mistake a note for something the
+            # researcher decided.
+            ("listNotedFindings",
+             "Noted findings — recorded for attention, not decided",
+             False),
             ("listOpenQuestions", "Open questions", False)):
         listItems = dictResult.get(sResultKey) or []
         if listItems:
@@ -1552,6 +1596,7 @@ def fsComposePlanMarkdown(dictCampaign, dictCandidatePlan,
                 "- " + str(dictObjection.get("sObjectionText", ""))
                 for dictObjection in listObjections)
             listLines.append("")
+    listLines.extend(_flistComposeDeliberationSummaryLines(dictCampaign))
     listDecisions = dictCampaign.get("listResearcherDecisions") or []
     if listDecisions:
         listLines.append("## Researcher decisions during deliberation")
