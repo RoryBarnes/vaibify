@@ -777,3 +777,52 @@ def testProseWithNoJsonStaysRawAndIsNotGuessedAt():
         dictExtracted = providers.fdictExtractStructuredResult(
             _flistResultStream(sText))
         assert dictExtracted.get("sRawResultText") == sText, sText[:40]
+
+
+def testADurationReadsInTheLargestUnitThatStaysInformative():
+    """"0.0 hours ago" reads as a broken clock, not a fresh expiry.
+
+    A live token that had lapsed four minutes earlier reported exactly
+    that, and the researcher reasonably suspected a units bug
+    (2026-08-28).
+    """
+    assert providers.fsDescribeDuration(30) == "less than a minute"
+    assert providers.fsDescribeDuration(60) == "1 minute"
+    assert providers.fsDescribeDuration(240) == "4 minutes"
+    assert providers.fsDescribeDuration(3600) == "1.0 hours"
+    assert providers.fsDescribeDuration(-240) == "4 minutes"
+
+
+def testALoginThatCannotOutliveOneTurnIsRefusedBeforeTheRunnerIsBuilt():
+    """Valid NOW is the wrong question when a turn runs for an hour.
+
+    A runner is handed the access token WITHOUT the refresh token, so
+    it cannot renew mid-turn: a token with minutes left sails through a
+    "is it valid?" pre-flight and dies partway through a turn, and the
+    record cannot attribute that to the login at all.
+    """
+    import time as moduleTime
+    fSoon = (moduleTime.time() + 270) * 1000.0
+    dictOauth = {"accessToken": "t", "expiresAt": fSoon}
+
+    # Valid now, and enough for a short turn: accepted.
+    providers._fnRefuseAnExpiredAccessToken(dictOauth, 60.0)
+
+    # Valid now, nowhere near an hour-long turn: refused, and the
+    # message names both numbers rather than a bare "expired".
+    with pytest.raises(providers.RunnerCredentialError) as error:
+        providers._fnRefuseAnExpiredAccessToken(dictOauth, 3600.0)
+    assert "expires in 4 minutes" in str(error.value)
+    assert "1.0 hours" in str(error.value)
+    assert "cannot renew mid-turn" in str(error.value)
+
+
+def testAnAlreadyExpiredLoginStillReportsItsOwnRemedy():
+    """The already-expired case keeps its own wording and remedy."""
+    import time as moduleTime
+    fPast = (moduleTime.time() - 270) * 1000.0
+    with pytest.raises(providers.RunnerCredentialError) as error:
+        providers._fnRefuseAnExpiredAccessToken(
+            {"accessToken": "t", "expiresAt": fPast}, 3600.0)
+    assert "expired 4 minutes ago" in str(error.value)
+    assert "WITHOUT the refresh token" in str(error.value)

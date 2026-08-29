@@ -7031,6 +7031,63 @@ details.council-decision-context > p {
     white-space: pre-wrap;
 }
 
+/* One recorded exchange, collapsed. The whole point is that a long
+   council's Q&A history is scannable at a glance and readable on
+   demand, so the summary is the affordance and the body is pre-wrapped
+   prose the researcher actually wrote. */
+.council-exchange {
+    margin: 0 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 6px 10px;
+}
+
+.council-exchange > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.council-exchange-rows {
+    margin: 8px 0 0;
+    padding-left: 20px;
+}
+
+.council-exchange-rows li {
+    margin: 0 0 10px;
+}
+
+.council-exchange-question {
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+}
+
+.council-exchange-answer {
+    margin: 4px 0 0;
+    padding-left: 10px;
+    border-left: 2px solid var(--highlight-color);
+    white-space: pre-wrap;
+}
+
+/* The decision pair leads; the exports are a quieter row beneath, so
+   the two that change nothing cannot be mistaken for peers of the two
+   that end the council. */
+.council-plan-decide {
+    margin-top: 12px;
+}
+
+.council-plan-exports {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.council-composer-done .council-hint {
+    margin-bottom: 8px;
+}
+
 .council-context-more {
     color: var(--highlight-color);
     font-size: 0.85em;
@@ -7207,6 +7264,15 @@ body.council-workspace-open #mainLayout {
 
 .council-chip-verifiedStopped {
     color: var(--color-pale-blue);
+}
+
+/* Uses an EXISTING palette entry rather than adding one: the palette is
+   a curated accessible set, and "one more status colour" is how such a
+   set stops being one. Distinct from --color-pale-blue so "finished"
+   and "verified stopped" do not read as the same chip. */
+.council-chip-finished {
+    color: var(--color-blue);
+    font-weight: 600;
 }
 
 .council-chip-failed {

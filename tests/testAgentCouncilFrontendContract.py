@@ -687,12 +687,59 @@ def test_researcher_decisions_render_prose_never_raw_json():
     decisions" in a live gate (2026-08-28). The renderer prefers the
     record's own prose fields and falls back to a kind translation —
     a JSON.stringify fallback is the defect, not a safety net.
+
+    The prose fallback now lives in ``_fsNonResponseDecisions``: the
+    researcherResponse records that used to share it render as
+    structured exchanges instead (2026-08-29), so the kinds that still
+    have no Q&A shape are the ones this guarantee is about.
     """
     sSource = _fsCouncilSource()
-    sBody = _fsFunctionBody(sSource, "_fsResearcherDecisions")
+    sBody = _fsFunctionBody(sSource, "_fsNonResponseDecisions")
     assert "sText" in sBody
     assert "sDecisionKind" in sBody
     assert "JSON.stringify" not in sBody
+    # And the entry point must still reach it, or the guarantee is
+    # preserved in a function nothing calls.
+    sEntry = _fsFunctionBody(sSource, "_fsResearcherDecisions")
+    assert "_fsNonResponseDecisions" in sEntry
+
+
+def test_answered_questions_render_as_structured_exchanges():
+    """A long council's Q&A history must be scannable, not one blob.
+
+    ``sText`` on a researcherResponse is a pre-rendered "ASKED: …
+    ANSWERED: …" string, and every exchange printed as a single list
+    item — read live as "a giant mass of unformatted text"
+    (2026-08-29). The structure was already on the record; this asserts
+    the renderer uses it rather than the blob.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsAnsweredExchanges")
+    assert "listResearcherResponses" in sBody
+    assert "listAnsweredQuestions" in sBody
+    assert "<details" in sBody, (
+        "each exchange collapses; the summary is the affordance")
+    assert "sText" not in sBody, (
+        "the pre-rendered blob is the thing being replaced")
+    # An answer may cover several questions, so the mapping is by
+    # membership. Pairing by position would misattribute answers.
+    sMap = _fsFunctionBody(sSource, "_fsAnswerForQuestion")
+    assert "listQuestionIds" in sMap
+    assert "indexOf" in sMap
+
+
+def test_the_models_own_decision_numbering_is_stripped_for_display():
+    """Vaibify numbers the decisions; the chairbot must not also.
+
+    A live gate rendered the heading "Decision 4" over a body opening
+    "1. DECISION 2" — three numbering authorities on one item
+    (2026-08-29). Only a LEADING self-label goes: a mid-sentence "as
+    DECISION 2 established" is a reference the reader needs.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fsHideInternalIdentifiers")
+    assert "DECISION" in sBody
+    assert "^" in sBody, "the strip must be anchored at the start"
 
 
 def test_excised_identifier_debris_is_swept_with_its_connectives():
@@ -766,3 +813,27 @@ def test_a_displayed_failure_drops_its_leading_machine_class():
     # and the participant's failure line.
     sParticipant = _fsFunctionBody(sSource, "_fsParticipantStatusChip")
     assert "_fsReadableFailureReason" in sParticipant
+
+
+def test_convene_names_the_agent_whose_model_is_unchosen():
+    """The model lists stay unchosen; the REFUSAL carries the meaning.
+
+    Researcher ruling (2026-08-28): no model is pre-selected, because
+    a default would tell every researcher which model vaibify thinks
+    is best. The cost is that the form can be submitted incomplete, so
+    the refusal must name the agent rather than let the server answer
+    with a field-path 422 the dashboard rendered as a bare number.
+    """
+    sSource = _fsCouncilSource()
+    sBody = _fsFunctionBody(sSource, "_fnConveneCouncil")
+    assert "_fsDescribeParticipantsMissingAModel" in sBody, (
+        "convene must refuse an incomplete participant before posting")
+    sRefusal = _fsFunctionBody(
+        sSource, "_fsDescribeParticipantsMissingAModel")
+    assert "Agent " in sRefusal, (
+        "name the participant in the vocabulary the workspace uses")
+    assert "sRequestedModel" in sRefusal
+    # And no default may creep into the seeding: an unchosen list is
+    # the ruling, not an oversight.
+    sSeed = _fsFunctionBody(sSource, "_fnSeedDraftParticipants")
+    assert 'sRequestedModel: ""' in sSeed

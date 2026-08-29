@@ -376,6 +376,20 @@ def testAnOversizedFileIsOfferedForExclusionNotJustRefused(
     )
     assert listSentBodies == []
     pageDashboard.fill("#councilQuestion", "Which sampler converges fastest?")
+    # The model lists open UNCHOSEN by ruling (2026-08-28), and the form
+    # now refuses an incomplete participant in words rather than letting
+    # the server answer a bare 422. This test convenes for real, so it
+    # must choose like a researcher does; without it the test asserted
+    # the exclusion rode a request the form no longer sends. See
+    # tests/browser/testCouncilConveneNeedsAModel.py.
+    listModels = pageDashboard.eval_on_selector(
+        '.council-model[data-index="0"]',
+        "el => Array.from(el.options).map(o => o.value).filter(v => v)")
+    assert listModels, "the model picker was never populated"
+    pageDashboard.select_option(
+        '.council-model[data-index="0"]', listModels[0])
+    pageDashboard.select_option(
+        '.council-model[data-index="1"]', listModels[-1])
     pageDashboard.click("#btnCouncilConvene")
     pageDashboard.wait_for_function(
         "() => window._listCouncilStartBodies.length > 0", timeout=8000)

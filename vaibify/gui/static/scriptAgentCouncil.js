@@ -1109,6 +1109,11 @@ var VaibifyAgentCouncil = (function () {
             if (elError) elError.textContent = "A question is required.";
             return;
         }
+        var sIncomplete = _fsDescribeParticipantsMissingAModel();
+        if (sIncomplete) {
+            if (elError) elError.textContent = sIncomplete;
+            return;
+        }
         var dictBody = {
             sQuestion: sQuestion,
             listParticipants: _flistBuildParticipantPayload(),
@@ -1221,6 +1226,38 @@ var VaibifyAgentCouncil = (function () {
                make the modal a lie. */
             iTurnWallClockSeconds: _fiPreferredTurnWallClockSeconds(),
         };
+    }
+
+    function _fsDescribeParticipantsMissingAModel() {
+        /* The model lists open UNCHOSEN on purpose (researcher ruling
+           2026-08-28): pre-selecting one would tell every researcher
+           which model vaibify thinks is best, and this product ranks
+           no models — the same reason the chairbot default is
+           "first configured", not "strongest".
+
+           The cost of that choice is that a form can be submitted
+           incomplete, so the refusal has to be the clear thing: the
+           server's own answer is a field-path validation error, and
+           before this it reached the researcher as "Request failed
+           (422)". Named per agent, in the vocabulary the workspace
+           already uses for them. */
+        var listMissing = [];
+        _dictState.listDraftParticipants.forEach(
+            function (dictDraft, iIndex) {
+                if (!dictDraft.sRequestedModel) {
+                    listMissing.push("Agent " + (iIndex + 1));
+                }
+            });
+        if (!listMissing.length) return "";
+        if (listMissing.length === 1) {
+            return "Choose a model for " + listMissing[0] +
+                " — every participant needs one before the council "
+                + "can convene.";
+        }
+        return "Choose a model for " + listMissing.slice(0, -1).join(", ") +
+            " and " + listMissing[listMissing.length - 1] +
+            " — every participant needs one before the council can "
+            + "convene.";
     }
 
     function _flistBuildParticipantPayload() {
@@ -2196,6 +2233,15 @@ var VaibifyAgentCouncil = (function () {
            inferred value therefore claims only "stopped". */
         if (SET_LIVE_STATES[dictCampaign.sState]) return "deliberating";
         if (SET_TERMINAL_STATES[dictCampaign.sState]) return "stopped";
+        /* A council that has produced its plan is FINISHED, and every
+           agent in it is finished with it. The fallback said "waiting"
+           — the word for an agent whose peer is still working — so a
+           completed council reported two idle agents beside a banner
+           announcing a plan was ready, and a researcher read the pair
+           as a stall (2026-08-29). "Finished" claims nothing about the
+           runner process, which is what sRunnerLifecycle reports and
+           what the absence probe alone can call stopped. */
+        if (dictCampaign.sState === "planReady") return "finished";
         return "waiting";
     }
 
@@ -2206,6 +2252,7 @@ var VaibifyAgentCouncil = (function () {
             cleaningUp: "cleaning up",
             verifiedStopped: "verified stopped",
             stopped: "stopped",
+            finished: "finished",
             waiting: "waiting",
         };
         return dictLabels[sLifecycle] || sLifecycle;
@@ -2235,7 +2282,80 @@ var VaibifyAgentCouncil = (function () {
     };
 
     function _fsResearcherDecisions(dictCampaign) {
-        var listDecisions = dictCampaign.listResearcherDecisions || [];
+        /* A researcherResponse's sText is a pre-rendered "ASKED: …
+           ANSWERED: …" blob, and every exchange of a long council was
+           printed as one unbroken <li> — reported live as "a giant mass
+           of unformatted text" (2026-08-29). The STRUCTURE was there
+           all along in listResearcherResponses, so each exchange
+           becomes a collapsed box a researcher opens to re-read one
+           question and the answer they gave it. Other decision kinds
+           (phaseRetried and friends) have no Q&A shape and keep the
+           one-line prose rendering. */
+        var sExchanges = _fsAnsweredExchanges(dictCampaign);
+        var sOther = _fsNonResponseDecisions(dictCampaign);
+        if (!sExchanges && !sOther) return "";
+        return "<h4>Your decisions</h4>" + sExchanges + sOther;
+    }
+
+    function _fsAnsweredExchanges(dictCampaign) {
+        var listResponses = dictCampaign.listResearcherResponses || [];
+        return listResponses.map(function (dictResponse, iIndex) {
+            var listQuestions = dictResponse.listAnsweredQuestions || [];
+            if (!listQuestions.length) return "";
+            var sRows = listQuestions.map(function (dictQuestion) {
+                return _fsOneExchangeRow(
+                    dictCampaign, dictResponse, dictQuestion);
+            }).join("");
+            return "<details class=\"council-exchange\">" +
+                "<summary>Questions to you (" + listQuestions.length +
+                ") — answered" +
+                (listResponses.length > 1
+                    ? ", exchange " + (iIndex + 1) : "") +
+                "</summary><ol class=\"council-exchange-rows\">" +
+                sRows + "</ol></details>";
+        }).join("");
+    }
+
+    function _fsOneExchangeRow(dictCampaign, dictResponse, dictQuestion) {
+        var sAnswer = _fsAnswerForQuestion(
+            dictResponse, dictQuestion.sQuestionId || "");
+        return "<li>" +
+            "<p class=\"council-exchange-question\">" +
+            _fsEscape(_fsHideInternalIdentifiers(
+                dictCampaign, dictQuestion.sQuestionText)) +
+            (dictQuestion.sRaisedByParticipantId
+                ? " <span class=\"council-question-author\">(" +
+                    _fsEscape(_fsAgentLabelForId(
+                        dictCampaign,
+                        dictQuestion.sRaisedByParticipantId)) + ")</span>"
+                : "") + "</p>" +
+            (sAnswer
+                ? "<p class=\"council-exchange-answer\">" +
+                    _fsEscape(sAnswer) + "</p>"
+                : "<p class=\"council-exchange-answer council-hint\">" +
+                    "No answer was recorded against this question.</p>") +
+            "</li>";
+    }
+
+    function _fsAnswerForQuestion(dictResponse, sQuestionId) {
+        /* One answer may cover several questions, so the mapping is
+           by membership, never by position. */
+        var listAnswers = dictResponse.listDecisionAnswers || [];
+        for (var iIndex = 0; iIndex < listAnswers.length; iIndex += 1) {
+            var listIds = listAnswers[iIndex].listQuestionIds || [];
+            if (listIds.indexOf(sQuestionId) >= 0) {
+                return listAnswers[iIndex].sAnswerText || "";
+            }
+        }
+        return "";
+    }
+
+    function _fsNonResponseDecisions(dictCampaign) {
+        var listDecisions = (
+            dictCampaign.listResearcherDecisions || []).filter(
+            function (dictDecision) {
+                return dictDecision.sDecisionKind !== "researcherResponse";
+            });
         if (!listDecisions.length) return "";
         var sRows = listDecisions.map(function (dictDecision) {
             /* Prose first, in preference order; NEVER raw JSON — a
@@ -2250,8 +2370,7 @@ var VaibifyAgentCouncil = (function () {
                     + "' was recorded");
             return "<li>" + _fsEscape(sProse) + "</li>";
         }).join("");
-        return "<h4>Your decisions</h4><ul class=\"council-decisions\">" +
-            sRows + "</ul>";
+        return "<ul class=\"council-decisions\">" + sRows + "</ul>";
     }
 
     /* ------------------------------------------------------------------ */
@@ -2523,6 +2642,15 @@ var VaibifyAgentCouncil = (function () {
         if (dictCampaign.bDeliberationLive === false) {
             return _fsResumeSurface(dictCampaign);
         }
+        /* planReady reached this branch and rendered "the council is
+           deliberating… you can stop after the current turn" UNDER a
+           banner saying a plan was ready — two contradictory claims on
+           one screen, with a Stop button offering to halt work that had
+           already finished (2026-08-29). A finished council says so and
+           points at the tab holding the outcome. */
+        if (dictCampaign.sState === "planReady") {
+            return _fsFinishedComposer(dictCampaign);
+        }
         return "<div class=\"council-composer\">" +
             "<p class=\"council-hint\">The council is deliberating. It " +
             "will pause here when it needs your decision; until then " +
@@ -2531,6 +2659,26 @@ var VaibifyAgentCouncil = (function () {
             "<button type=\"button\" id=\"btnCouncilStop\" " +
             "class=\"btn\">Stop council</button>" +
             "</div>";
+    }
+
+    function _fsFinishedComposer(dictCampaign) {
+        /* Deliberately NOT "reached consensus": the plan carries its own
+           result classification, and the Plan tab's banner says in as
+           many words that agreement is not evidence. Announcing
+           consensus here would contradict it one tab away. */
+        void dictCampaign;
+        return "<div class=\"council-composer council-composer-done\">" +
+            "<p class=\"council-hint\">This council has finished " +
+            "deliberating and produced a plan. Open the Plan tab to " +
+            "read it and decide what happens next.</p>" +
+            "<button type=\"button\" id=\"btnCouncilOpenPlanTab\" " +
+            "class=\"btn btn-primary\">Open the Plan tab</button>" +
+            "</div>";
+    }
+
+    function _fnSelectTab(sTab) {
+        _dictState.sActiveTab = sTab;
+        _fnRenderWorkspace();
     }
 
     function _fsResumeSurface(dictCampaign) {
@@ -2640,6 +2788,17 @@ var VaibifyAgentCouncil = (function () {
            question-x and question-y", a parenthetical holding only
            its connectives: "(waits on and )" rendered verbatim in a
            live gate (2026-08-28). */
+        /* The chairbot numbers its own decisions, and vaibify groups and
+           numbers them independently, so a gate rendered "Decision 4"
+           as a heading over a body opening "1. DECISION 2" — three
+           authorities disagreeing about one item (reported live
+           2026-08-29). Vaibify's grouping is the authority a researcher
+           acts on, so the model's leading self-label is noise and goes.
+           Anchored at the start on purpose: a mid-sentence "as DECISION
+           2 established" is a reference, not a label, and carries
+           meaning the reader needs. */
+        sCleaned = sCleaned.replace(
+            /^\s*(?:\d+[.)]\s*)?DECISION\s+\d+\s*/i, "");
         return sCleaned
             .replace(/\((?:\s|,|;|and|or|waits on)*\)/g, "")
             .replace(/\s{2,}/g, " ")
@@ -2996,15 +3155,36 @@ var VaibifyAgentCouncil = (function () {
         if (SET_TERMINAL_STATES[dictCampaign.sState]) {
             return _fsAcceptedPlanActions(dictCampaign);
         }
-        return "<div class=\"council-plan-actions\">" +
+        /* Four peer-looking buttons, of which exactly ONE changed
+           anything: Accept is a protocol transition, Reject is another,
+           and Copy and Download export byte-identical markdown to two
+           destinations. A researcher asked what the difference between
+           the first three was, which is the question a flat row of
+           equals invites (2026-08-29). The decisions lead and say what
+           they lead to; the exports are demoted and labelled as copies. */
+        return "<div class=\"council-plan-decide\">" +
+            "<p class=\"council-hint\">Accepting ends this council and " +
+            "unlocks <em>Implement plan with new council</em>, which " +
+            "convenes a second council to turn the plan into a reviewed " +
+            "patch. Rejecting ends it with no plan.</p>" +
+            "<div class=\"council-plan-actions\">" +
             "<button type=\"button\" id=\"btnCouncilAcceptPlan\" " +
             "class=\"btn btn-primary\">Accept and save plan</button>" +
-            "<button type=\"button\" id=\"btnCouncilCopyBrief\" " +
-            "class=\"btn\">Copy implementation brief</button>" +
-            "<button type=\"button\" id=\"btnCouncilDownloadPlan\" " +
-            "class=\"btn\">Download</button>" +
             "<button type=\"button\" id=\"btnCouncilRejectPlan\" " +
             "class=\"btn danger\">Reject</button>" +
+            "</div>" + _fsPlanExportRow() + "</div>";
+    }
+
+    function _fsPlanExportRow() {
+        /* Both send the SAME markdown; only the destination differs, so
+           the destination is what the labels name. */
+        return "<div class=\"council-plan-exports\">" +
+            "<span class=\"council-hint\">Take a copy (changes " +
+            "nothing):</span> " +
+            "<button type=\"button\" id=\"btnCouncilCopyBrief\" " +
+            "class=\"btn btn-small\">Copy to clipboard</button>" +
+            "<button type=\"button\" id=\"btnCouncilDownloadPlan\" " +
+            "class=\"btn btn-small\">Save as file</button>" +
             "</div>";
     }
 
@@ -3030,11 +3210,7 @@ var VaibifyAgentCouncil = (function () {
             "<button type=\"button\" id=\"btnCouncilImplementPlan\" " +
             "class=\"btn btn-primary\">Implement plan with new " +
             "council</button>" +
-            "<button type=\"button\" id=\"btnCouncilCopyBrief\" " +
-            "class=\"btn\">Copy implementation brief</button>" +
-            "<button type=\"button\" id=\"btnCouncilDownloadPlan\" " +
-            "class=\"btn\">Download</button>" +
-            "</div>";
+            "</div>" + _fsPlanExportRow();
     }
 
     function _fnOpenImplementationForm() {
@@ -3255,6 +3431,9 @@ var VaibifyAgentCouncil = (function () {
             });
         });
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
+        _fnBindElement("btnCouncilOpenPlanTab", function () {
+            _fnSelectTab("plan");
+        });
         _fnBindElement("btnCouncilResume", _fnResumeCouncil);
         _fnBindElement("btnCouncilRetry", _fnRetryCouncil);
         _fnBindElement("btnCouncilAnswer", _fnAnswerQuestion);

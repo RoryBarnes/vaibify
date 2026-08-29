@@ -86,6 +86,7 @@ __all__ = [
     "fsComposeCredentialContainerPath",
     "fbRunnerCredentialIsPresent",
     "fsExplainUnusableRunnerCredential",
+    "fsDescribeDuration",
     "fdictExtractRunnerCredential",
     "fsStageRunnerCredentialFile",
     "fbaBuildCredentialTarball",
@@ -628,7 +629,8 @@ def fsComposeCredentialContainerPath(sWorkspaceRoot):
 
 
 def fdictExtractRunnerCredential(connectionDocker, sContainerId,
-                                 sCredentialContainerPath):
+                                 sCredentialContainerPath,
+                                 fRequiredSecondsRemaining=0.0):
     """Extract the narrowest AUTHENTICATING document from the login file.
 
     Reads the persisted ``.credentials.json`` through the reviewed
@@ -678,14 +680,15 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
             S_ACCESS_TOKEN_KEY):
         raise RunnerCredentialError(
             "the persisted Claude login carries no access token to copy")
-    _fnRefuseAnExpiredAccessToken(dictOauth)
+    _fnRefuseAnExpiredAccessToken(dictOauth, fRequiredSecondsRemaining)
     return {
         "sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY],
         "listScopes": list(dictOauth.get(S_SCOPES_KEY) or []),
     }
 
 
-def _fnRefuseAnExpiredAccessToken(dictOauth):
+def _fnRefuseAnExpiredAccessToken(dictOauth,
+                                 fRequiredSecondsRemaining=0.0):
     """Refuse a token that has already expired, naming the remedy.
 
     A runner CANNOT recover from this on its own. Section 9.7 stages
@@ -713,15 +716,46 @@ def _fnRefuseAnExpiredAccessToken(dictOauth):
     if not isinstance(jsonExpiresAt, (int, float)) or jsonExpiresAt <= 0:
         return
     fSecondsRemaining = jsonExpiresAt / 1000.0 - time.time()
-    if fSecondsRemaining > 0:
+    if fSecondsRemaining <= 0:
+        raise RunnerCredentialError(
+            "the project's Claude login expired "
+            f"{fsDescribeDuration(abs(fSecondsRemaining))} ago, and a "
+            "council runner is given the access token WITHOUT the "
+            "refresh token, so it cannot renew it. Run `claude` in this "
+            "project's container to refresh the login, then convene."
+        )
+    if fSecondsRemaining >= fRequiredSecondsRemaining:
         return
+    # It is valid NOW and will not be for long. A runner cannot renew
+    # mid-turn, so a token with minutes left against an hour-long turn
+    # budget is a turn that dies partway through with nothing the
+    # record can attribute — the pre-flight used to pass it happily
+    # because "valid now" was the whole question it asked.
     raise RunnerCredentialError(
-        "the project's Claude login expired "
-        f"{abs(fSecondsRemaining) / 3600:.1f} hours ago, and a council "
-        "runner is given the access token WITHOUT the refresh token, so "
-        "it cannot renew it. Run `claude` in this project's container "
+        "the project's Claude login expires in "
+        f"{fsDescribeDuration(fSecondsRemaining)}, which is less than "
+        f"one turn's budget of {fsDescribeDuration(fRequiredSecondsRemaining)}"
+        ". A council runner is given the access token WITHOUT the "
+        "refresh token, so it cannot renew mid-turn and the turn would "
+        "die partway through. Run `claude` in this project's container "
         "to refresh the login, then convene."
     )
+
+
+def fsDescribeDuration(fSeconds):
+    """Render a duration in the largest unit that stays informative.
+
+    "0.0 hours ago" is what a token that lapsed four minutes earlier
+    reported, and it reads as a broken clock rather than a fresh
+    expiry — a researcher lost a round trip to it (2026-08-28).
+    """
+    fSeconds = abs(float(fSeconds))
+    if fSeconds < 60:
+        return "less than a minute"
+    if fSeconds < 3600:
+        iMinutes = int(fSeconds // 60)
+        return f"{iMinutes} minute" + ("" if iMinutes == 1 else "s")
+    return f"{fSeconds / 3600:.1f} hours"
 
 
 def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
@@ -749,7 +783,8 @@ def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
 
 
 def fsExplainUnusableRunnerCredential(connectionDocker, sContainerId,
-                                      sCredentialContainerPath):
+                                      sCredentialContainerPath,
+                                      fRequiredSecondsRemaining=0.0):
     """Return WHY the login cannot be copied, or "" when it can.
 
     The same probe as the boolean above and the same discard — only
@@ -765,7 +800,8 @@ def fsExplainUnusableRunnerCredential(connectionDocker, sContainerId,
     """
     try:
         fdictExtractRunnerCredential(
-            connectionDocker, sContainerId, sCredentialContainerPath)
+            connectionDocker, sContainerId, sCredentialContainerPath,
+            fRequiredSecondsRemaining)
     except RunnerCredentialError as errorCredential:
         return str(errorCredential)
     return ""

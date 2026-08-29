@@ -784,6 +784,20 @@ def _fnRegisterPollEvents(app, dictCtx):
         return dictEvents
 
 
+def _ffTurnBudgetSeconds(dictCampaign):
+    """Return the turn wall-clock budget a login must outlive.
+
+    The campaign's OWN setting, never the default, because the message
+    names the number: a researcher who raised the budget to four hours
+    must not be told their token is short of one.
+    """
+    dictSettings = (dictCampaign or {}).get("dictSettings") or {}
+    return float(dictSettings.get(
+        "iTurnWallClockSeconds",
+        agentCouncilCampaign.DICT_DEFAULT_SETTINGS[
+            "iTurnWallClockSeconds"]))
+
+
 def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
                             sProjectRepoPath):
     """Load the sealed accepted plan an implementation council implements.
@@ -878,7 +892,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                _ffTurnBudgetSeconds(dictCampaign))
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
@@ -913,7 +928,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
 
 
 async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
-                                      sContainerId, sCampaignId):
+                                      sContainerId, sCampaignId,
+                                      dictStore=None):
     """Build runtime-rebuild materials when the hub restarted, else None.
 
     While a runtime is live the common case pays nothing. When it died
@@ -930,8 +946,12 @@ async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
         return None
     sImageReference = await ffnBuildImageResolver(dictCtx, sContainerId)()
     fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+    jsonCampaign = (
+        agentCouncilStore.fjsonGetCampaignRecord(dictStore, sCampaignId)
+        if dictStore is not None else None)
     await asyncio.to_thread(
-        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+        _ffTurnBudgetSeconds(jsonCampaign))
     return {"sImageReference": sImageReference,
             "fsStageRunnerCredential": ffnBuildCredentialStager(
                 dictCtx, sContainerId)}
@@ -969,7 +989,8 @@ def _fnRegisterResume(app, dictCtx):
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                _ffTurnBudgetSeconds(dictCampaign))
             dictResumed = (
                 await agentCouncilController.fdictResumeCampaignDeliberation(
                     dictControllerState, dictStore, dictRegistry,
@@ -1017,7 +1038,8 @@ def _fnRegisterRetry(app, dictCtx):
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                _ffTurnBudgetSeconds(dictCampaign))
             dictRetried = (
                 await agentCouncilController.fdictRetryCampaignFailedPhase(
                     dictControllerState, dictStore, dictRegistry,
@@ -1065,7 +1087,7 @@ def _fnRegisterRespond(app, dictCtx):
                      for dictAnswer in request.listDecisionAnswers],
                     dictRebuildMaterials=await _fdictBuildRebuildMaterials(
                         dictCtx, dictControllerState, sContainerId,
-                        sCampaignId)))
+                        sCampaignId, dictStore)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("researcherResponded",
@@ -1146,7 +1168,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
                     sCampaignId, request.iGrantedRounds,
                     dictRebuildMaterials=await _fdictBuildRebuildMaterials(
                         dictCtx, dictControllerState, sContainerId,
-                        sCampaignId)))
+                        sCampaignId, dictStore)))
 
         return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
@@ -1180,7 +1202,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
                      in request.dictDispositionByObjectionId.items()},
                     dictRebuildMaterials=await _fdictBuildRebuildMaterials(
                         dictCtx, dictControllerState, sContainerId,
-                        sCampaignId)))
+                        sCampaignId, dictStore)))
 
         return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,

@@ -429,12 +429,20 @@ def testAnUnprovenRunnerNetworkRefusesRetryAndNamesTheRemedy(
         "dictCampaign": {}, "bLaunchInProgress": False, "taskDrive": None,
         "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net-1"}},
     }
+    # Explicit: the second attempt RUNS and still cannot prove absence.
+    # Left implicit, this test passed because an incomplete fixture made
+    # the teardown raise — exercising the exception path by accident
+    # while claiming to test the refusal.
+    monkeypatch.setattr(
+        agentCouncilController, "_fbReleaseRunnerAccessResources",
+        lambda dictRuntime: False)
 
     with pytest.raises(agentCouncilController.CouncilCommandError) as error:
         _fdictRetryToCompletion(
             dictStore, dictRegistry, dictControllerState, sCampaignId,
             monkeypatch, [])
     assert "could not be proven gone" in str(error.value)
+    assert "even on a second attempt" in str(error.value)
     assert "Restart the hub" in str(error.value)
 
 
@@ -590,3 +598,63 @@ def testAParticipantThatFailsIdenticallyStaysRetired():
 
     assert listReinstated == []
     assert dictBeta["bFailed"] is True
+
+
+def testASecondTeardownAttemptClearsAnUnprovenNetworkAndRetryProceeds(
+        tmp_path, monkeypatch):
+    """The first teardown failed at a bad moment; the second succeeds.
+
+    Live (2026-08-28): everything died at once, the network's removal
+    could not be proven while a proxy endpoint was still detaching,
+    and nothing ever asked again — so every later continuation refused
+    and demanded a hub restart over a network sitting there with zero
+    endpoints, removable.
+    """
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, _fdictDriveToFailedSynthesis("rateLimit")))
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "dictCampaign": {}, "bLaunchInProgress": False, "taskDrive": None,
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net-1"}},
+    }
+    listAttempts = []
+
+    def _fbSettleOnTheSecondAsk(dictRuntime):
+        listAttempts.append("asked")
+        dictRuntime["dictRunnerAccess"] = None
+        return True
+
+    monkeypatch.setattr(
+        agentCouncilController, "_fbReleaseRunnerAccessResources",
+        _fbSettleOnTheSecondAsk)
+
+    dictRetried = _fdictRetryToCompletion(
+        dictStore, dictRegistry, dictControllerState, sCampaignId,
+        monkeypatch, [])
+
+    assert listAttempts == ["asked"], "the teardown was never re-attempted"
+    assert dictRetried["bRetried"] is True
+
+
+def testATeardownThatRaisesRefusesRatherThanEscapingAsAServerError(
+        tmp_path, monkeypatch):
+    """A raising teardown proved nothing — same answer, not a 500."""
+    dictStore, dictRegistry, dictControllerState, sCampaignId = (
+        _tPlantCrashedCampaign(
+            tmp_path, _fdictDriveToFailedSynthesis("rateLimit")))
+    dictControllerState["dictCampaignRuntime"][sCampaignId] = {
+        "dictCampaign": {}, "bLaunchInProgress": False, "taskDrive": None,
+        "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net-1"}},
+    }
+
+    def _fnRaise(dictRuntime):
+        raise RuntimeError("the daemon is unreachable")
+
+    monkeypatch.setattr(
+        agentCouncilController, "_fbReleaseRunnerAccessResources", _fnRaise)
+
+    with pytest.raises(agentCouncilController.CouncilCommandError,
+                       match="even on a second attempt"):
+        _fdictRetryToCompletion(
+            dictStore, dictRegistry, dictControllerState, sCampaignId,
+            monkeypatch, [])

@@ -799,7 +799,7 @@ async def fdictResumeCampaignDeliberation(
     dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
         dictCampaign)
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "resume")
-    _fnDiscardSettledRuntimeOrRefuse(
+    await _fnDiscardSettledRuntimeOrRefuse(
         dictControllerState, sCampaignId, "resume")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "resume")
@@ -902,7 +902,7 @@ async def fdictRetryCampaignFailedPhase(
     dictCampaign = agentCouncilCampaign.fdictRestoreCampaignFromMetadata(
         dictCampaign)
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "retry")
-    _fnDiscardSettledRuntimeOrRefuse(
+    await _fnDiscardSettledRuntimeOrRefuse(
         dictControllerState, sCampaignId, "retry")
     _fnRefuseWhenResourceAdmissionClosed(
         dictControllerState, dictCampaign, "retry")
@@ -964,8 +964,8 @@ async def fdictRetryCampaignFailedPhase(
             "iRetiredAttemptNumber": dictAttempt["iAttemptNumber"]}
 
 
-def _fnDiscardSettledRuntimeOrRefuse(dictControllerState, sCampaignId,
-                                     sAction):
+async def _fnDiscardSettledRuntimeOrRefuse(dictControllerState,
+                                           sCampaignId, sAction):
     """Drop an inert runtime record, or refuse over an unproven one.
 
     A runtime stays REGISTERED after its drive settles, so an
@@ -989,11 +989,32 @@ def _fnDiscardSettledRuntimeOrRefuse(dictControllerState, sCampaignId,
             f"cannot {sAction}: this campaign's runtime is still being "
             "built; wait for it to settle")
     if dictRuntime.get("dictRunnerAccess") is not None:
-        raise CouncilCommandError(
-            f"cannot {sAction}: a previous attempt's runner network "
-            "could not be proven gone, so its resources are still "
-            "accounted for. Restart the hub — its startup sweep "
-            "settles them — then retry.")
+        # RE-ATTEMPT before refusing. The teardown is idempotent and
+        # proves absence, and its first attempt failed at the moment
+        # everything else was dying — a proxy endpoint still detaching
+        # is enough to make a network removal unprovable. Nothing ever
+        # tried again, so one unlucky cleanup cost a hub restart on
+        # every later continuation (live, 2026-08-28: the proxy was
+        # already gone and the network sat there with zero endpoints,
+        # removable, for want of a second ask).
+        try:
+            bSettled = await asyncio.to_thread(
+                _fbReleaseRunnerAccessResources, dictRuntime)
+        except Exception:
+            # A teardown that RAISED proved nothing, which is the same
+            # answer as one that returned False — and must reach the
+            # researcher as this refusal, never as an unhandled 500.
+            logger.warning(
+                "COUNCIL second teardown attempt for campaign %s raised; "
+                "treating its resources as unproven", sCampaignId,
+                exc_info=True)
+            bSettled = False
+        if not bSettled:
+            raise CouncilCommandError(
+                f"cannot {sAction}: a previous attempt's runner network "
+                "could not be proven gone, even on a second attempt, so "
+                "its resources are still accounted for. Restart the hub "
+                "— its startup sweep settles them — then try again.")
     dictControllerState["dictCampaignRuntime"].pop(sCampaignId, None)
 
 

@@ -265,7 +265,8 @@ def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
         raise HTTPException(409, dictEnablement["sReason"])
 
 
-def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
+def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
+                                      fTurnWallClockSeconds=0.0):
     """Refuse a launch when the project holds no copyable provider token.
 
     R10's live PRESENCE probe, at the cheapest correct point: the
@@ -288,7 +289,8 @@ def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
     sUnusable = agentCouncilProviders.fsExplainUnusableRunnerCredential(
         dictCtx["docker"], sContainerId,
         agentCouncilProviders.fsComposeCredentialContainerPath(
-            sWorkspaceRoot))
+            sWorkspaceRoot),
+        fTurnWallClockSeconds)
     if sUnusable:
         raise HTTPException(409, sUnusable)
 

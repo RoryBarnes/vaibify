@@ -4192,7 +4192,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the patch artifact. One cohesive protocol addition across the
     # modules that already own each seam — no module gained a
     # second responsibility.
-    "routes/councilRoutes.py": 1372,
+    # 1372 -> 1394 (2026-08-28): every login pre-flight is handed
+    # the campaign's OWN turn budget, so the refusal names the real
+    # number rather than a default the researcher may have changed.
+    "routes/councilRoutes.py": 1394,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4418,7 +4421,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1138 -> 1149 (2026-08-27): the network-unreachable class —
     # a live retry died "Connection refused" over a mid-restart VM and
     # the gate refused a failure that heals on its own.
-    "agentCouncilProviders.py": 1149,
+    # 1149 -> 1185 (2026-08-28): durations read in the largest
+    # informative unit ("0.0 hours ago" read as a broken clock), and a
+    # login that cannot outlive one turn is refused before a runner is
+    # built — a runner is given no refresh token and cannot renew.
+    "agentCouncilProviders.py": 1185,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5508,7 +5515,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rate limit used to retire a model for the campaign's life, and
     # with two participants the next blip was a quorum shortfall
     # nothing could leave.
-    "agentCouncilController.py": 1931,
+    # 1931 -> 1952 (2026-08-28): an unproven egress teardown is
+    # RE-ATTEMPTED before it may refuse a continuation — one unlucky
+    # cleanup used to cost a hub restart on every later attempt.
+    "agentCouncilController.py": 1952,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
