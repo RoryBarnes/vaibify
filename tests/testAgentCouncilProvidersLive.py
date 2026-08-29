@@ -70,7 +70,7 @@ dictResult = {
     "listArchitectureClaims": [], "listSecurityRisks": [],
     "listCounterexamplesAttempted": [], "listPlanItems": [],
     "listRejectedAlternatives": [], "listVerificationRequirements": [],
-    "listStopConditions": [],
+    "listStopConditions": [], "listNotedFindings": [],
     "listOpenQuestions": [], "listBlockingObjections": [],
 }
 print(json.dumps({"type": "result", "subtype": "success", "is_error": False,

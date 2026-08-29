@@ -4195,14 +4195,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1372 -> 1394 (2026-08-28): every login pre-flight is handed
     # the campaign's OWN turn budget, so the refusal names the real
     # number rather than a default the researcher may have changed.
-    # +pause (2026-08-29, researcher request): the deliberate
-    # stand-down — stop after the CURRENT PHASE, resumable, and
-    # distinct from the stop that archives. One flag on the record,
-    # one boundary check in the walk, one command, one route, and
-    # the surfaces that must never confuse the two. It rides the
-    # existing crash-resume machinery rather than adding a second,
-    # so no module gained a second responsibility.
-    "routes/councilRoutes.py": 1441,
+    # 1394 -> 1447 (2026-08-29), two changes landing together and
+    # MEASURED on the merged file, never summed from the two branch
+    # numbers (1441 and 1400): a ceiling ratchet reconciled by addition
+    # passes green while describing a file that does not exist.
+    # The pause route — the deliberate stand-down that stops after the
+    # CURRENT PHASE and stays resumable, distinct from the stop that
+    # archives — plus the campaign read that serves charter 1.7.0's
+    # notes channel beside the decision grouping it already derived.
+    # Both ride existing paths; the module gained no second concern.
+    "routes/councilRoutes.py": 1447,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4334,15 +4336,27 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exit code, and ACQUITS the council's own bounds — the record held
     # all of it while the card said only "the cause is outside what the
     # turn can see".
-    # +pause (2026-08-29, researcher request): the deliberate
-    # stand-down — stop after the CURRENT PHASE, resumable, and
-    # distinct from the stop that archives. One flag on the record,
-    # one boundary check in the walk, one command, one route, and
-    # the surfaces that must never confuse the two. It rides the
-    # existing crash-resume machinery rather than adding a second,
-    # so no module gained a second responsibility.
-    "agentCouncil.py": 1377,
-    "agentCouncilCharter.py": 931,
+    # 1324 -> 1512 (2026-08-29), MEASURED on the merged file rather
+    # than taken from either branch (1377 pause, 1459 charter): two
+    # endings landed together. The deliberate PAUSE — stand down after
+    # the current phase, resumable, distinct from the stop that
+    # archives — and the deliberation summary of a council that never
+    # converged. Both ride the round/phase/attempt machinery this
+    # module already owns, and the pause rides the existing
+    # crash-resume path rather than adding a second continuation. The
+    # engine gained two more endings, not a second responsibility.
+    "agentCouncil.py": 1512,
+    # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
+    # and the deliberation-summary phase instruction plus its schema
+    # extension. This module IS the instruction contract and the turn
+    # schema; growing the contract is what growing it looks like.
+    "agentCouncilCharter.py": 1110,
+    # NEW at 810 (2026-08-29): the notes derivation joins the decision
+    # grouping and the held-question descriptor. All three are the same
+    # responsibility — reading a settled record into what a researcher
+    # is entitled to be shown at a gate — so it lands beside them
+    # rather than in a fourth module nobody would look in.
+    "agentCouncilResolution.py": 810,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5539,14 +5553,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1931 -> 1952 (2026-08-28): an unproven egress teardown is
     # RE-ATTEMPTED before it may refuse a continuation — one unlucky
     # cleanup used to cost a hub restart on every later attempt.
-    # +pause (2026-08-29, researcher request): the deliberate
-    # stand-down — stop after the CURRENT PHASE, resumable, and
-    # distinct from the stop that archives. One flag on the record,
-    # one boundary check in the walk, one command, one route, and
-    # the surfaces that must never confuse the two. It rides the
-    # existing crash-resume machinery rather than adding a second,
-    # so no module gained a second responsibility.
-    "agentCouncilController.py": 2021,
+    # 1952 -> 2066 (2026-08-29), MEASURED on the merged file, not
+    # summed from the branch numbers (2021 pause, 1997 charter): the
+    # pause command beside the plan document's new notes section and
+    # the deliberation summary. The document changes are both inside
+    # fsComposePlanMarkdown, this module's existing single authority on
+    # what that artifact says.
+    "agentCouncilController.py": 2066,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

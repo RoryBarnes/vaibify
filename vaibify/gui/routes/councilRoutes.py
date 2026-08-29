@@ -659,6 +659,12 @@ def _fnRegisterGetCouncil(app, dictCtx):
                 jsonCampaign))
         jsonCampaign["listHeldQuestions"] = (
             agentCouncilResolution.flistDescribeHeldQuestions(jsonCampaign))
+        # Charter clause 6's notes channel, derived on read for the
+        # same reason the decision grouping is: the notes are already
+        # in the turn records, and a campaign sitting at a gate right
+        # now must gain them without a re-run.
+        jsonCampaign["listGateNotes"] = (
+            agentCouncilResolution.flistDescribeNotedFindings(jsonCampaign))
         # What the record supports (the stopping point) and what is
         # actually live in this process — the pair the panel needs to
         # tell "deliberating" from "crashed and resumable" without

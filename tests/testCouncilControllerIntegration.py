@@ -32,7 +32,11 @@ from vaibify.gui import (
 )
 from vaibify.config import registryManager
 from tests.agentCouncilHarness import FakeCouncilConnection, CouncilRecorder
-from tests.agentCouncilHarness import fdictDecideCompleted, fdictMakeTurnResult
+from tests.agentCouncilHarness import (
+    fdictDecideCompleted,
+    fdictMakeDeliberationSummaryResult,
+    fdictMakeTurnResult,
+)
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testCouncilRoutes import (
     MockDockerCouncil,
@@ -332,13 +336,21 @@ def test_exhausted_round_exits_drive_the_engine_transitions(
     final candidate carries the researcher-overridden objection in its
     provenance — every transition the engine's own.
     """
+    # Rounds 1 and 3 are the two DELIBERATING rounds (the initial
+    # budget of one, then the granted one); rounds 2 and 4 are the
+    # closing deliberation-summary rounds each exhaustion opens, and
+    # round 5 is the final veto the resolve/override exit requests. The
+    # objection has to come from the deliberating rounds by number,
+    # because a summary round consumes a round number of its own.
     def _fdictDecide(sHandle, dictTurnRequest):
-        bFinalVeto = (dictTurnRequest["sPhase"] == "veto"
-                      and dictTurnRequest["iRoundNumber"] >= 3)
-        if dictTurnRequest["sPhase"] == "veto" and not bFinalVeto:
+        if (dictTurnRequest["sPhase"] == "veto"
+                and dictTurnRequest["iRoundNumber"] in (1, 3)):
             return fdictDecideCompleted(fdictMakeTurnResult(
                 sVerdict="blockingObjection",
                 listBlockingObjections=["the prior is unjustified"]))
+        if dictTurnRequest["sPhase"] == "deliberationSummary":
+            return fdictDecideCompleted(
+                fdictMakeDeliberationSummaryResult(sVerdict="needsHuman"))
         return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
 
     _fnPatchScriptedConnections(monkeypatch, _fdictDecide)

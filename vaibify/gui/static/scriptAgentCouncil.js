@@ -1970,6 +1970,7 @@ var VaibifyAgentCouncil = (function () {
         crossReview: "adversarial cross-review",
         synthesis: "synthesis",
         veto: "veto",
+        deliberationSummary: "deliberation summary",
     };
 
     function _fnShowRenderFault() {
@@ -2184,7 +2185,12 @@ var VaibifyAgentCouncil = (function () {
         independentProposals: "proposing",
         crossReview: "reviewing peers",
         synthesis: "synthesizing",
-        veto: "voting"
+        veto: "voting",
+        /* Named rather than left to the "working" fallback: this turn
+           is the researcher's LAST paid turn on a spent council, and a
+           chip reading "working" would not say that the council is
+           closing rather than continuing. */
+        deliberationSummary: "writing the deliberation summary"
     };
 
     function _fsParticipantActivity(dictParticipant, dictCampaign) {
@@ -2206,7 +2212,12 @@ var VaibifyAgentCouncil = (function () {
         if (listRunning.indexOf(dictParticipant.sParticipantId) >= 0) {
             return DICT_PHASE_ACTIVITY[dictInFlight.sPhase] || "working";
         }
-        if (dictInFlight.sPhase === "synthesis") {
+        /* Both single-author phases share the wait: the deliberation
+           summary runs one pen through the same fallback chain, so the
+           same "waiting on the chairbot, or on whoever took the pen"
+           answer is the true one. */
+        if (dictInFlight.sPhase === "synthesis"
+                || dictInFlight.sPhase === "deliberationSummary") {
             return _fsWaitingOnTheSynthesisAuthor(dictCampaign, listRunning);
         }
         return DICT_PHASE_WAITING[dictInFlight.sPhase]
@@ -2784,10 +2795,82 @@ var VaibifyAgentCouncil = (function () {
 
     function _fsNeedsHumanCard(dictCampaign) {
         var dictGate = dictCampaign.dictPendingHumanGate || {};
-        if (dictGate.sGateKind === "exhaustedRounds") {
-            return _fsExhaustedRoundCard(dictCampaign, dictGate);
+        var sGateCard = (dictGate.sGateKind === "exhaustedRounds")
+            ? _fsExhaustedRoundCard(dictCampaign, dictGate)
+            : _fsBlockingQuestionCard(dictCampaign, dictGate);
+        /* BESIDE the gate, never inside it. Charter clause 6 told
+           participants that a finding worth attention but not a
+           decision belongs in their evidence, and a live gate then
+           carried four items whose text literally opened "Emphasis,
+           not a decision: ..." — raised as questions because there was
+           nowhere else to put one (2026-08-29). There is a field now,
+           and its contents must land somewhere the researcher reads
+           without being asked to answer it. Appended after the gate so
+           nothing here can be mistaken for part of the form above. */
+        return sGateCard + _fsNotedFindingsPanel(dictCampaign);
+    }
+
+    function _fsNotedFindingsPanel(dictCampaign) {
+        /* Deliberately a different SHAPE from the gate: an <aside>
+           rather than a card, bulleted rather than numbered, and no
+           answer control anywhere in it. A researcher scanning the
+           screen has to be able to tell "this wants my decision" from
+           "this wants my attention" without reading either. */
+        var listNoted = dictCampaign.listGateNotes || [];
+        if (!listNoted.length) return "";
+        var sRows = listNoted.map(function (dictNote) {
+            return "<li>" + _fsEscape(_fsHideInternalIdentifiers(
+                dictCampaign, dictNote.sNoteText)) +
+                " <span class=\"council-question-author\">(" +
+                _fsEscape(_fsAgentLabelForId(
+                    dictCampaign, dictNote.sRaisedByParticipantId || "")) +
+                ")</span></li>";
+        }).join("");
+        return "<aside class=\"council-notes\">" +
+            "<h4>Noted, not asked (" + listNoted.length + ")</h4>" +
+            "<p class=\"council-notes-why\">These are findings the " +
+            "council recorded for your attention. None of them is a " +
+            "decision, none needs an answer, and nothing above is " +
+            "waiting on them.</p>" +
+            "<ul class=\"council-notes-list\">" + sRows + "</ul>" +
+            "</aside>";
+    }
+
+    function _fsDeliberationSummarySection(dictCampaign) {
+        /* A council that ran out of rounds without converging writes
+           one last chairbot turn. It is a DELIBERATION SUMMARY and the
+           word "plan" must not appear over it: no plan was agreed, and
+           a heading that said otherwise would state a consensus that
+           does not exist. */
+        var dictSummary = dictCampaign.dictDeliberationSummary || {};
+        var dictResult = dictSummary.dictResult || {};
+        if (!dictResult.sSummary) {
+            return "<p class=\"council-summary-absent\">No deliberation " +
+                "summary was written — the closing turn returned none. " +
+                "The objections below and the agent consoles are the " +
+                "record of the argument.</p>";
         }
-        return _fsBlockingQuestionCard(dictCampaign, dictGate);
+        var sParts = "<div class=\"council-deliberation-summary\">" +
+            "<h5>Deliberation summary — not a plan</h5>" +
+            "<p class=\"council-summary-caveat\">This council did not " +
+            "converge, so nothing below was agreed. It is the " +
+            "chairbot's account of what was argued.</p>" +
+            "<p>" + _fsEscape(_fsHideInternalIdentifiers(
+                dictCampaign, dictResult.sSummary)) + "</p>";
+        [["listPositionsProposed", "Positions proposed"],
+         ["listPointsOfDisagreement", "Where the council divided"],
+         ["listEvidenceBehindEachPosition",
+          "What each side had to stand on"]]
+            .forEach(function (tSection) {
+                var listEntries = dictResult[tSection[0]] || [];
+                if (!listEntries.length) return;
+                sParts += "<h6>" + _fsEscape(tSection[1]) + "</h6><ul>" +
+                    listEntries.map(function (sEntry) {
+                        return "<li>" + _fsEscape(_fsHideInternalIdentifiers(
+                            dictCampaign, String(sEntry))) + "</li>";
+                    }).join("") + "</ul>";
+            });
+        return sParts + "</div>";
     }
 
     function _fsAgentLabelForId(dictCampaign, sParticipantId) {
@@ -3042,11 +3125,18 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsExhaustedRoundCard(dictCampaign, dictGate) {
-        /* Exactly the three section 5.1 exits as distinct controls, and
-           NO plain respond field that would silently relaunch the spent
-           round budget (section 6.5). Each control posts the ENGINE'S
-           own exit transition; the resolve/override exit requires a
-           decision on EVERY unresolved objection before it submits. */
+        /* The exits are distinct controls posting the ENGINE'S own
+           transitions, and there is NO plain respond field that would
+           silently relaunch the spent round budget (section 6.5); the
+           resolve/override exit requires a decision on EVERY
+           unresolved objection before it submits.
+
+           TWO of them are ways FORWARD (researcher direction
+           2026-08-29): implement the standing candidate as it is,
+           recorded as an explicit override, or grant more rounds.
+           Rejecting is not a third way forward — it is abandoning the
+           council — so it sits below, under its own heading, rather
+           than beside them where it read as a peer option. */
         var listObjections = dictGate.listUnresolvedObjections || [];
         var sObjectionRows = listObjections.map(function (dictObjection) {
             return "<div class=\"council-objection-row\" " +
@@ -3066,15 +3156,23 @@ var VaibifyAgentCouncil = (function () {
                 "</div>";
         }).join("");
         return "<div class=\"council-needs-human council-exhausted\">" +
-            "<h4>Rounds exhausted with objections outstanding</h4>" +
-            sObjectionRows +
+            "<h4>Rounds exhausted without consensus</h4>" +
+            _fsDeliberationSummarySection(dictCampaign) +
+            (sObjectionRows
+                ? "<h5>Objections still outstanding</h5>" + sObjectionRows
+                : "") +
             "<div class=\"council-exits\">" +
+            "<p class=\"council-exits-why\">Two ways forward.</p>" +
             "<label>Rounds to grant <input type=\"number\" " +
             "id=\"councilGrantRounds\" min=\"1\" value=\"1\"></label>" +
             "<button type=\"button\" id=\"btnCouncilGrantRound\" " +
             "class=\"btn\">Grant a bounded resolution round</button>" +
             "<button type=\"button\" id=\"btnCouncilResolveOverride\" " +
-            "class=\"btn\">Resolve or override, then a final veto</button>" +
+            "class=\"btn\">Implement as-is: resolve or override, then a " +
+            "final veto</button>" +
+            "</div>" +
+            "<div class=\"council-abandon\">" +
+            "<h5>Or abandon this council</h5>" +
             "<input type=\"text\" id=\"councilRejectReason\" " +
             "placeholder=\"Why the candidate is rejected (optional)\">" +
             "<button type=\"button\" id=\"btnCouncilReject\" " +
@@ -3152,6 +3250,11 @@ var VaibifyAgentCouncil = (function () {
           "Required verification, automated and manual"],
          ["listStopConditions",
           "Stop conditions — halt and return to the council"],
+         /* Charter clause 6's other half: a noted finding goes into
+            the plan document as well as beside the gate, so it
+            outlives the gate that showed it. */
+         ["listNotedFindings",
+          "Noted findings — recorded for attention, not decided"],
          ["listOpenQuestions", "Open questions"]]
             .forEach(function (tSection) {
                 var listEntries = dictResult[tSection[0]] || [];
