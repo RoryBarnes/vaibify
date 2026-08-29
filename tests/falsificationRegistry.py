@@ -14381,11 +14381,11 @@ def _fdictEntry(sRel):
         # its first phase -- silently re-spending provider work the
         # researcher already paid for.
         old=(
-            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
             '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
         ),
         new=(
-            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
             '    dictCampaign["listRounds"][-1]["dictTurnsByPhase"] = {}\n'
             '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
         ),
@@ -14857,6 +14857,268 @@ def _fdictEntry(sRel):
             '            agentCouncilResolution.fdictDescribeStoppingPoint'
             '(\n'
             '                jsonCampaign))'
+        ),
+    ),
+
+    # --- 2026-08-29: the deliberate pause (stop after the current
+    # PHASE, resumable) and the login pre-flight it made reachable ---
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPauseStandsDownAtAPhaseBoundaryNeverMidPhase'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The pause is honoured where the STOP is honoured -- between
+        # turn waves, inside the phase -- so a participant that had not
+        # been launched is recorded notStarted and the researcher comes
+        # back to a half-run phase.
+        old=(
+            '            if self.dictCampaign["bStopRequested"]:\n'
+            '                self._fnRecordUnlaunchedTurns('
+        ),
+        new=(
+            '            if self.dictCampaign["bStopRequested"] or (\n'
+            '                    self.dictCampaign.get("bPauseRequested")):\n'
+            '                self._fnRecordUnlaunchedTurns('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPauseTheWalkOutrunsIsRetiredNotLeftToStall'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # A pause overtaken by a gate survives on the record, so the
+        # researcher's answer spawns a drive that stands down at once.
+        old=(
+            '        self.dictCampaign["bPauseRequested"] = False\n'
+            '        self._fnEmitEvent("pauseOutrunByOutcome",'
+        ),
+        new='        self._fnEmitEvent("pauseOutrunByOutcome",',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseIsRefusedWhenNothingIsDeliberating'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The pause is admitted against a record no drive is walking,
+        # so the flag advertises a stand-down that will never happen.
+        old=(
+            '        raise CouncilCommandError(\n'
+            '            "cannot pause: this council is not deliberating, '
+            'so there is "\n'
+            '            "no phase to stand down at the end of.")'
+        ),
+        new=(
+            '        return {"bPauseRequested": True, "bSettled": False,\n'
+            '                "dictCampaign": dictCampaign}'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseProvesNothingAboutRunnersBecauseItTearsNothingDown'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The pause reaches for the egress teardown, so an
+        # indeterminate answer quarantines a working council over a
+        # researcher going home.
+        old=(
+            '    dictRuntime["engineCouncil"].fnRequestPauseAfterCurrentPhase'
+            '()\n'
+            '    agentCouncilStore.fnCheckpointStoredCampaign('
+        ),
+        new=(
+            '    dictRuntime["engineCouncil"].fnRequestPauseAfterCurrentPhase'
+            '()\n'
+            '    await asyncio.to_thread(\n'
+            '        _fbReleaseRunnerAccessResources, dictRuntime)\n'
+            '    agentCouncilStore.fnCheckpointStoredCampaign('
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testResumingAPausedCouncilClearsThePauseAndContinuesTheWalk'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Resume leaves the flag set, so the rebuilt drive stands down
+        # before running anything and the button is a silent no-op.
+        old=(
+            '    # rebuild that fails leaves the stored record still '
+            'paused.\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
+        ),
+        new=(
+            '    # rebuild that fails leaves the stored record still '
+            'paused.\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseLeavesTheCouncilResumableWhereStopArchivesIt'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The pause takes the stop's archive transition, so stepping
+        # away from a council destroys it.
+        old=(
+            '            if self.dictCampaign.get("bPauseRequested"):\n'
+            '                self._fnStandDownAtPhaseBoundary()\n'
+            '                break'
+        ),
+        new=(
+            '            if self.dictCampaign.get("bPauseRequested"):\n'
+            '                self._fnTransition(S_STATE_ARCHIVED, '
+            '"pausedIntoArchive")\n'
+            '                break'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testResumingAPausedCouncilRefusesAnExpiredLoginInsteadOf500'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # The shipped defect restored: the login pre-flight reads a
+        # name the resume handler never bound, so every resume raises
+        # NameError before the expired-token refusal can be composed.
+        old=(
+            '            jsonCampaign = fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled('
+            'sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(jsonCampaign))\n'
+            '            dictResumed = ('
+        ),
+        new=(
+            '            jsonCampaign = fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled('
+            'sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(dictCampaign))\n'
+            '            dictResumed = ('
+        ),
+    ),
+
+    # --- 2026-08-29: the pause SURFACE. A green Python suite executes
+    # none of this, and the whole feature is only usable if the screen
+    # tells Pause and Stop apart. ---
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testPauseAndStopStateOppositeConsequencesSideBySide'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Stop loses its destructive styling, so the button that ends a
+        # council for good looks exactly like the one that does not.
+        old='class=\\"btn btn-danger\\">Stop council</button>" +',
+        new='class=\\"btn\\">Stop council</button>" +',
+        iExpectedOccurrences=2,
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testAPauseStillLandingSaysThePhaseWillFinishFirst'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The paused surface stops reading the backend's in-flight
+        # phase, so a pause that has only been REQUESTED is rendered as
+        # a council standing still while a turn is mid-answer.
+        old=(
+            '        var dictInFlight = dictCampaign.dictPhaseInFlight;\n'
+            '        if (dictInFlight) {'
+        ),
+        new=(
+            '        var dictInFlight = null;\n'
+            '        if (dictInFlight) {'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testALandedPauseSaysNothingIsWorkingAndOffersResume'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The composer ignores the pause, so a council that has stood
+        # down keeps claiming its agents are deliberating.
+        old=(
+            '        if (dictCampaign.bPauseRequested) {\n'
+            '            return _fsPausedSurface(dictCampaign);\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testAPausedCouncilIsNotDescribedAsACrashedHub'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Every idle planning campaign is described as a hub restart,
+        # so a researcher who paused one is told it crashed.
+        old='        var sWhy = dictCampaign.bPauseRequested',
+        new='        var sWhy = false',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testThePauseButtonPostsToThePauseRoute'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Pause is wired to the stop action: the researcher who wanted
+        # to step away archives the council instead.
+        old='        _fnBindElement("btnCouncilPause", _fnPauseCouncil);',
+        new='        _fnBindElement("btnCouncilPause", _fnStopCouncil);',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPausedCouncilSurvivesTheHubExitingAndComesBackResumable'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Shutdown's cooperative stop reaches DISK, so a council the
+        # researcher paused comes back carrying a stop nobody asked
+        # for and the morning resume refuses over it.
+        old=(
+            '    if dictRuntime.get("engineCouncil") is not None:\n'
+            '        dictRuntime["engineCouncil"].'
+            'fnRequestStopAfterCurrentTurn()\n'
+        ),
+        new=(
+            '    if dictRuntime.get("engineCouncil") is not None:\n'
+            '        dictRuntime["engineCouncil"].'
+            'fnRequestStopAfterCurrentTurn()\n'
+            '        agentCouncilStore.fnCheckpointStoredCampaign(\n'
+            '            dictRuntime["dictStore"], '
+            'dictRuntime["sCampaignId"],\n'
+            '            dictRuntime["dictCampaign"])\n'
         ),
     ),
 ]

@@ -735,6 +735,11 @@ def _fdictSummariseEntry(dictEntry):
         # position in a list nobody sorted.
         "fLastActivityEpoch": dictEntry[
             "checkpointDurable"].ffFindLastWrittenEpoch(),
+        # The record's own flag, unembellished. A row cannot tell a
+        # paused council from a crashed one otherwise — both are
+        # planning at a proven boundary — and the researcher who paused
+        # deserves to find it by the word they used.
+        "bPauseRequested": bool(dictCampaign.get("bPauseRequested")),
         "dictStoppingPoint": _fdictDescribeStoppingPointForEntry(dictEntry),
     }
 

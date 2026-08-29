@@ -551,6 +551,15 @@ def fdictCreateCampaign(sQuestion, listParticipants, dictSettings=None,
         "listResearcherResponses": [],
         "listStateTransitions": [],
         "bStopRequested": False,
+        # The researcher's deliberate stand-down, and the opposite of a
+        # stop in every way that matters: a stop ARCHIVES, this leaves
+        # the campaign mid-plan and resumable. Honoured only at a PHASE
+        # boundary, so no turn is ever killed — a killed turn is a
+        # failure nothing can attribute. Not in
+        # LIST_CAMPAIGN_REQUIRED_KEYS: campaigns checkpointed by an
+        # earlier hub carry no such key and must still restore, so
+        # every read of it goes through .get.
+        "bPauseRequested": False,
         "iObjectionCounter": 0,
         "iClaimCounter": 0,
         # What the engine is running RIGHT NOW, or None between phases.

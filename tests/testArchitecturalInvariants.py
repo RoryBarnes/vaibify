@@ -4195,7 +4195,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1372 -> 1394 (2026-08-28): every login pre-flight is handed
     # the campaign's OWN turn budget, so the refusal names the real
     # number rather than a default the researcher may have changed.
-    "routes/councilRoutes.py": 1394,
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    "routes/councilRoutes.py": 1441,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4259,7 +4266,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the patch artifact. One cohesive protocol addition across the
     # modules that already own each seam — no module gained a
     # second responsibility.
-    "agentCouncilStore.py": 977,
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    "agentCouncilStore.py": 982,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4320,7 +4334,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exit code, and ACQUITS the council's own bounds — the record held
     # all of it while the card said only "the cause is outside what the
     # turn can see".
-    "agentCouncil.py": 1324,
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    "agentCouncil.py": 1377,
     "agentCouncilCharter.py": 931,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
@@ -5518,7 +5539,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1931 -> 1952 (2026-08-28): an unproven egress teardown is
     # RE-ATTEMPTED before it may refuse a continuation — one unlucky
     # cleanup used to cost a hub restart on every later attempt.
-    "agentCouncilController.py": 1952,
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    "agentCouncilController.py": 2021,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -5941,7 +5969,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-08-27): the retry route joins the human-only
     # exclusion set beside resume.
     # 2026-08-27 (on merge): the merged file's REAL line count again.
-    "actionCatalog.py": 1087,
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    "actionCatalog.py": 1092,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

@@ -271,11 +271,18 @@ def test_exhausted_round_posts_the_three_engine_exit_routes():
 
 def test_composer_matches_the_real_continuation_semantics():
     """The protocol has no mid-deliberation message channel (R6): the
-    surface offers watching and stopping, never a Send box whose POST
-    the backend rightly refuses."""
+    surface offers watching, pausing and stopping, never a Send box
+    whose POST the backend rightly refuses.
+
+    Asserted against the composer's BODY, not the file: the phrase this
+    used to look for survived only in a comment after the wording
+    changed, which is a green assertion over prose nobody renders.
+    """
     sSource = _fsCouncilSource()
-    assert "The council is deliberating" in sSource
-    assert "stop after the current" in sSource
+    sComposer = _fsFunctionBody(sSource, "_fsComposer")
+    assert "The council is deliberating" in sComposer
+    assert "btnCouncilPause" in sComposer
+    assert "btnCouncilStop" in sComposer
     assert "btnCouncilSend" not in sSource
     assert "Message the council" not in sSource
     assert "councilMessage" not in sSource
