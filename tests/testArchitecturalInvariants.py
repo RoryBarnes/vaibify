@@ -4252,7 +4252,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # archives — plus the campaign read that serves charter 1.7.0's
     # notes channel beside the decision grouping it already derived.
     # Both ride existing paths; the module gained no second concern.
-    "routes/councilRoutes.py": 1447,
+    # +1 (2026-08-29): the pause route binds its campaign id like every
+    # other campaign-scoped route. The merge is what exposed it — pause
+    # was written before that contract existed and the repo-binding
+    # branch had no pause route to catch, so neither branch's suite
+    # could fail on it and both were green.
+    "routes/councilRoutes.py": 1448,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

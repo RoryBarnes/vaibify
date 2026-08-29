@@ -1133,7 +1133,8 @@ def _fnRegisterRequestPause(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory,
+            sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
 
