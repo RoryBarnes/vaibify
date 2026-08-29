@@ -71,6 +71,12 @@ dev = [
     # a pass for having checked nothing. Six of them failed unnoticed in
     # CI from 2026-07-29 until the tests-linux lane was repaired.
     "detect-secrets>=1.4",
+    # tests/testNoUndefinedNames.py imports this and FAILS when it is
+    # absent, for the same reason as detect-secrets above. It exists
+    # because a free `dictCampaign` made two council routes answer 500
+    # under a fully green suite -- a defect no fixture reached, and one
+    # a static sweep catches for every route at once.
+    "pyflakes>=2.3",
 ]
 browser = [
     # Lane 1: real Chromium against a real uvicorn hub. Playwright's

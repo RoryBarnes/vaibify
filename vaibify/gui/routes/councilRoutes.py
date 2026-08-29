@@ -989,14 +989,14 @@ def _fnRegisterResume(app, dictCtx):
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteResume():
-            fjsonRequireCampaign(
+            jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
                 fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(dictCampaign))
+                _ffTurnBudgetSeconds(jsonCampaign))
             dictResumed = (
                 await agentCouncilController.fdictResumeCampaignDeliberation(
                     dictControllerState, dictStore, dictRegistry,
@@ -1038,14 +1038,14 @@ def _fnRegisterRetry(app, dictCtx):
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteRetry():
-            fjsonRequireCampaign(
+            jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
                 fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(dictCampaign))
+                _ffTurnBudgetSeconds(jsonCampaign))
             dictRetried = (
                 await agentCouncilController.fdictRetryCampaignFailedPhase(
                     dictControllerState, dictStore, dictRegistry,
