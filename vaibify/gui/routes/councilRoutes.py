@@ -632,7 +632,7 @@ def _fnRegisterGetCouncil(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         jsonCampaign = fjsonRequireCampaign(
             dictStore, sCampaignId, sName, sProjectRepoPath)
@@ -771,7 +771,7 @@ def _fnRegisterPollEvents(app, dictCtx):
         iAfter: int = 0, sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         if iAfter < 0:
             raise HTTPException(400, "iAfter must not be negative")
         fjsonRequireCampaign(
@@ -977,20 +977,20 @@ def _fnRegisterResume(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteResume():
-            fjsonRequireCampaign(
+            jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
                 fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(dictCampaign))
+                _ffTurnBudgetSeconds(jsonCampaign))
             dictResumed = (
                 await agentCouncilController.fdictResumeCampaignDeliberation(
                     dictControllerState, dictStore, dictRegistry,
@@ -1026,20 +1026,20 @@ def _fnRegisterRetry(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteRetry():
-            fjsonRequireCampaign(
+            jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
                 fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(dictCampaign))
+                _ffTurnBudgetSeconds(jsonCampaign))
             dictRetried = (
                 await agentCouncilController.fdictRetryCampaignFailedPhase(
                     dictControllerState, dictStore, dictRegistry,
@@ -1069,7 +1069,7 @@ def _fnRegisterRespond(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
 
@@ -1112,7 +1112,7 @@ def _fnRegisterRequestStop(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
 
@@ -1154,7 +1154,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
@@ -1185,7 +1185,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
@@ -1219,7 +1219,7 @@ def _fnRegisterExhaustedRoundExits(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
@@ -1253,7 +1253,7 @@ def _fnRegisterAcceptPlan(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
         dictControllerState = fdictControllerState(requestHttp)
@@ -1311,7 +1311,7 @@ def _fnRegisterPlanMarkdown(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         jsonCampaign = fjsonRequireCampaign(
             dictStore, sCampaignId, sName, sProjectRepoPath)
@@ -1344,7 +1344,7 @@ def _fnRegisterDeleteCouncil(app, dictCtx):
         sProjectDirectory: str = "",
     ):
         sName, sProjectRepoPath = ftResolveCouncilPrincipal(
-            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
         dictStore = fdictCampaignStore(requestHttp)
         dictRegistry = fdictCouncilRegistry(requestHttp)
 

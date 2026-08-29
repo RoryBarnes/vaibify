@@ -3608,11 +3608,19 @@ var VaibifyAgentCouncil = (function () {
     async function _fnAcceptPlan() {
         /* No body (remediation R3): the backend accepts the council's
            own server-held candidate through the engine's planReady
-           gate; the review gate is the researcher READING it here. */
+           gate; the review gate is the researcher READING it here.
+
+           The directory rides it like every other campaign action —
+           this was the last call site that forgot, and on a container
+           tracking nine directories "Accept and save plan" answered
+           "a council needs to be told which one it is about"
+           (2026-08-29). The server now reads the directory off the
+           campaign record, so this query is agreement, not the fix. */
         try {
             var dictResult = await VaibifyApi.fdictPostRaw(
                 _fsRoute("/" + _dictState.sActiveCampaignId
-                    + "/accept-plan"));
+                    + "/accept-plan")
+                + _fsDirectoryQuery("?"));
             _fnReportPlanSaved(dictResult);
             await _fnReloadActiveCampaign();
         } catch (error) {

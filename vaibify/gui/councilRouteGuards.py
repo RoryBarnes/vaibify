@@ -22,6 +22,7 @@ __all__ = [
     "fdictControllerState",
     "flistTrackedDirectoryNames",
     "fsResolveDominantRepositoryPath",
+    "fsRepositoryBoundToCampaign",
     "ftResolveCouncilPrincipal",
     "fjsonRequireCampaign",
     "fgenericSubmitMapped",
@@ -40,7 +41,11 @@ from . import agentCouncilCampaign
 from . import agentCouncilController
 from . import agentCouncilRegistry
 from . import agentCouncilStore
-from .pipelineServer import WORKSPACE_ROOT, fsContainerNameForId
+from .pipelineServer import (
+    WORKSPACE_ROOT,
+    fsContainerNameForId,
+    fsValidatePathWithinRoot,
+)
 from .routeContext import (
     fnRefuseContainerOnlyForHostProject,
     fnRejectAgentTokenLane,
@@ -96,13 +101,33 @@ def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
 
 
 def ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
-                              sChosenDirectory=""):
+                              sChosenDirectory="", sCampaignId=""):
     """Guard the route and resolve the (resource name, project repo) pair.
 
     The canonical identity a campaign is bound to and matched against
     (remediation R2): the lease principal is the container NAME, and the
     repo is one validated project repo — a container can host several,
     and a campaign belongs to exactly one.
+
+    ``sCampaignId`` is what makes that second half a LOOKUP rather than a
+    guess where it would otherwise be a REFUSAL, and every campaign-scoped
+    route passes it. A campaign records the repository it was convened
+    against, so when the project cannot say which repo is meant, the
+    campaign can: on a container tracking nine directories with no
+    workflow open, "Accept and save plan" answered "a council needs to be
+    told which one it is about" for a council that had deliberated about
+    one of them for an hour (reported live 2026-08-29). Convene passes no
+    campaign id, because at convene the directory genuinely is a choice.
+
+    It is consulted AFTER the open workflow, not before, and that order
+    is a contract rather than a preference: with a workflow open, the
+    repository the researcher has open is the scope, and a campaign
+    belonging to a sibling repository in the same container stays
+    unreachable — ``testCouncilCampaignIdentity.py::
+    test_second_repo_in_same_container_cannot_reach_campaign`` is the
+    executable statement of that, and reordering these two branches
+    fails it. So the record answers only the question the project
+    leaves open.
 
     ``sChosenDirectory`` is accepted by EVERY campaign-scoped route,
     not only by start. The 2026-08-24 fix widened the READ routes and
@@ -143,8 +168,52 @@ def ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if sProjectRepoPath:
         return sName, sProjectRepoPath
+    sBoundRepoPath = fsRepositoryBoundToCampaign(
+        fdictCampaignStore(requestHttp), sContainerId, sCampaignId)
+    if sBoundRepoPath:
+        return sName, sBoundRepoPath
     return sName, fsResolveDominantRepositoryPath(
         dictCtx, sContainerId, sChosenDirectory)
+
+
+def fsRepositoryBoundToCampaign(dictStore, sContainerId, sCampaignId):
+    """Return the repo a STORED campaign records, or "" when it has none.
+
+    The record's own answer, so a campaign-scoped action is never
+    REFUSED a fact its campaign already carries. It does not override an
+    open workflow — see ``ftResolveCouncilPrincipal`` for why that order
+    is load-bearing — it answers where the project cannot.
+
+    Empty is returned — never raised — for an unknown id and for a
+    record predating the identity block, so those keep resolving exactly
+    as they did: the caller falls through to the open workflow and then
+    to the tracked-set derivation, and an unknown id then meets the same
+    404 ``fjsonRequireCampaign`` has always given it. Refusing here
+    instead would answer 409 for a mistyped id and leak that the
+    resolution got further than an unknown campaign should.
+
+    The recorded path is still VALIDATED before it is returned, for the
+    same reason the chosen directory is: it becomes a container path.
+    The guard differs because the input does — a query parameter is
+    attacker-supplied and must name a tracked directory, whereas this
+    was validated once at convene and may legitimately be a repo the
+    researcher has since untracked, or a nested path an open workflow
+    supplied. So the check is containment in the project root, which is
+    the traversal guard itself and nothing weaker.
+    """
+    if not sCampaignId:
+        return ""
+    from . import projectRoots
+    jsonCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    sRecorded = ((jsonCampaign or {}).get("dictProjectIdentity")
+                 or {}).get("sProjectRepoPath", "")
+    if not sRecorded:
+        return ""
+    sRoot = posixpath.normpath(projectRoots.fsResolveProjectRoot(
+        sContainerId, WORKSPACE_ROOT))
+    sNormalized = fsValidatePathWithinRoot(sRecorded, sRoot)
+    return "" if sNormalized == sRoot else sNormalized
 
 
 def fsResolveDominantRepositoryPath(dictCtx, sContainerId,
