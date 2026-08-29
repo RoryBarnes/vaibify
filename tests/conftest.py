@@ -143,6 +143,23 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     # read an empty registry mid-test and render no tiles. They were
     # never the leak this fixture exists for (hub-port and session slots
     # were); leaving them to the per-lane fixtures keeps both correct.
+    # The two session-lifetime preferences ARE neutralised here, by
+    # patching their readers rather than the store's path. The session
+    # cap and the sliding-idle window are resolved on every evaluator
+    # pass, so without this the researcher's own ~/.vaibify preference
+    # would silently change what a few hundred lifecycle assertions
+    # mean — and a suite that behaves differently on the machine that
+    # set the preference is the exact failure this fixture exists to
+    # prevent. Returning "" reads as UNSET, so the default (or an env
+    # override, which still wins) applies. A test of the preference
+    # tier patches these back.
+    from vaibify.config import preferencesStore
+    monkeypatch.setattr(
+        preferencesStore, "fsSessionCapPreference", lambda: "",
+    )
+    monkeypatch.setattr(
+        preferencesStore, "fsSlidingIdlePreference", lambda: "",
+    )
     # ephemeralStore is deliberately NOT redirected here: it computes
     # its root from os.path.expanduser("~") at call time (no import-time
     # constant to patch), and its own tests exercise that real behaviour

@@ -847,6 +847,133 @@ intervals, so a single dropped signal never triggers a shutdown; only
 sustained absence does -- the same guidance JupyterHub gives for its
 cull timeouts.
 
+### Session lifetime: two windows, three tiers, one honest notice
+
+A browser session is bounded by two windows, and they relate to a live
+socket differently on purpose.
+
+**Sliding idle** is refreshed by every request and **vetoed by a live
+WebSocket**: a dashboard that only streams events is doing something,
+and the socket layer never refreshes the credential's last-seen stamp,
+so without the veto a streaming dashboard would be revoked under the
+researcher.
+
+**The absolute cap** is measured from the session's creation and fires
+**regardless of socket liveness**. That asymmetry is the point, and it
+is worth stating outside a docstring because it looks like an
+oversight: the case the cap exists to bound is a forgotten-open tab,
+which holds a live socket *by definition*, so a veto generalized to
+both triggers would make the cap unreachable in exactly its target
+case.
+
+Both windows resolve across the same three tiers — the environment
+override (`sessionLifecycle.S_ABSOLUTE_SESSION_CAP_ENV`,
+`S_SLIDING_IDLE_ENV`), then the host-global Settings preference in
+`~/.vaibify/preferences.json`, then the built-in default that
+`F_ABSOLUTE_SESSION_CAP_SECONDS` and `F_SLIDING_IDLE_SECONDS` carry.
+The environment tier wins because it is what the test lanes drive.
+Resolution happens **at every evaluation**, not once at import: a
+change needs no hub restart, and — the property that made it worth
+doing — *raising* the cap rescues a session that has not expired yet,
+which is what a researcher wants at the moment they notice the
+warning. "Never" is its own named choice
+(`preferencesStore.SET_NEVER_TOKENS`, carried as `math.inf`) rather
+than a very large number, because a 30-day cap outlives every hub
+process, so it would never fire while the dashboard still claimed a
+bound existed.
+
+The designed mitigation for the cap is the pre-expiry dashboard
+warning (`fdictSessionExpiryView`, lead
+`F_EXPIRY_WARNING_LEAD_SECONDS`). **It assumes an audience it
+structurally may not have**: a cap started in the afternoon expires in
+the small hours. So the hub also answers afterwards. Revocation
+records the sentence and the wall-clock time on the session record
+(`BrowserSessionRecord.sEndedMessage`), and the middleware's 401
+carries it, so a returning researcher is told what ended their session
+and what became of the container instead of meeting a bare
+"Unauthorized" — which, before this, the dashboard rendered as "the
+server has been restarted", a guess that is false in exactly the case
+that produces most 401s. The notice is keyed on the credential the
+caller already presents, so it discloses nothing.
+
+### Sleep prevention follows the work, not the tab
+
+The macOS `caffeinate` keep-alive used to have one lifetime: the
+ownership record's. `containerOwnership._fnForceReleaseOwnership`
+stops it, so the machine became sleepable a reconnect window plus a
+reap grace after the browser went away. A dashboard-launched pipeline
+survived that only because the reaper is vetoed while vaibify's own
+`bRunning` flag is set — and that flag is vaibify's own bookkeeping,
+not a process scan. Work vaibify did not launch (a job backgrounded in
+a terminal, an exec an in-container agent started, or **any** exec at
+all once the hub that launched it has been restarted) had no veto, so
+the record was reaped, the keep-alive died, and the laptop slept with
+the job still running. Under colima the VM suspends rather than dies,
+so the run is *frozen*, not killed, and looks healthy until somebody
+reads the timestamps.
+
+`sleepPrevention` gives the keep-alive a second lane whose lifetime is
+the work's. The session lane is unchanged and keyed by container name;
+the **work lane** is keyed by `fsWorkLaneKeepAliveName` — a registry
+name containing a character Docker forbids in a container name, so the
+two lanes can never stop each other's process. The work lane is
+asserted and withdrawn from observed evidence on every hub-watchdog
+pass, immediately after the reaper, so a record dropped on one tick is
+re-examined as *work* on the same tick.
+
+The evidence is `DockerConnection.flistRunningExecIdentifiers`: does
+the daemon report any exec session in this container still running?
+**It is evidence of work, never proof of work's absence.** A `setsid`
+descendant whose parent exec has exited is invisible to it, exactly as
+it is invisible to `terminalContainment`'s process-group prover.
+Vaibify cannot prove what runs inside a container and does not claim
+to. What it does claim is bounded and true: while it sees a running
+exec it keeps the machine awake, and when it sees none it stops paying
+for a keep-alive it has no reason to hold. An unreadable daemon is
+read as evidence *present* — the two errors are not symmetric, since
+withdrawing a keep-alive under a multi-day job costs the job while
+holding one nothing needs costs some battery.
+
+Because the lane is derived from observation rather than from an
+in-process record, a hub that crashed and restarted **re-establishes**
+the keep-alive for work its predecessor launched. The corollary is
+that a work-lane keep-alive can outlive its hub; the next hub's first
+sweep is what withdraws it.
+
+### What survives what (measured, 2026-08-29)
+
+Run against a live daemon (colima) rather than reasoned about, because
+neither reading the code nor reasoning settles it:
+
+- **An in-container exec survives the death of the client holding its
+  stream.** SIGKILL the process that called
+  `exec_start(stream=True)`; the exec keeps running, reparented to the
+  container's init, and keeps writing its output inside the container.
+- **Its outcome remains recoverable.** `exec_inspect` on the exec id
+  answers `Running` while it runs and settles with the real
+  `ExitCode` afterwards, to a *different* client than the one that
+  started it. This is why the durable-task launch journals the exec id
+  **before** `exec_start`: the journaled id is a probeable handle, and
+  the experiment is what makes that worth relying on.
+- **What is lost is the stream, not the work.** Re-attaching with
+  `exec_start` on an already-started exec yields no output. A hub that
+  died mid-run can learn *that* and *how* its step finished; it cannot
+  recover the lines it was not there to read.
+- **A terminal-backgrounded job survives too** — both a plain `&` job
+  and a `setsid` one — and so does the interactive shell itself. The
+  `setsid` job reparents to the container's init and carries its own
+  session id, which is precisely the descendant no process-group
+  prover can see.
+- **The daemon prunes finished execs** from a container's `ExecIDs`,
+  so the list is a live set rather than an accumulating log. Each id
+  is still confirmed through `exec_inspect`, because the pruning is
+  observed behaviour of one daemon while `Running` is a stated one.
+
+The practical reading: **a hub restart does not stop a run.** It stops
+vaibify *watching* the run. Anything that must survive a restart has
+to be recoverable from the journal and the filesystem, never from the
+hub's memory.
+
 ### PID-reuse-proof staleness
 
 When a server dies uncleanly, its slot and lock files survive. The

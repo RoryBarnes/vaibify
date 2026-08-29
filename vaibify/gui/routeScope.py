@@ -206,6 +206,7 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("PUT", "/api/preferences/host-warning-acknowledged"):
         S_SCOPE_BROWSER_HUB,
     ("PUT", "/api/preferences/idle-timeout"): S_SCOPE_BROWSER_HUB,
+    ("PUT", "/api/preferences/session-cap"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/registry/{sName}/release"): S_SCOPE_BROWSER_HUB,

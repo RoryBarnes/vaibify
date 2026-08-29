@@ -885,6 +885,54 @@ class DockerConnection:
         container = self._clientDocker.containers.get(sContainerId)
         return self._dictContainers.setdefault(sContainerId, container)
 
+    def flistRunningExecIdentifiers(self, sContainerId):
+        """Return the ids of exec sessions the daemon still reports running.
+
+        Metadata only: this asks the daemon what it is running, it never
+        runs anything, so it needs no command authority and no admission.
+
+        It is EVIDENCE of work in the container, never proof of its
+        absence. An exec whose shell has exited leaves nothing here even
+        when a ``setsid`` descendant of it is still running — the same
+        limit ``terminalContainment`` documents for its process-group
+        prover. What the signal does carry is the property this exists
+        for, observed 2026-08-29: an exec outlives the death of the
+        client that started it, so a hub that crashed and restarted can
+        still see the work its predecessor launched.
+
+        The daemon prunes finished execs from ``ExecIDs``, so the list
+        alone would nearly answer the question; each id is confirmed
+        through ``exec_inspect`` anyway, because the pruning is
+        observed behaviour of one daemon and ``Running`` is a stated
+        one.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        container.reload()
+        listExecIds = container.attrs.get("ExecIDs") or []
+        listRunning = []
+        for sExecId in listExecIds:
+            if self._fbExecIsRunning(sExecId):
+                listRunning.append(sExecId)
+        return listRunning
+
+    def _fbExecIsRunning(self, sExecId):
+        """Return True when the daemon reports one exec still running.
+
+        Routed through :meth:`fdictInspectExec` — the gateway method the
+        operation journal's exec verifier already uses — rather than
+        touching the SDK again: a second raw ``exec_inspect`` would be a
+        second untraceable root for the mutation scan to answer for, and
+        the reading of ``Running`` is the same reading in both places.
+
+        A daemon failure is deliberately NOT caught here. Swallowing it
+        would answer "not running" for an exec nobody could read, and
+        the caller would withdraw a keep-alive under work that may be
+        live; letting it propagate lets the single decision point
+        (``sleepPrevention.fbContainerShowsRunningWorkEvidence``) break
+        the tie in the direction that cannot lose a job.
+        """
+        return bool(self.fdictInspectExec(sExecId).get("Running"))
+
     def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):

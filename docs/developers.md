@@ -132,6 +132,56 @@ are excluded from routine runs and are the only ones requiring a live
 container. They are parametrized via `VAIBIFY_INTEGRATION_CONFIG` and
 skip when it is unset.
 
+## What survives what
+
+Three different deaths, three different answers. Getting these
+backwards is how a long run gets abandoned, or a dashboard gets
+believed when it should not be.
+
+**A logout does not touch the work.** Session expiry commits an
+*orphan*, never a release: the credential stops authorizing, and the
+record keeps its flock, its keep-alive, its agent token, and any live
+task. A dashboard-launched `runAll` survives the logout **in full** —
+the loop runs hub-side as a durable task nobody cancels on
+disconnect, and the status callback tolerates a dead socket by design.
+The returning browser reconciles from `pipelineState`.
+
+**A hub restart does not stop a run — it stops vaibify watching one.**
+Measured against a live daemon, an in-container exec survives SIGKILL
+of the process holding its stream, and its exit code stays readable
+through `exec_inspect` on the journaled exec id. What is lost is the
+output stream: re-attaching to a started exec yields nothing. So
+anything that must survive a restart has to be recoverable from the
+journal and the filesystem, never from the hub's memory. The full
+measurement is in [architecture.md](architecture.md) — "What survives
+what".
+
+**The terminal-backgrounded gap.** A job the researcher backgrounds in
+a terminal is not a vaibify pipeline run, so vaibify's own `bRunning`
+flag never rises for it and none of the run-shaped vetoes fire. Sleep
+prevention no longer depends on those vetoes — `sleepPrevention`
+re-derives the keep-alive from whether the daemon reports a running
+exec — but note the honest limit: a `setsid` descendant whose parent
+exec has exited is invisible to that signal, exactly as it is
+invisible to `terminalContainment`'s process-group prover. Vaibify
+cannot prove what is running inside a container. Treat "no exec
+visible" as *no evidence of work*, never as *proof of quiet*; a
+project in which a terminal has run reports quiescence UNPROVEN for
+the same reason.
+
+**Verifying any of this by hand.** The session windows are settable,
+so a test drive does not need twelve hours:
+
+```bash
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=120 python -m vaibify --port 8137
+```
+
+The environment tier outranks the stored preference, so this cannot be
+masked by whatever is in `~/.vaibify/preferences.json`. Leave a tab
+open past the cap and confirm two things: the run you started keeps
+going, and the refusal the tab meets *names the ending* rather than
+claiming the server restarted.
+
 ## Pull Request Workflow
 
 1. Fork the repository and create a feature branch.

@@ -5552,7 +5552,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transition they commit (tests/testLifecycleLogging.py pins the
     # orphan line — the one whose silence made a lease loss
     # undiagnosable).
-    "sessionLifecycle.py": 1580,
+    # 1580 -> 1724 (2026-08-29): the session windows became host-global
+    # SETTINGS. The three-tier resolvers, their live re-read at every
+    # evaluation (which is what lets raising the cap rescue a session
+    # that has not expired), and the sentence a returning researcher is
+    # shown in place of a bare "Unauthorized" all live where the
+    # windows are decided. Not split: they are the same responsibility
+    # this module already owns — deciding when a browser session ends —
+    # and moving them out would put the policy in one file and the
+    # numbers it reads in another.
+    "sessionLifecycle.py": 1758,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6121,17 +6130,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-08-27): the retry route joins the human-only
     # exclusion set beside resume.
     # 2026-08-27 (on merge): the merged file's REAL line count again.
-    # +pause (2026-08-29, researcher request): the deliberate
-    # stand-down — stop after the CURRENT PHASE, resumable, and
-    # distinct from the stop that archives. One flag on the record,
-    # one boundary check in the walk, one command, one route, and
-    # the surfaces that must never confuse the two. It rides the
-    # existing crash-resume machinery rather than adding a second,
-    # so no module gained a second responsibility.
-    # 1110 (2026-08-29, on merge): MEASURED. The council pause
-    # action (1092 on that branch) and main's two Zenodo record
-    # actions both landed.
-    "actionCatalog.py": 1110,
+    # 1115 (2026-08-29, on merge): MEASURED across four changes that
+    # all landed — the council pause action, main's two Zenodo record
+    # actions, and the session-cap preference, which joins the idle
+    # timeout in the intentionally-excluded set because an agent that
+    # could set the cap to "never" would remove the bound on a
+    # credential it shares a container with. Three branches each
+    # recorded a different number (1110, 1092, 1087->1092) and none
+    # describes the merged file.
+    "actionCatalog.py": 1115,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6340,10 +6347,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # counts as an owned-container read beside it.
     # +1 (2026-08-26): the plan.md read joins the frozen
     # container-read allowlist.
-    # 984 (2026-08-29, on merge): MEASURED. The council's plan.md
-    # container-read entry (981) and main's declared-Zenodo-records
-    # listing (972) are both in the merged allowlist.
-    "routeScope.py": 984,
+    # 985 (2026-08-29, on merge): MEASURED. The council's plan.md
+    # container-read entry, main's declared-Zenodo-records listing, and
+    # the session-cap preference route's scope row are all in the
+    # merged allowlist.
+    "routeScope.py": 985,
 }
 
 
