@@ -2005,7 +2005,8 @@ def test_every_campaign_scoped_route_binds_its_campaign_id(tmp_path):
     setBinding = set()
     for sModulePath in (councilRoutes.__file__,
                         councilChatRoutes.__file__):
-        treeModule = ast.parse(open(sModulePath, encoding="utf-8").read())
+        with open(sModulePath, encoding="utf-8") as fileModule:
+            treeModule = ast.parse(fileModule.read())
         for nodeFunction in ast.walk(treeModule):
             if not isinstance(nodeFunction, ast.AsyncFunctionDef):
                 continue
