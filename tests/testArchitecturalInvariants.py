@@ -4195,7 +4195,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1372 -> 1394 (2026-08-28): every login pre-flight is handed
     # the campaign's OWN turn budget, so the refusal names the real
     # number rather than a default the researcher may have changed.
-    "routes/councilRoutes.py": 1394,
+    # 1394 -> 1400 (2026-08-29): the campaign read serves the notes
+    # channel (charter 1.7.0) beside the decision grouping it already
+    # derived — six lines on the same read path, no new concern.
+    "routes/councilRoutes.py": 1400,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4320,8 +4323,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exit code, and ACQUITS the council's own bounds — the record held
     # all of it while the card said only "the cause is outside what the
     # turn can see".
-    "agentCouncil.py": 1324,
-    "agentCouncilCharter.py": 931,
+    # 1324 -> 1459 (2026-08-29, researcher direction): how a council
+    # that never converged ENDS. The deliberation-summary round, its
+    # single-author phase, and the closing-turn exemptions ride the
+    # same round/phase/attempt machinery this module already owns —
+    # the engine gained one more ending, not a second responsibility.
+    "agentCouncil.py": 1459,
+    # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
+    # and the deliberation-summary phase instruction plus its schema
+    # extension. This module IS the instruction contract and the turn
+    # schema; growing the contract is what growing it looks like.
+    "agentCouncilCharter.py": 1110,
+    # NEW at 810 (2026-08-29): the notes derivation joins the decision
+    # grouping and the held-question descriptor. All three are the same
+    # responsibility — reading a settled record into what a researcher
+    # is entitled to be shown at a gate — so it lands beside them
+    # rather than in a fourth module nobody would look in.
+    "agentCouncilResolution.py": 810,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -5518,7 +5536,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1931 -> 1952 (2026-08-28): an unproven egress teardown is
     # RE-ATTEMPTED before it may refuse a continuation — one unlucky
     # cleanup used to cost a hub restart on every later attempt.
-    "agentCouncilController.py": 1952,
+    # 1952 -> 1997 (2026-08-29): the plan document gained clause 6's
+    # notes section and the deliberation summary of a council that
+    # never converged — both in fsComposePlanMarkdown, the module's
+    # existing single authority on what that artifact says.
+    "agentCouncilController.py": 1997,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

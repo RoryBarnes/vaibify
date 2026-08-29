@@ -14859,4 +14859,148 @@ def _fdictEntry(sRel):
             '                jsonCampaign))'
         ),
     ),
+
+    # --- 2026-08-29: charter 1.7.0 — the notes channel, and how a
+    # council that never converged ends. Each mutation below was
+    # applied to the real source and the named test observed to fail.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testAMalformedNoteIsRefusedNotSilentlyDropped'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # The optional key is accepted and never shape-checked, so a
+        # note the researcher cannot read is silently carried.
+        old=(
+            '        if sKeyName in dictCandidate:\n'
+            '            listProblems.extend(\n'
+            '                _flistFindArrayProblems(sKeyName, '
+            'dictCandidate[sKeyName]))'
+        ),
+        new=(
+            '        if False:\n'
+            '            listProblems.extend(\n'
+            '                _flistFindArrayProblems(sKeyName, '
+            'dictCandidate[sKeyName]))'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testACampaignConvenedUnderAnOlderCharterKeepsWorking'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # The key becomes required of every campaign, including one
+        # convened under a charter that never named it.
+        old=(
+            '    listOptionalArrayKeys = list(LIST_NOTE_RESULT_ARRAY_KEYS)\n'
+            '    if bRequireNotes:'
+        ),
+        new=(
+            '    listOptionalArrayKeys = list(LIST_NOTE_RESULT_ARRAY_KEYS)\n'
+            '    if True:'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testAnOlderCharterCouncilStillReachesAPlan'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The engine stops consulting the campaign's own charter and
+        # demands the key of every turn it drives.
+        old='bRequireNotes=fbCharterAsksForNotedFindings(self.dictCampaign),',
+        new='bRequireNotes=True,',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testNotesReachTheResearcherWithoutBecomingQuestions'
+        ),
+        source='vaibify/gui/agentCouncilResolution.py',
+        # The derivation returns nothing, so every recorded note is
+        # lost between the turn record and the researcher.
+        old=(
+            '                        "iRoundNumber": '
+            'dictRound.get("iRoundNumber", 0),\n'
+            '                    })\n    return listNoted'
+        ),
+        new=(
+            '                        "iRoundNumber": '
+            'dictRound.get("iRoundNumber", 0),\n'
+            '                    })\n    return []'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testAnExhaustedCouncilEndsWithAChairbotDeliberationSummary'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The exhausted gate opens with no closing turn, which is the
+        # "it just stops" behaviour this feature replaced.
+        old=(
+            '            if dictSummaryRound is not None:\n'
+            '                return dictSummaryRound'
+        ),
+        new=(
+            '            if False:\n'
+            '                return dictSummaryRound'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testTheSummaryIsNeverFiledAsACandidatePlan'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The summary is filed where the candidate plan lives, so every
+        # downstream reader presents an unagreed summary as consensus.
+        old=(
+            '            self.dictCampaign["dictDeliberationSummary"] = {\n'
+            '                "iRoundNumber": dictRound["iRoundNumber"],'
+        ),
+        new=(
+            '            self.dictCampaign["dictCandidatePlan"] = {\n'
+            '                "iRoundNumber": dictRound["iRoundNumber"],'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testAFailedSummaryStillLeavesTheResearcherTheirExits'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The closing turn retires its authors like any other phase,
+        # emptying the roster the researcher's final veto needs.
+        old=(
+            '            if sPhase != S_PHASE_DELIBERATION_SUMMARY:\n'
+            '                dictParticipant["bFailed"] = True'
+        ),
+        new=(
+            '            if True:\n'
+            '                dictParticipant["bFailed"] = True'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCouncilNotesAndDeliberationSummary.py::'
+            'testTheSummaryRoundDoesNotSpendTheGrantedBudget'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The summary round counts against the budget, so a granted
+        # round buys another summary instead of deliberation.
+        old=(
+            '            if not dictRound["bFinalVetoRound"]\n'
+            '            and not dictRound.get("bDeliberationSummaryRound")])'
+        ),
+        new='            if not dictRound["bFinalVetoRound"]])',
+    ),
 ]

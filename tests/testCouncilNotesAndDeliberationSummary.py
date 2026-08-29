@@ -125,7 +125,8 @@ def testACampaignConvenedUnderAnOlderCharterKeepsWorking():
     does not, so a mutation making the key unconditionally required or
     unconditionally optional kills exactly one of the two assertions.
 
-    Kills: adding listNotedFindings to LIST_TURN_RESULT_ARRAY_KEYS.
+    Kills: requiring the notes key of every campaign regardless of the
+    charter it was convened under.
     """
     dictWithoutNotes = fdictMakeTurnResult()
     del dictWithoutNotes[S_NOTED_FINDINGS_KEY]
@@ -402,8 +403,10 @@ def testAFailedSummaryStillLeavesTheResearcherTheirExits():
     roster, so the final veto the researcher may then request met a
     quorum shortfall instead of voters.
 
-    Kills: transitioning to failed when no author can summarise, and
-    marking the summary's authors bFailed.
+    Kills: marking the summary's failed authors bFailed, the way every
+    other phase does. (The other half — transitioning to failed when no
+    author can summarise — is defended by the same assertions and is
+    not the registered mutation.)
     """
     def _fdictDecide(sHandle, dictTurnRequest):
         if dictTurnRequest["sPhase"] == S_PHASE_DELIBERATION_SUMMARY:
