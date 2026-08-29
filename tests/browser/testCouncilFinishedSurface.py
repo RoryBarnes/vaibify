@@ -88,7 +88,7 @@ def testAFinishedCouncilSaysSoAndOffersThePlanNotAStop(
     sBody = _fsRenderFinished(pageDashboard)
 
     assert "finished deliberating" in sBody, sBody
-    assert "is deliberating. It will pause here" not in sBody, sBody
+    assert "The council is deliberating." not in sBody, sBody
     assert pageDashboard.locator("#btnCouncilStop").count() == 0, (
         "a finished council offered to stop the turn it is not running")
 

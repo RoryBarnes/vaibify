@@ -57,13 +57,6 @@ class Falsification:
 # Each entry below is confirmed by tools/reconfirmFalsification.py to
 # actually kill its falsification test.
 LIST_FALSIFICATIONS = [
-    # --- 2026-08-26: guards added with the publication-scope work ---
-    # Every entry below defends a guard whose REMOVAL changes what the
-    # researcher is told. The pure selectors that came with the same
-    # change (fsetSelectLevel2Paths, fbPathIsCompared,
-    # flistCollectComparisonPaths) have unit tests and no entry: there
-    # is no guard to disable, so a mutation just breaks their own
-    # assertions directly.
     Falsification(
         nodeid=(
             'tests/testPublicationScopeSeparatesTheLevels.py::'
@@ -93,8 +86,6 @@ LIST_FALSIFICATIONS = [
         old='    if not publicationScope.fbPathIsCompared(sRepoRelPath):',
         new='    if False:',
     ),
-    # The four JS guards. Deferred on a host with no browser, the way
-    # every other browser-nodeid entry is.
     Falsification(
         nodeid=(
             'tests/browser/testPushRunsTheVerifyThatProvesIt.py::'
@@ -131,7 +122,6 @@ LIST_FALSIFICATIONS = [
         old='        if (dictSync.bScopeStale === true) return "orange";',
         new='        if (false) return "orange";',
     ),
-
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -147,7 +137,6 @@ LIST_FALSIFICATIONS = [
             '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -163,7 +152,6 @@ LIST_FALSIFICATIONS = [
             '        return True\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -181,7 +169,6 @@ LIST_FALSIFICATIONS = [
             '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -198,7 +185,6 @@ LIST_FALSIFICATIONS = [
             '            pass\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -214,7 +200,6 @@ LIST_FALSIFICATIONS = [
             '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -228,7 +213,6 @@ LIST_FALSIFICATIONS = [
             'executor\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -248,7 +232,6 @@ LIST_FALSIFICATIONS = [
             '"zenodoClient.py",\n    "levelGates.py",\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -258,7 +241,6 @@ LIST_FALSIFICATIONS = [
         old='    "credentialRedactor.py",\n',
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -273,7 +255,6 @@ LIST_FALSIFICATIONS = [
                 )
 ''',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -290,7 +271,6 @@ LIST_FALSIFICATIONS = [
             ) from errorScan""",
         new='        except OSError:\n            continue',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -307,7 +287,6 @@ LIST_FALSIFICATIONS = [
         ) from errorStat""",
         new='    except OSError:\n        return False',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -322,7 +301,6 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -332,7 +310,6 @@ LIST_FALSIFICATIONS = [
         old='    _fnRejectContainedSocket(sResolved)\n',
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -345,7 +322,6 @@ LIST_FALSIFICATIONS = [
         ),
         new='    _fnRejectDeniedPrefix(sResolved)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -360,7 +336,6 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -374,7 +349,6 @@ LIST_FALSIFICATIONS = [
         )""",
         new='    return',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -403,7 +377,6 @@ LIST_FALSIFICATIONS = [
         listOwn.append(nodeChild)
     return (listOwn, listNested)""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -437,7 +410,6 @@ LIST_FALSIFICATIONS = [
         listOwn.append(nodeChild)
     return (listOwn, listNested)""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -450,7 +422,6 @@ LIST_FALSIFICATIONS = [
         ),
         new='    setClientNames = set(dictInherited["setClientNames"])',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -468,7 +439,6 @@ LIST_FALSIFICATIONS = [
         )""",
         new="""    ]""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -484,16 +454,6 @@ LIST_FALSIFICATIONS = [
                 self.tupleSourceLines,
             ),""",
     ),
-
-    # --- The capability record (plan rule R3) -------------------------
-    #
-    # Two of these mutate a vaibify module rather than the scanner, and
-    # deliberately: the claim is that a capability arriving in a module
-    # nobody was watching is caught. Planting it in a module the record
-    # already lists as dangerous would be caught by that module's
-    # existing entries while the real hole stayed open, so the fixture
-    # is pipelineUtils.py -- a leaf holding no capability of any kind.
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -507,7 +467,6 @@ LIST_FALSIFICATIONS = [
             '_S_SEPARATOR = getattr(posixpath, _S_MEMBER_NAME)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -517,7 +476,6 @@ LIST_FALSIFICATIONS = [
         old='import posixpath\nimport re\nimport time\n',
         new='import posixpath\nimport re\nimport subprocess\nimport time\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -531,7 +489,6 @@ LIST_FALSIFICATIONS = [
             self.listUnresolvedSubprocessSites.append(""",
         new="""            self.listUnresolvedSubprocessSites.append(""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -545,7 +502,6 @@ LIST_FALSIFICATIONS = [
                 )""",
         new="""            del sCapability""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -561,7 +517,6 @@ LIST_FALSIFICATIONS = [
         nodeScope = None
         dictAcquisition = {""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -571,7 +526,6 @@ LIST_FALSIFICATIONS = [
         old='    ("sys", "modules"): S_CAPABILITY_REFLECTION,\n',
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::testEvalAndExecAreAcquisitions'
@@ -580,7 +534,6 @@ LIST_FALSIFICATIONS = [
         old='SET_REFLECTION_BUILTINS = frozenset({"eval", "exec", "__import__"})',
         new='SET_REFLECTION_BUILTINS = frozenset({"__import__"})',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -592,7 +545,6 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return False""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -602,7 +554,6 @@ LIST_FALSIFICATIONS = [
         old="""        sCapability = _fsCapabilityForMember(sModule, sMember)""",
         new="""        sCapability = None""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -615,7 +566,6 @@ LIST_FALSIFICATIONS = [
 """,
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -631,7 +581,6 @@ LIST_FALSIFICATIONS = [
         new="""        if isinstance(nodeChild, ast.ImportFrom):
             continue""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -643,7 +592,6 @@ LIST_FALSIFICATIONS = [
         new="""        listChain = []
         if len(listChain) < 2 or listChain[0] not in setProcessModuleNames:""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -656,7 +604,6 @@ LIST_FALSIFICATIONS = [
         )""",
         new="""        return True""",
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -666,7 +613,6 @@ LIST_FALSIFICATIONS = [
         old='    return listChain[0] in setDockerModuleNames\n',
         new='    return True\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -679,7 +625,6 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return False""",
     ),
-
     Falsification(
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',
@@ -697,7 +642,6 @@ LIST_FALSIFICATIONS = [
         dictKwargs = self._fdictBuildExecKwargs(
             sCommand, sWorkdir, sUser)""",
     ),
-
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testATransferBeforeTheLaunchRefusesAndChangesNothing',
         source='vaibify/gui/sessionLifecycle.py',
@@ -732,7 +676,6 @@ LIST_FALSIFICATIONS = [
         if True:
             return _ftReserveForStartUnderLocks(""",
     ),
-
     Falsification(
         nodeid='tests/testReconciliation.py::test_break_glass_refuses_when_the_stop_is_not_proven',
         source='vaibify/config/reconciliation.py',
@@ -760,14 +703,12 @@ LIST_FALSIFICATIONS = [
             sContainerName, error,
         )""",
     ),
-
     Falsification(
         nodeid='tests/testArchitecturalInvariants.py::testScienceTermScanMatchesSeparatedSpellings',
         source='tests/testArchitecturalInvariants.py',
         old='    regexTerm = re.compile(\n        r"\\b" + _S_TERM_SEPARATOR_PATTERN.join(\n            re.escape(sCharacter) for sCharacter in sTerm\n        ),\n        re.IGNORECASE,\n    )',
         new='    regexTerm = re.compile(r"\\b" + re.escape(sTerm), re.IGNORECASE)',
     ),
-
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_agent_token_with_empty_container_id_fails_closed',
         source='vaibify/gui/containerOwnership.py',
@@ -798,19 +739,12 @@ LIST_FALSIFICATIONS = [
     ):""",
         new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:""",
     ),
-    # The HTTP-boundary counterpart of the copied-lease WebSocket gate:
-    # ContainerAwareRoute short-circuits a container-owner request that
-    # the strong predicate refuses. Neutralizing the short-circuit lets a
-    # non-owning browser session mutate a container it never claimed.
     Falsification(
         nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpMutationRequiresOwningLease',
         source='vaibify/gui/routeScope.py',
         old='                if iCode:\n                    return _fresponseRefused(iCode)',
         new='                if False:\n                    return _fresponseRefused(iCode)',
     ),
-    # The read half of the same boundary: dropping container-read from the
-    # enforced-scope set reverts owned-container GETs to the old
-    # declared-but-unenforced state while every mutation test stays green.
     Falsification(
         nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpReadRequiresOwningLease',
         source='vaibify/gui/routeScope.py',
@@ -1377,11 +1311,6 @@ LIST_FALSIFICATIONS = [
         old='    if iRefNumber > iStepCount:',
         new='    if iRefNumber >= iStepCount:',
     ),
-    # The divergence guard reached through its READER rather than its
-    # return, so this entry stays distinct from the one below that
-    # mutates the return itself. Two tests defend the same guard from
-    # different sides, and a shared mutation string would collapse
-    # them into one entry the registry cannot attribute.
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
@@ -1399,22 +1328,12 @@ LIST_FALSIFICATIONS = [
         old="""    if dictStatus.get("iMatching") != iTotal - len(""",
         new="""    if False and dictStatus.get("iMatching") != iTotal - len(""",
     ),
-    # Absence of evidence is not agreement. A cached verify written
-    # under an EARLIER definition of the published set is silent about
-    # the files the scope has since added, in exactly the way it is
-    # silent about files that matched -- so without this guard the gate
-    # reports a full match over a comparison nobody performed. That is
-    # not hypothetical: it is what shipped when project.json joined
-    # Level 2.
     Falsification(
         nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
         source='vaibify/reproducibility/levelGates.py',
         old="""    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):""",
         new="""    if False:""",
     ),
-    # The writer half of the same guard. A scope check whose writer
-    # never stamps the field is not a check, it is an outage in which
-    # no project can ever reach Level 2 again.
     Falsification(
         nodeid='tests/testScheduledReverify.py::testVerifyStampsTheScopeItRanUnder',
         source='vaibify/reproducibility/scheduledReverify.py',
@@ -1475,9 +1394,6 @@ LIST_FALSIFICATIONS = [
         old='''"iOutputHashesMatched": int(iOutputHashesMatched),''',
         new='''"iOutputHashesMatched": int(iOutputHashesTotal),''',
     ),
-    # The builder guard above cannot see a CALLER performing the same
-    # substitution one frame up; the CLI lane did exactly that. These
-    # four sit at the shared derivation and at each lane's call site.
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_shared_hash_compare_excludes_mismatches_from_matched',
         source='vaibify/reproducibility/rerunVerification.py',
@@ -1508,11 +1424,6 @@ LIST_FALSIFICATIONS = [
         old='''        iOutputHashesMatched=dictResult["iOutputHashesMatched"],''',
         new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
-    # A rerun that silently skips steps (interactive, disabled, or a
-    # step-less workflow) leaves pinned outputs untouched, so every hash
-    # trivially matches and the attestation certifies a run that ran
-    # nothing. These two guard the refusal scanner and the empty-manifest
-    # fail-close; the tests patch the runner to fail loudly if invoked.
     Falsification(
         nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_interactive_step_refuses_rerun_before_any_execution',
         source='vaibify/reproducibility/rerunVerification.py',
@@ -1525,10 +1436,6 @@ LIST_FALSIFICATIONS = [
         old='    if not listEntries:',
         new='    if False and not listEntries:',
     ),
-    # The publishing commit moves HEAD, so a rerun that re-derives the
-    # epoch salts its figures differently from the pinned artefacts.
-    # These two guard the override short-circuit and the rerun lane's
-    # hand-off of the recorded epoch.
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_override_bypasses_the_head_derivation',
         source='vaibify/gui/determinismEnvironment.py',
@@ -1549,10 +1456,6 @@ LIST_FALSIFICATIONS = [
         old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
         new='        iSourceDateEpochOverride=0,',
     ),
-    # A bind-mount denylist that checks only the descendant direction is
-    # bypassed by mounting the parent of a protected directory ($HOME
-    # exposes ~/.ssh). The ancestor direction of the overlap check is
-    # what closes it.
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_mounting_home_itself_is_rejected',
         source='vaibify/config/bindMountValidator.py',
@@ -1562,9 +1465,6 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return sFirst.startswith(sSecond + os.sep)""",
     ),
-    # A repo destination becomes rm -rf "${WORKSPACE}/${destination}" in
-    # the entrypoint; unvalidated, it deletes host data via '../' escape
-    # or a bind-mount collision. These guard the host-side validator.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_traversal_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1582,18 +1482,12 @@ LIST_FALSIFICATIONS = [
     return listTargets
     for dictMount in dictConfig.get("bindMounts") or []:""",
     ),
-    # The repo NAME derives the clone SOURCE path ${WORKSPACE}/${name};
-    # dropping the source from the bind-overlap check lets a name that
-    # equals a bind target clone into the mounted host directory.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_name_colliding_with_bind_mount_is_rejected',
         source='vaibify/config/projectConfig.py',
         old="        for sPath in (sSourceAbs, sDestAbs):",
         new="        for sPath in (sDestAbs,):",
     ),
-    # An unreachable Docker daemon yields no protected paths; proceeding
-    # with an empty protected set deletes credential files a live
-    # container still mounts. Enumeration failure must forbid the sweep.
     Falsification(
         nodeid='tests/testEphemeralStore.py::test_sweep_is_forbidden_when_the_daemon_is_unreachable',
         source='vaibify/gui/routes/syncRoutes.py',
@@ -1602,36 +1496,24 @@ LIST_FALSIFICATIONS = [
         new="""        setMounted = _fsetMountedHostPaths(dictCtx)
         if False:""",
     ),
-    # The host-log-tail endpoint returns the raw host-wide log and
-    # free-text incidents; the agent lane must receive only an
-    # allowlisted per-container view, never the raw log or free text.
     Falsification(
         nodeid='tests/testAgentLaneEnforcement.py::test_host_log_tail_agent_lane_is_sanitized',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="        if serverMiddleware.fbRequestRidesAgentLane(request):",
         new="        if False:",
     ),
-    # The browser lane's streamed exec must be as fail-closed as the
-    # blocking one; a catch-all iExitCode=0 lets a step whose real
-    # command would fail look green through the streamed path.
     Falsification(
         nodeid='tests/testBrowserLaneContract.py::testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer',
         source='tests/browser/fakeDockerAdapter.py',
         old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
         new='        iExitCode, sStdout = (0, "ok")',
     ),
-    # fiApplyMigrations stamped the version DOWN to the current at the
-    # end, silently downgrading a future-version project.json and dropping
-    # fields this build does not understand on the next save.
     Falsification(
         nodeid='tests/testWorkflowSchemaForwardCompat.py::test_future_schema_version_is_refused_not_downgraded',
         source='vaibify/gui/workflowMigrations.py',
         old="    if iVersion > I_CURRENT_WORKFLOW_VERSION:",
         new="    if False:",
     ),
-    # A mount at the workspace root is an ANCESTOR of the destination;
-    # the destination is a descendant of the mount. Dropping the
-    # descendant direction of the overlap check lets that rm -rf through.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_under_a_workspace_root_mount_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1641,9 +1523,6 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return sSecond.startswith(sFirst + "/")""",
     ),
-    # repr() is Python escaping, not shell escaping; embedded in a
-    # double-quoted bash -c string, a crafted container path executes on
-    # preview/fetch. Shell-quoting the whole -c argument closes it.
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_npy_preview_quotes_the_whole_program',
         source='vaibify/gui/dataPreview.py',
@@ -1669,10 +1548,6 @@ LIST_FALSIFICATIONS = [
             _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
-    # The ownerless-connect exception is the viewer's bootstrap; extending
-    # it to the hub lets an unclaimed connect run its write path (empty
-    # agent token clobbers the owner's) against a container another hub may
-    # hold via the flock.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_hub_refuses_connect_to_an_unclaimed_container',
         source='vaibify/gui/routes/workflowRoutes.py',
@@ -1694,9 +1569,6 @@ LIST_FALSIFICATIONS = [
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
     ),
-    # Sweep C1: connect must consult the SESSION-BOUND lease, not the lease
-    # VALUE. Reverting the connect gate to the value-only fbSessionOwnsContainer
-    # admits a second browser session replaying the owner's copied lease.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_hub_connect_refuses_second_session_with_a_copied_lease',
         source='vaibify/gui/routes/workflowRoutes.py',
@@ -1709,19 +1581,12 @@ LIST_FALSIFICATIONS = [
     ):
         return""",
     ),
-    # Sweep C2: release must consult the SESSION-BOUND lease, not the lease
-    # VALUE. Reverting the guard to a lease-value comparison lets a second
-    # browser session drop the true owner's record with a copied lease.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_release_refuses_second_session_presenting_a_copied_lease',
         source='vaibify/gui/containerOwnership.py',
         old="""    return bBoundOwner or bUnboundOwner""",
         new="""    return recordOwner.sLeaseId == sLeaseId""",
     ),
-    # Sweep C8: the repo-URL check must reject a leading-dash argument
-    # injection and non-vetted git transports (ext::, file://). Dropping the
-    # guard readmits those remote-code primitives, which carry no shell
-    # metacharacter and so clear the metacharacter filter.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_url_argument_and_scheme_injection_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1732,19 +1597,12 @@ LIST_FALSIFICATIONS = [
     return bool(_S_SCP_LIKE_URL.match(sUrl))""",
         new="""    return True""",
     ),
-    # Without base-uri, an injected <base> tag (from a hostile filename
-    # rendered into innerHTML) re-homes the dashboard's root-relative
-    # API calls; base-uri does not fall back to default-src.
     Falsification(
         nodeid='tests/testContentSecurityPolicy.py::test_base_uri_is_locked_to_none',
         source='vaibify/gui/serverMiddleware.py',
         old='            "base-uri \'none\'; "\n            "form-action \'self\'; "',
         new='            "form-action \'self\'; "',
     ),
-    # init swallowed the duplicate-name error and reported success, so a
-    # second project reusing a name was scaffolded but unregistered and
-    # --project resolved to the other directory. The outcome must
-    # distinguish same-dir re-init from a cross-directory name conflict.
     Falsification(
         nodeid='tests/testInitRegistrationOutcome.py::test_name_conflict_with_a_different_dir_fails_loudly',
         source='vaibify/cli/commandInit.py',
@@ -1758,10 +1616,6 @@ LIST_FALSIFICATIONS = [
         new="""    except ValueError:
         return "registered\"""",
     ),
-    # The build-progress record is read by every later build click (the
-    # 409 duplicate refusal) and by re-attached tabs; these guard that a
-    # dead build always closes its record and that no unredacted line
-    # can reach the dashboard tail.
     Falsification(
         nodeid='tests/testBuildProgressRoutes.py::test_failed_build_closes_the_record_as_failed',
         source='vaibify/gui/buildRoutes.py',
@@ -2113,8 +1967,6 @@ def _fdictEntry(sRel):
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal):""",
     ),
-
-    # --- 2026-07-03: declaration/push cosmic-ray survivors (ux/dashboard-clarity) ---
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_generic_verify_failure_returns_the_generic_warning',
         source='vaibify/gui/routeContext.py',
@@ -2222,16 +2074,6 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
-    # The commit guard had three byte-identical copies (2026-07-02
-    # added it to two variants, 2026-08-26 to the third after it
-    # shipped the unguarded chain to a researcher). Both entries below
-    # then needed iExpectedOccurrences=3, because mutating one copy of
-    # a three-copy guard changes nothing any test can observe.
-    #
-    # 2026-08-26: the tail was extracted to _fsComposePublishSuffix, so
-    # there is ONE copy and these mutate it directly. That is a
-    # strengthening, not bookkeeping — a single-copy guard is one a
-    # mutation can actually falsify.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
@@ -2244,8 +2086,6 @@ def _fdictEntry(sRel):
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
     ),
-
-    # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_clean_declaration_really_untracks_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
@@ -2264,8 +2104,6 @@ def _fdictEntry(sRel):
         old='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if iExit != 0:',
         new='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if False and iExit != 0:',
     ),
-
-    # --- 2026-07-11: per-step falsification attestation honesty guards ---
     Falsification(
         nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_na_step_never_presents_current_record',
         source='vaibify/reproducibility/falsificationAttestation.py',
@@ -2332,7 +2170,6 @@ def _fdictEntry(sRel):
         old='    fDurationSeconds=0.0, sReason="",',
         new='    fDurationSeconds=1.0, sReason="",',
     ),
-    # --- Step name <-> directory slug contract (2026-07-18) ---
     Falsification(
         nodeid='tests/testStepSlugContract.py::test_slug_enforces_camelcase_on_lowercase_words',
         source='vaibify/gui/pipelineUtils.py',
@@ -2402,7 +2239,6 @@ def _fdictEntry(sRel):
         old='        if fbStepDirectoryConforms(dictStep):\n            continue',
         new='        if fbStepDirectoryConforms(dictStep) or True:\n            continue',
     ),
-    # --- Personal instruction layer (Replay axis, 2026-07-19) ---
     Falsification(
         # Dropping the agent-lane rejection hands a compromised
         # in-container agent a hash oracle over host files.
@@ -2445,8 +2281,6 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
-    # --- Config values that survive being written but not being read
-    #     back (resource limits, wizard save; 2026-07-25) ---
     Falsification(
         # The range check also rejects NaN (it fails every
         # comparison), so what the finiteness check defends is the
@@ -2465,7 +2299,6 @@ def _fdictEntry(sRel):
         old='    if not numberMinimum <= numberValue <= numberMaximum:',
         new='    if not numberMinimum <= numberValue:',
     ),
-    # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
     Falsification(
         # The empty secret name is rejected by fsRetrieveSecret before
         # it dispatches on the method, so the gh-auth fallback becomes
@@ -2525,7 +2358,6 @@ def _fdictEntry(sRel):
         old='if "" in listParts or "." in listParts or ".." in listParts:',
         new='if "" in listParts or ".." in listParts:',
     ),
-    # --- Step identity: labels and the rename cascade (2026-07-25) ---
     Falsification(
         # The shipped bug, restored on the RESOLVER side: comparing the
         # raw field against a bool made a hand-edited
@@ -2617,7 +2449,6 @@ def _fdictEntry(sRel):
 """,
         new='',
     ),
-    # --- Dashboard honesty (Opus 5 review, phase 3, 2026-07-25) ---
     Falsification(
         # Reading a timezone-less stamp as the host's LOCAL time
         # relocates a recorded cause by the host's UTC offset, so a
@@ -2751,7 +2582,6 @@ def _fdictEntry(sRel):
         old='    "piAutoUpdate": "bPiAutoUpdate",\n',
         new='',
     ),
-    # ---- Phase 4 security remediation (2026-07-25) ----
     Falsification(
         # Without the catalog check the agent lane returns to an
         # unconditional pass-through, and every user-only action --
@@ -3077,12 +2907,6 @@ def _fdictEntry(sRel):
             '                continue'
         ),
     ),
-
-    # ── Documented hard rules that no test could previously falsify ──
-    # (2026-07-26 audit). Mutation testing cannot reach this class: it
-    # finds weak tests over EXISTING code, and there is no mutant for an
-    # enforcement point that was never written.
-
     Falsification(
         # AGENTS.md "Ask first" names five sensitive categories; the
         # credential manager is the one whose loss is unrecoverable
@@ -3400,9 +3224,6 @@ def _fdictEntry(sRel):
         old='    for sAgent in claude codex gemini opencode cline openhands pi; do',
         new='    for sAgent in claude codex gemini opencode cline openhands pi newagent; do',
     ),
-    # ORPHANED_SESSION slice 4 (design §9, falsification case 19 claim
-    # half): neutralizing the cardinality read-check lets one browser
-    # session accumulate two owner records.
     Falsification(
         nodeid='tests/testSessionCardinality.py::test_second_claim_by_the_same_session_is_refused',
         source='vaibify/gui/containerOwnership.py',
@@ -3425,53 +3246,36 @@ def _fdictEntry(sRel):
         old='    if sHeldElsewhereName:\n        raise HTTPException(',
         new='    if False:\n        raise HTTPException(',
     ),
-    # ORPHANED_SESSION slice 3 sub-step 3a (design §8/§13): the
-    # write-ahead operation journal and its quarantine. Case 27 —
-    # acquisition must consult the journal atomically with the fresh
-    # flock; bypassing the consult reverts to the silent dead-PID reap.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_quarantine_survives_hub_sigkill_and_blocks_the_next_claim',
         source='vaibify/config/containerLock.py',
         old='        if fileHandle is not None:\n            return _ffileRefuseUnsettledJournal(\n                fileHandle, sProjectName, connectionDocker,\n            )',
         new='        if fileHandle is not None:\n            return fileHandle',
     ),
-    # Case 36, auto-clear half: a provably-dead, provably-settled
-    # leftover must clear automatically, or every interrupted multi-hour
-    # run demands a human and the gate becomes a rubber stamp.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_auto_tier_clears_a_provably_dead_leftover_with_a_logged_note',
         source='vaibify/config/operationJournal.py',
         old='    if dictProbe["bSettled"]:\n        return ("settled", dictProbe["sDetail"])',
         new='    if dictProbe["bSettled"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
     ),
-    # Case 36, busy half: a live IN_FLIGHT holder is in use, never
-    # quarantined; quarantining it would poison a working run.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_live_in_flight_holder_reads_busy_never_quarantined',
         source='vaibify/config/operationJournal.py',
         old='    if dictProbe["bHolderAlive"]:\n        return ("busy", dictProbe["sDetail"])',
         new='    if dictProbe["bHolderAlive"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
     ),
-    # Case 37, fail-closed half: with the malformed branch disabled, a
-    # damaged journal falls through to the valid-records path with zero
-    # records and resolves SETTLED — damage reading as clean.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_malformed_unreadable_and_newer_journals_read_quarantined',
         source='vaibify/config/operationJournal.py',
         old='    if dictOutcomeRead["sReadState"] == "malformed":',
         new='    if False and dictOutcomeRead["sReadState"] == "malformed":',
     ),
-    # Case 37, durability half: writing in place instead of staging into
-    # a temp file lets a crash mid-write destroy the previous journal.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_survives_a_torn_write',
         source='vaibify/config/operationJournal.py',
         old='    sTemporaryPath = f"{sPath}{_S_TEMPORARY_WRITE_SUFFIX}.{os.getpid()}"',
         new='    sTemporaryPath = sPath',
     ),
-    # Case 42, semantics half: an ordinary write that treats a damaged
-    # journal as fresh silently replaces (and so clears) the quarantine
-    # marker — the acknowledge-shaped clear the design forbids.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_newer_version_requires_upgrade_and_malformed_refuses_writes',
         source='vaibify/config/operationJournal.py',
@@ -3484,19 +3288,12 @@ def _fdictEntry(sRel):
         new='''    if dictOutcomeRead["sReadState"] != "valid":
         return _fdictBuildEmptyPayload(sContainerName)''',
     ),
-    # Case 45, journal half (the carrier half lands with sub-step 3b):
-    # replacing the record SET on every prepare loses coexistence, so a
-    # pipeline task, a terminal exec, and a file write cannot be
-    # journaled at once.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_is_a_set_and_claimable_only_when_every_record_settles',
         source='vaibify/config/operationJournal.py',
         old='        dictPayload["dictOperations"][sOperationId] = dictRecord',
         new='        dictPayload["dictOperations"] = {sOperationId: dictRecord}',
     ),
-    # Case 39: without the journal entry in the home-relative denylist,
-    # a mount of ~/.vaibify (or the journal itself) reaches the
-    # quarantine markers from inside a container.
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_journal_directory_mount_is_rejected_in_every_direction',
         source='vaibify/config/bindMountValidator.py',
@@ -3508,10 +3305,6 @@ def _fdictEntry(sRel):
     ".vaibify/journal",''',
         new='''    ".kube",''',
     ),
-
-    # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
-    # Case 16, mode (a): with the write-funnel gate removed, a dummy
-    # route's direct container write reaches put_archive unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
         source='vaibify/docker/dockerConnection.py',
@@ -3520,9 +3313,6 @@ def _fdictEntry(sRel):
         )''',
         new='''        pass''',
     ),
-    # Case 16, mode (b): inverting the enforced-lane check makes the
-    # funnel a no-op exactly where it must fail closed, so a write
-    # laundered across asyncio.to_thread lands unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_b',
         source='vaibify/config/mutationAdmission.py',
@@ -3533,8 +3323,6 @@ def _fdictEntry(sRel):
         return
     admission = fadmissionActiveForContainerId(sContainerId)''',
     ),
-    # Case 16c: with the durable-launch gate removed, a route reaches
-    # exec_create without a carrier-minted mode-(c) guard.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_durable_exec_without_mode_c_guard_is_refused',
         source='vaibify/docker/dockerConnection.py',
@@ -3543,18 +3331,12 @@ def _fdictEntry(sRel):
         )''',
         new='''        pass''',
     ),
-    # Case 16b: without the shield, cancelling the requesting coroutine
-    # cancels the supervisor, the drain frees while the worker thread
-    # keeps running, and a competitor acquires mid-effect.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_cancelled_requester_leaves_drain_held_until_worker_ends',
         source='vaibify/gui/commitCarrier.py',
         old='    return await asyncio.shield(taskSupervisor)',
         new='    return await taskSupervisor',
     ),
-    # Case 26: without the retained-names skip, hub shutdown frees the
-    # flock of a container whose guarded worker is still live, handing
-    # it to the next hub mid-commit.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_hub_shutdown_retains_flock_while_guarded_worker_lives',
         source='vaibify/gui/appFactory.py',
@@ -3563,9 +3345,6 @@ def _fdictEntry(sRel):
                 continue''',
         new='''        for sName, recordOwner in list(dictContainerOwners.items()):''',
     ),
-    # Case 31 (carrier half): a cancel plane that settles the journal
-    # record itself clears the write-ahead record while the worker can
-    # still commit — the supervisor must be the single settler.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_out_of_band_cancel_leaves_supervisor_as_single_releaser',
         source='vaibify/gui/commitCarrier.py',
@@ -3575,8 +3354,6 @@ def _fdictEntry(sRel):
         _fnMarkSupervisorCancelRequested(supervisor)
         operationJournal.fnSettleOperation(sName, supervisor.sOperationId)''',
     ),
-    # Case 32 (carrier half): dropping the carrier veto lets the idle
-    # reaper force-release an owner whose guarded worker is live.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_reaper_never_releases_owner_with_live_guarded_work',
         source='vaibify/gui/serverLifespan.py',
@@ -3588,8 +3365,6 @@ def _fdictEntry(sRel):
         new='''    def fbGuardedWorkLive(sName):
         return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
     ),
-    # Case 38 (holder half): neutralizing the holder comparison admits
-    # any holder under a merely-present record.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_identity_gate_admits_own_record_and_refuses_foreign_holder',
         source='vaibify/config/mutationAdmission.py',
@@ -3598,8 +3373,6 @@ def _fdictEntry(sRel):
         new='''    for sIdentityKey, valueExpected in (dictHolderIdentity or {}).items():
         if False and dictOwnRecord.get(sIdentityKey) != valueExpected:''',
     ),
-    # Case 38 (quarantine half): neutralizing the NEEDS_RECONCILIATION
-    # scan lets a sitting owner resume mid-quarantine.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_identity_gate_refuses_sitting_owner_mid_quarantine',
         source='vaibify/config/mutationAdmission.py',
@@ -3612,8 +3385,6 @@ def _fdictEntry(sRel):
             operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
         ):''',
     ),
-    # Case 45 (carrier half): an added presence-based refusal denies an
-    # operation its own record whenever any other record coexists.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_carrier_admits_each_operation_against_its_own_record',
         source='vaibify/config/mutationAdmission.py',
@@ -3624,9 +3395,6 @@ def _fdictEntry(sRel):
         )
     dictOwnRecord = dictOperations.get(sOperationId)''',
     ),
-    # Case 41 (gate part): reordering the helper stub to act BEFORE
-    # reading the stdin gate lets a killed parent leave a landed effect
-    # with no identity-persisted releasing gate.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_parent_kill_at_each_two_phase_transition_leaves_no_actor',
         source='vaibify/gui/commitCarrier.py',
@@ -3646,7 +3414,6 @@ def _fdictEntry(sRel):
     "sys.exit(iExitCode)\\n"
 )''',
     ),
-
     Falsification(
         nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_cli_clears_a_sigkill_quarantine_and_restores_claim',
         source='vaibify/config/reconciliation.py',
@@ -3699,12 +3466,6 @@ def _fdictEntry(sRel):
         new='''    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
     if False:''',
     ),
-
-    # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
-    # The terminal exec id must be durable BEFORE exec_start (the
-    # create -> journal -> start split applied to terminals); the
-    # mutation starts the exec first, leaving a crash window with an
-    # unidentified writer.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_start_journals_the_exec_id_before_exec_start',
         source='vaibify/gui/terminalSession.py',
@@ -3723,9 +3484,6 @@ def _fdictEntry(sRel):
             self._sContainerId, self._dictContainment["iOwnerGeneration"],
         )''',
     ),
-    # Terminate-and-prove must PROVE the group empty; the mutation is
-    # the optimistic proceed the design forbids (v13: "never an
-    # optimistic proceed").
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_surviving_group_member_quarantines_never_settles',
         source='vaibify/gui/terminalContainment.py',
@@ -3738,10 +3496,6 @@ def _fdictEntry(sRel):
     """Return True only for a conclusive zero-member probe."""
     return True''',
     ),
-    # The codex-round-12 hole, unit half (case 43): settling a terminal
-    # record on ``exec_inspect Running == false`` alone lets a detached
-    # signal-trapping descendant write after the record clears. The
-    # real-container half is tests/testTerminalContainmentLive.py.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_terminal_probe_refuses_to_settle_on_exec_dead_alone',
         source='vaibify/config/operationJournal.py',
@@ -3752,9 +3506,6 @@ def _fdictEntry(sRel):
         return dictExecProbe
     return dictExecProbe''',
     ),
-    # Shutdown half of case 44 (unit): the flock-release hook must skip
-    # a container whose terminal group may still write, exactly as it
-    # skips live mutation work.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_shutdown_retains_the_flock_of_a_live_terminal_container',
         source='vaibify/gui/appFactory.py',
@@ -3767,9 +3518,6 @@ def _fdictEntry(sRel):
             app.state,
         )''',
     ),
-    # A closed socket is not a dead terminal (design §7): the run
-    # loop's teardown must terminate-and-prove, not merely send exit
-    # keystrokes and close the socket.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_socket_close_drains_the_containment_record',
         source='vaibify/gui/pipelineServer.py',
@@ -3786,16 +3534,6 @@ def _fdictEntry(sRel):
     )''',
         new='''    taskDrain = asyncio.create_task(asyncio.sleep(0))''',
     ),
-
-    # --- Slice 3d, real-container halves (cases 43, 44, 45). These
-    # five tests are docker_live-marked: they SKIP without a reachable
-    # daemon (VAIBIFY_REQUIRE_DOCKER_DAEMON turns the skip into a
-    # failure in the opt-in CI job), so kill-confirming them REQUIRES
-    # a live daemon — under a daemon-less reconfirm run the mutant
-    # survives vacuously via the skip, which is a limit of the
-    # harness, not of the tests. Each was kill-confirmed by hand
-    # against Docker 28.x. Case 43's transfer-commit half and case
-    # 44's transfer/expiry halves land with slices 5 and 6.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_prover_reports_survivors_after_exec_inspect_says_dead',
         source='vaibify/docker/dockerConnection.py',
@@ -3808,12 +3546,6 @@ def _fdictEntry(sRel):
             "sDetail": f"{iMemberCount} live member(s)",
         }''',
     ),
-    # The zombie exemption (2026-08-14). The mutant restores the
-    # pre-fix walk that counted Z-state entries, which is exactly the
-    # unclearable-quarantine bug: a defunct child reparented to a
-    # non-reaping PID 1 held the count forever and reconcile refused
-    # until the container was restarted. Live-gated like its
-    # neighbours: needs a daemon, kill-confirmed by hand.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_a_zombie_does_not_hold_the_group_count',
         source='vaibify/docker/dockerConnection.py',
@@ -3879,27 +3611,6 @@ def _fdictEntry(sRel):
         dictPayload["dictOperations"] = {}
         _fnStoreJournalPayload(sContainerName, dictPayload)''',
     ),
-
-    # --- Slice 5: the host-authorized transfer transaction (design
-    # §6.1/§6.2). Cases 2/3/4/5/6/8/12/14/15/23/26b/31/44/46, transfer
-    # halves. Three of these conditions are checked at BOTH the pre-mint
-    # layer and the commit point, so disabling one copy changes nothing
-    # observable and reads as SURVIVED.
-    #
-    # These entries originally mutated the pre-mint copy alone and
-    # detected it through a DRAINING side effect: a doomed transfer must
-    # not drain the sitting owner's terminals, so the backstop's refusal
-    # arrived with the terminals already gone. That phase was later
-    # removed -- a transfer now refuses a busy container at once and
-    # never waits for a drain (AGENTS.md, "A busy container refuses a
-    # hand-over at once") -- which silently made the discriminator
-    # vacuous and the three entries unkillable. They survived for a week
-    # while reading as three undefended ownership guards.
-    #
-    # So the mutation is now "the guard is gone", every copy, with the
-    # count stated. Where two guards can still produce the same refusal,
-    # the TEST discriminates on the message that names the cause.
-    # Case 2 (stale-generation refusal, the ABA guard):
     Falsification(
         nodeid='tests/testHostTransfer.py::testStaleGenerationTransferIsRefused',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3907,21 +3618,18 @@ def _fdictEntry(sRel):
         new='    if False:',
         iExpectedOccurrences=2,
     ),
-    # Case 2/15 (ACTIVE transfer revokes the old session in-commit):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
         source='vaibify/gui/sessionLifecycle.py',
         old='    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)',
         new='    pass',
     ),
-    # Case 3 (bounded replay returns the STORED tuple):
     Falsification(
         nodeid='tests/testHostTransfer.py::testLostTransferResponseReplaysTheStoredTuple',
         source='vaibify/gui/browserSession.py',
         old='        recordCap.sIssuedLease = sLeaseId',
         new='        recordCap.sIssuedLease = ""',
     ),
-    # Case 14 (reaped record answers "claim normally", never retry):
     Falsification(
         nodeid='tests/testHostTransfer.py::testReapedRecordYieldsClaimNormally',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3934,7 +3642,6 @@ def _fdictEntry(sRel):
         browserSession.fnExpireCapability(dictStore, sCapability)
         return (S_TRANSFER_BUSY_RETRY, {''',
     ),
-    # Case 26b (a poisoned record refuses every transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testPoisonedRecordRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3942,7 +3649,6 @@ def _fdictEntry(sRel):
         new='    if False:',
         iExpectedOccurrences=2,
     ),
-    # Case 31 (a cancel that won the lock blocks the transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCancelRequestedDurableTaskRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3950,9 +3656,6 @@ def _fdictEntry(sRel):
         new='    if recordTask is not None and False:',
         iExpectedOccurrences=2,
     ),
-    # Case 23 (the barrier test: adoption, not a blanket live-task
-    # refusal — the exact "different operation ⇒ refuse" mistake the
-    # §8 adoption exception exists to prevent):
     Falsification(
         nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningDurableTask',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3973,15 +3676,12 @@ def _fdictEntry(sRel):
         })
     sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
     ),
-    # Case 5 (the preserved task is retagged in place, not left stale):
     Falsification(
         nodeid='tests/testHostTransfer.py::testPreservedTaskCompletesAttributedToNewGeneration',
         source='vaibify/gui/sessionLifecycle.py',
         old='    _fnRetagLiveDurableTask(appState, sName, iNewGeneration)',
         new='    pass',
     ),
-    # Case 4 (an old-generation ordinary mutation fails at the
-    # carrier's linearization check after a REAL transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldLaneTupleCannotCommitAfterTransfer',
         source='vaibify/gui/commitCarrier.py',
@@ -3995,7 +3695,6 @@ def _fdictEntry(sRel):
     dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
     recordOwner = dictContainerOwners.get(dictLaneTuple["sContainerName"])''',
     ),
-    # Case 6 (old sockets are detached, closed, and inert afterwards):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldGenerationCleanupCannotTouchNewGenerationState',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4008,7 +3707,6 @@ def _fdictEntry(sRel):
         return []
     return []''',
     ),
-    # Case 8 (the agent token rides through the transfer untouched):
     Falsification(
         nodeid='tests/testHostTransfer.py::testAgentAuthorizationSurvivesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4018,9 +3716,6 @@ def _fdictEntry(sRel):
     recordOwner.sAgentToken = containerOwnership.fsMintAgentToken()
     recordOwner.sBrowserSessionId = sNewSessionId''',
     ),
-    # Case 12 (a half-implemented transfer that bumps the generation
-    # without rotating the browser principals lets the displaced
-    # session release the successor's record):
     Falsification(
         nodeid='tests/testHostTransfer.py::testStaleGenerationReleaseIsRefusedAfterTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4029,11 +3724,6 @@ def _fdictEntry(sRel):
     recordOwner.iOwnerGeneration = iNewGeneration''',
         new='''    recordOwner.iOwnerGeneration = iNewGeneration''',
     ),
-    # Case 44, transfer half. The DRAINING phase is DELETED (wave 2.4):
-    # a hand-over must not carry a terminal execution nobody has proven
-    # dead, and draining one would have settled it on the strength of a
-    # probe rather than a stop -- while forcing a wait inside the held
-    # lock. The refusal replaces it.
     Falsification(
         nodeid='tests/testHostTransfer.py::testTransferRefusesOverALiveTerminalRecordAndSignalsNothing',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4044,8 +3734,6 @@ def _fdictEntry(sRel):
         return (S_TRANSFER_BUSY_RETRY, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
-    # Case 46, transfer half: a refused transfer rolls back only what it
-    # minted, and leaves the record it did not create standing.
     Falsification(
         nodeid='tests/testHostTransfer.py::testARefusedTransferRollsBackOnlyWhatItMinted',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4055,44 +3743,24 @@ def _fdictEntry(sRel):
         new='''        return (S_TRANSFER_REFUSED, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
-    # Wave 2.4: a busy container refuses AT ONCE and names the holder.
     Falsification(
         nodeid='tests/testHostTransfer.py::testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation',
         source='vaibify/gui/sessionLifecycle.py',
         old='''    if lockMutation.locked():''',
         new='''    if False and lockMutation.locked():''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 5, checkpoint 2 — the mint-transfer socket
-    # operation and the vaibify open client (design §6b).
-    # ------------------------------------------------------------------
-    # Case 2, mint half (the socket handshake: a stale CLI can never
-    # mint against a successor generation without seeing it):
     Falsification(
         nodeid='tests/testHostControlChannel.py::test_mint_transfer_refuses_a_generation_the_hub_no_longer_serves',
         source='vaibify/gui/hostControlChannel.py',
         old='    if valueExpectedGeneration != recordOwner.iOwnerGeneration:',
         new='    if False and valueExpectedGeneration != recordOwner.iOwnerGeneration:',
     ),
-    # Case 15, end-to-end half (real Unix-socket mint -> real HTTP
-    # redemption; a client that skips the peer-authenticated mint and
-    # presents an unminted token must be refused, and the command must
-    # report the failure instead of opening a browser):
     Falsification(
         nodeid='tests/testVaibifyOpen.py::test_open_transfers_over_real_socket_and_http',
         source='vaibify/cli/commandOpen.py',
         old='    return dictMinted["sTransferCapability"]',
         new='    return "an-unminted-transfer-token"',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 5, checkpoint 3 — the safe reaper's
-    # ORPHANED->RELEASED conditions and the agent-liveness stamps
-    # (design §7; cases 7, 20, and the orphaned half of 32).
-    # ------------------------------------------------------------------
-    # Case 7, orphan-grace half (the reap grace measures from the
-    # orphan stamp, never from the last socket):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapGraceRunsFromTheOrphanStampNotTheLastSocket',
         source='vaibify/gui/containerOwnership.py',
@@ -4103,8 +3771,6 @@ def _fdictEntry(sRel):
         time.monotonic() - recordOwner.fLastSeenMonotonic
     )''',
     ),
-    # Case 7, agent-stamp half (reap succeeds only with a STALE agent
-    # activity stamp):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapRequiresAStaleAgentActivityStamp',
         source='vaibify/gui/containerOwnership.py',
@@ -4114,17 +3780,12 @@ def _fdictEntry(sRel):
     )''',
         new='''    return False''',
     ),
-    # Case 7, journal half (ORPHANED->RELEASED requires every journal
-    # record settled; the veto lives in the reaper loop):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapVetoedWhileAJournalRecordIsUnsettled',
         source='vaibify/gui/serverLifespan.py',
         old='            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)',
         new='            or False',
     ),
-    # Case 32, orphaned half (the reaper and a cancelling durable task
-    # cannot both release the record; same busy-veto mutation as the
-    # carrier half, killed here through an ORPHANED_SESSION record):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapAndCancelCannotBothReleaseTheRecord',
         source='vaibify/gui/serverLifespan.py',
@@ -4136,31 +3797,18 @@ def _fdictEntry(sRel):
         new='''    def fbGuardedWorkLive(sName):
         return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
     ),
-    # Case 20, slice-5 half (an admitted agent request pins the record
-    # for its FULL duration through the in-flight bracket):
     Falsification(
         nodeid='tests/testSafeReaper.py::testLongRunningAgentRequestHoldsTheRecordLiveFullDuration',
         source='vaibify/gui/serverMiddleware.py',
         old='    recordOwner.iInFlightAgentRequests += 1',
         new='    recordOwner.iInFlightAgentRequests += 0',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 5, checkpoint 4 — the remaining transfer
-    # halves (cases 16b, 4's 3b half, 26b's lifecycle, 43's and 46's
-    # real-container transfer halves).
-    # ------------------------------------------------------------------
-    # Case 16b, slice-5 half (the shielded supervisor keeps the drain
-    # held across a requester cancel, so a transfer stays busy-refused
-    # until the worker truly dies):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCancelledRequesterKeepsTransferBlockedUntilWorkerDies',
         source='vaibify/gui/commitCarrier.py',
         old='    return await asyncio.shield(taskSupervisor)',
         new='    return await taskSupervisor',
     ),
-    # Case 4, 3b half (the mode-(b) supervisor's own lane-tuple
-    # revalidation under the drain refuses a pre-transfer tuple):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldTupleLockHeldMutationIsRefusedAfterTransfer',
         source='vaibify/gui/commitCarrier.py',
@@ -4169,9 +3817,6 @@ def _fdictEntry(sRel):
         new='''        if False:
             raise CommitRefusedError(''',
     ),
-    # Case 26b, full lifecycle (force-abandon must actually SET the
-    # poison — an acknowledge-without-poison leaves the transfer
-    # refusal misattributed to the journal and the claim un-poisoned):
     Falsification(
         nodeid='tests/testHostControlChannel.py::test_force_abandon_lifecycle_poisons_refuses_and_reconciles',
         source='vaibify/gui/hostControlChannel.py',
@@ -4189,13 +3834,6 @@ def _fdictEntry(sRel):
         new='''    listFenced = []
     sessionLifecycle.fnScheduleConnectionFencing(listFenced)''',
     ),
-    # Case 43, transfer-commit half (real container; also drives case
-    # 44's transfer path): under the agree-with-exec_inspect prover
-    # mutant, the DRAINING phase "proves" a live group empty, the
-    # transfer commits over it, and the surviving signal-trapping
-    # descendant writes its marker under the successor's ownership.
-    # Kill-confirmation requires a reachable Docker daemon; without
-    # one the test skips and the mutant survives vacuously.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_transfer_refuses_over_a_live_terminal_against_a_real_container',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4206,12 +3844,6 @@ def _fdictEntry(sRel):
         return (S_TRANSFER_BUSY_RETRY, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
-    # Case 46, real-container half (a PAUSED container makes every
-    # drain probe indeterminate; the optimistic-commit mutant settles
-    # whatever the final probe says, so the transfer commits instead
-    # of refusing retained-and-quarantined). Kill-confirmation
-    # requires a reachable Docker daemon; without one the test skips
-    # and the mutant survives vacuously.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_an_indeterminate_drain_quarantines_rather_than_settling',
         source='vaibify/gui/terminalContainment.py',
@@ -4224,14 +3856,6 @@ def _fdictEntry(sRel):
     )''',
         new='''    return _fdictSettleProvenRecord(recordTerminal, dictProbe)''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 6, checkpoint 1 — the orphan transition,
-    # the §4 zero-sockets trigger, and the §5 per-frame backstop
-    # (cases 10, 18, the orphan-transition half of 7, the real-orphan
-    # halves of 13 and 20).
-    # ------------------------------------------------------------------
-    # Case 10 (reload/pagehide during a live task retains ownership):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testReloadReconnectWithinWindowRetainsOwnership',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4244,8 +3868,6 @@ def _fdictEntry(sRel):
         >= 0.0
     )''',
     ),
-    # Case 18 (closing one terminal socket doesn't orphan; per-lane
-    # counting — every browser lane vetoes the trigger):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testTerminalLaneSocketVetoesTheOrphanTrigger',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4254,20 +3876,12 @@ def _fdictEntry(sRel):
         new='''    if recordOwner.iLivePipelineConnectionCount > 0:
         return False''',
     ),
-    # Case 7, orphan-transition half (the reap grace measures from the
-    # REAL orphan commit's stamp, not the long-dead last socket — the
-    # mutant stamps the commit with the last-socket time, the exact
-    # bug shape the case forbids):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testReapGraceMeasuresFromTheRealOrphanTransition',
         source='vaibify/gui/sessionLifecycle.py',
         old='    recordOwner.fOrphanedSinceMonotonic = time.monotonic()',
         new='    recordOwner.fOrphanedSinceMonotonic = recordOwner.fLastSeenMonotonic',
     ),
-    # Case 13, real-orphan half (a live agent's REST activity pins a
-    # record orphaned through the real transition; same predicate
-    # mutation as the slice-5 hand-set-state entry, killed here
-    # end-to-end through fnOrphanSession + the real middleware):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testOrphanedRecordWithLiveAgentRestActivityIsNotReaped',
         source='vaibify/gui/containerOwnership.py',
@@ -4277,16 +3891,12 @@ def _fdictEntry(sRel):
     )''',
         new='''    return False''',
     ),
-    # Case 20, real-orphan half (mid-dispatch, with the admission
-    # stamp aged stale, ONLY the in-flight bracket pins the record):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testInFlightAgentRequestPinsARealOrphanedRecordInTheReaperLoop',
         source='vaibify/gui/serverMiddleware.py',
         old='    recordOwner.iInFlightAgentRequests += 1',
         new='    recordOwner.iInFlightAgentRequests += 0',
     ),
-    # The §5 per-frame backstop, pipeline lane (a frame in flight at
-    # revocation is refused, never dispatched):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testPipelineFrameFromARevokedSessionIsRefusedNotDispatched',
         source='vaibify/gui/pipelineServer.py',
@@ -4299,8 +3909,6 @@ def _fdictEntry(sRel):
                 await websocket.close(code=4401)
                 return''',
     ),
-    # The §5 per-frame backstop, terminal lane (a revoked session's
-    # keystroke never reaches the container):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testTerminalKeystrokeFromARevokedSessionIsRefused',
         source='vaibify/gui/pipelineServer.py',
@@ -4313,14 +3921,6 @@ def _fdictEntry(sRel):
             await websocket.close(code=4401)
             break''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 6, checkpoint 2 — the owner-aware session
-    # sweep and the live-socket veto on sliding idle (design §11).
-    # ------------------------------------------------------------------
-    # The owner-aware rule: an expired OWNING session must be committed
-    # through the orphan transition, never a bare credential revoke that
-    # would strand an ACTIVE record no reaper condition can release.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testExpiredOwningSessionIsOrphanedNotBareRevoked',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4329,9 +3929,6 @@ def _fdictEntry(sRel):
     )''',
         new='''    browserSession.fbRevokeSessionById(dictStore, sSessionId)''',
     ),
-    # A live WebSocket vetoes sliding idle: the socket layer never
-    # refreshes the credential stamp, so without the veto a streaming
-    # dashboard is revoked under the researcher.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testLiveWebSocketVetoesSlidingIdle',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4340,14 +3937,6 @@ def _fdictEntry(sRel):
     return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
         new='''    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 7 — the absolute cap and the pre-expiry
-    # warning's backend truth (design §11).
-    # ------------------------------------------------------------------
-    # The socket veto is scoped to sliding idle ALONE: a forgotten-open
-    # tab holds a live socket by definition, so generalizing the veto
-    # makes the cap unreachable in exactly its target case.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testAbsoluteCapFiresDespiteALiveWebSocket',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4360,8 +3949,6 @@ def _fdictEntry(sRel):
     if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
         return True''',
     ),
-    # The warning counts down the CAP, the deadline with no veto — not
-    # the sliding-idle clock a live socket forbids from ever firing.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testExpiryViewCountsDownTheCapForThePresentingSessionOnly',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4374,14 +3961,6 @@ def _fdictEntry(sRel):
         F_SLIDING_IDLE_SECONDS - dictLifetime["fIdleSeconds"],
     )''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 6, checkpoint 4 — the remaining normative
-    # cases: 1 (expiry orphans, never releases) and 11/17 (the §10
-    # explicit-release authority).
-    # ------------------------------------------------------------------
-    # Case 1: an expired session holding a live run must be ORPHANED.
-    # Releasing would free the flock over work that can still commit.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testCapDuringALiveRunOrphansAndNeverReleases',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4393,8 +3972,6 @@ def _fdictEntry(sRel):
         getattr(appState, "dictSessionOwner", None),
     )''',
     ),
-    # Case 11: the agent refusal is about a LIVE agent; a stale stamp
-    # must not lock a researcher out of releasing an idle container.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testIdleReleaseWithAStaleAgentStampSucceeds',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4403,8 +3980,6 @@ def _fdictEntry(sRel):
     ):''',
         new='''    if recordOwner is not None:''',
     ),
-    # Case 17, force half: force overrides the agent refusal and ONLY
-    # that one — never a live durable task.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testReleaseUnderALiveAgentNeedsForceAndForceNeverBeatsALiveRun',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4415,12 +3990,6 @@ def _fdictEntry(sRel):
         return ""
     if _frecordLiveDurableTask(appState, sName) is not None:''',
     ),
-    # Case 17, ordering half: the channels close while the flock is
-    # still held, never after the container has been handed back.
-    # Re-anchored 2026-08-20: the block moved inside the release
-    # transaction's try (council admission close + settle precede it);
-    # the mutation and its discriminator are unchanged, only the
-    # indentation of the anchor moved.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testPermittedReleaseClosesChannelsBeforeFreeingTheFlock',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4439,15 +4008,6 @@ def _fdictEntry(sRel):
                 )
             await _fnDrainAndCloseBeforeRelease(appState, sName)''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 8 — the `vaibify do` headless bootstrap and
-    # the lease attachment (design §6b). The omission mutated here is
-    # the one that shipped: fiSendHttpAction sent the credential alone,
-    # so every owner-scoped call was refused while the CLI's own mocked
-    # tests stayed green. Under the mutation the flow dies at connect
-    # ("In use in another browser session") and the command exits 4.
-    # ------------------------------------------------------------------
     Falsification(
         nodeid='tests/testVaibifyDoHeadless.py::test_do_bootstraps_over_the_socket_and_acts_under_its_lease',
         source='vaibify/cli/hubSession.py',
@@ -4457,18 +4017,6 @@ def _fdictEntry(sRel):
         new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
     )''',
     ),
-
-    # ------------------------------------------------------------------
-    # ORPHANED_SESSION slice 9 — lifecycle owner-gating and the
-    # server-owned start reservation (design §10b / §12 slice 9).
-    # ------------------------------------------------------------------
-    # The residual this slice closes: stop was browser-hub, so any
-    # same-hub tab could tear down the container another session was
-    # working in.
-    # The hung-start kill path, the label-keyed cleanup, and the two
-    # result-delivery paths (design §10b, cases 19/21/22/24/25/28/29/
-    # 33/40/41). Each mutation is the shortcut that would have been
-    # taken if the rule were prose instead of code.
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testInitiatorCancelOfAStaleStartKillsAndFreesTheContainer',
         source='vaibify/docker/containerManager.py',
@@ -4609,19 +4157,12 @@ def _fdictEntry(sRel):
     )""",
         new="""    del appState, sName, sNewSessionId""",
     ),
-
     Falsification(
         nodeid='tests/testContainerLifecycleGating.py::test_stop_by_a_session_that_does_not_hold_the_lease_is_refused',
         source='vaibify/gui/routeScope.py',
         old='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,',
         new='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,',
     ),
-
-    # Migration plan phase 1b (R5): runtime attribution of a container
-    # mutation back to ONE inventory row, or an explicit refusal that
-    # routes the row to manual tracing. Each mutant below was applied by
-    # hand, watched to fail its own test, reverted, and the source
-    # confirmed byte-identical with `shasum -a 256`.
     Falsification(
         nodeid='tests/testMutationAttribution.py::testTheIndexCoversExactlyTheCheckedInInventoryRows',
         source='tools/mutationAttribution.py',
@@ -4701,15 +4242,6 @@ def _fdictEntry(sRel):
         old='for sPart in pathRelative.parts',
         new='for sPart in pathCandidate.parts',
     ),
-
-    # --- R4: no unauthorised capability anywhere the hub can reach ---
-    #
-    # The unnamed-authority mutation is applied to the SOURCE, not to the
-    # record: an authority arriving in a hub-reachable module is the
-    # event the rule exists for, and mutating the record instead would
-    # only prove the record can be edited. pipelineUtils is the leaf
-    # module -- it holds no capability of any kind, so a subprocess
-    # import there is unambiguously new.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4722,11 +4254,6 @@ def _fdictEntry(sRel):
             '"""Pure utility functions for pipeline execution (leaf module).'
         ),
     ),
-    # The transitive half. buildRoutes imports imageBuilder directly for
-    # an unrelated helper, so the real chain is only visible with that
-    # shortcut edge set aside -- which is why a one-hop reading of
-    # reachability passes every other check here and still authorises
-    # `docker build` by omission.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4736,8 +4263,6 @@ def _fdictEntry(sRel):
         old='    while listStack:\n        sModule = listStack.pop()',
         new='    while False and listStack:\n        sModule = listStack.pop()',
     ),
-    # The synthetic chain, unrelated to the build chain, driven route ->
-    # helper -> raw authority through the same closure.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4747,10 +4272,6 @@ def _fdictEntry(sRel):
         old='    setSeen = set(setSeeds)\n    listStack = list(setSeen)',
         new='    setSeen = set(setSeeds)\n    listStack = []',
     ),
-    # The one CLASS disposition, kept from stretching. The mutation is on
-    # the record because the record IS the artifact this guard polices:
-    # filing a real client under the exception-type class is the failure
-    # mode, and it can only be written there.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4768,13 +4289,6 @@ def _fdictEntry(sRel):
             '            [S_LANE_EXCEPTION_TYPE],'
         ),
     ),
-
-    # --- Blind-spot dispositions: a ruling bound to what it read ---
-    #
-    # The gated helper is the one generic command authority under
-    # vaibify/gui/. It is disposed of as an EXCEPTIONAL authority on the
-    # strength of two structural constraints, and these are the mutants
-    # that prove each constraint is real rather than described.
     Falsification(
         nodeid=(
             'tests/testCommitCarrier.py::'
@@ -4803,10 +4317,6 @@ def _fdictEntry(sRel):
             'valueExpected:'
         ),
     ),
-    # A fingerprint proves "same site". It does not preserve "somebody
-    # reviewed this", and the gap is a constant two files away from the
-    # call: "the executable is git and the flags are a module constant"
-    # is a claim about THAT symbol, which the site hashes never see.
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'
@@ -4819,12 +4329,6 @@ def _fdictEntry(sRel):
             '    "-c", "credential.helper=osxkeychain",'
         ),
     ),
-    # --- The lifecycle audit: findings, not a family declaration ---
-    #
-    # The population is resolved from the live application, so the mutant
-    # is a route JOINING the family rather than a list somebody forgot to
-    # extend -- which is the way an unaudited lifecycle route would
-    # actually arrive.
     Falsification(
         nodeid=(
             'tests/testLifecycleRouteAuthority.py::'
@@ -4857,9 +4361,6 @@ def _fdictEntry(sRel):
             '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
         ),
     ),
-    # The pin on a documented refusal that no state transition reaches.
-    # It fires the moment somebody makes it reachable, which is exactly
-    # when the cancel route's recorded transfer behaviour needs re-reading.
     Falsification(
         nodeid=(
             'tests/testLifecycleRouteAuthority.py::'
@@ -4873,15 +4374,6 @@ def _fdictEntry(sRel):
             'def _fbDurableTaskStillCurrent(appState, recordTask):'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Phase 1c: the carrier-mode declaration mechanism.
-    #
-    # The two audit mutants below are deliberately separate branches of
-    # _ftJudgeOneObservation, and each was confirmed to kill ONLY its own
-    # test: a shape protected by two guards survives every single
-    # mutation and proves nothing about either.
-    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierModeDeclaration.py::'
@@ -4988,19 +4480,6 @@ def _fdictEntry(sRel):
             '    ))\n'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Phase 2 group 1: the routes migrated onto the enforced branch.
-    #
-    # Each mutant deletes ONE route's carrier call, and each was
-    # confirmed to kill ONLY its own test. The first attempt at these
-    # kills failed to kill at all: it was run against
-    # tests/testDraftRoutes.py, whose Docker mock answers a write by
-    # storing bytes and never calls the admission gate, so deleting the
-    # carrier outright left 17 tests passing. The double in
-    # testCarrierMigratedRoutes.py calls the same gates the real
-    # DockerConnection calls, which is why these kills are kills.
-    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5103,20 +4582,6 @@ def _fdictEntry(sRel):
             '    return False\n'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Phase 2 group 2: the lock-held migration of the clean route.
-    #
-    # The recorded mutation for the transfer test restores the EXACT
-    # pre-migration code -- a bare asyncio.to_thread holding no lock --
-    # so the kill re-creates the named live exploit rather than an
-    # approximation of it. It kills the mode test too, and correctly:
-    # dropping the drain breaks both the refusal and the observed mode.
-    # Each test also has an isolating mutant, checked by hand: the save
-    # bypass below fails only the mode test, and making
-    # fsDescribeLiveMutationWork return a bare "a guarded operation"
-    # fails only the transfer test (its naming assertion).
-    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5148,7 +4613,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5207,7 +4671,6 @@ def _fdictEntry(sRel):
             '    return await asyncio.to_thread(fgenericRewriteTheSidecar, None)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5411,7 +4874,6 @@ def _fdictEntry(sRel):
             '        return None\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'
@@ -5426,16 +4888,6 @@ def _fdictEntry(sRel):
             '    return subprocess.run(listCommand, capture_output=True)'
         ),
     ),
-
-    # The three test-execution routes. Each mutant below was confirmed
-    # to kill EXACTLY ONE of the three tests -- a clean diagonal. The
-    # obvious mutants (delete the carrier call) were tried first and
-    # rejected: an unadmitted mutation refuses, and a refusal empties
-    # the hash ledger every later test reads, so one defect killed two
-    # or three tests and none of them was isolated. All three are mode
-    # SWAPS for that reason, which is also the sharper claim -- the
-    # route reached the container under a real admission, just the
-    # wrong one, so "it did not raise" would not catch any of them.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5459,7 +4911,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5483,7 +4934,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5504,16 +4954,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
-    # The run-dispatch gate over the carrier's live-work registry. The
-    # two mutants are deliberately opposite in direction -- one makes
-    # the refusal uninformative, the other makes it fire when it must
-    # not -- because a gate like this has two ways to be wrong and only
-    # one of them looks like a failure. A third mutant (degrade to
-    # fbContainerHasLiveMutationWork plus a generic string) was tried
-    # and lands on the naming test, not the false-refusal one; it is
-    # recorded in that test's docstring rather than here, since a
-    # second entry for the same kill would double-count one guard.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5535,7 +4975,6 @@ def _fdictEntry(sRel):
             '                )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5558,7 +4997,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         # has-credential reads the researcher's HOST keyring and
         # ignores the container id in its own path. It is a GET, so
@@ -5586,16 +5024,6 @@ def _fdictEntry(sRel):
             '_fbServiceHasStoredCredential(sService),\n'
         ),
     ),
-
-    # --- The seven declaration saves, carrier mode (a) (2026-08-05) ---
-    # One entry for a parametrized family, matching the convention the
-    # two push families already use: the invariant requires exactly one
-    # entry per marked FUNCTION. The registered mutant reverts the
-    # ai-models/declare call site; the other six call sites were each
-    # kill-confirmed by hand on 2026-08-05 and each killed only its own
-    # parameter case, which is what establishes that sharing
-    # fdictCommitWorkflowSave did not collapse seven guards into one
-    # untested claim.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5610,13 +5038,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
-    # --- The six step-CRUD saves, carrier mode (a) (2026-08-05) ---
-    # One entry for the parametrized family, same convention as above.
-    # The registered mutant reverts the create call site. All six were
-    # kill-confirmed by hand on 2026-08-05 and each killed only its own
-    # parameter case (create additionally kills the warning-flag test
-    # below, which must drive create to reach the flag at all).
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5631,11 +5052,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
-    # The create route's SECOND save. Registered separately because it
-    # is a separate call site, and because this mutant is what proves
-    # the family above does NOT cover it: reverting the warning-flag
-    # save kills ONLY this test and none of the six parameter cases.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5657,13 +5073,6 @@ def _fdictEntry(sRel):
             '            "iIndex": iIndex,\n'
         ),
     ),
-
-    # --- The file upload, carrier mode (a) (2026-08-05) ---
-    # Measured while confirming this: with the carrier call removed the
-    # twelve upload tests in tests/testFileEndpointsAndMiddleware.py
-    # ALL still passed, and only the test below failed. That is the
-    # finding tests/testCarrierMigratedRoutes.py exists for, reproduced
-    # on a fresh route rather than taken on trust.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5687,8 +5096,6 @@ def _fdictEntry(sRel):
         ),
         new='    fnWriteTheUpload()\n',
     ),
-
-    # --- Project creation, carrier mode (b) (2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5708,13 +5115,6 @@ def _fdictEntry(sRel):
         ),
         new='    return fdictProbeThenCreate()\n',
     ),
-
-    # The separate guard inside that route: an expected 4xx must be
-    # RETURNED from the worker, never raised out of it. Raising poisons
-    # the journal record and quarantines the container, so a researcher
-    # who picked a filename already in use is told to reconcile. This
-    # mutant kills ONLY the refusal test, which is what establishes the
-    # two guards are separately proven rather than jointly assumed.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5740,14 +5140,6 @@ def _fdictEntry(sRel):
             '            )}\n'
         ),
     ),
-
-    # --- Five Sync-panel routes, carrier modes (a) and (b)
-    # (2026-08-05) ---
-    # Each mutant below was applied by hand, the whole
-    # testCarrierMigratedRoutes.py file run, the source restored from an
-    # in-memory copy and re-hashed byte-identical. Every one killed
-    # EXACTLY its own test, with one stated exception recorded on the
-    # arXiv save's entry.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5762,7 +5154,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5784,7 +5175,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5804,7 +5194,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5828,14 +5217,6 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
-
-    # The arXiv handler's mode-(a) half. This mutant kills BOTH arXiv
-    # tests, not one, and the reason is sequencing rather than a weak
-    # assertion: the save runs first, so an unadmitted write 500s the
-    # handler before the verify that would rewrite the cache can run.
-    # Recorded here so a re-confirmation run does not read the second
-    # failure as drift. The reverse direction DOES isolate -- see the
-    # entry below.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5854,13 +5235,6 @@ def _fdictEntry(sRel):
             '    dictCtx["save"](sContainerId, dictWorkflow)\n'
         ),
     ),
-
-    # The arXiv handler's mode-(b) half, and the entry that proves the
-    # two are separately guarded: removing this carrier failed ONLY this
-    # test while the save's test still passed. It isolates because
-    # _fdictRunArxivVerifyAfterConfig catches the refusal and reports it
-    # as sVerifyError, so the response stays 200 and only the cache
-    # write goes missing from the ledger.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5885,13 +5259,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
-    # --- The two routes ruled WRITES governed elsewhere (2026-08-05) ---
-    # Neither is a carrier migration, so neither mutant removes a
-    # carrier. What each proves is that the route's separate-authority
-    # claim is checkable: reach a mutation-capable container primitive
-    # and the enforced branch refuses, which is what makes an empty
-    # gated ledger evidence rather than an assumption.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5913,7 +5280,6 @@ def _fdictEntry(sRel):
             '        fileTarget.write(sOut.encode("utf-8"))\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5932,16 +5298,6 @@ def _fdictEntry(sRel):
             '[sContainerId] = {\n'
         ),
     ),
-
-    # --- The git panel's six mutating routes, carrier modes (a) and
-    # (b) (2026-08-05). Every mutant is that ROUTE's own call of
-    # _fgenericRunGitWorkerUnderTheDrain reverted to a direct call of its
-    # worker, so each kills exactly its own test. Mutating the shared
-    # wrapper -- or the shared
-    # routeContext.fdictCarryARefusalBackInsteadOfRaising it calls --
-    # legitimately kills all of them at once, which is one guard
-    # reported once per route that depends on it, not six guards none
-    # of which is proven.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6055,11 +5411,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-    # This mutant kills BOTH reconcile tests, and that is straight-line
-    # sequencing rather than drift: the fetch runs first, so an
-    # unadmitted exec 500s the handler before the bookkeeping save the
-    # sibling test asserts on can run. The isolation is one-directional
-    # -- removing the SAVE's carrier below fails only its own test.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6097,10 +5448,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-    # The panel's own 5xx carry-back. Dropping 502 from the carried set
-    # sends a failed git fetch back through the default 4xx/5xx split,
-    # which re-raises it inside the worker -- poisoning the journal and
-    # quarantining the container over an unreachable remote.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6110,24 +5457,6 @@ def _fdictEntry(sRel):
         old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
         new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
     ),
-    # --- The badge refresh: the first AUTOMATIC read to migrate ---
-    #
-    # (host mode wave 3, 2026-08-08). An automatic read must do two
-    # things a clicked mutation need not: run under a carrier like any
-    # exec, and never QUEUE behind live work. The five levers below are
-    # one per branch that can be lost on its own -- the carrier itself,
-    # then each of the three states that make a container busy, then
-    # the self-exclusion that keeps an idle container from reporting
-    # itself busy forever.
-    #
-    # Measured isolation, not assumed. The first mutant fails all six
-    # badge tests: with the carrier gone the exec is refused at the
-    # primitive and the handler 500s before any of them can assert.
-    # The three BRANCH levers each fail only their own test. The
-    # self-exclusion lever fails four -- its own, the payload shape,
-    # the drain-read, and the durable one, whose reason then names the
-    # asking read instead of the run -- which is the same statement as
-    # "an always-busy container stops answering", seen four ways.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6218,10 +5547,6 @@ def _fdictEntry(sRel):
             '        if supervisor.sName != supervisorSelf.sName:\n'
         ),
     ),
-    # The stat batch's OUTPUT SHAPE, which nothing else in the suite
-    # executes. Reverting it to line-oriented text is the plausible
-    # regression -- it is what the program replaced -- and it brings
-    # back the parse that a path containing a space used to defeat.
     Falsification(
         nodeid=(
             'tests/testDockerConnection.py::'
@@ -6234,8 +5559,6 @@ def _fdictEntry(sRel):
             'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
         ),
     ),
-    # A host project a researcher can actually create: until the mode
-    # rode the registration route, one could be made only from Python.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -6248,16 +5571,6 @@ def _fdictEntry(sRel):
         ),
         new='            fnAddProject(request.sDirectory)\n',
     ),
-    # --- The two claims host mode gives up (host mode wave 3) ---
-    #
-    # Level 3 is DEFINED by a pinned container image, and Supervised
-    # mode's claim holds only while vaibify mediates every path to the
-    # files. Neither survives on the host, and both fail SILENTLY if
-    # the gate is lost: the researcher is handed a to-do list that
-    # cannot be completed, or an attribution log that goes on claiming
-    # a supervised period while their editor rewrites the files beside
-    # it. Each lever is one gate; each has a container-direction test
-    # beside it that the lever must NOT kill.
     Falsification(
         nodeid=(
             'tests/testHostModeHonestyGates.py::'
@@ -6309,15 +5622,6 @@ def _fdictEntry(sRel):
         ),
         new='    if False:\n        return False\n',
     ),
-    # --- The Repos panel's write, deleted (host mode wave 3) ---
-    #
-    # Both directions of one change. Auto-tracking every discovered
-    # repository is the product behaviour and is unchanged; PERSISTING
-    # it from a GET is what stopped, because the panel polls that GET
-    # on a timer. The second lever guards the regression the first one
-    # creates: with the read no longer writing, a mutation that fell
-    # back to an empty state would persist a sidecar holding only the
-    # repository the researcher just touched.
     Falsification(
         nodeid=(
             'tests/testTrackedReposManager.py::'
@@ -6361,14 +5665,6 @@ def _fdictEntry(sRel):
             '        dictSidecar = fdictBuildInitialState([])\n'
         ),
     ),
-    # --- The poll's write, deleted (host mode wave 3) ---
-    #
-    # The mutant restores the pathfile push while leaving the typed
-    # read in place, so the poll still answers correctly and the only
-    # thing that changes is that it writes into the container again on
-    # a five-second timer. That is the whole point: the defect this
-    # guards against is invisible in every functional assertion, which
-    # is why it survived as long as it did.
     Falsification(
         nodeid=(
             'tests/testFileStatusManager.py::'
@@ -6388,11 +5684,6 @@ def _fdictEntry(sRel):
             '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
         ),
     ),
-    # --- The rest of the activation surface (host mode wave 3) ---
-    #
-    # The settings read declares typed-read in its strongest form -- it
-    # reaches NO container primitive -- so the only way to break it is
-    # to add a reach, exactly as the compare-plot entry does.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6411,12 +5702,6 @@ def _fdictEntry(sRel):
             '        return fdictExtractSettings(\n'
         ),
     ),
-    # The state poll's two directions. Its carrier opens on a branch it
-    # usually does not take, so "carried" and "not carried on the
-    # ordinary path" are separate guarantees: hoisting the carrier out
-    # of the branch makes every tenth second hold the drain, and
-    # dropping the persister returns a real container write to the
-    # background lane where the gate is a documented no-op.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6464,15 +5749,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-    # --- Container-only capabilities, refused for host projects ---
-    #
-    # (host mode wave 3, 2026-08-08). Both directions of one branch,
-    # plus its position. The two levers share the same `old` text and
-    # differ only in what they replace it with, because "never refuses"
-    # and "always refuses" ARE the two ways one predicate can be wrong,
-    # and they are indistinguishable in a report while being opposite
-    # in the product: one drives Docker at a project with no container,
-    # the other makes every containerized project unstartable.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -6503,8 +5779,6 @@ def _fdictEntry(sRel):
             '        return\n'
         ),
     ),
-    # Position, not presence: the refusal above the daemon check is
-    # what keeps a host-only hub from being told to install Docker.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -6522,12 +5796,6 @@ def _fdictEntry(sRel):
             '"Stopping a container")\n'
         ),
     ),
-    # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
-    #
-    # Each entry mutates the route's OWN call site. The rename has three
-    # separable guarantees -- the cascade's drain, the save sharing it,
-    # and the refusal being carried -- so each has its own lever; a
-    # single mutant covering all three would isolate none of them.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6735,7 +6003,6 @@ def _fdictEntry(sRel):
             '        raise dictCarried["errorRefused"]\n'
         ),
     ),
-    # --- Replay-axis routes (phase 2, 2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6846,7 +6113,6 @@ def _fdictEntry(sRel):
             '    return fdictRunTheCapturePass()\n'
         ),
     ),
-    # --- The batched existence probe (ruling 3, 2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6903,9 +6169,6 @@ def _fdictEntry(sRel):
             '        return repr(objPaths)\n'
         ),
     ),
-
-    # --- Group 6 (2026-08-06): the step panel's probe-and-record
-    # routes, and the three POSTs that turn out to be reads. ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6920,7 +6183,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6942,7 +6204,6 @@ def _fdictEntry(sRel):
             '    return dictCarried["objResult"]\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6957,7 +6218,6 @@ def _fdictEntry(sRel):
         ),
         new='    await asyncio.to_thread(fdictWriteTheStoppedState)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6982,7 +6242,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7018,7 +6277,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7033,7 +6291,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7061,7 +6318,6 @@ def _fdictEntry(sRel):
             '    return dictCarried["objResult"]\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7076,7 +6332,6 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7101,7 +6356,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7127,7 +6381,6 @@ def _fdictEntry(sRel):
             '    listEntries = [s for s in sOutput.split("\\n") if s]\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7162,7 +6415,6 @@ def _fdictEntry(sRel):
             '        return sOutput\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7196,14 +6448,6 @@ def _fdictEntry(sRel):
             '            listPlots, sFileName)\n'
         ),
     ),
-
-    # --- The Sync panel's remaining Overleaf and Zenodo routes ---
-    # (2026-08-06). Each mode-(b) mutant reverts the route to the bare
-    # ``asyncio.to_thread`` it used before migration, which is the
-    # state the migration exists to leave behind: no mutation lock, no
-    # journal record, so a transfer arriving mid-flight sees an idle
-    # container. Each mode-(a) mutant reverts a ``fdictCommitWorkflowSave``
-    # to the raw ``dictCtx["save"]``.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7223,7 +6467,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7244,12 +6487,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
-    # The two mirror mutants are not carrier removals -- these routes
-    # HAVE no carrier, which is the claim. Each gives the route a
-    # container touch, and the enforced branch refuses it, which is
-    # what makes an empty gated ledger evidence rather than an
-    # assumption.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7272,7 +6509,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7293,7 +6529,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7309,7 +6544,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7328,7 +6562,6 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7344,14 +6577,6 @@ def _fdictEntry(sRel):
         ),
         new='            dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
-    # The archive handler carries THREE mutations and the three mutants
-    # below cascade in one direction, which is the diagnosis to keep:
-    # the upload's mutant fails all three tests, the digests' fails two,
-    # and the save's fails one. That is sequencing -- an unadmitted exec
-    # 500s the handler before the next carrier is reached -- and no test
-    # can separate a downstream carrier from an upstream refusal in a
-    # straight-line handler.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7378,7 +6603,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7403,7 +6627,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7418,9 +6641,6 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
-    # ---------------- phase 2 group 1: the two repository pushes -----
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7434,7 +6654,6 @@ def _fdictEntry(sRel):
             '    return (await asyncio.to_thread(fdictHandlePushToGithub))["objResult"]\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7449,7 +6668,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7469,7 +6687,6 @@ def _fdictEntry(sRel):
             '            "GitHub push bookkeeping failed for container %s",\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7490,7 +6707,6 @@ def _fdictEntry(sRel):
             '        sContainerId, fdictHandlePushToGithub,\n        containerGit.fsRemoteUrlInContainer(\n            dictCtx["docker"], sContainerId, sWorkdir,\n        ), requestHttp,\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7508,7 +6724,6 @@ def _fdictEntry(sRel):
             '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7526,7 +6741,6 @@ def _fdictEntry(sRel):
         ),
         new='    return await asyncio.to_thread(ftPushWorker)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7542,7 +6756,6 @@ def _fdictEntry(sRel):
         ),
         new='    await asyncio.to_thread(fdictRecordTheBookkeeping, None)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7557,9 +6770,6 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
-    # ------- phase 2 group 2: the AICS Level 3 reproducibility surface
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7578,7 +6788,6 @@ def _fdictEntry(sRel):
             '        dictCtx["save"](sContainerId, dictWorkflow)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7593,7 +6802,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7608,7 +6816,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7626,7 +6833,6 @@ def _fdictEntry(sRel):
             'sBinaryPath)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7645,7 +6851,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7659,7 +6864,6 @@ def _fdictEntry(sRel):
             '    except Exception as errorCaught:\n        logging.getLogger("vaibify").warning(\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7679,7 +6883,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7709,7 +6912,6 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7731,9 +6933,6 @@ def _fdictEntry(sRel):
             '    )[0] != 0:\n'
         ),
     ),
-
-    # -------- phase 2: the two routes left over from the group edges --
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7751,7 +6950,6 @@ def _fdictEntry(sRel):
             '    return _fdictProbeThenWriteTemplate(filesRepo, sRelative)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7774,7 +6972,6 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7795,7 +6992,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7818,9 +7014,6 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
-
-    # -------------- phase 2 group 3: the two durable launches --------
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7840,7 +7033,6 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7864,7 +7056,6 @@ def _fdictEntry(sRel):
         ),
         new='    ftaskStartFalsification()\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7883,7 +7074,6 @@ def _fdictEntry(sRel):
             'dictWorkflow, filesRepo)\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7944,12 +7134,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
-    # --- Host-mode Phase A (2026-08-08). The mode-aware guarantees are
-    # registered in symmetric pairs where a pair exists: one mutant
-    # proves the host branch works, its twin proves the container
-    # branch still does. A green suite over only one direction would
-    # hide a mode detector stuck at a constant.
     Falsification(
         nodeid=(
             'tests/testRegistryManager.py::'
@@ -8074,8 +7258,6 @@ def _fdictEntry(sRel):
             '            pass\n'
         ),
     ),
-
-    # --- Host-mode Phase B: the HostConnection's contract (2026-08-08).
     Falsification(
         nodeid=(
             'tests/testHostConnection.py::TestHostPathGuard::'
@@ -8220,10 +7402,6 @@ def _fdictEntry(sRel):
             '            raise\n'
         ),
     ),
-
-    # --- Host-mode wave 2: the connection router, in symmetric pairs
-    # (2026-08-08). A dispatcher stuck at either leg is invisible to a
-    # suite that only proves one direction.
     Falsification(
         nodeid=(
             'tests/testConnectionRouter.py::TestRouterDispatch::'
@@ -8277,11 +7455,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
-    # --- Host-mode wave 2 chunk B: registry status, claim path, busy
-    # oracle (2026-08-08). Symmetric pairs throughout: for every
-    # mode-aware branch, one mutant proves the host direction works and
-    # its twin proves the container direction still does.
     Falsification(
         nodeid=(
             'tests/testRegistryManager.py::'
@@ -8671,14 +7844,6 @@ def _fdictEntry(sRel):
             '    return True\n'
         ),
     ),
-    # --- The root a project's files live under (host mode wave 4) ---
-    #
-    # One resolver, two directions. Stuck on the container volume, a
-    # host project finds no Projects (an empty list, not an error) and
-    # every connect is refused 403 "path traversal". Stuck on the
-    # registry directory, every containerized project searches the
-    # researcher's config folder from INSIDE the container, where it
-    # does not exist. The two read identically in a report.
     Falsification(
         nodeid=(
             'tests/testHostModeProjectRoots.py::'
@@ -8831,18 +7996,6 @@ def _fdictEntry(sRel):
         ),
         iExpectedOccurrences=2,
     ),
-    # --- The root an EPHEMERAL file may be written under (phase C) ---
-    #
-    # A container writes a throwaway program, a graph description or a
-    # credential to /tmp, which the container throws away with itself.
-    # On the host /tmp is admitted by nothing: the path guard permits
-    # the project root and the host-diagnostics subtree and refuses
-    # everything else, so every one of these lanes answered 500 for a
-    # host project. Both directions, because the container answer has
-    # a footprint the host answer must not acquire: sending a
-    # container's scratch to ~/.vaibify writes the researcher's home
-    # for work that never left their container, and hands the
-    # container a path that does not exist inside it.
     Falsification(
         nodeid=(
             'tests/testHostModeProjectRoots.py::'
@@ -8948,16 +8101,6 @@ def _fdictEntry(sRel):
             '"sDirectory", "/workspace"),\n'
         ),
     ),
-    # --- The panels that mutate a repository (phase C) ---
-    #
-    # Every one of these was found by driving the routes against a real
-    # repository, and every one is a container path composed as a
-    # literal: the push validator measuring against /workspace, the
-    # Repositories panel composing "/workspace/" + name, and discovery
-    # asking only whether an entry has a .git child. The container
-    # direction for each lives with the doubles in testRepoRoutes and
-    # testSyncRoutesCoverage, which drive the same routes with
-    # /workspace fixtures and are untouched by this work.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -9025,16 +8168,6 @@ def _fdictEntry(sRel):
         ),
         new='        listIsDirectory = [True] * len(listPaths)\n',
     ),
-    # --- Which keyring holds this project's credentials (phase C) ---
-    #
-    # The container leg writes the value to a temporary file and runs an
-    # in-container python that reads it back into keyring. For a host
-    # project that lane is wrong twice: there is no container to run it
-    # in, and the file would be a secret written to the researcher's
-    # own disk on the way to a keyring this process can reach directly.
-    # The other direction is the wider failure -- a container project
-    # whose token went to the host keychain would authenticate every
-    # push with nothing.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -9065,7 +8198,6 @@ def _fdictEntry(sRel):
             '        from vaibify.config.secretManager import fnStoreSecret\n'
         ),
     ),
-    # --- push and pull with no container to cross (phase C) ---
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -9084,13 +8216,6 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(configProject.sProjectName):\n',
         new='    if False:\n',
     ),
-    # --- Which interpreter runs a vaibify-authored program (phase C) ---
-    #
-    # Not the same question as which root a file lives under, and it
-    # has the same two-sided failure: `python3` on the host is
-    # whatever the researcher's PATH resolves and routinely lacks
-    # vaibify's dependencies, while `sys.executable` names nothing at
-    # all inside a container.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -9109,7 +8234,6 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(sResourceId):\n',
         new='    if False:\n',
     ),
-    # --- The isolation gate has no container to ask about (phase C) ---
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -9128,11 +8252,6 @@ def _fdictEntry(sRel):
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if True:\n        return\n',
     ),
-    # --- Sharding the standing negative control (2026-08-12) ---
-    #
-    # Splitting the re-kill harness across machines is a throughput
-    # change that can quietly become a weaker CLAIM. Each of these
-    # mutations is a way that happens while every job stays green.
     Falsification(
         nodeid=(
             'tests/testFalsificationSharding.py::'
@@ -9195,7 +8314,6 @@ def _fdictEntry(sRel):
         old="            if dictSummary.get('iShards') != iShards:\n",
         new='            if False:\n',
     ),
-    # --- Contention classes and workers (2026-08-12) ---
     Falsification(
         nodeid=(
             'tests/testFalsificationSharding.py::'
@@ -9283,12 +8401,6 @@ def _fdictEntry(sRel):
         ),
         new='    sWorktree = str(pathlib.Path(sParent) / "tree")\n',
     ),
-    # --- The class both temp-name bugs belong to (2026-08-12) ---
-    #
-    # An INSTANCE guard proves one line is defended. A CLASS guard has
-    # to be shown catching a member it has never seen, so the mutation
-    # ADDS one rather than breaking an existing site -- the same shape
-    # as the path-corpus entry above, which adds an unguarded method.
     Falsification(
         nodeid=(
             'tests/testArchitecturalInvariants.py::'
@@ -9302,12 +8414,6 @@ def _fdictEntry(sRel):
             '    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n'
         ),
     ),
-    # --- The daemon gate names its resource (host mode wave 4) ---
-    #
-    # Host mode exists for the researcher who has no Docker, so a hub
-    # serving a host project must never answer "install Docker". The
-    # inverse is just as bad: a gate that stops asking lets a
-    # container request reach code holding None for a connection.
     Falsification(
         nodeid=(
             'tests/testHostModeDaemonGate.py::'
@@ -9339,11 +8445,6 @@ def _fdictEntry(sRel):
         ),
         new='    if True:\n        return\n',
     ),
-    # --- The picker's host tile (host mode wave 4) ---
-    #
-    # Frontend mutations, observable only to a test that loads the
-    # page; the harness defers them by the `browser` marker on a host
-    # with no Playwright rather than scoring them blind.
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -9401,7 +8502,6 @@ def _fdictEntry(sRel):
         old='        if (elTile && elTile.dataset.mode === "host") {\n',
         new='        if (false) {\n',
     ),
-    # --- The uncontained-execution disclosure (host mode wave 4) ---
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -9455,7 +8555,6 @@ def _fdictEntry(sRel):
         old='        var bHost = sProjectMode === "host";\n',
         new='        var bHost = true;\n',
     ),
-    # --- Adding a host project from the dialog (host mode wave 4) ---
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -9516,14 +8615,6 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
-    # --- Cancelling a host run (host mode wave 5) ---
-    #
-    # The dangerous mutant on this path is not "Cancel does nothing".
-    # It is "Cancel signals a group it cannot prove is still ours",
-    # which on a researcher's own machine means killing a stranger's
-    # process with the researcher's authority. Both halves of the one
-    # predicate are therefore mutated, and the refusing direction is
-    # scored by a test in which a LIVE process must survive.
     Falsification(
         nodeid=(
             'tests/testHostCancel.py::'
@@ -9663,8 +8754,6 @@ def _fdictEntry(sRel):
         old='            "listCancellationRefusals": listRefused,\n',
         new='            "listCancellationRefusals": [],\n',
     ),
-    # The two frontend halves. A refusal the dashboard never renders
-    # is a dashboard that says the machine is quiet.
     Falsification(
         nodeid=(
             'tests/browser/testHostCancelSurface.py::'
@@ -9701,12 +8790,6 @@ def _fdictEntry(sRel):
         new='        if (true) {\n',
         old='        if (listRefusals.length > 0) {\n',
     ),
-    # --- The host-diagnostics sweeper (host mode wave 5) ---
-    #
-    # A sweeper does permanent harm by working correctly on the wrong
-    # tree, and this repository has already lost a container to one.
-    # Both directions of the TTL, plus the two ways a traversal can be
-    # talked into following a link out of the subtree.
     Falsification(
         nodeid=(
             'tests/testHostScratchSweeper.py::'
@@ -9802,11 +8885,6 @@ def _fdictEntry(sRel):
             'mode=I_SCRATCH_DIRECTORY_MODE, exist_ok=True)\n'
         ),
     ),
-    # --- Abandoning a host journal (host mode wave 5) ---
-    #
-    # Two exits from a quarantine that look alike and are not: one
-    # proves, one asserts and is recorded. The mutations below are the
-    # ways that distinction can be lost.
     Falsification(
         nodeid=(
             'tests/testAbandonHostJournal.py::'
@@ -9920,7 +8998,6 @@ def _fdictEntry(sRel):
             'sContainerName, sExpectedSha256)\n'
         ),
     ),
-    # --- What a quarantined HOST project says and offers (wave 5) ---
     Falsification(
         nodeid=(
             'tests/testHostQuarantineSurface.py::'
@@ -9988,7 +9065,6 @@ def _fdictEntry(sRel):
         old='        if bTerminateRecorded:\n',
         new='        if False:\n',
     ),
-    # --- Backend-supplied workspace root + the paused label (wave 5) ---
     Falsification(
         nodeid=(
             'tests/testWorkspaceRootHandshake.py::'
@@ -10070,7 +9146,6 @@ def _fdictEntry(sRel):
         old='        _fnShowRefreshPaused(false, "");\n        var dictDiff = _fbBadgeMapChanged(\n',
         new='        var dictDiff = _fbBadgeMapChanged(\n',
     ),
-    # --- The adversarial host path corpus (host mode wave 5) ---
     Falsification(
         nodeid=(
             'tests/testHostPathGuardCorpus.py::'
@@ -10119,7 +9194,6 @@ def _fdictEntry(sRel):
             '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
         ),
     ),
-    # --- Process signalling joins the dangerous vocabulary (2026-08-10) ---
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -10132,11 +9206,6 @@ def _fdictEntry(sRel):
         old='SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})\n',
         new='SET_OS_SIGNAL_MEMBERS = frozenset()\n',
     ),
-    # --- The Repos poll becomes a typed read (2026-08-10) ---
-    #
-    # One migration, five separately-observable guarantees, because the
-    # shell script it replaced was wrong in five separate ways and a
-    # single happy-path test would have covered none of them.
     Falsification(
         nodeid=(
             'tests/testRepoStatusTypedRead.py::'
@@ -10253,13 +9322,6 @@ def _fdictEntry(sRel):
             '        ),\n'
         ),
     ),
-    # --- What the FIRST real host workflow found (2026-08-10) ---
-    #
-    # Four backend paths written as the container constant, each found
-    # by opening a host workflow in a browser and reading the network
-    # log, and each breaking a different part of the journey. Plus the
-    # relative-path rule, which the file poll disproved on the first
-    # tick.
     Falsification(
         nodeid=(
             'tests/testWorkspaceRootHandshake.py::'
@@ -10326,11 +9388,6 @@ def _fdictEntry(sRel):
             '            raise HostPathOutsideProjectError(sPath)\n'
         ),
     ),
-    # --- The launch path told the researcher three untrue things ---
-    #
-    # Found by a maintainer trying to follow a test plan (2026-08-10).
-    # From outside they compose into "vaibify is hanging", which is not
-    # what was happening and is why each is scored separately.
     Falsification(
         nodeid=(
             'tests/testGuiLaunchHonesty.py::'
@@ -12731,11 +11788,6 @@ def _fdictEntry(sRel):
             ';\n'
         ),
     ),
-
-    # --- Headless launch contract. A symmetric pair, and it has to be
-    # a pair: "a suppressed launch mints nothing" is equally true of a
-    # mint that was deleted outright, so either half alone can go
-    # vacuous without anything failing.
     Falsification(
         nodeid=(
             'tests/testCliMain.py::'
@@ -12776,9 +11828,6 @@ def _fdictEntry(sRel):
         ),
         new='    return sBaseUrl\n',
     ),
-
-    # --- One launcher, so socket-liveness settings cannot be lost by
-    # a call site that simply forgot them.
     Falsification(
         nodeid=(
             'tests/testServerLaunchContract.py::'
@@ -12795,13 +11844,6 @@ def _fdictEntry(sRel):
             '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
         ),
     ),
-
-    # --- The reconnect ladder is sized from the server's hold window.
-    # Withhold the window and the client silently falls back to its
-    # built-in default, which is the two-constants-that-must-agree
-    # arrangement this replaced. The no-workflow payload is the anchor
-    # because that is the branch a bare connect takes; its indentation
-    # is what distinguishes it from the workflow branch.
     Falsification(
         nodeid=(
             'tests/testReconnectWindowContract.py::'
@@ -13260,14 +12302,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
-    # ------------------------------------------------------------------
-    # Agent Council. Transcribed 2026-08-26 from the kill-confirmed
-    # session-local mutation scripts of the 2026-08-25/26 council
-    # sessions (chairbot chat, live phase, peer-hub isolation), each
-    # anchor re-verified against source at transcription time.
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
@@ -13282,7 +12316,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
@@ -13296,7 +12329,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
@@ -13308,7 +12340,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
@@ -13320,7 +12351,6 @@ def _fdictEntry(sRel):
         old='if not dictInFlight or dictCampaign.get("sState") != S_STATE_PLANNING:',
         new='if not dictInFlight:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseInFlight.py::'
@@ -13330,7 +12360,6 @@ def _fdictEntry(sRel):
         old='    if not listRounds or listRounds[-1].get("sResolution"):',
         new='    if not listRounds:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPeerHubIsolation.py::'
@@ -13346,7 +12375,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPeerHubIsolation.py::'
@@ -13363,7 +12391,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPeerHubIsolation.py::'
@@ -13381,7 +12408,6 @@ def _fdictEntry(sRel):
             '            "sProjectRepoPath", ""))'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13400,7 +12426,6 @@ def _fdictEntry(sRel):
             '        + dictSession["listMessages"][-1]["sText"])'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13410,7 +12435,6 @@ def _fdictEntry(sRel):
         old='    for dictMessage in listMessages:',
         new='    for dictMessage in listMessages[-1:]:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13425,7 +12449,6 @@ def _fdictEntry(sRel):
             '        "dictCachedCampaign", _fjsonReadCampaignNow(dictSession))'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13452,7 +12475,6 @@ def _fdictEntry(sRel):
             '    secretManager.fnCleanupSecretFiles([sStagedPath])'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13462,7 +12484,6 @@ def _fdictEntry(sRel):
         old='    return f"{sCampaignId}{S_CHAT_EGRESS_SCOPE_SUFFIX}"',
         new='    return sCampaignId',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13478,7 +12499,6 @@ def _fdictEntry(sRel):
             '            listUnproven.append(dictDestroyed["sReason"])'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13494,7 +12514,6 @@ def _fdictEntry(sRel):
             '            listUnproven.append('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13511,7 +12530,6 @@ def _fdictEntry(sRel):
             '            continue'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13526,7 +12544,6 @@ def _fdictEntry(sRel):
         ),
         new='        float("inf"),',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13540,7 +12557,6 @@ def _fdictEntry(sRel):
         ),
         new='    listUnsettledCampaignIds = []',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13556,7 +12572,6 @@ def _fdictEntry(sRel):
             '        raise CouncilCommandError('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13566,7 +12581,6 @@ def _fdictEntry(sRel):
         old='        and dictSession["sState"] == S_CHAT_STATE_ANSWERING',
         new='        and False',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13586,7 +12600,6 @@ def _fdictEntry(sRel):
             '            sAnswerText = "(no answer)"'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13596,7 +12609,6 @@ def _fdictEntry(sRel):
         old='    if len(dictSession["listMessages"]) >= I_MAX_CHAT_MESSAGES:',
         new='    if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13610,7 +12622,6 @@ def _fdictEntry(sRel):
         ),
         new='    return dictCampaign["listParticipants"][0]',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13631,7 +12642,6 @@ def _fdictEntry(sRel):
             '        raise'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13647,7 +12657,6 @@ def _fdictEntry(sRel):
             '        return fdictDescribeChatSession(dictControllerState, sCampaignId)'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13660,7 +12669,6 @@ def _fdictEntry(sRel):
         ),
         new='        "sResolvedModel": dictSession["sRequestedModel"],',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13675,7 +12683,6 @@ def _fdictEntry(sRel):
         ),
         new='    listSections = [S_CHAT_INSTRUCTION]',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilChat.py::'
@@ -13687,7 +12694,6 @@ def _fdictEntry(sRel):
         old='         "sDetail": dictMessage["sMessageId"]})',
         new='         "sDetail": dictMessage["sText"]})',
     ),
-
     Falsification(
         nodeid=(
             'tests/testArchitecturalInvariants.py::'
@@ -13704,7 +12710,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13719,7 +12724,6 @@ def _fdictEntry(sRel):
         ),
         new='            return await _fdictOpenChatMapped(',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13732,7 +12736,6 @@ def _fdictEntry(sRel):
         ),
         new='            # The same two gates start passes',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13747,7 +12750,6 @@ def _fdictEntry(sRel):
         ),
         new='        return agentCouncilChat.fdictDescribeChatSession(',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13768,7 +12770,6 @@ def _fdictEntry(sRel):
             '            dictSettled = await agentCouncilChat.fdictCloseChatSession('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13796,7 +12797,6 @@ def _fdictEntry(sRel):
             '        async def _fdictExecuteRespond():'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -13806,7 +12806,6 @@ def _fdictEntry(sRel):
         old='        if sChosenDirectory not in listTracked:',
         new='        if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilFrontendContract.py::'
@@ -13816,7 +12815,6 @@ def _fdictEntry(sRel):
         old='var sUrl = _fsRoute(sPath) + _fsDirectoryQuery("?");',
         new='var sUrl = _fsRoute(sPath);',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilFrontendContract.py::'
@@ -13831,7 +12829,6 @@ def _fdictEntry(sRel):
         ),
         new='                    _fsEscape(dictQuestion.sQuestionText || "") +',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilFrontendContract.py::'
@@ -13843,7 +12840,6 @@ def _fdictEntry(sRel):
         old='        return "<details class=\\"council-decision-context\\">" +',
         new='        return "<p class=\\"council-decision-context\\">" + _fsEscape(sText.substring(0, 240)) + "\\u2026</p>"; //',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilProviders.py::'
@@ -13858,7 +12854,6 @@ def _fdictEntry(sRel):
             '    listObjects = [jsonBlock for jsonBlock in'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilProviders.py::'
@@ -13873,7 +12868,6 @@ def _fdictEntry(sRel):
         ),
         new='    pass',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilProviders.py::'
@@ -13883,7 +12877,6 @@ def _fdictEntry(sRel):
         old='    return listObjects[-1] if listObjects else None',
         new='    return listObjects[0] if listObjects else None',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilProviders.py::'
@@ -13893,7 +12886,6 @@ def _fdictEntry(sRel):
         old='                   if isinstance(jsonBlock, dict)]',
         new='                   if jsonBlock is not None]',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRunnerAccess.py::'
@@ -13903,7 +12895,6 @@ def _fdictEntry(sRel):
         old='            baChunk = await readerSource.read(I_RELAY_CHUNK_BYTES)',
         new='            baChunk = await readerSource.read()',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRunnerAccess.py::'
@@ -13915,7 +12906,6 @@ def _fdictEntry(sRel):
         old='I_PROXY_MEMORY_BYTES = 1024 * 1024 * 1024',
         new='I_PROXY_MEMORY_BYTES = 256 * 1024 * 1024',
     ),
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
@@ -13925,7 +12915,6 @@ def _fdictEntry(sRel):
         old='        if (!_fbConsoleHasLostEarlierEvents()) return "";',
         new='        if (true) return "";',
     ),
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilChairbotChat.py::'
@@ -13945,7 +12934,6 @@ def _fdictEntry(sRel):
             '                dictChat.iIdleSecondsRemaining, dictChat.sState,'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilChairbotChat.py::'
@@ -13968,12 +12956,6 @@ def _fdictEntry(sRel):
             '            }'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # The stopping-point descriptor and the campaign name (continuation
-    # plan sections 0.3 and 6, 2026-08-26).
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -13992,7 +12974,6 @@ def _fdictEntry(sRel):
             '    {"planAccepted", "archived"})'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -14015,7 +12996,6 @@ def _fdictEntry(sRel):
             '    }'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -14028,7 +13008,6 @@ def _fdictEntry(sRel):
         ),
         new='            if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -14046,7 +13025,6 @@ def _fdictEntry(sRel):
             '                           "crossReview", "veto"]'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilCampaignName.py::'
@@ -14062,7 +13040,6 @@ def _fdictEntry(sRel):
             '        return sBase'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilCampaignName.py::'
@@ -14075,11 +13052,6 @@ def _fdictEntry(sRel):
         ),
         new='    setTaken = set(saExistingNames or [])',
     ),
-
-    # ------------------------------------------------------------------
-    # The plan.md deliverable (continuation plan section 5, 2026-08-26).
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14089,7 +13061,6 @@ def _fdictEntry(sRel):
         old='    _fnRegisterPlanMarkdown(app, dictCtx)\n',
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14099,7 +13070,6 @@ def _fdictEntry(sRel):
         old='        if not jsonCampaign.get("dictCandidatePlan"):',
         new='        if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14118,7 +13088,6 @@ def _fdictEntry(sRel):
             '            + agentCouncilController.fsComposePlanMarkdown('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14132,7 +13101,6 @@ def _fdictEntry(sRel):
         ),
         new='    if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilFrontendContract.py::'
@@ -14146,12 +13114,6 @@ def _fdictEntry(sRel):
             '            + "/plan.txt") + _fsDirectoryQuery("?");'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Durable provenance: the evidence ledger and the turn counter
-    # survive a store reload (continuation plan section 3, 2026-08-26).
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14173,7 +13135,6 @@ def _fdictEntry(sRel):
             'dictProvenance)'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14186,7 +13147,6 @@ def _fdictEntry(sRel):
         ),
         new='        self.listRecordedEntries = []',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14199,7 +13159,6 @@ def _fdictEntry(sRel):
         ),
         new='        "iTurnsLaunched": 0,',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14222,13 +13181,6 @@ def _fdictEntry(sRel):
             '        _fnPersistEntryProvenance(dictEntry)'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Durable phase attempts (continuation plan section 2, 2026-08-26):
-    # the record recovery reads, its atomic settlement, and the
-    # deterministic replay that makes turnsSettled recoverable.
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14245,7 +13197,6 @@ def _fdictEntry(sRel):
         old='            "sAttemptState": "running",',
         new='            "sAttemptState": "turnsSettled",',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14267,7 +13218,6 @@ def _fdictEntry(sRel):
             '                    "allEligible")'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14290,7 +13240,6 @@ def _fdictEntry(sRel):
             '"gateOpened")'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14312,7 +13261,6 @@ def _fdictEntry(sRel):
             '                    dictRound, "transitioned:interrupted")'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14327,7 +13275,6 @@ def _fdictEntry(sRel):
         ),
         new='            self._fnClassifyVetoVerdicts(dictRound)',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14353,7 +13300,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilPhaseAttempts.py::'
@@ -14366,13 +13312,6 @@ def _fdictEntry(sRel):
         ),
         new='        if False:',
     ),
-
-    # ------------------------------------------------------------------
-    # Explicit resume (continuation plan section 4, 2026-08-26): the
-    # five refusals, the non-destructive failure, the continued walk,
-    # and the hub-restart journey.
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14383,16 +13322,15 @@ def _fdictEntry(sRel):
         # its first phase -- silently re-spending provider work the
         # researcher already paid for.
         old=(
-            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
             '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
         ),
         new=(
-            '            {"sDecisionKind": "stopRequestClearedOnResume"})\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
             '    dictCampaign["listRounds"][-1]["dictTurnsByPhase"] = {}\n'
             '    dictRuntime = await _fdictRebuildRuntimeNonDestructively('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14402,7 +13340,6 @@ def _fdictEntry(sRel):
         old='    if sAttemptState == "running":',
         new='    if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14422,7 +13359,6 @@ def _fdictEntry(sRel):
             'hub version "'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14432,7 +13368,6 @@ def _fdictEntry(sRel):
         old='    if sRecordedImage != sImageReference:',
         new='    if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14442,7 +13377,6 @@ def _fdictEntry(sRel):
         old='    if sCurrentDigest != sRecordedDigest:',
         new='    if False:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14461,7 +13395,6 @@ def _fdictEntry(sRel):
             '        == agentCouncilRegistry.S_RESERVATION_QUARANTINED]'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14480,7 +13413,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14499,7 +13431,6 @@ def _fdictEntry(sRel):
             '        if not bClearStopRequest:'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14532,7 +13463,6 @@ def _fdictEntry(sRel):
             'async def _fdictAwaitRuntimeBuild('
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14544,7 +13474,6 @@ def _fdictEntry(sRel):
         old='    if dictRebuildMaterials is None:',
         new='    if True:',
     ),
-
     Falsification(
         nodeid=(
             'tests/testAgentCouncilFrontendContract.py::'
@@ -14558,7 +13487,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -14571,11 +13499,6 @@ def _fdictEntry(sRel):
         old='    if listBlockingReasons:',
         new='    if False:',
     ),
-
-    # ------------------------------------------------------------------
-    # One action at a time (continuation plan section 7, 2026-08-26).
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilChairbotChat.py::'
@@ -14596,7 +13519,6 @@ def _fdictEntry(sRel):
             '        try {'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14617,7 +13539,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14634,7 +13555,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilResume.py::'
@@ -14655,7 +13575,6 @@ def _fdictEntry(sRel):
         ),
         new='    return True',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14674,7 +13593,6 @@ def _fdictEntry(sRel):
         ),
         new='        dictEntry["bProvenanceUnavailable"] = False',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilStoppingPoint.py::'
@@ -14693,11 +13611,6 @@ def _fdictEntry(sRel):
         ),
         new='    dictStopping["sAction"] = "resume"',
     ),
-
-    # ------------------------------------------------------------------
-    # Retry and retirement (continuation plan 2.5/2.6, 2026-08-27).
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilRetry.py::'
@@ -14713,7 +13626,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRetry.py::'
@@ -14731,7 +13643,6 @@ def _fdictEntry(sRel):
             '{sRetryRefusal}")'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRetry.py::'
@@ -14748,7 +13659,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRetry.py::'
@@ -14765,13 +13675,6 @@ def _fdictEntry(sRel):
             '            dictLedgerEntry["bRetiredWithAttempt"] = True'
         ),
     ),
-
-    # ------------------------------------------------------------------
-    # Second review round (2026-08-27): the standing-stop retry, the
-    # list/detail agreement, and the coherent retry-plus-held-questions
-    # surface.
-    # ------------------------------------------------------------------
-
     Falsification(
         nodeid=(
             'tests/testCouncilRetry.py::'
@@ -14792,7 +13695,6 @@ def _fdictEntry(sRel):
             'the same reason'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilDurableProvenance.py::'
@@ -14820,7 +13722,6 @@ def _fdictEntry(sRel):
             'or {})'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilRetryOffer.py::'
@@ -14837,7 +13738,6 @@ def _fdictEntry(sRel):
         ),
         new='        var bRetryOffered = false;',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14861,9 +13761,6 @@ def _fdictEntry(sRel):
             '                jsonCampaign))'
         ),
     ),
-
-    # --- 2026-08-29: a campaign IS the answer to "which directory" ---
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14882,7 +13779,6 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14895,7 +13791,6 @@ def _fdictEntry(sRel):
         old='    if not sRecorded:\n        return ""\n',
         new='    sRecorded = ""\n    if not sRecorded:\n        return ""\n',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14913,7 +13808,6 @@ def _fdictEntry(sRel):
         ),
         new='    return sRecorded',
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14929,7 +13823,6 @@ def _fdictEntry(sRel):
             '        raise HTTPException(404, "no council campaign")\n'
         ),
     ),
-
     Falsification(
         nodeid=(
             'tests/testCouncilRoutes.py::'
@@ -14964,7 +13857,6 @@ def _fdictEntry(sRel):
         ),
         iExpectedOccurrences=2,
     ),
-
     Falsification(
         nodeid=(
             'tests/browser/testCouncilAcceptCarriesItsDirectory.py::'
@@ -14982,6 +13874,248 @@ def _fdictEntry(sRel):
         new=(
             '                _fsRoute("/" + _dictState.sActiveCampaignId\n'
             '                    + "/accept-plan"));'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPauseStandsDownAtAPhaseBoundaryNeverMidPhase'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The pause is honoured where the STOP is honoured -- between
+        # turn waves, inside the phase -- so a participant that had not
+        # been launched is recorded notStarted and the researcher comes
+        # back to a half-run phase.
+        old=(
+            '            if self.dictCampaign["bStopRequested"]:\n'
+            '                self._fnRecordUnlaunchedTurns('
+        ),
+        new=(
+            '            if self.dictCampaign["bStopRequested"] or (\n'
+            '                    self.dictCampaign.get("bPauseRequested")):\n'
+            '                self._fnRecordUnlaunchedTurns('
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPauseTheWalkOutrunsIsRetiredNotLeftToStall'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # A pause overtaken by a gate survives on the record, so the
+        # researcher's answer spawns a drive that stands down at once.
+        old=(
+            '        self.dictCampaign["bPauseRequested"] = False\n'
+            '        self._fnEmitEvent("pauseOutrunByOutcome",'
+        ),
+        new='        self._fnEmitEvent("pauseOutrunByOutcome",',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseIsRefusedWhenNothingIsDeliberating'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The pause is admitted against a record no drive is walking,
+        # so the flag advertises a stand-down that will never happen.
+        old=(
+            '        raise CouncilCommandError(\n'
+            '            "cannot pause: this council is not deliberating, '
+            'so there is "\n'
+            '            "no phase to stand down at the end of.")'
+        ),
+        new=(
+            '        return {"bPauseRequested": True, "bSettled": False,\n'
+            '                "dictCampaign": dictCampaign}'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseProvesNothingAboutRunnersBecauseItTearsNothingDown'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # The pause reaches for the egress teardown, so an
+        # indeterminate answer quarantines a working council over a
+        # researcher going home.
+        old=(
+            '    dictRuntime["engineCouncil"].fnRequestPauseAfterCurrentPhase'
+            '()\n'
+            '    agentCouncilStore.fnCheckpointStoredCampaign('
+        ),
+        new=(
+            '    dictRuntime["engineCouncil"].fnRequestPauseAfterCurrentPhase'
+            '()\n'
+            '    await asyncio.to_thread(\n'
+            '        _fbReleaseRunnerAccessResources, dictRuntime)\n'
+            '    agentCouncilStore.fnCheckpointStoredCampaign('
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testResumingAPausedCouncilClearsThePauseAndContinuesTheWalk'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Resume leaves the flag set, so the rebuilt drive stands down
+        # before running anything and the button is a silent no-op.
+        old=(
+            '    # rebuild that fails leaves the stored record still '
+            'paused.\n'
+            '    dictCampaign["bPauseRequested"] = False\n'
+        ),
+        new=(
+            '    # rebuild that fails leaves the stored record still '
+            'paused.\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testPauseLeavesTheCouncilResumableWhereStopArchivesIt'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        # The pause takes the stop's archive transition, so stepping
+        # away from a council destroys it.
+        old=(
+            '            if self.dictCampaign.get("bPauseRequested"):\n'
+            '                self._fnStandDownAtPhaseBoundary()\n'
+            '                break'
+        ),
+        new=(
+            '            if self.dictCampaign.get("bPauseRequested"):\n'
+            '                self._fnTransition(S_STATE_ARCHIVED, '
+            '"pausedIntoArchive")\n'
+            '                break'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testResumingAPausedCouncilRefusesAnExpiredLoginInsteadOf500'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # The shipped defect restored: the login pre-flight reads a
+        # name the resume handler never bound, so every resume raises
+        # NameError before the expired-token refusal can be composed.
+        old=(
+            '            jsonCampaign = fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled('
+            'sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(jsonCampaign))\n'
+            '            dictResumed = ('
+        ),
+        new=(
+            '            jsonCampaign = fjsonRequireCampaign(\n'
+            '                dictStore, sCampaignId, sName, '
+            'sProjectRepoPath)\n'
+            '            sImageReference = await ffnBuildImageResolver(\n'
+            '                dictCtx, sContainerId)()\n'
+            '            fnRefuseRunnerBackendUnlessEnabled('
+            'sImageReference)\n'
+            '            await asyncio.to_thread(\n'
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId,\n'
+            '                _ffTurnBudgetSeconds(dictCampaign))\n'
+            '            dictResumed = ('
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testPauseAndStopStateOppositeConsequencesSideBySide'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Stop loses its destructive styling, so the button that ends a
+        # council for good looks exactly like the one that does not.
+        old='class=\\"btn btn-danger\\">Stop council</button>" +',
+        new='class=\\"btn\\">Stop council</button>" +',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testAPauseStillLandingSaysThePhaseWillFinishFirst'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The paused surface stops reading the backend's in-flight
+        # phase, so a pause that has only been REQUESTED is rendered as
+        # a council standing still while a turn is mid-answer.
+        old=(
+            '        var dictInFlight = dictCampaign.dictPhaseInFlight;\n'
+            '        if (dictInFlight) {'
+        ),
+        new=(
+            '        var dictInFlight = null;\n'
+            '        if (dictInFlight) {'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testALandedPauseSaysNothingIsWorkingAndOffersResume'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The composer ignores the pause, so a council that has stood
+        # down keeps claiming its agents are deliberating.
+        old=(
+            '        if (dictCampaign.bPauseRequested) {\n'
+            '            return _fsPausedSurface(dictCampaign);\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testAPausedCouncilIsNotDescribedAsACrashedHub'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Every idle planning campaign is described as a hub restart,
+        # so a researcher who paused one is told it crashed.
+        old='        var sWhy = dictCampaign.bPauseRequested',
+        new='        var sWhy = false',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testThePauseButtonPostsToThePauseRoute'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # Pause is wired to the stop action: the researcher who wanted
+        # to step away archives the council instead.
+        old='        _fnBindElement("btnCouncilPause", _fnPauseCouncil);',
+        new='        _fnBindElement("btnCouncilPause", _fnStopCouncil);',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilPause.py::'
+            'testAPausedCouncilSurvivesTheHubExitingAndComesBackResumable'
+        ),
+        source='vaibify/gui/agentCouncilController.py',
+        # Shutdown's cooperative stop reaches DISK, so a council the
+        # researcher paused comes back carrying a stop nobody asked
+        # for and the morning resume refuses over it.
+        old=(
+            '    if dictRuntime.get("engineCouncil") is not None:\n'
+            '        dictRuntime["engineCouncil"].'
+            'fnRequestStopAfterCurrentTurn()\n'
+        ),
+        new=(
+            '    if dictRuntime.get("engineCouncil") is not None:\n'
+            '        dictRuntime["engineCouncil"].'
+            'fnRequestStopAfterCurrentTurn()\n'
+            '        agentCouncilStore.fnCheckpointStoredCampaign(\n'
+            '            dictRuntime["dictStore"], '
+            'dictRuntime["sCampaignId"],\n'
+            '            dictRuntime["dictCampaign"])\n'
         ),
     ),
 ]

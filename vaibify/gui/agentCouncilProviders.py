@@ -722,7 +722,7 @@ def _fnRefuseAnExpiredAccessToken(dictOauth,
             f"{fsDescribeDuration(abs(fSecondsRemaining))} ago, and a "
             "council runner is given the access token WITHOUT the "
             "refresh token, so it cannot renew it. Run `claude` in this "
-            "project's container to refresh the login, then convene."
+            "project's container to refresh the login, then try again."
         )
     if fSecondsRemaining >= fRequiredSecondsRemaining:
         return
@@ -738,7 +738,7 @@ def _fnRefuseAnExpiredAccessToken(dictOauth,
         ". A council runner is given the access token WITHOUT the "
         "refresh token, so it cannot renew mid-turn and the turn would "
         "die partway through. Run `claude` in this project's container "
-        "to refresh the login, then convene."
+        "to refresh the login, then try again."
     )
 
 

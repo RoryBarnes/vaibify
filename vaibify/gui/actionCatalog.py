@@ -887,6 +887,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/retry"),
     ("POST",
      "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
+    # Pausing is human-only on the same terms, and one more: it is the
+    # researcher saying "I am leaving". An agent that could pause could
+    # stall a council indefinitely without ending it, which reads as a
+    # hang rather than as an act.
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/pause"),
     ("POST",
      "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan"),
     ("POST",

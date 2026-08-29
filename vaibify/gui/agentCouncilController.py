@@ -17,8 +17,12 @@ against a REAL engine is cooperative (the engine admits no later turn
 and settles at the next boundary — the record says ``bStopRequested``
 until then, never a fabricated terminal state), while a stop against a
 runtime with no engine (a crash leftover, or a test double) cancels the
-task and transitions honestly to interrupted. It is deliberately free
-of route imports: the routes call down into it, never the reverse.
+task and transitions honestly to interrupted. A PAUSE is the stop's
+non-destructive sibling: it archives nothing, cancels nothing and
+proves nothing about a runner — it asks the engine to stand down at
+its next PHASE boundary, leaving a record the resume command already
+knows how to continue. It is deliberately free of route imports: the
+routes call down into it, never the reverse.
 
 Why a lock and not a queue-with-worker: an ``asyncio.Lock`` wakes its
 waiters first-in-first-out on one event loop, which IS a per-campaign
@@ -55,12 +59,14 @@ __all__ = [
     "S_COMMAND_RESPOND",
     "S_COMMAND_RESUME",
     "S_COMMAND_RETRY",
+    "S_COMMAND_REQUEST_PAUSE",
     "S_COMMAND_REQUEST_STOP",
     "S_COMMAND_START",
     "S_COUNCIL_CONTROLLER_STATE_KEY",
     "fbCampaignDriveIsLive",
     "fdictCreateCouncilControllerState",
     "fdictLaunchCampaignDeliberation",
+    "fdictRequestCampaignPause",
     "fdictRequestCampaignStop",
     "fdictAcceptCampaignPlan",
     "fdictContinueCampaignAfterResponse",
@@ -92,6 +98,11 @@ S_COUNCIL_CONTROLLER_STATE_KEY = "dictCouncilControllerState"
 S_COMMAND_START = "start"
 S_COMMAND_RESPOND = "respond"
 S_COMMAND_REQUEST_STOP = "requestStop"
+# The non-destructive sibling of the stop: stand down at the next phase
+# boundary and stay resumable. Its own command so the log distinguishes
+# the two — "stop" and "pause" must never be one entry a reader has to
+# guess at.
+S_COMMAND_REQUEST_PAUSE = "requestPause"
 S_COMMAND_ACCEPT_PLAN = "acceptPlan"
 S_COMMAND_DELETE = "delete"
 S_COMMAND_GRANT_RESOLUTION_ROUND = "grantResolutionRound"
@@ -116,6 +127,7 @@ LIST_CONTROLLER_COMMANDS = [
     S_COMMAND_START,
     S_COMMAND_RESPOND,
     S_COMMAND_REQUEST_STOP,
+    S_COMMAND_REQUEST_PAUSE,
     S_COMMAND_ACCEPT_PLAN,
     S_COMMAND_DELETE,
     S_COMMAND_GRANT_RESOLUTION_ROUND,
@@ -847,6 +859,11 @@ async def fdictResumeCampaignDeliberation(
         dictCampaign["bStopRequested"] = False
         dictCampaign.setdefault("listResearcherDecisions", []).append(
             {"sDecisionKind": "stopRequestClearedOnResume"})
+    # A pause needs no such choice, and offering one would be theatre:
+    # the researcher who paused is the researcher clicking resume, and
+    # resuming IS the un-pause. Cleared on the runtime's record, so a
+    # rebuild that fails leaves the stored record still paused.
+    dictCampaign["bPauseRequested"] = False
     dictRuntime = await _fdictRebuildRuntimeNonDestructively(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         dictCampaign, sImageReference, fsStageRunnerCredential)
@@ -945,6 +962,11 @@ async def fdictRetryCampaignFailedPhase(
         dictCampaign["bStopRequested"] = False
         dictCampaign.setdefault("listResearcherDecisions", []).append(
             {"sDecisionKind": "stopRequestClearedOnRetry"})
+    # A pause on a FAILED record is one the walk never reached (a lease
+    # release can interrupt a paused campaign underneath it). Kept, it
+    # would make the retry a no-op: the drive spawns, stands down at
+    # once, and the researcher watches nothing happen.
+    dictCampaign["bPauseRequested"] = False
     baSnapshotTar = _fbaAdmitRuntimeRebuild(
         dictStore, dictCampaign, sCampaignId, sImageReference, "retry")
     taskBuild = asyncio.ensure_future(asyncio.to_thread(
@@ -1374,6 +1396,53 @@ async def fdictRejectCampaignCandidate(dictControllerState, dictStore,
     if dictRuntime is not None:
         await _fnReleaseRunnerAccessIfSettled(dictRuntime)
     return {"bRejected": True,
+            "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
+                dictStore, sCampaignId)}
+
+
+async def fdictRequestCampaignPause(dictControllerState, dictStore,
+                                    sCampaignId):
+    """Ask a deliberating council to stand down at its next boundary.
+
+    The researcher who has to leave. Everything a stop does destroys
+    something — it archives the campaign, or transitions it to
+    interrupted — and this does none of it: no transition, no
+    cancellation, no teardown, and above all no claim about a runner.
+    Nothing here tears anything down, so nothing here can strand a
+    runner it failed to prove gone; what the pause changes is one
+    durable flag the engine reads at its next PHASE boundary.
+
+    Admitted only against a live drive holding a REAL engine, because
+    that is the only thing that can honour it. A flag set on a record
+    nobody is walking would advertise a pause that will never happen,
+    and the researcher would come back to a council that had been
+    "pausing" all night.
+
+    The campaign's runtime is deliberately left exactly as it is. A
+    paused campaign is a campaign waiting on the researcher — the
+    shape a human gate already leaves — so its egress boundary is
+    released by the paths that already release a gate's: a lease
+    release, a delete, hub shutdown, and the startup sweep after a
+    restart.
+    """
+    dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId)
+    if dictCampaign is None:
+        raise CouncilCommandError(f"no stored campaign {sCampaignId!r}")
+    dictRuntime = dictControllerState["dictCampaignRuntime"].get(sCampaignId)
+    if dictRuntime is None or not fbCampaignDriveIsLive(
+            dictControllerState, sCampaignId):
+        raise CouncilCommandError(
+            "cannot pause: this council is not deliberating, so there is "
+            "no phase to stand down at the end of.")
+    if dictRuntime.get("engineCouncil") is None:
+        raise CouncilCommandError(
+            "cannot pause: this council is still starting up. Wait until "
+            "its first phase is running, then pause.")
+    dictRuntime["engineCouncil"].fnRequestPauseAfterCurrentPhase()
+    agentCouncilStore.fnCheckpointStoredCampaign(
+        dictStore, sCampaignId, dictRuntime["dictCampaign"])
+    return {"bPauseRequested": True, "bSettled": False,
             "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
                 dictStore, sCampaignId)}
 

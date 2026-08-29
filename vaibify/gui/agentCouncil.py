@@ -376,6 +376,9 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             if self.dictCampaign["bStopRequested"]:
                 self._fnTransition(S_STATE_ARCHIVED, "stopAfterCurrentTurn")
                 break
+            if self.dictCampaign.get("bPauseRequested"):
+                self._fnStandDownAtPhaseBoundary()
+                break
             dictRound = self._fdictEnsureOpenRound()
             if dictRound is None:
                 continue
@@ -385,7 +388,43 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 continue
             await self._fnRunPhase(dictRound, sPhase)
             self._fnSettlePhaseOutcome(dictRound, sPhase)
+        self._fnRetireAPauseTheWalkOutran()
         return copy.deepcopy(self.dictCampaign)
+
+    def _fnStandDownAtPhaseBoundary(self):
+        """Honour a pause where the record already proves a boundary.
+
+        Checked at the TOP of the walk, so the phase that was running
+        has fully settled: its attempt record reads ``outcomeSettled``
+        or ``turnsSettled``, which is exactly what a hub killed between
+        phases leaves behind — and exactly what the resume admission
+        already recognises. Nothing transitions: the campaign IS still
+        planning, and minting a paused state would be a second
+        authority on what may be continued, disagreeing with the first
+        the day one of them changed.
+        """
+        self._fnEmitEvent("campaignPaused", {
+            "iRoundNumber": len(self.dictCampaign["listRounds"])})
+        self.fnCheckpointCampaign(self.dictCampaign)
+
+    def _fnRetireAPauseTheWalkOutran(self):
+        """Clear a pause request the walk left the planning state before.
+
+        A pause admitted while the last phase ran is OVERTAKEN when
+        that phase opens a human gate, readies a plan, or fails: the
+        council stopped for its own reason and nothing was paused. The
+        flag must not survive that, or the next continuation spawns a
+        drive whose first act is to stand down again — the researcher
+        clicks Answer and watches nothing happen.
+        """
+        if not self.dictCampaign.get("bPauseRequested"):
+            return
+        if self.dictCampaign["sState"] == S_STATE_PLANNING:
+            return
+        self.dictCampaign["bPauseRequested"] = False
+        self._fnEmitEvent("pauseOutrunByOutcome",
+                          {"sState": self.dictCampaign["sState"]})
+        self.fnCheckpointCampaign(self.dictCampaign)
 
     def _fdictEnsureOpenRound(self):
         listRounds = self.dictCampaign["listRounds"]
@@ -1322,3 +1361,17 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         dispatched settle normally; nothing new is launched."""
         self.dictCampaign["bStopRequested"] = True
         self._fnEmitEvent("stopRequested", {})
+
+    def fnRequestPauseAfterCurrentPhase(self):
+        """Stand down at the next phase boundary, still resumable.
+
+        Deliberately coarser than the stop it sits beside: a stop
+        admits no further TURN and may leave a phase half-run, which is
+        acceptable for a campaign about to be archived and wrong for
+        one meant to continue. The pause is read only where the walk
+        proves a whole phase settled, so what the researcher comes back
+        to is a coherent record rather than a phase with unlaunched
+        participants in it.
+        """
+        self.dictCampaign["bPauseRequested"] = True
+        self._fnEmitEvent("pauseRequested", {})

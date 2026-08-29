@@ -983,6 +983,12 @@ def _fnRegisterResume(app, dictCtx):
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteResume():
+            # The campaign is BOUND, not merely required: the login
+            # pre-flight below needs this campaign's own turn budget,
+            # and reading it off a free name raised NameError before
+            # the guard could run — so every resume answered 500 and
+            # the expired-login refusal this path exists to deliver
+            # never reached a researcher (2026-08-29).
             jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
@@ -1032,6 +1038,8 @@ def _fnRegisterRetry(app, dictCtx):
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteRetry():
+            # Bound for the same reason resume binds it: the budget the
+            # login pre-flight compares against is this campaign's.
             jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
@@ -1099,6 +1107,44 @@ def _fnRegisterRespond(app, dictCtx):
         return await fgenericSubmitMapped(
             dictControllerState, sCampaignId,
             agentCouncilController.S_COMMAND_RESPOND, _fdictExecuteRespond)
+
+
+def _fnRegisterRequestPause(app, dictCtx):
+    """Register POST .../{sCampaignId}/pause.
+
+    Its own route rather than a flag on request-stop, because the two
+    have opposite consequences — a stop ends the campaign, a pause
+    leaves it resumable — and a boolean in a shared body is exactly how
+    a researcher (or an agent reading the catalog) ends up destroying
+    one they meant to keep. No paid work starts here, so none of the
+    launch gates apply; the resume that follows pays them all.
+    """
+
+    @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/pause")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictRequestPause(
+        sContainerId: str, sCampaignId: str, requestHttp: Request,
+        sProjectDirectory: str = "",
+    ):
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId, sProjectDirectory)
+        dictStore = fdictCampaignStore(requestHttp)
+        dictControllerState = fdictControllerState(requestHttp)
+
+        async def _fdictExecuteRequestPause():
+            fjsonRequireCampaign(
+                dictStore, sCampaignId, sName, sProjectRepoPath)
+            dictPaused = (
+                await agentCouncilController.fdictRequestCampaignPause(
+                    dictControllerState, dictStore, sCampaignId))
+            agentCouncilStore.fdictAppendCampaignEvent(
+                dictStore, sCampaignId, _fdictBuildEvent("pauseRequested"))
+            return dictPaused
+
+        return await fgenericSubmitMapped(
+            dictControllerState, sCampaignId,
+            agentCouncilController.S_COMMAND_REQUEST_PAUSE,
+            _fdictExecuteRequestPause)
 
 
 def _fnRegisterRequestStop(app, dictCtx):
@@ -1386,6 +1432,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRespond(app, dictCtx)
     _fnRegisterResume(app, dictCtx)
     _fnRegisterRetry(app, dictCtx)
+    _fnRegisterRequestPause(app, dictCtx)
     _fnRegisterRequestStop(app, dictCtx)
     _fnRegisterExhaustedRoundExits(app, dictCtx)
     _fnRegisterAcceptPlan(app, dictCtx)

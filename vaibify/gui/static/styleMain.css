@@ -761,6 +761,22 @@ body.proof-level-3 .toolbar-label {
     background: #1a2ce8;
 }
 
+/* An action that destroys something the researcher cannot get back.
+   It exists because Pause and Stop sit side by side on the council
+   composer and the difference between them is the whole point: two
+   identically-styled buttons would make "stop for good" look like a
+   sibling of "carry on later". */
+.btn-danger {
+    border-color: var(--error-color, #c62828);
+    color: var(--error-color, #c62828);
+}
+
+.btn-danger:hover {
+    background: var(--error-color, #c62828);
+    border-color: var(--error-color, #c62828);
+    color: white;
+}
+
 .btn-convert-to-project {
     background: var(--color-orange);
     border-color: var(--color-orange);

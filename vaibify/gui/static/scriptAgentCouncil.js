@@ -454,8 +454,14 @@ var VaibifyAgentCouncil = (function () {
             "\"><span class=\"council-open-name\">" +
             _fsEscape(dictSummary.sCampaignName ||
                 dictSummary.sCampaignId) + "</span>" +
+            /* "pause requested", never "paused": the listing has no
+               liveness, so it cannot know whether the phase that was
+               running has finished. It reports the durable flag in the
+               flag's own words and lets the opened panel — which does
+               have the answer — say which. */
             "<span class=\"council-open-state\">" +
-            _fsEscape(dictSummary.sState) + "</span> " +
+            _fsEscape(dictSummary.bPauseRequested
+                ? "pause requested" : dictSummary.sState) + "</span> " +
             "<span class=\"council-open-where\">" +
             _fsEscape(_fsDescribeStoppingPoint(dictStopping)) + "</span> " +
             "<span class=\"council-open-when\">" +
@@ -1563,6 +1569,13 @@ var VaibifyAgentCouncil = (function () {
             dictGate.sGateKind || "",
             dictCampaign.dictCandidatePlan ? 1 : 0,
             dictCampaign.bPlanningBaselineStale ? 1 : 0,
+            /* The pause changes which composer the footer renders and
+               nothing else the signature reads, so without it the
+               researcher clicks Pause and the panel keeps saying the
+               council is deliberating until some unrelated fact moves.
+               The same omission would hide the retirement that clears
+               a pause the walk outran. */
+            dictCampaign.bPauseRequested ? 1 : 0,
             /* TURN progress. Without it a settled turn changes
                listRounds and nothing the signature reads, so the panel
                does not redraw and a participant that finished minutes
@@ -2651,13 +2664,60 @@ var VaibifyAgentCouncil = (function () {
         if (dictCampaign.sState === "planReady") {
             return _fsFinishedComposer(dictCampaign);
         }
+        if (dictCampaign.bPauseRequested) {
+            return _fsPausedSurface(dictCampaign);
+        }
         return "<div class=\"council-composer\">" +
             "<p class=\"council-hint\">The council is deliberating. It " +
-            "will pause here when it needs your decision; until then " +
-            "you can watch the consoles or stop after the current " +
-            "turn.</p>" +
+            "will stop here when it needs your decision; until then " +
+            "you can watch the consoles, pause it, or stop it.</p>" +
+            "<button type=\"button\" id=\"btnCouncilPause\" " +
+            "class=\"btn btn-primary\">Pause after this phase</button>" +
             "<button type=\"button\" id=\"btnCouncilStop\" " +
-            "class=\"btn\">Stop council</button>" +
+            "class=\"btn btn-danger\">Stop council</button>" +
+            /* The two controls sit side by side, so the difference has
+               to be on the screen and not only in the labels: one of
+               them ends the campaign for good. */
+            "<p class=\"council-hint\">Pausing lets " +
+            "the phase now running finish, then stands the council " +
+            "down where you can resume it. Stopping ends this council " +
+            "for good — its record is kept, but it can never " +
+            "deliberate again.</p>" +
+            "</div>";
+    }
+
+    function _fsPausedSurface(dictCampaign) {
+        /* bPauseRequested with the hub still holding the campaign.
+           Which of the two things it means — the phase is finishing, or
+           the council has stood down — is answered by the BACKEND's
+           in-flight phase record, which the engine clears when a phase
+           settles. Never inferred from staleness, and never from the
+           absence of recent events. */
+        var dictInFlight = dictCampaign.dictPhaseInFlight;
+        if (dictInFlight) {
+            return "<div class=\"council-composer\">" +
+                "<p class=\"council-hint\">Pausing. The " +
+                _fsEscape(dictInFlight.sPhase || "current") +
+                " phase is still running and will finish first — " +
+                "cutting a turn off mid-answer would leave a failure " +
+                "nobody could attribute to anything. Nothing new " +
+                "starts after it, and you can close this tab.</p>" +
+                "<button type=\"button\" id=\"btnCouncilStop\" " +
+                "class=\"btn btn-danger\">Stop council instead</button>" +
+                "</div>";
+        }
+        return "<div class=\"council-composer\">" +
+            "<p class=\"council-hint\">Paused. No agent is working and " +
+            "nothing new will start (" +
+            _fsEscape(_fsDescribeStoppingPoint(
+                dictCampaign.dictStoppingPoint || {})) +
+            "). Resuming relaunches paid provider work from that step, " +
+            "against the same sealed snapshot; stopping instead ends " +
+            "this council for good.</p>" +
+            "<button type=\"button\" id=\"btnCouncilResume\" " +
+            "class=\"btn btn-primary\">Resume deliberation</button>" +
+            "<button type=\"button\" id=\"btnCouncilStop\" " +
+            "class=\"btn btn-danger\">Stop council</button>" +
             "</div>";
     }
 
@@ -2700,9 +2760,17 @@ var VaibifyAgentCouncil = (function () {
                 "</p></div>";
         }
         var bClearsStop = Boolean(dictCampaign.bStopRequested);
+        /* Why it is not running is not a detail. A researcher who
+           paused it and came back must not be told the hub crashed,
+           and a researcher whose hub DID crash must not be told they
+           paused it. The record's own flag decides. */
+        var sWhy = dictCampaign.bPauseRequested
+            ? "This council is paused — you stood it down, and it " +
+              "stopped at a settled boundary ("
+            : "This council is not running — the hub restarted since " +
+              "its last settled step (";
         return "<div class=\"council-composer\">" +
-            "<p class=\"council-hint\">This council is not running — " +
-            "the hub restarted since its last settled step (" +
+            "<p class=\"council-hint\">" + sWhy +
             _fsEscape(_fsDescribeStoppingPoint(dictStopping)) +
             "). Resuming relaunches paid provider work from that " +
             "step, against the same sealed snapshot.</p>" +
@@ -3431,6 +3499,7 @@ var VaibifyAgentCouncil = (function () {
             });
         });
         _fnBindElement("btnCouncilStop", _fnStopCouncil);
+        _fnBindElement("btnCouncilPause", _fnPauseCouncil);
         _fnBindElement("btnCouncilOpenPlanTab", function () {
             _fnSelectTab("plan");
         });
@@ -3583,6 +3652,14 @@ var VaibifyAgentCouncil = (function () {
     async function _fnStopCouncil() {
         await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/request-stop", undefined);
+    }
+
+    async function _fnPauseCouncil() {
+        /* Its own route, not a flag on the stop: the two have opposite
+           consequences, and a shared endpoint is how a mis-set boolean
+           archives a council somebody meant to keep. */
+        await _fbPostAction(
+            "/" + _dictState.sActiveCampaignId + "/pause", undefined);
     }
 
     async function _fnRetryCouncil() {
