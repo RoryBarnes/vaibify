@@ -6,6 +6,7 @@ predicate behind the DNS-rebinding defence. ``fnRegisterMiddleware``
 installs them, plus gzip, in the order the app factory relies on.
 """
 
+import json
 import time
 
 from fastapi import Request
@@ -111,7 +112,7 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         if not _fbRequestHasAllowedHost(request):
             return _fresponseJsonError(400, "Invalid Host header")
         if _fbBrowserTokenRejected(request):
-            return _fresponseJsonError(401, "Unauthorized")
+            return _fresponseUnauthorized(request)
         return await call_next(request)
 
 
@@ -271,6 +272,51 @@ def _fsBrowserPresentedToken(request, sPath):
     if bIsWebSocket or bIsDownload:
         return request.query_params.get("sToken", "")
     return ""
+
+
+def _fresponseUnauthorized(request):
+    """Refuse an unauthenticated browser request, saying why if it can.
+
+    A bare "Unauthorized" is the correct answer to a caller with no
+    standing, and the wrong one to the researcher whose own session the
+    hub ended overnight while nobody was watching. When the credential
+    the request presents belongs to a session THIS hub revoked, the
+    refusal carries that session's own ending — what happened, when by
+    the wall clock, and what became of the container.
+
+    Nothing is disclosed by this: the notice is keyed on the credential
+    the caller already holds, so an unknown or guessed credential
+    answers exactly what it answered before.
+    """
+    dictNotice = _fdictEndingNoticeForRequest(request)
+    if dictNotice is None:
+        return _fresponseJsonError(401, "Unauthorized")
+    # A structured ``detail``, which the dashboard's error extractor
+    # already normalizes: the sentence lands in ``sMessage`` like every
+    # other refusal, and the wall clock rides beside it rather than
+    # being spliced into the prose, so the page can render the time in
+    # the researcher's own locale.
+    return Response(
+        status_code=401,
+        content=json.dumps({"detail": {
+            "sMessage": dictNotice["sEndedMessage"],
+            "sEndedWallClockIso": dictNotice["sEndedWallClockIso"],
+        }}),
+        media_type="application/json",
+    )
+
+
+def _fdictEndingNoticeForRequest(request):
+    """Return the ending notice for this request's credential, or None."""
+    dictBrowserSessions = getattr(
+        request.app.state, "dictBrowserSessions", None,
+    )
+    if dictBrowserSessions is None:
+        return None
+    return browserSession.fdictEndingNoticeForCredential(
+        dictBrowserSessions,
+        _fsBrowserPresentedToken(request, request.url.path),
+    )
 
 
 def _fresponseJsonError(iStatusCode, sDetail):

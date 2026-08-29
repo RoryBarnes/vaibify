@@ -534,6 +534,62 @@ def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
         recordSession.fCreatedMonotonic = fCreatedRestore
 
 
+def testAnEndedSessionIsToldWhatHappenedNotThatTheServerRestarted(
+    pageDashboard, serverHub,
+):
+    """The post-hoc notice, in a real browser, from a real 401.
+
+    The pre-expiry warning above assumes somebody is watching. A cap
+    that starts in the afternoon fires in the small hours, so the tab
+    the researcher comes back to has already missed it -- and what it
+    used to say was "Vaibify server has been restarted", which is a
+    guess and, for this case, a false one: the hub is still running and
+    ended the session on purpose.
+
+    Nothing is faked. The session is revoked on the server the way an
+    expiry revokes it, the page's own poll meets the real middleware
+    401, and the toast must carry the server's sentence.
+    """
+    from vaibify.gui import browserSession
+    stateApp = serverHub.app.state
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential
+    recordSession = stateApp.dictBrowserSessions[
+        "dictSessionsByCredential"
+    ][sCredential]
+
+    browserSession.fbRevokeSessionById(
+        stateApp.dictBrowserSessions, recordSession.sSessionId,
+        sEndedMessage=(
+            "This browser session reached its maximum lifetime (12h) "
+            "and ended. Container 'demo' kept running and its work was "
+            "retained. Run 'vaibify open' for a fresh tab, or raise "
+            "the session cap in Settings."
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyPolling.fnStartSessionLifetimePolling()"
+    )
+
+    locatorToast = pageDashboard.locator(
+        ".toast", has_text="maximum lifetime"
+    )
+    locatorToast.first.wait_for(state="visible", timeout=15000)
+    sToastText = locatorToast.first.inner_text()
+    assert "restarted" not in sToastText, sToastText
+    assert "kept running" in sToastText, sToastText
+    assert "vaibify open" in sToastText, (
+        "a notice that does not name the recovery is only a nicer "
+        "refusal"
+    )
+    assert "It ended at" in sToastText, (
+        "the wall-clock time is the part the countdown could not "
+        "deliver, because nobody was at the screen when it fired"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 # ---------------------------------------------------------------------
 # Journey -- a start reports its real outcome, not its acceptance
 # ---------------------------------------------------------------------

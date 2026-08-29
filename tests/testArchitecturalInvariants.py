@@ -5404,7 +5404,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transition they commit (tests/testLifecycleLogging.py pins the
     # orphan line — the one whose silence made a lease loss
     # undiagnosable).
-    "sessionLifecycle.py": 1580,
+    # 1580 -> 1724 (2026-08-29): the session windows became host-global
+    # SETTINGS. The three-tier resolvers, their live re-read at every
+    # evaluation (which is what lets raising the cap rescue a session
+    # that has not expired), and the sentence a returning researcher is
+    # shown in place of a bare "Unauthorized" all live where the
+    # windows are decided. Not split: they are the same responsibility
+    # this module already owns — deciding when a browser session ends —
+    # and moving them out would put the policy in one file and the
+    # numbers it reads in another.
+    "sessionLifecycle.py": 1758,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -5941,7 +5950,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-08-27): the retry route joins the human-only
     # exclusion set beside resume.
     # 2026-08-27 (on merge): the merged file's REAL line count again.
-    "actionCatalog.py": 1087,
+    # 1087 -> 1092 (2026-08-29): the session-cap preference joins the
+    # idle timeout in the intentionally-excluded set, with its own
+    # rationale — an agent that could set the cap to "never" would
+    # remove the bound on a credential it shares a container with.
+    "actionCatalog.py": 1092,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6150,7 +6163,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # counts as an owned-container read beside it.
     # +1 (2026-08-26): the plan.md read joins the frozen
     # container-read allowlist.
-    "routeScope.py": 981,
+    # 981 -> 982 (2026-08-29): one scope row for the new session-cap
+    # preference route.
+    "routeScope.py": 982,
 }
 
 

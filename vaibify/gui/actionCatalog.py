@@ -1029,6 +1029,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Host-global idle-shutdown timeout. A compromised in-container agent
     # must never disable the hub's idle reaper — researcher-only.
     ("PUT", "/api/preferences/idle-timeout"),
+    # Host-global browser-session cap. An agent that could set this to
+    # "never" would remove the bound on how long a credential it shares
+    # a container with stays valid — researcher-only, for the same
+    # reason as the idle timeout above.
+    ("PUT", "/api/preferences/session-cap"),
 })
 
 

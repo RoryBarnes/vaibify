@@ -447,6 +447,7 @@ def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
     )
     assert dictUnknown == {
         "bSessionKnown": False,
+        "bNeverExpires": False,
         "fSecondsUntilSessionCap": 0.0,
         "fWarningLeadSeconds": (
             sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS

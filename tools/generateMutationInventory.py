@@ -180,6 +180,12 @@ DICT_PRIMITIVE_ACCESS = {
     "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
+    # Metadata about what the DAEMON is running in a container: the
+    # exec-id list plus one Running flag per id, via fdictInspectExec.
+    # It runs no program, takes no caller value, and cannot mutate; it
+    # is the sleep-prevention sweep's evidence that work is still live
+    # after the browser that started it has gone.
+    "flistRunningExecIdentifiers": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
     # The audited adapter behind `vaibify ls`: the caller supplies a
     # PATH, never a command, so it is a typed read even though it uses

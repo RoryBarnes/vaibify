@@ -117,6 +117,30 @@ The pipeline runs all steps in order. Each step runs its commands
 sequentially. Steps themselves execute one at a time by default; future
 versions may support parallel step execution for independent steps.
 
+### What a long step survives
+
+Steps in this project take hours to months, so it matters which
+failures reach them. Measured against a live daemon rather than
+assumed:
+
+- **Closing the browser does not stop a run.** The loop runs
+  server-side and nothing cancels it on disconnect. Even a session
+  that reaches its lifetime cap is *orphaned*, not released: the
+  container keeps its lock and its work, and a fresh tab
+  (`vaibify open`) reconciles with the run already in progress.
+- **Restarting the dashboard server does not stop a run either.** An
+  in-container process outlives the process that launched it. What is
+  lost is the live output stream — the restarted server can still
+  learn that the step finished and with what exit code, but not the
+  lines it was not there to read.
+
+The practical rule for a step you intend to leave running: **write
+what matters to a file.** Anything that exists only in the streamed
+log is recoverable only while somebody is watching. This is also why
+every cross-step reference is a declared token rather than a hidden
+path — the dependency graph has to be readable from the project file
+alone, without replaying a run.
+
 ## Pipeline Output
 
 Figures produced by step commands are copied to the `sPlotDirectory`

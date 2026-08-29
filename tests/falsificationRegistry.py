@@ -3911,8 +3911,10 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
         source='vaibify/gui/sessionLifecycle.py',
-        old='    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)',
-        new='    pass',
+        old='''    browserSession.fbRevokeSessionById(
+        dictStore, sOldSessionId,''',
+        new='''    browserSession.fbRevokeSessionById(
+        dictStore, "",''',
     ),
     # Case 3 (bounded replay returns the STORED tuple):
     Falsification(
@@ -4326,8 +4328,11 @@ def _fdictEntry(sRel):
         source='vaibify/gui/sessionLifecycle.py',
         old='''    await fnOrphanSession(
         appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+        sEndedMessage=sEndedMessage,
     )''',
-        new='''    browserSession.fbRevokeSessionById(dictStore, sSessionId)''',
+        new='''    browserSession.fbRevokeSessionById(
+        dictStore, sSessionId, sEndedMessage=sEndedMessage,
+    )''',
     ),
     # A live WebSocket vetoes sliding idle: the socket layer never
     # refreshes the credential stamp, so without the veto a streaming
@@ -4337,8 +4342,8 @@ def _fdictEntry(sRel):
         source='vaibify/gui/sessionLifecycle.py',
         old='''    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
         return False
-    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
-        new='''    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
+    return dictLifetime["fIdleSeconds"] >= fIdleSeconds''',
+        new='''    return dictLifetime["fIdleSeconds"] >= fIdleSeconds''',
     ),
 
     # ------------------------------------------------------------------
@@ -4351,13 +4356,13 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testAbsoluteCapFiresDespiteALiveWebSocket',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+        old='''    if dictLifetime["fAgeSeconds"] >= fCapSeconds:
         return True
     if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
         return False''',
         new='''    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
         return False
-    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+    if dictLifetime["fAgeSeconds"] >= fCapSeconds:
         return True''',
     ),
     # The warning counts down the CAP, the deadline with no veto — not
@@ -4366,12 +4371,10 @@ def _fdictEntry(sRel):
         nodeid='tests/testSessionLifecycleEvaluator.py::testExpiryViewCountsDownTheCapForThePresentingSessionOnly',
         source='vaibify/gui/sessionLifecycle.py',
         old='''    fRemainingSeconds = max(
-        0.0,
-        F_ABSOLUTE_SESSION_CAP_SECONDS - dictLifetime["fAgeSeconds"],
+        0.0, fCapSeconds - dictLifetime["fAgeSeconds"],
     )''',
         new='''    fRemainingSeconds = max(
-        0.0,
-        F_SLIDING_IDLE_SECONDS - dictLifetime["fIdleSeconds"],
+        0.0, ffResolveSlidingIdleSeconds() - dictLifetime["fIdleSeconds"],
     )''',
     ),
 
@@ -4387,6 +4390,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/sessionLifecycle.py',
         old='''    await fnOrphanSession(
         appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+        sEndedMessage=sEndedMessage,
     )''',
         new='''    containerOwnership._fnForceReleaseOwnership(
         appState.dictContainerOwners, sName,

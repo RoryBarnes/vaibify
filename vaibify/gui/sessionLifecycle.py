@@ -56,6 +56,11 @@ __all__ = [
     "F_RECONNECT_WINDOW_SECONDS",
     "F_SLIDING_IDLE_SECONDS",
     "F_ABSOLUTE_SESSION_CAP_SECONDS",
+    "S_SLIDING_IDLE_ENV",
+    "S_ABSOLUTE_SESSION_CAP_ENV",
+    "ffResolveSessionCapSeconds",
+    "ffResolveSlidingIdleSeconds",
+    "ffSessionCapSecondsForSession",
     "F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS",
     "F_TRANSFER_COMMIT_HEADROOM_SECONDS",
     "S_TRANSFER_TRANSFERRED",
@@ -90,10 +95,13 @@ __all__ = [
 
 import asyncio
 import logging
+import math
+import os
 import threading
 import time
 
 from vaibify.config import operationJournal
+from vaibify.config import preferencesStore
 from . import browserSession
 from . import containerOwnership
 
@@ -106,8 +114,9 @@ logger = logging.getLogger("vaibify")
 F_RECONNECT_WINDOW_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
     "VAIBIFY_RECONNECT_WINDOW_SECONDS", 15.0,
 )
+S_SLIDING_IDLE_ENV = "VAIBIFY_SLIDING_IDLE_SECONDS"
 F_SLIDING_IDLE_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
-    "VAIBIFY_SLIDING_IDLE_SECONDS", 3600.0,
+    S_SLIDING_IDLE_ENV, 3600.0,
 )
 
 
@@ -153,11 +162,85 @@ F_CLAIM_PRESENCE_WINDOW_SECONDS = (
         "VAIBIFY_CLAIM_PRESENCE_WINDOW_SECONDS", 30.0,
     )
 )
+S_ABSOLUTE_SESSION_CAP_ENV = "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS"
 F_ABSOLUTE_SESSION_CAP_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
-        "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS", 43200.0,
+        S_ABSOLUTE_SESSION_CAP_ENV, 43200.0,
     )
 )
+
+
+def ffResolveSessionCapSeconds():
+    """Resolve the absolute session cap across its three precedence tiers.
+
+    Highest first: the ``VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS`` env
+    override (what the test lanes drive, so it must keep winning), then
+    the host-global Settings preference, then the built-in default that
+    ``F_ABSOLUTE_SESSION_CAP_SECONDS`` still carries. ``math.inf`` means
+    the session never reaches a cap.
+
+    Resolved HERE, on every evaluation, not once at import. A cap read
+    at import would need a hub restart to change — the annoyance the
+    setting exists to remove — and, more usefully, a cap read live means
+    RAISING it rescues a session that has not expired yet, which is the
+    thing a researcher actually wants at the moment they notice the
+    warning.
+    """
+    return _ffResolveTimeoutSeconds(
+        S_ABSOLUTE_SESSION_CAP_ENV,
+        preferencesStore.fsSessionCapPreference,
+        F_ABSOLUTE_SESSION_CAP_SECONDS,
+    )
+
+
+def ffSessionCapSecondsForSession(
+    fHostGlobalCapSeconds, sBrowserSessionId="", dictBrowserSessions=None,
+):
+    """Return the cap THIS browser session is judged against.
+
+    One value today, deliberately: the host-global answer, resolved
+    once per pass by the caller and passed in, so every session in a
+    sweep is judged against the same number and no pass re-reads the
+    preference file per session.
+
+    This is the seam a per-lane cap would branch at, and the reason it
+    exists as a function rather than a bare constant read. **Open
+    ruling** (2026-08-29, not decided): should a REMOTE session be
+    clamped to the built-in default regardless of the preference? The
+    lifecycle already treats remote as its own lane
+    (``fbSessionIsRemote``, ``F_REMOTE_RECONNECT_WINDOW_SECONDS``)
+    because a tunnel is a different surface, and "never expires" over a
+    tunnel is a longer-lived credential on a wider one. The argument
+    against is that the researcher who set the preference is the same
+    person at both ends. Whoever decides branches HERE — on
+    ``browserSession.fbSessionIsRemote(dictBrowserSessions,
+    sBrowserSessionId)`` — and nowhere else.
+    """
+    return fHostGlobalCapSeconds
+
+
+def ffResolveSlidingIdleSeconds():
+    """Resolve the sliding-idle window across the same three tiers."""
+    return _ffResolveTimeoutSeconds(
+        S_SLIDING_IDLE_ENV,
+        preferencesStore.fsSlidingIdlePreference,
+        F_SLIDING_IDLE_SECONDS,
+    )
+
+
+def _ffResolveTimeoutSeconds(sEnvironmentName, fsReadPreference, fDefault):
+    """Return env override, else stored preference, else the default."""
+    fEnvironment = preferencesStore.ffParseTimeoutSeconds(
+        os.environ.get(sEnvironmentName, ""),
+    )
+    if fEnvironment is not None:
+        return fEnvironment
+    fPreference = preferencesStore.ffParseTimeoutSeconds(fsReadPreference())
+    if fPreference is not None:
+        return fPreference
+    return fDefault
+
+
 F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
         "VAIBIFY_LIFECYCLE_EVALUATOR_CADENCE_SECONDS", 5.0,
@@ -1127,7 +1210,14 @@ def _ftCommitTransfer(
     listDetached = _flistDetachOldSessionConnections(
         appState, recordOwner, sOldSessionId,
     )
-    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)
+    browserSession.fbRevokeSessionById(
+        dictStore, sOldSessionId,
+        sEndedMessage=(
+            "This browser session handed container "
+            f"{sName!r} to a newer one. Your work is where you left "
+            "it; run 'vaibify open' to attach a fresh tab."
+        ),
+    )
     browserSession.fnStoreTransferResult(
         dictStore, sCapability, sNewSessionId, sNewCredential, sNewLease,
         iNewGeneration,
@@ -1232,7 +1322,9 @@ async def _fnCloseDetachedConnections(listDetached):
 # The orphan transition (design §4/§5, slice 6).
 # ---------------------------------------------------------------------
 
-async def fnOrphanSession(appState, sName, fbStillWarranted=None):
+async def fnOrphanSession(
+    appState, sName, fbStillWarranted=None, sEndedMessage="",
+):
     """Commit ACTIVE→ORPHANED_SESSION for the container's owning session.
 
     The §5 orphan transition, under the canonical lock order: the
@@ -1251,16 +1343,23 @@ async def fnOrphanSession(appState, sName, fbStillWarranted=None):
     owner record under the held lock — a socket may have reconnected,
     or a transfer may have rebound the record, between detection and
     commit — and a False answer skips the transition.
+
+    ``sEndedMessage`` is what a returning browser is told in place of a
+    bare refusal. Only the caller knows which trigger fired, so only the
+    caller can name it; an empty string falls back to the sentence that
+    is true of every orphan — the browser stopped answering.
     """
     dictLockStore = _fdictLockStoreForAppState(appState)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         listOrphanedConnections = _flistCommitOrphanSynchronously(
-            appState, sName, fbStillWarranted,
+            appState, sName, fbStillWarranted, sEndedMessage,
         )
     await _fnCloseDetachedConnections(listOrphanedConnections)
 
 
-def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
+def _flistCommitOrphanSynchronously(
+    appState, sName, fbStillWarranted, sEndedMessage="",
+):
     """Run the synchronous orphan commit; return the sockets to close.
 
     Steps (a) through (d) of design §5 plus the ORPHANED stamp, all
@@ -1288,7 +1387,15 @@ def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
         time.monotonic() - recordOwner.fLastSeenMonotonic,
     )
     # (a) The credential authorizes nothing from this statement on.
-    browserSession.fbRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(
+        dictStore, sSessionId,
+        sEndedMessage=sEndedMessage or (
+            "This browser session ended because its dashboard stopped "
+            f"answering. Container {sName!r} kept running, and its work "
+            "and its lock were retained; run 'vaibify open' to attach a "
+            "fresh tab."
+        ),
+    )
     # (d) Unused capabilities die with the session (tickets and
     # download capabilities join this call when their slices land).
     browserSession.fnExpireCapabilitiesForSession(dictStore, sSessionId)
@@ -1442,10 +1549,20 @@ async def fnExpireIdleBrowserSessions(appState):
     dictContainerOwners = getattr(appState, "dictContainerOwners", {})
     dictSessionOwner = getattr(appState, "dictSessionOwner", None) or {}
     dictLifetimes = browserSession.fdictActiveSessionLifetimes(dictStore)
+    # Resolved once per pass, not once per session: every session on
+    # this hub is bounded by the same host-global windows, and one read
+    # per pass is what makes a Settings change land on the next tick.
+    fHostGlobalCapSeconds = ffResolveSessionCapSeconds()
+    fIdleSeconds = ffResolveSlidingIdleSeconds()
     for sSessionId, dictLifetime in dictLifetimes.items():
         sName = dictSessionOwner.get(sSessionId, "")
         recordOwner = dictContainerOwners.get(sName) if sName else None
-        if not _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
+        fCapSeconds = ffSessionCapSecondsForSession(
+            fHostGlobalCapSeconds, sSessionId, dictStore,
+        )
+        if not _fbBrowserSessionHasExpired(
+            dictLifetime, recordOwner, fCapSeconds, fIdleSeconds,
+        ):
             continue
         logger.info(
             "SESSION %s expired (age %.0fs, idle %.0fs%s); revoking",
@@ -1455,11 +1572,49 @@ async def fnExpireIdleBrowserSessions(appState):
         )
         await _fnCommitSessionExpiry(
             appState, dictStore, sName, recordOwner, sSessionId,
+            _fsExpiryEndedMessage(
+                dictLifetime, fCapSeconds, sName,
+            ),
         )
 
 
-def _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
+def _fsExpiryEndedMessage(dictLifetime, fCapSeconds, sName):
+    """Compose what a returning browser is told about this expiry.
+
+    Named by TRIGGER, because the two say different things to the
+    researcher: the cap fired on a session that may have been in use the
+    whole time and its remedy is to re-attach (or raise the cap), while
+    sliding idle fired on one nobody touched. Both say the container is
+    untouched, because it is — session expiry commits an orphan, which
+    retains the flock, the keep-alive, and any running work.
+    """
+    sContainerClause = (
+        f"Container {sName!r} kept running and its work was retained."
+        if sName else "No container was held by it."
+    )
+    if dictLifetime["fAgeSeconds"] >= fCapSeconds:
+        return (
+            "This browser session reached its maximum lifetime "
+            f"({fCapSeconds / 3600.0:.0f}h) and ended. {sContainerClause} "
+            "Run 'vaibify open' for a fresh tab, or raise the session "
+            "cap in Settings."
+        )
+    return (
+        "This browser session ended after a long stretch with no "
+        f"activity. {sContainerClause} Run 'vaibify open' for a fresh "
+        "tab."
+    )
+
+
+def _fbBrowserSessionHasExpired(
+    dictLifetime, recordOwner, fCapSeconds, fIdleSeconds,
+):
     """Return True when a session's cap or sliding-idle window ran out.
+
+    Both windows are PASSED IN, resolved by the caller for this pass,
+    because either may be a host-global setting rather than a constant
+    and a predicate that read them itself could answer two sessions in
+    the same sweep against two different caps.
 
     Two windows with deliberately different relationships to a live
     socket (design §11):
@@ -1478,11 +1633,11 @@ def _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
     that only streams events would have its credential revoked under
     the researcher.
     """
-    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+    if dictLifetime["fAgeSeconds"] >= fCapSeconds:
         return True
     if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
         return False
-    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS
+    return dictLifetime["fIdleSeconds"] >= fIdleSeconds
 
 
 def fdictSessionExpiryView(appState, sCredential):
@@ -1501,6 +1656,12 @@ def fdictSessionExpiryView(appState, sCredential):
     would be a deadline the veto forbids. The cap has no veto, so it
     is the one worth warning about.
 
+    A cap the researcher has set to "never" is reported as
+    ``bNeverExpires`` with a null countdown rather than as a very large
+    number: ``math.inf`` is not JSON, and a dashboard shown a huge
+    finite number would be counting down toward a deadline that does
+    not exist.
+
     An unknown or revoked credential answers ``bSessionKnown`` False
     with a zero countdown, never another session's clocks.
     """
@@ -1511,16 +1672,30 @@ def fdictSessionExpiryView(appState, sCredential):
     if dictLifetime is None:
         return {
             "bSessionKnown": False,
+            "bNeverExpires": False,
             "fSecondsUntilSessionCap": 0.0,
             "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
             "bExpiringSoon": False,
         }
+    fCapSeconds = ffSessionCapSecondsForSession(
+        ffResolveSessionCapSeconds(),
+        browserSession.fsSessionIdForCredential(dictStore, sCredential),
+        dictStore,
+    )
+    if math.isinf(fCapSeconds):
+        return {
+            "bSessionKnown": True,
+            "bNeverExpires": True,
+            "fSecondsUntilSessionCap": None,
+            "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
+            "bExpiringSoon": False,
+        }
     fRemainingSeconds = max(
-        0.0,
-        F_ABSOLUTE_SESSION_CAP_SECONDS - dictLifetime["fAgeSeconds"],
+        0.0, fCapSeconds - dictLifetime["fAgeSeconds"],
     )
     return {
         "bSessionKnown": True,
+        "bNeverExpires": False,
         "fSecondsUntilSessionCap": fRemainingSeconds,
         "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
         "bExpiringSoon": fRemainingSeconds <= F_EXPIRY_WARNING_LEAD_SECONDS,
@@ -1528,11 +1703,13 @@ def fdictSessionExpiryView(appState, sCredential):
 
 
 async def _fnCommitSessionExpiry(
-    appState, dictStore, sName, recordOwner, sSessionId,
+    appState, dictStore, sName, recordOwner, sSessionId, sEndedMessage="",
 ):
     """Commit one expired session: orphan its owner, or revoke it bare."""
     if not _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
-        browserSession.fbRevokeSessionById(dictStore, sSessionId)
+        browserSession.fbRevokeSessionById(
+            dictStore, sSessionId, sEndedMessage=sEndedMessage,
+        )
         return
 
     def fbStillOwnedByThisSession(recordAny):
@@ -1540,6 +1717,7 @@ async def _fnCommitSessionExpiry(
 
     await fnOrphanSession(
         appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+        sEndedMessage=sEndedMessage,
     )
 
 
