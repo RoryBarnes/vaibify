@@ -181,6 +181,22 @@ def testThePauseButtonPostsToThePauseRoute(pageDashboard, serverHub):
             status=200, content_type="application/json",
             body=json.dumps({"bPauseRequested": True, "bSettled": False}))
 
+    # The panel POLLS while the workspace is open, and its event poll
+    # is a SEPARATE path segment: Playwright's `*` does not cross "/",
+    # so the campaign glob below cannot match ".../campaign-pause/
+    # events". Unmodelled, that request escapes to the real hub, 404s
+    # for a campaign the store does not have, and lands in
+    # listConsoleErrors. It is a race — the assertion beat the first
+    # tick on a fast machine and lost on CI (2026-08-30) — so the fix
+    # is to model the request, not to stop asserting on console errors.
+    pageDashboard.route(
+        "**/api/agent-councils/**/campaign-pause/events*",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"listEvents": [],
+                             "iLowestRetainedSequence": 0,
+                             "bEvictionHasOccurred": False})))
+
     # The action refetches backend truth after posting — never
     # optimistic — so the refresh is answered too, with the record a
     # real pause produces. Registered FIRST so the pause glob added
@@ -197,6 +213,14 @@ def testThePauseButtonPostsToThePauseRoute(pageDashboard, serverHub):
     pageDashboard.wait_for_function(
         "() => document.getElementById('agentCouncilWorkspaceBody')"
         ".innerText.indexOf('Paused.') !== -1", timeout=10000)
+
+    # Drive one poll DELIBERATELY rather than hoping the timer lands.
+    # The 404 this test met on CI arrived from a tick that a faster
+    # machine never reached inside the window, so leaving it to chance
+    # means the modelled path above is exercised on some runners and
+    # not others — the shape of an assertion that passes for the wrong
+    # reason.
+    pageDashboard.evaluate("() => VaibifyAgentCouncil.fnPollOnceForTest()")
 
     assert listPosted, "the Pause button sent no request at all"
     sMethod, sUrl = listPosted[0]
