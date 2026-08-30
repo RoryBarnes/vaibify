@@ -1352,6 +1352,10 @@ var VaibifyAgentCouncil = (function () {
            neither must its half-written drafts. */
         _dictState.dictChat = null;
         _fnResetDraftFields();
+        /* AFTER the id is set, so the key names the campaign being
+           adopted. This is the call that hands a returning researcher
+           their half-written answers back. */
+        _fnAdoptPersistedDraft();
         _fnRenderToolbarButton();
     }
 
@@ -1814,8 +1818,87 @@ var VaibifyAgentCouncil = (function () {
     var _dictDraftFields = {dictById: {}, listDecisionAnswers: []};
 
     function _fnResetDraftFields() {
+        /* MEMORY only. The persisted copy is keyed per campaign, so it
+           cannot leak between councils, and a reset that also wiped
+           storage would delete the draft on the very reload that needs
+           it -- this runs while adopting a campaign, before its stored
+           draft has been read back. Storage is discarded where a draft
+           is genuinely finished: on successful submission. */
         _dictDraftFields.dictById = {};
         _dictDraftFields.listDecisionAnswers = [];
+    }
+
+    /* In-memory drafts survive a render and a tab flip; they do NOT
+       survive the page going away, and the page goes away for a reason
+       the researcher did not choose. A 12-hour session cap fires
+       regardless of whether anyone is typing — one expired at 05:28
+       under a researcher part-way through answering a gate, and the
+       words were gone (2026-08-29). localStorage is the only store
+       that outlives the document.
+
+       Keyed per campaign, so answers meant for one council can never
+       surface in another. Persisted alongside the in-memory copy
+       rather than replacing it: the in-memory path is hot (it runs on
+       every render) and must not depend on storage being writable —
+       private-mode and quota failures are swallowed for the same
+       reason, since losing draft persistence must never break the
+       panel that displays the draft. */
+    var _S_DRAFT_STORAGE_PREFIX = "vaibifyCouncilDraft:";
+
+    function _fsDraftStorageKey() {
+        return _dictState.sActiveCampaignId
+            ? _S_DRAFT_STORAGE_PREFIX + _dictState.sActiveCampaignId : "";
+    }
+
+    function _fnPersistDraftFields() {
+        var sKey = _fsDraftStorageKey();
+        if (!sKey) return;
+        try {
+            window.localStorage.setItem(sKey, JSON.stringify({
+                dictById: _dictDraftFields.dictById,
+                listDecisionAnswers: _dictDraftFields.listDecisionAnswers,
+            }));
+        } catch (error) {
+            void error;
+        }
+    }
+
+    function _fnAdoptPersistedDraft() {
+        /* Called when a campaign is loaded, which is the render a
+           returning researcher gets after a reload. Adopts only into
+           EMPTY slots, so a live in-memory draft always wins over a
+           stored one. */
+        var sKey = _fsDraftStorageKey();
+        if (!sKey) return;
+        var jsonStored = null;
+        try {
+            jsonStored = JSON.parse(
+                window.localStorage.getItem(sKey) || "null");
+        } catch (error) {
+            void error;
+        }
+        if (!jsonStored) return;
+        Object.keys(jsonStored.dictById || {}).forEach(function (sId) {
+            if (!_dictDraftFields.dictById[sId]) {
+                _dictDraftFields.dictById[sId] = jsonStored.dictById[sId];
+            }
+        });
+        (jsonStored.listDecisionAnswers || []).forEach(
+            function (sAnswer, iIndex) {
+                if (!_dictDraftFields.listDecisionAnswers[iIndex]) {
+                    _dictDraftFields.listDecisionAnswers[iIndex] = sAnswer;
+                }
+            });
+    }
+
+    function _fnForgetPersistedDraft() {
+        var sKey = _fsDraftStorageKey();
+        if (!sKey) return;
+        try {
+            window.localStorage.removeItem(sKey);
+        } catch (error) {
+            void error;
+        }
     }
 
     function _fnHarvestDraftInputs(elBody) {
@@ -1837,6 +1920,7 @@ var VaibifyAgentCouncil = (function () {
                 _dictDraftFields.listDecisionAnswers[iIndex] =
                     elField.value;
             });
+        _fnPersistDraftFields();
     }
 
     function _fnRestoreDraftInputs(elBody) {
@@ -3527,6 +3611,7 @@ var VaibifyAgentCouncil = (function () {
                the draft store, which would refill the box on the next
                render) would resubmit-bait every later click. */
             delete _dictDraftFields.dictById.councilChatQuestion;
+            _fnPersistDraftFields();
             var elField = document.getElementById("councilChatQuestion");
             if (elField) elField.value = "";
         }
@@ -3646,6 +3731,7 @@ var VaibifyAgentCouncil = (function () {
                 {sResponseText: sAnswer});
             if (bSent) {
                 delete _dictDraftFields.dictById.councilAnswer;
+                _fnPersistDraftFields();
             }
             return;
         }
@@ -3694,6 +3780,7 @@ var VaibifyAgentCouncil = (function () {
                refill the NEXT gate's boxes with answers to questions
                it never asked. */
             _dictDraftFields.listDecisionAnswers = [];
+            _fnForgetPersistedDraft();
         }
     }
 
@@ -4054,6 +4141,25 @@ var VaibifyAgentCouncil = (function () {
             listEvents.forEach(function (dictEvent) {
                 _dictState.listEvents.push(dictEvent);
             });
+        },
+        /* Draft-persistence seams. The storage path runs inside the
+           render, so a browser test needs to drive its three steps
+           separately to prove each one rather than one composite. */
+        fnHarvestDraftsForTest: function () {
+            _fnHarvestDraftInputs(
+                document.getElementById("agentCouncilWorkspaceBody"));
+        },
+        fnResetDraftsForTest: _fnResetDraftFields,
+        /* Drives the REAL adoption path, not the persistence helper it
+           calls: a seam onto _fnAdoptPersistedDraft would prove the
+           function works while the call site could be deleted with the
+           test still passing (observed 2026-08-29). */
+        fnAdoptCampaignForTest: function (sCampaignId) {
+            _fnAdoptCampaign(sCampaignId, _dictState.dictCampaign);
+        },
+        fdictDraftFieldsForTest: function () { return _dictDraftFields; },
+        fsActiveCampaignIdForTest: function () {
+            return _dictState.sActiveCampaignId;
         },
         fnSelectTabForTest: function (sTab) {
             _dictState.sActiveTab = sTab;

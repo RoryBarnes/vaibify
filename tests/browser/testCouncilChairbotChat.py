@@ -249,6 +249,21 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
 
     Kills: the idle countdown entering the render signature (the 30s
     wait is load-bearing; 9s spanned no idle tick).
+
+    The surviving TEXT is no longer sufficient evidence, and the reason
+    is worth stating because it is the trap this repository has
+    recorded: ``_fnHarvestDraftInputs`` now saves every identified
+    field before the innerHTML wipe and restores it after, so a panel
+    that re-renders on every tick still hands the researcher their
+    words back. The defect became invisible to a value assertion
+    WITHOUT the guard being restored — the falsification survived on
+    two runners while the guard was intact and correct (2026-08-29).
+
+    So this asserts the re-render itself. A DOM node stamped in the
+    browser cannot survive ``elBody.innerHTML = ...``; the stamp is
+    gone if and only if the panel re-rendered. The value assertion
+    stays, because it is the property the researcher actually cares
+    about and the two now fail for different reasons.
     """
     _fdictClaimAndActivate(pageDashboard, serverHub)
     _fnConveneThroughTheForm(pageDashboard)
@@ -259,11 +274,22 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     pageDashboard.wait_for_selector("#councilChatQuestion", timeout=16000)
 
     pageDashboard.fill("#councilChatQuestion", "half typed, do not lose me")
+    pageDashboard.evaluate(
+        "() => { document.getElementById("
+        "'councilChatQuestion').dataset.survivedTheTick = 'yes'; }")
     # Comfortably more than two ticks at the idle cadence. A shorter
     # wait let the "put the countdown in the signature" mutation
     # survive, because no tick had landed yet.
     pageDashboard.wait_for_timeout(30000)
 
+    bSameNode = pageDashboard.evaluate(
+        "() => document.getElementById('councilChatQuestion')"
+        ".dataset.survivedTheTick === 'yes'")
+    assert bSameNode, (
+        "the composer was replaced by an idle tick — the countdown is "
+        "in the render signature again. The draft machinery hides this "
+        "from the researcher, but the panel is still rebuilding itself "
+        "every few seconds under their cursor")
     assert pageDashboard.input_value("#councilChatQuestion") == (
         "half typed, do not lose me")
     assert pageDashboard.listPageErrors == []

@@ -60,7 +60,6 @@ __all__ = [
     "S_ABSOLUTE_SESSION_CAP_ENV",
     "ffResolveSessionCapSeconds",
     "ffResolveSlidingIdleSeconds",
-    "ffSessionCapSecondsForSession",
     "F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS",
     "F_TRANSFER_COMMIT_HEADROOM_SECONDS",
     "S_TRANSFER_TRANSFERRED",
@@ -185,38 +184,26 @@ def ffResolveSessionCapSeconds():
     RAISING it rescues a session that has not expired yet, which is the
     thing a researcher actually wants at the moment they notice the
     warning.
+
+    ONE RULE FOR EVERY LANE (researcher ruling, 2026-08-29). A remote
+    session is judged against this same number, deliberately. The
+    lifecycle does treat remote as its own lane elsewhere
+    (``fbSessionIsRemote``, ``F_REMOTE_RECONNECT_WINDOW_SECONDS``)
+    because a dropped socket genuinely means something different
+    through a tunnel — but a CAP is a statement about how long the
+    researcher wants their own credential to live, and it is the same
+    researcher at both ends. Software that quietly ignored the setting
+    in one lane would be lying about what the setting does, which is
+    worse than the longer window it would buy. The seam that briefly
+    existed to branch here has been removed rather than left as a
+    speculative hook: this docstring is the decision, and a future lane
+    cap belongs at whatever call site actually needs one.
     """
     return _ffResolveTimeoutSeconds(
         S_ABSOLUTE_SESSION_CAP_ENV,
         preferencesStore.fsSessionCapPreference,
         F_ABSOLUTE_SESSION_CAP_SECONDS,
     )
-
-
-def ffSessionCapSecondsForSession(
-    fHostGlobalCapSeconds, sBrowserSessionId="", dictBrowserSessions=None,
-):
-    """Return the cap THIS browser session is judged against.
-
-    One value today, deliberately: the host-global answer, resolved
-    once per pass by the caller and passed in, so every session in a
-    sweep is judged against the same number and no pass re-reads the
-    preference file per session.
-
-    This is the seam a per-lane cap would branch at, and the reason it
-    exists as a function rather than a bare constant read. **Open
-    ruling** (2026-08-29, not decided): should a REMOTE session be
-    clamped to the built-in default regardless of the preference? The
-    lifecycle already treats remote as its own lane
-    (``fbSessionIsRemote``, ``F_REMOTE_RECONNECT_WINDOW_SECONDS``)
-    because a tunnel is a different surface, and "never expires" over a
-    tunnel is a longer-lived credential on a wider one. The argument
-    against is that the researcher who set the preference is the same
-    person at both ends. Whoever decides branches HERE — on
-    ``browserSession.fbSessionIsRemote(dictBrowserSessions,
-    sBrowserSessionId)`` — and nowhere else.
-    """
-    return fHostGlobalCapSeconds
 
 
 def ffResolveSlidingIdleSeconds():
@@ -1557,11 +1544,9 @@ async def fnExpireIdleBrowserSessions(appState):
     for sSessionId, dictLifetime in dictLifetimes.items():
         sName = dictSessionOwner.get(sSessionId, "")
         recordOwner = dictContainerOwners.get(sName) if sName else None
-        fCapSeconds = ffSessionCapSecondsForSession(
-            fHostGlobalCapSeconds, sSessionId, dictStore,
-        )
         if not _fbBrowserSessionHasExpired(
-            dictLifetime, recordOwner, fCapSeconds, fIdleSeconds,
+            dictLifetime, recordOwner, fHostGlobalCapSeconds,
+            fIdleSeconds,
         ):
             continue
         logger.info(
@@ -1573,7 +1558,7 @@ async def fnExpireIdleBrowserSessions(appState):
         await _fnCommitSessionExpiry(
             appState, dictStore, sName, recordOwner, sSessionId,
             _fsExpiryEndedMessage(
-                dictLifetime, fCapSeconds, sName,
+                dictLifetime, fHostGlobalCapSeconds, sName,
             ),
         )
 
@@ -1677,11 +1662,7 @@ def fdictSessionExpiryView(appState, sCredential):
             "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
             "bExpiringSoon": False,
         }
-    fCapSeconds = ffSessionCapSecondsForSession(
-        ffResolveSessionCapSeconds(),
-        browserSession.fsSessionIdForCredential(dictStore, sCredential),
-        dictStore,
-    )
+    fCapSeconds = ffResolveSessionCapSeconds()
     if math.isinf(fCapSeconds):
         return {
             "bSessionKnown": True,
