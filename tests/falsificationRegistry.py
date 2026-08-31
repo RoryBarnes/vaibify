@@ -12469,7 +12469,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/agentCouncilChat.py',
         # The staged host login outlives its delivery into the runner.
         old=(
-            '    sStagedPath = dictSession["fsStageRunnerCredential"]()\n'
+            '    sStagedPath, _ = dictSession["ftStageRunnerCredential"]()\n'
             '    try:\n'
             '        baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
             '            sStagedPath)\n'
@@ -12479,7 +12479,7 @@ def _fdictEntry(sRel):
             '        dictSession["dictGateway"], dictSession["sHandle"], baCredentialTar)'
         ),
         new=(
-            '    sStagedPath = dictSession["fsStageRunnerCredential"]()\n'
+            '    sStagedPath, _ = dictSession["ftStageRunnerCredential"]()\n'
             '    baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
             '        sStagedPath)\n'
             '    agentCouncilProviders.fnDeliverCredentialIntoRunner(\n'
@@ -13855,9 +13855,28 @@ def _fdictEntry(sRel):
         # what carries the defect — the binding above it is unused
         # afterwards, so pointing at `dictCampaign` reinstates the
         # NameError in both handlers exactly as before.
-        old='                _ffTurnBudgetSeconds(jsonCampaign))',
-        new='                _ffTurnBudgetSeconds(dictCampaign))',
-        iExpectedOccurrences=2,
+        #
+        # RE-ANCHORED 2026-08-30, when the login pre-flight stopped
+        # taking a turn budget at all (a short login is clamped at the
+        # turn now, not refused at the gate) and the budget read this
+        # pointed at ceased to exist. The DEFECT class is what the
+        # entry defends, not the expression that carried it, so the
+        # mutation still reinstates an unbound name at the same call —
+        # and `dictCampaign` is deliberately the same name the shipped
+        # bug used. Three copies now, not two: start's gate call became
+        # byte-identical to resume's and retry's once the budget
+        # argument was gone. Start binds `dictCampaign`, so only resume
+        # and retry raise NameError, which is exactly the pair this
+        # test drives.
+        old=(
+            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
+            'sContainerId)'
+        ),
+        new=(
+            '                fnRefuseStartWithoutAProjectLogin, '
+            'dictCampaign, sContainerId)'
+        ),
+        iExpectedOccurrences=3,
     ),
     Falsification(
         nodeid=(
@@ -13997,37 +14016,26 @@ def _fdictEntry(sRel):
             'testResumingAPausedCouncilRefusesAnExpiredLoginInsteadOf500'
         ),
         source='vaibify/gui/routes/councilRoutes.py',
-        # The shipped defect restored: the login pre-flight reads a
-        # name the resume handler never bound, so every resume raises
-        # NameError before the expired-token refusal can be composed.
+        # The pre-flight is simply gone from resume, so a council
+        # paused overnight resumes onto a login it cannot renew and
+        # spends a turn discovering it.
+        #
+        # RE-ANCHORED 2026-08-30. This used to reinstate the shipped
+        # NameError by pointing the budget read at an unbound name;
+        # the budget argument no longer exists here (a short login is
+        # clamped at the turn, not refused at the gate), so there is
+        # no read left to mis-point. Deleting the gate is the stronger
+        # mutation anyway: the test asserts a 409 naming the expired
+        # login, which a NameError and a missing guard both defeat,
+        # but only the missing guard is a defect somebody could still
+        # introduce.
         old=(
-            '            jsonCampaign = fjsonRequireCampaign(\n'
-            '                dictStore, sCampaignId, sName, '
-            'sProjectRepoPath)\n'
-            '            sImageReference = await ffnBuildImageResolver(\n'
-            '                dictCtx, sContainerId)()\n'
-            '            fnRefuseRunnerBackendUnlessEnabled('
-            'sImageReference)\n'
             '            await asyncio.to_thread(\n'
             '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId,\n'
-            '                _ffTurnBudgetSeconds(jsonCampaign))\n'
+            'sContainerId)\n'
             '            dictResumed = ('
         ),
-        new=(
-            '            jsonCampaign = fjsonRequireCampaign(\n'
-            '                dictStore, sCampaignId, sName, '
-            'sProjectRepoPath)\n'
-            '            sImageReference = await ffnBuildImageResolver(\n'
-            '                dictCtx, sContainerId)()\n'
-            '            fnRefuseRunnerBackendUnlessEnabled('
-            'sImageReference)\n'
-            '            await asyncio.to_thread(\n'
-            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId,\n'
-            '                _ffTurnBudgetSeconds(dictCampaign))\n'
-            '            dictResumed = ('
-        ),
+        new='            dictResumed = (',
     ),
     Falsification(
         nodeid=(
@@ -14526,5 +14534,31 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/levelGates.py',
         old='    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):\n        return True',
         new='    if False:\n        return True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilTurnBudgetsAreEnforced.py::'
+            'test_a_short_login_shortens_the_turn_that_actually_runs'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # The clamp is computed and then the unclamped budget is what
+        # the bounded-turn primitive is actually handed.
+        old=(
+            '                ffClampTurnBudgetToLoginLife(\n'
+            '                    self.fWallClockSeconds,\n'
+            '                    self._iLoginExpiresAtEpochMilliseconds),'
+        ),
+        new='                self.fWallClockSeconds,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilProviders.py::'
+            'testALoginTooShortForAnyTurnAtAllIsStillRefused'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # The floor collapses to "already expired", so a login with
+        # seconds left builds a runner for a turn that cannot run.
+        old='    if fSecondsRemaining >= I_MINIMUM_TURN_WALL_CLOCK_SECONDS:',
+        new='    if fSecondsRemaining > 0:',
     ),
 ]

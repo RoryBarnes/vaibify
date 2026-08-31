@@ -155,6 +155,13 @@ LIST_MODELLED_COMMANDS = [
 ]
 
 
+# When the modelled Claude login expires, in epoch milliseconds. Zero
+# means the document states no expiry, which is what every journey but
+# the login-cap one wants. Set and reset by that test; kept here rather
+# than on the adapter instance because the hub builds its own.
+I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS = 0
+
+
 class UnmodelledContainerCall(RuntimeError):
     """Raised when the fake is asked something its contract omits."""
 
@@ -454,9 +461,14 @@ class FailClosedDockerAdapter:
         # The council's launch-time login-presence probe: the journey
         # models a project the researcher has already logged in to.
         if sPath.endswith("/.claude/.credentials.json"):
-            return json.dumps({
-                "claudeAiOauth": {"accessToken": "fixture-access-token"},
-            }).encode("utf-8")
+            dictOauth = {"accessToken": "fixture-access-token"}
+            # Absent by default, exactly as the ordinary journeys want:
+            # a login with no stated expiry clamps nothing and the
+            # convene form says nothing about it. A test that needs the
+            # cap notice sets the module knob and resets it.
+            if I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS:
+                dictOauth["expiresAt"] = I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS
+            return json.dumps({"claudeAiOauth": dictOauth}).encode("utf-8")
         raise FileNotFoundError(sPath)
 
     def fnWriteFile(

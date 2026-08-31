@@ -60,6 +60,7 @@ from ..councilRouteGuards import (
     ffnBuildCredentialStager,
     ffnBuildImageResolver,
     fgenericSubmitMapped,
+    fiReadProjectLoginExpiry,
     fjsonRequireCampaign,
     fnRefuseRunnerBackendUnlessEnabled,
     fnRefuseStartWithoutAProjectLogin,
@@ -609,6 +610,8 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
              "sReason": dictEnablement["sReason"],
              "dictModelDiscovery": dictContract["dictModelDiscovery"]},
         ],
+        "iLoginExpiresAtEpochMilliseconds": await asyncio.to_thread(
+            fiReadProjectLoginExpiry, dictCtx, sContainerId),
     }
 
 
@@ -798,20 +801,6 @@ def _fnRegisterPollEvents(app, dictCtx):
         return dictEvents
 
 
-def _ffTurnBudgetSeconds(dictCampaign):
-    """Return the turn wall-clock budget a login must outlive.
-
-    The campaign's OWN setting, never the default, because the message
-    names the number: a researcher who raised the budget to four hours
-    must not be told their token is short of one.
-    """
-    dictSettings = (dictCampaign or {}).get("dictSettings") or {}
-    return float(dictSettings.get(
-        "iTurnWallClockSeconds",
-        agentCouncilCampaign.DICT_DEFAULT_SETTINGS[
-            "iTurnWallClockSeconds"]))
-
-
 def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
                             sProjectRepoPath):
     """Load the sealed accepted plan an implementation council implements.
@@ -916,8 +905,7 @@ def _fnRegisterStartCouncil(app, dictCtx):
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(dictCampaign))
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
@@ -934,7 +922,7 @@ def _fnRegisterStartCouncil(app, dictCtx):
                         sProjectRepoPath, sCampaignId, sName,
                         request.listExcludedPaths),
                     sImageReference,
-                    fsStageRunnerCredential=ffnBuildCredentialStager(
+                    ftStageRunnerCredential=ffnBuildCredentialStager(
                         dictCtx, sContainerId)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
@@ -970,14 +958,10 @@ async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
         return None
     sImageReference = await ffnBuildImageResolver(dictCtx, sContainerId)()
     fnRefuseRunnerBackendUnlessEnabled(sImageReference)
-    jsonCampaign = (
-        agentCouncilStore.fjsonGetCampaignRecord(dictStore, sCampaignId)
-        if dictStore is not None else None)
     await asyncio.to_thread(
-        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-        _ffTurnBudgetSeconds(jsonCampaign))
+        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
     return {"sImageReference": sImageReference,
-            "fsStageRunnerCredential": ffnBuildCredentialStager(
+            "ftStageRunnerCredential": ffnBuildCredentialStager(
                 dictCtx, sContainerId)}
 
 
@@ -1007,25 +991,29 @@ def _fnRegisterResume(app, dictCtx):
         dictControllerState = fdictControllerState(requestHttp)
 
         async def _fdictExecuteResume():
-            # The campaign is BOUND, not merely required: the login
-            # pre-flight below needs this campaign's own turn budget,
-            # and reading it off a free name raised NameError before
-            # the guard could run — so every resume answered 500 and
-            # the expired-login refusal this path exists to deliver
-            # never reached a researcher (2026-08-29).
-            jsonCampaign = fjsonRequireCampaign(
+            # Required for its REFUSAL, and its result is deliberately
+            # unbound: this rejects a campaign that is not this
+            # principal's before anything downstream acts on the name.
+            # It used to also supply the campaign's turn budget to the
+            # login pre-flight — reading it off a free name raised
+            # NameError before the guard could run, so every resume
+            # answered 500 and the expired-login refusal this path
+            # exists to deliver never reached a researcher
+            # (2026-08-29). The budget argument is gone; the guard is
+            # not, and dropping the call with it would hand the
+            # NameError's blast radius to authorization instead.
+            fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(jsonCampaign))
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
             dictResumed = (
                 await agentCouncilController.fdictResumeCampaignDeliberation(
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
-                    fsStageRunnerCredential=ffnBuildCredentialStager(
+                    ftStageRunnerCredential=ffnBuildCredentialStager(
                         dictCtx, sContainerId),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
@@ -1098,13 +1086,12 @@ def _fnRegisterRetry(app, dictCtx):
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
-                _ffTurnBudgetSeconds(jsonCampaign))
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
             dictRetried = (
                 await agentCouncilController.fdictRetryCampaignFailedPhase(
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
-                    fsStageRunnerCredential=ffnBuildCredentialStager(
+                    ftStageRunnerCredential=ffnBuildCredentialStager(
                         dictCtx, sContainerId),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(

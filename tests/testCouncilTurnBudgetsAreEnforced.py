@@ -36,7 +36,7 @@ class _RecordingConnectionFactory:
 def _fdictRuntimeWithSettings(dictSettings):
     return {
         "dictCampaign": {"dictSettings": dictSettings},
-        "fsStageRunnerCredential": lambda *a, **k: "",
+        "ftStageRunnerCredential": lambda *a, **k: ("", 0),
         "dictRunnerAccess": {"dictEgress": {}},
     }
 
@@ -196,6 +196,105 @@ def test_the_stall_window_in_the_record_is_the_one_that_is_enforced(
     dictSeen = _fdictBuildAndCapture(
         monkeypatch, {"iTurnStallSeconds": 900})
     assert dictSeen.get("fStallSeconds") == pytest.approx(900.0)
+
+
+def _fdictDriveOneTurnCapturing(monkeypatch, iExpiresAtEpochMs,
+                                fWallClockSeconds):
+    """Run prepare+start against fakes; return the gateway's kwargs.
+
+    Drives the REAL connection, because the clamp lives between the
+    staging step and the bounded-turn call and a unit test of the clamp
+    function alone cannot show that anything calls it.
+    """
+    import asyncio
+    from vaibify.config import secretManager
+    from vaibify.gui import agentCouncilDockerGateway
+    from vaibify.gui import agentCouncilProviders
+
+    dictCaptured = {}
+
+    monkeypatch.setattr(
+        agentCouncilProviders, "fbaBuildCredentialTarball",
+        lambda sPath: b"tar")
+    monkeypatch.setattr(
+        secretManager, "fnCleanupSecretFiles", lambda listPaths: None)
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictReserveAndCreateRunner",
+        lambda *tArguments, **dictKeywords: {
+            "bCreated": True, "sHandle": "handle-1",
+            "sReservationId": "reservation-1"})
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fnCopySnapshotIntoRunner",
+        lambda *tArguments, **dictKeywords: None)
+    monkeypatch.setattr(
+        agentCouncilProviders, "fnDeliverCredentialIntoRunner",
+        lambda dictGateway, sHandle, baTar: None)
+
+    def _fdictRecordBoundedTurn(dictGateway, sHandle, listCommand,
+                                iOutputByteCap=None, fWallClock=None,
+                                sWorkingDirectory=None, baStdinPayload=None,
+                                fStallSeconds=None):
+        dictCaptured["fWallClockSeconds"] = fWallClock
+        return {"sOutput": "", "iExitCode": 0}
+
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictExecuteBoundedTurn",
+        _fdictRecordBoundedTurn)
+
+    connection = agentCouncilProviders.ClaudeRunnerConnection(
+        {"bFakeGateway": True}, "campaign-clamp", "sha256:" + "00" * 32,
+        b"tar", "opus", dictEgress=None,
+        fWallClockSeconds=fWallClockSeconds,
+        ftStageRunnerCredential=lambda: ("/tmp/staged.json",
+                                         iExpiresAtEpochMs))
+
+    async def _fnDrive():
+        await connection.fdictPrepareImmutableContext({})
+        await connection.fnStartTurn(
+            {"sInstructionChannel": "charter", "listQuotedMaterial": []})
+
+    asyncio.run(_fnDrive())
+    assert "fWallClockSeconds" in dictCaptured, (
+        "the bounded-turn primitive was never called, so this test "
+        "proves nothing about the budget that reaches it")
+    return dictCaptured
+
+
+def test_a_short_login_shortens_the_turn_that_actually_runs(monkeypatch):
+    """Kills: computing the clamp and passing the unclamped budget on.
+
+    The clamp is only worth anything if the number the bounded-turn
+    primitive receives is the clamped one. A connection that clamps
+    into a local and then hands ``self.fWallClockSeconds`` to the
+    gateway passes every unit test of the clamp function and changes
+    nothing about any turn.
+    """
+    import time
+    dictCaptured = _fdictDriveOneTurnCapturing(
+        monkeypatch, int((time.time() + 300) * 1000), 14400.0)
+    assert 260 <= dictCaptured["fWallClockSeconds"] <= 305, (
+        "the turn ran under the campaign's budget, not the login's "
+        "remaining life: "
+        f"{dictCaptured['fWallClockSeconds']}")
+
+
+def test_a_healthy_login_leaves_the_researchers_budget_alone(monkeypatch):
+    """The falsification pair.
+
+    Kills: clamping every turn to something short regardless of the
+    login, which would satisfy the test above and quietly cap every
+    council on the machine.
+    """
+    import time
+    dictCaptured = _fdictDriveOneTurnCapturing(
+        monkeypatch, int((time.time() + 28800) * 1000), 14400.0)
+    assert dictCaptured["fWallClockSeconds"] == pytest.approx(14400.0)
+
+
+def test_a_login_with_no_expiry_leaves_the_budget_untouched(monkeypatch):
+    """A document that does not say must not be read as "expired now"."""
+    dictCaptured = _fdictDriveOneTurnCapturing(monkeypatch, 0, 14400.0)
+    assert dictCaptured["fWallClockSeconds"] == pytest.approx(14400.0)
 
 
 def test_a_silent_stream_is_stopped_at_the_stall_window():

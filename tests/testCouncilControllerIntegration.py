@@ -555,7 +555,7 @@ def testTheCampaignsTurnBudgetReachesTheConnection(monkeypatch):
 
     agentCouncilController.fconnectionBuildParticipantConnection(
         {"sCampaignId": "c", "sImageReference": "img",
-         "baSnapshotTar": b"", "fsStageRunnerCredential": None,
+         "baSnapshotTar": b"", "ftStageRunnerCredential": None,
          "dictCampaign": {"dictSettings": {
              "iTurnWallClockSeconds": 7200}}},
         {"sRequestedModel": "opus"})

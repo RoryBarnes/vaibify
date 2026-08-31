@@ -43,7 +43,7 @@ S_REPO_PATH = "/workspace/sampleRepo"
 
 
 def _fdictBuildAccessRuntime(sCampaignId="campaign-access-1",
-                             fsStageRunnerCredential=None):
+                             ftStageRunnerCredential=None):
     """A minimal runtime dict shaped like the controller builds."""
     return {
         "sCampaignId": sCampaignId,
@@ -51,7 +51,7 @@ def _fdictBuildAccessRuntime(sCampaignId="campaign-access-1",
         "baSnapshotTar": b"tarbytes",
         "dictGateway": {"bFakeGateway": True},
         "dictRunnerAccess": None,
-        "fsStageRunnerCredential": fsStageRunnerCredential,
+        "ftStageRunnerCredential": ftStageRunnerCredential,
         "taskDrive": None,
         "sTurnId": "",
     }
@@ -88,13 +88,13 @@ def testProductionFactoryThreadsEgressAndCredentialAndMemoizes(monkeypatch):
     dictCalls = {}
     _fnPatchEgressProvisioning(monkeypatch, dictCalls)
 
-    def _fsStageForTurn():
+    def _ftStageForTurn():
         dictCalls.setdefault("iStagerCalls", 0)
         dictCalls["iStagerCalls"] += 1
-        return "/tmp/stagedCredential.json"
+        return "/tmp/stagedCredential.json", 0
 
     dictRuntime = _fdictBuildAccessRuntime(
-        fsStageRunnerCredential=_fsStageForTurn)
+        ftStageRunnerCredential=_ftStageForTurn)
     dictParticipant = {"sRequestedModel": "opus"}
 
     connectionFirst = controller.fconnectionBuildParticipantConnection(
@@ -102,7 +102,7 @@ def testProductionFactoryThreadsEgressAndCredentialAndMemoizes(monkeypatch):
     connectionSecond = controller.fconnectionBuildParticipantConnection(
         dictRuntime, {"sRequestedModel": "sonnet"})
 
-    assert connectionFirst.fsStageRunnerCredential is _fsStageForTurn
+    assert connectionFirst.ftStageRunnerCredential is _ftStageForTurn
     assert dictCalls.get("iStagerCalls", 0) == 0, (
         "staging is per turn; building a connection must stage nothing")
     assert connectionFirst.dictEgress == {
@@ -120,7 +120,7 @@ def testProvisioningWithoutAStagerRefuses(monkeypatch):
     """A production connection with no credential source must not build."""
     dictCalls = {}
     _fnPatchEgressProvisioning(monkeypatch, dictCalls)
-    dictRuntime = _fdictBuildAccessRuntime(fsStageRunnerCredential=None)
+    dictRuntime = _fdictBuildAccessRuntime(ftStageRunnerCredential=None)
     with pytest.raises(controller.CouncilCommandError) as errorInfo:
         controller.fconnectionBuildParticipantConnection(
             dictRuntime, {"sRequestedModel": "opus"})
@@ -141,7 +141,7 @@ def testProvisioningFaultTearsTheEgressBackDown(monkeypatch):
         agentCouncilDockerGateway, "fsLaunchAllowlistProxy",
         _fsExplodeProxyLaunch)
     dictRuntime = _fdictBuildAccessRuntime(
-        fsStageRunnerCredential=lambda: "/tmp/stagedCredential.json")
+        ftStageRunnerCredential=lambda: ("/tmp/stagedCredential.json", 0))
     with pytest.raises(RuntimeError, match="never reached listening"):
         controller.fconnectionBuildParticipantConnection(
             dictRuntime, {"sRequestedModel": "opus"})
@@ -209,10 +209,10 @@ def testCredentialIsStagedPerTurnAndDeletedBeforeDelivery(monkeypatch,
     listCallOrder = []
     pathStaged = tmp_path / "stagedCredential.json"
 
-    def _fsStageForTurn():
+    def _ftStageForTurn():
         pathStaged.write_text('{"claudeAiOauth": {"accessToken": "tok"}}')
         listCallOrder.append("staged")
-        return str(pathStaged)
+        return str(pathStaged), 0
 
     monkeypatch.setattr(
         secretManager, "fnCleanupSecretFiles",
@@ -233,7 +233,7 @@ def testCredentialIsStagedPerTurnAndDeletedBeforeDelivery(monkeypatch,
     connection = agentCouncilProviders.ClaudeRunnerConnection(
         {"bFakeGateway": True}, "campaign-access-1", "sha256:" + "00" * 32,
         b"tar", "opus", dictEgress=None,
-        fsStageRunnerCredential=_fsStageForTurn)
+        ftStageRunnerCredential=_ftStageForTurn)
     asyncio.run(connection.fdictPrepareImmutableContext({}))
     assert listCallOrder == [
         "staged", ("cleaned", [str(pathStaged)]), "delivered"], (
@@ -746,7 +746,7 @@ def testCancelledBuildThreadCannotRegisterALateRuntime(monkeypatch,
 
     def _fdictSlowBuild(dictControllerState, dictStoreArg, dictRegistryArg,
                         sCampaignIdArg, dictCampaign, sImageReference,
-                        baSnapshotTar, fsStageRunnerCredential=None):
+                        baSnapshotTar, ftStageRunnerCredential=None):
         eventBuildStarted.set()
         moduleTime.sleep(0.25)
         dictRuntime = {
@@ -818,7 +818,7 @@ def testHalfProvisionedIndeterminateTeardownKeepsTheTombstone(monkeypatch):
             "bProxyAbsenceProven": True, "bNetworkAbsenceProven": False,
             "saIndeterminateResources": ["vaibifyCouncilEgress-x"]})
     dictRuntime = _fdictBuildAccessRuntime(
-        fsStageRunnerCredential=lambda: "/tmp/stagedCredential.json")
+        ftStageRunnerCredential=lambda: ("/tmp/stagedCredential.json", 0))
     with pytest.raises(RuntimeError, match="proxy never listened"):
         controller.fconnectionBuildParticipantConnection(
             dictRuntime, {"sRequestedModel": "opus"})

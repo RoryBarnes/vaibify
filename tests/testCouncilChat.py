@@ -179,19 +179,19 @@ def _listStagedPathsOnDisk():
     return [sPath for sPath in _LIST_STAGED_PATHS if os.path.exists(sPath)]
 
 
-def _fsStageFakeCredential(tmp_path):
+def _ftStageFakeCredential(tmp_path):
     """Build a credential stager writing a real host file each call."""
     dictCounter = {"i": 0}
 
-    def _fsStage():
+    def _ftStage():
         dictCounter["i"] += 1
         sPath = str(tmp_path / f"stagedLogin{dictCounter['i']}.json")
         with open(sPath, "w", encoding="utf-8") as fileStaged:
             fileStaged.write('{"claudeAiOauth": {"accessToken": "t"}}')
         _LIST_STAGED_PATHS.append(sPath)
-        return sPath
+        return sPath, 0
 
-    return _fsStage
+    return _ftStage
 
 
 # ----- fixtures ---------------------------------------------------------
@@ -237,7 +237,7 @@ def _ftBuildOpenedChat(monkeypatch, tmp_path, dictCampaign=None,
         "dictStore": dictStore,
         "dictRegistry": {"bDouble": True},
         "sImageReference": "sha256:abc",
-        "fsStageRunnerCredential": _fsStageFakeCredential(tmp_path),
+        "ftStageRunnerCredential": _ftStageFakeCredential(tmp_path),
     }))
     return (dictControllerState, dictStore, dictCampaign, doubleGateway)
 
@@ -717,7 +717,7 @@ def testASecondOpenIsIdempotentAndBuildsNoSecondRunner(
         "dictStore": dictStore,
         "dictRegistry": {"bDouble": True},
         "sImageReference": "sha256:abc",
-        "fsStageRunnerCredential": _fsStageFakeCredential(tmp_path),
+        "ftStageRunnerCredential": _ftStageFakeCredential(tmp_path),
     }))
 
     assert dictView["bOpen"] is True

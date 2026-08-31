@@ -4539,7 +4539,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1185 -> 1199 (2026-08-30): the stall failure class, its
     # sentence, and the two execution facts it reports. The module
     # already owns "what happened to a turn".
-    "agentCouncilProviders.py": 1199,
+    "agentCouncilProviders.py": 1270,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5718,7 +5718,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # are the same lifecycle the module already owned; the clocks
     # changed from bounding the conversation to bounding only the
     # runner's credential residency.
-    "agentCouncilChat.py": 861,
+    "agentCouncilChat.py": 867,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

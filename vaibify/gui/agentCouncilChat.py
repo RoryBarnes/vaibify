@@ -310,7 +310,7 @@ def _fdictCreateSessionRecord(dictOpenRequest):
         "dictStore": dictOpenRequest["dictStore"],
         "dictRegistry": dictOpenRequest["dictRegistry"],
         "sImageReference": dictOpenRequest["sImageReference"],
-        "fsStageRunnerCredential": dictOpenRequest["fsStageRunnerCredential"],
+        "ftStageRunnerCredential": dictOpenRequest["ftStageRunnerCredential"],
         "sParticipantId": dictParticipant["sParticipantId"],
         "sRequestedModel": dictParticipant["sRequestedModel"],
         "dictParticipant": dictParticipant,
@@ -449,10 +449,16 @@ def _fnDeliverChatCredential(dictSession):
     and the tarball build, exactly as a turn's is — the difference a
     session-scoped runner makes is in the CONTAINER, and that is what
     the two session clocks bound.
+
+    The login's expiry comes back with the path and is deliberately
+    unused here: a chat session is already bounded by
+    :data:`F_CHAT_SESSION_CEILING_SECONDS`, which is shorter than a
+    refreshed login's measured life, so there is no budget for it to
+    clamp. A turn is the lane that needs it.
     """
     from . import agentCouncilProviders
     from ..config import secretManager
-    sStagedPath = dictSession["fsStageRunnerCredential"]()
+    sStagedPath, _ = dictSession["ftStageRunnerCredential"]()
     try:
         baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(
             sStagedPath)

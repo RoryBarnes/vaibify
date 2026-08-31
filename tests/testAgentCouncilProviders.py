@@ -242,7 +242,14 @@ def testCredentialExtractionCopiesAccessTokenAndScopesNeverRefresh():
     ceremony found. The refresh token MUST NOT, because it can mint new
     sessions. Asserting the exact dict pins both: dropping scopes or
     admitting the refresh token each fails here.
+
+    The expiry rides along as of 2026-08-30, for the turn clamp. It is
+    a timestamp: it carries no secret and mints nothing, so it does not
+    widen what section 9.7 lets out of the container. It is kept inside
+    the exact-dict assertion deliberately, so a THIRD field cannot be
+    added without a reviewer weighing it the same way.
     """
+    iExpiresAt = _fiEpochMillisecondsFromNow(3600)
     dictLogin = {"claudeAiOauth": {
         "accessToken": "ACCESS-TOKEN-KEEP",
         "refreshToken": "REFRESH-TOKEN-NEVER-COPY",
@@ -250,7 +257,7 @@ def testCredentialExtractionCopiesAccessTokenAndScopesNeverRefresh():
         # guard landed, which refused it correctly — this test is about
         # scopes and the refresh token, so it needs a token that is not
         # independently rejected.
-        "expiresAt": _fiEpochMillisecondsFromNow(3600),
+        "expiresAt": iExpiresAt,
         "scopes": ["user:inference"]}}
     connectionFake = _FakeCredentialConnection(
         json.dumps(dictLogin).encode("utf-8"))
@@ -259,6 +266,7 @@ def testCredentialExtractionCopiesAccessTokenAndScopesNeverRefresh():
     assert dictCredential == {
         "sAccessToken": "ACCESS-TOKEN-KEEP",
         "listScopes": ["user:inference"],
+        "iExpiresAtEpochMilliseconds": iExpiresAt,
     }
     assert "REFRESH-TOKEN-NEVER-COPY" not in json.dumps(dictCredential)
 
@@ -793,36 +801,109 @@ def testADurationReadsInTheLargestUnitThatStaysInformative():
     assert providers.fsDescribeDuration(-240) == "4 minutes"
 
 
-def testALoginThatCannotOutliveOneTurnIsRefusedBeforeTheRunnerIsBuilt():
-    """Valid NOW is the wrong question when a turn runs for an hour.
+def testALoginThatCannotOutliveOneTurnIsClampedRatherThanRefused():
+    """Valid NOW is the wrong question — but so was refusing (2026-08-30).
 
-    A runner is handed the access token WITHOUT the refresh token, so
-    it cannot renew mid-turn: a token with minutes left sails through a
-    "is it valid?" pre-flight and dies partway through a turn, and the
-    record cannot attribute that to the login at all.
+    Kills: refusing a convene because the login is shorter than the
+    turn budget.
+
+    This function used to assert the refusal. The refusal was replaced
+    on measurement, not preference: it told the researcher to "run
+    `claude` in this project's container to refresh the login", and
+    that was measured to do nothing in exactly the case that fired it
+    — the CLI refreshes a login that has LAPSED (an eight-hour-old
+    token, rewritten on the next run) and leaves a still-valid one
+    alone (a token with eight hours left, unchanged). A remedy that
+    cannot be applied until the thing it protects has already failed
+    is not a remedy, and the researcher who hit this had just logged
+    in.
+
+    The same measurement retired the number the refusal was sized
+    against: a refreshed token carries ~8 hours, not the ~49 minutes a
+    login-time one shows, so a four-hour budget is ordinarily
+    satisfiable and the clamp binds rarely.
     """
     import time as moduleTime
-    fSoon = (moduleTime.time() + 270) * 1000.0
-    dictOauth = {"accessToken": "t", "expiresAt": fSoon}
+    iSoon = int((moduleTime.time() + 270) * 1000)
 
-    # Valid now, and enough for a short turn: accepted.
-    providers._fnRefuseAnExpiredAccessToken(dictOauth, 60.0)
+    # Shorter than the budget: the turn is shortened, not refused.
+    fClamped = providers.ffClampTurnBudgetToLoginLife(3600.0, iSoon)
+    assert 240 <= fClamped <= 275, (
+        "a turn must be capped at what the login can support, because "
+        "a runner is staged without the refresh token and cannot renew "
+        f"mid-turn; got {fClamped}")
 
-    # Valid now, nowhere near an hour-long turn: refused, and the
-    # message names both numbers rather than a bare "expired".
+    # Longer than the budget: the researcher's setting stands.
+    iDistant = int((moduleTime.time() + 28800) * 1000)
+    assert providers.ffClampTurnBudgetToLoginLife(3600.0, iDistant) == 3600.0
+
+    # No expiry in the document: nothing to clamp against, so the
+    # budget passes through rather than being guessed at.
+    assert providers.ffClampTurnBudgetToLoginLife(3600.0, 0) == 3600.0
+
+
+def testTheClampIsComputedFreshSoOneShortLoginCannotCapEveryLaterTurn():
+    """Kills: folding the clamped budget back into the recorded one.
+
+    The obvious implementation clamps ``self.fWallClockSeconds`` in
+    place at staging. That is monotonic decay: a campaign whose login
+    was nearly out on turn 6 keeps the shortened budget on turn 7 even
+    after the researcher refreshes it, and no setting can raise it
+    back. The recorded budget must stay the researcher's number and the
+    clamp must be recomputed per turn from the login actually staged.
+    """
+    import time as moduleTime
+    fRecorded = 3600.0
+    fShort = providers.ffClampTurnBudgetToLoginLife(
+        fRecorded, int((moduleTime.time() + 120) * 1000))
+    assert fShort < fRecorded
+    # The same recorded budget, against a refreshed login, is whole.
+    assert providers.ffClampTurnBudgetToLoginLife(
+        fRecorded, int((moduleTime.time() + 28800) * 1000)) == fRecorded
+
+
+def testALoginTooShortForAnyTurnAtAllIsStillRefused():
+    """The clamp cannot rescue a login below the settings floor.
+
+    Kills: clamping all the way to zero and building a runner anyway.
+
+    Below the floor a campaign is not allowed to configure the turn at
+    all, so there is nothing to shorten to — building a runner, an
+    egress lease and a snapshot copy for it would spend the whole
+    apparatus on a turn that cannot run. The bar is the existing
+    settings floor rather than a second invented number.
+    """
+    import time as moduleTime
+    from vaibify.gui.agentCouncilCampaign import (
+        I_MINIMUM_TURN_WALL_CLOCK_SECONDS)
+    iBarelyLeft = int(
+        (moduleTime.time() + I_MINIMUM_TURN_WALL_CLOCK_SECONDS / 2) * 1000)
     with pytest.raises(providers.RunnerCredentialError) as error:
-        providers._fnRefuseAnExpiredAccessToken(dictOauth, 3600.0)
-    assert "expires in 4 minutes" in str(error.value)
-    assert "1.0 hours" in str(error.value)
-    assert "cannot renew mid-turn" in str(error.value)
+        providers._fnRefuseALapsedAccessToken(
+            {"accessToken": "t", "expiresAt": iBarelyLeft})
+    assert "too little to run any turn" in str(error.value)
+
+    # Just above the floor: accepted, so the guard is not refusing
+    # everything short.
+    providers._fnRefuseALapsedAccessToken(
+        {"accessToken": "t",
+         "expiresAt": int(
+             (moduleTime.time()
+              + I_MINIMUM_TURN_WALL_CLOCK_SECONDS + 30) * 1000)})
 
 
 def testAnAlreadyExpiredLoginStillReportsItsOwnRemedy():
-    """The already-expired case keeps its own wording and remedy."""
+    """The already-expired case keeps its own wording and remedy.
+
+    And the remedy is now the measured one: the CLI refreshes a login
+    that has lapsed, which is precisely the state this branch reports.
+    """
     import time as moduleTime
     fPast = (moduleTime.time() - 270) * 1000.0
     with pytest.raises(providers.RunnerCredentialError) as error:
-        providers._fnRefuseAnExpiredAccessToken(
-            {"accessToken": "t", "expiresAt": fPast}, 3600.0)
+        providers._fnRefuseALapsedAccessToken(
+            {"accessToken": "t", "expiresAt": fPast})
     assert "expired 4 minutes ago" in str(error.value)
     assert "WITHOUT the refresh token" in str(error.value)
+    assert "refreshes a login that has lapsed" in str(error.value), (
+        "the remedy must name the state in which it actually works")

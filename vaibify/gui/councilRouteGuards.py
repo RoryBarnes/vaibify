@@ -28,6 +28,7 @@ __all__ = [
     "fgenericSubmitMapped",
     "fnRefuseRunnerBackendUnlessEnabled",
     "fnRefuseStartWithoutAProjectLogin",
+    "fiReadProjectLoginExpiry",
     "ffnBuildImageResolver",
     "ffnBuildCredentialStager",
 ]
@@ -334,8 +335,7 @@ def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
         raise HTTPException(409, dictEnablement["sReason"])
 
 
-def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
-                                      fTurnWallClockSeconds=0.0):
+def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
     """Refuse a launch when the project holds no copyable provider token.
 
     R10's live PRESENCE probe, at the cheapest correct point: the
@@ -350,6 +350,13 @@ def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
     been created and destroyed, and the researcher would read a failed
     turn instead of "log in". The token is discarded inside the probe;
     only a boolean returns.
+
+    It no longer takes the turn budget. A login shorter than the budget
+    is CLAMPED at the turn rather than refused here
+    (``ffClampTurnBudgetToLoginLife``), because the refusal's remedy —
+    run `claude` in the container — was measured to do nothing until
+    the login has actually lapsed (2026-08-30). What still refuses is
+    a login too near its end for any turn at all.
     """
     from . import agentCouncilProviders
     from . import projectRoots
@@ -358,8 +365,7 @@ def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
     sUnusable = agentCouncilProviders.fsExplainUnusableRunnerCredential(
         dictCtx["docker"], sContainerId,
         agentCouncilProviders.fsComposeCredentialContainerPath(
-            sWorkspaceRoot),
-        fTurnWallClockSeconds)
+            sWorkspaceRoot))
     if sUnusable:
         raise HTTPException(409, sUnusable)
 
@@ -391,6 +397,36 @@ def ffnBuildImageResolver(dictCtx, sContainerId):
     return _fsResolveRunnerImage
 
 
+def fiReadProjectLoginExpiry(dictCtx, sContainerId):
+    """Return when this project's Claude login expires, or 0 if unknown.
+
+    The ABSOLUTE timestamp, never a remaining duration, so the convene
+    form computes the life left at the moment it renders. Capabilities
+    are fetched once when a project is activated and the form may open
+    hours later; a duration measured here would be wrong by exactly as
+    long as the researcher took to click.
+
+    Never a downgrade of availability. An unreadable, missing or
+    lapsed login answers 0 — "this cannot be said" — and
+    :func:`fnRefuseStartWithoutAProjectLogin` remains the single
+    authority that refuses a launch. Showing a researcher the cap their
+    login imposes is a courtesy; letting a capabilities poll decide a
+    council would put two authorities on one question.
+    """
+    from . import agentCouncilProviders
+    from . import projectRoots
+    try:
+        return agentCouncilProviders.fdictExtractRunnerCredential(
+            dictCtx["docker"], sContainerId,
+            agentCouncilProviders.fsComposeCredentialContainerPath(
+                projectRoots.fsResolveProjectRoot(
+                    sContainerId, WORKSPACE_ROOT)),
+        )["iExpiresAtEpochMilliseconds"]
+    except (agentCouncilProviders.RunnerCredentialError,
+            OSError, ValueError, KeyError):
+        return 0
+
+
 def ffnBuildCredentialStager(dictCtx, sContainerId):
     """Build the closure that stages the runner's host credential copy.
 
@@ -402,18 +438,27 @@ def ffnBuildCredentialStager(dictCtx, sContainerId):
     container command) and materializes it as an ephemeral mode-600
     host file; the workspace root goes through ``projectRoots``, never
     a ``/workspace`` literal.
+
+    It returns the staged path AND the login's expiry, because the
+    extraction has already read the document and a second read to learn
+    the same timestamp would be a second chance for the two answers to
+    disagree. The connection clamps the turn's wall clock with it.
     """
     from . import agentCouncilProviders
     from . import projectRoots
 
-    def _fsStageRunnerCredential():
+    def _ftStageRunnerCredential():
         sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
             sContainerId, WORKSPACE_ROOT)
         dictCredential = agentCouncilProviders.fdictExtractRunnerCredential(
             dictCtx["docker"], sContainerId,
             agentCouncilProviders.fsComposeCredentialContainerPath(
                 sWorkspaceRoot))
-        return agentCouncilProviders.fsStageRunnerCredentialFile(
-            dictCredential["sAccessToken"], dictCredential["listScopes"])
+        return (
+            agentCouncilProviders.fsStageRunnerCredentialFile(
+                dictCredential["sAccessToken"],
+                dictCredential["listScopes"]),
+            dictCredential["iExpiresAtEpochMilliseconds"],
+        )
 
-    return _fsStageRunnerCredential
+    return _ftStageRunnerCredential

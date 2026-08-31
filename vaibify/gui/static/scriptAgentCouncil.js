@@ -46,6 +46,13 @@ var VaibifyAgentCouncil = (function () {
         sEffortPerParticipant: "standard",
         sExecutionPermission: "fullSandbox",
         iMinimumRounds: 1,
+        /* Mirrors agentCouncilCampaign.DICT_DEFAULT_SETTINGS. It was
+           absent, and the form's own 3600 literal stood in for it — so
+           the researcher ruling that raised the default to four hours
+           (2026-08-30) reached the backend and no convene form, and
+           every council started with a fresh browser ran under the old
+           hour while the record said otherwise. */
+        iTurnWallClockSeconds: 14400,
     };
 
     /* Shared, mutated in place — never reassigned (the IIFE state trap in
@@ -1193,6 +1200,7 @@ var VaibifyAgentCouncil = (function () {
             "<input type=\"number\" id=\"councilOutputBudgetMb\" " +
             "min=\"1\" max=\"64\" value=\"" +
             _fiPreferredOutputBudgetMegabytes() + "\"></label>" +
+            _fsLoginCapHint() +
             "</fieldset>";
     }
 
@@ -1553,7 +1561,42 @@ var VaibifyAgentCouncil = (function () {
     function _fiPreferredTurnWallClockSeconds() {
         var iStored = parseInt(
             window.localStorage.getItem(S_WALL_CLOCK_STORAGE_KEY) || "", 10);
-        return (!isNaN(iStored) && iStored >= 60) ? iStored : 3600;
+        return (!isNaN(iStored) && iStored >= 60)
+            ? iStored
+            : DICT_DEFAULT_SETTINGS.iTurnWallClockSeconds;
+    }
+
+    function _fiLoginSecondsRemaining() {
+        /* Computed HERE, not on the server: capabilities are fetched
+           once when the project is activated and this form may open
+           hours later, so the server sends the absolute expiry and the
+           remaining life is whatever it is at render. Zero means the
+           login's expiry could not be read, which is not the same as
+           an expired login — the launch pre-flight is the authority on
+           that and refuses on its own. */
+        var iExpiresAt = (_dictState.dictCapabilities || {})
+            .iLoginExpiresAtEpochMilliseconds || 0;
+        if (!iExpiresAt) return 0;
+        return Math.max(
+            0, Math.round((iExpiresAt - Date.now()) / 1000));
+    }
+
+    function _fsLoginCapHint() {
+        /* Shown only when the login is the binding constraint. A
+           council whose login outlives its turn budget has nothing to
+           be told, and a notice that appears every time is one nobody
+           reads by the time it matters. */
+        var iRemaining = _fiLoginSecondsRemaining();
+        var iBudget = _fiPreferredTurnWallClockSeconds();
+        if (!iRemaining || iRemaining >= iBudget) return "";
+        return "<p class=\"council-hint\">This project's Claude login " +
+            "expires in " + Math.round(iRemaining / 60) + " minutes, " +
+            "less than this council's per-turn budget of " +
+            Math.round(iBudget / 60) + " minutes. A runner is given " +
+            "the access token without the refresh token, so it cannot " +
+            "renew mid-turn: turns will be capped at the time the " +
+            "login has left. Run <code>claude</code> in this project's " +
+            "container once the login has lapsed to refresh it.</p>";
     }
 
     var S_OUTPUT_BUDGET_STORAGE_KEY = "vaibifyCouncilOutputBudgetBytes";
@@ -2190,7 +2233,8 @@ var VaibifyAgentCouncil = (function () {
 
     function _fnOfferALongerTurnBudget(dictCampaign, dictTurn) {
         var iCurrent = ((dictCampaign.dictSettings || {})
-            .iTurnWallClockSeconds) || 3600;
+            .iTurnWallClockSeconds)
+            || DICT_DEFAULT_SETTINGS.iTurnWallClockSeconds;
         var iSuggested = Math.min(iCurrent * 2, 43200);
         VaibifyApp.fnShowConfirmModal(
             "An agent ran out of time",

@@ -120,10 +120,18 @@ class MockDockerCouncil:
         raises rather than returning plausible bytes.
         """
         if sPath.endswith("/.claude/.credentials.json"):
+            if self.jsonLoginOverride is not None:
+                return json.dumps(self.jsonLoginOverride).encode("utf-8")
             return json.dumps({
                 "claudeAiOauth": {"accessToken": "fixture-access-token"},
             }).encode("utf-8")
         raise AssertionError(f"unmodelled container read: {sPath!r}")
+
+    # Mutable on purpose, like dictDaemonCapacity above: a test that
+    # needs a login with a particular expiry sets this and resets it.
+    # None means "the ordinary fixture login", which deliberately
+    # carries no expiresAt.
+    jsonLoginOverride = None
 
     def fnWriteFile(self, sContainerId, sPath, baContent, **kwargs):
         self.listWrites.append((sContainerId, sPath))
@@ -753,6 +761,53 @@ def test_capabilities_reports_container_providers(tOwnerClient):
     dictCapabilities = response.json()
     assert dictCapabilities["bAvailable"] is True
     assert dictCapabilities["listProviders"]
+
+
+def test_capabilities_publish_the_logins_expiry_for_the_convene_form(
+    tOwnerClient,
+):
+    """The convene form must be able to say the turn will be capped.
+
+    Kills: computing the cap server-side as a DURATION. Capabilities
+    are fetched when a project is activated and the form may open hours
+    later, so the payload carries the absolute timestamp and the form
+    subtracts at render. A duration would be wrong by exactly as long
+    as the researcher took to click.
+    """
+    client, _, docker = tOwnerClient
+    iExpiresAt = int((time.time() + 900) * 1000)
+    docker.jsonLoginOverride = {"claudeAiOauth": {
+        "accessToken": "fixture-access-token", "expiresAt": iExpiresAt}}
+    try:
+        dictCapabilities = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/capabilities").json()
+    finally:
+        docker.jsonLoginOverride = None
+    assert dictCapabilities["iLoginExpiresAtEpochMilliseconds"] == iExpiresAt
+
+
+def test_an_unreadable_login_never_downgrades_council_availability(
+    tOwnerClient,
+):
+    """Kills: letting the expiry probe decide whether a council may run.
+
+    The launch pre-flight is the single authority that refuses. If a
+    capabilities poll could turn a project unavailable on its own read
+    of the login, two authorities would answer one question and they
+    would disagree the moment a login lapsed between the poll and the
+    click. An unsayable expiry is 0 and nothing else moves.
+    """
+    client, _, docker = tOwnerClient
+    docker.jsonLoginOverride = {"notALoginDocument": True}
+    try:
+        dictCapabilities = client.get(
+            f"/api/agent-councils/{S_CONTAINER_ID}/capabilities").json()
+    finally:
+        docker.jsonLoginOverride = None
+    assert dictCapabilities["iLoginExpiresAtEpochMilliseconds"] == 0
+    assert dictCapabilities["bAvailable"] is True, (
+        "an unreadable expiry disabled the council, so the capabilities "
+        "poll has become a second authority on whether one may run")
 
 
 def test_capabilities_refuse_a_repository_too_large_to_snapshot(

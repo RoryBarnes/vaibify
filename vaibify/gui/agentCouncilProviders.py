@@ -49,6 +49,7 @@ from . import agentCouncilRunner
 from . import providerApiTransport
 from .agentCouncilCampaign import (
     CouncilProviderConnection,
+    I_MINIMUM_TURN_WALL_CLOCK_SECONDS,
     S_COMPLETION_INDETERMINATE,
     S_COMPLETION_TERMINAL,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "fbRunnerCredentialIsPresent",
     "fsExplainUnusableRunnerCredential",
     "fsDescribeDuration",
+    "ffClampTurnBudgetToLoginLife",
     "fdictExtractRunnerCredential",
     "fsStageRunnerCredentialFile",
     "fbaBuildCredentialTarball",
@@ -641,8 +643,7 @@ def fsComposeCredentialContainerPath(sWorkspaceRoot):
 
 
 def fdictExtractRunnerCredential(connectionDocker, sContainerId,
-                                 sCredentialContainerPath,
-                                 fRequiredSecondsRemaining=0.0):
+                                 sCredentialContainerPath):
     """Extract the narrowest AUTHENTICATING document from the login file.
 
     Reads the persisted ``.credentials.json`` through the reviewed
@@ -692,16 +693,76 @@ def fdictExtractRunnerCredential(connectionDocker, sContainerId,
             S_ACCESS_TOKEN_KEY):
         raise RunnerCredentialError(
             "the persisted Claude login carries no access token to copy")
-    _fnRefuseAnExpiredAccessToken(dictOauth, fRequiredSecondsRemaining)
+    _fnRefuseALapsedAccessToken(dictOauth)
     return {
         "sAccessToken": dictOauth[S_ACCESS_TOKEN_KEY],
         "listScopes": list(dictOauth.get(S_SCOPES_KEY) or []),
+        "iExpiresAtEpochMilliseconds": _fiReadLoginExpiry(dictOauth),
     }
 
 
-def _fnRefuseAnExpiredAccessToken(dictOauth,
-                                 fRequiredSecondsRemaining=0.0):
-    """Refuse a token that has already expired, naming the remedy.
+def _fiReadLoginExpiry(dictOauth):
+    """Return the login's expiry in epoch milliseconds, or 0 when absent.
+
+    Zero is "this document does not say", never "expired at the epoch":
+    the callers that clamp and refuse both branch on it before doing
+    any arithmetic, so an unreadable or missing field leaves the budget
+    and the refusal exactly as they would be with no expiry lane at
+    all.
+    """
+    jsonExpiresAt = dictOauth.get(S_EXPIRES_AT_KEY)
+    if not isinstance(jsonExpiresAt, (int, float)) or jsonExpiresAt <= 0:
+        return 0
+    return int(jsonExpiresAt)
+
+
+def ffClampTurnBudgetToLoginLife(fBudgetSeconds,
+                                 iExpiresAtEpochMilliseconds):
+    """Return the wall clock a turn may actually run under.
+
+    A runner is staged with the access token and its scopes and
+    deliberately never the refresh token (section 9.7), so it cannot
+    renew mid-turn: a turn given more wall clock than the login has
+    life dies partway through with an authentication failure the record
+    cannot attribute to the clock. The budget is therefore the smaller
+    of what the researcher asked for and what the login can support.
+
+    This REPLACED a pre-flight refusal, on measurement (2026-08-30).
+    The refusal fired whenever the login had less life than one turn's
+    budget and told the researcher to "run `claude` in this project's
+    container to refresh the login" — advice that was measured to do
+    nothing in exactly that case: the CLI refreshes a login that has
+    LAPSED (observed, an eight-hour-old token rewritten on the next
+    run) and leaves a still-valid one untouched (observed, a token with
+    eight hours left, unchanged). So the refusal named a remedy that
+    could not be applied until the thing being protected had already
+    failed. A clamp needs no remedy — it shortens the turn and says so.
+
+    The same measurement retired the premise the refusal was sized
+    against: a refreshed access token was observed carrying ~8 hours,
+    not the ~49 minutes a login-time token had shown, so the clamp
+    binds rarely rather than on every convene.
+
+    Never mutate the caller's recorded budget with this. The campaign's
+    setting is what the researcher chose; this is what one turn can
+    have. Folding the result back into the record would make a single
+    short-lived login cap every later turn of a campaign whose login
+    has since been refreshed.
+
+    A ``None`` budget passes through unclamped rather than adopting the
+    runner module's default, so the "no budget supplied" lane still
+    reaches the gateway as ``None`` and gets the gateway's own default.
+    Production always threads the campaign's budget here, so that lane
+    is the harnesses, not a council.
+    """
+    if fBudgetSeconds is None or iExpiresAtEpochMilliseconds <= 0:
+        return fBudgetSeconds
+    fSecondsRemaining = iExpiresAtEpochMilliseconds / 1000.0 - time.time()
+    return min(fBudgetSeconds, max(fSecondsRemaining, 0.0))
+
+
+def _fnRefuseALapsedAccessToken(dictOauth):
+    """Refuse a login too near its end for any turn, naming the remedy.
 
     A runner CANNOT recover from this on its own. Section 9.7 stages
     the access token and its scopes and deliberately never the refresh
@@ -718,39 +779,35 @@ def _fnRefuseAnExpiredAccessToken(dictOauth,
     still is not, and the first turn's authentication-classified
     failure remains the only report of that.
 
+    The bar is the settings floor rather than the campaign's own
+    budget, because a login shorter than the budget is now CLAMPED
+    (:func:`ffClampTurnBudgetToLoginLife`) instead of refused. What
+    survives here is the case no clamp can rescue: a turn the campaign
+    would not be allowed to configure in the first place. Reusing that
+    floor keeps this from becoming a second, invented number.
+
     A login with no ``expiresAt`` is ACCEPTED. Absence means the
     provider's document shape changed or the field was never written,
     and refusing on a field we cannot read would ground every council
     on a guess; spending one turn to learn the truth is the better
     failure.
     """
-    jsonExpiresAt = dictOauth.get(S_EXPIRES_AT_KEY)
-    if not isinstance(jsonExpiresAt, (int, float)) or jsonExpiresAt <= 0:
+    iExpiresAt = _fiReadLoginExpiry(dictOauth)
+    if iExpiresAt <= 0:
         return
-    fSecondsRemaining = jsonExpiresAt / 1000.0 - time.time()
-    if fSecondsRemaining <= 0:
-        raise RunnerCredentialError(
-            "the project's Claude login expired "
-            f"{fsDescribeDuration(abs(fSecondsRemaining))} ago, and a "
-            "council runner is given the access token WITHOUT the "
-            "refresh token, so it cannot renew it. Run `claude` in this "
-            "project's container to refresh the login, then try again."
-        )
-    if fSecondsRemaining >= fRequiredSecondsRemaining:
+    fSecondsRemaining = iExpiresAt / 1000.0 - time.time()
+    if fSecondsRemaining >= I_MINIMUM_TURN_WALL_CLOCK_SECONDS:
         return
-    # It is valid NOW and will not be for long. A runner cannot renew
-    # mid-turn, so a token with minutes left against an hour-long turn
-    # budget is a turn that dies partway through with nothing the
-    # record can attribute — the pre-flight used to pass it happily
-    # because "valid now" was the whole question it asked.
+    sState = (
+        f"expired {fsDescribeDuration(abs(fSecondsRemaining))} ago"
+        if fSecondsRemaining <= 0 else
+        f"expires in {fsDescribeDuration(fSecondsRemaining)}, too "
+        "little to run any turn")
     raise RunnerCredentialError(
-        "the project's Claude login expires in "
-        f"{fsDescribeDuration(fSecondsRemaining)}, which is less than "
-        f"one turn's budget of {fsDescribeDuration(fRequiredSecondsRemaining)}"
-        ". A council runner is given the access token WITHOUT the "
-        "refresh token, so it cannot renew mid-turn and the turn would "
-        "die partway through. Run `claude` in this project's container "
-        "to refresh the login, then try again."
+        f"the project's Claude login {sState}, and a council runner is "
+        "given the access token WITHOUT the refresh token, so it cannot "
+        "renew it. Run `claude` in this project's container — the CLI "
+        "refreshes a login that has lapsed — then try again."
     )
 
 
@@ -795,8 +852,7 @@ def fbRunnerCredentialIsPresent(connectionDocker, sContainerId,
 
 
 def fsExplainUnusableRunnerCredential(connectionDocker, sContainerId,
-                                      sCredentialContainerPath,
-                                      fRequiredSecondsRemaining=0.0):
+                                      sCredentialContainerPath):
     """Return WHY the login cannot be copied, or "" when it can.
 
     The same probe as the boolean above and the same discard — only
@@ -812,8 +868,7 @@ def fsExplainUnusableRunnerCredential(connectionDocker, sContainerId,
     """
     try:
         fdictExtractRunnerCredential(
-            connectionDocker, sContainerId, sCredentialContainerPath,
-            fRequiredSecondsRemaining)
+            connectionDocker, sContainerId, sCredentialContainerPath)
     except RunnerCredentialError as errorCredential:
         return str(errorCredential)
     return ""
@@ -904,7 +959,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                  baSnapshotTar, sRequestedModel, dictEgress=None,
                  sHostCredentialPath="", dictLimits=None, saCliProgram=None,
                  fWallClockSeconds=None, iOutputByteCap=None,
-                 fsStageRunnerCredential=None, fStallSeconds=None):
+                 ftStageRunnerCredential=None, fStallSeconds=None):
         self.dictGateway = dictGateway
         self.sCampaignId = sCampaignId
         self.sImageReference = sImageReference
@@ -918,12 +973,18 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         # while a campaign waits on the researcher. The static
         # sHostCredentialPath lane remains for a caller that manages
         # its own file lifetime (the maintainer's live-check harness).
-        self.fsStageRunnerCredential = fsStageRunnerCredential
+        self.ftStageRunnerCredential = ftStageRunnerCredential
         self.dictLimits = dictLimits
         self.saCliProgram = list(saCliProgram) if saCliProgram else None
         self.fWallClockSeconds = fWallClockSeconds
         self.iOutputByteCap = iOutputByteCap
         self.fStallSeconds = fStallSeconds
+        # When this turn's login expires, learned at staging and used
+        # to clamp the wall clock at start. Held separately from
+        # fWallClockSeconds on purpose: clamping in place would let one
+        # short-lived login permanently cap a campaign whose login is
+        # refreshed a turn later.
+        self._iLoginExpiresAtEpochMilliseconds = 0
         self._sHandle = ""
         self._sReservationId = ""
         self._listEvents = []
@@ -940,7 +1001,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                     self.dictEgress.get(
                         "iProxyPort", agentCouncilEgress.I_PROXY_LISTEN_PORT)))
         if self.sHostCredentialPath or (
-                self.fsStageRunnerCredential is not None):
+                self.ftStageRunnerCredential is not None):
             dictEnvironment[S_CLAUDE_CONFIG_DIRECTORY_ENV] = (
                 S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
         return dictEnvironment
@@ -954,9 +1015,16 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         removed in ``finally`` BEFORE the tarball is delivered, so a
         fault anywhere downstream can never strand a token copy on the
         researcher's disk.
+
+        The staging step also reports WHEN the login it copied expires,
+        because it is the one place that has already read the document.
+        The expiry is a timestamp, carries no secret and mints nothing,
+        so reporting it does not widen what section 9.7 permits to
+        leave the container.
         """
-        if self.fsStageRunnerCredential is not None:
-            sStagedPath = self.fsStageRunnerCredential()
+        if self.ftStageRunnerCredential is not None:
+            sStagedPath, self._iLoginExpiresAtEpochMilliseconds = (
+                self.ftStageRunnerCredential())
             try:
                 return fbaBuildCredentialTarball(sStagedPath)
             finally:
@@ -1056,7 +1124,10 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             self._dictTurnExecution = await asyncio.to_thread(
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
                 self.dictGateway, self._sHandle, saArgv,
-                self.iOutputByteCap, self.fWallClockSeconds,
+                self.iOutputByteCap,
+                ffClampTurnBudgetToLoginLife(
+                    self.fWallClockSeconds,
+                    self._iLoginExpiresAtEpochMilliseconds),
                 agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin,
                 self.fStallSeconds)
             self._listEvents = flistParseStreamJsonEvents(

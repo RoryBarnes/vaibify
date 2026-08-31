@@ -264,7 +264,7 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         dictRuntime["baSnapshotTar"],
         dictParticipant["sRequestedModel"],
         dictEgress=dictAccess["dictEgress"],
-        fsStageRunnerCredential=dictRuntime["fsStageRunnerCredential"],
+        ftStageRunnerCredential=dictRuntime["ftStageRunnerCredential"],
         # The campaign's own budget, not the module default. Without
         # this the setting is a number in a record that governs nothing
         # — the shape of bAgentSafe before it was enforced.
@@ -309,7 +309,7 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
     """
     if dictRuntime.get("dictRunnerAccess") is not None:
         return dictRuntime["dictRunnerAccess"]
-    if dictRuntime.get("fsStageRunnerCredential") is None:
+    if dictRuntime.get("ftStageRunnerCredential") is None:
         raise CouncilCommandError(
             "no credential stager was supplied at launch; a production "
             "runner connection cannot be built without one")
@@ -454,7 +454,7 @@ def _fdictExecuteBaselineEvidenceLazily(dictRuntime, dictRequest):
 def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
                                sCampaignId, dictCampaign,
                                sImageReference, baSnapshotTar,
-                               fsStageRunnerCredential=None):
+                               ftStageRunnerCredential=None):
     """Assemble one campaign's live runtime: engine, connections, task slot.
 
     The engine drives the SAME dict the runtime holds; the store's
@@ -474,7 +474,7 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
             dictCampaign["dictProjectIdentity"]["sSnapshotIdentity"]),
         "dictGateway": None,
         "fdictExecuteBaselineEvidence": None,
-        "fsStageRunnerCredential": fsStageRunnerCredential,
+        "ftStageRunnerCredential": ftStageRunnerCredential,
         "dictRunnerAccess": None,
         # True from registration until the first drive task is spawned:
         # the provisioning window is live work the busy predicates must
@@ -741,7 +741,7 @@ def _fbaAdmitRuntimeRebuild(dictStore, dictCampaign, sCampaignId,
 
 async def _fdictRebuildRuntimeNonDestructively(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        dictCampaign, sImageReference, fsStageRunnerCredential):
+        dictCampaign, sImageReference, ftStageRunnerCredential):
     """Rebuild a campaign runtime without ever touching the record.
 
     The launch path is transactional the OTHER way — a build fault
@@ -763,7 +763,7 @@ async def _fdictRebuildRuntimeNonDestructively(
     taskBuild = asyncio.ensure_future(asyncio.to_thread(
         _fdictBuildCampaignRuntime, dictControllerState, dictStore,
         dictRegistry, sCampaignId, dictCampaign, sImageReference,
-        baSnapshotTar, fsStageRunnerCredential))
+        baSnapshotTar, ftStageRunnerCredential))
     return await _fdictAwaitRuntimeBuild(
         dictControllerState, sCampaignId, taskBuild)
 
@@ -807,7 +807,7 @@ async def _fdictAwaitRuntimeBuild(dictControllerState, sCampaignId,
 
 async def fdictResumeCampaignDeliberation(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        sImageReference, fsStageRunnerCredential=None,
+        sImageReference, ftStageRunnerCredential=None,
         bClearStopRequest=False):
     """Resume a crashed deliberation from its proven boundary.
 
@@ -882,7 +882,7 @@ async def fdictResumeCampaignDeliberation(
     dictCampaign["bPauseRequested"] = False
     dictRuntime = await _fdictRebuildRuntimeNonDestructively(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        dictCampaign, sImageReference, fsStageRunnerCredential)
+        dictCampaign, sImageReference, ftStageRunnerCredential)
     if sAttemptState == "turnsSettled":
         dictReplayed = dictRuntime[
             "engineCouncil"].fdictReplaySettlementFromTurnRecords()
@@ -909,7 +909,7 @@ async def fdictResumeCampaignDeliberation(
 
 async def fdictRetryCampaignFailedPhase(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
-        sImageReference, fsStageRunnerCredential=None,
+        sImageReference, ftStageRunnerCredential=None,
         bClearStopRequest=False):
     """Retire the terminating attempt and re-run its phase (2.5/2.6).
 
@@ -988,7 +988,7 @@ async def fdictRetryCampaignFailedPhase(
     taskBuild = asyncio.ensure_future(asyncio.to_thread(
         _fdictBuildCampaignRuntime, dictControllerState, dictStore,
         dictRegistry, sCampaignId, dictCampaign, sImageReference,
-        baSnapshotTar, fsStageRunnerCredential))
+        baSnapshotTar, ftStageRunnerCredential))
     dictRuntime = await _fdictAwaitRuntimeBuild(
         dictControllerState, sCampaignId, taskBuild)
     agentCouncilStore.fnMarkEvidenceRetiredForAttempt(
@@ -1067,7 +1067,7 @@ def _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction):
 async def fdictLaunchCampaignDeliberation(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         ffnCaptureSnapshot, sImageReference,
-        fsStageRunnerCredential=None):
+        ftStageRunnerCredential=None):
     """Capture the snapshot, build the runtime, and start deliberation.
 
     Runs inside the submitted ``start`` command, so it is serialized
@@ -1076,7 +1076,7 @@ async def fdictLaunchCampaignDeliberation(
     under the project's reconciliation lock and returns the manifest;
     ``sImageReference`` is the project container's image, resolved by
     the route BEFORE the credential gate so the evidence record's image
-    pin is always compared; ``fsStageRunnerCredential`` is the
+    pin is always compared; ``ftStageRunnerCredential`` is the
     route-supplied closure the production connection factory stages the
     runner's host credential copy through. Closures, because the
     controller must not import the route context. The snapshot identity
@@ -1129,7 +1129,7 @@ async def fdictLaunchCampaignDeliberation(
         taskBuild = asyncio.ensure_future(asyncio.to_thread(
             _fdictBuildCampaignRuntime, dictControllerState, dictStore,
             dictRegistry, sCampaignId, dictCampaign, sImageReference,
-            baSnapshotTar, fsStageRunnerCredential))
+            baSnapshotTar, ftStageRunnerCredential))
         # Through the SHARED awaiter, which cleans up a half-built
         # runtime and turns an infrastructure fault into the route's own
         # refusal. START was the third caller and the only one still
@@ -1290,7 +1290,7 @@ async def _fdictRequireOrRebuildRuntime(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         dictCampaign,
         dictRebuildMaterials["sImageReference"],
-        dictRebuildMaterials.get("fsStageRunnerCredential"))
+        dictRebuildMaterials.get("ftStageRunnerCredential"))
 
 
 def _fnRequireHumanGate(dictRuntime, sExpectedGateKind=""):

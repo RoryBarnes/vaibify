@@ -100,7 +100,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
                 "dictRegistry": councilRouteGuards.fdictCouncilRegistry(
                     requestHttp),
                 "sImageReference": sImageReference,
-                "fsStageRunnerCredential":
+                "ftStageRunnerCredential":
                     councilRouteGuards.ffnBuildCredentialStager(
                         dictCtx, sContainerId),
             })
