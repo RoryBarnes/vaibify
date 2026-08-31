@@ -42,6 +42,7 @@ var VaibifyAgentCouncil = (function () {
        anywhere in this module (section 6.3.1 / 8.2). */
     var DICT_DEFAULT_SETTINGS = {
         bPeerAnonymity: true,
+        iMaximumOutputBytesPerTurn: 10 * 1024 * 1024,
         sEffortPerParticipant: "standard",
         sExecutionPermission: "fullSandbox",
         iMinimumRounds: 1,
@@ -84,6 +85,7 @@ var VaibifyAgentCouncil = (function () {
         sLastEventPollError: "",
         sLastRenderError: "",
         sLastListError: "",
+        sLastAcceptedPlanPath: "",
         sLastChatError: "",
         iLastPollSucceededAt: 0,
         /* Per-directory snapshot feasibility, keyed by directory
@@ -378,30 +380,313 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fnRenderChooser(bListingStillLoading) {
+        /* FOUR tasks, and nothing else. This screen used to print the
+           whole council history underneath two buttons — which is what
+           "Continue a council" is FOR, so the list both duplicated the
+           button and buried it (2026-08-30). Each task now opens its
+           own view, and the counts are the promise each one makes. */
         var elBody = document.getElementById("agentCouncilModalBody");
         if (!elBody) return;
-        /* The count is of councils that can actually be CONTINUED —
-           the button's own promise — never the full history's length;
-           the unusable ones stay readable in the list below. */
-        var iResumable = _dictState.listSummaries.filter(
-            _fbSummaryIsResumable).length;
+        var iResumable = _flistResumableSummaries().length;
+        var iImplementable = _flistImplementableSummaries().length;
+        var iPast = _flistPastSummaries().length;
         elBody.innerHTML =
             "<h2>Agent Council</h2>" +
             "<div class=\"council-chooser\">" +
-            "<button type=\"button\" id=\"btnCouncilPlanChange\" " +
-            "class=\"btn btn-primary council-choice\">Plan a change</button>" +
-            "<button type=\"button\" id=\"btnCouncilOpenExisting\" " +
-            "class=\"btn council-choice\"" +
-            (!bListingStillLoading && iResumable ? "" : " disabled") +
-            ">Continue a council (" +
-            (bListingStillLoading ? "…" : iResumable) +
-            ")</button>" +
+            _fsChoiceButton("btnCouncilPlanChange", "Plan a change",
+                "Convene a council to produce an implementation plan.",
+                true, "", bListingStillLoading) +
+            _fsChoiceButton("btnCouncilImplementPlanChoice",
+                "Implement a plan",
+                "Convene a council that turns an accepted plan into a " +
+                "reviewed patch.",
+                iImplementable > 0, iImplementable, bListingStillLoading) +
+            _fsChoiceButton("btnCouncilOpenExisting", "Continue a council",
+                "Pick up a council that stopped part-way.",
+                iResumable > 0, iResumable, bListingStillLoading) +
+            _fsChoiceButton("btnCouncilViewPast", "View past councils",
+                "Read what finished councils decided, and where their " +
+                "plans were saved.",
+                iPast > 0, iPast, bListingStillLoading) +
             "</div>" +
             (bListingStillLoading
                 ? "<p class=\"council-open-when\">Loading past " +
                   "councils…</p>"
-                : _fsListRefusalNotice() + _fsSummariesList());
+                : _fsListRefusalNotice());
         _fnBindChooser();
+    }
+
+    function _fsChoiceButton(sId, sLabel, sExplain, bEnabled, sCount,
+                             bListingStillLoading) {
+        /* Only the LIST-DEPENDENT tasks wait for the listing. Gating
+           all four on it disabled "Plan a change" too, which needs no
+           listing whatsoever — a researcher who wanted a fresh council
+           had to wait for a history they were not going to read. */
+        var bDisabled = (sCount !== "" && bListingStillLoading)
+            || !bEnabled;
+        return "<button type=\"button\" id=\"" + sId + "\" class=\"btn " +
+            (sId === "btnCouncilPlanChange" ? "btn-primary " : "") +
+            "council-choice\"" + (bDisabled ? " disabled" : "") + ">" +
+            "<span class=\"council-choice-label\">" + _fsEscape(sLabel) +
+            (sCount === "" ? "" : " (" +
+                (bListingStillLoading ? "…" : sCount) + ")") +
+            "</span><span class=\"council-choice-explain\">" +
+            _fsEscape(sExplain) + "</span></button>";
+    }
+
+    function _flistSortedSummaries() {
+        return _dictState.listSummaries.slice().sort(
+            function (dictLeft, dictRight) {
+                return (dictRight.fLastActivityEpoch || 0) -
+                    (dictLeft.fLastActivityEpoch || 0);
+            });
+    }
+
+    function _flistResumableSummaries() {
+        return _flistSortedSummaries().filter(_fbSummaryIsResumable);
+    }
+
+    /* The states the SERVER will seed an implementation council from.
+       Named here so this list offers exactly what the route accepts: a
+       filter on "a plan file exists" admitted a campaign the server
+       then refused, and the researcher met the refusal at the convene
+       button after choosing participants and writing a direction
+       (2026-08-30). A menu that offers what the next screen rejects is
+       worse than a shorter menu. */
+    var SET_IMPLEMENTABLE_STATES = {
+        planAccepted: true, awaitingImplementation: true,
+    };
+
+    function _flistImplementableSummaries() {
+        return _flistSortedSummaries().filter(function (dictSummary) {
+            return Boolean(dictSummary.sAcceptedPlanPath)
+                && Boolean(SET_IMPLEMENTABLE_STATES[dictSummary.sState])
+                && dictSummary.sCampaignKind !== "implementation";
+        });
+    }
+
+    function _flistPastSummaries() {
+        return _flistSortedSummaries().filter(function (dictSummary) {
+            return !_fbSummaryIsResumable(dictSummary);
+        });
+    }
+
+    /* ---- the three task views ---------------------------------------- */
+
+    function _fnRenderTaskView(sHeading, sExplain, sRows) {
+        var elBody = document.getElementById("agentCouncilModalBody");
+        if (!elBody) return;
+        elBody.innerHTML =
+            "<h2>" + _fsEscape(sHeading) + "</h2>" +
+            "<p class=\"council-hint\">" + _fsEscape(sExplain) + "</p>" +
+            (sRows || "<p class=\"council-hint\">Nothing here yet.</p>") +
+            "<div class=\"council-view-actions\">" +
+            "<button type=\"button\" id=\"btnCouncilBackToTasks\" " +
+            "class=\"btn\">Back</button></div>";
+        var elBack = document.getElementById("btnCouncilBackToTasks");
+        if (elBack) {
+            elBack.addEventListener("click", function () {
+                _fnRenderChooser(false);
+            });
+        }
+        _fnBindSummaryRows();
+    }
+
+    function _fnShowContinueView() {
+        _fnRenderTaskView(
+            "Continue a council",
+            "These councils stopped part-way and can be picked up.",
+            _fsSummaryRows(_flistResumableSummaries()));
+    }
+
+    function _fbSummaryFailed(dictSummary) {
+        /* A council that STOPPED without finishing, as against one that
+           reached its end. Keyed on the record's own state rather than
+           on the absence of a plan: an accepted council whose plan file
+           was later removed is still not a failure. */
+        return dictSummary.sState === "failed"
+            || dictSummary.sState === "interrupted";
+    }
+
+    function _fnShowPastView() {
+        var listPast = _flistPastSummaries();
+        var listFailed = listPast.filter(_fbSummaryFailed);
+        var listDone = listPast.filter(function (dictSummary) {
+            return !_fbSummaryFailed(dictSummary);
+        });
+        _fnRenderTaskView(
+            "Past councils",
+            "Councils that have finished. Opening one is read-only.",
+            _fsPastSection("Completed", listDone) +
+            _fsPastSection("Failed", listFailed) +
+            _fsPastDeleteActions(listPast.length, listFailed.length));
+        _fnBindPastDeleteActions();
+    }
+
+    function _fsPastSection(sHeading, listSummaries) {
+        if (!listSummaries.length) return "";
+        return "<h5 class=\"council-summary-directory\">" +
+            _fsEscape(sHeading) + " (" + listSummaries.length + ")</h5>" +
+            "<ul class=\"council-summaries\">" +
+            listSummaries.map(_fsPastRow).join("") + "</ul>";
+    }
+
+    function _fsPastRow(dictSummary) {
+        /* The delete control is a SIBLING of the open button, never
+           inside it: nesting one button in another is invalid, and a
+           stray click would open the very council it was deleting. */
+        return "<li class=\"council-past-row\">" +
+            _fsOneSummaryRow(dictSummary).replace(/^<li>|<\/li>$/g, "") +
+            "<button type=\"button\" class=\"btn danger btn-small " +
+            "council-delete-one\" data-delete-campaign=\"" +
+            _fsEscape(dictSummary.sCampaignId) + "\" " +
+            "data-delete-name=\"" +
+            _fsEscape(dictSummary.sCampaignName ||
+                dictSummary.sCampaignId) + "\">Delete</button></li>";
+    }
+
+    function _fsPastDeleteActions(iTotal, iFailed) {
+        if (!iTotal) return "";
+        return "<div class=\"council-plan-exports\">" +
+            (iFailed
+                ? "<button type=\"button\" id=\"btnCouncilDeleteFailed\" " +
+                  "class=\"btn danger btn-small\">Delete all failed (" +
+                  iFailed + ")</button>"
+                : "") +
+            "<button type=\"button\" id=\"btnCouncilDeleteAllPast\" " +
+            "class=\"btn danger btn-small\">Delete all past councils (" +
+            iTotal + ")</button></div>";
+    }
+
+    function _fnBindPastDeleteActions() {
+        document.querySelectorAll("[data-delete-campaign]").forEach(
+            function (elButton) {
+                elButton.addEventListener("click", function (eventClick) {
+                    eventClick.stopPropagation();
+                    _fnConfirmDelete(
+                        "Delete this council?",
+                        "\u201c" +
+                        elButton.getAttribute("data-delete-name") +
+                        "\u201d and its snapshot and plan are removed "
+                        + "from this machine. This cannot be undone.",
+                        [elButton.getAttribute("data-delete-campaign")]);
+                });
+            });
+        _fnBindChoice("btnCouncilDeleteFailed", function () {
+            var listIds = _flistPastSummaries().filter(_fbSummaryFailed)
+                .map(function (dictSummary) {
+                    return dictSummary.sCampaignId;
+                });
+            _fnConfirmDelete(
+                "Delete " + listIds.length + " failed council(s)?",
+                "Every council that stopped without finishing is removed "
+                + "from this machine, with its snapshot and any plan. "
+                + "Completed councils are kept. This cannot be undone.",
+                listIds);
+        });
+        _fnBindChoice("btnCouncilDeleteAllPast", function () {
+            var listIds = _flistPastSummaries().map(
+                function (dictSummary) { return dictSummary.sCampaignId; });
+            _fnConfirmDelete(
+                "Delete all " + listIds.length + " past councils?",
+                "Every finished council is removed from this machine, "
+                + "with its snapshot and any accepted plan. Councils "
+                + "that can still be continued are NOT touched. This "
+                + "cannot be undone.",
+                listIds);
+        });
+    }
+
+    function _fnConfirmDelete(sTitle, sBody, listCampaignIds) {
+        /* Through the dashboard's own confirmation idiom, like every
+           other irreversible act here. Deleting a council discards its
+           snapshot and its accepted plan, so it is never a quiet
+           button. */
+        if (!listCampaignIds.length) return;
+        VaibifyApp.fnShowConfirmModal(sTitle, sBody, function () {
+            _fnDeleteCampaigns(listCampaignIds);
+        });
+    }
+
+    async function _fnDeleteCampaigns(listCampaignIds) {
+        var listFailedIds = [];
+        for (var iIndex = 0; iIndex < listCampaignIds.length; iIndex += 1) {
+            var sCampaignId = listCampaignIds[iIndex];
+            try {
+                await VaibifyApi.fnDelete(
+                    _fsRoute("/" + sCampaignId) +
+                    _fsDirectoryQuery("?", sCampaignId));
+            } catch (error) {
+                /* Named, never swallowed: a delete that failed while
+                   its neighbours succeeded must not look like a clean
+                   sweep. */
+                listFailedIds.push(sCampaignId);
+            }
+        }
+        if (listFailedIds.length) {
+            VaibifyApp.fnShowToast(
+                listFailedIds.length + " council(s) could not be "
+                + "deleted; they are still listed.", "error");
+        }
+        /* The active campaign may have just been deleted underneath the
+           panel. */
+        if (listCampaignIds.indexOf(_dictState.sActiveCampaignId) >= 0) {
+            _dictState.sActiveCampaignId = "";
+            _dictState.dictCampaign = null;
+            _fnRenderToolbarButton();
+        }
+        await _fnRefreshSummaries();
+        _fnShowPastView();
+    }
+
+    function _fnShowImplementView() {
+        /* Rows here do NOT open the campaign — they seed a NEW
+           implementation council from the plan that campaign accepted.
+           Reaching this used to require being inside the accepted
+           campaign, which acceptance itself made unreachable: accepting
+           moves a council to a terminal state, and a terminal council
+           is not offered under "continue" (2026-08-30). */
+        var elBody = document.getElementById("agentCouncilModalBody");
+        if (!elBody) return;
+        var listPlans = _flistImplementableSummaries();
+        _fnRenderTaskView(
+            "Implement a plan",
+            "Convenes a second council that turns an accepted plan "
+                + "into a reviewed patch. It never applies the patch.",
+            listPlans.map(_fsImplementableRow).join(""));
+        listPlans.forEach(function (dictSummary) {
+            var elRow = document.querySelector(
+                "[data-implement-campaign=\"" +
+                dictSummary.sCampaignId + "\"]");
+            if (!elRow) return;
+            elRow.addEventListener("click", function () {
+                _fnSeedImplementationFromSummary(dictSummary);
+            });
+        });
+    }
+
+    function _fsImplementableRow(dictSummary) {
+        return "<li><button type=\"button\" class=\"council-open-row\" " +
+            "data-implement-campaign=\"" +
+            _fsEscape(dictSummary.sCampaignId) + "\">" +
+            "<span class=\"council-open-name\">" +
+            _fsEscape(dictSummary.sCampaignName ||
+                dictSummary.sCampaignId) + "</span>" +
+            "<span class=\"council-open-where\">plan saved at " +
+            _fsEscape(dictSummary.sAcceptedPlanPath) + "</span>" +
+            "<span class=\"council-open-when\">" +
+            _fsEscape(_fsDescribeActivityTime(
+                dictSummary.fLastActivityEpoch)) +
+            "</span></button></li>";
+    }
+
+    function _fnSeedImplementationFromSummary(dictSummary) {
+        _dictState.dictImplementationSeed = {
+            sSourceCampaignId: dictSummary.sCampaignId,
+            sSourceCampaignName: dictSummary.sCampaignName || "",
+            listParticipants: [],
+        };
+        _fnOpenPlanningForm();
     }
 
     function _fsListRefusalNotice() {
@@ -428,12 +713,7 @@ var VaibifyAgentCouncil = (function () {
                 return (dictRight.fLastActivityEpoch || 0) -
                     (dictLeft.fLastActivityEpoch || 0);
             });
-        return _fsSummarySection("Can be continued",
-                listSorted.filter(_fbSummaryIsResumable)) +
-            _fsSummarySection("Finished or unusable",
-                listSorted.filter(function (dictSummary) {
-                    return !_fbSummaryIsResumable(dictSummary);
-                }));
+        return _fsSummaryRows(listSorted);
     }
 
     function _fbSummaryIsResumable(dictSummary) {
@@ -447,6 +727,12 @@ var VaibifyAgentCouncil = (function () {
             listSummaries.map(_fsOneSummaryRow).join("") + "</ul>";
     }
 
+    function _fsSummaryRows(listSummaries) {
+        if (!listSummaries.length) return "";
+        return "<ul class=\"council-summaries\">" +
+            listSummaries.map(_fsOneSummaryRow).join("") + "</ul>";
+    }
+
     function _fsOneSummaryRow(dictSummary) {
         var dictStopping = dictSummary.dictStoppingPoint || {};
         return "<li><button type=\"button\" class=\"council-open-row\" " +
@@ -454,6 +740,10 @@ var VaibifyAgentCouncil = (function () {
             "\"><span class=\"council-open-name\">" +
             _fsEscape(dictSummary.sCampaignName ||
                 dictSummary.sCampaignId) + "</span>" +
+            (dictSummary.sAcceptedPlanPath
+                ? "<span class=\"council-open-where\">plan saved at " +
+                  _fsEscape(dictSummary.sAcceptedPlanPath) + "</span>"
+                : "") +
             /* "pause requested", never "paused": the listing has no
                liveness, so it cannot know whether the phase that was
                running has finished. It reports the durable flag in the
@@ -461,7 +751,8 @@ var VaibifyAgentCouncil = (function () {
                have the answer — say which. */
             "<span class=\"council-open-state\">" +
             _fsEscape(dictSummary.bPauseRequested
-                ? "pause requested" : dictSummary.sState) + "</span> " +
+                ? "pause requested"
+                : _fsStateLabel(dictSummary.sState)) + "</span> " +
             "<span class=\"council-open-where\">" +
             _fsEscape(_fsDescribeStoppingPoint(dictStopping)) + "</span> " +
             "<span class=\"council-open-when\">" +
@@ -469,17 +760,53 @@ var VaibifyAgentCouncil = (function () {
                 dictSummary.fLastActivityEpoch)) + "</span></button></li>";
     }
 
+    /* The protocol's own vocabulary, translated. A researcher read
+       rows saying "needsHuman" and "awaitingImplementation" — internal
+       state names, run together, in a list built for them (2026-08-30).
+       Unknown states fall through to the camel-case splitter rather
+       than to the raw token, so a state added later reads as words the
+       day it appears instead of the day someone updates this table. */
+    var DICT_STATE_LABELS = {
+        draft: "not yet convened",
+        planning: "deliberating",
+        needsHuman: "needs your input",
+        planReady: "plan ready for review",
+        planAccepted: "completed — plan accepted",
+        awaitingImplementation: "awaiting implementation",
+        failed: "failed",
+        interrupted: "interrupted",
+        archived: "archived",
+    };
+
+    function _fsStateLabel(sState) {
+        return DICT_STATE_LABELS[sState] || _fsSplitCamelCase(sState);
+    }
+
+    function _fsSplitCamelCase(sToken) {
+        /* "independentProposals" -> "independent proposals". The
+           missing spaces the researcher saw were phase names reaching
+           the screen exactly as the protocol spells them. */
+        return String(sToken || "")
+            .replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+    }
+
+    function _fsPhaseLabel(sPhase) {
+        return DICT_PHASE_LABELS[sPhase] || _fsSplitCamelCase(sPhase);
+    }
+
     function _fsDescribeStoppingPoint(dictStopping) {
         if (!dictStopping.bResumable) {
             return dictStopping.sBlockedReason || "cannot be continued";
         }
         if (dictStopping.sAction === "retry") {
-            return "retry " + (dictStopping.sAttemptPhase ||
-                "the failed phase") + ", round " +
+            return "retry " + (dictStopping.sAttemptPhase
+                ? _fsPhaseLabel(dictStopping.sAttemptPhase)
+                : "the failed phase") + ", round " +
                 (dictStopping.iRoundNumber || 1);
         }
         if (dictStopping.sNextPhase) {
-            return "next: " + dictStopping.sNextPhase + ", round " +
+            return "next: " + _fsPhaseLabel(dictStopping.sNextPhase) +
+                ", round " +
                 (dictStopping.iRoundNumber || 1);
         }
         return "round " + (dictStopping.iRoundNumber || 1) + " complete";
@@ -504,34 +831,33 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fnBindChooser() {
-        var elPlan = document.getElementById("btnCouncilPlanChange");
-        if (elPlan) {
-            elPlan.addEventListener("click", _fnOpenPlanningForm);
+        _fnBindChoice("btnCouncilPlanChange", function () {
+            /* A fresh planning council, never carrying a seed left by
+               an implementation form the researcher backed out of. */
+            _dictState.dictImplementationSeed = null;
+            _fnOpenPlanningForm();
+        });
+        /* Each task now OPENS A VIEW instead of guessing. "Continue"
+           used to jump straight into the most recently active resumable
+           council, which is why a researcher who had just accepted one
+           council landed in a different one entirely (2026-08-30):
+           accepting makes a campaign terminal, so it is no longer
+           resumable, so the jump silently chose its neighbour. */
+        _fnBindChoice("btnCouncilOpenExisting", _fnShowContinueView);
+        _fnBindChoice("btnCouncilImplementPlanChoice", _fnShowImplementView);
+        _fnBindChoice("btnCouncilViewPast", _fnShowPastView);
+        _fnBindSummaryRows();
+    }
+
+    function _fnBindChoice(sId, fnHandler) {
+        var elButton = document.getElementById(sId);
+        if (elButton && !elButton.disabled) {
+            elButton.addEventListener("click", fnHandler);
         }
-        var elOpen = document.getElementById("btnCouncilOpenExisting");
-        if (elOpen && !elOpen.disabled) {
-            elOpen.addEventListener("click", function () {
-                /* The most recently active RESUMABLE council, in the
-                   same ordering the list below shows. Two earlier
-                   shapes both misfired on 2026-08-27:
-                   listSummaries[0] was store-iteration order (an
-                   arbitrary campaign the researcher could not
-                   identify), and a most-recent fallback sent them
-                   into an unusable campaign whose gate then invited
-                   answers it would refuse. No resumable council
-                   disables the button instead. */
-                var listResumable = _dictState.listSummaries.filter(
-                    _fbSummaryIsResumable).sort(
-                    function (dictLeft, dictRight) {
-                        return (dictRight.fLastActivityEpoch || 0) -
-                            (dictLeft.fLastActivityEpoch || 0);
-                    });
-                if (listResumable.length) {
-                    _fnFocusCampaign(listResumable[0].sCampaignId);
-                }
-            });
-        }
-        document.querySelectorAll(".council-open-row").forEach(
+    }
+
+    function _fnBindSummaryRows() {
+        document.querySelectorAll("[data-campaign]").forEach(
             function (elRow) {
                 elRow.addEventListener("click", function () {
                     _fnFocusCampaign(elRow.getAttribute("data-campaign"));
@@ -816,6 +1142,8 @@ var VaibifyAgentCouncil = (function () {
             "<div class=\"council-form-actions\">" +
             "<button type=\"button\" id=\"btnCouncilConvene\" " +
             "class=\"btn btn-primary\">Convene council</button>" +
+            "<button type=\"button\" id=\"btnCouncilBackFromForm\" " +
+            "class=\"btn\">Back</button>" +
             "<button type=\"button\" id=\"btnCouncilCancel\" " +
             "class=\"btn\">Cancel</button></div>" +
             "<div id=\"councilConveneStatus\" " +
@@ -855,6 +1183,16 @@ var VaibifyAgentCouncil = (function () {
             "<label>Minimum rounds " +
             "<input type=\"number\" id=\"councilMinimumRounds\" min=\"1\" " +
             "value=\"" + dict.iMinimumRounds + "\"></label>" +
+            /* The other per-turn budget, exposed for the same reason
+               the time budget is: the right value is a property of the
+               work being convened, and an implementation council that
+               emits a diff for every file it touches is not the same
+               shape of work as a single-shot opinion. It was a dead
+               number in the record until 2026-08-30. */
+            "<label>Output budget per turn (MB) " +
+            "<input type=\"number\" id=\"councilOutputBudgetMb\" " +
+            "min=\"1\" max=\"64\" value=\"" +
+            _fiPreferredOutputBudgetMegabytes() + "\"></label>" +
             "</fieldset>";
     }
 
@@ -922,6 +1260,14 @@ var VaibifyAgentCouncil = (function () {
         _fnBindElement("btnCouncilAddParticipant", _fnAddParticipant);
         _fnBindElement("btnCouncilConvene", _fnConveneCouncil);
         _fnBindElement("btnCouncilCancel", _fnHideModalConfirmingLoss);
+        /* BACK is not Cancel. Cancel closes the panel; Back returns to
+           the task menu, which is the move a researcher who opened the
+           wrong task actually wants — having to reopen the whole panel
+           from the toolbar was reported as annoying (2026-08-30). It
+           confirms the same way, because the draft is lost either way. */
+        _fnBindElement("btnCouncilBackFromForm", function () {
+            _fnReturnToTasksConfirmingLoss();
+        });
         var elDirectory = document.getElementById("councilDirectory");
         if (elDirectory) {
             elDirectory.addEventListener(
@@ -1210,6 +1556,19 @@ var VaibifyAgentCouncil = (function () {
         return (!isNaN(iStored) && iStored >= 60) ? iStored : 3600;
     }
 
+    var S_OUTPUT_BUDGET_STORAGE_KEY = "vaibifyCouncilOutputBudgetBytes";
+    var I_BYTES_PER_MEGABYTE = 1024 * 1024;
+
+    function _fiPreferredOutputBudgetMegabytes() {
+        var iStored = parseInt(
+            window.localStorage.getItem(S_OUTPUT_BUDGET_STORAGE_KEY)
+            || "", 10);
+        var iBytes = (!isNaN(iStored) && iStored >= I_BYTES_PER_MEGABYTE)
+            ? iStored
+            : DICT_DEFAULT_SETTINGS.iMaximumOutputBytesPerTurn;
+        return Math.round(iBytes / I_BYTES_PER_MEGABYTE);
+    }
+
     function _fdictReadSettingsForm() {
         /* The convene request SENDS the settings the form renders
            (remediation R6) — a form whose values never left the
@@ -1231,7 +1590,21 @@ var VaibifyAgentCouncil = (function () {
                kill. Sending the default when they had raised it would
                make the modal a lie. */
             iTurnWallClockSeconds: _fiPreferredTurnWallClockSeconds(),
+            iMaximumOutputBytesPerTurn: _fiReadOutputBudgetBytes(),
         };
+    }
+
+    function _fiReadOutputBudgetBytes() {
+        /* The FORM's value, remembered for next time. The backend
+           clamps to its own bounds and stays the authority. */
+        var iMegabytes = parseInt(
+            _fsReadValue("councilOutputBudgetMb") || "", 10);
+        var iBytes = (!isNaN(iMegabytes) && iMegabytes > 0)
+            ? iMegabytes * I_BYTES_PER_MEGABYTE
+            : DICT_DEFAULT_SETTINGS.iMaximumOutputBytesPerTurn;
+        window.localStorage.setItem(
+            S_OUTPUT_BUDGET_STORAGE_KEY, String(iBytes));
+        return iBytes;
     }
 
     function _fsDescribeParticipantsMissingAModel() {
@@ -1734,11 +2107,15 @@ var VaibifyAgentCouncil = (function () {
             var dictByPhase = dictRound.dictTurnsByPhase || {};
             Object.keys(dictByPhase).forEach(function (sPhase) {
                 dictByPhase[sPhase].forEach(function (dictTurn) {
-                    if (_fbIsWallClockKill(dictTurn)
-                            && !_setWallClockNoticesShown.has(
-                                dictTurn.sTurnId)) {
+                    if (_setWallClockNoticesShown.has(dictTurn.sTurnId)) {
+                        return;
+                    }
+                    if (_fbIsWallClockKill(dictTurn)) {
                         _setWallClockNoticesShown.add(dictTurn.sTurnId);
                         _fnOfferALongerTurnBudget(dictCampaign, dictTurn);
+                    } else if (_fbIsOutputCapKill(dictTurn)) {
+                        _setWallClockNoticesShown.add(dictTurn.sTurnId);
+                        _fnOfferABiggerOutputBudget(dictCampaign);
                     }
                 });
             });
@@ -1749,6 +2126,66 @@ var VaibifyAgentCouncil = (function () {
         return dictTurn.sStatus === "failed"
             && (dictTurn.sRejectedPayload || "").indexOf(
                 "killedAtTurnWallClockBudget") !== -1;
+    }
+
+    function _fbIsOutputCapKill(dictTurn) {
+        return dictTurn.sStatus === "failed"
+            && (dictTurn.sRejectedPayload || "").indexOf(
+                "killedAtTurnOutputCap") !== -1;
+    }
+
+    function _fnOfferABiggerOutputBudget(dictCampaign) {
+        /* Unlike the time budget, this offer RETRIES THIS campaign
+           rather than only remembering a number for the next one. A
+           turn killed at the output cap will be killed again at the
+           same cap, so an unchanged retry spends paid work to
+           reproduce a known outcome — the offer has to change the
+           condition to be worth making.
+
+           The suggestion is a multiple of the CURRENT budget, not a
+           measurement: the recorded byte count is truncated TO the cap
+           before it is stored, so a killed turn can only ever say "it
+           needed more than this", never how much more. */
+        var iCurrent = ((dictCampaign.dictSettings || {})
+            .iMaximumOutputBytesPerTurn)
+            || DICT_DEFAULT_SETTINGS.iMaximumOutputBytesPerTurn;
+        var iSuggested = Math.min(iCurrent * 2, 64 * I_BYTES_PER_MEGABYTE);
+        var iCurrentMb = Math.round(iCurrent / I_BYTES_PER_MEGABYTE);
+        var iSuggestedMb = Math.round(iSuggested / I_BYTES_PER_MEGABYTE);
+        if (iSuggested <= iCurrent) {
+            VaibifyApp.fnShowToast(
+                "An agent hit the largest output budget vaibify allows "
+                + "(" + iCurrentMb + " MB). Narrow the question rather "
+                + "than raising it further.", "error");
+            return;
+        }
+        VaibifyApp.fnShowConfirmModal(
+            "An agent produced more than its turn could carry",
+            "One agent was stopped at this council's per-turn output "
+            + "budget of " + iCurrentMb + " MB, and its work was lost. "
+            + "Agents that narrate heavily, invoke many tools, or emit "
+            + "a patch for every file they touch reach this before they "
+            + "reach the time limit.\n\nRetry the failed phase with "
+            + iSuggestedMb + " MB? The budget change applies to this "
+            + "council, so the retry runs under different conditions "
+            + "rather than repeating the same ones.",
+            function () {
+                _fnRetryWithOutputBudget(iSuggested, iSuggestedMb);
+            },
+            {sConfirmLabel: "Retry with " + iSuggestedMb + " MB",
+             sCancelLabel: "Leave it"});
+    }
+
+    async function _fnRetryWithOutputBudget(iBytes, iMegabytes) {
+        window.localStorage.setItem(
+            S_OUTPUT_BUDGET_STORAGE_KEY, String(iBytes));
+        var bSent = await _fbPostAction(
+            "/" + _dictState.sActiveCampaignId + "/retry",
+            {iMaximumOutputBytesPerTurn: iBytes});
+        if (bSent) {
+            VaibifyApp.fnShowToast(
+                "Retrying with " + iMegabytes + " MB per turn.", "info");
+        }
     }
 
     function _fnOfferALongerTurnBudget(dictCampaign, dictTurn) {
@@ -3461,11 +3898,34 @@ var VaibifyAgentCouncil = (function () {
             "plan. A new council can implement it — it produces a " +
             "reviewed patch you apply by hand, never an applied " +
             "change.</p>" +
+            _fsAcceptedPlanLocation() +
             "<div class=\"council-plan-actions\">" +
             "<button type=\"button\" id=\"btnCouncilImplementPlan\" " +
             "class=\"btn btn-primary\">Implement plan with new " +
             "council</button>" +
             "</div>" + _fsPlanExportRow();
+    }
+
+    function _fsAcceptedPlanLocation() {
+        /* Where the file IS, on screen, for as long as the panel is
+           open. The toast that used to be the only answer cleared in
+           five seconds. */
+        var sPath = _dictState.sLastAcceptedPlanPath ||
+            _fsAcceptedPlanPathForActiveCampaign();
+        if (!sPath) return "";
+        return "<p class=\"council-plan-location\">Saved at " +
+            "<code>" + _fsEscape(sPath) + "</code></p>";
+    }
+
+    function _fsAcceptedPlanPathForActiveCampaign() {
+        /* From the LISTING, so a reload that cleared module state still
+           knows where this campaign's plan landed. */
+        var listMatched = _dictState.listSummaries.filter(
+            function (dictSummary) {
+                return dictSummary.sCampaignId ===
+                    _dictState.sActiveCampaignId;
+            });
+        return (listMatched[0] || {}).sAcceptedPlanPath || "";
     }
 
     function _fnOpenImplementationForm() {
@@ -3904,6 +4364,13 @@ var VaibifyAgentCouncil = (function () {
             && !VaibifyApp.fbExecutionHostIsTheEnvironment())
             ? " on " + (VaibifyApp.fsGetExecutionHostname() || "the hub")
             : "";
+        /* The path is REMEMBERED, not just announced. A toast clears in
+           five seconds and a researcher who blinked had no way to find
+           where their accepted plan lived (2026-08-30). The panel now
+           renders it, and the listing carries sAcceptedPlanPath so
+           "View past councils" can show it for every accepted plan
+           long after this toast is gone. */
+        _dictState.sLastAcceptedPlanPath = dictResult.sLocalPlanPath || "";
         VaibifyApp.fnShowToast(
             "Plan saved" + sWhere + ": " +
             (dictResult.sLocalPlanPath || ""), "success");
@@ -4069,6 +4536,24 @@ var VaibifyAgentCouncil = (function () {
             _fnHideModal);
     }
 
+    function _fnReturnToTasksConfirmingLoss() {
+        /* Same protection as Cancel, different destination: the draft
+           is lost either way, so the question is asked either way. */
+        var fnGoBack = function () {
+            _dictState.dictImplementationSeed = null;
+            _fnRenderChooser(false);
+        };
+        if (!_fbConveneFormHasWork()) {
+            fnGoBack();
+            return;
+        }
+        VaibifyApp.fnShowConfirmModal(
+            "Go back and discard this council?",
+            "The question you have written will be lost. Your "
+            + "participants and settings will reset to their defaults.",
+            fnGoBack);
+    }
+
     function _fnShowWorkspaceModalClose() {
         /* Closing the workspace is NAVIGATION back to the chooser, not
            a dead end: hiding it and leaving the campaign active meant
@@ -4160,6 +4645,18 @@ var VaibifyAgentCouncil = (function () {
         fdictDraftFieldsForTest: function () { return _dictDraftFields; },
         fsActiveCampaignIdForTest: function () {
             return _dictState.sActiveCampaignId;
+        },
+        /* Chooser seams: the views are rendered from the LISTING,
+           so a test needs to supply one and re-render, and needs to
+           read back the seed an implement row plants. */
+        fnSetSummariesForTest: function (listSummaries) {
+            _dictState.listSummaries = listSummaries;
+        },
+        fnRenderChooserForTest: function (bListingStillLoading) {
+            _fnRenderChooser(Boolean(bListingStillLoading));
+        },
+        fdictImplementationSeedForTest: function () {
+            return _dictState.dictImplementationSeed;
         },
         fnSelectTabForTest: function (sTab) {
             _dictState.sActiveTab = sTab;

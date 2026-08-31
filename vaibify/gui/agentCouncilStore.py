@@ -740,8 +740,25 @@ def _fdictSummariseEntry(dictEntry):
         # planning at a proven boundary — and the researcher who paused
         # deserves to find it by the word they used.
         "bPauseRequested": bool(dictCampaign.get("bPauseRequested")),
+        # A planning council and an implementation council read alike in
+        # a list and mean different things to open.
+        "sCampaignKind": dictCampaign.get("sCampaignKind", ""),
+        # Where an accepted plan actually landed. A researcher was told
+        # the path in a toast that cleared in five seconds and had no
+        # way to find it again (2026-08-30). Read from disk rather than
+        # recorded on the campaign, so it cannot claim a file that was
+        # moved or removed underneath it.
+        "sAcceptedPlanPath": _fsFindAcceptedPlanPath(dictEntry),
         "dictStoppingPoint": _fdictDescribeStoppingPointForEntry(dictEntry),
     }
+
+
+def _fsFindAcceptedPlanPath(dictEntry):
+    """Return the accepted plan's path, or "" when none is on disk."""
+    sPath = os.path.join(
+        dictEntry["checkpointDurable"].sCampaignDirectory,
+        S_ACCEPTED_PLAN_BASENAME)
+    return sPath if os.path.isfile(sPath) else ""
 
 
 def fdictDescribeStoredStoppingPoint(dictStore, sCampaignId):

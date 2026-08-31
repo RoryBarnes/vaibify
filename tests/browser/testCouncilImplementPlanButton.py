@@ -95,6 +95,14 @@ def testTheImplementButtonOpensAFormSeededWithTheSourceCouncil(
     _fdictClaimAndActivate(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    # The chooser lists nothing itself now — four tasks, each
+    # opening its own view. A campaign that cannot be continued
+    # lives under "View past councils" (2026-08-30).
+    # The task buttons that READ the listing stay disabled
+    # until it arrives; only "Plan a change" is free of it.
+    pageDashboard.wait_for_selector(
+        "#btnCouncilViewPast:not([disabled])", timeout=8000)
+    pageDashboard.click("#btnCouncilViewPast")
     pageDashboard.wait_for_selector(".council-open-row", timeout=8000)
     pageDashboard.click(".council-open-row")
     pageDashboard.wait_for_selector(

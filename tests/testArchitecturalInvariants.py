@@ -4257,7 +4257,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # was written before that contract existed and the repo-binding
     # branch had no pause route to catch, so neither branch's suite
     # could fail on it and both were green.
-    "routes/councilRoutes.py": 1448,
+    # 1448 -> 1458 (2026-08-30): the accepted-plan seed accepts a
+    # source that has ALREADY been handed to an implementation council,
+    # not only one in planAccepted. Requiring planAccepted alone made
+    # the first implementation council a one-way door — a researcher
+    # whose implementation failed was told to "accept the plan first"
+    # about a plan they had accepted. Ten lines, on the guard that was
+    # already there.
+    # 1458 -> 1494 (2026-08-30): retry accepts a raised output
+    # budget and applies it to the campaign, so retry can change
+    # the condition that caused the failure rather than repeat
+    # it.
+    "routes/councilRoutes.py": 1494,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4328,7 +4339,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the surfaces that must never confuse the two. It rides the
     # existing crash-resume machinery rather than adding a second,
     # so no module gained a second responsibility.
-    "agentCouncilStore.py": 982,
+    # 982 -> 999 (2026-08-30): two listing fields and their reader.
+    # sCampaignKind, because a planning and an implementation council
+    # read alike in a list; and sAcceptedPlanPath, probed from disk so
+    # the listing can say where a plan landed instead of a researcher
+    # having to catch a five-second toast. Both belong to the summary
+    # this module already composes — same responsibility, more of it.
+    "agentCouncilStore.py": 999,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4398,7 +4415,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module already owns, and the pause rides the existing
     # crash-resume path rather than adding a second continuation. The
     # engine gained two more endings, not a second responsibility.
-    "agentCouncil.py": 1512,
+    # 1512 -> 1521 (2026-08-30): the stall explanation, which is a
+    # new way for a turn to end and belongs beside the other four.
+    "agentCouncil.py": 1521,
     # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
     # and the deliberation-summary phase instruction plus its schema
     # extension. This module IS the instruction contract and the turn
@@ -4449,7 +4468,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # create-then-pull-on-miss so the blind-spot ratchet could keep
     # falling; the create moved into a named closure the retry helper
     # drives.
-    "agentCouncilDockerGateway.py": 943,
+    # 943 -> 951 (2026-08-30): the stall window threaded to the
+    # pump, and a stall joining the two breaches that already kill
+    # the container. Detecting silence and leaving the runner alive
+    # would be worse than the failure it replaces.
+    "agentCouncilDockerGateway.py": 951,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4513,7 +4536,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # informative unit ("0.0 hours ago" read as a broken clock), and a
     # login that cannot outlive one turn is refused before a runner is
     # built — a runner is given no refresh token and cannot renew.
-    "agentCouncilProviders.py": 1185,
+    # 1185 -> 1199 (2026-08-30): the stall failure class, its
+    # sentence, and the two execution facts it reports. The module
+    # already owns "what happened to a turn".
+    "agentCouncilProviders.py": 1199,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5681,7 +5707,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the deliberation summary. The document changes are both inside
     # fsComposePlanMarkdown, this module's existing single authority on
     # what that artifact says.
-    "agentCouncilController.py": 2066,
+    # 2066 -> 2091 (2026-08-30): the output cap and the stall
+    # window threaded to the connection, beside the wall clock
+    # that was already there. Same responsibility — this is where
+    # a campaign's budgets become a runner's budgets.
+    "agentCouncilController.py": 2091,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

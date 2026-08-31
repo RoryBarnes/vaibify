@@ -93,11 +93,20 @@ def testAProvenanceLostGateRendersReadOnlyAndUncounted(
     _fdictClaimAndActivate(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
-    pageDashboard.wait_for_selector(".council-open-row", timeout=8000)
+    # Continue still excludes it, and still says so with a count — that
+    # is the half of this guarantee about what must NOT be offered.
     sContinueLabel = pageDashboard.inner_text("#btnCouncilOpenExisting")
     assert "(0)" in sContinueLabel
     assert pageDashboard.is_disabled("#btnCouncilOpenExisting")
 
+    # It stays READABLE, under the task that exists for exactly that.
+    # The chooser no longer lists rows itself (2026-08-30).
+    # The task buttons that READ the listing stay disabled
+    # until it arrives; only "Plan a change" is free of it.
+    pageDashboard.wait_for_selector(
+        "#btnCouncilViewPast:not([disabled])", timeout=8000)
+    pageDashboard.click("#btnCouncilViewPast")
+    pageDashboard.wait_for_selector(".council-open-row", timeout=8000)
     pageDashboard.click(".council-open-row")
     pageDashboard.wait_for_selector(
         "#agentCouncilWorkspace", state="visible", timeout=16000)

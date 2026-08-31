@@ -190,6 +190,15 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
         "answer. Agents that explore the repository with many tool "
         "calls hit this; a single-shot answer does not. Raising the "
         "per-turn budget is the remedy, not a change to the question.",
+    "killedAfterProducingNothing":
+        "this agent produced nothing at all for long enough that its "
+        "turn was treated as stopped, and its container was stopped "
+        "with it. This is what a dead provider connection, a wedged "
+        "CLI, or a container that lost its network looks like from "
+        "outside — NOT a slow answer, because a working agent emits "
+        "something as it goes. Retrying is the right response; if it "
+        "recurs immediately, the fault is in the environment rather "
+        "than the question.",
     "noResultEvent":
         "the assistant stopped without returning an answer. Nothing in "
         "the stream reported an error, so the cause is outside what the "

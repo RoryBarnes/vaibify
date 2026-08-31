@@ -1331,3 +1331,50 @@ def testTheProxyRelayIsBoundedPerConnection():
     sSource = agentCouncilEgress.S_CONNECT_PROXY_SCRIPT
     assert "readerSource.read(I_RELAY_CHUNK_BYTES)" in sSource
     assert "await writerSink.drain()" in sSource
+
+
+def testAStartBuildFaultAnswersAsARefusalNotAServerError(
+        tmp_path, monkeypatch):
+    """An egress fault during START carries its reason, like retry's.
+
+    The build-await helper exists because this translation was written
+    for resume, missed by retry, and a researcher's retry died as an
+    unhandled 500 (2026-08-27). START was the THIRD caller and the only
+    one still awaiting the build itself, so a slow egress proxy reached
+    a researcher as a page of traceback on the path most councils take
+    (2026-08-30). Same defect, third site — which is why this asserts
+    the property here rather than trusting the shared helper's
+    existence.
+    """
+    from vaibify.gui import agentCouncilEgress
+    dictStore, dictRegistry, sCampaignId = (
+        _tBuildRegisteredPlanningCampaign(tmp_path))
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+
+    def _fnRaiseEgressFault(dictRuntime, dictParticipant):
+        raise agentCouncilEgress.EgressSetupError(
+            "the egress proxy never reported 'vaibify-egress: "
+            "listening' within 20.0 seconds")
+
+    monkeypatch.setattr(
+        controller, "fconnectionBuildParticipantConnection",
+        _fnRaiseEgressFault)
+
+    async def _fdictCapture():
+        """The manifest shape the launch path actually reads."""
+        return {"sSnapshotSha256": "0" * 64,
+                "listResearcherExcludedPaths": []}
+
+    monkeypatch.setattr(
+        controller, "_fbaReadSealedSnapshot",
+        lambda dictStore, sId: b"sealed")
+
+    async def _fnDriveLaunch():
+        await controller.fdictLaunchCampaignDeliberation(
+            dictControllerState, dictStore, dictRegistry, sCampaignId,
+            _fdictCapture, "ubuntu:24.04")
+
+    with pytest.raises(controller.CouncilCommandError) as error:
+        asyncio.run(_fnDriveLaunch())
+    assert "never reported" in str(error.value), str(error.value)
+    assert "record is untouched" in str(error.value), str(error.value)

@@ -187,6 +187,7 @@ S_EMPTY_BECAUSE_WALL_CLOCK = "killedAtTurnWallClockBudget"
 # past the cap is destroyed exactly like one that runs past the clock,
 # and the two are indistinguishable without this flag.
 S_EMPTY_BECAUSE_OUTPUT_CAP = "killedAtTurnOutputCap"
+S_EMPTY_BECAUSE_STALL = "killedAfterProducingNothing"
 # The kernel's kill, not ours. Checked AFTER our own two bounds, because
 # a breach we caused is the better explanation when both are true.
 S_EMPTY_BECAUSE_OUT_OF_MEMORY = "runnerOutOfMemory"
@@ -378,6 +379,9 @@ def fsExplainEmptyResult(listEvents, dictExecution=None):
         S_EMPTY_BECAUSE_OUT_OF_MEMORY:
             "the chairbot's runner was killed by the kernel for running "
             "out of memory",
+        S_EMPTY_BECAUSE_STALL:
+            "the chairbot went silent and produced nothing for long "
+            "enough that its runner was treated as stopped",
     }
     sSentence = dictReasonSentences.get(
         dictDiagnosis["sEmptyResultReason"],
@@ -431,6 +435,12 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         sReason = S_EMPTY_BECAUSE_OUTPUT_CAP
     elif dictRun.get("bOomKilled"):
         sReason = S_EMPTY_BECAUSE_OUT_OF_MEMORY
+    # AFTER the three bound breaches, deliberately: a turn killed at
+    # its output cap or its deadline also stops producing, so testing
+    # silence first would relabel every one of them a stall and hide
+    # the bound the researcher actually needs to raise.
+    elif dictRun.get("bStalled"):
+        sReason = S_EMPTY_BECAUSE_STALL
     return {
         "sRawResultText": "",
         "sEmptyResultReason": sReason,
@@ -447,6 +457,8 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         # one field that separates them (2026-08-25).
         "bOutputCapExceeded": bool(dictRun.get("bOutputCapExceeded")),
         "bOomKilled": bool(dictRun.get("bOomKilled")),
+        "bStalled": bool(dictRun.get("bStalled")),
+        "fStallSeconds": float(dictRun.get("fStallSeconds") or 0),
         "iOutputBytes": int(dictRun.get("iOutputBytes") or 0),
         "fElapsedSeconds": round(float(dictRun.get("fElapsedSeconds") or 0), 1),
         "jsonExitCode": dictRun.get("iExitCode"),
@@ -892,7 +904,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                  baSnapshotTar, sRequestedModel, dictEgress=None,
                  sHostCredentialPath="", dictLimits=None, saCliProgram=None,
                  fWallClockSeconds=None, iOutputByteCap=None,
-                 fsStageRunnerCredential=None):
+                 fsStageRunnerCredential=None, fStallSeconds=None):
         self.dictGateway = dictGateway
         self.sCampaignId = sCampaignId
         self.sImageReference = sImageReference
@@ -911,6 +923,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         self.saCliProgram = list(saCliProgram) if saCliProgram else None
         self.fWallClockSeconds = fWallClockSeconds
         self.iOutputByteCap = iOutputByteCap
+        self.fStallSeconds = fStallSeconds
         self._sHandle = ""
         self._sReservationId = ""
         self._listEvents = []
@@ -1044,7 +1057,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
                 self.dictGateway, self._sHandle, saArgv,
                 self.iOutputByteCap, self.fWallClockSeconds,
-                agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin)
+                agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin,
+                self.fStallSeconds)
             self._listEvents = flistParseStreamJsonEvents(
                 self._dictTurnExecution["sOutput"])
             self.dictModelIdentity = fdictExtractModelIdentity(

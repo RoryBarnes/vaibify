@@ -111,6 +111,14 @@ def testARetryOfferAndItsHeldQuestionsTellOneStory(
     _fdictClaimAndActivate(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    # The chooser lists nothing itself now — four tasks, each
+    # opening its own view. This campaign IS resumable, so it
+    # lives under "Continue a council" (2026-08-30).
+    # The task buttons that READ the listing stay disabled
+    # until it arrives; only "Plan a change" is free of it.
+    pageDashboard.wait_for_selector(
+        "#btnCouncilOpenExisting:not([disabled])", timeout=8000)
+    pageDashboard.click("#btnCouncilOpenExisting")
     pageDashboard.wait_for_selector(".council-open-row", timeout=8000)
     pageDashboard.click(".council-open-row")
 

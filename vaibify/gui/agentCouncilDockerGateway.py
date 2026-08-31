@@ -330,7 +330,7 @@ def _fnKillContainerQuietly(dockerCouncil, sContainerId):
 def fdictExecuteBoundedTurn(
     dictGateway, sHandle, listCommand,
     iOutputByteCap=None, fWallClockSeconds=None, sWorkingDirectory=None,
-    baStdinPayload=None,
+    baStdinPayload=None, fStallSeconds=None,
 ):
     """Execute one bounded command (the turn) in a handle's container.
 
@@ -365,11 +365,17 @@ def fdictExecuteBoundedTurn(
                 socketRaw, baStdinPayload, fDeadlineMonotonic)
             socketRaw.shutdown(socket.SHUT_WR)
         dictPumped = agentCouncilRunner.fdictPumpBoundedExecStream(
-            socketRaw, iOutputByteCap, fDeadlineMonotonic)
+            socketRaw, iOutputByteCap, fDeadlineMonotonic,
+            fStallSeconds)
     finally:
         socketRaw.close()
+    # A STALL is a breach like the other two. Detecting silence and then
+    # leaving the container running would swap a turn that overruns for
+    # a runner nobody is reading and nobody stops — worse than the
+    # failure it replaces, because it holds its egress lease too.
     bBreached = (
         dictPumped["bOutputCapExceeded"] or dictPumped["bDeadlineExceeded"]
+        or dictPumped["bStalled"]
     )
     if bBreached:
         _fnKillContainerQuietly(dockerCouncil, dictHandle["sContainerId"])
@@ -404,6 +410,8 @@ def fdictExecuteBoundedTurn(
         "sOutput": dictPumped["baCaptured"].decode(
             "utf-8", errors="replace"),
         "bOutputCapExceeded": dictPumped["bOutputCapExceeded"],
+        "bStalled": dictPumped["bStalled"],
+        "fStallSeconds": dictPumped["fStallSeconds"],
         "bWallClockExceeded": dictPumped["bDeadlineExceeded"],
         # The observed stream size. The diagnosis read this key before
         # anything produced it, so every record said zero bytes while

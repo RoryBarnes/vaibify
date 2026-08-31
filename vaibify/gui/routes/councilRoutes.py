@@ -210,9 +210,17 @@ class CouncilRetryRequest(BaseModel):
     the failure would archive the retried campaign the moment its
     drive starts, so the clear must be the researcher's explicit,
     recorded choice.
+
+    ``iMaximumOutputBytesPerTurn`` raises THIS campaign's output budget
+    before the phase re-runs. Retry is otherwise a promise the product
+    cannot keep for the failure it is most often offered against: a
+    turn killed at the output cap will be killed again at the same cap,
+    so an unchanged retry spends paid work to reproduce a known
+    outcome. Zero leaves the campaign's budget alone.
     """
 
     bClearStopRequest: bool = False
+    iMaximumOutputBytesPerTurn: int = 0
 
 
 class CouncilResumeRequest(BaseModel):
@@ -828,8 +836,18 @@ def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
         raise HTTPException(
             409, "the source council belongs to a different project or "
             "repository")
-    if jsonSource.get("sState") != (
-            agentCouncilCampaign.S_STATE_PLAN_ACCEPTED):
+    # ACCEPTED, or accepted-and-already-handed-to-an-implementation
+    # council. Requiring planAccepted alone made the FIRST implementation
+    # council a one-way door: convening one moves the source to
+    # awaitingImplementation, so a researcher whose implementation
+    # council then failed could never implement that plan again and the
+    # refusal told them to "accept the plan first" about a plan they had
+    # already accepted (reported live 2026-08-30). The artifact the seed
+    # reads is the same sealed plan in both states; what differs is only
+    # whether an implementation has been attempted before.
+    if jsonSource.get("sState") not in (
+            agentCouncilCampaign.S_STATE_PLAN_ACCEPTED,
+            agentCouncilCampaign.S_STATE_AWAITING_IMPLEMENTATION):
         raise HTTPException(
             409, "only an accepted plan can be implemented; review and "
             "accept the plan first")
@@ -1021,6 +1039,31 @@ def _fnRegisterResume(app, dictCtx):
             agentCouncilController.S_COMMAND_RESUME, _fdictExecuteResume)
 
 
+def _fnRaiseOutputBudgetForRetry(dictStore, sCampaignId, jsonCampaign,
+                                 iRequestedBytes):
+    """Raise this campaign's per-turn output budget, never lower it.
+
+    RAISE only, deliberately: retry exists to change the condition that
+    caused the failure, and quietly shrinking a budget mid-campaign
+    would make a later turn fail for a reason the researcher never
+    chose. The value is clamped to the same bounds the convene form
+    offers, so the retry lane cannot be used to set a budget the
+    convene lane refuses.
+    """
+    if not iRequestedBytes:
+        return
+    iClamped = agentCouncilCampaign.fiClampTurnOutputCapBytes(
+        iRequestedBytes)
+    dictSettings = jsonCampaign.setdefault("dictSettings", {})
+    iCurrent = agentCouncilCampaign.fiClampTurnOutputCapBytes(
+        dictSettings.get("iMaximumOutputBytesPerTurn"))
+    if iClamped <= iCurrent:
+        return
+    dictSettings["iMaximumOutputBytesPerTurn"] = iClamped
+    agentCouncilStore.fnCheckpointStoredCampaign(
+        dictStore, sCampaignId, jsonCampaign)
+
+
 def _fnRegisterRetry(app, dictCtx):
     """Register POST /api/agent-councils/{sContainerId}/{sCampaignId}/retry.
 
@@ -1048,6 +1091,9 @@ def _fnRegisterRetry(app, dictCtx):
             # login pre-flight compares against is this campaign's.
             jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
+            _fnRaiseOutputBudgetForRetry(
+                dictStore, sCampaignId, jsonCampaign,
+                request.iMaximumOutputBytesPerTurn)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             fnRefuseRunnerBackendUnlessEnabled(sImageReference)

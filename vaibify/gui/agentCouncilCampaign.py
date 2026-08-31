@@ -34,6 +34,12 @@ __all__ = [
     "DICT_DEFAULT_SETTINGS",
     "I_MINIMUM_TURN_WALL_CLOCK_SECONDS",
     "I_MAXIMUM_TURN_WALL_CLOCK_SECONDS",
+    "I_MINIMUM_TURN_STALL_SECONDS",
+    "I_MAXIMUM_TURN_STALL_SECONDS",
+    "fiClampTurnStallSeconds",
+    "I_MINIMUM_TURN_OUTPUT_CAP_BYTES",
+    "I_MAXIMUM_TURN_OUTPUT_CAP_BYTES",
+    "fiClampTurnOutputCapBytes",
     "DICT_EMPTY_PROJECT_IDENTITY",
     "LIST_CAMPAIGN_REQUIRED_KEYS",
     "fsComposeUniqueCampaignName",
@@ -146,14 +152,38 @@ DICT_DEFAULT_SETTINGS = {
     "iMinimumRounds": 1,
     "iMaximumRounds": 3,
     "iMaximumConcurrentTurns": 2,
-    "iMaximumOutputBytesPerTurn": 262144,
+    # 256 KiB -> 10 MiB (researcher ruling, 2026-08-30). An
+    # IMPLEMENTATION turn emits a unified diff for every file it
+    # touches on top of its narration, so the ceiling inherited from
+    # planning turns killed both participants of the first real
+    # implementation council within nine minutes of each other. Ten
+    # megabytes of accumulated text is a trivial amount of host memory,
+    # and the runaway it guards against is bounded by the WALL CLOCK,
+    # which is the real backstop; this cap only decides how much of a
+    # legitimate answer survives.
+    "iMaximumOutputBytesPerTurn": 10 * 1024 * 1024,
     # Seconds one turn may run before its container is destroyed. A
     # SETTING rather than only a constant, because the right value is a
     # property of the question being asked: a repository audit with
     # dozens of tool calls is not the same shape of work as a
     # single-shot opinion, and the researcher is the one who knows
     # which they are convening.
-    "iTurnWallClockSeconds": 3600,
+    # 3600 -> 14400 (researcher ruling, 2026-08-30). The longest real
+    # feature build the researcher has run took 3.5 hours, and an
+    # implementation turn that read the repository and wrote a patch
+    # was still working when the old hour expired. Four hours is sized
+    # to the work, not to impatience.
+    #
+    # Raising it costs FAILURE DETECTION, which is why the stall
+    # window below exists: a total budget cannot tell a turn that is
+    # working from one that died, so a generous total needs a tighter
+    # signal beside it. Both phases carry both numbers.
+    "iTurnWallClockSeconds": 14400,
+    # How long a turn may produce NOTHING before it is treated as
+    # stopped. Not a progress check -- a model narrating in a loop
+    # emits output and makes none -- but silence is the one stall this
+    # side of the boundary can actually observe.
+    "iTurnStallSeconds": 600,
 }
 
 # The bounds on that setting. The ceiling is not a judgement about
@@ -162,6 +192,55 @@ DICT_DEFAULT_SETTINGS = {
 # abandoned container.
 I_MINIMUM_TURN_WALL_CLOCK_SECONDS = 60
 I_MAXIMUM_TURN_WALL_CLOCK_SECONDS = 43200
+
+# The bounds on the per-turn OUTPUT cap. The floor is not a preference:
+# campaigns convened before this setting was wired to anything carry
+# 262144, and enforcing that literally would cap them BELOW the 1 MiB
+# they have been running under all along -- a fix that made existing
+# councils worse. The floor is therefore the old effective ceiling, so
+# threading the setting can only ever raise a stored campaign's budget,
+# never lower it.
+# The bounds on the stall window. The floor is not a preference: a
+# turn legitimately goes quiet between tool calls, and a window shorter
+# than that would kill working turns for the crime of thinking.
+I_MINIMUM_TURN_STALL_SECONDS = 60
+I_MAXIMUM_TURN_STALL_SECONDS = 3600
+
+
+def fiClampTurnStallSeconds(iRequestedSeconds):
+    """Return the silence window a turn actually runs under.
+
+    Absent or malformed values resolve to the default rather than
+    raising, for the same reason the output clamp does: this is read on
+    the launch path, where a bad number in an old record must not be
+    able to stop a council from starting.
+    """
+    try:
+        iSeconds = int(iRequestedSeconds)
+    except (TypeError, ValueError):
+        return DICT_DEFAULT_SETTINGS["iTurnStallSeconds"]
+    return max(I_MINIMUM_TURN_STALL_SECONDS,
+               min(iSeconds, I_MAXIMUM_TURN_STALL_SECONDS))
+
+
+I_MINIMUM_TURN_OUTPUT_CAP_BYTES = 1024 * 1024
+I_MAXIMUM_TURN_OUTPUT_CAP_BYTES = 64 * 1024 * 1024
+
+
+def fiClampTurnOutputCapBytes(iRequestedBytes):
+    """Return the per-turn output cap a campaign actually runs under.
+
+    Absent, unreadable, or out-of-range values resolve to the default
+    rather than raising: this is consulted on the launch path, where a
+    malformed number in an old record must not be able to stop a
+    council from starting.
+    """
+    try:
+        iBytes = int(iRequestedBytes)
+    except (TypeError, ValueError):
+        return DICT_DEFAULT_SETTINGS["iMaximumOutputBytesPerTurn"]
+    return max(I_MINIMUM_TURN_OUTPUT_CAP_BYTES,
+               min(iBytes, I_MAXIMUM_TURN_OUTPUT_CAP_BYTES))
 
 LIST_CAMPAIGN_REQUIRED_KEYS = [
     "sCampaignId", "sState", "sQuestion", "listParticipants",

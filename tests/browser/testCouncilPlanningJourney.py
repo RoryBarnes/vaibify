@@ -363,6 +363,15 @@ def _fnReloadAndReopen(page, serverHub, sCampaignId):
     )
     page.click("#btnAgentCouncil")
     page.wait_for_selector("#btnCouncilOpenExisting", timeout=5000)
+    # The chooser is four TASKS now and lists nothing itself: the rows
+    # used to sit under the buttons, which duplicated the very button
+    # that is meant to show them (2026-08-30). Continue opens the view.
+    # The task buttons that READ the listing stay disabled
+    # until it arrives; only "Plan a change" is free of it.
+    page.wait_for_selector(
+        "#btnCouncilViewPast:not([disabled])", timeout=8000)
+    page.click("#btnCouncilViewPast")
+    page.wait_for_selector(".council-open-row", timeout=5000)
     page.click(".council-open-row")
     page.wait_for_selector("#agentCouncilWorkspaceBody .council-summary",
                            timeout=8000)

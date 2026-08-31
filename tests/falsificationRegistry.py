@@ -13843,30 +13843,20 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/councilRoutes.py',
         # Both handlers read the turn budget from a name they never
         # bind -- NameError, 500, on every resume and every retry.
-        old=(
-            '            jsonCampaign = fjsonRequireCampaign(\n'
-            '                dictStore, sCampaignId, sName, '
-            'sProjectRepoPath)\n'
-            '            sImageReference = await ffnBuildImageResolver(\n'
-            '                dictCtx, sContainerId)()\n'
-            '            fnRefuseRunnerBackendUnlessEnabled(sImageReference)\n'
-            '            await asyncio.to_thread(\n'
-            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId,\n'
-            '                _ffTurnBudgetSeconds(jsonCampaign))'
-        ),
-        new=(
-            '            fjsonRequireCampaign(\n'
-            '                dictStore, sCampaignId, sName, '
-            'sProjectRepoPath)\n'
-            '            sImageReference = await ffnBuildImageResolver(\n'
-            '                dictCtx, sContainerId)()\n'
-            '            fnRefuseRunnerBackendUnlessEnabled(sImageReference)\n'
-            '            await asyncio.to_thread(\n'
-            '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId,\n'
-            '                _ffTurnBudgetSeconds(dictCampaign))'
-        ),
+        #
+        # NARROWED to the budget read alone (2026-08-30). The anchor
+        # used to span the whole gate block, which was byte-identical
+        # in both handlers until retry gained its budget-raise call and
+        # the span stopped matching twice. Reducing
+        # iExpectedOccurrences to 1 would have been the wrong repair:
+        # it would leave the resume copy unmutated and the report would
+        # still read green, which is precisely the several-copies
+        # blind spot iExpectedOccurrences exists to close. The read is
+        # what carries the defect — the binding above it is unused
+        # afterwards, so pointing at `dictCampaign` reinstates the
+        # NameError in both handlers exactly as before.
+        old='                _ffTurnBudgetSeconds(jsonCampaign))',
+        new='                _ffTurnBudgetSeconds(dictCampaign))',
         iExpectedOccurrences=2,
     ),
     Falsification(

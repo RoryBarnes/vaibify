@@ -365,8 +365,14 @@ def _ftExtractFramePayloads(baPending):
     return (baPayload, baPending)
 
 
+# How long a turn may emit NOTHING before the pump calls it stopped.
+# The default lives in the campaign settings; this is the fallback for
+# direct library callers, matching it.
+F_DEFAULT_TURN_STALL_SECONDS = 600.0
+
+
 def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
-                               fDeadlineMonotonic):
+                               fDeadlineMonotonic, fStallSeconds=None):
     """Read an exec stream under an output-byte cap and a deadline.
 
     Host-side enforcement: the poll timeout keeps every blocking read
@@ -378,9 +384,22 @@ def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
     baPending = b""
     bOutputCapExceeded = False
     bDeadlineExceeded = False
+    bStalled = False
+    if fStallSeconds is None:
+        fStallSeconds = F_DEFAULT_TURN_STALL_SECONDS
+    fLastOutputMonotonic = time.monotonic()
     while True:
         if time.monotonic() >= fDeadlineMonotonic:
             bDeadlineExceeded = True
+            break
+        # SILENCE, not lack of progress. A model narrating in a loop
+        # emits bytes and achieves nothing, and this cannot tell the
+        # difference — but a turn whose provider connection died, whose
+        # CLI wedged, or whose container lost its network goes quiet,
+        # and that is the failure a four-hour budget would otherwise
+        # hide until the afternoon was gone (2026-08-30).
+        if time.monotonic() - fLastOutputMonotonic >= fStallSeconds:
+            bStalled = True
             break
         try:
             baChunk = socketRaw.recv(65536)
@@ -390,6 +409,10 @@ def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
             break
         if not baChunk:
             break
+        # Stamped on BYTES ARRIVING, not on frames decoded: a partial
+        # frame is still the far end being alive, and requiring a whole
+        # decoded frame would call a slow large message a stall.
+        fLastOutputMonotonic = time.monotonic()
         baPending += baChunk
         tSplitFrames = _ftExtractFramePayloads(baPending)
         baCaptured += tSplitFrames[0]
@@ -402,6 +425,8 @@ def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
         "baCaptured": baCaptured,
         "bOutputCapExceeded": bOutputCapExceeded,
         "bDeadlineExceeded": bDeadlineExceeded,
+        "bStalled": bStalled,
+        "fStallSeconds": fStallSeconds,
     }
 
 

@@ -671,15 +671,24 @@ def test_the_chooser_distinguishes_identical_questions():
     them apart, so the rows are grouped under the directory that
     answered — and the ordering claim is limited to what a summary can
     actually support.
+
+    The ORDERING now lives in ``_flistSortedSummaries`` and the split
+    in the per-task selectors, because the chooser stopped listing
+    anything itself (2026-08-30): a dead campaign and a live gate are
+    now separated by which VIEW you opened, which is a stronger
+    separation than two headings on one screen.
     """
     sSource = _fsCouncilSource()
-    sBody = _fsFunctionBody(sSource, "_fsSummariesList")
+    sBody = _fsFunctionBody(sSource, "_flistSortedSummaries")
     # Ordered by the record's own clock, not by a position in a list.
     assert "fLastActivityEpoch" in sBody
     assert "sort(" in sBody
     # Split by whether the council can actually be continued, so a dead
     # campaign is not offered beside a live gate.
-    assert "_fbSummaryIsResumable" in sBody
+    assert "_fbSummaryIsResumable" in _fsFunctionBody(
+        sSource, "_flistResumableSummaries")
+    assert "_fbSummaryIsResumable" in _fsFunctionBody(
+        sSource, "_flistPastSummaries")
     sRow = _fsFunctionBody(sSource, "_fsOneSummaryRow")
     assert "sCampaignName" in sRow, (
         "rows are identified by the question alone, which is identical "

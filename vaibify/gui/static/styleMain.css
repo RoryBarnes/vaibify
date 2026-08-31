@@ -6843,6 +6843,64 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     cursor: help;
 }
 
+/* The council modal's close button carried the class `modal-close`,
+   which had NO rule anywhere in this stylesheet — so it rendered as an
+   unstyled button in normal flow and landed at the TOP LEFT of the
+   dialog, where a researcher reported it (2026-08-30). Every other
+   dismissible surface in vaibify puts its × in the top right. */
+.modal-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--border-radius);
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.council-choice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    text-align: left;
+    width: 100%;
+    padding: 10px 14px;
+}
+
+.council-choice-label {
+    font-weight: 600;
+}
+
+/* The sentence under each task. A four-item menu where every item is
+   two words makes the researcher guess what the difference is —
+   which is the question that produced this screen. */
+.council-choice-explain {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.council-view-actions {
+    margin-top: 14px;
+}
+
+.council-plan-location {
+    margin: 8px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    word-break: break-all;
+}
+
 .council-modal {
     max-width: 720px;
     width: 90%;
@@ -6855,14 +6913,15 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     position: relative;
 }
 
+/* VERTICAL (researcher preference, 2026-08-30). Four side-by-side
+   buttons squeeze each task's explaining sentence into a narrow column
+   and read as a toolbar; stacked, they read as a menu of tasks, which
+   is what they are. */
 .council-chooser {
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    gap: 10px;
     margin: 16px 0;
-}
-
-.council-choice {
-    flex: 1;
 }
 
 .council-summaries {
@@ -6888,6 +6947,22 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--highlight-color);
     font-weight: 600;
     margin-right: 8px;
+}
+
+/* The name is the row's heading and the rest is detail beneath it.
+   Inline, the campaign name ran straight into the plan path with no
+   separator ("An accepted planplan saved at /..."). */
+.council-open-name {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.council-open-where {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    word-break: break-all;
 }
 
 .council-field {
@@ -7607,4 +7682,17 @@ body.council-workspace-open #mainLayout {
 .council-chat-text {
     white-space: pre-wrap;
     color: var(--text-primary);
+}
+
+/* A past-council row carries its own delete beside the open button,
+   not inside it: a button nested in a button is invalid markup, and a
+   stray click would open the council it was meant to remove. */
+.council-past-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.council-past-row .council-open-row {
+    flex: 1;
 }

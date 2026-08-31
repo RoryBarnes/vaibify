@@ -272,6 +272,22 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
             (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
             .get("iTurnWallClockSeconds")
             or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS),
+        # The SAME reason, for the other budget. This argument was
+        # missing, so iMaximumOutputBytesPerTurn was exactly the number
+        # in a record that governs nothing the comment above warns
+        # about: every turn ran under the module default while the
+        # record claimed 256 KiB, and two implementation turns died at
+        # a ceiling no setting could move (2026-08-30).
+        iOutputByteCap=agentCouncilCampaign.fiClampTurnOutputCapBytes(
+            (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
+            .get("iMaximumOutputBytesPerTurn")),
+        # The third budget, threaded at the same point as the other two
+        # so it cannot become the next number in a record that governs
+        # nothing.
+        fStallSeconds=float(
+            agentCouncilCampaign.fiClampTurnStallSeconds(
+                (dictRuntime.get("dictCampaign") or {})
+                .get("dictSettings", {}).get("iTurnStallSeconds"))),
     )
 
 
@@ -1114,7 +1130,16 @@ async def fdictLaunchCampaignDeliberation(
             _fdictBuildCampaignRuntime, dictControllerState, dictStore,
             dictRegistry, sCampaignId, dictCampaign, sImageReference,
             baSnapshotTar, fsStageRunnerCredential))
-        dictRuntime = await asyncio.shield(taskBuild)
+        # Through the SHARED awaiter, which cleans up a half-built
+        # runtime and turns an infrastructure fault into the route's own
+        # refusal. START was the third caller and the only one still
+        # awaiting the build itself, so a slow egress proxy reached a
+        # researcher as an unhandled 500 and a page of traceback while
+        # resume and retry answered it in a sentence (2026-08-30). The
+        # helper's own docstring records the first two divergences; this
+        # is the third, in the path most researchers use.
+        dictRuntime = await _fdictAwaitRuntimeBuild(
+            dictControllerState, sCampaignId, taskBuild)
         sTurnId = _fsSpawnDriveTask(
             dictRuntime,
             dictRuntime["engineCouncil"].fdictRunUntilBlocked)
