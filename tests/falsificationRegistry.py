@@ -14599,6 +14599,19 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testCouncilPauseSurface.py::'
+            'testADeliberatingCouncilWithNoStopKeepsItsControls'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The stopping surface renders unconditionally, so every live
+        # council loses its Pause and Stop controls and is told it is
+        # settling. This is the pair entry: it is what the two positive
+        # stop entries would not catch on their own.
+        old='        if (dictCampaign.bStopRequested) {',
+        new='        if (true) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
             'testAStopBeatsAPauseWhenTheRecordCarriesBoth'
         ),
         source='vaibify/gui/static/scriptAgentCouncil.js',
