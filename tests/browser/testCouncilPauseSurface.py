@@ -230,3 +230,100 @@ def testThePauseButtonPostsToThePauseRoute(pageDashboard, serverHub):
 
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []
+
+
+@pytest.mark.falsification
+def testARequestedStopSaysSoInsteadOfLookingLikeALostClick(
+        pageDashboard, serverHub):
+    """A stop the backend has recorded must be visible on the screen.
+
+    Kills: leaving a council carrying bStopRequested on the ordinary
+    deliberating composer.
+
+    The backend's stop is deliberately cooperative — it admits no later
+    turn and settles at the next boundary, keeping the state at
+    planning because that is still the truth. The frontend rendered
+    bStopRequested nowhere in this branch, so the researcher saw the
+    deliberating composer and its Stop button unchanged while a runner
+    kept working. A recorded request and a lost click were
+    indistinguishable, and a researcher pressed Stop and reported that
+    nothing had happened (2026-08-31).
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sBody = _fsRender(pageDashboard, {
+        "bStopRequested": True,
+        "dictPhaseInFlight": {
+            "sPhase": "implementation", "iRoundNumber": 1,
+            "listRunningParticipantIds": ["p-one"]}})
+
+    # "Stopping." with the period: the ordinary deliberating composer
+    # also contains the word, in "Stopping ends this council for good",
+    # so asserting the bare word would pass over the very screen this
+    # test exists to reject.
+    assert "Stopping." in sBody, sBody
+    assert "implementation" in sBody, sBody
+    assert "will finish first" in sBody, sBody
+    assert "for good" in sBody, (
+        "nothing on screen said the council is ending permanently")
+    # No control that would re-post a request already held, and nothing
+    # offering a resume the stop will not honour.
+    assert pageDashboard.locator("#btnCouncilStop").count() == 0, (
+        "a council already stopping offered to stop again")
+    assert pageDashboard.locator("#btnCouncilPause").count() == 0, sBody
+    assert pageDashboard.locator("#btnCouncilResume").count() == 0, sBody
+
+
+@pytest.mark.falsification
+def testAStopBeatsAPauseWhenTheRecordCarriesBoth(
+        pageDashboard, serverHub):
+    """The terminal request wins the screen.
+
+    Kills: checking bPauseRequested first, which shows "Pausing" — and
+    a Resume button once the phase settles — over a council that is
+    ending for good and can never resume.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sBody = _fsRender(pageDashboard, {
+        "bStopRequested": True, "bPauseRequested": True,
+        "dictPhaseInFlight": None})
+
+    assert "Stopping." in sBody, sBody
+    assert "Pausing" not in sBody, sBody
+    assert pageDashboard.locator("#btnCouncilResume").count() == 0, (
+        "a council ending for good offered to resume")
+
+
+@pytest.mark.falsification
+def testADeliberatingCouncilWithNoStopKeepsItsControls(
+        pageDashboard, serverHub):
+    """The falsification pair for the two above.
+
+    Kills: rendering the stopping surface unconditionally, which would
+    satisfy them and strip the controls from every live council.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sBody = _fsRender(pageDashboard, {})
+
+    assert "Stopping." not in sBody, sBody
+    assert pageDashboard.locator("#btnCouncilStop").count() == 1, sBody
+    assert pageDashboard.locator("#btnCouncilPause").count() == 1, sBody
+
+
+@pytest.mark.falsification
+def testALandedStopSaysNothingIsWorkingRatherThanDeliberating(
+        pageDashboard, serverHub):
+    """The settled half of the stop, with no phase left in flight.
+
+    Kills: leaving a council carrying bStopRequested on the ordinary
+    deliberating composer once its phase has drained, which claims
+    agents are working over a council that is ending.
+    """
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sBody = _fsRender(pageDashboard, {
+        "bStopRequested": True, "dictPhaseInFlight": None})
+
+    assert "Stopping." in sBody, sBody
+    assert "No agent is working" in sBody, sBody
+    assert "will finish first" not in sBody, (
+        "a drained council still claims a phase is finishing")
+    assert pageDashboard.locator("#btnCouncilStop").count() == 0, sBody

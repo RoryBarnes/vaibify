@@ -3240,6 +3240,13 @@ var VaibifyAgentCouncil = (function () {
         if (dictCampaign.sState === "planReady") {
             return _fsFinishedComposer(dictCampaign);
         }
+        /* Checked BEFORE the pause branch: a record can carry both,
+           and stopping is the stronger and terminal one. Showing the
+           pause surface over a requested stop would promise a council
+           the researcher could resume. */
+        if (dictCampaign.bStopRequested) {
+            return _fsStoppingSurface(dictCampaign);
+        }
         if (dictCampaign.bPauseRequested) {
             return _fsPausedSurface(dictCampaign);
         }
@@ -3259,6 +3266,48 @@ var VaibifyAgentCouncil = (function () {
             "down where you can resume it. Stopping ends this council " +
             "for good — its record is kept, but it can never " +
             "deliberate again.</p>" +
+            "</div>";
+    }
+
+    function _fsStoppingSurface(dictCampaign) {
+        /* bStopRequested with the hub still holding the campaign.
+           Without this the record carried the request and the screen
+           showed the ordinary deliberating composer, Stop button and
+           all — so a recorded stop and a lost click looked identical,
+           and a researcher who pressed Stop and watched a runner keep
+           working had no way to tell which had happened (2026-08-31).
+
+           The backend is deliberately cooperative here: it admits no
+           later turn and settles at the next boundary, keeping the
+           state at planning because that is still the truth. This says
+           the same thing rather than pretending the council has
+           already ended.
+
+           Which of the two it means is answered by the BACKEND's
+           in-flight phase record, exactly as the pause surface does it
+           — never inferred from staleness or from the absence of
+           recent events.
+
+           Its own binding rather than the pause surface's spelling: an
+           identical `var dictInFlight = ...` in both would make one
+           falsification anchor match twice and silently mutate the
+           other surface too. */
+        var dictRunningPhase = dictCampaign.dictPhaseInFlight;
+        if (dictRunningPhase) {
+            return "<div class=\"council-composer\">" +
+                "<p class=\"council-hint\">Stopping. The " +
+                _fsEscape(dictRunningPhase.sPhase || "current") +
+                " phase is still running and will finish first — " +
+                "cutting a turn off mid-answer would leave a failure " +
+                "nobody could attribute to anything. Nothing new " +
+                "starts after it, and this council then ends for " +
+                "good. You can close this tab.</p>" +
+                "</div>";
+        }
+        return "<div class=\"council-composer\">" +
+            "<p class=\"council-hint\">Stopping. No agent is working " +
+            "and nothing new will start; the council is settling and " +
+            "will end for good. You can close this tab.</p>" +
             "</div>";
     }
 

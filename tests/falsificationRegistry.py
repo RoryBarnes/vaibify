@@ -14561,4 +14561,65 @@ def _fdictEntry(sRel):
         old='    if fSecondsRemaining >= I_MINIMUM_TURN_WALL_CLOCK_SECONDS:',
         new='    if fSecondsRemaining > 0:',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testALandedStopSaysNothingIsWorkingRatherThanDeliberating'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The shipped defect restored: a recorded stop renders nowhere
+        # in the live branch, so the researcher sees the deliberating
+        # composer and its Stop button while a runner keeps working.
+        old=(
+            '        if (dictCampaign.bStopRequested) {\n'
+            '            return _fsStoppingSurface(dictCampaign);\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testARequestedStopSaysSoInsteadOfLookingLikeALostClick'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The stopping surface stops reading the backend's in-flight
+        # phase, so a stop whose turn is still mid-answer claims the
+        # council is already settling. The pause surface's twin of this
+        # entry is why the two locals are spelled differently.
+        old=(
+            '        var dictRunningPhase = dictCampaign.dictPhaseInFlight;\n'
+            '        if (dictRunningPhase) {'
+        ),
+        new=(
+            '        var dictRunningPhase = null;\n'
+            '        if (dictRunningPhase) {'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilPauseSurface.py::'
+            'testAStopBeatsAPauseWhenTheRecordCarriesBoth'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The two branches swapped, so a record carrying both flags
+        # renders "Pausing" — and eventually a Resume button — over a
+        # council that is ending for good and can never resume.
+        old=(
+            '        if (dictCampaign.bStopRequested) {\n'
+            '            return _fsStoppingSurface(dictCampaign);\n'
+            '        }\n'
+            '        if (dictCampaign.bPauseRequested) {\n'
+            '            return _fsPausedSurface(dictCampaign);\n'
+            '        }'
+        ),
+        new=(
+            '        if (dictCampaign.bPauseRequested) {\n'
+            '            return _fsPausedSurface(dictCampaign);\n'
+            '        }\n'
+            '        if (dictCampaign.bStopRequested) {\n'
+            '            return _fsStoppingSurface(dictCampaign);\n'
+            '        }'
+        ),
+    ),
 ]
