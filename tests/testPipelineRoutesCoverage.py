@@ -1668,7 +1668,9 @@ _DICT_ALL_ATTAINED_STEP_CELLS = {
 
 _DICT_ALL_ATTAINED_SCOPE_CELLS = {
     "s1": _fdictAttainedCell(1, 1),
-    "s2": _fdictAttainedCell(4, 4),
+    # Six, not four, since 2026-08-30: each remote's published-copy
+    # check contributes a STALENESS criterion and a DIVERGENCE one.
+    "s2": _fdictAttainedCell(6, 6),
     "s3": _fdictAttainedCell(8, 8),
 }
 
@@ -1774,6 +1776,41 @@ class TestPollLevelStatePayload:
                 "sState"] == "unassessed", sLevelKey
 
     @pytest.mark.asyncio
+    async def test_a_live_verification_reaches_the_attestation_row(self):
+        """The running flag survives all three hops to the wire.
+
+        It is computed where the container id lives and threaded down
+        three functions to the envelope detail. A hop that dropped it
+        would leave every function reading correctly and the row
+        silently never pulsing, so this asserts it arrives TRUE --
+        a value no default in the chain can produce -- and false when
+        nothing is running, so the true half cannot pass vacuously.
+        """
+        from vaibify.gui import verificationProgress
+
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
+        dictCtx = _fdictBuildLevelPollContext()
+        verificationProgress.DICT_VERIFY_TASKS.pop("cid1", None)
+        with _fstackEnterPollLevelPatches([], [], []):
+            dictIdle = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        assert dictIdle["dictWorkflowEnvelopeDetail"][
+            "bRebuildAttestationRunning"] is False
+        verificationProgress.DICT_VERIFY_TASKS["cid1"] = {
+            "task": None, "dictStatus": {"sPhase": "running"},
+        }
+        try:
+            with _fstackEnterPollLevelPatches([], [], []):
+                dictLive = await _fdictFetchOutputStatus(
+                    dictCtx, "cid1", dictWorkflow, {},
+                )
+        finally:
+            verificationProgress.DICT_VERIFY_TASKS.pop("cid1", None)
+        assert dictLive["dictWorkflowEnvelopeDetail"][
+            "bRebuildAttestationRunning"] is True
+
+    @pytest.mark.asyncio
     async def test_response_carries_envelope_detail_keys(self):
         """The envelope-detail payload arrives with all its sections.
 
@@ -1791,6 +1828,7 @@ class TestPollLevelStatePayload:
             "listBinaries", "dictArtifacts",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
+            "bRebuildAttestationRunning", "dictRebuildAttestation",
             # Added 2026-08-27. The Software row could not tell "no
             # binaries declared yet" from "the researcher answered:
             # there are none", so it showed an unanswered "?" forever
@@ -1819,6 +1857,18 @@ class TestPollLevelStatePayload:
             # authority: the Level 2 rows subtract this set from their
             # file lists and the Level 3 row renders it.
             "listLevel3EnvelopePaths",
+            # Added 2026-08-30. The determinism VERDICT and the
+            # backend's reasons for it, so the row renders one
+            # authority's answer rather than re-deriving it from the
+            # raw block — which it did, and disagreed with the gate.
+            "bDeterminismDeclared", "listDeterminismIssues",
+            # Added 2026-08-30: one entry per determinism QUESTION,
+            # carrying the researcher-facing wording from the gate
+            # module so the three rows do not restate it.
+            "listDeterminismQuestions",
+            # Added 2026-08-30: which maths library the dependency
+            # lock names, so the MKL question is answerable at all.
+            "dictMathsLibrary",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None

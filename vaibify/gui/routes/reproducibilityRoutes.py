@@ -1,18 +1,20 @@
-"""HTTP routes for the AICS Level 3 readiness + attestation surface.
+"""HTTP routes for the PROOF Level 3 readiness + attestation surface.
 
-Three endpoints back the AICS tab's L3 sections:
+Three endpoints back the PROOF tab's L3 sections:
 
 * ``GET .../level3/readiness`` — returns ``fdictL3ReadinessGaps``
   shape for the readiness checklist card.
 * ``POST .../level3/verify`` — user-only; kicks off the expensive
   rebuild as a background task and returns a 202 with the in-flight
   status handle. The worker calls
-  ``rerunVerification.fdictRerunAndVerifyWorkflow`` inside
+  ``shadowRerun.fdictRerunAndVerifyThroughShadow`` inside
   ``asyncio.to_thread``, passing the active workflow, its container
-  path, and the container repo-file adapter explicitly, so the
-  pipeline runner executes *that* workflow and the post-rerun re-hash
-  reads the same container filesystem it wrote to. The attestation is
-  then written with the real matched/diverged counts.
+  path, and the LIVE container repo-file adapter explicitly. The rerun
+  itself happens in a SHADOW container built from the image digest the
+  envelope pins, so the researcher's own outputs are never overwritten
+  and the post-rerun re-hash reads the shadow filesystem the rerun
+  wrote to. The attestation is then written with the real
+  matched/diverged counts.
 * ``GET .../level3/attestation`` — returns the most-recent
   attestation plus the archived history.
 
@@ -33,6 +35,7 @@ from fastapi import HTTPException, Request
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import ffnAgentAction
 from ..serverMiddleware import fbRequestRidesAgentLane
+from .. import verificationProgress
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
@@ -68,17 +71,24 @@ from ...reproducibility.environmentSnapshot import (
     fnWriteEnvironmentJson,
 )
 from ...reproducibility.determinismGate import (
+    LIST_DETERMINISM_QUESTIONS,
     S_ACCEPT_BLAS_WAIVER_KEY,
+    S_BLAS_ANSWER_KEY,
+    S_MKL_ANSWER_KEY,
     S_MKL_CBWR_KEY,
+    S_OMP_ANSWER_KEY,
     S_OMP_NUM_THREADS_KEY,
+)
+from ...reproducibility.declaredPackages import (
+    fdictComparePackageDeclarations,
 )
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
     fdictL3ReadinessGaps,
     fiProofLevel,
 )
-from ...reproducibility.rerunVerification import (
-    fdictRerunAndVerifyWorkflow,
+from ...reproducibility.shadowRerun import (
+    fdictRerunAndVerifyThroughShadow,
 )
 from ...reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
@@ -88,11 +98,67 @@ from ...reproducibility.reproduceScriptGenerator import (
 
 logger = logging.getLogger(__name__)
 
-# In-process tracker for in-flight L3 verification tasks, keyed by
-# container id. A task entry is the asyncio.Task plus a tiny status
-# dict so polling endpoints can report progress without re-running
-# the rebuild.
-_DICT_VERIFY_TASKS = {}
+# Both registries live in ``verificationProgress`` because the pipeline
+# poll reads them too, and a route module may not import a sibling
+# route module. These names are the module's own handles on the SAME
+# dicts -- not copies, and not a second authority.
+_DICT_VERIFY_TASKS = verificationProgress.DICT_VERIFY_TASKS
+_DICT_LAST_NO_VERDICT = verificationProgress.DICT_LAST_NO_VERDICT
+
+
+S_MIRROR_RELATIVE_PATH = ".vaibify/requirements.txt"
+
+
+def _flistDeclaredPackagesForContainer(sContainerId):
+    """Return the project's declared pythonPackages, or [] if unknown.
+
+    Read from ``vaibify.yml`` on the HOST, because that is where the
+    declaration lives and the container cannot see it. An empty list
+    means "could not be determined" and disables the comparison rather
+    than asserting agreement: a project whose config cannot be found
+    has not been shown to match its image.
+    """
+    from vaibify.config.registryManager import fdictLoadRegistry
+    try:
+        dictRegistry = fdictLoadRegistry()
+    except (OSError, ValueError):
+        return []
+    for dictEntry in dictRegistry.get("listProjects", []):
+        if dictEntry.get("sContainerName") != sContainerId:
+            continue
+        return _flistLoadPackagesFromConfig(dictEntry.get("sConfigPath"))
+    return []
+
+
+def _flistLoadPackagesFromConfig(sConfigPath):
+    """Return pythonPackages from one config path, or [] when unreadable."""
+    if not sConfigPath:
+        return []
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    try:
+        configProject = fconfigLoadFromPath(sConfigPath)
+    except Exception:  # noqa: BLE001 — an unreadable config disables the check
+        return []
+    return list(getattr(configProject, "listPythonPackages", []) or [])
+
+
+def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):
+    """Return the declared-vs-image comparison for one project.
+
+    The comparison the whole dependency ruling rests on. ``vaibify.yml``
+    is the single declaration, the image is built from it, and the
+    repository's mirror IS the image's own list — so a mismatch means
+    exactly one thing: the image is older than the declaration and has
+    not been rebuilt.
+    """
+    listDeclared = _flistDeclaredPackagesForContainer(sContainerName)
+    sMirror = None
+    try:
+        if filesRepo.fbIsFile(S_MIRROR_RELATIVE_PATH):
+            sMirror = filesRepo.fsReadText(S_MIRROR_RELATIVE_PATH)
+    except (OSError, ValueError, KeyError):
+        sMirror = None
+    return fdictComparePackageDeclarations(listDeclared, sMirror)
 
 
 def _fsRequireProjectRepo(dictWorkflow):
@@ -121,9 +187,22 @@ def _fnRegisterReadiness(app, dictCtx):
         )
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
+        dictPackageCheck = fdictCheckImageMatchesDeclaration(
+            sContainerId, filesRepo,
+        )
+        # Reported beside the gaps rather than folded into them: a
+        # stale image is a fact about the CONTAINER, while every gap
+        # in that dict is a fact about the repository's envelope.
+        # Merging them would make "rebuild your image" read as one
+        # more missing file.
+        dictGaps = dict(dictGaps)
+        dictGaps["bImageMatchesDeclaredPackages"] = (
+            not dictPackageCheck["bChecked"] or dictPackageCheck["bMatches"]
+        )
         return {
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
+            "dictDeclaredPackageCheck": dictPackageCheck,
         }
 
 
@@ -144,7 +223,7 @@ def _fnRegisterAttestation(app, dictCtx):
 
 
 def _fdictBuildAttestationResponse(sContainerId, filesRepo):
-    """Return the attestation payload shape consumed by the AICS tab."""
+    """Return the attestation payload shape consumed by the PROOF tab."""
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     bHasRepo = bool(fsRepoRootOf(filesRepo))
     dictCurrent = fdictReadAttestation(filesRepo) if bHasRepo else None
@@ -152,13 +231,13 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         flistReadAttestationHistory(filesRepo)
         if bHasRepo else []
     )
-    dictStatus = _DICT_VERIFY_TASKS.get(sContainerId, {}).get(
-        "dictStatus"
-    )
     return {
         "dictCurrentAttestation": dictCurrent,
         "listHistory": listHistory,
-        "dictInFlight": dictStatus,
+        "dictInFlight": verificationProgress.fdictReadStatus(sContainerId),
+        "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
+            sContainerId,
+        ),
         "sLiveManifestDigest": (
             fsCurrentManifestDigest(filesRepo)
             if bHasRepo else ""
@@ -210,10 +289,16 @@ async def _fsGateReadinessAndSnapshotDigest(
     would take the container out of service for a workflow that simply
     is not ready yet -- the ordinary state before the envelope exists.
     """
+    dictPackageCheck = fdictCheckImageMatchesDeclaration(
+        sContainerId, filesRepo,
+    )
+
     def fsGateThenSnapshot(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
-            lambda: _fsRequireReadinessThenDigest(dictWorkflow, filesRepo),
+            lambda: _fsRequireReadinessThenDigest(
+                dictWorkflow, filesRepo, dictPackageCheck,
+            ),
         )
 
     return await fgenericRunWorkerUnderTheDrain(
@@ -222,13 +307,70 @@ async def _fsGateReadinessAndSnapshotDigest(
     )
 
 
-def _fsRequireReadinessThenDigest(dictWorkflow, filesRepo):
-    """Return the manifest digest, or raise 409 when L3 is not ready."""
-    if not fbL3ReadinessOK(dictWorkflow, filesRepo):
+# The readiness flags, in the wording a researcher would use for the
+# row that carries each one. A flag with no entry still gets named --
+# by its raw key -- because a gap the message cannot spell is worse
+# than an ugly one.
+_DICT_READINESS_LABELS = {
+    "bManifestComplete": "the manifest does not cover every declared file",
+    "bDependencyLockHashed": "the dependency lock is missing or unhashed",
+    "bEnvironmentDigestPinned": "the environment snapshot is not pinned",
+    "bDockerfilePinned": "the Dockerfile is not pinned",
+    "bReproduceScriptPinned": "reproduce.sh is missing or unpinned",
+    "bDeterminismDeclared": "the repeatability rules are not declared",
+    "bBinariesDeclaredOrWaived":
+        "standalone packages are neither declared nor waived",
+}
+
+
+def _fsNameTheReadinessGaps(dictWorkflow, filesRepo):
+    """Return a readable list of the readiness checks that are failing.
+
+    The refusal used to point the researcher at a tab instead of
+    naming the gap — sending them hunting for something this function
+    already knows. It cost a real session: the one failing
+    verifier was determinism, on a row the dashboard was painting
+    green, and nothing connected the two (2026-08-30).
+    """
+    dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
+    listFailing = [
+        _DICT_READINESS_LABELS.get(sKey, sKey)
+        for sKey in _DICT_READINESS_LABELS
+        if dictGaps.get(sKey) is not True
+    ]
+    return listFailing or ["a readiness check this message cannot name"]
+
+
+def _fsRequireReadinessThenDigest(
+    dictWorkflow, filesRepo, dictPackageCheck,
+):
+    """Return the manifest digest, or raise 409 naming what is missing.
+
+    ``dictPackageCheck`` is refused FIRST because it invalidates the
+    others: verifying reproducibility against an image that predates
+    the project's own dependency declaration grades a container nobody
+    would reproduce with, and every other readiness answer is about
+    that same stale image.
+    """
+    if dictPackageCheck.get("bChecked") and not dictPackageCheck["bMatches"]:
         raise HTTPException(
             409,
-            "L3 readiness checks must all pass before triggering "
-            "verification; open the AICS tab to see gaps.",
+            "The container image is older than this project's "
+            "dependency declaration, so a verification would grade an "
+            "image nobody would reproduce with. Declared but missing "
+            "from the image: "
+            + (", ".join(dictPackageCheck["listMissingFromImage"]) or "none")
+            + ". In the image but no longer declared: "
+            + (", ".join(dictPackageCheck["listExtraInImage"]) or "none")
+            + ". Rebuild the image, then try again.",
+        )
+    if not fbL3ReadinessOK(dictWorkflow, filesRepo):
+        listGaps = _fsNameTheReadinessGaps(dictWorkflow, filesRepo)
+        raise HTTPException(
+            409,
+            "Cannot start the Level 3 verification yet — "
+            + "; ".join(listGaps)
+            + ". Fix these in the Project block, then try again.",
         )
     return fsCurrentManifestDigest(filesRepo)
 
@@ -258,6 +400,7 @@ async def _fdictLaunchVerificationDurably(
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, "The L3 verification",
     )
+    verificationProgress.fnForgetNoVerdict(sContainerId)
     dictStatus = {
         "sPhase": "starting",
         "fStartedAtMonotonic": time.monotonic(),
@@ -275,6 +418,7 @@ async def _fdictLaunchVerificationDurably(
     dictLaunched = await commitCarrier.fdictLaunchDurableTask(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, ftaskStartVerification,
+        sOperation="the Level 3 verification",
     )
     if not dictLaunched["bLaunched"]:
         raise HTTPException(
@@ -320,23 +464,10 @@ def _fnRefuseIfTaskInFlight(sContainerId):
 
 
 def _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus):
-    """Store the verify task and arrange identity-checked self-eviction.
-
-    Mirrors ``pipelineServer._fnRegisterPipelineTask`` so completed
-    verifications do not linger in ``_DICT_VERIFY_TASKS`` forever.
-    The identity check on the slot's task object prevents a brand-new
-    verification that landed in the same slot from being evicted by
-    the prior task's done-callback firing late.
-    """
-    _DICT_VERIFY_TASKS[sContainerId] = {
-        "task": taskWorker, "dictStatus": dictStatus,
-    }
-
-    def fnEvictOnDone(taskCompleted):
-        dictEntry = _DICT_VERIFY_TASKS.get(sContainerId)
-        if dictEntry is not None and dictEntry.get("task") is taskCompleted:
-            _DICT_VERIFY_TASKS.pop(sContainerId, None)
-    taskWorker.add_done_callback(fnEvictOnDone)
+    """Store the verify task through the shared progress registry."""
+    verificationProgress.fnRegisterTask(
+        sContainerId, taskWorker, dictStatus,
+    )
 
 
 async def _fnRunVerificationWorker(
@@ -350,8 +481,10 @@ async def _fnRunVerificationWorker(
     container) is delegated to a sync helper that calls the shared
     ``rerunVerification`` entry point. Offloaded to
     ``asyncio.to_thread`` so the rerun does not block the FastAPI event
-    loop. Exceptions are converted into a failed attestation so the
-    UI never sees a silent hang.
+    loop. An outcome that reached no verdict -- a crash, or a rerun
+    refused before any step ran -- is recorded in
+    ``_DICT_LAST_NO_VERDICT`` and reported to the researcher, but NEVER
+    written as an attestation; see :func:`_fnPersistAttestation`.
     """
     dictStatus = _DICT_VERIFY_TASKS[sContainerId]["dictStatus"]
     dictStatus["sPhase"] = "running"
@@ -378,6 +511,7 @@ async def _fnRunVerificationWorker(
         logger.exception("L3 verification crashed: %s", errorCaught)
         dictResult = {
             "bPassed": False,
+            "bRerunAttempted": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
             "listDivergedHashes": [f"verification crashed: {errorCaught}"],
@@ -388,12 +522,54 @@ async def _fnRunVerificationWorker(
     dictAiProvenance = await _fdictCaptureProvenanceOrNone(
         dictWorkflow, filesRepo, sContainerId, connectionDocker,
     )
+    _fnRecordOutcome(
+        sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
+        dictAiProvenance,
+    )
+    dictStatus["sPhase"] = _fsPhaseForOutcome(dictResult)
+    dictStatus["listReasons"] = list(
+        dictResult.get("listDivergedHashes") or []
+    )
+    dictStatus["listCarriedPaths"] = list(
+        dictResult.get("listCarriedPaths") or []
+    )
+
+
+def _fsPhaseForOutcome(dictResult):
+    """Return the phase a finished verification settles into.
+
+    Three outcomes, not two. ``no-verdict`` is the one that used to be
+    spelled ``failed``, and the conflation is what let a refusal read
+    as a reproduction failure.
+    """
+    if not dictResult.get("bRerunAttempted", True):
+        return "no-verdict"
+    return "passed" if dictResult.get("bPassed") else "failed"
+
+
+def _fnRecordOutcome(
+    sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
+    dictAiProvenance,
+):
+    """Persist an attestation, or remember a no-verdict outcome.
+
+    The branch is the whole point: an attestation is written only when
+    the comparison actually reached a verdict. A rerun refused before
+    any step executed has compared nothing, so it goes to
+    ``_DICT_LAST_NO_VERDICT`` -- visible to the researcher, absent from
+    the record that gates Level 3.
+    """
+    if not dictResult.get("bRerunAttempted", True):
+        verificationProgress.fnRecordNoVerdict(
+            sContainerId,
+            dictResult.get("listDivergedHashes") or [],
+            fDuration, sManifestDigest,
+        )
+        return
+    verificationProgress.fnForgetNoVerdict(sContainerId)
     _fnPersistAttestation(
         filesRepo, sManifestDigest, dictResult, fDuration,
         dictAiProvenance,
-    )
-    dictStatus["sPhase"] = (
-        "passed" if dictResult.get("bPassed") else "failed"
     )
 
 
@@ -421,7 +597,7 @@ def _fdictRunReproductionSync(
 ):
     """Run the expensive L3 reproduction synchronously.
 
-    Delegates to ``rerunVerification.fdictRerunAndVerifyWorkflow``, the
+    Delegates to ``shadowRerun.fdictRerunAndVerifyThroughShadow``, the
     single entry point the ``vaibify reproduce --rerun`` lane also uses
     — do not inline either half here again, as the two derivations
     previously drifted until the CLI stopped comparing anything.
@@ -429,18 +605,23 @@ def _fdictRunReproductionSync(
     Every input is passed explicitly. The route already holds the active
     workflow and its container path, and passing them on is what keeps a
     container that hosts several project repos from re-running one
-    workflow while the attestation names another. ``filesRepo`` is the
-    container adapter rooted at ``sProjectRepoPath``, so the re-hash
-    reads the filesystem the rerun actually wrote to; routing this
-    through the host CLI resolver could not work at all, because
-    ``sProjectRepoPath`` is a container path with no host counterpart.
+    workflow while the attestation names another.
+
+    ``filesRepo`` is the LIVE container adapter rooted at
+    ``sProjectRepoPath``, and it is NOT the root the comparison is made
+    against: it supplies the image pin that the shadow container is
+    built from. The rerun and the re-hash both happen inside that
+    shadow, so this route no longer overwrites the researcher's own
+    outputs, and the execution half of the attestation is made in the
+    container ``reproduce.sh`` would build rather than in whatever the
+    project container has become.
 
     The locked-in plan decision is that the L3 badge only lights after
     this expensive rebuild succeeds; a manifest re-hash alone is the
     cheap readiness gateway exposed separately at ``/level3/readiness``.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictOutcome = fdictRerunAndVerifyWorkflow(
+    dictOutcome = fdictRerunAndVerifyThroughShadow(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         filesRepo,
     )
@@ -478,6 +659,8 @@ def _fnPersistAttestation(
         listDivergedHashes=dictResult["listDivergedHashes"],
         sRunLogPath=dictResult.get("sRunLogPath", ""),
         dictAiProvenance=dictAiProvenance,
+        listCarriedPaths=list(dictResult.get("listCarriedPaths") or []),
+        dictRerunFailure=dict(dictResult.get("dictRerunFailure") or {}),
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)
@@ -502,16 +685,26 @@ def _fnRegisterScanDeterminism(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fdictScanDeterminism(sContainerId: str):
         from ...reproducibility.determinismGate import (
+            fdictDetectMathsLibrary,
             fdictScanWorkflowScripts,
         )
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         dictResult = await asyncio.to_thread(
-            fdictScanWorkflowScripts,
-            dictWorkflow,
-            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            fdictScanWorkflowScripts, dictWorkflow, filesRepo,
+        )
+        # The maths-library reading rides along because it is the one
+        # determinism question a researcher cannot answer by looking
+        # at their own code. Without it, running the scan and getting
+        # "no issues" answered a DIFFERENT question and reasonably
+        # read as "nothing to see here" (reported 2026-08-30).
+        dictResult["dictMathsLibrary"] = await asyncio.to_thread(
+            fdictDetectMathsLibrary, filesRepo,
         )
         # The caveat travels WITH the result, not just in the docs: a
         # clean scan is the absence of detectable anti-patterns, never
@@ -913,7 +1106,34 @@ _DICT_DETERMINISM_KEY_TYPES = {
     S_ACCEPT_BLAS_WAIVER_KEY: (bool,),
     S_OMP_NUM_THREADS_KEY: (int, float),
     S_MKL_CBWR_KEY: (str,),
+    # The three ANSWER keys (2026-08-30). Each records that a question
+    # was considered, which no value can express: `false` and "never
+    # asked" are the same bytes.
+    S_BLAS_ANSWER_KEY: (str,),
+    S_OMP_ANSWER_KEY: (str,),
+    S_MKL_ANSWER_KEY: (str,),
 }
+
+# Every answer key, with the answers it accepts. Validated here rather
+# than trusted, so a typo cannot record an answer the gate will never
+# recognize -- which would leave the row red with the form insisting
+# it had been filled in.
+_DICT_DETERMINISM_ANSWER_VALUES = {
+    dictQuestion["sAnswerKey"]: dictQuestion["tAnswers"]
+    for dictQuestion in LIST_DETERMINISM_QUESTIONS
+}
+
+
+def _fnRequireKnownAnswer(sKey, jsonValue):
+    """Raise HTTP 422 when an answer key carries an unknown answer."""
+    tAccepted = _DICT_DETERMINISM_ANSWER_VALUES.get(sKey)
+    if tAccepted is None or jsonValue in tAccepted:
+        return
+    raise HTTPException(
+        422,
+        f"{sKey} must be one of {', '.join(tAccepted)}; "
+        f"got {jsonValue!r}.",
+    )
 
 
 def _fnRequireScalarType(sKey, jsonValue, tTypesExpected):
@@ -966,6 +1186,7 @@ def _fdictValidateDeterminismBody(dictRequest):
             dictDeclared[sKey] = None
             continue
         _fnRequireScalarType(sKey, jsonValue, tTypesExpected)
+        _fnRequireKnownAnswer(sKey, jsonValue)
         dictDeclared[sKey] = jsonValue
     return dictDeclared
 

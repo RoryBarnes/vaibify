@@ -67,7 +67,9 @@ from tests.testDraftRoutes import (
 )
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.config import mutationAdmission
-from vaibify.gui.routes import falsificationRoutes, reproducibilityRoutes
+from vaibify.gui.routes import (
+    falsificationRoutes, remoteRefreshRoutes, reproducibilityRoutes,
+)
 from vaibify.gui import (
     browserSession,
     draftManager,
@@ -7308,5 +7310,119 @@ async def testTheLaunchedVerificationIsVisibleAsLiveWork():
                     "a live L3 verification left its container reading "
                     "idle; a transfer would commit while the old "
                     "owner's rerun kept writing to the repository"
+                )
+            await asyncio.sleep(0.05)
+
+
+# ---------------------------------------------------------------------
+# The open-time remote refresh (2026-08-30). Third durable launch, and
+# the reason it needs its own entry here rather than riding the two
+# above: its own route tests stand the carrier down, so all of them
+# pass for a route whose launch call was deleted outright.
+# ---------------------------------------------------------------------
+
+
+def _fdictWorkflowConfiguringTwoRemotes():
+    """Return the repo-bound workflow with GitHub and Zenodo recorded.
+
+    The refresh checks only CONFIGURED services, so the plain L3
+    fixture -- which records none -- would take the route's early
+    return and this test would pass having launched nothing.
+    """
+    dictWorkflow = _fdictLevelThreeWorkflow()
+    dictWorkflow["dictRemotes"] = {
+        "github": {"sOwner": "someone", "sRepo": "something"},
+        "zenodo": {"sDoi": "10.5281/zenodo.1"},
+    }
+    return dictWorkflow
+
+
+class DockerDoubleServingAWorkflowWithRemotes(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a workflow that has remotes."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(
+                _fdictWorkflowConfiguringTwoRemotes(),
+            ).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@contextlib.contextmanager
+def _tclientAsgiOverAWorkflowWithRemotes():
+    """Yield ``(app, clientAsync)`` over the remotes-carrying workflow.
+
+    In-loop ASGI for the same reason the two launches above use it:
+    ``TestClient`` tears down its portal per request and cancels the
+    durable task, so "the container reads idle" would be
+    indistinguishable from the defect this test exists to catch.
+    """
+    connectionDocker = DockerDoubleServingAWorkflowWithRemotes()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
+        )
+    yield app, httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testTheRemoteRefreshLeavesTheContainerFreeToWorkOn():
+    """The refresh must NOT make its container read busy for the sweep.
+
+    It did, and it was reported: registered as one durable task, it
+    held the container's single durable slot for the whole network
+    round-trip, so a researcher who clicked Verify Level 3 while their
+    own project-open refresh was still running was told "the container
+    is busy: the remote-status refresh is already running"
+    (2026-08-30).
+
+    Mode (c) was the wrong mode. This is NETWORK work with a few
+    milliseconds of container writing per service, so only the write
+    takes a carrier and the container is genuinely free in between —
+    which is what this asserts, at the same authority a hand-over and
+    the idle watchdog consult.
+
+    Kills: registering the sweep as a durable task again.
+    """
+    with _tclientAsgiOverAWorkflowWithRemotes() as (app, clientAsync):
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            sName = _fsContainerNameFor(app)
+            with patch.object(
+                remoteRefreshRoutes, "_fbContainerSealedOffTheNetwork",
+                lambda sContainerId: False,
+            ), patch.object(
+                remoteRefreshRoutes, "_fdictVerifyWithoutWriting",
+                lambda dictWorkflow, filesRepo, sService: {
+                    "dictStatus": None, "sError": "held for the test",
+                },
+            ):
+                response = await clientAsync.post(
+                    f"/api/workflow/{S_CONTAINER_ID}/remotes/refresh",
+                )
+                assert response.status_code == 200, response.text
+                assert response.json()["listChecking"] == [
+                    "github", "zenodo",
+                ], response.text
+                assert not commitCarrier.fbContainerHasLiveMutationWork(
+                    app.state, sName,
+                ), (
+                    "the refresh registered durable work, so the "
+                    "container reads busy and the researcher's own "
+                    "Level 3 verification is refused for as long as "
+                    "the remotes take to answer"
                 )
             await asyncio.sleep(0.05)

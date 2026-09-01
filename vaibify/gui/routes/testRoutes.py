@@ -269,7 +269,7 @@ async def _ftProbeLevelThenRunUnderTheDrain(
 ):
     """Return ``(iLevelBefore, result)`` from ONE lock-held worker.
 
-    The AICS level probe runs INSIDE the worker, beside the run it
+    The PROOF level probe runs INSIDE the worker, beside the run it
     brackets, rather than on the request coroutine before it — and that
     placement is the point of this helper rather than tidiness.
     ``fiProofLevel`` reaches the general exec primitive as soon as a
@@ -320,7 +320,7 @@ async def _fnAutoArchiveUnderTheDrain(
     justified it.
 
     Mode (b) rather than mode (c): ``fbMaybeAutoArchive`` re-reads the
-    AICS level (the same general exec as the pre-run probe) and then
+    PROOF level (the same general exec as the pre-run probe) and then
     writes the L3 envelope and pushes to Overleaf and Zenodo, so it
     mutates and can run long — but it is awaited in the handler today,
     and making it durable would change what the researcher sees when
@@ -690,7 +690,7 @@ def _ftResolveCategoryContext(
     unknown category name is not a reason to take a researcher's
     container out of service.
 
-    The pre-run AICS level is deliberately NOT probed here any more: it
+    The pre-run PROOF level is deliberately NOT probed here any more: it
     reaches a general exec on an L2 workflow, so it belongs inside the
     carrier worker with the run it brackets.
     """

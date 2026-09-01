@@ -24,6 +24,8 @@ import os
 
 import pytest
 
+from vaibify.docker.dockerConnection import _fnEnsureDockerHost
+
 
 pytestmark = pytest.mark.docker_live
 
@@ -31,9 +33,22 @@ S_REQUIRE_DAEMON_ENV = "VAIBIFY_REQUIRE_DOCKER_DAEMON"
 
 
 def _fbDaemonReachable():
-    """Return True iff a Docker daemon answers a cheap ping."""
+    """Return True iff a Docker daemon answers a cheap ping.
+
+    The socket is resolved the way PRODUCTION resolves it -- through
+    ``_fnEnsureDockerHost``, which reads the active Docker context --
+    not by ``from_env()`` alone. A researcher running Colima, Rancher,
+    or any non-default context has no ``DOCKER_HOST`` set and no daemon
+    on the default socket path, so the bare ``from_env()`` this replaced
+    reported "no daemon reachable" on a machine with a perfectly healthy
+    one, and the whole live lane skipped itself green there. A probe
+    that resolves the daemon differently from the code under test is
+    answering a different question than the one the lane is advertised
+    to ask.
+    """
     try:
         import docker
+        _fnEnsureDockerHost()
         clientDocker = docker.from_env()
         clientDocker.ping()
         return True

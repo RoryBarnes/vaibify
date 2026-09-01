@@ -1358,6 +1358,428 @@ performed outside the dashboard stay visible as progress. The
 "unassessed" state asserts only existence, never quality — it sits
 below "none" on the ladder and never stamps a high-water mark.
 
+## Determinism is three questions, and each must be answered
+
+Until 2026-08-30 the L3 determinism gate was an OR: any one of a BLAS
+waiver, a pinned OpenMP thread count, or an Intel MKL mode satisfied
+it. A project could therefore attest at Level 3 having answered a third
+of the question — and the three are independent, since pinning a thread
+count says nothing about whether last-digit variance is acceptable. The
+researcher's ruling made them three requirements, each with its own row
+and its own marker.
+
+**Answering is the criterion, never a particular answer.** "I do not
+accept last-digit differences", "the thread count is not fixed" and
+"this project does not use Intel MKL" are complete, passing answers;
+only silence fails. This is the Personal AI Configuration rule applied
+to a second domain, and for the same reason: a gate that demanded the
+permissive answer would push researchers toward waiving rather than
+declaring, which inverts what it is for.
+
+**Answers are recorded as their own keys, not inferred from values.**
+`bAcceptBlasVariance: false` is what the old form wrote whenever it was
+submitted with nothing ticked, so it means "unanswered" and "declined"
+at once. Values cannot express consideration; only an answer key can.
+An answer naming a pinned value must also CARRY that value — "threads
+are fixed" with no count is half an answer and a rerun could not act on
+it.
+
+**The migration promotes only unambiguous legacy values** (schema v13).
+A literal `true` waiver, a pinned thread count and a set MKL mode can
+each only have come from a researcher choosing, so they become answers;
+a `false` waiver does not, because promoting it would attest a claim
+that may never have been made. Projects that pinned everything keep
+their credit; projects that leaned on the OR find the remaining
+questions open, which is the intended and honest cost of the ruling.
+The legacy value keys are kept — they are what a rerun acts on, and
+`vaibify reproduce` carries the block forward verbatim.
+
+`workflowMigrations` spells the key names as literals because it may
+import only leaf modules, so the relationship to the gate's constants
+is PINNED by a test rather than trusted. A migrator writing an answer
+key the gate does not read would promote nothing while reporting
+success.
+
+The researcher-facing wording lives beside the gate in
+`LIST_DETERMINISM_QUESTIONS` and travels to the frontend on the poll.
+It carries no schema keys: the previous copy showed
+`bAcceptBlasVariance` to a scientist as if it were a word and left BLAS
+undefined entirely, which is what made the section unusable.
+
+## A requirement row shows the gate's verdict, never its own
+
+A researcher declared their project had nothing non-deterministic, the
+Reproducibility-rules row went green, and the Level 3 verification then
+refused to start over that same requirement (reported 2026-08-30). Four
+components, four different answers:
+
+* The declare form submits `bAcceptBlasVariance: Boolean(checked)` with
+  a null thread count, so pressing Declare with nothing ticked writes
+  `{"bAcceptBlasVariance": false}` — a block that EXISTS and asserts
+  nothing. `false` is not a waiver; it records that the researcher does
+  *not* accept BLAS variance.
+* The row painted green for any NON-EMPTY block, which that is.
+* `fbWorkflowDeclaresDeterminism` — the gate — requires the waiver to be
+  `True`, or a pinned `dOmpNumThreads`, or an `sMklCbwr`. It correctly
+  refused.
+* The audit reported "Workflow has no dictDeterminism block", which was
+  false.
+
+The repair is structural rather than a corrected predicate. The poll
+now ships `bDeterminismDeclared` — the gate's own verdict — plus
+`listDeterminismIssues`, and the row renders them. **A mirrored
+predicate in JavaScript is a second authority on a question that has
+one**, and this is what two authorities look like once they drift: not
+a crash, but a screen that contradicts the machinery behind it while
+every component is internally consistent. The same reasoning governs
+the slug-contract mirror in `scriptUtilities.js`, which is allowed to
+exist only because it is display-only and the backend enforces.
+
+Two smaller rules fell out of the same session. A reason must describe
+the shape the workflow is actually in — "no block" and "a block that
+pins nothing" are different states and were reported identically, so a
+researcher went looking for something they had just created. And a
+refusal names its cause: `POST .../level3/verify` used to answer "open
+the tab to see gaps" while holding the failing verifier list in the
+frame that raised, which is the shape of refusal this product exists to
+abolish.
+
+## A batched container probe is split to fit one exec argument
+
+Both probes behind the per-file badges hand their whole path list to
+the daemon inside ONE argument — `flistContainerPathsExist` embeds it
+as a Python literal in the typed-read program,
+`fdictComputeBlobShasInContainer` appends it as a here-string, and a
+here-string is part of the command string like everything else. Linux
+caps a single argument at `MAX_ARG_STRLEN` (128 KB), so a batch large
+enough stops working.
+
+Measured against a real daemon on 2026-08-30, with paths the length a
+parameter sweep produces:
+
+| probe | fails at | how it fails |
+| --- | --- | --- |
+| `flistContainerPathsExist` | 1,845 paths × 59 B (~106 KB) | **raises** `argument list too long` |
+| `fdictComputeBlobShasInContainer` | 2,562 paths × 47 B (~117 KB) | **silently** answers `{}` |
+
+Neither failure is survivable where it lands. The raise happens inside
+a carrier worker, so it reaches `_fnSettleAfterFailedWorker`, poisons
+the journal record and **quarantines the container** — opening such a
+project would cost the researcher their container. The silent one is
+worse in a different direction: every badge downstream is computed
+from an empty hash map and rendered as fact.
+
+`docker/execArgumentBudget.py` is the one place that decides where to
+split, so a second caller cannot re-derive a different budget and
+rediscover the wall on a project with slightly longer paths. The
+budget is 64 KB against a measured failure at ~106 KB — deliberately
+not the kernel's 128 KB, because the paths are rendered into a program
+whose template and quoting the splitter does not measure, and a budget
+that only just fits is one that fails on the next project. The cost is
+one extra exec per batch: 6,000 paths answer in 0.79 s (existence) and
+1.05 s (hashes), where before they did not answer at all.
+
+Two properties are load-bearing. The split preserves ORDER, because
+the existence probe zips its answers back onto the paths that produced
+them and a reordering reports one file's state under another file's
+name. And a failed batch collapses the WHOLE blob-sha answer to `{}`
+rather than returning the batches that worked: a partial map is
+indistinguishable from "those files could not be read", which is the
+reading that put wrong badges on screen to begin with.
+
+The scale this applies to is the DECLARED canonical set — `.vaibify/**`,
+the root configs, and every step's `saOutputDataFiles` and
+`saPlotFiles` — not every file in the repository.
+
+## A remote's files are grouped by what to do about them
+
+A flat file list does not survive that same scale. Measured the same
+day: a thousand files across two expanded remote rows built 1.8 MB of
+HTML and 12,161 DOM nodes on every render, and the researcher had to
+scroll past every matching file to reach the four that differed.
+
+The remote stays the OUTER grouping and the disposition groups sit
+inside it. Two reasons, and the second is the one that settles it: the
+question a researcher brings to this block is "is my data published to
+Zenodo", so disposition-first would split one remote's answer across
+three places — the fragmentation the L2/L3 scope split deliberately
+removed. And a file's disposition is per-remote anyway (the same file
+can be synced to GitHub and unknown to Zenodo), so there is no global
+bucket to sort into.
+
+Order is by what the researcher must DO: *Differs from the published
+copy*, *Not on the remote*, *Not checked yet* — all open — then
+*Matching* and *Not compared by vaibify*, closed, because those are the
+groups that grow. Each group states its count whether open or closed:
+a hidden count is worse than a long list, because a researcher cannot
+tell "nothing matches" from "I am not looking at the matches". Each
+open group renders at most 50 rows and SAYS what it is not showing;
+silent truncation reads as a complete list, which is the same lie as an
+omitted file. A badge state the disposition list does not know about
+still renders, under its own raw name, so the group counts can never
+disagree with the row's own total.
+
+The Set behind the toggles records a flip AWAY from each group's
+default rather than the open state itself, so the defaults keep
+applying to groups the researcher has never touched — including ones
+that did not exist when they last looked.
+
+Measured after the change, same fixture and a realistic 2%-drifted
+mix: at 1,000 files the row builds 47 KB and 417 nodes in 0.2 ms,
+against 1.8 MB and 12,161 nodes in 21 ms before.
+
+## A configured remote pulses until its own check answers
+
+Reopening a project after a day away turned the Published-copies
+badges orange. Nothing was wrong: `levelGates.F_MAX_STALE_HOURS` is
+24, so any verify older than that reads as stale even when it was
+clean. That is a black-box status change with nothing visibly behind
+it, which is the experience vaibify exists to prevent. The rejected
+fix was to widen the staleness window, which would only move the
+surprise; the rejected variant after that was to re-check only when
+the cache had already aged, which keeps the first paint of every
+session a claim made from day-old evidence.
+
+**What happens instead.** The dashboard renders immediately, and on
+entering a project — and again on WebSocket reconnect — it asks every
+CONFIGURED remote again. Each badge pulses until its own check
+answers, and each settles independently. Showing a cached green on
+open presents day-old evidence as current fact; pulsing-until-known is
+the more honest rendering, not merely the friendlier one, and it is
+why the pulse is unconditional rather than reserved for stale caches.
+
+The cost is small and was measured before the design was accepted: the
+local half of a verify — hashing every published path in the container
+— is fractions of a second even for a few dozen paths. The network
+round-trip is what takes time, and that is the part the pulse is
+covering.
+
+**Three parts, and the split is the design.**
+
+* `POST /api/workflow/{id}/remotes/refresh`
+  (`routes/remoteRefreshRoutes.py`) starts the checks and returns at
+  once. It runs them as one carrier mode-(c) durable task, sequential
+  over the configured services, because each rewrites the same
+  `syncStatus.json` under one admission.
+* `reproducibility/remoteCheckState.py` holds the in-process record of
+  where each check has got to: CHECKING, SETTLED, or UNCHECKABLE with
+  a reason. Per hub process and deliberately not persisted — it
+  answers "is vaibify asking right now", which stops being true when
+  the process ends.
+* The file-status poll REPORTS that record as `dictRemoteChecks` and
+  nothing more. The check cannot live in the poll:
+  `_fdictBuildWorkflowEnvelopeDetail` is built with no extra container
+  execs and no network I/O, and a poll that reached four remotes every
+  few seconds would be a different product.
+
+**Four properties, each of which is a way this could become a lie.**
+
+*Never red on a failed check.* An unreachable remote is a missing
+answer, not a divergence — and the divergence colour on a Level 2 row
+is the most expensive false accusation the dashboard can make. The
+check settles to UNCHECKABLE with the reason, the light keeps whatever
+the last completed verify earned, and the cached record on disk is
+untouched (`scheduledReverify.fdictAttemptOneVerify` writes only on
+success; nothing in the refresh lane may add a write of its own).
+
+*A remote with no configuration never pulses.* Services are selected
+by `scheduledReverify.flistSelectConfiguredServices`, the same
+predicate the scheduled loop skips on, so a service the loop would
+never verify is one whose badge never waits for it. A service absent
+from `dictRemoteChecks` renders exactly as it did before this existed.
+
+*A running check moves nothing.* It has compared nothing yet, so it
+must not paint a pass or a failure in either direction. Only the pulse
+changes.
+
+*A pulse cannot outlive what it waits for.* A launch the carrier
+refuses (the container is already busy) settles every badge at once,
+naming what is busy. And a check that never returns ages out —
+evaluated when the state is READ, never on a timer, because a hung
+worker cannot be relied on to clear its own flag. The animation reuses
+the run lights' `@keyframes pulse` (opacity 1 → 0.4 → 1); a true blink
+at this size and rate would breach WCAG 2.3.1.
+
+**The accepted residual.** A verify holds the container drain across
+its network round-trip, so a Run Step clicked in the first seconds
+after opening a project is refused — but immediately and by name
+(`_fsDescribeBlockingMutationWork`), never a mystery wait. The real
+fix is to hold the drain only for the container-touching parts (the
+local hash and the `syncStatus` write) and fetch the remote outside
+it, which would also improve the manual "Verify now". That was
+deliberately not done speculatively.
+
+## L3 tier 5 runs in a shadow container
+
+The Level 3 attestation claims two independent things: that the
+workflow ran again, and that what it produced is byte-identical to what
+`MANIFEST.sha256` pins. Until 2026-08-28 the first half was performed
+**inside the researcher's own project container**, and that was wrong
+in two ways — only one of which was about safety.
+
+The safety one is plain: the rerun overwrote the researcher's real
+outputs. Attesting reproducibility should not cost someone their
+working tree, and a researcher who declines that trade simply never
+attests.
+
+The epistemic one is why `shadowRerun` exists at all. `reproduce.sh` —
+the artefact the envelope publishes, and the thing a third party will
+actually run — pulls the **pinned image digest** and executes the
+workflow in a container made from it. A rerun in the live project
+container instead exercises whatever that container has *become*:
+packages installed during a debugging session, files left by an
+interactive step, an image tag repointed months ago. It can therefore
+pass where `reproduce.sh` would fail, and an attestation that certifies
+a procedure nobody published is worse than no attestation.
+
+So the shadow container is not a sandbox that happens to be safer. It
+is the closest thing the hub can build to *the reproduction a stranger
+would perform*: a fresh container from the digest `environment.json`
+records, carrying a copy of the repository and nothing else, on no
+network, destroyed with proof when the comparison is done.
+
+**What it still does not establish**, stated here because the honest
+boundary is the point of the whole ladder. The shadow runs on the
+researcher's own daemon, from an image already in their local store,
+over a repository copied out of their container rather than cloned from
+a published mirror. It cannot detect a digest unreachable from a fresh
+host, an artefact that exists only locally, or a dependency the lock
+file omits — those are what tiers 1 through 4 are for. What it adds is
+that the *execution* half of the claim is made in an environment the
+researcher did not shape by hand.
+
+### Three trees, and the comparison must read the right one
+
+`tests/testRerunVerifiesWhatItRan.py` builds all three as genuinely
+distinct directories, because a comparison rooted on the wrong one
+finds every entry clean and certifies a reproduction nobody observed:
+
+| tree | written by | read by |
+| --- | --- | --- |
+| the researcher's host clone | nobody, during tier 5 | tiers 1–4 |
+| the live project container's repo | nobody, since the shadow lane | the archive export that SEEDS the shadow |
+| the shadow container's copy | the rerun | the post-rerun re-hash |
+
+`shadowRerun` builds the comparison adapter itself, rooted on the
+shadow, and never accepts one from a caller. The parameter it *does*
+take from a caller, `filesRepoLive`, is named for what it is: the
+source of the image pin, not the comparison root.
+
+### The posture, and the one bound that does not exist
+
+The create specification in `docker/disposableSpecification.py` fixes
+private PID and IPC namespaces, all capabilities dropped,
+no-new-privileges, no devices, no host mounts, the unprivileged
+container user, no network, and hard memory / CPU / PID bounds. None of
+those change what a workflow can *compute*; they bound what a
+compromised one can reach.
+
+The root filesystem is deliberately **writable**, unlike the Agent
+Council's runner, which passes `bReadOnlyRootFilesystem=True` through
+the same seam. `reproduce.sh`'s own `docker run` carries an ordinary
+writable root, so a read-only shadow would refuse workflows the attested
+procedure accepts — a false divergence, which is worse than the mutation
+it prevents, because the researcher is blocked by vaibify's extra
+constraint and no message can say so.
+
+The writable surface has **no hard size limit**, and that is a decision
+rather than an oversight. A tmpfs would give one and it would be the
+wrong one: tmpfs pages are charged to the container's memory cgroup, so
+a workflow writing more output than the memory limit would die of an
+out-of-memory kill reported as a disk problem, and a bound small enough
+to be safe would refuse ordinary scientific output. `reproduce.sh` is
+unbounded the same way.
+
+### The admission is not optional plumbing
+
+The rerun drives the ordinary `DockerConnection`, whose every exec asks
+the mutation gate whether *this container id* is admitted. On the
+dashboard lane the work happens inside a mode-(c) durable carrier opened
+for the **researcher's project container**, whose admission names a
+different id. Without an admission of its own, every step of every rerun
+raises `MutationNotAdmittedError` from inside a background task — which
+is exactly what the first draft of this lane did.
+
+`commitCarrier.ftOpenDisposableContainerAdmission` is the seam. A
+disposable container has no owner record, no lease and no journal, so
+there is no revalidator to write — there is no second party whose claim
+could change. What remains, and is the whole reason to route through the
+carrier at all, is that the admission names **one** container: a rerun
+cannot reach back into the project container it was seeded from, and the
+project's admission never reaches the shadow.
+`tests/testShadowContainerAdmission.py` asserts both directions, with
+the two identities kept distinct throughout.
+
+### The seed is coherence-pinned
+
+`get_archive` walks a directory without freezing it, so anything
+writing inside the container while it walks — an agent mid-task, a
+terminal command, a running step — leaves the archive holding a mixture
+of two moments. For an attestation that is fiction: the claim describes
+a tree that never existed on disk.
+
+The usual symptom is not a false pass but a baffling one. A torn *input*
+file makes the rerun compute something different, the hashes diverge,
+and the researcher reasonably concludes their workflow is
+non-deterministic. Vaibify exists so nobody is ever in that position, so
+`coherentExport` refuses instead, naming the file.
+
+The check has two halves and **neither implies the other**:
+
+| tear | archive vs before-observation | before vs after observation |
+| --- | --- | --- |
+| written after the walk passed it | agrees | **differs** |
+| written and written back mid-walk | **differs** | agrees |
+
+So both are kept, and a falsification entry exists per half: delete
+either and exactly one test survives.
+
+The observation covers every path git can enumerate — tracked,
+untracked and ignored alike — with each path's type and its git blob
+identity computed over the raw worktree bytes (byte-identical to
+`git hash-object --no-filters`, cross-checked against git *inside the
+container* by the live lane). A symlink records its readlink target
+instead, because hashing reads through a link.
+
+`.git/` is exempt, because git does not enumerate its own internals and
+no manifest pins anything there. That exemption is deliberately narrow:
+matching `.git` rather than `.git/` would swallow `.gitignore` and
+`.gitattributes`. Any other unobserved member is refused rather than
+exempted — a checked-out submodule is the case that produces one, and
+naming it beats silently exporting files nothing verified.
+
+It costs a full hash of the repository twice in the container plus once
+host-side per member. An attestation that already takes minutes can
+afford it; a claim about a tree nobody checked cannot.
+
+### The researcher is told before the copy is taken
+
+The reproduction is the one part of vaibify a researcher cannot watch —
+it copies their project and re-runs the workflow somewhere they have no
+window onto. The dashboard therefore raises a modal before the request
+is sent, saying that a copy is about to be made and to make sure
+nothing is writing inside the container; the CLI prints the same notice
+rather than prompting, so unattended runs still work.
+
+Neither is the safety mechanism — the export refuses a torn copy with or
+without them. They exist so that a researcher who meets that refusal was
+already told what causes it. The browser test asserts the ordering (no
+POST before the confirm) rather than the wording, because the phrasing
+will be edited and a test pinned to a sentence gets rewritten rather
+than consulted.
+
+### Shared with the Agent Council, deliberately
+
+`docker/disposableContainer.py`, `docker/disposableSpecification.py` and
+`docker/daemonCapacity.py` were extracted from the Agent Council's
+container gateway so the two lanes share one lifecycle rather than
+maintaining two that drift. The council brings the policy layer this one
+deliberately omits — admission quotas, per-provider accounting, the
+idle-watchdog veto — and wraps these rather than replacing them. The
+ledger here records reservations and their outcomes and nothing else,
+because those policies belong to whoever is spending the resource, not
+to the daemon lane.
+
 ## The Replay axis (AI provenance)
 
 The PROOF ladder measures the state of the artifact; the Replay axis

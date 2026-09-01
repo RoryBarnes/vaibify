@@ -1056,6 +1056,7 @@ async def _ftLaunchDispatchTask(
             dictDurableContext["appState"], dictDurableContext["sName"],
             sContainerId, dictDurableContext["dictLaneTuple"],
             ftaskStartDispatch,
+            sOperation="a pipeline run",
         )
     except commitCarrier.CommitRefusedError as error:
         logger.warning(
@@ -2877,6 +2878,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
     routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
+    routes.remoteRefreshRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

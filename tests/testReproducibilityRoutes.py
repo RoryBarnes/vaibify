@@ -29,6 +29,7 @@ from vaibify.gui.routes.reproducibilityRoutes import (
     fnRegisterAll,
 )
 from vaibify.reproducibility.rerunVerification import (
+    S_DIVERGENCE_PIPELINE_FAILED,
     fiCountManifestEntriesOrZero,
 )
 from vaibify.reproducibility.l3Attestation import (
@@ -48,7 +49,15 @@ def _fdictBuildWorkflow(sProjectRepo):
         "sProjectRepoPath": sProjectRepo,
         "dictRemotes": {},
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        # All three determinism questions answered (2026-08-30
+        # ruling). A lone waiver used to satisfy the gate; it is
+        # now one answer of three, so a fixture carrying only it
+        # would exercise the REFUSAL path in every test below.
+        "dictDeterminism": {
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }
@@ -289,12 +298,34 @@ def test_l3_verify_without_project_repo_returns_409(
 def test_l3_verify_without_readiness_returns_409(
     fixtureClient, fixtureCarrierStoodDown,
 ):
-    """Failing readiness checks block verify with 409."""
+    """Failing readiness checks block verify with 409, and say which.
+
+    The refusal used to point at a tab; from 2026-08-30 it names the
+    failing verifiers, because a researcher met the old one over a
+    single gap on a row the dashboard was painting green and had no
+    way to connect the two.
+
+    Asserted on MEANING, not wording: the phrasing will be edited
+    again, and a test pinned to a sentence gets rewritten rather than
+    consulted. What must survive an edit is that the body identifies a
+    specific gap instead of sending the reader somewhere.
+    """
     response = fixtureClient.post(
         f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
     )
     assert response.status_code == 409
-    assert "L3 readiness" in response.text
+    sDetail = response.json()["detail"].lower()
+    assert "level 3" in sDetail
+    assert any(
+        sGap in sDetail for sGap in (
+            "manifest", "dependency lock", "environment snapshot",
+            "dockerfile", "reproduce.sh", "repeatability rules",
+            "standalone packages",
+        )
+    ), (
+        "the refusal names no specific readiness gap, so the "
+        f"researcher must go hunting for it: {sDetail!r}"
+    )
 
 
 def test_l3_verify_returns_202_with_handle_when_ready(
@@ -305,7 +336,7 @@ def test_l3_verify_returns_202_with_handle_when_ready(
     # Patch the heavy work to a no-op that just sets a passing result.
     with patch(
         "vaibify.gui.routes.reproducibilityRoutes."
-        "fdictRerunAndVerifyWorkflow",
+        "fdictRerunAndVerifyThroughShadow",
         return_value={
             "bPassed": True,
             "iOutputHashesMatched": 2,
@@ -360,10 +391,18 @@ def _fdictRunSyncWithOutcome(fixtureProjectRepo, dictOutcome):
     these tests stay about what the route does with an outcome —
     threading it out with the image digest — rather than re-testing the
     derivation that ``testRerunHashCompareMutationCoverage`` owns.
+
+    The patched name is the SHADOW entry point, which is what the route
+    calls since tier 5 stopped re-running in the researcher's own
+    container. Patching it also keeps these tests from touching a
+    daemon: the real function creates a container. That the route
+    really does call this name rather than the old one is not asserted
+    here — ``testRerunVerifiesWhatItRan`` drives the route with the
+    lane unpatched and the three trees distinct.
     """
     with patch(
         "vaibify.gui.routes.reproducibilityRoutes."
-        "fdictRerunAndVerifyWorkflow",
+        "fdictRerunAndVerifyThroughShadow",
         return_value=dictOutcome,
     ):
         return _fdictRunReproductionSync(
@@ -388,15 +427,23 @@ def test_run_reproduction_sync_reports_mismatches(fixtureProjectRepo):
 
 
 def test_run_reproduction_sync_reports_pipeline_failure(fixtureProjectRepo):
-    """A rerun failure prepends "pipeline rerun exited non-zero" to listDiverged."""
+    """A rerun failure leads listDiverged with the run-failed line.
+
+    Pinned to the CONSTANT, not to its wording: the wording is
+    researcher-facing and has already been rewritten once, and a test
+    carrying its own copy of the sentence pins the phrasing rather
+    than the behaviour.
+    """
     dictResult = _fdictRunSyncWithOutcome(fixtureProjectRepo, {
         "bPassed": False,
         "iOutputHashesMatched": 2,
         "iOutputHashesTotal": 2,
-        "listDivergedHashes": ["pipeline rerun exited non-zero"],
+        "listDivergedHashes": [S_DIVERGENCE_PIPELINE_FAILED],
     })
     assert dictResult["bPassed"] is False
-    assert dictResult["listDivergedHashes"][0] == "pipeline rerun exited non-zero"
+    assert dictResult["listDivergedHashes"][0] == (
+        S_DIVERGENCE_PIPELINE_FAILED
+    )
 
 
 def test_run_reproduction_sync_passes_when_clean(fixtureProjectRepo):
@@ -435,7 +482,7 @@ def test_run_reproduction_sync_passes_the_active_workflow_through(
 
     with patch(
         "vaibify.gui.routes.reproducibilityRoutes."
-        "fdictRerunAndVerifyWorkflow",
+        "fdictRerunAndVerifyThroughShadow",
         side_effect=_fdictRecord,
     ):
         _fdictRunReproductionSync(
@@ -476,32 +523,74 @@ def _fnRunWorkerWith(fixtureProjectRepo, **kwargsPatch):
     return _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]["sPhase"]
 
 
-def test_verify_worker_records_failure_on_import_error(fixtureProjectRepo):
-    """An ImportError beneath the rerun becomes a failed verdict."""
-    assert _fnRunWorkerWith(
-        fixtureProjectRepo, side_effect=ImportError("not installed"),
-    ) == "failed"
-
-
-def test_verify_worker_records_failure_on_runtime_exception(
+def test_verify_worker_records_no_verdict_on_import_error(
     fixtureProjectRepo,
 ):
-    """An Exception inside the rerun is swallowed into a failed verdict."""
+    """An ImportError beneath the rerun reaches no verdict."""
+    assert _fnRunWorkerWith(
+        fixtureProjectRepo, side_effect=ImportError("not installed"),
+    ) == "no-verdict"
+
+
+def test_verify_worker_records_no_verdict_on_runtime_exception(
+    fixtureProjectRepo,
+):
+    """An Exception inside the rerun is caught, not left to hang."""
     assert _fnRunWorkerWith(
         fixtureProjectRepo, side_effect=RuntimeError("boom"),
-    ) == "failed"
+    ) == "no-verdict"
 
 
-def test_verify_worker_records_failure_on_system_exit(fixtureProjectRepo):
+def test_verify_worker_records_no_verdict_on_system_exit(
+    fixtureProjectRepo,
+):
     """A SystemExit must not leave the phase stuck on "running".
 
     SystemExit is not an Exception, so an ``except Exception`` alone
     lets the task die done-with-exception: no attestation, no phase
-    change, and a dashboard that spins forever.
+    change, and a dashboard that spins forever. The phase this
+    settles into is the property; that it is spelled "no-verdict"
+    rather than "failed" is the separate guarantee below.
     """
     assert _fnRunWorkerWith(
         fixtureProjectRepo, side_effect=SystemExit(1),
-    ) == "failed"
+    ) == "no-verdict"
+
+
+def test_a_crashed_verification_writes_no_attestation(fixtureProjectRepo):
+    """A crash says nothing about whether the workflow reproduces.
+
+    Writing one as ``failed`` put a scientific claim on a researcher's
+    disk -- keyed to a manifest digest, saying the project failed to
+    reproduce -- on the strength of vaibify's own machinery breaking.
+    It also destroyed any EARLIER passing attestation, which the
+    unchanged manifest digest still entitled the project to.
+    """
+    from vaibify.reproducibility.l3Attestation import fdictReadAttestation
+
+    assert _fnRunWorkerWith(
+        fixtureProjectRepo, side_effect=RuntimeError("boom"),
+    ) == "no-verdict"
+    assert fdictReadAttestation(fixtureProjectRepo) is None
+
+
+def test_a_crash_is_reported_to_the_researcher(fixtureProjectRepo):
+    """Not attesting must not mean saying nothing.
+
+    The refusal outlives its task -- the task entry is evicted on
+    completion -- so the reason has to live somewhere the attestation
+    response can still read it.
+    """
+    from vaibify.gui.routes import reproducibilityRoutes
+
+    _fnRunWorkerWith(fixtureProjectRepo, side_effect=RuntimeError("boom"))
+    dictNoVerdict = reproducibilityRoutes._DICT_LAST_NO_VERDICT[
+        S_CONTAINER_ID
+    ]
+    assert any(
+        "boom" in sReason
+        for sReason in dictNoVerdict["listReasons"]
+    ), dictNoVerdict
 
 
 def test_verify_worker_records_success_path(fixtureProjectRepo):
@@ -737,8 +826,10 @@ def test_verification_worker_persists_passed_attestation(fixtureProjectRepo):
     assert dictStatus["sPhase"] == "passed"
 
 
-def test_verification_worker_marks_failed_on_exception(fixtureProjectRepo):
-    """An exception inside reproduction is surfaced as a failed attestation."""
+def test_verification_worker_marks_no_verdict_on_exception(
+    fixtureProjectRepo,
+):
+    """An exception inside reproduction settles the phase, without attesting."""
     from vaibify.gui.routes import reproducibilityRoutes
 
     _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
@@ -755,7 +846,7 @@ def test_verification_worker_marks_failed_on_exception(fixtureProjectRepo):
             fixtureProjectRepo + "/.vaibify/workflows/project.json",
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
-    assert dictStatus["sPhase"] == "failed"
+    assert dictStatus["sPhase"] == "no-verdict"
 
 
 def test_verification_worker_marks_failed_on_diverged(fixtureProjectRepo):

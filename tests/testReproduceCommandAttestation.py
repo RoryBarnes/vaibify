@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
 from vaibify.reproducibility.rerunVerification import (
+    fdictUnrunOutcome,
     S_DIVERGENCE_PIPELINE_FAILED,
     fbRunWorkflowInContainer,
     fdictVerifyRerunOutputs,
@@ -87,7 +88,15 @@ def fixtureRepo(tmp_path):
     pathWorkflows.mkdir(parents=True, exist_ok=True)
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }))
@@ -282,6 +291,40 @@ def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     assert dictPayload["iOutputHashesMatched"] == 3
 
 
+def test_a_rerun_that_reached_no_verdict_writes_nothing(fixtureRepo):
+    """The CLI lane must make the same distinction the dashboard does.
+
+    Both write the SAME file, so a lane that attests a refusal
+    reintroduces the defect on the other lane's disk. A refused rerun
+    established nothing about whether the workflow reproduces, and
+    writing "failed" would also destroy an earlier passing attestation
+    that the unchanged manifest still entitles the project to.
+    """
+    dictOutcome = fdictUnrunOutcome("step 'Sign Off' needs a researcher")
+    bWritten = commandReproduce._fbWriteAttestationFromRun(
+        str(fixtureRepo), dictOutcome, 2.5,
+    )
+    assert bWritten is False
+    assert not (fixtureRepo / ".vaibify" / "l3_attestation.json").exists()
+
+
+def test_a_no_verdict_run_does_not_destroy_an_earlier_pass(fixtureRepo):
+    """The earlier attestation is still the project's best evidence."""
+    dictPassed = fdictVerifyRerunOutputs(str(fixtureRepo), True)
+    commandReproduce._fbWriteAttestationFromRun(
+        str(fixtureRepo), dictPassed, 2.5,
+    )
+    commandReproduce._fbWriteAttestationFromRun(
+        str(fixtureRepo),
+        fdictUnrunOutcome("step 'Sign Off' needs a researcher"),
+        0.1,
+    )
+    dictPayload = json.loads(
+        (fixtureRepo / ".vaibify" / "l3_attestation.json").read_text(),
+    )
+    assert dictPayload["sStatus"] == "passed"
+
+
 def test_write_attestation_from_run_handles_oserror(fixtureRepo):
     """An OSError during write surfaces as False and a warning."""
     dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
@@ -445,7 +488,15 @@ def test_aggregate_returns_workflow_with_determinism_only(tmp_path):
     pathDir.mkdir(parents=True, exist_ok=True)
     (pathDir / "wf.json").write_text(json.dumps({
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }))

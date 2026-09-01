@@ -612,7 +612,7 @@ def test_missing_manifest_error_is_captured_and_redacted(tmp_path):
     sRepo = str(tmp_path / "no-manifest")
     os.makedirs(sRepo, exist_ok=True)
     dictWorkflow = _fdictBuildWorkflow(sRepo)
-    dictResult = scheduledReverify._fdictAttemptOneVerify(
+    dictResult = scheduledReverify.fdictAttemptOneVerify(
         sRepo, dictWorkflow, "github", "2026-05-03T00:00:00Z",
     )
     assert dictResult["sStatus"] == "error"
@@ -711,7 +711,7 @@ def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
             sRepo, dictWorkflow, "zenodo",
         )
-        dictAttempt = scheduledReverify._fdictAttemptOneVerify(
+        dictAttempt = scheduledReverify.fdictAttemptOneVerify(
             sRepo, dictWorkflow, "zenodo", "2026-06-11T00:00:00Z",
         )
     assert dictStatus["iTotalFiles"] == 2

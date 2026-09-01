@@ -113,10 +113,19 @@ var VaibifyWebSocket = (function () {
         wsNew.onopen = function () {
             console.log("[WS] open, flushing",
                 _listPendingActions.length, "pending actions");
+            /* Read before the counter is cleared: a socket that opens
+             * on attempt 0 is the first connection of the session, and
+             * anything above that is a RE-connection — the moment a
+             * listener may have missed events while the link was
+             * down. */
+            var bReconnected = _iReconnectAttempt > 0;
             _iReconnectAttempt = 0;
             _fReconnectElapsedSeconds = 0;
             _bLastCloseExhaustedWindow = false;
             _fnFlushPendingActions();
+            if (bReconnected) {
+                _fnDispatchEvent({sType: "_wsReconnect"});
+            }
         };
         wsNew.onmessage = function (event) {
             /* Same fence as onclose: a superseded socket may still have

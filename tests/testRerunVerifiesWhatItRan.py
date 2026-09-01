@@ -1,38 +1,58 @@
 """Tier 5 must hash the filesystem the rerun wrote to, and only that.
 
-The rerun executes inside a container whose ``/workspace`` is a
-Docker-managed named volume. ``vaibify reproduce --repo <path>`` names a
-*host* directory. Those are different filesystems, so a verification
-that re-hashes the host clone after a container rerun is reading a tree
-the rerun never touched: every entry still matches, and the attestation
-certifies a reproduction that was never observed. That is the same
-false-pass shape as trusting the pipeline exit code, arrived at from the
-other side.
+Since the shadow lane there are THREE trees in play, and the whole
+value of this file is that they are genuinely distinct directories on
+disk:
 
-Three properties are asserted here, each with the fixture built so the
+* the researcher's host clone, which ``vaibify reproduce --repo <path>``
+  names and which tiers 1-4 read;
+* the live project container's repository, which the shadow is SEEDED
+  from and which the rerun must no longer write to at all;
+* the shadow container's copy, which the rerun writes and which the
+  post-rerun re-hash must read.
+
+A verification rooted on either of the first two after a shadow rerun
+is reading a tree the rerun never touched: every entry still matches,
+and the attestation certifies a reproduction that was never observed.
+That is the same false-pass shape as trusting the pipeline exit code,
+arrived at from another side — and the shadow lane added a second way
+to arrive at it, which is why the fixture grew a third root rather than
+keeping two.
+
+Four properties are asserted here, each with the fixture built so the
 property can actually fail:
 
-1. The container filesystem and the researcher's clone are **distinct
-   directories**. A test whose fake rerun writes into the clone cannot
-   see the defect at all — that is precisely why the previous
-   acceptance test passed against broken plumbing.
-2. ``MANIFEST.sha256`` is the *expected* side of the comparison, so a
+1. The three trees are **distinct directories**. A test whose fake
+   rerun writes into the clone cannot see the defect at all — that is
+   precisely why an earlier acceptance test passed against broken
+   plumbing.
+2. The researcher's own container repository is **left alone**. Tier 5
+   used to overwrite it, and a lane that quietly kept doing so would
+   satisfy every hash assertion here while destroying the researcher's
+   outputs.
+3. ``MANIFEST.sha256`` is the *expected* side of the comparison, so a
    step that rewrites it mid-run must not be able to bless its own
    change. The expected hashes have to be frozen before execution.
-3. A container may host several workflows. The workflow that is
+4. A container may host several workflows. The workflow that is
    attested must be the workflow that was rerun, never whichever one
    sorts first.
 
-The container stand-in below runs its commands for real, against a real
-directory, so the hashing, the manifest parse and the writes are all
-genuine IO. What it does not model is Docker itself; the real transport
-is Lane 2's job (``tests/testContainerAcceptance.py``).
+The container stand-in below runs its commands for real, against real
+directories, so the hashing, the manifest parse and the writes are all
+genuine IO — and the shadow's creation, archive copy-in and destruction
+run through the REAL ``disposableContainer`` code against a fake daemon
+that materialises the tarball on disk. What none of it models is Docker
+itself; the real transport is exercised in
+``tests/testDisposableContainerLive.py`` and Lane 2's
+``tests/testContainerAcceptance.py``.
 """
 
 import hashlib
+import io
 import json
 import os
 import subprocess
+import tarfile
 from unittest.mock import patch
 
 import pytest
@@ -104,14 +124,110 @@ class LocalShellContainer:
         with open(sPath, "wb") as fileHandle:
             fileHandle.write(baContent)
 
+    def fbaFetchDirectoryArchive(self, sContainerId, sPath, iMaxBytes):
+        """Tar a real directory, the way ``get_archive`` names members.
+
+        Members are relative to the exported directory's PARENT, which
+        is the property ``ftResolveShadowPaths`` is written against: a
+        repo at ``/x/myRepo`` arrives as ``myRepo/...``. Getting that
+        wrong here would make the shadow copy land one level off and
+        every test below would fail for a reason unrelated to what it
+        asserts, so it is worth stating.
+        """
+        del sContainerId
+        bufferTar = io.BytesIO()
+        with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+            fileTar.add(sPath, arcname=os.path.basename(sPath))
+        baArchive = bufferTar.getvalue()
+        if len(baArchive) > iMaxBytes:
+            raise ValueError("archive exceeds the ceiling")
+        return baArchive
+
+    def fdictReadDaemonCapacity(self):
+        """Answer as an unreachable daemon does: zeroes, never an error."""
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
+
     # The existence probes are typed reads, and these are the REAL
     # implementations borrowed off DockerConnection: they need only
     # ``ftRunInContainerStreamed``, which this class runs for real,
     # so the shipped program text executes against the real tree like
     # everything else here. Nothing answers a canned value.
+    #
+    # The worktree observation is borrowed on the same terms and it
+    # matters more than the others: it is what the export's coherence
+    # check compares, so a hand-written stand-in for it would let the
+    # check pass by agreeing with a fiction. Borrowed, it runs the
+    # shipped container program -- git enumeration and all -- against
+    # the real git repository the fixture seeds.
     _ftRunTypedRead = DockerConnection._ftRunTypedRead
     fbContainerPathIsFile = DockerConnection.fbContainerPathIsFile
     fbContainerPathIsDirectory = DockerConnection.fbContainerPathIsDirectory
+    fdictFetchWorktreeIdentities = (
+        DockerConnection.fdictFetchWorktreeIdentities)
+
+
+class FakeDisposableDaemon:
+    """A daemon whose containers are real directories on this machine.
+
+    It answers only what ``disposableContainer`` actually asks of it, so
+    the create, the archive copy-in, the identity-verified destroy and
+    the absence probe are all the REAL shipped code — only the daemon
+    behind them is local. ``put_archive`` materialises the tarball on
+    disk at the path it was given, which is what makes the shadow tree
+    a genuine third directory the rerun can write to and the re-hash
+    can read.
+    """
+
+    class _NotFound(Exception):
+        """Stands in for ``docker.errors.NotFound``."""
+
+    def __init__(self):
+        self.listCreated = []
+        self.setRemoved = set()
+        self.dictLabelsById = {}
+        self.api = self
+        self.containers = self
+        self.images = self
+
+    # --- containers collection ---
+    def create(self, sImageReference, **dictKeywords):
+        sIdentifier = "shadow-" + str(len(self.listCreated))
+        self.listCreated.append((sImageReference, dictKeywords))
+        self.dictLabelsById[sIdentifier] = dictKeywords["labels"]
+        self.dictLabelsById[dictKeywords["name"]] = dictKeywords["labels"]
+        return _FakeCreatedContainer(sIdentifier, dictKeywords["name"])
+
+    def list(self, all=False, filters=None):
+        del all, filters
+        return []
+
+    # --- low-level api ---
+    def put_archive(self, sContainerId, sPath, baArchive):
+        del sContainerId
+        with tarfile.open(fileobj=io.BytesIO(baArchive), mode="r") as fTar:
+            fTar.extractall(sPath)
+        return True
+
+    def inspect_container(self, sContainerId):
+        if sContainerId in self.setRemoved:
+            raise self._NotFound(sContainerId)
+        return {"Config": {"Labels": self.dictLabelsById.get(
+            sContainerId, {})}}
+
+    def remove_container(self, sContainerId, force=False, v=False):
+        del force, v
+        self.setRemoved.add(sContainerId)
+
+
+class _FakeCreatedContainer:
+    """What the fake daemon's ``create`` hands back."""
+
+    def __init__(self, sIdentifier, sName):
+        self.id = sIdentifier
+        self.name = sName
+
+    def start(self):
+        """Accept the start the gateway performs after create."""
 
 
 # ----------------------------------------------------------------------
@@ -120,8 +236,15 @@ class LocalShellContainer:
 
 
 def _fnSeedEnvelope(pathRepo):
-    """Write an L3 envelope whose tiers 1-4 all pass on the pinned bytes."""
+    """Write an L3 envelope whose tiers 1-4 all pass on the pinned bytes.
+
+    A REAL git repository, because the export's coherence check
+    enumerates with git and a bare directory would answer "not a git
+    work tree" -- a refusal, correctly, but one that would make every
+    test here fail for a reason unrelated to what it asserts.
+    """
     pathRepo.mkdir(parents=True, exist_ok=True)
+    _fnMakeGitRepository(pathRepo)
     pathOutput = pathRepo / S_OUTPUT_FILENAME
     pathOutput.write_text("answer = 42\n")
     pathDocker = pathRepo / "Dockerfile"
@@ -153,11 +276,50 @@ def _fnSeedEnvelope(pathRepo):
             "bRunEnabled": True,
             "saCommands": ["true"],
         }],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }))
+    _fnCommitEverything(pathRepo)
     return pathRepo
+
+
+def _fnMakeGitRepository(pathRepo):
+    """Initialise a repository, pinning the branch name explicitly.
+
+    ``git init`` inherits ``init.defaultBranch`` from the machine, and a
+    fixture that inherits it passes on a laptop defaulting to ``main``
+    and behaves differently on a runner defaulting to ``master``.
+    ``symbolic-ref`` works on every git version, unlike ``init -b``.
+    """
+    subprocess.run(["git", "init", "-q", str(pathRepo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(pathRepo), "symbolic-ref", "HEAD",
+         "refs/heads/main"], check=True)
+
+
+def _fnCommitEverything(pathRepo):
+    """Commit the seeded envelope so the repository has a HEAD.
+
+    Identity is passed with ``-c`` rather than written into the repo
+    config, so the fixture never depends on (or disturbs) whatever the
+    developer's global git identity is.
+    """
+    subprocess.run(
+        ["git", "-C", str(pathRepo), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(pathRepo),
+         "-c", "user.email=fixture@example.invalid",
+         "-c", "user.name=Fixture",
+         "commit", "-qm", "seed"], check=True)
 
 
 def _fnWriteManifestFor(pathRepo, tPaths):
@@ -169,19 +331,69 @@ def _fnWriteManifestFor(pathRepo, tPaths):
     ))
 
 
+@pytest.fixture(autouse=True)
+def fnRepointShadowRoot(tmp_path, monkeypatch):
+    """Put the shadow workspace somewhere this machine can create.
+
+    In production ``S_SHADOW_WORKSPACE_ROOT`` is an absolute CONTAINER
+    path; here the stand-in runs the rerun's commands as real shell
+    commands against real directories, so it has to be a real host
+    path. Autouse because forgetting it is not a test failure -- it is
+    a test that reaches the developer's actual Docker daemon and tries
+    to write at the filesystem root, which is how one of these tests
+    was found creating containers on a live machine.
+    """
+    from vaibify.reproducibility import shadowRerun
+
+    pathShadowRoot = tmp_path / "shadowRoot"
+    pathShadowRoot.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        shadowRerun, "S_SHADOW_WORKSPACE_ROOT", str(pathShadowRoot))
+    return pathShadowRoot
+
+
 @pytest.fixture
-def fixtureTwoRoots(tmp_path):
-    """Return ``(pathHostClone, pathContainerRepo)`` — two distinct trees.
+def fixtureTwoRoots(tmp_path, monkeypatch):
+    """Return ``(pathHostClone, pathContainerRepo)`` — distinct trees.
 
     Both hold byte-identical envelopes, so tiers 1-4 pass either way and
     the only thing separating a real verification from a fictional one
     is *which* tree it hashes after the rerun.
+
+    A THIRD root is created here too, and it is not returned because no
+    test should name it directly: the shadow's location is the shadow
+    lane's own business, and a test that hard-coded it would keep
+    passing after the lane stopped putting anything there. Tests reach
+    it through :func:`_fpathShadowCopyOf`, which derives it exactly as
+    the production resolver does.
+
+    The shadow workspace root is repointed by ``fnRepointShadowRoot``,
+    which every test in this file needs.
     """
+    del monkeypatch
     pathHostClone = _fnSeedEnvelope(tmp_path / "hostClone")
     pathContainerRepo = _fnSeedEnvelope(
         tmp_path / "containerVolume" / "workspace" / "ProjectRepo",
     )
     return pathHostClone, pathContainerRepo
+
+
+def _fpathShadowCopyOf(pathContainerRepo):
+    """Return where the shadow copy of a repository lands, as the lane says.
+
+    Derived through the production resolver rather than re-typed, so a
+    test cannot go on asserting against a location the lane abandoned --
+    the constant-that-must-equal-a-derivation trap.
+    """
+    import pathlib
+
+    from vaibify.reproducibility import shadowRerun
+
+    tPaths = shadowRerun.ftResolveShadowPaths(
+        str(pathContainerRepo),
+        str(pathContainerRepo / ".vaibify" / "workflows" / "project.json"),
+    )
+    return pathlib.Path(tPaths[1])
 
 
 def _fdictWorkflowFor(pathRepo, sName):
@@ -194,7 +406,15 @@ def _fdictWorkflowFor(pathRepo, sName):
             "bRunEnabled": True,
             "saCommands": ["true"],
         }],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
         "bNoStandaloneBinaries": True,
@@ -205,7 +425,7 @@ def _fdictWorkflowFor(pathRepo, sName):
 
 def _fnPatchContainerLane(
     connectionContainer, listWorkflowEntries, dictWorkflowByPath,
-    fnRunSideEffect,
+    fnRunSideEffect, daemonDisposable=None,
 ):
     """Patch every seam between the CLI and a container, leaving IO real.
 
@@ -214,6 +434,7 @@ def _fnPatchContainerLane(
     manifest parse and the file writes are all genuine.
     """
     listRan = []
+    daemonDisposable = daemonDisposable or FakeDisposableDaemon()
 
     async def _fiRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
@@ -250,6 +471,20 @@ def _fnPatchContainerLane(
         patch(
             "vaibify.gui.pipelineRunner.fiRunAllSteps",
             side_effect=_fiRunAllSteps,
+        ),
+        # The shadow lane's daemon. Everything ABOVE it -- the gateway,
+        # the reservation ledger, the archive repack and stamping, the
+        # identity-verified destroy -- is the real shipped code; only
+        # the daemon is local, and its containers are real directories.
+        patch(
+            "vaibify.docker.disposableContainer."
+            "fdockerCreateDisposableClient",
+            return_value=daemonDisposable,
+        ),
+        patch(
+            "vaibify.docker.disposableContainer._fmoduleGetDocker",
+            return_value=type("_M", (), {"errors": type(
+                "_E", (), {"NotFound": FakeDisposableDaemon._NotFound})}),
         ),
     ]
     return listPatches, listRan
@@ -300,12 +535,14 @@ def _ftInvokeReproduce(saExtraArgs, pathRepo):
 def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
     fixtureTwoRoots,
 ):
-    """A zero-exit step that changes one container byte must fail Tier 5.
+    """A zero-exit step that changes one shadow byte must fail Tier 5.
 
-    The host clone is untouched throughout, so a verification rooted
-    there re-hashes three files that were never in the rerun's path and
-    finds them all clean. Only a verification rooted on the filesystem
-    the rerun actually wrote to can see the change.
+    Both of the other two trees are untouched throughout, so a
+    verification rooted on either of them re-hashes three files that
+    were never in the rerun's path and finds them all clean. Only a
+    verification rooted on the filesystem the rerun actually wrote to
+    can see the change -- and since the shadow lane, that filesystem is
+    a third one, so this now falsifies two wrong roots rather than one.
     """
     pathHostClone, pathContainerRepo = fixtureTwoRoots
     sWorkflowPath = str(
@@ -314,8 +551,9 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
     dictWorkflow = _fdictWorkflowFor(pathContainerRepo, "Project")
     connectionContainer = LocalShellContainer()
 
-    def _fnMutateContainerOutput():
-        (pathContainerRepo / S_OUTPUT_FILENAME).write_text("answer = 43\n")
+    def _fnMutateShadowOutput():
+        (_fpathShadowCopyOf(pathContainerRepo) / S_OUTPUT_FILENAME
+         ).write_text("answer = 43\n")
 
     listPatches, _listRan = _fnPatchContainerLane(
         connectionContainer,
@@ -324,7 +562,7 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
             "sProjectRepoPath": str(pathContainerRepo),
         }],
         {sWorkflowPath: dictWorkflow},
-        _fnMutateContainerOutput,
+        _fnMutateShadowOutput,
     )
     fnStop = _fnEnterAll(listPatches)
     try:
@@ -336,15 +574,20 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
 
     assert (pathHostClone / S_OUTPUT_FILENAME).read_text() == \
         "answer = 42\n", "the clone must stay untouched for this to bite"
+    assert (pathContainerRepo / S_OUTPUT_FILENAME).read_text() == \
+        "answer = 42\n", (
+            "the rerun wrote into the RESEARCHER's own container "
+            "repository; the shadow lane exists so that it does not"
+        )
     assert resultClick.exit_code == 1, (
-        "reproduce --rerun certified a reproduction whose container-side "
-        "output changed; the verification hashed the host clone the "
-        f"rerun never touched. Output was:\n{resultClick.output}"
+        "reproduce --rerun certified a reproduction whose shadow-side "
+        "output changed; the verification hashed a tree the rerun never "
+        f"touched. Output was:\n{resultClick.output}"
     )
     assert dictAttestation is not None, "no attestation was written"
     assert dictAttestation["sStatus"] == "failed"
     assert S_OUTPUT_FILENAME in dictAttestation["listDivergedHashes"], (
-        "the attestation must name the container-side file whose hash "
+        "the attestation must name the shadow-side file whose hash "
         f"moved; got {dictAttestation['listDivergedHashes']!r}"
     )
 
@@ -363,9 +606,9 @@ def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):
             "sProjectRepoPath": str(pathContainerRepo),
         }],
         {sWorkflowPath: _fdictWorkflowFor(pathContainerRepo, "Project")},
-        lambda: (pathContainerRepo / S_OUTPUT_FILENAME).write_text(
-            "answer = 42\n",
-        ),
+        lambda: (
+            _fpathShadowCopyOf(pathContainerRepo) / S_OUTPUT_FILENAME
+        ).write_text("answer = 42\n"),
     )
     fnStop = _fnEnterAll(listPatches)
     try:
@@ -443,11 +686,12 @@ def test_a_step_that_rewrites_the_manifest_cannot_bless_its_own_change(
 ):
     """Re-pinning MANIFEST.sha256 during the run must fail, not pass.
 
-    The clone and the container repo are the same directory here, so the
-    wrong-root defect is out of the way and the only thing under test is
-    *when* the expected hashes are read. A step that changes an output
-    and then re-pins the manifest leaves a perfectly self-consistent
-    tree: a comparison performed afterwards has nothing to notice.
+    The mutation and the comparison both happen in the SHADOW here, so
+    the wrong-root defect is out of the way and the only thing under
+    test is *when* the expected hashes are read. A step that changes an
+    output and then re-pins the manifest leaves a perfectly
+    self-consistent tree: a comparison performed afterwards has nothing
+    to notice.
     """
     _pathHostClone, pathRepo = fixtureTwoRoots
     sWorkflowPath = str(
@@ -456,11 +700,12 @@ def test_a_step_that_rewrites_the_manifest_cannot_bless_its_own_change(
     connectionContainer = LocalShellContainer()
 
     def _fnMutateAndRepin():
-        (pathRepo / S_OUTPUT_FILENAME).write_text("answer = 43\n")
-        _fnWriteManifestFor(pathRepo, (
-            pathRepo / S_OUTPUT_FILENAME,
-            pathRepo / "reproduce.sh",
-            pathRepo / "Dockerfile",
+        pathShadow = _fpathShadowCopyOf(pathRepo)
+        (pathShadow / S_OUTPUT_FILENAME).write_text("answer = 43\n")
+        _fnWriteManifestFor(pathShadow, (
+            pathShadow / S_OUTPUT_FILENAME,
+            pathShadow / "reproduce.sh",
+            pathShadow / "Dockerfile",
         ))
 
     listPatches, _listRan = _fnPatchContainerLane(
@@ -613,6 +858,15 @@ def test_dashboard_verify_reruns_the_workflow_it_was_given(
     cannot open it; routing the dashboard through that resolver means
     the rerun never happens and the attestation records a failure that
     says nothing about the workflow.
+
+    The workflow the runner receives must be the SAME OBJECT the route
+    was holding -- asserted with ``is``, because an equal copy
+    rediscovered from the container would satisfy ``==`` and is exactly
+    the substitution that produces a complete-looking record of a run
+    that never happened. Its path, though, must have MOVED to the
+    shadow: the same workflow, re-rooted, is what the shadow lane is
+    for, and a path still pointing at the live container repo would mean
+    the rerun was about to overwrite the researcher's outputs.
     """
     from vaibify.gui.routes.reproducibilityRoutes import (
         _fdictRunReproductionSync,
@@ -635,17 +889,25 @@ def test_dashboard_verify_reruns_the_workflow_it_was_given(
         sWorkdir, fnStatusCallback, **kwargs,
     ):
         listRan.append((dictRunWorkflow, sRunWorkflowPath))
-        (pathContainerRepo / S_OUTPUT_FILENAME).write_text("answer = 43\n")
+        (_fpathShadowCopyOf(pathContainerRepo) / S_OUTPUT_FILENAME
+         ).write_text("answer = 43\n")
         return 0
 
-    with patch(
-        "vaibify.gui.pipelineRunner.fiRunAllSteps",
-        side_effect=_fiRunAllSteps,
-    ):
-        dictResult = _fdictRunReproductionSync(
-            connectionContainer, S_CONTAINER_ID, dictWorkflow,
-            sWorkflowPath, filesRepo,
-        )
+    listPatches, _listRan = _fnPatchContainerLane(
+        connectionContainer, [], {}, lambda: None,
+    )
+    fnStop = _fnEnterAll(listPatches)
+    try:
+        with patch(
+            "vaibify.gui.pipelineRunner.fiRunAllSteps",
+            side_effect=_fiRunAllSteps,
+        ):
+            dictResult = _fdictRunReproductionSync(
+                connectionContainer, S_CONTAINER_ID, dictWorkflow,
+                sWorkflowPath, filesRepo,
+            )
+    finally:
+        fnStop()
 
     assert len(listRan) == 1, (
         "the dashboard verify did not run the workflow at all"
@@ -654,8 +916,18 @@ def test_dashboard_verify_reruns_the_workflow_it_was_given(
         "the dashboard reran a workflow rediscovered from the container "
         "rather than the active one the route was holding"
     )
-    assert listRan[0][1] == sWorkflowPath
+    assert listRan[0][1] == str(
+        _fpathShadowCopyOf(pathContainerRepo)
+        / ".vaibify" / "workflows" / "project.json"
+    ), (
+        "the rerun was pointed at the researcher's own container repo, "
+        "not at the shadow copy"
+    )
     assert dictResult["bPassed"] is False, (
-        "the container-side output changed; the attestation must not pass"
+        "the shadow-side output changed; the attestation must not pass"
     )
     assert S_OUTPUT_FILENAME in dictResult["listDivergedHashes"]
+    assert dictResult["bShadowContainerUsed"] is True
+    assert (pathContainerRepo / S_OUTPUT_FILENAME).read_text() == (
+        "answer = 42\n"
+    ), "the dashboard rerun wrote into the researcher's own repository"

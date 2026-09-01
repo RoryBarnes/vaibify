@@ -1224,12 +1224,15 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
             listTarBuilders.append(
                 str(pathFile.relative_to(REPO_ROOT))
             )
-    assert listTarBuilders == ["vaibify/docker/dockerConnection.py"], (
+    assert sorted(listTarBuilders) == [
+        "vaibify/docker/disposableSpecification.py",
+        "vaibify/docker/dockerConnection.py",
+    ], (
         f"tar entries are built in {listTarBuilders}; this invariant "
-        f"pins the uid-1000 default of the ONE builder in the Docker "
-        f"gateway. A new tar-building write path is outside its reach "
-        f"— either route the write through the gateway or give the new "
-        f"path its own ownership invariant before extending this list."
+        f"pins the uid-1000 default of EVERY builder that can write into "
+        f"a container. A new tar-building write path is outside its reach "
+        f"— either route the write through an existing builder, or extend "
+        f"this list AND add the builder's own default assertion below."
     )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
@@ -1251,6 +1254,56 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         "explicit iUid=0/iGid=0 must still pass through — the secret "
         "writer relies on the override path."
     )
+    _fnAssertDisposableArchiveStampsTheContainerUser()
+
+
+def _fnAssertDisposableArchiveStampsTheContainerUser():
+    """Pin the SECOND tar-building write path to the same uid-1000 default.
+
+    ``disposableSpecification`` repacks a whole repository archive to
+    copy it into a shadow container, and that repack is a host→container
+    write with exactly the ownership hazard the dispatcher has. It is a
+    separate builder rather than a caller of ``_finfoBuildTarEntry``
+    because it stamps members it did not create — it rewrites the
+    ownership of an archive read out of another container — so there is
+    no size/mode/content triple to hand the dispatcher's builder.
+
+    The DIRECTORY leg is asserted too, and it is the one that has
+    already been wrong: a tarball may name ``repo/data/file`` without
+    naming ``repo/data``, and the daemon then creates the gap
+    root-owned. A file the container user owns inside a directory it
+    does not is unwritable in exactly the way this invariant exists to
+    prevent.
+    """
+    import io
+    import tarfile
+
+    from vaibify.docker import disposableSpecification
+
+    bufferSource = io.BytesIO()
+    with tarfile.open(fileobj=bufferSource, mode="w") as fileTarSource:
+        infoDeep = tarfile.TarInfo(name="repo/nested/deep.txt")
+        infoDeep.size = 0
+        fileTarSource.addfile(infoDeep, io.BytesIO(b""))
+    bufferStamped = disposableSpecification.fbufferRepackArchiveStamped(
+        bufferSource.getvalue(), "shadow",
+    )
+    dictOwners = {}
+    with tarfile.open(fileobj=bufferStamped, mode="r") as fileTarStamped:
+        for infoMember in fileTarStamped:
+            dictOwners[infoMember.name] = (infoMember.uid, infoMember.gid)
+    assert dictOwners, "the repack emitted no members at all"
+    assert all(tOwner == (1000, 1000) for tOwner in dictOwners.values()), (
+        f"every repacked archive member must be stamped to the "
+        f"unprivileged container user (1000:1000); got {dictOwners}"
+    )
+    for sParent in ("shadow", "shadow/repo", "shadow/repo/nested"):
+        assert sParent in dictOwners, (
+            f"the repack must emit {sParent!r} as its own stamped "
+            f"directory member; a parent left to the daemon is created "
+            f"root-owned and the container user cannot write in it. "
+            f"Emitted: {sorted(dictOwners)}"
+        )
 
 
 def testDockerfileDisablesAptSandboxBeforeFirstUpdate():
@@ -4307,7 +4360,37 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +8 (2026-08-27): bNoStandaloneBinaries joins the envelope
     # detail, so the Software row can tell "not answered yet" from
     # "answered: none" instead of showing an unanswered "?" forever.
-    "routes/pipelineRoutes.py": 3298,
+    # +11 (2026-08-30): the poll REPORTS which remote checks are in
+    # flight (dictRemoteChecks), so a configured badge can pulse until
+    # its own answer arrives instead of going orange on age alone. The
+    # checks themselves run in remoteRefreshRoutes; most of the
+    # addition is the comment saying why they cannot run here.
+    # +12 (2026-08-30): the envelope payload carries the determinism
+    # VERDICT and its reasons, so the row renders one authority's
+    # answer. It used to re-derive "declared" from the raw block and
+    # painted green over a declaration that pinned nothing, while the
+    # gate refusing the L3 verify said otherwise.
+    # +52 (2026-08-30): the envelope ships one entry per
+    # determinism QUESTION — label, question text, answer and
+    # pinned value — so each gets its own row and marker. The
+    # words travel from the gate module rather than being
+    # restated in JavaScript, which is the drift that produced
+    # the defect this replaces.
+    # +8 (2026-08-30): dictMathsLibrary on the envelope — which
+    # maths library the dependency lock names. The MKL question
+    # is the one a researcher cannot answer by reading their own
+    # code, and asking it without this was asking them to guess.
+    # +29 (2026-08-31): the poll reports whether an L3 verification
+    # is running, so the Rebuild-attestation row can pulse instead of
+    # sitting red and still for the hours a rerun takes. The flag is
+    # keyword-only and undefaulted at each of the three hops it
+    # travels, which is most of the added lines and the reason the
+    # threading cannot be silently cut.
+    # +37 (2026-09-01): the poll ships the last attestation's own
+    # words, so the row can tell "never run" from "ran and failed".
+    # A boolean could not, and the row told a researcher whose rerun
+    # had just reported a failing step to go and run it.
+    "routes/pipelineRoutes.py": 3447,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4919,7 +5002,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reusable one.
     # +5 (2026-08-26): ZenodoRecordRequest — the declare-record
     # body model, beside the other Zenodo request models.
-    "pipelineServer.py": 2993,
+    # +1 (2026-08-30): remoteRefreshRoutes joins the registration
+    # block — one line, one new route module.
+    # +N (2026-08-30): a durable task RECORDS what it is, so a busy
+    # refusal names the live work instead of saying "a durable task
+    # is already live" -- which a researcher could not tell from
+    # "something is stuck". Every launch site passes its own name.
+    "pipelineServer.py": 2995,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4955,7 +5044,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # supervisor, a drain held by a non-carrier such as reconcile, a
     # live durable task) are the three this module already tracks, so
     # no responsibility moved in.
-    "commitCarrier.py": 1146,
+    # +33 (2026-08-28): ftOpenDisposableContainerAdmission — the seam
+    # the L3 shadow rerun opens for a container vaibify created and
+    # will destroy. It has to live here and nowhere else:
+    # _fadmissionMintForCommitCarrier is importable ONLY by this module
+    # (structurally enforced), which is what makes an admission
+    # unforgeable in practice rather than by convention. No
+    # responsibility moved in — it is one more mode of the one thing
+    # this module does.
+    # +N (2026-08-30): a durable task RECORDS what it is, so a busy
+    # refusal names the live work instead of saying "a durable task
+    # is already live" -- which a researcher could not tell from
+    # "something is stuck". Every launch site passes its own name.
+    "commitCarrier.py": 1192,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -5111,7 +5212,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # writer and fences the container's pipeline socket.
     # +3 (2026-08-08): the reservation probe's daemon-down guard
     # asks fbDockerReachable (host-mode wave 2).
-    "startReservation.py": 976,
+    # +N (2026-08-30): a durable task RECORDS what it is, so a busy
+    # refusal names the live work instead of saying "a durable task
+    # is already live" -- which a researcher could not tell from
+    # "something is stuck". Every launch site passes its own name.
+    "startReservation.py": 977,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -5227,7 +5332,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # successors, never itself. The threading rides the existing
     # step-execution spine — the same single purpose, not a new
     # responsibility.
-    "pipelineRunner.py": 1714,
+    # +10 (2026-09-01): a step whose directory is missing skips its
+    # command checks. The command probe is "cd <dir> && test -f
+    # <script>", so an absent directory made every command in the step
+    # report "command not found" -- twelve lines for two faults, with
+    # the two that mattered buried among them.
+    "pipelineRunner.py": 1725,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -5519,7 +5629,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +16 (2026-08-28): scan-determinism. The scanner behind it
     # shipped with no caller anywhere in the GUI because it read HOST
     # paths, and a container project's scripts are not on the host.
-    "actionCatalog.py": 1110,
+    # +9 (2026-08-30): the open-time remote refresh is excluded
+    # from the agent lane; eight of the nine lines say why, since
+    # "the agent already has verify-remote" is the whole argument.
+    # +6 (2026-08-30): declare-determinism now describes THREE
+    # separately-answered questions and their pinned-value
+    # coupling, because an agent relaying "declare determinism"
+    # to a researcher has to know what is being asked.
+    "actionCatalog.py": 1125,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5701,7 +5818,46 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +44 (2026-08-28): the determinism scan route. Read-only, and
     # it carries its own scope caveat in the response so a caller
     # cannot report "clean" as "deterministic".
-    "routes/reproducibilityRoutes.py": 1173,
+    # +6 (2026-08-28): prose only. The verify route now drives the
+    # SHADOW rerun lane, and the docstring on _fdictRunReproductionSync
+    # says which of its two repo adapters is the image PIN and which is
+    # the comparison root — the distinction the whole lane turns on, and
+    # the one a future reader is most likely to collapse. Trimming it to
+    # satisfy a line ratchet would trade the warning for the number.
+    # +36 (2026-08-30): the L3 readiness refusal NAMES the failing
+    # verifiers instead of pointing at a tab. Most of the addition
+    # is the label table and the docstring recording why: the one
+    # failing check was determinism, on a row the dashboard was
+    # painting green, and the message connected neither to the
+    # other. A researcher met it and could not act on it.
+    # +32 (2026-08-30): the declare route accepts and VALIDATES
+    # the three answer keys. Validated rather than trusted: a
+    # typo would record an answer the gate never recognizes,
+    # leaving the row red with the form insisting it was filled.
+    # +10 (2026-08-30): the determinism scan reports the maths
+    # library alongside the anti-pattern findings, because a scan
+    # that answered a different question read as "nothing to see".
+    # +N (2026-08-30): a durable task RECORDS what it is, so a busy
+    # refusal names the live work instead of saying "a durable task
+    # is already live" -- which a researcher could not tell from
+    # "something is stuck". Every launch site passes its own name.
+    # +36 net (2026-08-31): a finished verification now has THREE
+    # outcomes, not two. A rerun refused before any step executed
+    # reached no verdict, so it is remembered in-process and reported,
+    # never written as a failed attestation -- an attestation is a
+    # scientific claim keyed to a manifest digest, and one saying a
+    # project failed to reproduce sat on a researcher's disk because
+    # the two were conflated. Both in-process registries then moved
+    # OUT, to vaibify/gui/verificationProgress.py, because the
+    # pipeline poll needs to know a verification is live and a route
+    # module may not import a sibling route module.
+    # +98 (2026-09-01): the verify refuses an image older than the
+    # project's own dependency declaration, before spending a rerun on
+    # it. The route is where the two halves meet -- vaibify.yml is a
+    # HOST file the gates cannot see, and the mirror is repo-relative
+    # -- so the comparison is composed here rather than threaded
+    # through fdictL3ReadinessGaps's twenty-two call sites.
+    "routes/reproducibilityRoutes.py": 1393,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

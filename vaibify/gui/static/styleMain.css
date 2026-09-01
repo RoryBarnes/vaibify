@@ -1500,6 +1500,21 @@ body.proof-level-3 .toolbar-label {
     padding-left: 0;
 }
 
+/* The default padding-left above reserves room for four 16px badges,
+   which is what a Step Viewer file row carries. A Project-block row
+   shows only the remotes that row is ABOUT — one for a
+   Published-copies row, two for an artifact — so the reservation left
+   a wide gap between the badge and the filename. Sized from the count
+   the renderer emits (16px per badge, 1px between, plus a 4px gutter)
+   rather than a hand-tuned constant per call site. */
+.detail-item--badges-1 {
+    padding-left: 20px;
+}
+
+.detail-item--badges-2 {
+    padding-left: 37px;
+}
+
 .detail-item:hover {
     background: rgba(0, 0, 0, 0.2);
 }
@@ -5888,6 +5903,44 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 12px;
 }
 
+/* A verification runs for minutes to hours in a background task. The
+   pulse reuses the run lights' @keyframes pulse, and it is armed only
+   while the server reports the task live -- a card that pulses over a
+   finished run is the "look responsive" failure the dashboard rules
+   forbid. */
+.proof-verify-progress .proof-card-summary.pulsing {
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* No verdict is not a failure verdict. It is painted like the stale
+   notice -- an advisory the researcher must read -- and deliberately
+   NOT like .status-failed, which states that outputs differed. */
+.proof-no-verdict .proof-card-body {
+    background: rgba(240, 160, 80, 0.15);
+    border-left: 3px solid #f0a050;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.proof-no-verdict-reasons {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+/* Files the rerun did not re-derive. The matched/total counts above
+   cover only what execution produced, so this list is what stops that
+   ratio reading as a claim about the whole manifest. */
+.proof-attestation-carried {
+    margin-top: 8px;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.proof-attestation-carried ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+}
+
 .proof-history-table {
     width: 100%;
     border-collapse: collapse;
@@ -6146,6 +6199,67 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .level-cell-partial .level-cell-circle {
     background: var(--color-orange);
+}
+
+/* A rebuild is running right now. Orange like partial, but its own
+   state so the cell's tooltip can say "being verified now" instead of
+   "partially met" -- nothing is partially met while a rerun is in
+   flight. The pulse comes from .requirement-row-checking. */
+.level-cell-running .level-cell-circle {
+    background: var(--color-orange);
+}
+
+/* Why a rebuild failed. The shadow container is destroyed as soon as
+   the comparison is made, so this block is the only surviving evidence
+   a researcher has -- it must be readable, not a hint. */
+.attestation-failure {
+    margin: 6px 0;
+    padding: 6px 8px;
+    background: rgba(240, 160, 80, 0.12);
+    border-left: 3px solid var(--color-orange);
+    font-size: 12px;
+}
+
+.attestation-failure ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+/* The image gap is the actionable finding, so it reads as a heading
+   rather than as one more error line. */
+.attestation-image-gap {
+    margin-bottom: 6px;
+}
+
+.attestation-image-gap div {
+    margin-top: 2px;
+}
+
+.attestation-failure-note {
+    margin-top: 6px;
+    color: var(--text-secondary);
+}
+
+/* The failing step's output. Scrolls inside its own box: a long
+   traceback must not stretch the Project block or the page. */
+.attestation-failure-output {
+    margin: 4px 0 0;
+    padding: 6px;
+    max-height: 220px;
+    overflow: auto;
+    background: var(--bg-primary, rgba(0, 0, 0, 0.25));
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: pre;
+}
+
+/* A control that reaches the network before it can show anything.
+   Without this the Verify button sat unchanged through a five to ten
+   second readiness round trip, which reads as a click that did not
+   register. */
+.btn-busy {
+    opacity: 0.6;
+    cursor: progress;
 }
 
 /* Attained renders the favicon image instead of a circle. */
@@ -6422,6 +6536,136 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .requirement-row-status {
     color: var(--text-secondary);
     padding: 2px 0;
+}
+
+/* A remote check is in flight: the badge PULSES until that service
+   answers. Reuses the run lights' @keyframes pulse (opacity 1 -> 0.4
+   -> 1) rather than a blink, which at this size and repetition rate
+   would breach WCAG 2.3.1 (Three Flashes or Below Threshold).
+
+   The light keeps its cached colour while it pulses — a check that
+   has not answered has proven nothing, so it must not move the colour
+   in either direction. The pulse says only "vaibify is asking".
+
+   Scoped to each banner's own cells: a group's rows carry their own
+   class, so a descendant selector would pulse the settled rows
+   alongside the checking one. */
+.requirement-group-checking > .requirement-group-header
+    .step-level-cell,
+.requirement-row-checking > .requirement-row-header .step-level-cell {
+    animation: pulse 1.6s infinite;
+}
+
+/* The check line sits above the cached counts and says which of the
+   two a reader is looking at: an answer being fetched, or an answer
+   that could not be fetched at all. Never styled as an error — a
+   remote that could not be reached is not a divergence. */
+.requirement-row-check {
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 2px 0;
+}
+
+/* Files inside a remote's row, grouped by what the researcher must do
+   about them. The groups nobody acts on (Matching, Not compared) start
+   closed, so a project where almost everything matches shows four
+   problems rather than a thousand rows to scroll past. */
+.file-group {
+    margin: 3px 0;
+}
+
+.file-group-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 0 2px 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.file-group-header:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.file-group-count {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* States what is NOT shown. A silent truncation reads as a complete
+   list, which is the same lie as an omitted file. */
+/* The backend's own reasons for refusing a determinism declaration.
+   Advisory colour, not error red: the researcher has not done
+   anything wrong, they have not finished saying something. */
+/* The Level 3 "not ready" list: the readiness checks still to do,
+   shown before the copy warning rather than after a refusal. */
+.l3-pending-list {
+    margin: 8px 0 12px 0;
+    padding-left: 22px;
+    line-height: 1.6;
+}
+
+.modal-info-note {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+/* One question's recorded answer, above the controls that change it. */
+.determinism-answer {
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 0;
+}
+
+/* What vaibify could find out for you, above the answer only you can
+   give. Neutral, not green: it is evidence about the environment, not
+   a recorded declaration. */
+/* Section-level action: withdrawing a declaration is all-or-nothing,
+   so it sits below the three question rows rather than inside one. */
+.determinism-section-footer {
+    padding: 6px 0 2px 14px;
+}
+
+.determinism-evidence {
+    border-left: 2px solid var(--text-muted);
+    padding: 3px 0 3px 8px;
+    margin: 4px 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.determinism-value-row {
+    margin-left: 20px;
+    color: var(--text-muted);
+}
+
+/* The raw project.json entry, closed by default. It used to sit open
+   in the middle of the row with its key names presented as if they
+   were the vocabulary, which is what made the section unreadable. */
+.determinism-raw-disclosure {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.determinism-issues {
+    padding: 3px 0;
+}
+
+.determinism-issue {
+    font-size: 11px;
+    color: var(--color-orange);
+    padding: 2px 0;
+}
+
+.file-group-truncated {
+    padding: 3px 0 3px 20px;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--text-muted);
 }
 
 .requirement-row-howto {

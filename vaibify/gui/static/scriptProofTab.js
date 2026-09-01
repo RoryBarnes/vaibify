@@ -22,6 +22,19 @@ var VaibifyProofTab = (function () {
     var _bL3ReadinessRefreshInFlight = false;
     var _bL3AttestationRefreshInFlight = false;
     var _bVerifyInFlight = false;
+    // A verification runs for minutes to hours in a background task,
+    // and until this existed the toast saying "started" was the last
+    // thing a researcher ever saw: nothing polled, and the attestation
+    // card only refreshed if the tab happened to re-render. A 2.5
+    // second refusal and a two-hour rerun looked identical from the
+    // chair (researcher-reported, 2026-08-31).
+    //
+    // This is not a standing cadence like the file-status and pipeline
+    // polls. It is armed only while a verification is actually in
+    // flight and disarms itself the moment one settles.
+    var _iVerifyPollTimer = 0;
+    var _I_VERIFY_POLL_MILLISECONDS = 5000;
+    var _sLastSettledPhase = "";
 
     var _DICT_LEVEL_HEADERS = {
         0: {
@@ -302,12 +315,77 @@ var VaibifyProofTab = (function () {
         _dictLastReadiness = null;
         _dictLastL3Readiness = null;
         _dictLastL3Attestation = null;
+        _sLastSettledPhase = "";
+        _fnDisarmVerifyPoll();
         _setExpandedLevels.clear();
         _bExpandSeeded = false;
     }
 
     function _felGetTabContent() {
         return document.getElementById("proofTabContent");
+    }
+
+    function _fdictInFlightVerification() {
+        return (_dictLastL3Attestation &&
+            _dictLastL3Attestation.dictInFlight) || null;
+    }
+
+    function _fbVerificationIsLive() {
+        var dictInFlight = _fdictInFlightVerification();
+        if (!dictInFlight) return false;
+        return dictInFlight.sPhase === "starting" ||
+            dictInFlight.sPhase === "running";
+    }
+
+    function _fnSyncVerifyPolling() {
+        // Armed and disarmed purely from what the server reports, so a
+        // reload during a long rerun re-arms it and a hub restart that
+        // lost the task does not leave the tab polling forever.
+        if (_fbVerificationIsLive()) {
+            _fnArmVerifyPoll();
+            return;
+        }
+        _fnDisarmVerifyPoll();
+        _fnAnnounceSettledPhase();
+    }
+
+    function _fnArmVerifyPoll() {
+        if (_iVerifyPollTimer) return;
+        _iVerifyPollTimer = window.setInterval(function () {
+            _fnRefreshL3Attestation().then(function () {
+                _fnPaintFromCache();
+                _fnSyncVerifyPolling();
+            });
+        }, _I_VERIFY_POLL_MILLISECONDS);
+    }
+
+    function _fnDisarmVerifyPoll() {
+        if (!_iVerifyPollTimer) return;
+        window.clearInterval(_iVerifyPollTimer);
+        _iVerifyPollTimer = 0;
+    }
+
+    function _fnAnnounceSettledPhase() {
+        // Only for a verification this tab watched settle. Announcing
+        // whatever phase happens to be cached would toast a verdict
+        // every time the researcher opened the tab.
+        var dictInFlight = _fdictInFlightVerification();
+        var sPhase = (dictInFlight && dictInFlight.sPhase) || "";
+        if (!sPhase || sPhase === _sLastSettledPhase) return;
+        _sLastSettledPhase = sPhase;
+        if (sPhase === "passed") {
+            VaibifyApp.fnShowToast(
+                "Level 3 verification passed — the workflow re-ran and " +
+                "its outputs are byte-identical.", "success");
+        } else if (sPhase === "failed") {
+            VaibifyApp.fnShowToast(
+                "Level 3 verification finished: the outputs DIFFER. " +
+                "See the attestation card.", "warning");
+        } else if (sPhase === "no-verdict") {
+            VaibifyApp.fnShowToast(
+                "Level 3 verification reached no verdict — nothing was " +
+                "attested. See the reason in the PROOF tab.", "warning");
+        }
     }
 
     async function fnRender() {
@@ -328,6 +406,7 @@ var VaibifyProofTab = (function () {
             _fnRefreshL3Attestation(),
         ]);
         _fnPaintFromCache();
+        _fnSyncVerifyPolling();
     }
 
     async function _fnRefreshL3Readiness() {
@@ -527,6 +606,8 @@ var VaibifyProofTab = (function () {
         var dictL3 = (_dictLastL3Readiness &&
             _dictLastL3Readiness.dictL3ReadinessGaps) || {};
         return _fsRenderVerifyL3Button(dictL3) +
+            _fsRenderVerifyProgressCard() +
+            _fsRenderNoVerdictCard() +
             _fsRenderL3AttestationCard(dictL3) +
             _fsRenderL3HistoryTable();
     }
@@ -761,6 +842,45 @@ var VaibifyProofTab = (function () {
             '</button></div>';
     }
 
+    function _fsRenderVerifyProgressCard() {
+        if (!_fbVerificationIsLive()) return "";
+        var dictInFlight = _fdictInFlightVerification();
+        var sPhase = dictInFlight.sPhase === "starting" ?
+            "Starting…" :
+            "Re-running the workflow in a throwaway copy of this " +
+            "project. This can take as long as the workflow itself.";
+        return '<div class="proof-card proof-verify-progress">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Verification in progress' +
+            '</span>' +
+            '<span class="proof-card-summary pulsing">running</span>' +
+            '</div><div class="proof-card-body">' +
+            fnEscapeHtml(sPhase) +
+            '</div></div>';
+    }
+
+    function _fsRenderNoVerdictCard() {
+        // Deliberately NOT an attestation. The run reached no verdict,
+        // so there is nothing on disk and nothing about Level 3 has
+        // changed -- but the researcher still has to be told why.
+        var dictNoVerdict = (_dictLastL3Attestation &&
+            _dictLastL3Attestation.dictLastNoVerdict) || null;
+        if (!dictNoVerdict) return "";
+        var listReasons = dictNoVerdict.listReasons || [];
+        var sReasons = listReasons.map(function (sReason) {
+            return '<li>' + fnEscapeHtml(sReason) + '</li>';
+        }).join("");
+        return '<div class="proof-card proof-no-verdict">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Last attempt reached no ' +
+            'verdict</span></div>' +
+            '<div class="proof-card-body">' +
+            'Nothing was attested, and your Level 3 status is ' +
+            'unchanged. The run could not be completed:' +
+            '<ul class="proof-no-verdict-reasons">' + sReasons +
+            '</ul></div></div>';
+    }
+
     function _fsRenderL3AttestationCard(dictL3) {
         if (!_dictLastL3Attestation) return "";
         var dictCurrent = _dictLastL3Attestation.dictCurrentAttestation;
@@ -805,7 +925,26 @@ var VaibifyProofTab = (function () {
             '<div>Hashes matched: ' + iMatched + ' / ' +
             iTotal + '</div>' +
             '<div>Duration: ' + fDuration.toFixed(1) +
-            ' s</div></div>';
+            ' s</div>' +
+            _fsRenderCarriedPaths(dictCurrent) +
+            '</div>';
+    }
+
+    function _fsRenderCarriedPaths(dictCurrent) {
+        // The counts above describe only what execution produced. Any
+        // file listed here was carried in as given -- a human made it,
+        // the rerun could not repeat that, and so the attestation
+        // makes NO claim about it. Saying so is what keeps the matched
+        // count from reading as a claim about the whole manifest.
+        var listCarried = dictCurrent.listCarriedPaths;
+        if (!listCarried || !listCarried.length) return "";
+        var sItems = listCarried.map(function (sPath) {
+            return '<li><code>' + fnEscapeHtml(sPath) + '</code></li>';
+        }).join("");
+        return '<div class="proof-attestation-carried">' +
+            'Not re-derived (produced by a step a human runs, and ' +
+            'carried in unchanged so the steps below it had their real ' +
+            'inputs):<ul>' + sItems + '</ul></div>';
     }
 
     function _fsRenderStalenessNotice(dictCurrent) {
@@ -873,7 +1012,26 @@ var VaibifyProofTab = (function () {
             });
     }
 
-    async function _fnHandleVerifyL3() {
+    function _fnHandleVerifyL3(eventClick) {
+        // Confirm BEFORE anything, and through the shared opener in
+        // VaibifyApp rather than a warning written here: the Project
+        // block has its own Verify control, and the moment this text
+        // exists twice one copy starts going stale. See
+        // fnConfirmLevel3Verification for why the warning exists.
+        //
+        // The button goes with it. The opener spends seconds on a
+        // readiness round trip before any modal appears, and the busy
+        // state belongs to the opener rather than to each of its two
+        // call sites -- the same reason the warning itself does.
+        if (!_sContainerId) return;
+        if (_bVerifyInFlight) return;
+        VaibifyApp.fnConfirmLevel3Verification(
+            _fnStartVerifyL3,
+            eventClick && eventClick.currentTarget,
+        );
+    }
+
+    async function _fnStartVerifyL3() {
         if (!_sContainerId) return;
         if (_bVerifyInFlight) return;
         _bVerifyInFlight = true;
@@ -884,9 +1042,10 @@ var VaibifyProofTab = (function () {
                 {}
             );
             VaibifyApp.fnShowToast(
-                "Level 3 verification started. Watch the pipeline " +
-                "progress; results will appear in the attestation " +
-                "card when the rebuild completes.", "info"
+                "Level 3 verification started. The workflow is " +
+                "re-running in a throwaway copy of this project; " +
+                "results will appear in the attestation card when it " +
+                "completes.", "info"
             );
         } catch (error) {
             VaibifyApp.fnShowToast(

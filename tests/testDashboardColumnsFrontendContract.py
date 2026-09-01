@@ -807,12 +807,37 @@ def test_declaration_badge_state_reaches_the_incremental_renderer():
     )
     assert "fdictGetBadgesForFile" in sSlice
     assert "sGithub" in sSlice
+    # The seeding moved one hop out of _fnActivateWorkflow on
+    # 2026-08-30, so the chain is followed rather than text-matched in
+    # one place: activation must reach the seeder, and the seeder must
+    # call fnRefresh. Asserting only the first would pass for a seeder
+    # that seeds nothing.
     sActivate = _fsExtractFunctionBlock(
         sApplication, "_fnActivateWorkflow",
     )
-    assert "VaibifyGitBadges.fnRefresh" in sActivate, (
+    assert "_fnSeedBadgesThenAskTheRemotes" in sActivate, (
         "badges must be seeded on workflow activation, or every "
         "badge consumer gates on an empty map until a sync action"
+    )
+    sSeed = _fsExtractFunctionBlock(
+        sApplication, "_fnSeedBadgesThenAskTheRemotes",
+    )
+    assert "VaibifyGitBadges.fnRefresh" in sSeed, (
+        "the seeding step activation calls no longer refreshes badges"
+    )
+    # CHAINED, not fired alongside, and that is a real regression fix:
+    # the remote refresh registers durable work, and the badge read
+    # PAUSES (returning no map at all) while durable work is live, so
+    # firing both left a fresh hub painting "No files tracked for this
+    # remote yet" over a repository full of them. Asserted as the
+    # chaining SHAPE rather than as text order, because the fallback
+    # branch above mentions the refresh first and a text-order check
+    # would be measuring the wrong thing. The observable order is
+    # asserted against real requests in
+    # tests/browser/testARunningRemoteCheckPulsesTheBadge.py.
+    assert "fnRefresh(sId).then(" in sSeed, (
+        "the remote refresh is not chained behind the badge seed, so "
+        "the badge read races durable work that pauses it"
     )
 
 

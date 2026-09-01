@@ -2106,12 +2106,29 @@ def _fbSyncCacheStale(dictStatus):
 def _flistPerStepSyncBlockers(
     dictWorkflow, dictStatus, sCriterion, sRemediationHint,
 ):
-    """Project the divergence list onto each step's declared outputs."""
+    """Project the divergence list onto steps, and home what is left over.
+
+    The projection alone under-reports, and it did so silently for as
+    long as every published path belonged to some step. A Level 2 path
+    that no step declares -- ``project.json`` is the standing example,
+    and it JOINED Level 2 scope in 2026-08-27 -- falls out of the
+    intersection and produces no blocker at all, while
+    ``_fbCachedSyncStatusFullMatch`` goes on refusing the level for it.
+    The researcher then clears every blocker the dashboard lists, stays
+    at Level 1, and is given nothing to act on. That was observed on a
+    real project: with the GitHub cache freshly re-verified the blocker
+    list came back EMPTY while the gate still answered Level 1.
+
+    So the projection's leftovers are homed at workflow scope rather
+    than dropped. The rule is a relationship, not a list: whatever the
+    gate can refuse for, the blockers must be able to name.
+    """
     setDiverged = _fsetDivergedPaths(dictStatus)
     if not setDiverged:
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
     listBlockers = []
+    setClaimed = set()
     for iStepIndex, dictStep in enumerate(listSteps):
         if not isinstance(dictStep, dict):
             continue
@@ -2121,11 +2138,56 @@ def _flistPerStepSyncBlockers(
         )
         if not listOffending:
             continue
+        setClaimed.update(listOffending)
         listBlockers.append(_fdictBuildSyncStepBlocker(
             dictWorkflow, iStepIndex,
             listOffending, sCriterion, sRemediationHint,
         ))
+    listBlockers.extend(_flistUnclaimedSyncBlockers(
+        dictStatus, setClaimed, sCriterion, sRemediationHint,
+    ))
     return listBlockers
+
+
+def _flistUnclaimedSyncBlockers(
+    dictStatus, setClaimed, sCriterion, sRemediationHint,
+):
+    """Return the workflow-scope blocker for diverged paths no step owns.
+
+    The set is derived the way the GATE derives it -- Level 2 paths of
+    ``listComparedPaths``, intersected with the divergences -- and not
+    from the divergence list alone. That is the difference between
+    naming what the gate refuses for and inventing a second opinion
+    about it, and the second opinion fails in both directions: a path
+    the verify never compared would manufacture a blocker the gate does
+    not hold, while a path outside the Level 2 selection would go
+    unreported. Mirroring ``_fbCachedSyncStatusFullMatch``'s final line
+    is what keeps the two in lockstep.
+
+    Level 2 only, deliberately. An envelope file that diverged is Level
+    3's business and already has its own criterion; emitting it here
+    would re-couple the two rungs through the blocker list after the
+    gates were split apart.
+    """
+    from . import publicationScope
+    setLevel2 = publicationScope.fsetSelectLevel2Paths(
+        (dictStatus or {}).get("listComparedPaths") or [],
+    )
+    listUnclaimed = sorted(
+        (setLevel2 & _fsetDivergedPaths(dictStatus)) - setClaimed
+    )
+    if not listUnclaimed:
+        return []
+    return [{
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listUnclaimed,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sRemediationHint,
+    }]
 
 
 def _fsetDivergedPaths(dictStatus):
@@ -3204,7 +3266,23 @@ _T_STEP_LEVEL3_CRITERIA = (
 )
 
 _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
+    # Two ways ONE remote's published-copy check fails, and both
+    # belong here (2026-08-30). Staleness was listed from the start;
+    # divergence was not, so a project whose files demonstrably
+    # DIFFERED from GitHub and Zenodo counted 4 of 4 and painted the
+    # Project header cell attained while both Published-copies rows
+    # correctly sat orange beside it. Reported by the researcher, and
+    # the scalar gate (_fbComputeLevel2) was right throughout — only
+    # this projection overstated, which is the more insidious half:
+    # the chip said Level 1 while the row above it showed a check.
+    #
+    # Adding them cannot double-count a service. The builders are
+    # exclusive by construction: _flistGithubLevel2Blockers returns
+    # the STALE blocker and nothing else when the cache is stale, and
+    # the divergence blockers otherwise. So at most one of each pair
+    # can ever fire.
     "github-verify-stale", "zenodo-verify-stale",
+    "not-in-github-mirror", "not-in-zenodo-deposit",
     # The AI-provenance declarations count here (2026-08-27 ruling):
     # they are independent project-level checks, so a green one earns
     # the header cell partial credit — without them a project whose

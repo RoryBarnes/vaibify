@@ -134,7 +134,12 @@ def test_rerun_lane_passes_the_recorded_epoch_to_the_runner(tmp_path):
     ):
         dictOutcome = rerunVerification.fdictRerunAndVerifyWorkflow(
             None, "container", dictWorkflow,
-            "/workspace/repo/wf.json", str(tmp_path),
+            # Inside the repo, not an unrelated path: the rerun
+            # refuses when the runner's resolved root differs from the
+            # one the comparison reads, because steps would then write
+            # where the comparison never looks.
+            str(tmp_path) + "/.vaibify/projects/project.json",
+            str(tmp_path),
         )
     assert dictOutcome["bPassed"] is True
     assert dictSeen["iSourceDateEpochOverride"] == I_RECORDED_EPOCH

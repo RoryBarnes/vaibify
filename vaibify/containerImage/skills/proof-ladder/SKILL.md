@@ -131,11 +131,18 @@ from source.
    determinism declared). Drive the rest from its gap dict.
 3. `vaibify-do audit-determinism` — determinism-focused view; read
    `listDeterminismIssues` for what the verdict was computed from and
-   translate into a per-step fix list. A project whose scripts contain
-   no RNG at all still fails this row until the researcher declares
-   `dictDeterminism` or accepts the BLAS waiver: the gate asks what
-   they assert, not what the code happens to do. Say so rather than
-   hunting for a seed that is not there.
+   translate into a per-step fix list. Determinism is THREE questions
+   since 2026-08-30 — last-digit numeric differences, thread count,
+   Intel MKL mode — and every one must be answered before the row
+   passes. ANSWERING is the criterion, never a particular answer:
+   "I do not accept those differences", "the thread count is not
+   fixed" and "this project does not use MKL" are complete, passing
+   answers. So a project whose scripts contain no RNG at all still
+   fails this row until the researcher answers all three: the gate
+   asks what they assert, not what the code happens to do. Say so
+   rather than hunting for a seed that is not there. The answers are
+   the researcher's to give — `declare-determinism` is not
+   agent-safe, so relay the questions and let them choose.
 4. `vaibify-do regenerate-envelope` — the WRITER. It rewrites
    `MANIFEST.sha256`, `requirements.lock` and
    `.vaibify/environment.json`, and returns `dictTierResults`; read

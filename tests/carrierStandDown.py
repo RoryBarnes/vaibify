@@ -89,6 +89,7 @@ async def _fdictRunWorkerWithoutTheDrain(
 
 async def _fdictLaunchWithoutTheLock(
     appState, sName, sContainerId, dictLaneTuple, fnStartTask,
+    sOperation="a long-running task",
 ):
     """Start a mode-(c) durable task with no lock and no registration.
 
@@ -102,7 +103,7 @@ async def _fdictLaunchWithoutTheLock(
     A module that wants to prove that refusal must drive the real
     carrier.
     """
-    del appState, sName, sContainerId, dictLaneTuple
+    del appState, sName, sContainerId, dictLaneTuple, sOperation
     taskAsync = fnStartTask()
     return {
         "bLaunched": True,

@@ -2781,6 +2781,34 @@ var VaibifySyncManager = (function () {
         }
     }
 
+    async function fnRefreshConfiguredRemotes(sContainerId) {
+        /* Called on entering a project and on WebSocket reconnect.
+           Reopening a project after a day showed orange
+           Published-copies badges purely because the cached verify
+           had aged past its staleness window — a status that changes
+           colour while nothing is wrong is the black box vaibify
+           exists to prevent. So the dashboard asks again, and the
+           badges pulse until each service answers.
+
+           Deliberately fire-and-forget: the response says only which
+           services it began asking about. The VERDICT arrives through
+           the poll, like every other piece of container truth, and
+           the check state it reports is what stops the pulse. No
+           toast on failure — the badges are unchanged and already say
+           "stale — re-verify", which is the accurate thing to show a
+           researcher whose remote could not be reached. */
+        if (!sContainerId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                    "/remotes/refresh", {});
+        } catch (error) {
+            console.warn(
+                "[remotes] open-time refresh did not start:",
+                error && error.message);
+        }
+    }
+
     async function _fnTriggerReverify(
         sContainerId, sService, elContainer,
     ) {
@@ -3076,6 +3104,7 @@ var VaibifySyncManager = (function () {
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnVerifyRemoteFromDashboard: fnVerifyRemoteFromDashboard,
+        fnRefreshConfiguredRemotes: fnRefreshConfiguredRemotes,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
         fnBindPushModalEvents: fnBindPushModalEvents,
         fnShowSyncError: fnShowSyncError,

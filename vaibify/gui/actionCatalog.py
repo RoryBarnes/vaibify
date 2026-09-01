@@ -700,14 +700,20 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/determinism/declare",
      "bAgentSafe": False,
-     "sDescription": "Write the workflow's dictDeterminism block "
-                     "read by the L3 determinism gate. Args: at "
-                     "least one of {bAcceptBlasVariance: bool, "
-                     "dOmpNumThreads: number, sMklCbwr: str}; "
-                     "scalar JSON values only. User-only because "
-                     "the bAcceptBlasVariance waiver passes the L3 "
-                     "determinism gate and must remain a researcher "
-                     "decision."},
+     "sDescription": "Record the researcher's answer to ONE of the "
+                     "three determinism questions (2026-08-30 ruling: "
+                     "each must be answered; answering is the "
+                     "criterion, not any particular answer). Args: "
+                     "one of {sBlasVarianceAnswer: accepted|rejected, "
+                     "sOmpThreadsAnswer: pinned|unpinned, "
+                     "sMklModeAnswer: pinned|not-used}, plus "
+                     "dOmpNumThreads: number or sMklCbwr: str when "
+                     "that answer is 'pinned' (a pinned answer with "
+                     "no value does not count). Keys merge, so send "
+                     "one question at a time; send null to clear a "
+                     "value. User-only: these are claims about the "
+                     "researcher's own science and an agent must not "
+                     "make them on their behalf."},
     {"sName": "declare-ai-model", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/ai-models/declare",
@@ -1005,6 +1011,15 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
     ("POST",
      "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),
+    # The dashboard's open-time remote refresh. It starts the same
+    # checks the agent already has as `verify-remote`, but returns no
+    # verdict — only which services it began asking about — so an
+    # agent invoking it learns nothing it could not learn better one
+    # service at a time. It also consumes the container's single
+    # durable-task slot, which would refuse the researcher's next
+    # action for as long as four network round-trips take. Browser
+    # trigger only, on project open and reconnect.
+    ("POST", "/api/workflow/{sContainerId}/remotes/refresh"),
     # Sync setup / tracking — credentials and service wiring; user-only.
     ("POST", "/api/sync/{sContainerId}/setup"),
     ("POST", "/api/sync/{sContainerId}/track"),

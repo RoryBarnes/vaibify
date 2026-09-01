@@ -134,11 +134,11 @@ def test_fresh_attestation_carries_ai_provenance_key():
         S_STATUS_PASSED, "sha256:abc", "", 1.0, 1, 1, [], "",
         dictAiProvenance=dictStamp,
     )
-    assert dictAtt["iSchemaVersion"] == 2
+    assert dictAtt["iSchemaVersion"] == I_SCHEMA_VERSION
     assert dictAtt["dictAiProvenance"] == dictStamp
 
 
-def test_v1_attestation_migrates_to_v2_with_null_provenance(tmp_path):
+def test_v1_attestation_migrates_forward_with_null_provenance(tmp_path):
     pathVaibify = tmp_path / ".vaibify"
     pathVaibify.mkdir()
     dictV1 = {
@@ -157,9 +157,40 @@ def test_v1_attestation_migrates_to_v2_with_null_provenance(tmp_path):
         json.dumps(dictV1),
     )
     dictRead = fdictReadAttestation(str(tmp_path))
-    assert dictRead["iSchemaVersion"] == 2
+    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION
     assert dictRead["dictAiProvenance"] is None
     assert dictRead["sStatus"] == S_STATUS_PASSED
+
+
+def test_a_record_predating_carrying_says_unknown_not_nothing(tmp_path):
+    """``None``, never ``[]``.
+
+    An empty list is the positive claim "this rerun carried nothing",
+    and a v2 record cannot support it: it was written when a workflow
+    containing a human step was refused outright, so nobody asked
+    which of its entries were given. Migrating to ``[]`` would turn
+    "not recorded" into a statement about the comparison's scope.
+    """
+    pathVaibify = tmp_path / ".vaibify"
+    pathVaibify.mkdir()
+    (pathVaibify / S_ATTESTATION_FILENAME).write_text(json.dumps({
+        "iSchemaVersion": 2,
+        "sStatus": S_STATUS_PASSED,
+        "sManifestDigestAtAttestation": "sha256:abc",
+        "dictAiProvenance": None,
+    }))
+    dictRead = fdictReadAttestation(str(tmp_path))
+    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION
+    assert dictRead["listCarriedPaths"] is None
+
+
+def test_a_fresh_attestation_that_carried_nothing_says_so(tmp_path):
+    """An empty list is available, and means something different."""
+    dictAtt = fdictBuildAttestation(
+        S_STATUS_PASSED, "sha256:abc", "", 1.0, 2, 2, [], "",
+        listCarriedPaths=[],
+    )
+    assert dictAtt["listCarriedPaths"] == []
 
 
 def test_unknown_future_schema_version_passes_through(tmp_path):

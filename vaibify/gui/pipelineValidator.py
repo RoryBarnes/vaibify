@@ -4,7 +4,7 @@ __all__ = []
 
 from . import workflowManager
 from .commandUtilities import fsExtractScriptPath
-from .pipelineUtils import fsShellQuote
+from .pipelineUtils import T_EXECUTED_COMMAND_KEYS, fsShellQuote
 
 
 def _fnValidateStepDirectory(
@@ -43,8 +43,7 @@ def _fnValidateStepCommands(
     sStepDirectory, dictVariables, iStepNumber, listErrors,
 ):
     """Check that command scripts exist in the step directory."""
-    for sKey in ("saDataCommands", "saTestCommands", "saPlotCommands",
-                 "saSetupCommands", "saCommands"):
+    for sKey in T_EXECUTED_COMMAND_KEYS:
         for sCommand in dictStep.get(sKey, []):
             sResolved = workflowManager.fsResolveCommand(
                 sCommand, dictVariables
@@ -54,6 +53,15 @@ def _fnValidateStepCommands(
                 sStepDirectory, iStepNumber, dictStep["sName"],
                 listErrors,
             )
+
+
+# The two halves of a "this command is not here" preflight error,
+# named so a reader can recover the command from the message without
+# re-typing its punctuation. The shadow rerun does exactly that, to
+# tell a researcher that the tool is missing from the IMAGE their
+# envelope pins rather than from their project.
+S_PREFLIGHT_COMMAND_MISSING = "command not found: "
+S_PREFLIGHT_COMMAND_LOCATION = " (in "
 
 
 def _fnValidateSingleCommand(
@@ -75,8 +83,8 @@ def _fnValidateSingleCommand(
     if iExitCode != 0:
         listErrors.append(
             f"Step {iStepNumber} ({sStepName}): "
-            f"command not found: {sScript} "
-            f"(in {sStepDirectory})"
+            f"{S_PREFLIGHT_COMMAND_MISSING}{sScript}"
+            f"{S_PREFLIGHT_COMMAND_LOCATION}{sStepDirectory})"
         )
 
 

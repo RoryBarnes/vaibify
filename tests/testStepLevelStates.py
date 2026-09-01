@@ -779,7 +779,7 @@ def testWorkflowScopeAllAttainedWhenCleanWithRepo():
     )
     assert dictStates == {
         "s1": _fdictCell("attained", 1, 1),
-        "s2": _fdictCell("attained", 4, 4),
+        "s2": _fdictCell("attained", 6, 6),
         "s3": _fdictCell("attained", 8, 8),
     }
 
@@ -791,7 +791,7 @@ def testWorkflowScopeRepoMissingZeroesEveryLevel():
         _fdictWorkflowWithCleanSteps(1, sProjectRepoPath=""), [], [],
     )
     assert dictStates["s1"] == _fdictCell("none", 0, 1)
-    assert dictStates["s2"] == _fdictCell("none", 0, 4)
+    assert dictStates["s2"] == _fdictCell("none", 0, 6)
     assert dictStates["s3"] == _fdictCell("none", 0, 8)
 
 
@@ -804,7 +804,7 @@ def testWorkflowScopeExcludesMissingAiDeclarationStep():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 4, 4)
+    assert dictStates["s2"] == _fdictCell("attained", 6, 6)
 
 
 def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
@@ -812,7 +812,7 @@ def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 3, 4)
+    assert dictStates["s2"] == _fdictCell("partial", 5, 6)
 
 
 @pytest.mark.falsification
@@ -838,7 +838,7 @@ def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 2, 4)
+    assert dictStates["s2"] == _fdictCell("partial", 4, 6)
 
 
 def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
@@ -847,11 +847,18 @@ def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
         _fdictWorkflowBlocker(2, "zenodo-verify-stale"),
         _fdictWorkflowBlocker(2, "ai-models-undeclared"),
         _fdictWorkflowBlocker(2, "personal-layer-unanswered"),
+        # The divergence half of each remote's published-copy
+        # check, added to the counted set on 2026-08-30. This
+        # test means "every project criterion blocked", so it
+        # has to block them too — otherwise it silently became
+        # a partial-credit test under its old name.
+        _fdictWorkflowBlocker(2, "not-in-github-mirror"),
+        _fdictWorkflowBlocker(2, "not-in-zenodo-deposit"),
     ]
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("none", 0, 4)
+    assert dictStates["s2"] == _fdictCell("none", 0, 6)
 
 
 def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
@@ -867,7 +874,7 @@ def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 5, 6)
+    assert dictStates["s2"] == _fdictCell("partial", 7, 8)
 
 
 def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
@@ -876,7 +883,7 @@ def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, [], [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 4, 4)
+    assert dictStates["s2"] == _fdictCell("attained", 6, 6)
 
 
 def testWorkflowScopeIgnoresPerStepBlockerEntries():

@@ -18,9 +18,20 @@ from pathlib import Path
 
 
 __all__ = [
+    "LIST_DETERMINISM_QUESTIONS",
     "S_ACCEPT_BLAS_WAIVER_KEY",
+    "S_BLAS_ACCEPTED",
+    "S_BLAS_ANSWER_KEY",
+    "S_BLAS_REJECTED",
+    "S_MKL_ANSWER_KEY",
+    "S_MKL_NOT_USED",
+    "S_MKL_PINNED",
+    "S_OMP_ANSWER_KEY",
+    "S_OMP_PINNED",
+    "S_OMP_UNPINNED",
     "S_OMP_NUM_THREADS_KEY",
     "S_MKL_CBWR_KEY",
+    "flistUnansweredDeterminismQuestions",
     "flistAuditScriptAntiPatterns",
     "flistAuditScriptSource",
     "fdictScanWorkflowScripts",
@@ -32,6 +43,82 @@ __all__ = [
 S_ACCEPT_BLAS_WAIVER_KEY = "bAcceptBlasVariance"
 S_OMP_NUM_THREADS_KEY = "dOmpNumThreads"
 S_MKL_CBWR_KEY = "sMklCbwr"
+
+# The three questions, each answered separately since 2026-08-30.
+#
+# `sAnswerKey` records the CHOICE and `sValueKey` the value a choice
+# may need. They are separate because a value cannot express "I
+# considered this and the answer is no": `bAcceptBlasVariance: false`
+# was written by the old form whenever it was submitted with nothing
+# ticked, so it means "unanswered" and "declined" at once.
+#
+# `sLabel` and `sPlainQuestion` are researcher-facing and deliberately
+# carry no key names. A researcher is being asked about their science,
+# not about a JSON schema, and the old copy put `bAcceptBlasVariance`
+# in front of them as if it were a word.
+S_BLAS_ANSWER_KEY = "sBlasVarianceAnswer"
+S_OMP_ANSWER_KEY = "sOmpThreadsAnswer"
+S_MKL_ANSWER_KEY = "sMklModeAnswer"
+
+S_BLAS_ACCEPTED = "accepted"
+S_BLAS_REJECTED = "rejected"
+S_OMP_PINNED = "pinned"
+S_OMP_UNPINNED = "unpinned"
+S_MKL_PINNED = "pinned"
+S_MKL_NOT_USED = "not-used"
+
+LIST_DETERMINISM_QUESTIONS = (
+    {
+        "sKey": "blasVariance",
+        "sAnswerKey": S_BLAS_ANSWER_KEY,
+        "sValueKey": "",
+        "sAnswerNeedingValue": "",
+        "tAnswers": (S_BLAS_ACCEPTED, S_BLAS_REJECTED),
+        "sLabel": "Last-digit numeric differences",
+        "sPlainQuestion": (
+            "NumPy and SciPy do their heavy arithmetic in a maths "
+            "library underneath, which splits big sums across several "
+            "threads and adds the pieces back in whatever order they "
+            "finish. Floating-point addition is not exactly "
+            "associative, so the final digits of a result can differ "
+            "from run to run on the very same machine. Do you accept "
+            "those differences between your run and a rerun?"
+        ),
+    },
+    {
+        "sKey": "ompThreads",
+        "sAnswerKey": S_OMP_ANSWER_KEY,
+        "sValueKey": S_OMP_NUM_THREADS_KEY,
+        "sAnswerNeedingValue": S_OMP_PINNED,
+        "tAnswers": (S_OMP_PINNED, S_OMP_UNPINNED),
+        "sLabel": "Thread count",
+        "sPlainQuestion": (
+            "How many threads the maths library uses decides how "
+            "those pieces are split, so fixing the number removes one "
+            "source of that reordering. Leaving it free lets a rerun "
+            "use whatever the machine offers, which is usually faster "
+            "and usually fine. Is the thread count fixed?"
+        ),
+    },
+    {
+        "sKey": "mklMode",
+        "sAnswerKey": S_MKL_ANSWER_KEY,
+        "sValueKey": S_MKL_CBWR_KEY,
+        "sAnswerNeedingValue": S_MKL_PINNED,
+        "tAnswers": (S_MKL_PINNED, S_MKL_NOT_USED),
+        "sLabel": "Intel maths library (MKL)",
+        "sPlainQuestion": (
+            "There is more than one such maths library. Most "
+            "installations use OpenBLAS; some use Intel's Math "
+            "Kernel Library, MKL. MKL additionally picks different "
+            "internal routines depending on the exact processor it "
+            "finds, so with MKL the same input can give different "
+            "final digits on a different MACHINE, not just a "
+            "different run. It has a setting that turns that off. "
+            "Does this project use MKL, and if so is that setting on?"
+        ),
+    },
+)
 
 _SET_CLOCK_MODULES = frozenset({"time", "datetime"})
 _SET_CLOCK_ATTRIBUTES = frozenset({
@@ -242,22 +329,193 @@ def _flistFindSecretsModuleUse(sSource, sScriptPath):
     return listIssues
 
 
-def fbWorkflowDeclaresDeterminism(dictWorkflow):
-    """Return True iff the workflow declares its BLAS / thread pinning.
+def flistUnansweredDeterminismQuestions(dictWorkflow):
+    """Return the determinism questions this workflow has not answered.
 
-    Either an explicit ``dOmpNumThreads`` or ``sMklCbwr`` setting
-    counts; a ``bAcceptBlasVariance: true`` waiver also passes the
-    gate. The waiver is honest documentation of an accepted limitation,
-    not a silent bypass.
+    THE 2026-08-30 RULING, and it changed what a declaration means.
+    The gate used to be an OR: any one of a BLAS waiver, a pinned
+    thread count or an MKL mode satisfied it. That let a project
+    attest at Level 3 having answered one third of the question —
+    pinning the thread count says nothing about whether last-digit
+    variance is acceptable, and the two are independent sources of
+    run-to-run difference. Each is now asked separately.
+
+    ANSWERING is the criterion, never a particular answer — the same
+    rule the Personal AI Configuration row runs on. "I do not accept
+    numeric variance", "threads are not pinned" and "this project does
+    not use MKL" are complete, passing answers. Only silence fails.
+
+    That distinction is why the answers are recorded as their own keys
+    rather than inferred from the values. ``bAcceptBlasVariance:
+    false`` was the shape the old form wrote when submitted with
+    nothing ticked, so it cannot be told apart from never having
+    chosen — and reading it as a deliberate "no" would attest a claim
+    the researcher never made.
     """
     dictDeterminism = (dictWorkflow or {}).get("dictDeterminism") or {}
-    if dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY) is True:
+    return [
+        dictQuestion["sKey"]
+        for dictQuestion in LIST_DETERMINISM_QUESTIONS
+        if not _fbQuestionIsAnswered(dictDeterminism, dictQuestion)
+    ]
+
+
+def _fbQuestionIsAnswered(dictDeterminism, dictQuestion):
+    """Return True iff one question carries a recorded, valid answer.
+
+    An answer that names a pinned value must CARRY that value:
+    "threads are pinned" with no count is not an answer, it is half of
+    one, and a rerun could not act on it.
+    """
+    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])
+    if sAnswer not in dictQuestion["tAnswers"]:
+        return False
+    if sAnswer != dictQuestion["sAnswerNeedingValue"]:
         return True
-    if dictDeterminism.get(S_OMP_NUM_THREADS_KEY) is not None:
-        return True
-    if dictDeterminism.get(S_MKL_CBWR_KEY):
-        return True
-    return False
+    return _fbValueIsPresent(dictDeterminism.get(dictQuestion["sValueKey"]))
+
+
+def _fbValueIsPresent(jsonValue):
+    """Return True iff a pinned value was actually supplied."""
+    if jsonValue is None:
+        return False
+    if isinstance(jsonValue, str):
+        return jsonValue.strip() != ""
+    return True
+
+
+def fbWorkflowDeclaresDeterminism(dictWorkflow):
+    """Return True iff every determinism question has been answered."""
+    return not flistUnansweredDeterminismQuestions(dictWorkflow)
+
+
+def _flistDescribeUnansweredQuestions(dictWorkflow):
+    """Return one issue per unanswered determinism question.
+
+    Named individually because they are separate questions with
+    separate answers; a single "determinism is not declared" line
+    cannot tell a researcher which of the three is still open, and the
+    row that reports it now carries a marker each.
+    """
+    dictByKey = {
+        dictQuestion["sKey"]: dictQuestion
+        for dictQuestion in LIST_DETERMINISM_QUESTIONS
+    }
+    listIssues = []
+    for sKey in flistUnansweredDeterminismQuestions(dictWorkflow):
+        dictQuestion = dictByKey[sKey]
+        listIssues.append(
+            dictQuestion["sLabel"] + " — not answered yet. "
+            + dictQuestion["sPlainQuestion"]
+        )
+    return listIssues
+
+
+# Distribution names that mean "this environment has Intel MKL in it".
+# Conda pulls `mkl` in as a NumPy dependency; the pip wheels carry it
+# under these names. A pip-installed NumPy bundles OpenBLAS and matches
+# none of them.
+_T_MKL_DISTRIBUTION_NAMES = (
+    "mkl", "mkl-service", "intel-openmp", "mkl_fft", "mkl-fft",
+    "mkl_random", "mkl-random",
+)
+
+S_LOCK_FILENAME = "requirements.lock"
+
+
+def fdictDetectMathsLibrary(filesRepo):
+    """Report whether the dependency lock names an Intel MKL package.
+
+    EVIDENCE, never a verdict, and the distinction is the whole point.
+    A researcher was asked whether their project uses MKL and had no
+    way to find out — the script scan beside the question answers a
+    different question entirely (clock seeds, urandom), so running it
+    told them nothing and reasonably read as "nothing to see here".
+
+    Read from ``requirements.lock`` rather than by importing NumPy in
+    the container: this module runs in the reproducibility layer with
+    a files adapter and no command authority, and adding one here to
+    answer a copy question would be a poor trade. The cost is real and
+    stated in ``sNote``: the lock is what the environment DECLARES,
+    and a hand-installed package or a base image that already carried
+    MKL would not appear in it.
+    """
+    from .repoFiles import ffilesEnsureRepoFiles
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.fbIsFile(S_LOCK_FILENAME):
+        return _fdictMathsLibraryUnknown(
+            "There is no requirements.lock to read, so vaibify cannot "
+            "tell which maths library this project uses."
+        )
+    try:
+        sLock = filesRepo.fsReadText(S_LOCK_FILENAME)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return _fdictMathsLibraryUnknown(
+            "The requirements.lock could not be read, so vaibify "
+            "cannot tell which maths library this project uses."
+        )
+    listFound = _flistFindMklDistributions(sLock)
+    return {
+        "bMklFound": bool(listFound),
+        "listMklPackages": listFound,
+        "sNote": _fsDescribeMathsLibrary(listFound),
+        "sHeadline": _fsHeadlineMathsLibrary(listFound),
+    }
+
+
+def _fdictMathsLibraryUnknown(sNote):
+    """Return the shape used when the lock cannot answer."""
+    return {
+        "bMklFound": None, "listMklPackages": [],
+        "sNote": sNote, "sHeadline": "Maths library: could not tell.",
+    }
+
+
+def _fsHeadlineMathsLibrary(listFound):
+    """One line for a toast, authored beside the long form.
+
+    Two lengths rather than one because they are read in different
+    places — a toast that carried the full caveat would be unreadable,
+    and a row that carried only the headline would overstate. Both live
+    here so the short form cannot drift into claiming more than the
+    long one does.
+    """
+    if listFound:
+        return (
+            "Maths library: your dependency lock pins Intel MKL, so "
+            "the MKL question applies to this project."
+        )
+    return (
+        "Maths library: no Intel MKL package in your dependency lock, "
+        "so the MKL question most likely does not apply."
+    )
+
+
+def _flistFindMklDistributions(sLock):
+    """Return the MKL distribution names pinned in a lock file."""
+    listFound = []
+    for sLine in sLock.splitlines():
+        sName = re.split(r"[=<>!;\[ ]", sLine.strip(), 1)[0].lower()
+        if sName in _T_MKL_DISTRIBUTION_NAMES:
+            listFound.append(sName)
+    return sorted(set(listFound))
+
+
+def _fsDescribeMathsLibrary(listFound):
+    """Say what the lock shows, and what it cannot show."""
+    if listFound:
+        return (
+            "Your requirements.lock pins " + ", ".join(listFound)
+            + ", so this project probably does use Intel MKL. The "
+            "reproducibility setting is worth turning on."
+        )
+    return (
+        "Your requirements.lock names no Intel MKL package, so this "
+        "project most likely uses OpenBLAS and the MKL question does "
+        "not apply. Note this reads what the environment DECLARES: a "
+        "package installed by hand, or one already in the base image, "
+        "would not show up here."
+    )
 
 
 def flistAuditWorkflow(dictWorkflow):
@@ -267,13 +525,7 @@ def flistAuditWorkflow(dictWorkflow):
     explicit issues so the dashboard can surface them in the
     readiness card without re-running the scanner.
     """
-    listIssues = []
-    if not fbWorkflowDeclaresDeterminism(dictWorkflow):
-        listIssues.append(
-            "Workflow has no dictDeterminism block; declare "
-            f"{S_OMP_NUM_THREADS_KEY}, {S_MKL_CBWR_KEY}, or set "
-            f"{S_ACCEPT_BLAS_WAIVER_KEY}=true to waive."
-        )
+    listIssues = list(_flistDescribeUnansweredQuestions(dictWorkflow))
     for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
         if not isinstance(dictStep, dict):
             continue

@@ -423,21 +423,37 @@ Flags:
   re-deriving it from HEAD, so timestamp-salted figures are salted
   the way the pinned artefacts were.
 
-  A workflow the unattended runner cannot honestly execute is
-  **refused before any step runs**: interactive steps, steps
-  disabled in the dashboard, or a workflow with no steps at all. A
-  skipped step leaves its pinned outputs untouched, so every hash
-  would trivially match and the attestation would certify a rerun
-  that ran nothing. The refusal is reported (`rerun refused before
-  any step executed`) with one divergence line naming each
-  unexecutable step, and is recorded as a *failed* attestation.
+  A step **a human runs** — an interactive step, such as the AI
+  Declaration — cannot execute unattended, and does not refuse the
+  rerun. Its outputs are treated as *given*: data a person produced,
+  which the steps below it consume as input. The shadow's repository
+  copy carries them in unchanged, so the executable steps run against
+  exactly the bytes the original run used, and those paths are dropped
+  from the hash comparison and listed under `listCarriedPaths`. The
+  matched/total counts therefore describe only what execution
+  produced, and the carried files are named beside them — an
+  attestation makes no claim about a file nobody re-computed.
 
-  Tier 5 always writes an attestation, pass or fail:
-  `.vaibify/l3_attestation.json` plus a timestamped copy archived
-  under `.vaibify/l3_attestations/`, recording the manifest digest
-  the comparison was made against, the image digest, the hash-match
-  counts, and every diverged path. Without `--rerun` no attestation
-  is written.
+  A workflow the unattended runner cannot honestly execute is still
+  **refused before any step runs**: steps disabled in the dashboard,
+  or a workflow with no steps at all. A disabled step leaves its
+  pinned outputs untouched, so every hash would trivially match and
+  the attestation would certify a rerun that ran nothing. Being
+  disabled is a switch rather than a declared property of the
+  workflow, which is why its outputs are not carried. A workflow whose
+  *every* pinned entry is a given step's output is refused too: there
+  is nothing left for a rerun to reproduce.
+
+  Tier 5 writes an attestation whenever the comparison reached a
+  verdict, pass or fail: `.vaibify/l3_attestation.json` plus a
+  timestamped copy archived under `.vaibify/l3_attestations/`,
+  recording the manifest digest the comparison was made against, the
+  image digest, the hash-match counts, the carried paths, and every
+  diverged path. A refusal reaches **no verdict** and writes nothing —
+  it is reported (`rerun refused before any step executed`, then `no
+  attestation written: nothing was verified`) and leaves any earlier
+  attestation intact, because it established nothing about whether the
+  workflow reproduces. Without `--rerun` no attestation is written.
 - `--workflow <name>` — which workflow to re-run, when the container
   hosts more than one. Without it an ambiguous container is refused:
   attesting one workflow for a run of another produces a record that

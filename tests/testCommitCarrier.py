@@ -1206,3 +1206,51 @@ def testTheGatedHelperNeverActsWhenTheJournalRefusesIt(tmp_path, monkeypatch):
         "the helper ran its argv even though the journal refused the "
         "operation -- the stdin gate is not holding it"
     )
+
+
+@pytest.mark.falsification
+def testABusyDurableRefusalNamesTheLiveWork():
+    """A busy refusal must say WHAT is busy, like the mode-(b) lane does.
+
+    The durable refusal read "a durable task is already live in this
+    container", which reached the researcher as "Action failed: This
+    container is busy: a durable task is already live in this
+    container." They could not tell "your Level 3 verification is
+    running" from "something is stuck", and there is nothing in that
+    sentence to act on (reported 2026-08-30). The mode-(b) lane has
+    named its holder since it existed; this is the durable lane
+    catching up.
+
+    Kills: dropping recordLive.sOperation from the refusal in
+    fdictLaunchDurableTask, which restores the generic sentence.
+    """
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        eventRelease = asyncio.Event()
+
+        async def _fnBody():
+            await eventRelease.wait()
+
+        dictFirst = await commitCarrier.fdictLaunchDurableTask(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            lambda: asyncio.get_running_loop().create_task(_fnBody()),
+            sOperation="the Level 3 verification",
+        )
+        assert dictFirst["bLaunched"] is True
+        dictSecond = await commitCarrier.fdictLaunchDurableTask(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            lambda: asyncio.get_running_loop().create_task(_fnBody()),
+            sOperation="the remote-status refresh",
+        )
+        assert dictSecond["bLaunched"] is False
+        assert "the Level 3 verification" in dictSecond["sReason"], (
+            "the refusal does not name the work that is actually "
+            f"running: {dictSecond['sReason']!r}"
+        )
+        # The REFUSED operation must not be the one named: that would
+        # tell the researcher their own new request is what blocks it.
+        assert "remote-status refresh" not in dictSecond["sReason"]
+        eventRelease.set()
+        await asyncio.sleep(0.05)
+
+    asyncio.run(_fnDrive())

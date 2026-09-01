@@ -466,10 +466,30 @@ ENV PATH="${PACKAGE_MANAGER:+/opt/conda/bin:}${PATH}"
 # like vplanet install to /usr/local/bin and are already covered.)
 ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
 
-# Project-specific Python packages from vaibify.yml pythonPackages
+# Project-specific Python packages from vaibify.yml pythonPackages.
+#
+# THE LIST IS KEPT IN THE IMAGE, at /etc/vaibify/requirements.txt, and
+# that is load-bearing rather than housekeeping. vaibify.yml is the one
+# place a researcher declares dependencies (2026-09-01 ruling); the
+# entrypoint mirrors this file into each repository's
+# .vaibify/requirements.txt, and PROOF Level 3 compiles
+# requirements.lock from that mirror. Keeping the list means the image,
+# the mirror and the lock agree BY CONSTRUCTION rather than by three
+# people remembering to edit three files.
+#
+# What the previous shape cost: the list was deleted after install, so
+# nothing in the image recorded what it had been built with, and the
+# repository's .vaibify/requirements.txt was an INDEPENDENT declaration
+# that the entrypoint pip-installed at container start. A package added
+# there was present in the running container and in the lock, and
+# absent from the image -- so it worked for the researcher and was
+# missing from the image anyone else would pull.
 COPY requirements.txt /tmp/requirements.txt
 COPY pip-flags.txt /tmp/pip-flags.txt
-RUN if [ -s /tmp/requirements.txt ]; then \
+RUN mkdir -p /etc/vaibify \
+    && cp /tmp/requirements.txt /etc/vaibify/requirements.txt \
+    && chmod 0644 /etc/vaibify/requirements.txt \
+    && if [ -s /tmp/requirements.txt ]; then \
         PIP_FLAGS="$(cat /tmp/pip-flags.txt 2>/dev/null | tr -d '\n')" \
         && pip install --no-cache-dir ${PIP_FLAGS} -r /tmp/requirements.txt; \
     fi \

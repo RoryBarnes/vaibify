@@ -22,6 +22,7 @@ __all__ = [
     "falsificationRoutes",
     "replayRoutes",
     "preferencesRoutes",
+    "remoteRefreshRoutes",
 ]
 
 from . import (
@@ -46,4 +47,5 @@ from . import (
     falsificationRoutes,
     replayRoutes,
     preferencesRoutes,
+    remoteRefreshRoutes,
 )

@@ -94,7 +94,15 @@ def fixtureL3Repo(tmp_path):
 def _fdictWaivedWorkflow():
     return {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }
@@ -432,7 +440,15 @@ def testL3GateFailsWithoutBinaryAnswer(fixtureL3Repo):
     """A workflow missing both waiver and declaration fails L3 readiness."""
     dictWorkflow = {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
     }
     assert not fbL3ReadinessOK(dictWorkflow, str(fixtureL3Repo))
 
@@ -441,7 +457,15 @@ def testL3BlockerListIncludesBinariesNotDeclaredOrWaived(fixtureL3Repo):
     """A workflow with no binary state emits the workflow-scope blocker."""
     dictWorkflow = {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
     }
     listBlockers = flistLevel3Blockers(
         dictWorkflow, str(fixtureL3Repo), False,

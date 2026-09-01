@@ -178,6 +178,32 @@ DICT_PRIMITIVE_ACCESS = {
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
+    # Bulk export through the SAME daemon archive API fiterStreamFile
+    # uses, at repository scale instead of one file. Classified with the
+    # typed reads because it shares their decisive property and not
+    # merely their intent: it runs NO program in the container -- the
+    # daemon serializes the filesystem itself -- so nothing a caller
+    # supplies can become program text. It is deliberately not IN the
+    # typed-read program table, whose safety argument is that each entry
+    # is a small fixed program over a path literal; a repository-scale
+    # export does not belong there.
+    "fbaFetchDirectoryArchive": S_ACCESS_TYPED_READ,
+    # The coherence observation behind a bulk export: the declared
+    # ``gitWorktreeIdentities`` program enumerates every present
+    # worktree path with git and computes each one's blob identity over
+    # the raw bytes, in the container. Same property as the poll read
+    # below: what the caller varies is only the repo path literal, and
+    # the argv around it is fixed text in the program table.
+    "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
+    # A DAEMON-info query, not a container call: it runs no program
+    # anywhere, takes no caller value, and reads only how much memory
+    # and CPU the daemon has to give. Classified as a typed read
+    # because that is the narrowest kind this vocabulary has and it
+    # over-states rather than under-states what the call can do; the
+    # shadow lane sizes a container's limits from the answer, because
+    # host RAM is the wrong number for anything that runs in a
+    # container.
+    "fdictReadDaemonCapacity": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
     # The audited adapter behind `vaibify ls`: the caller supplies a

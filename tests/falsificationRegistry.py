@@ -1338,16 +1338,47 @@ LIST_FALSIFICATIONS = [
     return sResolvedPath""",
     ),
     Falsification(
-        nodeid='tests/testDeterminismGate.py::test_blas_waiver_requires_literal_true',
+        nodeid=(
+            'tests/testDeterminismGate.py::'
+            'test_a_legacy_waiver_value_never_attests_on_its_own'
+        ),
+        # Read the legacy waiver key as the blasVariance answer. Every
+        # project that ever opened the old form is silently credited,
+        # including one whose block says false.
         source='vaibify/reproducibility/determinismGate.py',
-        old='if dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY) is True:',
-        new='if dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY):',
+        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
+        new=(
+            '    sAnswer = dictDeterminism.get('
+            'dictQuestion["sAnswerKey"])\n'
+            '    if dictQuestion["sKey"] == "blasVariance" and '
+            'dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY):\n'
+            '        sAnswer = S_BLAS_ACCEPTED\n'
+        ),
     ),
     Falsification(
-        nodeid='tests/testDeterminismGate.py::test_mkl_cbwr_alone_declares_determinism',
+        nodeid=(
+            'tests/testDeterminismGate.py::'
+            'test_mkl_cbwr_alone_no_longer_declares_determinism'
+        ),
+        # Let a stored VALUE stand in for an answer -- the belief the
+        # ruling overturned, and the one this fixture can actually
+        # see. The "restore the OR" mutation is INVISIBLE here: the
+        # fixture records only `sMklCbwr` and no answers, so all three
+        # questions are open under both the OR and the AND and the
+        # gate refuses either way. It survived once for exactly that
+        # reason; testEveryQuestionMustBeAnsweredNotJustOne owns the OR.
         source='vaibify/reproducibility/determinismGate.py',
-        old='if dictDeterminism.get(S_MKL_CBWR_KEY):',
-        new='if False and dictDeterminism.get(S_MKL_CBWR_KEY):',
+        old=(
+            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
+            '        return _fbValueIsPresent(\n'
+            '            dictDeterminism.get('
+            'dictQuestion["sValueKey"]),\n'
+            '        )\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_bare_imported_seed_with_clock_is_flagged',
@@ -1364,8 +1395,11 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_missing_determinism_block_is_an_issue',
         source='vaibify/reproducibility/determinismGate.py',
-        old='if not fbWorkflowDeclaresDeterminism(dictWorkflow):',
-        new='if False and not fbWorkflowDeclaresDeterminism(dictWorkflow):',
+        old=(
+            '    listIssues = list('
+            '_flistDescribeUnansweredQuestions(dictWorkflow))\n'
+        ),
+        new='    listIssues = []\n'
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_from_secrets_import_is_flagged',
@@ -1778,10 +1812,13 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_shared_hash_compare_excludes_mismatches_from_matched',
         source='vaibify/reproducibility/rerunVerification.py',
+        # RE-ANCHORED 2026-08-31: the count is now over the COMPARED
+        # entries rather than every manifest entry, because a given
+        # step's outputs are carried out of the comparison.
         old='''        "iOutputHashesMatched": max(
-            len(listEntries) - len(listMismatches), 0,
+            len(listCompared) - len(listMismatches), 0,
         ),''',
-        new='''        "iOutputHashesMatched": len(listEntries),''',
+        new='''        "iOutputHashesMatched": len(listCompared),''',
     ),
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
@@ -1805,16 +1842,94 @@ LIST_FALSIFICATIONS = [
         old='''        iOutputHashesMatched=dictResult["iOutputHashesMatched"],''',
         new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
-    # A rerun that silently skips steps (interactive, disabled, or a
-    # step-less workflow) leaves pinned outputs untouched, so every hash
-    # trivially matches and the attestation certifies a run that ran
-    # nothing. These two guard the refusal scanner and the empty-manifest
-    # fail-close; the tests patch the runner to fail loudly if invoked.
+    # A rerun that silently skips steps leaves pinned outputs untouched,
+    # so every hash trivially matches and the attestation certifies a run
+    # that ran nothing. A DISABLED step is refused outright; an
+    # INTERACTIVE step's outputs are carried out of the comparison
+    # instead, which introduces its own way to lie -- an exclusion set
+    # that matches nothing grades the human's files as reproduced, and
+    # one that matches everything leaves a vacuous 0-of-0 pass. These
+    # four guard the refusal scanner, both halves of the exclusion, and
+    # the empty-manifest fail-close.
     Falsification(
-        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_interactive_step_refuses_rerun_before_any_execution',
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_disabled_step_refuses_rerun_before_any_execution',
         source='vaibify/reproducibility/rerunVerification.py',
-        old='    return listReasons',
+        old='        and not dictStep.get("bRunEnabled", True)',
+        new='        and False',
+    ),
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_given_steps_output_is_carried_out_of_the_comparison',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    return sorted(setGiven - setExecuted)',
         new='    return []',
+    ),
+    # The shadow is built from the pinned IMAGE, so a tool installed
+    # into the live container after that image was built is absent
+    # here -- and absent for anyone reproducing the work. Reported as
+    # "command not found" that finding is thrown away: the researcher
+    # reads it as vaibify failing to find a tool on their own PATH.
+    Falsification(
+        nodeid='tests/testShadowNamesTheImageGap.py::test_the_outcome_carries_the_explanation_not_just_the_error',
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='    dictFailure["listCommandsMissingFromImage"] = listMissing',
+        new='    return',
+    ),
+    # The mirror replaces a repo's requirements file, so a package
+    # declared only there stops being installed. Naming which ones is
+    # the whole migration aid; a name-lister that eats newlines
+    # collapses the file to one token and names the wrong package.
+    Falsification(
+        nodeid='tests/testRequirementsMirrorNamesWhatItDrops.py::test_a_package_only_in_the_repo_file_is_detected_as_dropped',
+        source='vaibify/containerImage/entrypoint.sh',
+        old="        | tr -d '[:blank:]' \\",
+        new="        | tr -d '[:space:]' \\",
+    ),
+    # vaibify.yml is the one dependency declaration and the image is
+    # built from it, but editing it without rebuilding leaves every
+    # downstream artefact agreeing with the stale IMAGE while the
+    # declaration names a package it does not have.
+    Falsification(
+        nodeid='tests/testDeclaredPackagesMatchTheImage.py::test_a_package_declared_but_absent_from_the_image_is_reported',
+        source='vaibify/reproducibility/declaredPackages.py',
+        old='    listMissing = [s for s in listDeclaredNames if s not in setImage]',
+        new='    listMissing = []',
+    ),
+    # Pre-flight must validate what a RUN executes, never everything
+    # declared. It checked saTestCommands, which no run path invokes,
+    # so a container without the test tool had every run refused.
+    Falsification(
+        nodeid='tests/testPreflightNamesTheCauseNotTheCascade.py::test_a_command_no_run_executes_is_never_validated',
+        source='vaibify/gui/pipelineUtils.py',
+        old='    "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",',
+        new='    "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",\n    "saTestCommands",',
+    ),
+    # Pre-flight reports a step's missing directory and then, because
+    # the command probe is "cd <dir> && test -f <script>", one
+    # "command not found" per command in the same step. Suppressing
+    # the cascade must not reach a step whose directory is fine, or
+    # pre-flight silently stops catching missing scripts.
+    Falsification(
+        nodeid='tests/testPreflightNamesTheCauseNotTheCascade.py::test_a_sound_directory_still_has_every_command_checked',
+        source='vaibify/gui/pipelineRunner.py',
+        old='        if len(listErrors) > iBeforeDirectory:',
+        new='        if True:',
+    ),
+    # Running one directory and grading another is the false-pass
+    # class: the steps write where the comparison never reads, so every
+    # pinned artefact matches untouched. The shadow lane shipped with
+    # its two roots one level apart and was caught only because the
+    # wrong directory happened not to exist.
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_run_root_that_differs_from_the_comparison_root_is_refused',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if not sRunnerRoot or sRunnerRoot == sComparisonRoot:',
+        new='    if True or not sRunnerRoot or sRunnerRoot == sComparisonRoot:',
+    ),
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_workflow_of_only_given_steps_is_not_a_pass',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if not listCompared:',
+        new='    if False and not listCompared:',
     ),
     Falsification(
         nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_manifest_pinning_no_files_fails_closed',
@@ -8149,6 +8264,7 @@ def _fdictEntry(sRel):
             '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, ftaskStartFalsification,\n'
+            '        sOperation="the falsification run",\n'
             '    )\n'
             '    if not dictLaunched["bLaunched"]:\n'
             '        raise HTTPException(\n'
@@ -8189,6 +8305,7 @@ def _fdictEntry(sRel):
             '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, ftaskStartVerification,\n'
+            '        sOperation="the Level 3 verification",\n'
             '    )\n'
             '    if not dictLaunched["bLaunched"]:\n'
             '        raise HTTPException(\n'
@@ -13823,5 +13940,667 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old="            (bDestructive ? ' wf-action-danger' : '') + '\" ' +\n",
         new="            '\" ' +\n",
+    ),
+    # --- 2026-08-28: the shadow-container rerun lane -------------------
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testTheComparisonIsRootedOnTheShadowNeverOnTheLiveRepository'
+        ),
+        # Root the post-rerun re-hash on the LIVE repository instead of
+        # the shadow copy. This is the substitution the whole lane
+        # exists to prevent, and it is invisible in every other
+        # observable: the rerun still runs, the container is still
+        # created and destroyed, and the comparison still reports
+        # counts -- against a tree the rerun never wrote to, which
+        # therefore matches unconditionally.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='                tShadowPaths[1]),',
+        new='                "/workspace/liveRepo"),',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAnUnpinnedEnvironmentRefusesBeforeAnyContainerExists'
+        ),
+        # Answer an unpinned environment.json with a floating tag
+        # instead of refusing. A tag can be repointed without any
+        # container changing, so the shadow would attest an environment
+        # nobody pinned -- the exact fallback the refusal exists to
+        # forbid.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '        raise ShadowRerunRefusedError(\n'
+            '            "environment.json pins no container image '
+            'digest, so no "'
+        ),
+        new=(
+            '        return "fallback:latest" or ShadowRerunRefusedError(\n'
+            '            "environment.json pins no container image '
+            'digest, so no "'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAComparisonThatRaisesStillTearsTheShadowDown'
+        ),
+        # Move the teardown out of ``finally``. Every ordinary run still
+        # cleans up, so the suite stays green except for the one case
+        # that matters: a workflow that errors mid-rerun leaves its
+        # container running on the researcher's daemon, and they
+        # accumulate invisibly.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    finally:\n'
+            '        dictTeardown = _fdictTearDownShadow(\n'
+            '            dictGateway, dictCreated["sHandle"])'
+        ),
+        new=(
+            '    except BaseException:\n'
+            '        raise\n'
+            '    dictTeardown = _fdictTearDownShadow(\n'
+            '        dictGateway, dictCreated["sHandle"])'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowContainerAdmission.py::'
+            'testTheShadowLaneOpensTheAdmissionAroundTheComparison'
+        ),
+        # Drop the shadow's own mutation admission. This is not a
+        # hypothetical: the lane was WRITTEN without it, and the
+        # dashboard would have refused every step of every rerun with
+        # MutationNotAdmittedError from inside a background task,
+        # because the durable carrier it runs under names the
+        # researcher's project container and not the shadow.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    tTokens = ftOpenDisposableContainerAdmission(\n'
+            '        dictCreated["sContainerName"], '
+            'dictCreated["sContainerName"])\n'
+            '    try:'
+        ),
+        new='    tTokens = None\n    try:',
+    ),
+    # --- 2026-08-30: the export coherence check ------------------------
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testARepositoryThatMovesDuringTheCopyIsRefused'
+        ),
+        # Drop the before/after observation comparison. The archive
+        # still agrees with the BEFORE observation perfectly -- the walk
+        # read each file before it changed -- so nothing else in the
+        # check notices that the repository has moved on. This is the
+        # half that catches a write landing after the walk passed.
+        source='vaibify/docker/coherentExport.py',
+        old='    _fnRefuseTornObservation(dictBefore, dictAfter)\n',
+        new='    del dictAfter\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAFileRewrittenAndRestoredDuringTheCopyIsStillRefused'
+        ),
+        # Drop the per-member archive check. The other half survives and
+        # sees a perfectly quiet repository, because a file changed and
+        # changed back leaves HEAD, the porcelain digest and every path
+        # identity identical -- only the archived BYTES disagree. The
+        # pair of entries above and here is the proof that neither half
+        # is redundant.
+        source='vaibify/docker/coherentExport.py',
+        old='    _fnRefuseArchiveMismatch(dictBefore, baArchive)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoherentExport.py::'
+            'testTheGitInternalsExemptionIsNarrow'
+        ),
+        # Strip the trailing slash from the exemption prefix, so the
+        # test becomes "begins with .git" and silently exempts
+        # .gitignore, .gitattributes and .gitmodules -- real,
+        # manifest-relevant files -- from the only check that would
+        # notice them being rewritten mid-copy.
+        source='vaibify/docker/coherentExport.py',
+        old='        or sRelative.startswith(sPrefix)\n',
+        new='        or sRelative.startswith(sPrefix.rstrip("/"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBlockersExplainEveryRefusal.py::'
+            'testADivergedPathNoStepOwnsStillProducesABlocker'
+        ),
+        # Drop the workflow-scope homing of the divergence projection's
+        # leftovers. The gate goes on refusing Level 2 for a diverged
+        # project.json while the blocker list reports nothing at all --
+        # observed on a real project, where clearing every listed
+        # blocker left the level unmoved and the screen silent about
+        # why.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    listBlockers.extend(_flistUnclaimedSyncBlockers(\n'
+            '        dictStatus, setClaimed, sCriterion, '
+            'sRemediationHint,\n'
+            '    ))\n'
+        ),
+        new='',
+    ),
+
+    # --- 2026-08-30: a configured remote pulses until its own check
+    # answers, and a check that could not run never claims a
+    # divergence ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
+            'test_a_running_check_pulses_without_moving_the_colour'
+        ),
+        # Stop emitting the pulse class. The badge then renders the
+        # aged cache as settled fact while vaibify is still asking --
+        # which is the state the whole feature exists to remove.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            (dictRow.bChecking === true\n"
+            "                ? ' requirement-row-checking' : '') + '\">' +\n"
+        ),
+        new="            '\">' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
+            'test_a_check_that_could_not_run_says_so_and_stays_out_of_red'
+        ),
+        # Swallow the "could not check" line. The row then shows the
+        # last verify's counts with nothing saying they were not
+        # refreshed, so stale evidence reads as current fact.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictCheck.sState === _S_CHECK_UNCHECKABLE) {',
+        new='        if (false) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_an_unreachable_remote_leaves_the_cached_record_untouched'
+        ),
+        # Settle a failed check as though it had answered. The badge
+        # stops pulsing and reports a comparison that never ran.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    if dictOutcome["dictStatus"] is None:\n'
+            '        remoteCheckState.fnMarkUncheckable(\n'
+            '            sContainerId, sService, dictOutcome["sError"],\n'
+            '        )\n'
+            '        return\n'
+        ),
+        new=(
+            '    if dictOutcome["dictStatus"] is None:\n'
+            '        dictOutcome["dictStatus"] = {"sService": sService,\n'
+            '            "sLastVerified": "", "iTotalFiles": 0,\n'
+            '            "iMatching": 0, "listDiverged": []}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_a_check_that_never_returns_stops_pulsing'
+        ),
+        # Remove the read-time age-out. A worker that never returns
+        # then pulses its badge for the rest of the session.
+        source='vaibify/reproducibility/remoteCheckState.py',
+        old=(
+            '    if (sState == S_STATE_CHECKING\n'
+            '            and fElapsed > F_CHECK_TIMEOUT_SECONDS):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteRefreshLeavesTheContainerFreeToWorkOn'
+        ),
+        # Register the sweep as durable work again. The container reads
+        # busy for the whole network round-trip and the researcher's
+        # own Level 3 verification is refused -- which is what shipped.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    asyncio.create_task(_fnRunRefreshWorker(\n',
+        new=(
+            '    _ = commitCarrier.fdictLaunchDurableTask\n'
+            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_github_is_checked_when_only_the_checkout_configures_it'
+        ),
+        # Back to a key-presence test. GitHub is configured by
+        # DERIVATION from the checkout's origin on real projects, so
+        # this drops it from the selection and its badge never pulses
+        # and never gets re-checked on open.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        try:\n'
+            '            _fdictRequireServiceConfig('
+            'dictWorkflow, sService, filesRepo)\n'
+            '        except ReverifyConfigError:\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if sService not in (\n'
+            '            (dictWorkflow or {}).get("dictRemotes") or {}\n'
+            '        ):\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_a_finished_refresh_bumps_the_epoch_so_badges_repaint'
+        ),
+        # Drop the epoch bump. The refresh rewrites syncStatus.json and
+        # nothing repaints the per-file octocats that read it.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    _fnBumpSoTheBadgesRepaint(dictCtx, sContainerId)\n',
+        new='',
+    ),
+    # --- 2026-08-30: a batched container probe is split to fit one
+    # exec argument. Measured: the existence probe RAISED at ~1,845
+    # paths (quarantining the container from inside a carrier worker)
+    # and the blob-sha probe emptied SILENTLY at ~2,562. ---
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testTheExistenceProbeSplitsInsteadOfOverflowingOneExec'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        listAnswers = []\n'
+            '        for listBatch in flistBatchPathsForOneExec('
+            'list(listPaths)):\n'
+            '            listAnswers.extend(_flistInterpretBooleanBatch(\n'
+            '                self._ftRunTypedRead(\n'
+            '                    sContainerId, S_TYPED_READ_PATHS_EXIST, '
+            'listBatch,\n'
+            '                ),\n'
+            '                listBatch, "existence",\n'
+            '            ))\n'
+            '        return listAnswers\n'
+        ),
+        new=(
+            '        return _flistInterpretBooleanBatch(\n'
+            '            self._ftRunTypedRead(\n'
+            '                sContainerId, S_TYPED_READ_PATHS_EXIST, '
+            'list(listPaths),\n'
+            '            ),\n'
+            '            listPaths, "existence",\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testTheBlobShaProbeSplitsInsteadOfOverflowingOneExec'
+        ),
+        source='vaibify/gui/containerGit.py',
+        old=(
+            '    dictAll = {}\n'
+            '    for listBatch in flistBatchPathsForOneExec('
+            'list(listRepoRelPaths)):\n'
+        ),
+        new=(
+            '    dictAll = {}\n'
+            '    for listBatch in [list(listRepoRelPaths)]:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testAFailedBatchEmptiesTheWholeAnswerRatherThanHalfOfIt'
+        ),
+        # Skip a failed batch and keep the ones that worked. The caller
+        # cannot tell the partial map from "those files are unreadable".
+        source='vaibify/gui/containerGit.py',
+        old=(
+            '        if dictBatch is None:\n'
+            '            return {}\n'
+        ),
+        new=(
+            '        if dictBatch is None:\n'
+            '            continue\n'
+        ),
+    ),
+    # --- 2026-08-30: a remote's files group by disposition, so the
+    # matching majority stops burying the handful that need work ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_the_matching_majority_is_collapsed_and_the_problems'
+            '_are_not'
+        ),
+        # Open the matching group by default: the flat list returns,
+        # with headings.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        {sState: "synced", sLabel: "Matching",\n'
+            '         bOpenByDefault: false},\n'
+        ),
+        new=(
+            '        {sState: "synced", sLabel: "Matching",\n'
+            '         bOpenByDefault: true},\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_a_collapsed_group_still_says_how_many_it_holds'
+        ),
+        # Drop the count. A closed group then cannot be told from an
+        # empty one.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            ' <span class=\"file-group-count\">' +\n"
+            "            listFiles.length + '</span></div>';\n"
+        ),
+        new="            '</div>';\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_a_capped_group_says_what_it_is_not_showing'
+        ),
+        # Truncate silently. The capped list then reads as the whole
+        # set and the omitted files look absent.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (listFiles.length > listShown.length) {\n'
+            "            sHtml += '<div class=\"file-group-truncated\">"
+            "Showing ' +\n"
+            '                listShown.length + \' of \' + '
+            'listFiles.length +\n'
+            "                ' \u2014 open the Repos panel to see them "
+            "all.</div>';\n"
+            '        }\n'
+        ),
+        new='',
+    ),
+    # --- 2026-08-30: the Project header cell counted only the STALE
+    # half of each remote's published-copy check, so a fresh verify
+    # that proved divergence still painted a check above two orange
+    # rows. Reported by the researcher. ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testAProvenDivergenceDeniesTheProjectHeaderItsCheck'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    "github-verify-stale", "zenodo-verify-stale",\n'
+            '    "not-in-github-mirror", "not-in-zenodo-deposit",\n'
+        ),
+        new='    "github-verify-stale", "zenodo-verify-stale",\n',
+    ),
+    # --- 2026-08-30: a determinism block that pins nothing read as
+    # satisfied on screen while the L3 gate refused it. Reported by
+    # the researcher, who had pressed Declare and watched it go green. ---
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testEveryQuestionMustBeAnsweredNotJustOne'
+        ),
+        # Restore the OR: any one answer satisfies the whole gate,
+        # which is what let a project attest at Level 3 having
+        # answered a third of the question.
+        source='vaibify/reproducibility/determinismGate.py',
+        old=(
+            '    return not flistUnansweredDeterminismQuestions'
+            '(dictWorkflow)\n'
+        ),
+        new=(
+            '    return len(flistUnansweredDeterminismQuestions('
+            'dictWorkflow)) < 3\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testThePollShipsTheVerdictRatherThanTheRawBlock'
+        ),
+        # Stop shipping the verdict; the row is forced back onto the
+        # raw block and can disagree with the gate again.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        "bDeterminismDeclared":\n'
+            '            determinismGate.fbWorkflowDeclaresDeterminism'
+            '(dictWorkflow),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_each_question_gets_its_own_row_and_marker'
+        ),
+        # Collapse the three question rows back into one, which is the
+        # rendering the 2026-08-30 ruling replaced: one marker over
+        # three independent sources of run-to-run difference.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return listQuestions.map(function (dictQuestion) {\n',
+        new=(
+            '        return listQuestions.slice(0, 1).map('
+            'function (dictQuestion) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_the_questions_are_asked_in_words_not_schema_keys'
+        ),
+        # Drop the plain-language question, leaving a label and no
+        # explanation -- the state the section was reported in.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            fnEscapeHtml(dictQuestion.sQuestion) + "
+            "'</div>';\n"
+        ),
+        new="            '</div>';\n",
+    ),
+    # Both L3 controls must SAY they are working: the button through a
+    # readiness round trip nothing else marks, the row through a rerun
+    # that can last hours. Each is asserted on a computed style rather
+    # than a class, because a class with no stylesheet rule behind it
+    # is an affordance that is invisible in production and green in CI.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerifyControlsSayTheyAreWorking.py::'
+            'test_the_verify_button_says_it_is_working_then_gives_'
+            'itself_back'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (!elButton) return function () {};',
+        new='        if (elButton) return function () {};',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerifyControlsSayTheyAreWorking.py::'
+            'test_the_attestation_row_pulses_while_the_rerun_runs'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='             bChecking: bRunning,',
+        new='             bChecking: false,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_an_unready_project_is_told_what_is_missing'
+        ),
+        # RE-ANCHORED 2026-08-31: the fetch is now wrapped in a
+        # try/finally that releases the button's busy hold, so the
+        # deletion has to take the wrapper with it. The mutant still
+        # releases the button -- a mutant that left it disabled would
+        # be killed by the button never re-enabling rather than by the
+        # missing pre-flight, which is a different guard.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var dictReady;\n'
+            '        try {\n'
+            '            dictReady = await _fdictFetchL3Readiness();\n'
+            '        } finally {\n'
+            '            fnRelease();\n'
+            '        }\n'
+            '        if (dictReady && dictReady.bL3ReadinessOK !== true) '
+            '{\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='        fnRelease();\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_a_ready_project_still_gets_the_copy_warning'
+        ),
+        # Suppress the copy warning for everyone: the pre-flight would
+        # then have traded one failure for a worse one.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictReady && dictReady.bL3ReadinessOK !== true) '
+            '{\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new=(
+            '        _fnShowLevel3NotReadyModal(dictReady || {});\n'
+            '        return;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testAPinnedAnswerWithoutItsValueIsHalfAnAnswer'
+        ),
+        # Accept "pinned" with nothing pinned: a rule no rerun could
+        # follow, recorded as though it were one.
+        source='vaibify/reproducibility/determinismGate.py',
+        old=(
+            '    if sAnswer != dictQuestion["sAnswerNeedingValue"]:\n'
+            '        return True\n'
+        ),
+        new='    return True\n    if False:\n        return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheLegacyFalseWaiverIsNotReadAsAnAnswer'
+        ),
+        # Read the legacy waiver key as the answer. Every project that
+        # ever opened the old form is silently credited.
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
+        new=(
+            '    sAnswer = dictDeterminism.get('
+            'dictQuestion["sAnswerKey"])\n'
+            '    if dictQuestion["sKey"] == "blasVariance" and '
+            'S_ACCEPT_BLAS_WAIVER_KEY in dictDeterminism:\n'
+            '        sAnswer = S_BLAS_ACCEPTED if dictDeterminism['
+            'S_ACCEPT_BLAS_WAIVER_KEY] else S_BLAS_REJECTED\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheMigrationPromotesOnlyUnambiguousLegacyValues'
+        ),
+        # Promote the false waiver too, attesting a choice that may
+        # never have been made.
+        source='vaibify/gui/workflowMigrations.py',
+        old='        dictDeterminism.get("bAcceptBlasVariance") is True,\n',
+        new=(
+            '        "bAcceptBlasVariance" in dictDeterminism,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheMigrationSpellsTheSameKeysTheGateReads'
+        ),
+        # Spell one answer key differently in the migrator than in the
+        # gate. The migrator's own behavioural tests cannot see this --
+        # they assert the literal too -- so a project's promoted answer
+        # would be written under a key nothing reads.
+        source='vaibify/gui/workflowMigrations.py',
+        old='        dictDeterminism, "sBlasVarianceAnswer",\n',
+        new='        dictDeterminism, "sBlasAnswer",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheScanToastReportsTheMathsLibrary'
+        ),
+        # Drop the maths reading from the toast. The scan then answers
+        # a different question than the button it sits under, which is
+        # how it shipped the first time.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var sMaths = (dictSafe.dictMathsLibrary || {})'
+            '.sHeadline || "";\n'
+            '        var sSuffix = sMaths ? " " + sMaths : "";\n'
+        ),
+        new='        var sSuffix = "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_the_preflight_reads_the_gaps_from_inside_their_envelope'
+        ),
+        # Read the flags off the response ENVELOPE instead of the gaps
+        # dict inside it. Every flag comes back undefined, `!== true`
+        # holds for all seven, and a fully-ready project is told it is
+        # not ready -- which made the L3 verification unstartable from
+        # the dashboard. Shipped once, because the test's fake answered
+        # a flat payload nobody sends.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            return (dictResponse || {})'
+            '.dictL3ReadinessGaps || null;\n'
+        ),
+        new='            return dictResponse;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testABusyDurableRefusalNamesTheLiveWork'
+        ),
+        # Restore the generic sentence. The researcher is told the
+        # container is busy and given nothing to act on -- they cannot
+        # tell their own verification running from something stuck.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '                "sReason": recordLive.sOperation + '
+            '" is already "\n'
+            '                           "running in this container",\n'
+        ),
+        new=(
+            '                "sReason": "a durable task is already '
+            'live in this "\n'
+            '                           "container",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_the_refresh_leaves_the_durable_slot_free'
+        ),
+        # The same restoration, seen from the route: a durable launch
+        # reappears in the module.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    return {"listChecking": listServices, "listUncheckable": []}\n',
+        new=(
+            '    _ = commitCarrier.fdictLaunchDurableTask\n'
+            '    return {"listChecking": listServices, '
+            '"listUncheckable": []}\n'
+        ),
     ),
 ]

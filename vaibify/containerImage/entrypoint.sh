@@ -602,9 +602,135 @@ fnInstallAllRepos() {
 }
 
 # ---------------------------------------------------------------------------
-# fnInstallRepoRequirements: Install per-repo .vaibify/requirements.txt files
+# S_IMAGE_REQUIREMENTS: the package list this image was BUILT with.
+#
+# Written by the Dockerfile from vaibify.yml's pythonPackages, which is
+# the one place a researcher declares dependencies (2026-09-01 ruling).
+# Absent in images built before that ruling, which is what selects the
+# legacy path below.
 # ---------------------------------------------------------------------------
-fnInstallRepoRequirements() {
+S_IMAGE_REQUIREMENTS="/etc/vaibify/requirements.txt"
+
+# ---------------------------------------------------------------------------
+# fnMirrorRepoRequirements: write the image's package list into each repo
+#
+# The repository's .vaibify/requirements.txt is a GENERATED MIRROR of
+# what this image installed, not a second place to declare packages.
+# PROOF Level 3 compiles requirements.lock from that mirror, so the
+# image, the mirror and the lock agree by construction.
+#
+# What the previous shape cost, and why a hand-edited mirror is
+# replaced rather than kept: the file used to be an independent
+# declaration that this function pip-installed at container start. A
+# package added there was present in the running container and in the
+# lock, and ABSENT from the image -- so it worked for the researcher
+# and was missing from the image anyone else would pull. Keeping a
+# hand edit here would recreate exactly that split, silently. The loss
+# is always reported.
+# ---------------------------------------------------------------------------
+fnMirrorRepoRequirements() {
+    if [ ! -f "${S_IMAGE_REQUIREMENTS}" ]; then
+        fnInstallRepoRequirementsLegacy
+        return 0
+    fi
+    local sRepoVaibify
+    for sRepoVaibify in "${WORKSPACE}"/*/.vaibify; do
+        [ -d "${sRepoVaibify}" ] || continue
+        fnWriteOneRequirementsMirror "${sRepoVaibify}"
+    done
+}
+
+fnWriteOneRequirementsMirror() {
+    local sRepoVaibify="$1"
+    local sTarget="${sRepoVaibify}/requirements.txt"
+    local sRepoName
+    sRepoName=$(basename "$(dirname "${sRepoVaibify}")")
+    local sGenerated
+    sGenerated="$(fnRenderRequirementsMirror)"
+    if [ -f "${sTarget}" ] && [ "$(cat "${sTarget}")" = "${sGenerated}" ]; then
+        return 0
+    fi
+    if [ -f "${sTarget}" ]; then
+        fnReportDroppedRequirements "${sTarget}" "${sRepoName}"
+    fi
+    printf '%s\n' "${sGenerated}" > "${sTarget}"
+    chown "${CONTAINER_USER}:${CONTAINER_USER}" "${sTarget}" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# fnReportDroppedRequirements: name the packages the mirror removes
+#
+# "This file was regenerated" tells a researcher nothing about WHICH of
+# their dependencies just stopped being installed. A package that lived
+# only in the repository file was installed at container start and is
+# absent from the image, so after the mirror replaces that file it is
+# simply gone -- and the loss surfaces later, somewhere else, as a step
+# that will not run or a test suite that cannot start. pytest is the
+# ordinary case: every vaibify project's test tiers need it, and a
+# project that declared it only here would lose its tests entirely
+# without this warning (2026-09-01).
+# ---------------------------------------------------------------------------
+fnReportDroppedRequirements() {
+    local sTarget="$1"
+    local sRepoName="$2"
+    local sDropped
+    sDropped=$(comm -23 \
+        <(fnListRequirementNames "${sTarget}") \
+        <(fnListRequirementNames "${S_IMAGE_REQUIREMENTS}") \
+        | tr '\n' ' ')
+    if [ -z "${sDropped// /}" ]; then
+        return 0
+    fi
+    echo "[vaib]   WARNING: ${sRepoName}: these packages were declared ONLY in"
+    echo "[vaib]            .vaibify/requirements.txt and are not in this image:"
+    echo "[vaib]              ${sDropped}"
+    echo "[vaib]            They are no longer installed. Add them to"
+    echo "[vaib]            pythonPackages in vaibify.yml and rebuild the image."
+    fnAppendStartupWarning "${sRepoName}" "requirements-dropped" \
+        "declared only in the repo file, absent from the image, no longer installed: ${sDropped}"
+}
+
+# Package names only, one per line, lowercased with underscores folded
+# to hyphens (PyPA's own normalization) and sorted, so ``comm`` can
+# compare two declarations that differ in version bounds or letter case
+# without reporting a difference nobody made.
+#
+# ``[:blank:]``, never ``[:space:]``: the latter includes NEWLINES, so
+# it collapses the whole file into a single token and the comparison
+# then reports one nonsense "package" as dropped and misses every real
+# one. Caught by running it, not by reading it.
+fnListRequirementNames() {
+    sed -e 's/#.*//' "$1" 2>/dev/null \
+        | tr -d '[:blank:]' \
+        | sed -e 's/[<>=!~;[].*//' \
+        | grep -v '^$' \
+        | tr 'A-Z' 'a-z' \
+        | tr '_' '-' \
+        | sort -u
+}
+
+fnRenderRequirementsMirror() {
+    echo "# GENERATED BY VAIBIFY -- do not edit."
+    echo "#"
+    echo "# This mirrors the pythonPackages list in the project's"
+    echo "# vaibify.yml, as installed into this container image. Editing"
+    echo "# it changes nothing that survives: the image is built from"
+    echo "# vaibify.yml, and this file is rewritten from the image on"
+    echo "# every container start."
+    echo "#"
+    echo "# To add a dependency: add it to pythonPackages in vaibify.yml"
+    echo "# on the host, then rebuild the image."
+    cat "${S_IMAGE_REQUIREMENTS}"
+}
+
+# ---------------------------------------------------------------------------
+# fnInstallRepoRequirementsLegacy: pre-ruling images have no baked list
+#
+# Kept so a container started from an image built before the mirror
+# existed behaves exactly as it did. Without it those projects would
+# silently stop having their repo requirements installed at all.
+# ---------------------------------------------------------------------------
+fnInstallRepoRequirementsLegacy() {
     local bFoundAny=false
     for sReqFile in "${WORKSPACE}"/*/.vaibify/requirements.txt; do
         [ -f "${sReqFile}" ] || continue
@@ -1002,13 +1128,15 @@ procedure to fix them permanently.
 
 ### Persisting the Dependency
 
-The immediate `pip install` is ephemeral — it is lost when the container is rebuilt. To make
-it permanent:
+The immediate `pip install` is ephemeral, and **you cannot make it permanent from inside this container.**
 
-1. Create or update the file `<repo>/.vaibify/requirements.txt` in the vaibified repository.
-2. Add one line per package with a version constraint: `lightkurve>=2.0`
-3. The vaibify entrypoint installs these automatically on container startup.
-4. It is also the dependency source PROOF Level 3 compiles \`requirements.lock\` from, if the repo root carries no \`pyproject.toml\`, \`requirements.in\` or \`requirements.txt\`. So keeping this file honest is what makes the L3 dependency row reachable — you do not need to author a second declaration to satisfy it. Note the lock is compiled by the vaibify backend on the RESEARCHER'S HOST, not in this container; installing a lock generator in here changes nothing.
+Dependencies are declared in exactly ONE place: \`pythonPackages\` in the project's \`vaibify.yml\`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
+
+\`<repo>/.vaibify/requirements.txt\` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start, and PROOF Level 3 compiles \`requirements.lock\` from it — so the image, the mirror and the lock agree by construction. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost.
+
+So: **tell the researcher which package you need and why, and ask them to add it to \`pythonPackages\` in \`vaibify.yml\` and rebuild the image.** Until they do, your \`pip install\` holds for this container session only — say that plainly rather than reporting the dependency as handled.
+
+Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in \`requirements.lock\`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it. That split cost a real project six rounds of diagnosis (2026-09-01).
 
 ### Rules
 
@@ -1416,7 +1544,7 @@ fnRunWorkspacePhase() {
     fnBuildBinaries
     fnSourceBinariesInBashrc
     fnInstallAllRepos
-    fnInstallRepoRequirements
+    fnMirrorRepoRequirements
     fnPrintSummary
 }
 

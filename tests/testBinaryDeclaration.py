@@ -32,7 +32,15 @@ def _fdictBuildWorkflow(sProjectRepo):
         "sProjectRepoPath": sProjectRepo,
         "dictRemotes": {},
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": False,
         "listDeclaredBinaries": [],
     }

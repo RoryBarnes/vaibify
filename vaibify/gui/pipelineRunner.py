@@ -55,6 +55,7 @@ from .pipelineUtils import (  # noqa: F401
     fbStepDirectoryConforms,
     fsDescribeRemoteDataPathConflict,
     fsDescribeStepIdConflict,
+    T_EXECUTED_COMMAND_KEYS,
     T_RUN_CLEARED_VERIFICATION_FLAGS,
     _fnRecordRunStats,
     _fdictBuildWorkflowVars,
@@ -148,10 +149,20 @@ async def _flistPreflightValidate(
         sStepDir = workflowManager.fsResolveStepWorkdir(
             dictStep.get("sDirectory", ""), dictVariables,
         )
+        iBeforeDirectory = len(listErrors)
         _fnValidateStepDirectory(
             connectionDocker, sContainerId, sStepDir,
             iStepNumber, dictStep["sName"], listErrors,
         )
+        if len(listErrors) > iBeforeDirectory:
+            # The command check runs "cd <dir> && test -f <script>", so
+            # a missing directory makes EVERY command in the step
+            # report "command not found" -- consequences of the one
+            # fault above, printed as though they were separate
+            # problems. One researcher met twelve lines describing two
+            # broken directories (2026-09-01). Report the cause; the
+            # cascade tells them nothing they can act on.
+            continue
         _fnValidateStepCommands(
             connectionDocker, sContainerId, dictStep,
             sStepDir, dictVariables, iStepNumber, listErrors,

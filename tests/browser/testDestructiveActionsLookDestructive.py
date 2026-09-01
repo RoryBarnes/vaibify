@@ -96,7 +96,16 @@ def test_delete_rules_is_painted_destructive_and_declare_is_not(
         "the action that RECORDS a declaration is painted destructive"
     )
 
-    pageDashboard.click('[data-wf-action="declare-determinism"]')
+    # ANSWER a question first. Pressing Save with nothing chosen used
+    # to write `{bAcceptBlasVariance: false}` -- a block that declared
+    # nothing while turning the row green -- and this test relied on
+    # that default to bring the Delete button into existence. The
+    # default is gone (2026-08-30 ruling), so the answer is given
+    # explicitly, which is also what a researcher does.
+    pageDashboard.locator(".determinism-answer").first.check()
+    pageDashboard.locator(
+        '[data-wf-action="declare-determinism"]',
+    ).first.click()
     pageDashboard.wait_for_selector(
         '[data-wf-action="delete-determinism"]', timeout=10000,
     )

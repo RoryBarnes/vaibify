@@ -58,6 +58,7 @@ __all__ = [
     "S_SYNC_STATUS_FILENAME",
     "S_MANIFEST_FILENAME",
     "ReverifyConfigError",
+    "fdictAttemptOneVerify",
     "fdictComputeLiveExpectedHashes",
     "fdictDescribeReverifySchedule",
     "fdictLoadManifestExpectedHashes",
@@ -69,6 +70,7 @@ __all__ = [
     "fnWriteSyncStatus",
     "fdictRunReverifyForWorkflow",
     "fdictRunReverifyOnce",
+    "flistSelectConfiguredServices",
     "flistZenodoDeclaredRecords",
     "fnScheduleReverify",
     "fsArxivCacheDir",
@@ -752,6 +754,46 @@ def fdictReadSyncStatusDocument(filesRepo):
     return dictAll if isinstance(dictAll, dict) else {}
 
 
+def flistSelectConfiguredServices(dictWorkflow, filesRepo=None):
+    """Return the services this workflow can actually be verified against.
+
+    The single predicate for "does this project have a <service> to
+    compare against". The scheduled loop and the dashboard's open-time
+    refresh must agree about it, because a service the loop would skip
+    is one whose badge must not pulse waiting for an answer that is
+    never coming.
+
+    It answers by asking the verify's OWN config resolver rather than
+    by looking for a key, and GitHub is the reason. A project whose
+    repository has an ``origin`` remote is verifiable with no
+    ``dictRemotes.github`` entry at all, because
+    :func:`_fdictRequireServiceConfig` derives the owner and repo from
+    the checkout. A key-presence test therefore skipped GitHub on
+    exactly the projects that had one — the manual "Verify now" worked
+    while the open-time refresh silently never re-checked it, which is
+    the shape of a feature that looks implemented and covers half its
+    remotes.
+
+    ``filesRepo`` is what makes that derivation possible. Without it
+    the answer falls back to recorded configuration alone, which is the
+    honest answer when there is no checkout to ask.
+    """
+    if filesRepo is not None:
+        # Normalized here, as every other public entry point in this
+        # module does: the resolver wants an adapter, and a caller
+        # holding only a repo path would otherwise reach it as a bare
+        # string and fail on the first attribute access.
+        filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listConfigured = []
+    for sService in LIST_SUPPORTED_SERVICES:
+        try:
+            _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo)
+        except ReverifyConfigError:
+            continue
+        listConfigured.append(sService)
+    return listConfigured
+
+
 def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None, filesRepo=None):
     """Verify every configured remote for one workflow; never raises.
 
@@ -767,12 +809,11 @@ def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None, filesRepo=None):
     if filesRepo is None:
         filesRepo = dictWorkflow.get("sProjectRepoPath") or ""
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictRemotes = dictWorkflow.get("dictRemotes") or {}
     listResults = []
-    for sService in LIST_SUPPORTED_SERVICES:
-        if sService not in dictRemotes:
-            continue
-        dictResult = _fdictAttemptOneVerify(
+    for sService in flistSelectConfiguredServices(
+        dictWorkflow, filesRepo,
+    ):
+        dictResult = fdictAttemptOneVerify(
             filesRepo, dictWorkflow, sService, sNowIso,
         )
         dictResult["sWorkflowId"] = sWorkflowId
@@ -780,7 +821,7 @@ def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None, filesRepo=None):
     return {"sWorkflowId": sWorkflowId, "listResults": listResults}
 
 
-def _fdictAttemptOneVerify(
+def fdictAttemptOneVerify(
     filesRepo, dictWorkflow, sService, sNowIso,
 ):
     """Run one verify; return ok/error dict; never raises."""

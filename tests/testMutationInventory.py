@@ -451,9 +451,27 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # regression. What the record cannot decode, the review can: the argv
 # is fixed source text and the only interpolated value is an int-cast
 # port already bounded by the command that accepted it.
+# 12 -> 23 on 2026-08-28 (shadow-container lane): every call in
+# ``docker/disposableContainer.py`` drives the SDK through a
+# ``dockerDisposable`` client that is a runtime object, so its chain
+# root is one the scan cannot resolve. That is the honest reason these
+# are opaque, not a regression, and it is the same shape as the 12
+# SDK-root blind spots this joins.
+#
+# They carry no individual disposition, and that is the existing scope
+# rather than an omission: ``testEveryGuiBlindSpotCarriesADisposition``
+# demands a ruling for sites under ``vaibify/gui/``, where an SDK reach
+# is surprising. These sit in ``vaibify/docker/``, which IS the Docker
+# authority. What constrains them is structural and asserted against a
+# REAL daemon in ``tests/testDisposableContainerLive.py``: every
+# per-container operation takes a server-minted opaque handle and
+# refuses a raw container id, and destruction inspects the target's
+# ``vaibify-disposable`` label first and refuses -- destroying nothing
+# -- unless it matches the handle's reservation. A caller holding the
+# researcher's project container id can reach none of them.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 12,
+    "untraceable-docker-sdk-root": 23,
 }
 
 
