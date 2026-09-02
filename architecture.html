@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev1151 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev1260 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7e422132"></script>
+      <script src="_static/documentation_options.js?v=e5150b0c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
 <li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
@@ -81,6 +82,9 @@
 <li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#session-lifetime-two-windows-three-tiers-one-honest-notice">Session lifetime: two windows, three tiers, one honest notice</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sleep-prevention-follows-the-work-not-the-tab">Sleep prevention follows the work, not the tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-survives-what-measured-2026-08-29">What survives what (measured, 2026-08-29)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
 </ul>
 </li>
@@ -971,6 +975,126 @@ intervals, so a single dropped signal never triggers a shutdown; only
 sustained absence does – the same guidance JupyterHub gives for its
 cull timeouts.</p>
 </section>
+<section id="session-lifetime-two-windows-three-tiers-one-honest-notice">
+<h3>Session lifetime: two windows, three tiers, one honest notice<a class="headerlink" href="#session-lifetime-two-windows-three-tiers-one-honest-notice" title="Link to this heading"></a></h3>
+<p>A browser session is bounded by two windows, and they relate to a live
+socket differently on purpose.</p>
+<p><strong>Sliding idle</strong> is refreshed by every request and <strong>vetoed by a live
+WebSocket</strong>: a dashboard that only streams events is doing something,
+and the socket layer never refreshes the credential’s last-seen stamp,
+so without the veto a streaming dashboard would be revoked under the
+researcher.</p>
+<p><strong>The absolute cap</strong> is measured from the session’s creation and fires
+<strong>regardless of socket liveness</strong>. That asymmetry is the point, and it
+is worth stating outside a docstring because it looks like an
+oversight: the case the cap exists to bound is a forgotten-open tab,
+which holds a live socket <em>by definition</em>, so a veto generalized to
+both triggers would make the cap unreachable in exactly its target
+case.</p>
+<p>Both windows resolve across the same three tiers — the environment
+override (<code class="docutils literal notranslate"><span class="pre">sessionLifecycle.S_ABSOLUTE_SESSION_CAP_ENV</span></code>,
+<code class="docutils literal notranslate"><span class="pre">S_SLIDING_IDLE_ENV</span></code>), then the host-global Settings preference in
+<code class="docutils literal notranslate"><span class="pre">~/.vaibify/preferences.json</span></code>, then the built-in default that
+<code class="docutils literal notranslate"><span class="pre">F_ABSOLUTE_SESSION_CAP_SECONDS</span></code> and <code class="docutils literal notranslate"><span class="pre">F_SLIDING_IDLE_SECONDS</span></code> carry.
+The environment tier wins because it is what the test lanes drive.
+Resolution happens <strong>at every evaluation</strong>, not once at import: a
+change needs no hub restart, and — the property that made it worth
+doing — <em>raising</em> the cap rescues a session that has not expired yet,
+which is what a researcher wants at the moment they notice the
+warning. “Never” is its own named choice
+(<code class="docutils literal notranslate"><span class="pre">preferencesStore.SET_NEVER_TOKENS</span></code>, carried as <code class="docutils literal notranslate"><span class="pre">math.inf</span></code>) rather
+than a very large number, because a 30-day cap outlives every hub
+process, so it would never fire while the dashboard still claimed a
+bound existed.</p>
+<p>The designed mitigation for the cap is the pre-expiry dashboard
+warning (<code class="docutils literal notranslate"><span class="pre">fdictSessionExpiryView</span></code>, lead
+<code class="docutils literal notranslate"><span class="pre">F_EXPIRY_WARNING_LEAD_SECONDS</span></code>). <strong>It assumes an audience it
+structurally may not have</strong>: a cap started in the afternoon expires in
+the small hours. So the hub also answers afterwards. Revocation
+records the sentence and the wall-clock time on the session record
+(<code class="docutils literal notranslate"><span class="pre">BrowserSessionRecord.sEndedMessage</span></code>), and the middleware’s 401
+carries it, so a returning researcher is told what ended their session
+and what became of the container instead of meeting a bare
+“Unauthorized” — which, before this, the dashboard rendered as “the
+server has been restarted”, a guess that is false in exactly the case
+that produces most 401s. The notice is keyed on the credential the
+caller already presents, so it discloses nothing.</p>
+</section>
+<section id="sleep-prevention-follows-the-work-not-the-tab">
+<h3>Sleep prevention follows the work, not the tab<a class="headerlink" href="#sleep-prevention-follows-the-work-not-the-tab" title="Link to this heading"></a></h3>
+<p>The macOS <code class="docutils literal notranslate"><span class="pre">caffeinate</span></code> keep-alive used to have one lifetime: the
+ownership record’s. <code class="docutils literal notranslate"><span class="pre">containerOwnership._fnForceReleaseOwnership</span></code>
+stops it, so the machine became sleepable a reconnect window plus a
+reap grace after the browser went away. A dashboard-launched pipeline
+survived that only because the reaper is vetoed while vaibify’s own
+<code class="docutils literal notranslate"><span class="pre">bRunning</span></code> flag is set — and that flag is vaibify’s own bookkeeping,
+not a process scan. Work vaibify did not launch (a job backgrounded in
+a terminal, an exec an in-container agent started, or <strong>any</strong> exec at
+all once the hub that launched it has been restarted) had no veto, so
+the record was reaped, the keep-alive died, and the laptop slept with
+the job still running. Under colima the VM suspends rather than dies,
+so the run is <em>frozen</em>, not killed, and looks healthy until somebody
+reads the timestamps.</p>
+<p><code class="docutils literal notranslate"><span class="pre">sleepPrevention</span></code> gives the keep-alive a second lane whose lifetime is
+the work’s. The session lane is unchanged and keyed by container name;
+the <strong>work lane</strong> is keyed by <code class="docutils literal notranslate"><span class="pre">fsWorkLaneKeepAliveName</span></code> — a registry
+name containing a character Docker forbids in a container name, so the
+two lanes can never stop each other’s process. The work lane is
+asserted and withdrawn from observed evidence on every hub-watchdog
+pass, immediately after the reaper, so a record dropped on one tick is
+re-examined as <em>work</em> on the same tick.</p>
+<p>The evidence is <code class="docutils literal notranslate"><span class="pre">DockerConnection.flistRunningExecIdentifiers</span></code>: does
+the daemon report any exec session in this container still running?
+<strong>It is evidence of work, never proof of work’s absence.</strong> A <code class="docutils literal notranslate"><span class="pre">setsid</span></code>
+descendant whose parent exec has exited is invisible to it, exactly as
+it is invisible to <code class="docutils literal notranslate"><span class="pre">terminalContainment</span></code>’s process-group prover.
+Vaibify cannot prove what runs inside a container and does not claim
+to. What it does claim is bounded and true: while it sees a running
+exec it keeps the machine awake, and when it sees none it stops paying
+for a keep-alive it has no reason to hold. An unreadable daemon is
+read as evidence <em>present</em> — the two errors are not symmetric, since
+withdrawing a keep-alive under a multi-day job costs the job while
+holding one nothing needs costs some battery.</p>
+<p>Because the lane is derived from observation rather than from an
+in-process record, a hub that crashed and restarted <strong>re-establishes</strong>
+the keep-alive for work its predecessor launched. The corollary is
+that a work-lane keep-alive can outlive its hub; the next hub’s first
+sweep is what withdraws it.</p>
+</section>
+<section id="what-survives-what-measured-2026-08-29">
+<h3>What survives what (measured, 2026-08-29)<a class="headerlink" href="#what-survives-what-measured-2026-08-29" title="Link to this heading"></a></h3>
+<p>Run against a live daemon (colima) rather than reasoned about, because
+neither reading the code nor reasoning settles it:</p>
+<ul class="simple">
+<li><p><strong>An in-container exec survives the death of the client holding its
+stream.</strong> SIGKILL the process that called
+<code class="docutils literal notranslate"><span class="pre">exec_start(stream=True)</span></code>; the exec keeps running, reparented to the
+container’s init, and keeps writing its output inside the container.</p></li>
+<li><p><strong>Its outcome remains recoverable.</strong> <code class="docutils literal notranslate"><span class="pre">exec_inspect</span></code> on the exec id
+answers <code class="docutils literal notranslate"><span class="pre">Running</span></code> while it runs and settles with the real
+<code class="docutils literal notranslate"><span class="pre">ExitCode</span></code> afterwards, to a <em>different</em> client than the one that
+started it. This is why the durable-task launch journals the exec id
+<strong>before</strong> <code class="docutils literal notranslate"><span class="pre">exec_start</span></code>: the journaled id is a probeable handle, and
+the experiment is what makes that worth relying on.</p></li>
+<li><p><strong>What is lost is the stream, not the work.</strong> Re-attaching with
+<code class="docutils literal notranslate"><span class="pre">exec_start</span></code> on an already-started exec yields no output. A hub that
+died mid-run can learn <em>that</em> and <em>how</em> its step finished; it cannot
+recover the lines it was not there to read.</p></li>
+<li><p><strong>A terminal-backgrounded job survives too</strong> — both a plain <code class="docutils literal notranslate"><span class="pre">&amp;</span></code> job
+and a <code class="docutils literal notranslate"><span class="pre">setsid</span></code> one — and so does the interactive shell itself. The
+<code class="docutils literal notranslate"><span class="pre">setsid</span></code> job reparents to the container’s init and carries its own
+session id, which is precisely the descendant no process-group
+prover can see.</p></li>
+<li><p><strong>The daemon prunes finished execs</strong> from a container’s <code class="docutils literal notranslate"><span class="pre">ExecIDs</span></code>,
+so the list is a live set rather than an accumulating log. Each id
+is still confirmed through <code class="docutils literal notranslate"><span class="pre">exec_inspect</span></code>, because the pruning is
+observed behaviour of one daemon while <code class="docutils literal notranslate"><span class="pre">Running</span></code> is a stated one.</p></li>
+</ul>
+<p>The practical reading: <strong>a hub restart does not stop a run.</strong> It stops
+vaibify <em>watching</em> the run. Anything that must survive a restart has
+to be recoverable from the journal and the filesystem, never from the
+hub’s memory.</p>
+</section>
 <section id="pid-reuse-proof-staleness">
 <h3>PID-reuse-proof staleness<a class="headerlink" href="#pid-reuse-proof-staleness" title="Link to this heading"></a></h3>
 <p>When a server dies uncleanly, its slot and lock files survive. The
@@ -1062,12 +1186,15 @@ says so. Abandonment writes an attributable audit entry (project name
 session) beside the journal, appended and fsynced <strong>before</strong> the marker
 is unlinked and idempotent by marker hash, so “a marker abandoned with
 no record of who abandoned it” is unreachable rather than unlikely.</p>
-<p><strong>Three capabilities are given up by name.</strong> PROOF Level 3 is defined
+<p><strong>Four capabilities are given up by name.</strong> PROOF Level 3 is defined
 by a pinned image; Supervised attribution is only honest when vaibify
 mediates every path to the files; the agent lane does not exist,
 because on the host the agent <em>is</em> the user and <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> has no
-discriminator left. Each is refused at its own door with a message
-naming the mode, rather than degrading into a misleading cascade.</p>
+discriminator left; and the Agent Council is refused, because it
+grounds its claims by building a disposable container and proving it
+gone, which a host project has none to create. Each is refused at its
+own door with a message naming the mode, rather than degrading into a
+misleading cascade.</p>
 <p><strong>Which root, asked per resource.</strong> <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> was written as a
 constant wherever code needed “the root this project’s files live
 under”, because until host mode there was only one answer.

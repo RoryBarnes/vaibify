@@ -219,8 +219,9 @@ class DependencyScanRequest(BaseModel):
 
 
 class TestGenerateRequest(BaseModel):
+    # No raw-key field: with bUseApi the route resolves the stored
+    # provider key via secretManager (agent-council design 9.5).
     bUseApi: bool = False
-    sApiKey: Optional[str] = None
     bDeterministic: bool = True
     bForceOverwrite: bool = False
 
@@ -2877,6 +2878,8 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
     routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
+    routes.councilRoutes.fnRegisterAll(app, dictCtx)
+    routes.councilChatRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

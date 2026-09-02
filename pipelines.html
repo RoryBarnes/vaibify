@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev1151 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev1260 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7e422132"></script>
+      <script src="_static/documentation_options.js?v=e5150b0c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -58,7 +58,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#example">Example</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#core-allocation">Core Allocation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#running-a-pipeline">Running a Pipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-a-pipeline">Running a Pipeline</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-long-step-survives">What a long step survives</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-output">Pipeline Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#integration-with-github-actions">Integration with GitHub Actions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#multi-container-projects">Multi-Container Projects</a></li>
@@ -66,6 +69,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
 <li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
@@ -287,6 +291,30 @@ fix the core count explicitly.</p>
 <p>The pipeline runs all steps in order. Each step runs its commands
 sequentially. Steps themselves execute one at a time by default; future
 versions may support parallel step execution for independent steps.</p>
+<section id="what-a-long-step-survives">
+<h3>What a long step survives<a class="headerlink" href="#what-a-long-step-survives" title="Link to this heading"></a></h3>
+<p>Steps in this project take hours to months, so it matters which
+failures reach them. Measured against a live daemon rather than
+assumed:</p>
+<ul class="simple">
+<li><p><strong>Closing the browser does not stop a run.</strong> The loop runs
+server-side and nothing cancels it on disconnect. Even a session
+that reaches its lifetime cap is <em>orphaned</em>, not released: the
+container keeps its lock and its work, and a fresh tab
+(<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>) reconciles with the run already in progress.</p></li>
+<li><p><strong>Restarting the dashboard server does not stop a run either.</strong> An
+in-container process outlives the process that launched it. What is
+lost is the live output stream — the restarted server can still
+learn that the step finished and with what exit code, but not the
+lines it was not there to read.</p></li>
+</ul>
+<p>The practical rule for a step you intend to leave running: <strong>write
+what matters to a file.</strong> Anything that exists only in the streamed
+log is recoverable only while somebody is watching. This is also why
+every cross-step reference is a declared token rather than a hidden
+path — the dependency graph has to be readable from the project file
+alone, without replaying a run.</p>
+</section>
 </section>
 <section id="pipeline-output">
 <h2>Pipeline Output<a class="headerlink" href="#pipeline-output" title="Link to this heading"></a></h2>

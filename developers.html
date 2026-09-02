@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev1151 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev1260 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7e422132"></script>
+      <script src="_static/documentation_options.js?v=e5150b0c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
 <li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
@@ -68,6 +69,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-manual-check">The manual check</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#what-survives-what">What survives what</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pull-request-workflow">Pull Request Workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
 </ul>
@@ -239,6 +241,50 @@ are excluded from routine runs and are the only ones requiring a live
 container. They are parametrized via <code class="docutils literal notranslate"><span class="pre">VAIBIFY_INTEGRATION_CONFIG</span></code> and
 skip when it is unset.</p>
 </section>
+</section>
+<section id="what-survives-what">
+<h2>What survives what<a class="headerlink" href="#what-survives-what" title="Link to this heading"></a></h2>
+<p>Three different deaths, three different answers. Getting these
+backwards is how a long run gets abandoned, or a dashboard gets
+believed when it should not be.</p>
+<p><strong>A logout does not touch the work.</strong> Session expiry commits an
+<em>orphan</em>, never a release: the credential stops authorizing, and the
+record keeps its flock, its keep-alive, its agent token, and any live
+task. A dashboard-launched <code class="docutils literal notranslate"><span class="pre">runAll</span></code> survives the logout <strong>in full</strong> —
+the loop runs hub-side as a durable task nobody cancels on
+disconnect, and the status callback tolerates a dead socket by design.
+The returning browser reconciles from <code class="docutils literal notranslate"><span class="pre">pipelineState</span></code>.</p>
+<p><strong>A hub restart does not stop a run — it stops vaibify watching one.</strong>
+Measured against a live daemon, an in-container exec survives SIGKILL
+of the process holding its stream, and its exit code stays readable
+through <code class="docutils literal notranslate"><span class="pre">exec_inspect</span></code> on the journaled exec id. What is lost is the
+output stream: re-attaching to a started exec yields nothing. So
+anything that must survive a restart has to be recoverable from the
+journal and the filesystem, never from the hub’s memory. The full
+measurement is in <a class="reference internal" href="architecture.html"><span class="std std-doc">architecture.md</span></a> — “What survives
+what”.</p>
+<p><strong>The terminal-backgrounded gap.</strong> A job the researcher backgrounds in
+a terminal is not a vaibify pipeline run, so vaibify’s own <code class="docutils literal notranslate"><span class="pre">bRunning</span></code>
+flag never rises for it and none of the run-shaped vetoes fire. Sleep
+prevention no longer depends on those vetoes — <code class="docutils literal notranslate"><span class="pre">sleepPrevention</span></code>
+re-derives the keep-alive from whether the daemon reports a running
+exec — but note the honest limit: a <code class="docutils literal notranslate"><span class="pre">setsid</span></code> descendant whose parent
+exec has exited is invisible to that signal, exactly as it is
+invisible to <code class="docutils literal notranslate"><span class="pre">terminalContainment</span></code>’s process-group prover. Vaibify
+cannot prove what is running inside a container. Treat “no exec
+visible” as <em>no evidence of work</em>, never as <em>proof of quiet</em>; a
+project in which a terminal has run reports quiescence UNPROVEN for
+the same reason.</p>
+<p><strong>Verifying any of this by hand.</strong> The session windows are settable,
+so a test drive does not need twelve hours:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span><span class="m">120</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>vaibify<span class="w"> </span>--port<span class="w"> </span><span class="m">8137</span>
+</pre></div>
+</div>
+<p>The environment tier outranks the stored preference, so this cannot be
+masked by whatever is in <code class="docutils literal notranslate"><span class="pre">~/.vaibify/preferences.json</span></code>. Leave a tab
+open past the cap and confirm two things: the run you started keeps
+going, and the refusal the tab meets <em>names the ending</em> rather than
+claiming the server restarted.</p>
 </section>
 <section id="pull-request-workflow">
 <h2>Pull Request Workflow<a class="headerlink" href="#pull-request-workflow" title="Link to this heading"></a></h2>

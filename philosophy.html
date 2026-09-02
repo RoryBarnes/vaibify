@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Philosophy &mdash; Vaibify 0.0.1.dev1151 documentation</title>
+  <title>Philosophy &mdash; Vaibify 0.0.1.dev1260 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7e422132"></script>
+      <script src="_static/documentation_options.js?v=e5150b0c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -61,6 +61,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
 <li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
@@ -135,7 +136,7 @@ credentials, and vaibify’s own state on this machine. Vaibify says so
 in a modal you have to read before the project opens and in a badge
 that never goes away, because a claim about whether your commands are
 contained is not one to make quietly.</p>
-<p>Three things are container-only, and vaibify names each one where you
+<p>Four things are container-only, and vaibify names each one where you
 would otherwise expect it rather than degrading silently:</p>
 <ul class="simple">
 <li><p><strong>Reproducibility Level 3</strong> is <em>defined</em> by a pinned image, so a
@@ -150,6 +151,12 @@ would have to retract.</p></li>
 quiet. On the host, vaibify guarantees the weaker and true statement
 that <em>every process it started has exited</em> — a command that detaches
 into its own session is outside what it can see.</p></li>
+<li><p><strong>Convening an Agent Council.</strong> A council grounds its claims by
+building a disposable container, running a model participant inside
+it, and proving that container gone. A host project has none to
+create, so the council button explains itself as an on-ramp —
+<em>convert this project to a container to convene a council</em> — rather
+than degrading into a council that cannot ground a single claim.</p></li>
 </ul>
 <p>So: <strong>host mode runs your pipeline; the container is what lets vaibify
 vouch for it.</strong> Start on the host if that is what gets you started,
