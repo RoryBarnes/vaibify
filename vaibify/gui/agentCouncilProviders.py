@@ -185,6 +185,14 @@ S_RATE_LIMIT_EVENT_TYPE = "rate_limit_event"
 # destroyed mid-stream, so there is no result event and no error — the
 # CLI never got to report anything.
 S_EMPTY_BECAUSE_WALL_CLOCK = "killedAtTurnWallClockBudget"
+# The SAME kill, with a different cause and a different remedy. When
+# ffClampTurnBudgetToLoginLife shortened this turn, the clock it ran out
+# of was the login's remaining life, not the researcher's setting —
+# and reporting it as the setting tells them to raise a budget that was
+# never binding. Observed live 2026-09-01: a synthesis turn under a
+# four-hour budget died after six minutes against a login with six
+# minutes left, and the record advised raising the four hours.
+S_EMPTY_BECAUSE_LOGIN_EXPIRY = "killedAtLoginExpiry"
 # The other bound the gateway kills on. A model whose stream-json runs
 # past the cap is destroyed exactly like one that runs past the clock,
 # and the two are indistinguishable without this flag.
@@ -375,6 +383,10 @@ def fsExplainEmptyResult(listEvents, dictExecution=None):
         S_EMPTY_BECAUSE_WALL_CLOCK:
             "the chairbot ran past this conversation's time budget and "
             "its runner was stopped mid-answer",
+        S_EMPTY_BECAUSE_LOGIN_EXPIRY:
+            "the project's Claude login ran out while the chairbot was "
+            "working, so its turn was cut short at the login's "
+            "remaining life rather than at the time budget",
         S_EMPTY_BECAUSE_OUTPUT_CAP:
             "the chairbot's answer ran past the output size this "
             "conversation allows and its runner was stopped",
@@ -432,7 +444,14 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
     # read them.
     dictRun = dictExecution or {}
     if dictRun.get("bWallClockExceeded"):
-        sReason = S_EMPTY_BECAUSE_WALL_CLOCK
+        # Which clock, not merely that a clock ran out: the remedy for
+        # one is raising a setting and for the other is refreshing a
+        # login, and a researcher who follows the wrong one changes
+        # nothing and loses another turn.
+        sReason = (
+            S_EMPTY_BECAUSE_LOGIN_EXPIRY
+            if dictRun.get("bBudgetCameFromLoginExpiry")
+            else S_EMPTY_BECAUSE_WALL_CLOCK)
     elif dictRun.get("bOutputCapExceeded"):
         sReason = S_EMPTY_BECAUSE_OUTPUT_CAP
     elif dictRun.get("bOomKilled"):
@@ -806,8 +825,10 @@ def _fnRefuseALapsedAccessToken(dictOauth):
     raise RunnerCredentialError(
         f"the project's Claude login {sState}, and a council runner is "
         "given the access token WITHOUT the refresh token, so it cannot "
-        "renew it. Run `claude` in this project's container — the CLI "
-        "refreshes a login that has lapsed — then try again."
+        "renew it. Send any prompt to `claude` in this project's "
+        "container — the CLI renews a lapsed login on its next REQUEST, "
+        "so a session that is merely open does not refresh it — then "
+        "try again."
     )
 
 
@@ -1120,16 +1141,25 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             self.saCliProgram)
         baStdin = fsComposeUntrustedPromptText(
             dictTurnRequest["listQuotedMaterial"]).encode("utf-8")
+        fEffectiveWallClock = ffClampTurnBudgetToLoginLife(
+            self.fWallClockSeconds, self._iLoginExpiresAtEpochMilliseconds)
+        # Recorded BEFORE the turn runs, because afterwards the login's
+        # remaining life has moved and the comparison no longer says
+        # which clock was in force. A deadline kill is then attributed
+        # to the bound that actually caused it.
+        bBudgetCameFromLoginExpiry = (
+            self.fWallClockSeconds is not None
+            and fEffectiveWallClock is not None
+            and fEffectiveWallClock < self.fWallClockSeconds)
         try:
             self._dictTurnExecution = await asyncio.to_thread(
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
                 self.dictGateway, self._sHandle, saArgv,
-                self.iOutputByteCap,
-                ffClampTurnBudgetToLoginLife(
-                    self.fWallClockSeconds,
-                    self._iLoginExpiresAtEpochMilliseconds),
+                self.iOutputByteCap, fEffectiveWallClock,
                 agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin,
                 self.fStallSeconds)
+            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (
+                bBudgetCameFromLoginExpiry)
             self._listEvents = flistParseStreamJsonEvents(
                 self._dictTurnExecution["sOutput"])
             self.dictModelIdentity = fdictExtractModelIdentity(

@@ -91,6 +91,7 @@ from .agentCouncilCharter import (
     fdictComposeTurnRequest,
     fdictValidateTurnResult,
     flistBlindQuotedMaterial,
+    S_RESEARCHER_COMMENT_HEADING,
     fsComposeDecisionAnswers,
     flistBuildQuotedMaterial,
     fsComposeTurnInstruction,
@@ -190,6 +191,16 @@ DICT_EMPTY_TURN_EXPLANATIONS = {
         "answer. Agents that explore the repository with many tool "
         "calls hit this; a single-shot answer does not. Raising the "
         "per-turn budget is the remedy, not a change to the question.",
+    "killedAtLoginExpiry":
+        "this agent was still working when the project's Claude login "
+        "expired. A runner is given the access token WITHOUT the "
+        "refresh token, so it cannot renew one mid-turn; the turn was "
+        "therefore capped at the login's remaining life rather than at "
+        "the per-turn budget, and it ran out. Raising the budget "
+        "changes nothing. Send any prompt to `claude` in this "
+        "project's container — the CLI renews a lapsed login on its "
+        "next REQUEST, so a session that is merely open does not "
+        "refresh it — then retry.",
     "killedAfterProducingNothing":
         "this agent produced nothing at all for long enough that its "
         "turn was treated as stopped, and its container was stopped "
@@ -1359,11 +1370,22 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
         self._fnEmitEvent("researcherDecisionRecorded", dict(dictDecision))
 
     async def fdictContinueAfterResearcherResponse(
-            self, sResponseText, listDecisionAnswers=None):
+            self, sResponseText, listDecisionAnswers=None,
+            sResearcherComment=""):
         """Answer a blocking question and launch the continuation.
 
         Refused at an exhausted-round gate: a plain response never
-        silently relaunches the spent budget (section 5.1)."""
+        silently relaunches the spent budget (section 5.1).
+
+        ``sResearcherComment`` is a remark about the decisions as a
+        whole rather than an answer to any one of them. It is APPENDED
+        under its own heading instead of replacing the composed prose:
+        the composition below exists so the readable record and the
+        machine-readable one cannot disagree about the ANSWERS, and a
+        labelled comment beside them does not put that at risk. It is
+        kept as its own key in the response record too, so a later
+        reader can tell what the researcher was asked from what they
+        volunteered."""
         dictGate = self._fdictRequireGate()
         if dictGate["sGateKind"] == S_GATE_EXHAUSTED_ROUNDS:
             raise CouncilProtocolError(
@@ -1376,6 +1398,11 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             # machine-readable one cannot describe different answers.
             sResponseText = fsComposeDecisionAnswers(
                 listDecisionAnswers, dictGate.get("listQuestions", []))
+        sResearcherComment = (sResearcherComment or "").strip()
+        if sResearcherComment:
+            sResponseText = (
+                f"{sResponseText}\n\n"
+                f"{S_RESEARCHER_COMMENT_HEADING}\n{sResearcherComment}")
         self._fnRecordResearcherDecision({
             "sDecisionKind": "researcherResponse", "sText": sResponseText})
         # Capture the questions this answers BEFORE the gate is
@@ -1391,6 +1418,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
             "listAnsweredQuestions": copy.deepcopy(
                 dictGate.get("listQuestions", [])),
             "listDecisionAnswers": copy.deepcopy(listDecisionAnswers),
+            "sResearcherComment": sResearcherComment,
         })
         self.dictCampaign["dictPendingHumanGate"] = None
         self._fnTransition(S_STATE_PLANNING, "researcherResponded")

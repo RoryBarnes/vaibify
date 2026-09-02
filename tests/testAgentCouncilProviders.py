@@ -905,5 +905,65 @@ def testAnAlreadyExpiredLoginStillReportsItsOwnRemedy():
             {"accessToken": "t", "expiresAt": fPast})
     assert "expired 4 minutes ago" in str(error.value)
     assert "WITHOUT the refresh token" in str(error.value)
-    assert "refreshes a login that has lapsed" in str(error.value), (
-        "the remedy must name the state in which it actually works")
+    assert "next REQUEST" in str(error.value), (
+        "the remedy must name the state in which it actually works — a\n"
+        "        session that is merely open does not refresh the login,\n"
+        "        which is what the live failure proved (2026-09-01)")
+
+
+def testADeadlineKillNamesWHICHClockRanOut():
+    """Two clocks, two remedies — and the wrong one costs another turn.
+
+    Kills: reporting every deadline kill as the per-turn budget.
+
+    Observed live 2026-09-01. A synthesis turn ran under a FOUR-HOUR
+    campaign budget and died after six minutes, because
+    ffClampTurnBudgetToLoginLife had capped it at the login's six
+    remaining minutes. The record advised "raising the per-turn budget
+    is the remedy" — a budget that was never binding, and raising it
+    would have produced exactly the same death. The clamp turned an
+    inscrutable mid-turn authentication failure into an attributable
+    timeout, which was its purpose, and then mis-attributed it.
+    """
+    dictLoginKill = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bWallClockExceeded": True, "bBudgetCameFromLoginExpiry": True,
+         "fElapsedSeconds": 390.0, "iExitCode": None})
+    assert dictLoginKill["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_LOGIN_EXPIRY)
+
+    # The falsification pair: an unclamped turn that genuinely outran
+    # the researcher's setting must still say so, or the fix would tell
+    # every timed-out council to go and refresh a healthy login.
+    dictBudgetKill = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bWallClockExceeded": True, "bBudgetCameFromLoginExpiry": False,
+         "fElapsedSeconds": 14400.0, "iExitCode": None})
+    assert dictBudgetKill["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_WALL_CLOCK)
+
+    # A record written before this flag existed carries neither key and
+    # must keep its old meaning rather than becoming a login problem.
+    dictLegacyKill = providers.fdictExtractStructuredResult(
+        [{"type": "assistant"}],
+        {"bWallClockExceeded": True, "iExitCode": None})
+    assert dictLegacyKill["sEmptyResultReason"] == (
+        providers.S_EMPTY_BECAUSE_WALL_CLOCK)
+
+
+def testTheLoginExpiryProseNamesTheRemedyThatWorks():
+    """The sentence a researcher reads must not send them to a setting.
+
+    Kills: reusing the wall-clock prose for the login kill, which is
+    how the live council came to advise raising four hours.
+    """
+    from vaibify.gui import agentCouncil
+
+    sProse = agentCouncil.DICT_EMPTY_TURN_EXPLANATIONS[
+        providers.S_EMPTY_BECAUSE_LOGIN_EXPIRY]
+    assert "claude" in sProse, sProse
+    assert "next REQUEST" in sProse, sProse
+    assert "merely open does not" in sProse, (
+        "the prose still reads as satisfied by a session that is open;"
+        " an idle session was running throughout the live failure")
+    assert "Raising the budget changes nothing" in sProse, sProse

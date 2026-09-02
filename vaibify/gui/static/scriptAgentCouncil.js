@@ -3721,6 +3721,17 @@ var VaibifyAgentCouncil = (function () {
                the quorum-shortfall gate, whose single server-raised
                question has no plan item, and any record from a hub that
                predates the grouping. */
+            /* Announced ABOVE the decisions, because the box is at the
+               bottom of a list that can run to a dozen items and a
+               researcher who reads only the first one would never
+               learn it exists (researcher request 2026-09-01). Each
+               decision is numbered, so the comment can refer to them. */
+            (listDecisions.length
+                ? "<p class=\"council-hint\">Each decision below is " +
+                    "numbered and has its own answer box. There is also " +
+                    "a comment box at the bottom for anything you want " +
+                    "to say about them as a whole.</p>"
+                : "") +
             (listDecisions.length
                 ? _fsDecisionGate(dictCampaign, listDecisions)
                 : (sQuestionRows
@@ -3729,7 +3740,18 @@ var VaibifyAgentCouncil = (function () {
                     : "<p>A material choice could not be settled from " +
                         "evidence.</p>")) +
             (listDecisions.length
-                ? ""
+                /* The grouped gate rendered "" here, so a researcher
+                   who wanted to say something ABOUT the decisions --
+                   rather than answer one of them -- had nowhere to put
+                   it (researcher request 2026-09-01). It is optional
+                   and clearly not an answer: every decision above still
+                   has its own box, and this one is never required. */
+                ? "<label class=\"council-comment-label\" " +
+                    "for=\"councilComment\">Your comment on these " +
+                    "decisions (optional)</label>" +
+                    "<textarea id=\"councilComment\" rows=\"3\" " +
+                    "placeholder=\"Anything to add about the decisions " +
+                    "above — refer to them by number\"></textarea>"
                 : "<textarea id=\"councilAnswer\" rows=\"3\"></textarea>") +
             "<p id=\"councilGateNotice\" class=\"council-gate-notice\" " +
             "style=\"display:none\"></p>" +
@@ -4327,12 +4349,22 @@ var VaibifyAgentCouncil = (function () {
         var bRecorded = await _fbPostAction(
             "/" + _dictState.sActiveCampaignId + "/respond",
             {sResponseText: "(composed from per-decision answers)",
-             listDecisionAnswers: listDecisionAnswers});
+             listDecisionAnswers: listDecisionAnswers,
+             /* Its OWN field, not sResponseText: the engine overwrites
+                that one with the composed answers whenever decisions
+                are present, so a comment sent there would be dropped
+                on every grouped gate without a word. */
+             sResearcherComment: _fsReadValue("councilComment") || ""});
         if (bRecorded) {
             /* The gate closed on these answers; kept drafts would
                refill the NEXT gate's boxes with answers to questions
-               it never asked. */
+               it never asked. The comment is keyed by id in dictById,
+               which _fnForgetPersistedDraft does not touch — it clears
+               storage, not the in-memory map — so it is deleted here
+               beside the positional answers, exactly as the flat
+               branch deletes councilAnswer. */
             _dictDraftFields.listDecisionAnswers = [];
+            delete _dictDraftFields.dictById.councilComment;
             _fnForgetPersistedDraft();
         }
     }

@@ -171,11 +171,22 @@ class CouncilRespondRequest(BaseModel):
     flat gate sends. ``listDecisionAnswers`` is the per-decision form:
     when present the SERVER composes the prose from it, so the two can
     never disagree about what the researcher said.
+
+    ``sResearcherComment`` is the researcher's own remark ABOUT the
+    decisions, distinct from any answer to one. It needs its own field
+    precisely because the composition above overwrites
+    ``sResponseText`` whenever per-decision answers are present: a
+    comment carried in that field would be silently discarded on every
+    grouped gate, which is the shape of control this codebase treats as
+    a defect. Optional, because a comment is not an answer and the gate
+    must not start demanding one.
     """
 
     sResponseText: str = Field(min_length=1, max_length=I_MAX_RESPONSE_LENGTH)
     listDecisionAnswers: list[CouncilDecisionAnswer] = Field(
         default_factory=list, max_length=128)
+    sResearcherComment: str = Field(
+        default="", max_length=I_MAX_RESPONSE_LENGTH)
 
 
 class CouncilGrantRoundRequest(BaseModel):
@@ -1132,6 +1143,7 @@ def _fnRegisterRespond(app, dictCtx):
                     sCampaignId, request.sResponseText,
                     [dictAnswer.model_dump()
                      for dictAnswer in request.listDecisionAnswers],
+                    sResearcherComment=request.sResearcherComment,
                     dictRebuildMaterials=await _fdictBuildRebuildMaterials(
                         dictCtx, dictControllerState, sContainerId,
                         sCampaignId, dictStore)))

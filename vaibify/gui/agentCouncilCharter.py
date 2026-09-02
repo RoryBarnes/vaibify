@@ -24,7 +24,9 @@ import uuid
 
 __all__ = [
     "DICT_PHASE_INSTRUCTIONS",
+    "DICT_VERDICT_REQUIRES_NONEMPTY",
     "LIST_TURN_RESULT_ARRAY_KEYS",
+    "S_RESEARCHER_COMMENT_HEADING",
     "TUPLE_TURN_VERDICTS",
     "fsComposeExactResultSchema",
     "fsComposeRepairInstruction",
@@ -387,6 +389,24 @@ S_REPAIR_INSTRUCTION = (
 # testTheSchemaTemplateNamesEveryRealVerdict pins the two together.
 TUPLE_TURN_VERDICTS = ("accept", "blockingObjection", "needsHuman")
 
+# A verdict that stops the council must SAY what it is stopping for.
+# Observed live 2026-09-01: an implementation turn returned
+# "needsHuman" with listOpenQuestions [] and listBlockingObjections [],
+# and the gate collector's honest fallback turned it into a blocking
+# question reading "blocking question without stated text" — an item
+# the researcher was required to answer and could not, because nothing
+# had been asked. Refusing it here instead means the model is told, on
+# its one repair attempt, to state the question; the fallback stays as
+# the last line of defence for a record written before this rule.
+#
+# "accept" is deliberately absent: accepting carries no obligation to
+# produce anything, and requiring an array of it would refuse the one
+# verdict that is allowed to be quiet.
+DICT_VERDICT_REQUIRES_NONEMPTY = {
+    "needsHuman": "listOpenQuestions",
+    "blockingObjection": "listBlockingObjections",
+}
+
 # The evidence claim shape the engine actually consumes
 # (agentCouncilEvidence.EvidenceDisciplineMixin). A model told
 # "array of strings" here returns strings, and every one of them is
@@ -583,6 +603,21 @@ def fdictValidateTurnResult(dictCandidate, bRequirePatch=False,
         listProblems.append(
             f"'sVerdict' must be one of {list(TUPLE_TURN_VERDICTS)}, not "
             f"{dictCandidate.get('sVerdict')!r}")
+    # Not in the deliberation-summary phase. A summary REPORTS on a
+    # council that has already stopped, and the gate waiting behind it
+    # is the exhausted-rounds one, whose content is unresolved
+    # OBJECTIONS rather than questions — so a summary's "needsHuman"
+    # promises no question list and requiring one refuses the honest
+    # ending. `bRequireSummary` is already this phase's discriminator;
+    # scoping the rule to it beats inventing a second one.
+    sRequiredKey = None if bRequireSummary else (
+        DICT_VERDICT_REQUIRES_NONEMPTY.get(dictCandidate.get("sVerdict")))
+    if sRequiredKey and not (dictCandidate.get(sRequiredKey) or []):
+        listProblems.append(
+            f"'sVerdict' is {dictCandidate['sVerdict']!r}, so "
+            f"'{sRequiredKey}' must name at least one item: a verdict "
+            "that stops the council has to say what it is stopping for, "
+            "and the researcher cannot answer a question nobody asked")
     for sKeyName in listArrayKeys:
         listProblems.extend(
             _flistFindArrayProblems(sKeyName, dictCandidate.get(sKeyName)))
@@ -1031,6 +1066,15 @@ def _flistResultQuotes(dictRound, sSourcePhase, sSourceKind,
             sSourceKind, dictTurnRecord["sParticipantId"],
             json.dumps(dictTurnRecord["dictResult"], sort_keys=True)))
     return listQuoted
+
+
+# The heading the researcher's free-text remark is quoted under, in the
+# same ASKED:/ANSWERED: idiom the composer below uses, so a participant
+# reads one document rather than two conventions. It is deliberately
+# not "ANSWERED": a comment answers no question, and a participant that
+# reads it as an answer to its own would be reading a decision the
+# researcher did not make.
+S_RESEARCHER_COMMENT_HEADING = "RESEARCHER'S COMMENT ON THESE DECISIONS:"
 
 
 def fsComposeDecisionAnswers(listDecisionAnswers, listQuestions):

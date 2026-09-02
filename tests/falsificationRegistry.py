@@ -14544,11 +14544,11 @@ def _fdictEntry(sRel):
         # The clamp is computed and then the unclamped budget is what
         # the bounded-turn primitive is actually handed.
         old=(
-            '                ffClampTurnBudgetToLoginLife(\n'
-            '                    self.fWallClockSeconds,\n'
-            '                    self._iLoginExpiresAtEpochMilliseconds),'
+            '        fEffectiveWallClock = ffClampTurnBudgetToLoginLife(\n'
+            '            self.fWallClockSeconds, '
+            'self._iLoginExpiresAtEpochMilliseconds)'
         ),
-        new='                self.fWallClockSeconds,',
+        new='        fEffectiveWallClock = self.fWallClockSeconds',
     ),
     Falsification(
         nodeid=(

@@ -263,3 +263,94 @@ def testAWholeSnapshotAddsNothingToTheTurnInstruction():
     sInstruction = agentCouncilCharter.fsComposeTurnInstruction(
         dictCampaign, {"sRole": ""}, agentCouncilCharter.S_PHASE_PROPOSAL)
     assert "PARTIAL" not in sInstruction
+
+
+def testAVerdictThatStopsTheCouncilMustSayWhatItStopsFor():
+    """A needsHuman with no questions is refused at the schema boundary.
+
+    Observed live 2026-09-01: an implementation turn returned
+    "needsHuman" with listOpenQuestions [] and listBlockingObjections
+    [], and the gate collector's honest fallback turned it into a
+    blocking question reading "blocking question without stated text".
+    The researcher was then required to answer an item that asked
+    nothing, on a gate that closes on send.
+
+    The fallback is the right LAST line — it says the text is missing
+    rather than inventing one — but the first line belongs here, where
+    the model still has its one repair attempt to state the question.
+    """
+    from vaibify.gui.agentCouncilCharter import (
+        LIST_TURN_RESULT_ARRAY_KEYS, LIST_TURN_RESULT_STRING_KEYS,
+        fdictValidateTurnResult)
+
+    def _fdictCandidate(**dictOverrides):
+        dictCandidate = {sKey: "stated"
+                         for sKey in LIST_TURN_RESULT_STRING_KEYS}
+        dictCandidate.update({sKey: []
+                              for sKey in LIST_TURN_RESULT_ARRAY_KEYS})
+        dictCandidate["sVerdict"] = "accept"
+        dictCandidate.update(dictOverrides)
+        return dictCandidate
+
+    dictSilent = fdictValidateTurnResult(
+        _fdictCandidate(sVerdict="needsHuman"))
+    assert not dictSilent["bValid"]
+    assert any("listOpenQuestions" in sProblem
+               for sProblem in dictSilent["listProblems"]), (
+        dictSilent["listProblems"])
+
+    dictObjecting = fdictValidateTurnResult(
+        _fdictCandidate(sVerdict="blockingObjection"))
+    assert not dictObjecting["bValid"], (
+        "an objection nobody stated blocks the council just as silently")
+
+    # The falsification pairs. A rule that refused these would ground
+    # every council: a stated question is valid, and ACCEPT is the one
+    # verdict allowed to be quiet — it carries no obligation to produce
+    # anything, and demanding an array of it would refuse the normal
+    # case.
+    assert fdictValidateTurnResult(
+        _fdictCandidate(sVerdict="needsHuman",
+                        listOpenQuestions=["which floor?"]))["bValid"]
+    assert fdictValidateTurnResult(
+        _fdictCandidate(sVerdict="blockingObjection",
+                        listBlockingObjections=["the guard is wrong"])
+    )["bValid"]
+    assert fdictValidateTurnResult(_fdictCandidate())["bValid"], (
+        "an accepting turn with nothing to add was refused")
+
+
+def testASummaryMayReportNeedsHumanWithoutEnumeratingQuestions():
+    """The one phase the verdict/array rule must not police.
+
+    Kills: applying the needsHuman-needs-questions rule to the
+    deliberation summary, which refuses the honest ending of a
+    non-convergent council.
+
+    A summary REPORTS on a council that has already stopped. The gate
+    waiting behind it is the exhausted-rounds one, whose content is
+    unresolved OBJECTIONS, not questions — so a summary's "needsHuman"
+    promises no question list. Scoped through bRequireSummary, which is
+    already this phase's discriminator.
+    """
+    from vaibify.gui.agentCouncilCharter import (
+        LIST_SUMMARY_RESULT_ARRAY_KEYS, LIST_TURN_RESULT_ARRAY_KEYS,
+        LIST_TURN_RESULT_STRING_KEYS, fdictValidateTurnResult)
+
+    dictSummary = {sKey: "stated" for sKey in LIST_TURN_RESULT_STRING_KEYS}
+    dictSummary.update({sKey: [] for sKey in LIST_TURN_RESULT_ARRAY_KEYS})
+    dictSummary.update({sKey: ["a point"]
+                        for sKey in LIST_SUMMARY_RESULT_ARRAY_KEYS})
+    dictSummary["sVerdict"] = "needsHuman"
+
+    assert fdictValidateTurnResult(
+        dictSummary, bRequireSummary=True)["bValid"], (
+        "the summary phase was refused for not enumerating questions")
+
+    # The falsification pair: OUTSIDE the summary phase the same shape
+    # is still refused, or the exemption would have swallowed the rule.
+    dictOrdinary = {sKey: "stated"
+                    for sKey in LIST_TURN_RESULT_STRING_KEYS}
+    dictOrdinary.update({sKey: [] for sKey in LIST_TURN_RESULT_ARRAY_KEYS})
+    dictOrdinary["sVerdict"] = "needsHuman"
+    assert not fdictValidateTurnResult(dictOrdinary)["bValid"]

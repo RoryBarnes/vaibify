@@ -278,10 +278,35 @@ def _fnAnswerABlockingQuestion(page, serverHub, sCampaignId):
     assert page.is_visible("#councilGateNotice"), (
         "an empty decision was sent instead of refused")
 
+    # The comment box: announced ABOVE the decisions, because a
+    # researcher who reads only the first of a dozen would never learn
+    # it exists, and carried in its OWN field because the engine
+    # overwrites sResponseText with the composed answers.
+    sBody = page.inner_text(".council-needs-human")
+    assert "comment box at the bottom" in sBody, (
+        f"nothing above the decisions announced the box: {sBody[:400]!r}")
+    assert page.locator("#councilComment").count() == 1, (
+        "the grouped gate offers no way to comment on the decisions")
+    page.fill("#councilComment", "Decision 1 outranks the rest.")
+
     for elementBox in listBoxes:
         elementBox.fill("Use the content-hash policy.")
     page.click("#btnCouncilAnswer")
-    _fnWaitForResponseRecorded(page, serverHub, sCampaignId)
+    dictRecord = _fnWaitForResponseRecorded(page, serverHub, sCampaignId)
+
+    # Asserted against the STORE, over the real HTTP round trip: a
+    # comment that renders and posts but is dropped server-side is the
+    # failure mode this whole field exists to prevent.
+    [dictResponse] = dictRecord["listResearcherResponses"]
+    assert dictResponse["sResearcherComment"] == (
+        "Decision 1 outranks the rest."), dictResponse
+    assert "Decision 1 outranks the rest." in dictResponse["sText"], (
+        "the comment reached the record but not the prose the next "
+        "round's participants are quoted")
+    # And it does not survive into the next gate's box.
+    assert page.evaluate(
+        "() => (document.getElementById('councilComment') || {}).value"
+        " || ''") == ""
 
 
 def _fnWaitForResponseRecorded(page, serverHub, sCampaignId):
@@ -290,7 +315,7 @@ def _fnWaitForResponseRecorded(page, serverHub, sCampaignId):
         dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
             _fdictStore(serverHub), sCampaignId)
         if dictRecord["listResearcherResponses"]:
-            return
+            return dictRecord
         page.wait_for_timeout(200)
     raise AssertionError("the answer never reached the campaign record")
 

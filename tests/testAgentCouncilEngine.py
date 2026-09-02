@@ -18,6 +18,7 @@ not by trusting that a green pass means the guarantee holds.
 
 from vaibify.gui.agentCouncil import fdictRestoreCampaignFromMetadata
 from vaibify.gui.agentCouncilCampaign import CouncilProtocolError
+from vaibify.gui.agentCouncilCharter import S_RESEARCHER_COMMENT_HEADING
 
 from tests.agentCouncilHarness import (
     fdictDecideCompleted,
@@ -1011,3 +1012,104 @@ def testAnOrdinarySilentStopIsNotCalledAKill():
         "jsonExitCode": 0, "dictEventTypeCounts": {}})
     assert "stopped without returning an answer" in sSilent
     assert "exit 137" not in sSilent
+
+
+def testTheResearchersCommentSurvivesTheComposedAnswers():
+    """A comment about the decisions is not an answer, and is not lost.
+
+    Kills: carrying the researcher's remark in sResponseText, which the
+    composer overwrites whenever per-decision answers are present.
+
+    The frontend used to send the literal string "(composed from
+    per-decision answers)" in that field precisely because it was known
+    to be discarded. A comment box wired to it would therefore have
+    been a control that silently did nothing on every grouped gate,
+    which is the failure this codebase treats as a defect rather than a
+    cosmetic gap (researcher request 2026-09-01).
+    """
+    fixture = fixtureBuildCouncil(
+        LIST_THREE_SPECS,
+        _ffnDecideVetoVerdict("B", "needsHuman", iRoundLimit=1,
+                              listOpenQuestions=["delete it, or keep it?"]),
+        sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    sQuestionId = (
+        dictOut["dictPendingHumanGate"]["listQuestions"][0]["sQuestionId"])
+
+    dictOut = fixture.fdictContinue(
+        "IGNORED — the caller does not get to write the record",
+        [{"sDecisionId": "decision-" + sQuestionId,
+          "listQuestionIds": [sQuestionId],
+          "sAnswerText": "keep it, but discourage it"}],
+        sResearcherComment="Decision 1 matters more than the others.")
+
+    [dictResponse] = dictOut["listResearcherResponses"]
+    # The answers are still SERVER-composed: the caller's prose is gone.
+    assert "IGNORED" not in dictResponse["sText"]
+    assert "keep it, but discourage it" in dictResponse["sText"]
+    # And the comment rides alongside, under its own heading, kept as
+    # its own key so a reader can tell what was asked from what was
+    # volunteered.
+    assert "Decision 1 matters more" in dictResponse["sText"]
+    assert S_RESEARCHER_COMMENT_HEADING in dictResponse["sText"]
+    assert dictResponse["sResearcherComment"] == (
+        "Decision 1 matters more than the others.")
+
+
+def testAnAbsentCommentAddsNoHeadingToTheRecord():
+    """The falsification pair.
+
+    Kills: appending the heading unconditionally, which would put an
+    empty "RESEARCHER'S COMMENT" section on every gate answer and tell
+    the next round's participants the researcher said something when
+    they said nothing.
+    """
+    fixture = fixtureBuildCouncil(
+        LIST_THREE_SPECS,
+        _ffnDecideVetoVerdict("B", "needsHuman", iRoundLimit=1,
+                              listOpenQuestions=["delete it, or keep it?"]),
+        sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    sQuestionId = (
+        dictOut["dictPendingHumanGate"]["listQuestions"][0]["sQuestionId"])
+
+    dictOut = fixture.fdictContinue(
+        "ignored",
+        [{"sDecisionId": "decision-" + sQuestionId,
+          "listQuestionIds": [sQuestionId],
+          "sAnswerText": "keep it"}],
+        sResearcherComment="   ")
+
+    [dictResponse] = dictOut["listResearcherResponses"]
+    assert S_RESEARCHER_COMMENT_HEADING not in dictResponse["sText"]
+    assert dictResponse["sResearcherComment"] == ""
+
+
+def testTheCommentReachesTheNextRoundsParticipants():
+    """A comment nobody reads is a text box, not a channel.
+
+    Kills: recording the comment only in the campaign record, so it
+    never becomes quoted material and no agent ever sees it.
+    """
+    fixture = fixtureBuildCouncil(
+        LIST_THREE_SPECS,
+        _ffnDecideVetoVerdict("B", "needsHuman", iRoundLimit=1,
+                              listOpenQuestions=["delete it, or keep it?"]),
+        sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    sQuestionId = (
+        dictOut["dictPendingHumanGate"]["listQuestions"][0]["sQuestionId"])
+
+    fixture.fdictContinue(
+        "ignored",
+        [{"sDecisionId": "decision-" + sQuestionId,
+          "listQuestionIds": [sQuestionId],
+          "sAnswerText": "keep it"}],
+        sResearcherComment="Prefer the conservative reading throughout.")
+
+    listSecondRound = fixture.flistRequestsFor("C", S_VETO)
+    sQuoted = [dictQuoted
+               for dictQuoted in listSecondRound[-1]["listQuotedMaterial"]
+               if dictQuoted["sSourceKind"] == "researcherResponse"][-1][
+                   "sContent"]
+    assert "Prefer the conservative reading throughout." in sQuoted

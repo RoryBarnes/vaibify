@@ -4417,12 +4417,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # engine gained two more endings, not a second responsibility.
     # 1512 -> 1521 (2026-08-30): the stall explanation, which is a
     # new way for a turn to end and belongs beside the other four.
-    "agentCouncil.py": 1521,
+    "agentCouncil.py": 1549,
     # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
     # and the deliberation-summary phase instruction plus its schema
     # extension. This module IS the instruction contract and the turn
     # schema; growing the contract is what growing it looks like.
-    "agentCouncilCharter.py": 1110,
+    "agentCouncilCharter.py": 1154,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
@@ -4539,7 +4539,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1185 -> 1199 (2026-08-30): the stall failure class, its
     # sentence, and the two execution facts it reports. The module
     # already owns "what happened to a turn".
-    "agentCouncilProviders.py": 1270,
+    "agentCouncilProviders.py": 1300,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
