@@ -366,7 +366,7 @@ carrier worker, which poisons the journal record and **quarantines the
 container**), and `fdictComputeBlobShasInContainer` answered `{}`
 SILENTLY at ~2,562, so every badge was computed from an empty hash map
 and shown as fact. Both measured against a real daemon, 2026-08-30.
-`docker/execArgumentBudget.py` owns the split; never re-derive a budget
+`vaibify/docker/execArgumentBudget.py` owns the split; never re-derive a budget
 beside it. Two things not to "simplify": the split preserves ORDER
 (the existence probe zips answers back onto paths), and a failed batch
 collapses the whole blob-sha answer rather than returning the batches

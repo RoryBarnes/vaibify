@@ -37,6 +37,12 @@ SET_GENERIC_FILENAME_EXAMPLES = {
     "userRoutes.py",
     "state.json",
     "pipeline_state.json",
+    # Written into the RESEARCHER's repository at runtime (the
+    # environment snapshot and the sync-status sidecar), so they exist
+    # in no vaibify checkout. An untracked scratch copy can make one
+    # resolve locally and not in CI, which is how the gap ships.
+    "environment.json",
+    "syncStatus.json",
 }
 
 

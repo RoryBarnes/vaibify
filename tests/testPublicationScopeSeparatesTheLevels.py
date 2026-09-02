@@ -325,13 +325,22 @@ def test_an_envelope_never_compared_does_not_pass(monkeypatch):
     by asking whether every envelope file ON DISK appears in the
     compared set.
 
+    The fixture records the envelope's hash in dictComparedHashes
+    even though nothing compared it, deliberately: without that
+    entry the changed-since-verify check downstream refuses the same
+    fixture and the subset guard's mutation is unobservable — the
+    survivor CI reported on 2026-09-02. No real writer produces this
+    record, which is exactly why it isolates the guard.
+
     Kills: drop the `set(listOnDisk).issubset(setCompared)` check in
     fbEnvelopeMatchesGithubMirror, which then reports a match over an
     envelope no verify ever looked at.
     """
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT])
+    dictStatus["dictComparedHashes"][S_ENVELOPE] = S_VERIFIED_SHA
     assert _fbEnvelopeMatches(
         monkeypatch,
-        _fdictStatus([S_DATA, S_SCRIPT]),
+        dictStatus,
         {S_ENVELOPE},
     ) is False
 
