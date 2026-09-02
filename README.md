@@ -16,11 +16,23 @@
   <br>
   <!-- Endpoint badges read counts from json on the orphan `badges` branch,
        refreshed by .github/workflows/badges.yml on every push to main. They
-       display "no data" until badges.yml runs on main for the first time. -->
+       display "no data" until badges.yml runs on main for the first time.
+
+       All of them share ONE colour, deliberately. A count is not a
+       verdict: `falsification tests` shipped in brightgreen and read as
+       "falsification: passing" beside the status badges that really do
+       mean that. The label already says which count it is, so a hue per
+       badge buys nothing and costs a false signal. Never paint one in a
+       pass/fail colour -- testCountBadgesAreNotPaintedLikeVerdicts
+       fails the build if you do. -->
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/tests.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/falsification.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/browser.json">
+  <br>
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/security.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/style.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/ssh.json">
   <br>
   <!-- Merge-gate status. These report the checks that gated the LAST MERGE
        into main, resolved by badges.yml from the merge commit's pull
@@ -37,8 +49,8 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <br>
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusStyleContract.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusRemoteSsh.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusStyle.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSsh.json">
   <br>
   <!-- The security lane carried a hand-typed "scope: regression subset"
        label until 2026-09-02. It was computed by nothing and asserted by

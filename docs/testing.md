@@ -296,8 +296,8 @@ varies across the matrix, and a bare noun for anything that does not:
 | `docker-smoke` | `tests-linux` |
 | `agent-docs` | `agentDocsPathCheck` |
 | `security:<os>:python-<version>` | `security` |
-| `style-contract` | `styleContract` |
-| `remote-ssh` | `remoteSsh` |
+| `style` | `styleContract` |
+| `ssh` | `remoteSsh` |
 
 Two failures forced this, both invisible in the workflow file. `browser`'s
 job was called `frontend (chromium)`, so searching "browser" returned
