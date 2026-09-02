@@ -17058,4 +17058,92 @@ def _fdictEntry(sRel):
             '        }'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_parser_matches_the_counter_token_exactly'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # A prefix match reads the v1 file's oom_kill_disable line as
+        # the kill count.
+        old=(
+            '        if len(listFields) == 2 and '
+            'listFields[0] == "oom_kill":'
+        ),
+        new=(
+            '        if len(listFields) == 2 and '
+            'listFields[0].startswith("oom_kill"):'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_a_risen_counter_concludes_oom_with_the_daemon_flag_'
+            'quiet'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # Reduce the verdict to the daemon's State flag alone -- the
+        # exact intermittent false negative CI reported twice on
+        # 2026-09-02.
+        old=(
+            '    bCounterRose = (\n'
+            '        iOomKillsBefore is not None and iOomKillsAfter '
+            'is not None\n'
+            '        and iOomKillsAfter > iOomKillsBefore\n'
+            '    )\n'
+            '    return bCounterRose or bool(bStateOomKilled)'
+        ),
+        new='    return bool(bStateOomKilled)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_an_unreadable_before_count_cannot_conclude_a_kill'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # Treat an unreadable count as zero: every command after a
+        # container's first legitimate OOM kill is then reported
+        # killed whenever one read fails.
+        old=(
+            '    bCounterRose = (\n'
+            '        iOomKillsBefore is not None and iOomKillsAfter '
+            'is not None\n'
+            '        and iOomKillsAfter > iOomKillsBefore\n'
+            '    )'
+        ),
+        new=(
+            '    bCounterRose = (\n'
+            '        (iOomKillsAfter or 0) > (iOomKillsBefore or 0)\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_disposable_command_threads_the_before_count'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # Drop the threaded snapshot: the counter half can never
+        # conclude, and the outcome quietly reverts to the daemon
+        # flag alone.
+        old='        fStartedMonotonic, iOomKillsBefore)',
+        new='        fStartedMonotonic, None)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_council_turn_threads_the_before_count'
+        ),
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        # The council lane's copy of the same dropped-snapshot wiring.
+        old=(
+            '    bOomKilled = _fbConcludeOomKilledForContainer(\n'
+            '        dockerCouncil, dictHandle["sContainerId"], '
+            'iOomKillsBefore)'
+        ),
+        new=(
+            '    bOomKilled = _fbConcludeOomKilledForContainer(\n'
+            '        dockerCouncil, dictHandle["sContainerId"], None)'
+        ),
+    ),
 ]

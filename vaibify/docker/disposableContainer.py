@@ -278,6 +278,51 @@ def _ftStartExecStream(dockerDisposable, sContainerId, listCommand,
     return (dictExecCreated["Id"], socketRaw)
 
 
+def _fiReadOomKillCount(dockerDisposable, sContainerId):
+    """Read the container cgroup's oom_kill counter; None if unreadable.
+
+    Runs through the same exec-stream helpers as every other command,
+    so no new daemon surface is reached. Any failure -- a dead
+    container, a missing shell, a truncated stream -- answers None,
+    which the pure combiner treats as "cannot conclude", never as 0.
+    """
+    try:
+        tExecStarted = _ftStartExecStream(
+            dockerDisposable, sContainerId,
+            disposableSpecification.LIST_OOM_COUNTER_COMMAND,
+            bStdin=False,
+        )
+        socketRaw = tExecStarted[1]
+        try:
+            dictPumped = disposableSpecification.fdictPumpBoundedExecStream(
+                socketRaw, 65536, time.monotonic() + 10.0)
+        finally:
+            socketRaw.close()
+        return disposableSpecification.fiParseOomKillCount(
+            dictPumped["baCaptured"].decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
+def _fbConcludeOomKilledForContainer(dockerDisposable, sContainerId,
+                                     iOomKillsBefore):
+    """Combine the cgroup counter and the daemon flag into one verdict.
+
+    The counter re-read happens FIRST: it needs a live container, and
+    the inspect below works either way. The rationale for the two
+    halves lives on ``disposableSpecification.fbConcludeOomKilled``.
+    """
+    iOomKillsAfter = _fiReadOomKillCount(dockerDisposable, sContainerId)
+    bStateOomKilled = False
+    try:
+        dictInspected = dockerDisposable.api.inspect_container(sContainerId)
+        bStateOomKilled = bool(dictInspected["State"]["OOMKilled"])
+    except Exception:
+        pass
+    return disposableSpecification.fbConcludeOomKilled(
+        iOomKillsBefore, iOomKillsAfter, bStateOomKilled)
+
+
 def fnCopyArchiveIntoContainer(
     dictGateway, sHandle, baArchiveTar,
     sDestinationDirectory="/", sPathPrefix="",
@@ -380,11 +425,13 @@ def fdictExecuteBoundedCommand(
     disposable and a job that broke its budget has ended; the caller
     settles it with :func:`fdictDestroyAndSettle`. ``iExitCode`` is
     ``None`` when no exit code could be established (a killed command),
-    never a fabricated zero. ``bOomKilled`` is read from the container
-    BEFORE anything destroys it, because an exit code of 137 is SIGKILL
-    and says nothing about who sent it: this module kills on a breached
-    bound and the kernel kills on memory pressure, and without that
-    field the two are indistinguishable.
+    never a fabricated zero. ``bOomKilled`` is concluded BEFORE anything
+    destroys the container, from the cgroup's own oom_kill counter
+    (snapshotted here, re-read after) combined with the daemon's State
+    flag, because an exit code of 137 is SIGKILL and says nothing about
+    who sent it: this module kills on a breached bound and the kernel
+    kills on memory pressure, and without that field the two are
+    indistinguishable.
     """
     dictHandle = _fdictResolveHandle(dictGateway, sHandle)
     dockerDisposable = dictGateway["dockerDisposable"]
@@ -395,6 +442,8 @@ def fdictExecuteBoundedCommand(
             disposableSpecification.F_DEFAULT_WALL_CLOCK_SECONDS)
     fStartedMonotonic = time.monotonic()
     fDeadlineMonotonic = fStartedMonotonic + fWallClockSeconds
+    iOomKillsBefore = _fiReadOomKillCount(
+        dockerDisposable, dictHandle["sContainerId"])
     sExecId, socketRaw = _ftStartExecStream(
         dockerDisposable, dictHandle["sContainerId"], listCommand,
         bStdin=baStdinPayload is not None,
@@ -414,11 +463,12 @@ def fdictExecuteBoundedCommand(
             dockerDisposable, dictHandle["sContainerId"])
     return _fdictDescribeCommandOutcome(
         dockerDisposable, dictHandle, sExecId, dictPumped,
-        fStartedMonotonic)
+        fStartedMonotonic, iOomKillsBefore)
 
 
 def _fdictDescribeCommandOutcome(dockerDisposable, dictHandle, sExecId,
-                                 dictPumped, fStartedMonotonic):
+                                 dictPumped, fStartedMonotonic,
+                                 iOomKillsBefore):
     """Assemble the bounded command's outcome from the daemon's answers.
 
     Each inspect result is bound before it is read. A ``.get()`` chained
@@ -435,13 +485,8 @@ def _fdictDescribeCommandOutcome(dockerDisposable, dictHandle, sExecId,
         iExitCode = dictExecInspected["ExitCode"]
     except Exception:
         pass
-    bOomKilled = False
-    try:
-        dictInspected = dockerDisposable.api.inspect_container(
-            dictHandle["sContainerId"])
-        bOomKilled = bool(dictInspected["State"]["OOMKilled"])
-    except Exception:
-        pass
+    bOomKilled = _fbConcludeOomKilledForContainer(
+        dockerDisposable, dictHandle["sContainerId"], iOomKillsBefore)
     return {
         "iExitCode": iExitCode,
         "sOutput": dictPumped["baCaptured"].decode(

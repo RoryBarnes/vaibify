@@ -86,6 +86,9 @@ __all__ = [
     "fbufferRepackArchiveStamped",
     "fnSendAllBounded",
     "fdictPumpBoundedExecStream",
+    "LIST_OOM_COUNTER_COMMAND",
+    "fiParseOomKillCount",
+    "fbConcludeOomKilled",
 ]
 
 
@@ -431,3 +434,58 @@ def fdictPumpBoundedExecStream(socketRaw, iOutputByteCap,
         "bOutputCapExceeded": bOutputCapExceeded,
         "bDeadlineExceeded": bDeadlineExceeded,
     }
+
+
+# Reads the kernel's own OOM-kill ledger for the container's cgroup.
+# The cgroup-v2 file comes first; on a v1 host it is absent and
+# ``memory.oom_control`` carries the same ``oom_kill <count>`` line
+# (kernel >= 4.13). ``cat`` prints whichever exists; ``|| true``
+# normalises the exit so a missing file reads as empty output, never
+# as a failed exec.
+LIST_OOM_COUNTER_COMMAND = [
+    "/bin/sh", "-c",
+    "cat /sys/fs/cgroup/memory.events"
+    " /sys/fs/cgroup/memory/memory.oom_control 2>/dev/null || true",
+]
+
+
+def fiParseOomKillCount(sCounterText):
+    """Return the ``oom_kill`` count from cgroup counter text, or None.
+
+    None means UNREADABLE, which is a different answer from 0: a
+    caller must not conclude "no kill" from a file it could not read.
+    The first token must equal ``oom_kill`` exactly -- both counter
+    files also carry ``oom_kill_disable``-style lines, and a prefix
+    match would read the wrong number.
+    """
+    for sLine in sCounterText.splitlines():
+        listFields = sLine.split()
+        if len(listFields) == 2 and listFields[0] == "oom_kill":
+            try:
+                return int(listFields[1])
+            except ValueError:
+                return None
+    return None
+
+
+def fbConcludeOomKilled(iOomKillsBefore, iOomKillsAfter, bStateOomKilled):
+    """Decide whether the kernel's OOM killer fired during one command.
+
+    Two sources, each covering the other's blind spot. The cgroup
+    counter is the kernel's ledger and catches a kill of an exec'd
+    process inside a still-running container -- the case the daemon's
+    ``State.OOMKilled`` flag missed intermittently in CI (2026-09-02),
+    because that flag is stamped by the daemon's event plumbing rather
+    than read back from the kernel. The State flag covers the pid-1
+    kill, where the container died and no counter-reading exec can run.
+
+    The counter half concludes only from two readable values: a
+    container hosts many commands, so a counter already above zero
+    proves nothing about THIS one, and a failed before-read must not
+    be treated as zero.
+    """
+    bCounterRose = (
+        iOomKillsBefore is not None and iOomKillsAfter is not None
+        and iOomKillsAfter > iOomKillsBefore
+    )
+    return bCounterRose or bool(bStateOomKilled)

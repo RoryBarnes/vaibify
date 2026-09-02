@@ -4528,7 +4528,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # pump, and a stall joining the two breaches that already kill
     # the container. Detecting silence and leaving the runner alive
     # would be worse than the failure it replaces.
-    "agentCouncilDockerGateway.py": 951,
+    # +46 (2026-09-02): OOM attribution grew its cgroup-counter half
+    # after the daemon's State flag missed an exec-level kill twice in
+    # one CI day -- the counter read reuses the existing exec-stream
+    # helpers, and the combiner is shared pure code in
+    # disposableSpecification, so the growth is the two thin adapters
+    # and their docstrings.
+    "agentCouncilDockerGateway.py": 997,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
