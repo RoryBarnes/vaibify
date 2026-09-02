@@ -11,6 +11,11 @@ Rather than re-picking names by hand in the GitHub UI, derive them from
 the workflows themselves. Run this after any change to a gate
 workflow's job names, and before merging that change.
 
+If the ruleset carries no required-status-checks rule at all, this
+creates one. It used to refuse, which sounds conservative and is not:
+the ruleset then stays unprotected, and a ruleset with no required
+checks looks exactly like a healthy one on a pull request page.
+
 Deliberately excluded:
 
 * ``results:<os>:python-<version>`` -- published by the test-results
@@ -156,10 +161,28 @@ def fdictBuildRulesetPayload(listContexts):
         dictRule["parameters"]["strict_required_status_checks_policy"] = True
         bFound = True
     if not bFound:
-        raise SystemExit(
-            "the ruleset has no required_status_checks rule; add one in "
-            "the GitHub UI first, then re-run this."
-        )
+        # Create it rather than refusing. The refusal that used to live
+        # here is why main sat with NO required checks at all on
+        # 2026-09-02: the tool declined, the rule was never added by
+        # hand, and every doc that argues the pre-merge split is safe
+        # ("branch protection is what makes the pre-merge half
+        # sufficient") was quietly false for as long as that lasted. A
+        # tool whose failure mode is "the protection you asked for does
+        # not exist, and nothing says so" is worse than no tool.
+        #
+        # Seeding it EMPTY is not an option -- GitHub answers 422,
+        # "Expected at least 1 elements, got 0" -- so the rule is born
+        # carrying the contexts derived from the workflows, in one PUT.
+        dictPayload.setdefault("rules", []).append({
+            "type": "required_status_checks",
+            "parameters": {
+                "strict_required_status_checks_policy": True,
+                "do_not_enforce_on_create": False,
+                "required_status_checks": [
+                    {"context": sContext} for sContext in listContexts
+                ],
+            },
+        })
     return dictPayload
 
 

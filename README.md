@@ -37,20 +37,29 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <br>
-  <!-- The security lane runs the passing security-boundary regression
-       suite. Its companion label states the scope honestly: a green badge
-       is a regression subset, NOT a claim that the full boundary-hardening
-       invariant set is verified. The label is widened once those
-       invariants are in the lane and green. -->
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSecurity.json">
-  <img src="https://img.shields.io/badge/scope-regression%20subset-lightgrey.svg">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusStyleContract.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusRemoteSsh.json">
   <br>
-  <!-- The scheduled lanes keep GitHub's own badges: they really do run on
-       main, on a timer, so "the latest run" IS main's state. Nobody
-       watches a nightly or weekly run, so these are the badges most
-       likely to be the only sign of a failure. -->
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg">
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg">
+  <!-- The security lane carried a hand-typed "scope: regression subset"
+       label until 2026-09-02. It was computed by nothing and asserted by
+       nothing, and it had already gone stale in the direction that
+       matters: it said the boundary-hardening invariants were absent
+       from the lane, which they had not been since cca86404. A caveat
+       that does not change when the lane changes is not a caveat. The
+       badge now means what it says -- the security lane passed -- and
+       what that lane actually runs is a row in docs/testing.md, beside
+       the workflow it describes. -->
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSecurity.json">
+  <br>
+  <!-- The scheduled lanes keep GitHub's own badges, but MUST pin
+       ?branch=main. Unqualified, that badge reports the newest run on
+       any branch: fresh-image-build also triggers on pull requests
+       touching the image, so every one of its recent runs was a
+       contributor branch and the badge stopped describing main at all.
+       Nobody watches a nightly or weekly run, so these are the badges
+       most likely to be the only sign of a failure. -->
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg?branch=main">
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg?branch=main">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
   <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
 </a>

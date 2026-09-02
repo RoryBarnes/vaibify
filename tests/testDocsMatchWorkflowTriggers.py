@@ -106,3 +106,28 @@ def test_no_stale_falsification_count_in_testing_doc():
         f"again: {sRow!r}. Counts live on the README badges, which "
         "badges.yml regenerates."
     )
+
+
+def test_every_workflow_appears_in_the_ci_documentation():
+    """A lane the docs never name is a lane nobody knows runs.
+
+    `security`, `style-contract` and `remote-ssh` each gated every
+    merge for weeks while the CI tables listed four pre-merge
+    workflows. Nothing was wrong with any row that was there -- the
+    table was simply not the whole set, and a table that looks
+    complete is read as complete.
+
+    Naming is all this asserts. What a lane RUNS still has to be
+    written by hand; the point is that adding a workflow cannot
+    silently skip the writing.
+    """
+    sDoc = _PATH_TESTING_DOC.read_text()
+    listUndocumented = sorted(
+        pathFile.name for pathFile in _PATH_WORKFLOWS.glob("*.yml")
+        if f"`{pathFile.name}`" not in sDoc
+    )
+    assert listUndocumented == [], (
+        f"these workflows run in CI but docs/testing.md never names "
+        f"them, so a reader budgeting trust on the tables is reading "
+        f"an incomplete set: {listUndocumented}"
+    )

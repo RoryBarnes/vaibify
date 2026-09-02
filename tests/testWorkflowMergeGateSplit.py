@@ -16,6 +16,8 @@ Prose could not hold this. The duplication is one line of YAML to
 reintroduce and is invisible in review, so the rule lives here.
 """
 
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -212,6 +214,8 @@ T_PUBLISHED_BADGES = (
     "statusBrowser.json",
     "statusSecurity.json",
     "statusAgentDocs.json",
+    "statusStyleContract.json",
+    "statusRemoteSsh.json",
 )
 
 
@@ -242,6 +246,137 @@ def testBadgesArePublishedByNameNotByGlob():
     for sBadge in T_PUBLISHED_BADGES:
         assert sBadge in sStep, (
             f"{sBadge} is written by badges.yml but never published."
+        )
+
+
+def _fsWorkflowDisplayName(sWorkflowName):
+    """Return the ``name:`` GitHub reports a workflow's runs under."""
+    dictWorkflow = yaml.safe_load(
+        (_PATH_WORKFLOWS / sWorkflowName).read_text()
+    )
+    sName = dictWorkflow.get("name")
+    assert sName, f"{sWorkflowName} declares no top-level name:"
+    return sName
+
+
+@pytest.mark.parametrize("sWorkflow", T_PRE_MERGE_WORKFLOWS)
+def testEveryMergeGateReachesTheReadmeAsAStatusBadge(sWorkflow):
+    """A gate nobody can see on the README is a gate nobody reads.
+
+    The companion test above forbids GitHub's built-in badge for these
+    lanes, and a lane with NO badge at all satisfies that trivially --
+    which is how `style-contract` and `remote-ssh` came to gate every
+    merge while appearing on the README nowhere, and in badges.yml's
+    lane map nowhere. Absence looked exactly like compliance.
+
+    The three places are pinned to each other rather than re-typed:
+    the workflow's own `name:` must key badges.yml's merge-gate map,
+    and the file that map names must be both published to the badges
+    branch and rendered by the README. Nothing here hand-copies a
+    badge filename, so a new gate cannot be half-registered.
+    """
+    sDisplayName = _fsWorkflowDisplayName(sWorkflow)
+    sBadges = (_PATH_WORKFLOWS / "badges.yml").read_text()
+    matchLane = re.search(
+        rf'"{re.escape(sDisplayName)}":\s*"(status\w+\.json)"', sBadges,
+    )
+    assert matchLane, (
+        f"{sWorkflow} gates every merge but is absent from badges.yml's "
+        f"DICT_MERGE_GATE_LANES, so no status badge is ever computed "
+        f"for it. Add a \"{sDisplayName}\" entry."
+    )
+    sBadgeFile = matchLane.group(1)
+    assert sBadgeFile in _fsBadgesPublishStep(), (
+        f"badges.yml computes {sBadgeFile} for {sWorkflow} but never "
+        f"publishes it; the README would render a permanent 404."
+    )
+    sReadme = (_PATH_REPO / "README.md").read_text()
+    assert sBadgeFile in sReadme, (
+        f"{sBadgeFile} is published for {sWorkflow} but the README "
+        f"does not display it, so the lane's result is invisible to "
+        f"anyone reading the repository front page."
+    )
+
+
+# The README states each unit lane's support matrix as a static
+# shields.io label beside its status badge, because the endpoint json
+# carries only pass/fail. The label is therefore hand-typed, and a
+# hand-typed fact about the matrix drifts the day the matrix moves --
+# the same class that let a "scope: regression subset" label outlive
+# the lane it described. These are the workflow -> label pairs, pinned
+# to the matrix rather than to each other's spelling.
+DICT_MATRIX_LABEL_WORKFLOWS = {
+    "tests-linux.yml": "Ubuntu",
+    "tests-macos.yml": "macOS",
+}
+
+
+def _ftMatrixExtremes(sWorkflowName):
+    """Return (oldest os, newest os, oldest python, newest python).
+
+    Versions are compared as tuples of integers, so `macos-9` would
+    sort below `macos-15` where a string compare puts it above, and
+    Python 3.9 stays below 3.14 for the same reason.
+    """
+    dictWorkflow = yaml.safe_load(
+        (_PATH_WORKFLOWS / sWorkflowName).read_text()
+    )
+    for dictJob in dictWorkflow.get("jobs", {}).values():
+        dictMatrix = (dictJob.get("strategy") or {}).get("matrix") or {}
+        if "os" in dictMatrix and "python-version" in dictMatrix:
+            break
+    else:
+        raise AssertionError(f"{sWorkflowName} has no os/python matrix")
+
+    def _ftVersion(sValue):
+        sTail = str(sValue).split("-")[-1]
+        return tuple(int(sPart) for sPart in sTail.split(".") if sPart.isdigit())
+
+    listOs = sorted(dictMatrix["os"], key=_ftVersion)
+    listPython = sorted(dictMatrix["python-version"], key=_ftVersion)
+    return listOs[0], listOs[-1], listPython[0], listPython[-1]
+
+
+@pytest.mark.parametrize(
+    "sWorkflow, sPlatform", sorted(DICT_MATRIX_LABEL_WORKFLOWS.items()),
+)
+def testTheReadmeMatrixLabelMatchesTheRealMatrix(sWorkflow, sPlatform):
+    """The advertised support matrix must be the one CI runs.
+
+    A badge saying "Python 3.9-3.14" beside a green check is read as a
+    tested claim, and it is the sort of claim a colleague acts on by
+    installing on 3.9. Nothing regenerates it, so dropping the oldest
+    Python from the matrix leaves the README promising a version CI
+    stopped exercising -- green, and wrong.
+    """
+    sOldestOs, sNewestOs, sOldestPython, sNewestPython = (
+        _ftMatrixExtremes(sWorkflow)
+    )
+    sReadme = (_PATH_REPO / "README.md").read_text()
+    listLabels = [
+        sLine for sLine in sReadme.splitlines()
+        if "img.shields.io/badge/" in sLine and sPlatform in sLine
+    ]
+    assert len(listLabels) == 1, (
+        f"expected exactly one static {sPlatform} matrix label in the "
+        f"README, found {len(listLabels)}: {listLabels}"
+    )
+    sLabel = listLabels[0]
+    # The OS is matched on its MAJOR version only: the label reads
+    # "Ubuntu 22-24" for `ubuntu-22.04`, and abbreviating a point
+    # release is legitimate. Python is matched in full, because 3.9 and
+    # 3.14 are the whole claim.
+    def _fsOsMajor(sImage):
+        return sImage.split("-")[-1].split(".")[0]
+
+    for sVersion in (
+        _fsOsMajor(sOldestOs), _fsOsMajor(sNewestOs),
+        sOldestPython, sNewestPython,
+    ):
+        assert sVersion in sLabel, (
+            f"{sWorkflow} runs {sVersion} but the README's {sPlatform} "
+            f"label does not mention it, so the front page advertises a "
+            f"support matrix CI does not run: {sLabel.strip()}"
         )
 
 
@@ -334,6 +469,92 @@ def testNoTwoMergeGateLanesProduceTheSameCheckName():
         f"these check names are produced by more than one merge-gate "
         f"workflow, so requiring them cannot gate both: {dictCollisions}"
     )
+
+
+def _fmoduleLoadRequiredCheckTool():
+    """Import tools/syncRequiredChecks.py by path."""
+    import importlib.util
+
+    pathTool = _PATH_REPO / "tools" / "syncRequiredChecks.py"
+    specTool = importlib.util.spec_from_file_location(
+        "syncRequiredChecks", pathTool,
+    )
+    moduleTool = importlib.util.module_from_spec(specTool)
+    specTool.loader.exec_module(moduleTool)
+    return moduleTool
+
+
+def testTheRequiredCheckToolCreatesTheRuleWhenItIsAbsent(monkeypatch):
+    """A ruleset with no required-checks rule must be given one.
+
+    The tool used to raise SystemExit here and tell the reader to add
+    the rule in the GitHub UI. That is how `main` came to sit with NO
+    required status checks on 2026-09-02 while `docs/testing.md` argued
+    that branch protection is what makes the pre-merge-only split safe:
+    the tool declined, nobody added it by hand, and a ruleset with zero
+    required checks is indistinguishable on a pull request page from a
+    healthy one -- every lane runs, every lane reports, and none of them
+    gates.
+
+    The rule must also be born non-empty: GitHub answers 422
+    ("Expected at least 1 elements, got 0") for an empty list, so
+    creating it and filling it cannot be two calls.
+    """
+    moduleTool = _fmoduleLoadRequiredCheckTool()
+
+    dictRulesetWithoutTheRule = {
+        "id": 1, "node_id": "x", "created_at": "", "updated_at": "",
+        "_links": {}, "current_user_can_bypass": "never",
+        "source": "o/r", "source_type": "Repository",
+        "name": "main", "target": "branch", "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"],
+                                    "exclude": []}},
+        "bypass_actors": [],
+        "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}],
+    }
+
+    class _ResultStub:
+        stdout = json.dumps(dictRulesetWithoutTheRule)
+
+    monkeypatch.setattr(
+        moduleTool.subprocess, "run",
+        lambda *args, **kwargs: _ResultStub(),
+    )
+
+    dictPayload = moduleTool.fdictBuildRulesetPayload(
+        ["unit:ubuntu-24.04:python-3.14", "browser"],
+    )
+
+    listRules = [
+        dictRule for dictRule in dictPayload["rules"]
+        if dictRule["type"] == "required_status_checks"
+    ]
+    assert len(listRules) == 1, (
+        "the tool did not create a required_status_checks rule for a "
+        "ruleset that had none, so running it leaves main unprotected."
+    )
+    dictParameters = listRules[0]["parameters"]
+    assert dictParameters["strict_required_status_checks_policy"] is True, (
+        "the created rule omits the up-to-date requirement, which is "
+        "what stops two stale-green pull requests merging a break."
+    )
+    assert [
+        dictCheck["context"]
+        for dictCheck in dictParameters["required_status_checks"]
+    ] == ["unit:ubuntu-24.04:python-3.14", "browser"], (
+        "the created rule must carry the derived contexts; GitHub "
+        "rejects an empty required_status_checks list with a 422."
+    )
+    # The pre-existing rules survive, and the read-only fields the API
+    # rejects on a PUT are stripped.
+    listTypes = [dictRule["type"] for dictRule in dictPayload["rules"]]
+    assert "deletion" in listTypes and "non_fast_forward" in listTypes, (
+        "creating the rule dropped rules the ruleset already had."
+    )
+    for sField in moduleTool.T_READ_ONLY_FIELDS:
+        assert sField not in dictPayload, (
+            f"{sField} is read-only and must not be sent back on a PUT."
+        )
 
 
 def testTheRequiredCheckToolAgreesWithThisSuite():
