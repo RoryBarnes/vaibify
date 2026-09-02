@@ -59,15 +59,41 @@ var VaibifyApi = (function () {
     }
 
     function _fdictExtractDetail(dictError) {
-        // FastAPI's `detail` is either a plain string or a structured
-        // object. Normalize both shapes so callers always read
-        // `sMessage` and can opt-in to richer fields like
-        // `sStderrTail` without breaking older string-detail routes.
+        // FastAPI's `detail` is a plain string, a structured object,
+        // or — for a 422 — a LIST of field validation errors.
+        // Normalize all three so callers always read `sMessage` and
+        // can opt-in to richer fields like `sStderrTail` without
+        // breaking older string-detail routes.
         var detail = dictError && dictError.detail;
         if (detail === undefined || detail === null) return {};
         if (typeof detail === "string") return {sMessage: detail};
+        if (Array.isArray(detail)) return _fdictExplainValidationErrors(detail);
         if (typeof detail === "object") return detail;
         return {sMessage: String(detail)};
+    }
+
+    function _fdictExplainValidationErrors(listErrors) {
+        /* A 422 carries the field and the reason; the extractor read
+           the list as a plain object, found no sMessage on it, and
+           every shape rejection in the dashboard rendered as the bare
+           "Request failed (422)" — a researcher who left a model
+           unchosen was told a number (2026-08-28). The field PATH is
+           what makes it actionable, so it is kept and only the
+           framework's leading "body" segment is dropped. */
+        var listSentences = listErrors.map(function (dictOne) {
+            var listPath = (dictOne.loc || []).filter(function (jsonPart) {
+                return jsonPart !== "body";
+            });
+            var sField = listPath.join(" → ");
+            var sReason = dictOne.msg || "is not valid";
+            return sField ? sField + ": " + sReason : sReason;
+        }).filter(Boolean);
+        if (!listSentences.length) return {};
+        return {
+            sMessage: "The server rejected this request — "
+                + listSentences.join("; "),
+            listValidationErrors: listErrors,
+        };
     }
 
     function fdictAdoptSourceFingerprint(dictPayload) {

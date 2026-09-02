@@ -432,6 +432,11 @@ def ftClaim(
     if _fbOwnerIsReapableNow(
         recordOwner, sName, fbPipelineRunning, fGraceSeconds,
     ):
+        logger.warning(
+            "OWNERSHIP reaping dead owner of container %r (session %s) "
+            "to grant a fresh claim",
+            sName, recordOwner.sBrowserSessionId[:8] or "<unbound>",
+        )
         _fnForceReleaseOwnership(
             dictContainerOwners, sName, dictSessionOwner,
         )
@@ -480,6 +485,10 @@ def _fsRecordNewOwner(
     )
     if dictSessionOwner is not None and sBrowserSessionId:
         dictSessionOwner[sBrowserSessionId] = sName
+    logger.info(
+        "OWNERSHIP claim granted for container %r to browser session %s",
+        sName, sBrowserSessionId[:8] or "<unbound>",
+    )
     return sLeaseId
 
 
@@ -517,6 +526,10 @@ def _fdictClaimRefused(sName, recordOwner):
     The owner's lease is never echoed back; only the start time, used
     by the picker to explain how long the container has been in use.
     """
+    logger.info(
+        "CLAIM refused for container %r: held by browser session %s",
+        sName, recordOwner.sBrowserSessionId[:8] or "<unbound>",
+    )
     return {
         "sName": sName,
         "bClaimed": False,
@@ -532,6 +545,10 @@ def _fdictCardinalityRefused(sName, sHeldContainerName):
     session's own held container so the message is actionable: release
     that container, then claim this one.
     """
+    logger.info(
+        "CLAIM refused for container %r: the session already holds %r",
+        sName, sHeldContainerName,
+    )
     return {
         "sName": sName,
         "bClaimed": False,
@@ -545,6 +562,10 @@ def _fdictCardinalityRefused(sName, sHeldContainerName):
 
 def _fdictPoisonRefused(sName):
     """Return the 409 body for a poisoned (force-abandoned) container."""
+    logger.warning(
+        "CLAIM refused for container %r: poisoned by a force-abandoned "
+        "operation; 'vaibify reconcile' is the exit", sName,
+    )
     return {
         "sName": sName,
         "bClaimed": False,
@@ -559,6 +580,10 @@ def _fdictPoisonRefused(sName):
 
 def _fdictCrossHubRefused(sName, error):
     """Return the 409 body for a container held by another hub process."""
+    logger.info(
+        "CLAIM refused for container %r: held by another hub "
+        "(pid %s, port %s)", sName, error.iHolderPid, error.iHolderPort,
+    )
     return {
         "sName": sName,
         "bClaimed": False,
@@ -574,6 +599,10 @@ def _fdictQuarantineRefused(sName, error):
     ``bQuarantined`` lets the picker say WHY the container is refused:
     not "in use elsewhere" but "an earlier operation never settled".
     """
+    logger.warning(
+        "CLAIM refused for container %r: journal quarantine (%s)",
+        sName, error,
+    )
     return {
         "sName": sName,
         "bClaimed": False,
@@ -671,6 +700,11 @@ def _fnForceReleaseOwnership(
     if recordOwner.fileHandleLock is not None:
         fnReleaseContainerLock(recordOwner.fileHandleLock)
     fnStopKeepAlive(sName)
+    logger.info(
+        "OWNERSHIP record for container %r dropped (session %s); "
+        "flock freed, keep-alive stopped",
+        sName, recordOwner.sBrowserSessionId[:8] or "<unbound>",
+    )
 
 
 def fbSessionOwnsContainer(dictContainerOwners, sName, sLeaseId):
@@ -704,6 +738,11 @@ def fnIncrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
     if bPipelineLane:
         recordOwner.iLivePipelineConnectionCount += 1
     recordOwner.fLastSeenMonotonic = time.monotonic()
+    logger.info(
+        "SOCKET opened for container %r (%s lane): %d live",
+        sName, "pipeline" if bPipelineLane else "unbudgeted",
+        recordOwner.iLiveConnectionCount,
+    )
 
 
 def fnDecrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
@@ -719,6 +758,12 @@ def fnDecrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
             0, recordOwner.iLivePipelineConnectionCount - 1,
         )
     recordOwner.fLastSeenMonotonic = time.monotonic()
+    logger.info(
+        "SOCKET closed for container %r: %d live%s",
+        sName, recordOwner.iLiveConnectionCount,
+        "" if recordOwner.iLiveConnectionCount
+        else " -- the reconnect grace window begins",
+    )
 
 
 def fnDecrementLiveConnectionForRecord(

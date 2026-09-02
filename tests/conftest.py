@@ -143,6 +143,23 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     # read an empty registry mid-test and render no tiles. They were
     # never the leak this fixture exists for (hub-port and session slots
     # were); leaving them to the per-lane fixtures keeps both correct.
+    # The two session-lifetime preferences ARE neutralised here, by
+    # patching their readers rather than the store's path. The session
+    # cap and the sliding-idle window are resolved on every evaluator
+    # pass, so without this the researcher's own ~/.vaibify preference
+    # would silently change what a few hundred lifecycle assertions
+    # mean — and a suite that behaves differently on the machine that
+    # set the preference is the exact failure this fixture exists to
+    # prevent. Returning "" reads as UNSET, so the default (or an env
+    # override, which still wins) applies. A test of the preference
+    # tier patches these back.
+    from vaibify.config import preferencesStore
+    monkeypatch.setattr(
+        preferencesStore, "fsSessionCapPreference", lambda: "",
+    )
+    monkeypatch.setattr(
+        preferencesStore, "fsSlidingIdlePreference", lambda: "",
+    )
     # ephemeralStore is deliberately NOT redirected here: it computes
     # its root from os.path.expanduser("~") at call time (no import-time
     # constant to patch), and its own tests exercise that real behaviour
@@ -197,6 +214,42 @@ def fnStubTheDockerBinaryStatusProbes(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fnKeepCouncilStartupOffTheRealDaemon(request, monkeypatch):
+    """A non-live test's app startup must not reach a real daemon.
+
+    ``appFactory``'s council startup reconcile builds its OWN Docker
+    client rather than using the connection the test injected, so a
+    route test that context-manages a TestClient runs
+    ``fdictReconcileLabeledRunnersOnRestart`` against whatever daemon
+    the machine has — and that function DESTROYS every container
+    carrying the council label, by design, because a restarted hub
+    cannot account for survivors.
+
+    On a developer machine with Docker up, that reaches across the
+    process and kills the runner a live test is using at that moment.
+    Reproduced directly: a labelled runner reported Running True, and
+    one reconcile later the daemon answered NotFound. It surfaced as a
+    409 Conflict on exec start in exactly one full-suite run, in a
+    test that passes alone and passes beside its neighbours — the
+    shape that gets written off as flake.
+
+    The live lanes are left alone: they carry the markers, they own
+    real containers on purpose, and stubbing them would be the
+    skip-reports-success failure this repository has already shipped.
+    """
+    if any(
+        request.node.get_closest_marker(sMarker) is not None
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest")
+    ):
+        yield
+        return
+    from vaibify.gui import appFactory
+    monkeypatch.setattr(
+        appFactory, "_fdockerCreateCouncilClientOrNone", lambda: None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fnClearPushDedupeCache():
     """Reset the syncRoutes push idempotency cache between tests.
 
@@ -209,3 +262,60 @@ def fnClearPushDedupeCache():
     syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
     yield
     syncRoutes._DICT_RECENT_PUSH_RESULTS.clear()
+
+
+@pytest.fixture(autouse=True)
+def fnPinCouncilCapacityToTheDeclaredFloors(request, monkeypatch):
+    """Make the council's machine-scaled bounds machine-INDEPENDENT.
+
+    The snapshot bounds scale with host RAM and daemon memory, which
+    means an unpinned assertion about them is an assertion about the
+    developer's laptop: the same test would pass on a 16 GB machine and
+    fail on an 8 GB runner, and the failure would look like a bug in
+    the code under test. Pinning the host reading to "unknown" makes
+    every test see the declared floors -- the bounds the design was
+    reviewed against -- unless it asks otherwise.
+
+    ``councilCapacity`` opts out, for the tests whose whole subject IS
+    the scaling.
+    """
+    if request.node.get_closest_marker("councilCapacity") is not None:
+        yield
+        return
+    from vaibify.gui import agentCouncilCapacity
+    monkeypatch.setattr(
+        agentCouncilCapacity, "fiReadHostMemoryBytes", lambda: 0)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def fnKeepEveryTestOutOfTheRealCouncilStore(
+        request, tmp_path_factory, monkeypatch):
+    """No test may touch the researcher's ~/.vaibify/agentCouncils.
+
+    The durable council store root is derived from $HOME, and any hub a
+    test builds runs a startup reconcile that classifies every campaign
+    still in `planning` as `interrupted`. So a suite that constructs a
+    hub kills a live council mid-deliberation — with a reason string
+    that reads like the researcher's own hub restarting.
+
+    This happened TWICE on 2026-08-24. The first fix was applied to the
+    browser lane's conftest alone, because that was the lane that had
+    done it; the route tests did the same thing an hour later. Fixing
+    the instance is not fixing the class, so the guard now lives at the
+    root conftest where it covers every suite, present and future.
+
+    Autouse and unconditional: a test that genuinely wants the real
+    root would be a test that can destroy a researcher's work, and
+    there is no such legitimate test.
+    """
+    if request.node.get_closest_marker("realCouncilStoreRoot") is not None:
+        yield
+        return
+    from vaibify.gui import agentCouncilStore
+    sIsolatedRoot = str(
+        tmp_path_factory.mktemp("councilStore") / "agentCouncils")
+    monkeypatch.setattr(
+        agentCouncilStore, "fsResolveDurableStoreRoot",
+        lambda: sIsolatedRoot)
+    yield

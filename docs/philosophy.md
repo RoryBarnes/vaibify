@@ -37,7 +37,7 @@ in a modal you have to read before the project opens and in a badge
 that never goes away, because a claim about whether your commands are
 contained is not one to make quietly.
 
-Three things are container-only, and vaibify names each one where you
+Four things are container-only, and vaibify names each one where you
 would otherwise expect it rather than degrading silently:
 
 - **Reproducibility Level 3** is *defined* by a pinned image, so a
@@ -52,6 +52,12 @@ would otherwise expect it rather than degrading silently:
   quiet. On the host, vaibify guarantees the weaker and true statement
   that *every process it started has exited* — a command that detaches
   into its own session is outside what it can see.
+- **Convening an Agent Council.** A council grounds its claims by
+  building a disposable container, running a model participant inside
+  it, and proving that container gone. A host project has none to
+  create, so the council button explains itself as an on-ramp —
+  *convert this project to a container to convene a council* — rather
+  than degrading into a council that cannot ground a single claim.
 
 So: **host mode runs your pipeline; the container is what lets vaibify
 vouch for it.** Start on the host if that is what gets you started,

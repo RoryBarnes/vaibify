@@ -245,34 +245,17 @@ F_HUB_WATCHDOG_INTERVAL_SECONDS = 60.0
 S_HUB_IDLE_TIMEOUT_ENV = "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS"
 
 
-# Tokens (case-insensitive) that select "never self-retire" in the env
-# override, the stored preference, and the Settings API. There is no
-# finite sentinel for never: 0 keeps its historical meaning ("retire as
-# soon as idle"), so the disabled case is carried as ``math.inf`` and a
-# never-timeout window is one no finite idle span can ever reach.
-_SET_IDLE_NEVER_TOKENS = frozenset({"never", "off", "none", "disabled"})
-
-
 def _ffParseIdleTimeoutSeconds(sValue):
-    """Parse a timeout string to seconds; math.inf for never, None if invalid.
+    """Parse this hub's idle-timeout string through the shared vocabulary.
 
-    A never token yields ``math.inf`` (disabled). A finite value must be
-    a non-negative, non-NaN number of seconds. Empty, malformed, negative,
-    or NaN input returns ``None`` so the caller falls through to the next
-    precedence tier rather than adopting a garbage timeout.
+    The parser moved to ``preferencesStore`` when the absolute session
+    cap and the sliding-idle window became settable the same way: three
+    host-global timeouts reading the same strings from the same three
+    tiers is the point at which two copies would start to mean
+    different things by "never".
     """
-    sNormalized = (sValue or "").strip().lower()
-    if not sNormalized:
-        return None
-    if sNormalized in _SET_IDLE_NEVER_TOKENS:
-        return math.inf
-    try:
-        fSeconds = float(sNormalized)
-    except ValueError:
-        return None
-    if math.isnan(fSeconds) or fSeconds < 0:
-        return None
-    return fSeconds
+    from vaibify.config import preferencesStore
+    return preferencesStore.ffParseTimeoutSeconds(sValue)
 
 
 def _ffIdleTimeoutFromEnvironment():
@@ -438,6 +421,16 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
         return False
     if getattr(app.state, "iActiveWebSockets", 0) > 0:
         return False
+    # Live council work vetoes self-exit exactly like a live socket or a
+    # busy held container (design section 21). The council is invisible
+    # to the other two signals by construction — it polls over HTTP
+    # rather than holding a WebSocket, and its runners are deliberately
+    # kept out of ``dictContainerOwners`` — so without this predicate a
+    # closed tab would let the clock go stale and SIGTERM a hub
+    # mid-turn. Fail-closed: absence of the registry is "no council work".
+    from . import agentCouncilRegistry
+    if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
+        return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False
     fLast = getattr(
@@ -553,6 +546,26 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
     )
 
 
+def _fnSweepSleepPreventionForApp(app, dictCtx):
+    """Re-decide every work-lane keep-alive from evidence, after the reap.
+
+    Placed immediately after the reaper so a record dropped on this
+    tick is re-examined as WORK on the same tick: the reap stops the
+    session-lane keep-alive, and this pass puts a work-lane one back
+    when the daemon still reports a running exec. Only hubs sweep
+    (``bReapOwnerships``); the single-container viewer holds no host
+    registry to sweep. A failure is logged and the loop continues —
+    sleep prevention must never be the thing that kills the watchdog.
+    """
+    if not getattr(app.state, "bReapOwnerships", False):
+        return
+    from . import sleepPrevention
+    try:
+        sleepPrevention.fnSweepWorkLaneKeepAlives(app.state, dictCtx)
+    except Exception:
+        logger.warning("Sleep-prevention sweep failed", exc_info=True)
+
+
 def _fbOwningBrowserStillAttends(app, dictContainerOwners, sName):
     """Veto the reap of a socketless claim whose browser is still here.
 
@@ -648,6 +661,7 @@ async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
             await asyncio.sleep(fInterval)
             _fnPruneSpawnedChildrenForApp(app)
             _fnReapIdleOwnershipsForApp(app, dictCtx)
+            _fnSweepSleepPreventionForApp(app, dictCtx)
             from . import pipelineServer
             if pipelineServer._fbHubShouldSelfExit(
                 app, dictCtx, _ffCurrentIdleTimeout(app, fTimeout),

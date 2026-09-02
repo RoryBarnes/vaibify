@@ -248,6 +248,166 @@ def testAHostProjectIsRefusedEvenWhenDockerIsUnreachable(
 # ---------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------
+# The Agent Council routes are container-only for the same reason and
+# under the same symmetric contract (design section 21). They live on a
+# different path prefix and carry request bodies and a lease gate the
+# lifecycle fixture above does not, so they get their own fixture and
+# tuple here rather than being wedged into T_CONTAINER_ONLY_ROUTES: the
+# INTENT is identical (host refused carrying the marker; container never
+# host-refused), the wiring is not.
+# ---------------------------------------------------------------------
+
+S_COUNCIL_CONTAINER_ID = "council-container-id"
+S_COUNCIL_CONTAINER_NAME = "council-container-project"
+
+
+class _MockDockerCouncilRefusals:
+    """A Docker double reporting the council container's NAME, not its id."""
+
+    def flistGetRunningContainers(self):
+        return [{
+            "sContainerId": S_COUNCIL_CONTAINER_ID,
+            "sShortId": "council",
+            "sName": S_COUNCIL_CONTAINER_NAME,
+            "sImage": "ubuntu:24.04",
+        }]
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Answer the tracked-repos sidecar read, and only it.
+
+        These cases open no workflow, so a container project now
+        resolves its directory from the sidecar — the Blank Project
+        path. That read is incidental to what this file asserts (the
+        host/container refusal split), but it is a real read the routes
+        now make, so the double answers it rather than the tests
+        passing on a mock that has drifted from the product.
+        """
+        if sPath.endswith("tracked_repos.json"):
+            raise FileNotFoundError(sPath)
+        if sPath.endswith("container.conf"):
+            raise FileNotFoundError(sPath)
+        raise AssertionError(f"unmodelled container read: {sPath!r}")
+
+    def flistDirectoryEntries(self, sContainerId, sPath):
+        """No repositories discovered: the sidecar seeds to empty.
+
+        With no sidecar on disk the seed runs discovery, so the council's
+        directory resolution reaches here too. Empty keeps these cases
+        about the refusal split they exist to test.
+        """
+        return []
+
+
+# (method, path-after-the-id, body) for every council route that REFUSES a
+# host project. Capabilities is excluded: it REPORTS the marker at 200
+# rather than refusing, and is asserted separately below.
+T_COUNCIL_CONTAINER_ONLY_ROUTES = (
+    ("POST", "/start",
+     {"sQuestion": "q", "listParticipants": [
+         {"sProvider": "claude", "sRequestedModel": "a"},
+         {"sProvider": "claude", "sRequestedModel": "b"}]}),
+    ("GET", "", None),
+    ("GET", "/some-campaign", None),
+    ("GET", "/some-campaign/events", None),
+    ("POST", "/some-campaign/respond", {"sResponseText": "go"}),
+    ("POST", "/some-campaign/request-stop", None),
+    ("POST", "/some-campaign/accept-plan", {"sPlanText": "# Plan\n"}),
+    ("DELETE", "/some-campaign", None),
+)
+
+
+def _tCouncilOwnerClient(tmp_path, sName, sContainerId):
+    """Build a council-capable app owning ``sName``; return its client."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from vaibify.gui import (
+        browserSession, containerOwnership, pipelineServer,
+    )
+    from tests.sessionTokenTestHelper import fsBootstrapCredential
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        _MockDockerCouncilRefusals,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser")
+    sCredential = fsBootstrapCredential(app)
+    sBrowserSessionId = browserSession.fsSessionIdForCredential(
+        app.state.dictBrowserSessions, sCredential)
+    sLease = containerOwnership.fsMintLease()
+    app.state.dictContainerOwners[sName] = containerOwnership.OwnerRecord(
+        sLeaseId=sLease, fileHandleLock=None, sAgentToken="tok",
+        sContainerId=sContainerId, sBrowserSessionId=sBrowserSessionId)
+    return TestClient(app, headers={
+        "X-Session-Token": sCredential, "X-Vaibify-Lease": sLease})
+
+
+def _responseDriveCouncilRoute(client, sName, sMethod, sSuffix, dictBody):
+    """Issue one council request against the resource named ``sName``."""
+    sPath = f"/api/agent-councils/{sName}{sSuffix}"
+    if sMethod == "GET":
+        return client.get(sPath)
+    if sMethod == "DELETE":
+        return client.delete(sPath)
+    return client.post(sPath, json=dictBody)
+
+
+@pytest.mark.parametrize(
+    "sMethod,sSuffix,dictBody", T_COUNCIL_CONTAINER_ONLY_ROUTES)
+def testEveryCouncilRouteRefusesAHostProject(
+    tmp_path, sMethod, sSuffix, dictBody,
+):
+    """A host project the caller owns is refused 409, carrying the marker.
+
+    Kills: dropping ``fnRefuseContainerOnlyForHostProject`` from the
+    council guard, which would drive council machinery at a project that
+    has no container to build a runner from.
+    """
+    _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client = _tCouncilOwnerClient(tmp_path, S_HOST_PROJECT, S_HOST_PROJECT)
+    response = _responseDriveCouncilRoute(
+        client, S_HOST_PROJECT, sMethod, sSuffix, dictBody)
+    assert response.status_code == routeContext.I_REJECT_CONTAINER_ONLY
+    assert response.status_code != 403
+    assert _fdictDetailOf(response).get("sUnavailableIn") == (
+        routeContext.S_UNAVAILABLE_IN_HOST_MODE)
+
+
+@pytest.mark.parametrize(
+    "sMethod,sSuffix,dictBody", T_COUNCIL_CONTAINER_ONLY_ROUTES)
+def testNoCouncilRouteHostRefusesAContainerProject(
+    tmp_path, sMethod, sSuffix, dictBody,
+):
+    """The other direction: a container project carries no host marker.
+
+    Kills: making the council host branch unconditional, which would
+    make the council unreachable for every containerized project.
+    """
+    client = _tCouncilOwnerClient(
+        tmp_path, S_COUNCIL_CONTAINER_NAME, S_COUNCIL_CONTAINER_ID)
+    response = _responseDriveCouncilRoute(
+        client, S_COUNCIL_CONTAINER_ID, sMethod, sSuffix, dictBody)
+    assert "sUnavailableIn" not in _fdictDetailOf(response), (
+        f"a containerized project was told it has no container: "
+        f"{response.status_code} {response.text}")
+
+
+def testCouncilCapabilitiesReportsTheHostMarkerInsteadOfRefusing(tmp_path):
+    """Capabilities reports the marker at 200 so the toolbar can explain.
+
+    The one council read that does NOT refuse a host project: it answers
+    the marker so a panel deciding whether to offer the button does not
+    have to fail on click to learn the council is unavailable.
+    """
+    _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client = _tCouncilOwnerClient(tmp_path, S_HOST_PROJECT, S_HOST_PROJECT)
+    response = client.get(
+        f"/api/agent-councils/{S_HOST_PROJECT}/capabilities")
+    assert response.status_code == 200, response.text
+    assert response.json()["sUnavailableIn"] == (
+        routeContext.S_UNAVAILABLE_IN_HOST_MODE)
+
+
 @pytest.mark.falsification
 def testRegisteringAHostProjectRecordsItsMode(tclientBothModes, tmp_path):
     """``POST /api/registry`` carries the mode through to the registry.

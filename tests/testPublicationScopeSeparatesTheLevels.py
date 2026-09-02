@@ -60,8 +60,11 @@ class _FakeRepoFiles:
         return []
 
 
+_S_FRESHLY_VERIFIED = "freshlyVerified"
+
+
 def _fdictStatus(listCompared, listDivergedPaths=(),
-                 sVerified=fsRecentVerifyIso(), bScopeCurrent=True):
+                 sVerified=_S_FRESHLY_VERIFIED, bScopeCurrent=True):
     """A syncStatus.json github entry as a real verify writes one.
 
     ``bScopeCurrent`` defaults True because that is what a real verify
@@ -69,7 +72,19 @@ def _fdictStatus(listCompared, listDivergedPaths=(),
     definition of the published set, which is a different thing from a
     stale or diverged one and is the case the gate used to wave
     through.
+
+    ``sVerified`` defaults to a timestamp minted AT CALL TIME: the
+    fixture models a just-verified cache, and a hardcoded date here
+    aged past the 24-hour freshness budget overnight and detonated the
+    two matching-envelope tests (2026-08-27). Pass an explicit value
+    to model an unverified (None) or deliberately old cache.
     """
+    # Resolved through main's shared helper so "recent" has ONE
+    # definition, but resolved HERE rather than in the signature: a
+    # `sVerified=fsRecentVerifyIso()` default is evaluated once at
+    # import, which is the same overnight-ageing bug in a milder form.
+    if sVerified == _S_FRESHLY_VERIFIED:
+        sVerified = fsRecentVerifyIso()
     dictStatus = {
         "sService": "github",
         "sLastVerified": sVerified,

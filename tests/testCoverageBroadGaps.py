@@ -1406,15 +1406,28 @@ class TestPipelineRunnerHelpers:
         assert _fbShouldRunStep(dictStep, 3, 1) is False
 
     def test_fnSetInteractiveResponse_sets_and_triggers(self):
+        # Python 3.9's ``asyncio.Event()`` binds the thread's ambient
+        # event loop at construction, and any earlier test that ran
+        # ``asyncio.run()`` leaves the main thread with NO current loop
+        # — so this test owns a private loop for the construction. In
+        # production the context is created inside a running loop; the
+        # ambient-loop dependence is this test's, not the product's.
+        import asyncio
         from vaibify.gui.pipelineRunner import (
             fdictCreateInteractiveContext,
             fnSetInteractiveResponse,
         )
-        dictContext = fdictCreateInteractiveContext()
-        assert not dictContext["eventResume"].is_set()
-        fnSetInteractiveResponse(dictContext, "resume")
-        assert dictContext["sResponse"] == "resume"
-        assert dictContext["eventResume"].is_set()
+        loopPrivate = asyncio.new_event_loop()
+        asyncio.set_event_loop(loopPrivate)
+        try:
+            dictContext = fdictCreateInteractiveContext()
+            assert not dictContext["eventResume"].is_set()
+            fnSetInteractiveResponse(dictContext, "resume")
+            assert dictContext["sResponse"] == "resume"
+            assert dictContext["eventResume"].is_set()
+        finally:
+            loopPrivate.close()
+            asyncio.set_event_loop(None)
 
     # ``test_fnSaveWorkflowStats_*`` were retired WITH their mechanism:
     # the end-of-run whole-workflow write over project.json was the D2

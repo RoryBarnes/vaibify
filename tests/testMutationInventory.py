@@ -123,6 +123,22 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # other — so the union of the two review sets lands one lower than
 # either lane's own count. The tracked-repos conf fetch row rode the
 # same branch already classified.
+# 285 -> 287 (Agent Council): the council's provider/CLI use sites left
+# two more rows awaiting a reviewer than this ratchet held. This is a
+# RISE, reconciling the ratchet to the committed council rather than the
+# usual fall, and it is the exact fresh-scan count -- the egress SDK
+# conversion in the same change LOWERED it by one (its lone
+# `docker`-CLI UNKNOWN_COMMAND row became SDK-root blind spots, which
+# are not rows), so 287 already nets that reduction out.
+# 287 -> 285 (2026-08-20): the two council rows that caused the rise
+# are now reviewed and classified (the capture's get_archive handle
+# fetch and the per-turn credential extraction read), so the council
+# contributes ZERO unclassified rows and the ratchet resumes falling.
+# 285 -> 284 (2026-08-29, merging main): both sides had moved this
+# ratchet in opposite directions, so neither number could be assumed.
+# A fresh scan of the MERGED tree says 284 -- main's reduction survives
+# because the council's own rows are all classified -- and the ratchet
+# test named the value rather than leaving it to be guessed.
 I_UNCLASSIFIED_ROW_BUDGET = 284
 
 
@@ -451,9 +467,23 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # regression. What the record cannot decode, the review can: the argv
 # is fixed source text and the only interpolated value is an int-cast
 # port already bounded by the command that accepted it.
+# +22 (Agent Council): every council Docker call drives the SDK through
+# a dockerCouncil client that is a runtime object, so its chain root is
+# one the scan cannot resolve. That is the honest reason these are
+# opaque, not a regression -- all are reviewed and disposed as
+# separate-authority in tests/testBlindSpotDispositions.py (they operate
+# only on council-created containers/networks, governed by the council
+# registry, never the active project container). Since remediation R4
+# all 22 sites live in gui/agentCouncilDockerGateway.py, the single
+# council SDK authority (testCouncilGatewayAuthority.py fails the build
+# on SDK reach anywhere else in the council), joining the 12 pre-council
+# SDK-root blind spots. The egress half of the count landed when egress
+# was converted from a `docker` CLI subprocess (one
+# opaque-subprocess-command site) to the SDK, matching the runner idiom
+# and removing a raw process-launch capability from vaibify/gui/.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 12,
+    "untraceable-docker-sdk-root": 34,
 }
 
 

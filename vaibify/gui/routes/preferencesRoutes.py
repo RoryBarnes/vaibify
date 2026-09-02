@@ -3,6 +3,7 @@
 __all__ = [
     "HostWarningAcknowledgedRequest",
     "IdleTimeoutRequest",
+    "SessionCapRequest",
     "fnRegisterAll",
 ]
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel
 
 from vaibify.config import preferencesStore
 from .. import serverLifespan
+from .. import sessionLifecycle
 from ..routeScope import (
     S_CARRIER_SEPARATE_AUTHORITY,
     ffnDeclareCarrierMode,
@@ -25,6 +27,10 @@ class HostWarningAcknowledgedRequest(BaseModel):
 
 
 class IdleTimeoutRequest(BaseModel):
+    sValue: str
+
+
+class SessionCapRequest(BaseModel):
     sValue: str
 
 
@@ -129,9 +135,66 @@ def _fnRegisterPutIdleTimeout(app, dictCtx):
         return _fdictDescribeIdleTimeout(requestHttp.app.state)
 
 
+def _fdictDescribeSessionCap():
+    """Describe the live absolute session cap for the Settings control.
+
+    Resolved rather than read from any published attribute: the cap is
+    resolved afresh on every evaluator pass, so there is no cached copy
+    that could disagree with what the sweep will use on its next tick.
+    ``math.inf`` is reported as ``bNever`` with a null second-count so
+    the response stays JSON-safe.
+    """
+    fEffective = sessionLifecycle.ffResolveSessionCapSeconds()
+    bNever = math.isinf(fEffective)
+    return {
+        "bNever": bNever,
+        "fSeconds": None if bNever else fEffective,
+        "sStoredPreference": (
+            preferencesStore.fsSessionCapPreference() or None
+        ),
+        "bEnvOverride": bool(
+            os.environ.get(sessionLifecycle.S_ABSOLUTE_SESSION_CAP_ENV, ""),
+        ),
+    }
+
+
+def _fnRegisterGetSessionCap(app, dictCtx):
+    """Register GET /api/preferences/session-cap (live effective value)."""
+
+    @app.get("/api/preferences/session-cap")
+    async def fdictGetSessionCap():
+        return _fdictDescribeSessionCap()
+
+
+def _fnRegisterPutSessionCap(app, dictCtx):
+    """Register PUT /api/preferences/session-cap (persist; applies live)."""
+
+    # separate-authority: the write lands in ~/.vaibify/preferences.json
+    # on the researcher's machine — host state outside any container,
+    # like the two writes above. No app.state publication is needed
+    # here, unlike the idle timeout: the lifecycle evaluator resolves
+    # the cap on every pass, so the next pass (one cadence away) already
+    # honours the new value, and RAISING the cap rescues a session that
+    # has not expired yet.
+    @app.put("/api/preferences/session-cap")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictPutSessionCap(request: SessionCapRequest):
+        sValue = (request.sValue or "").strip()
+        if preferencesStore.ffParseTimeoutSeconds(sValue) is None:
+            raise HTTPException(
+                400,
+                "Session cap must be a non-negative number of seconds "
+                "or 'never'.",
+            )
+        preferencesStore.fnRecordSessionCapPreference(sValue)
+        return _fdictDescribeSessionCap()
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all preferences routes."""
     _fnRegisterGetPreferences(app, dictCtx)
     _fnRegisterHostWarningAcknowledged(app, dictCtx)
     _fnRegisterGetIdleTimeout(app, dictCtx)
     _fnRegisterPutIdleTimeout(app, dictCtx)
+    _fnRegisterGetSessionCap(app, dictCtx)
+    _fnRegisterPutSessionCap(app, dictCtx)

@@ -21,6 +21,7 @@ from ..routeContext import (
     ffilesForWorkflow,
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
+    fnRejectAgentTokenLane,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
@@ -78,9 +79,37 @@ def _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex):
         )
 
 
+def _fsRequireConfiguredProviderKey():
+    """Resolve the stored Anthropic API key or refuse with the fix.
+
+    The request body no longer carries a raw key (agent-council design
+    9.5): the route resolves the host keyring slot through
+    ``secretManager`` at request time, BEFORE any carrier opens, so a
+    missing key refuses an untouched container instead of quarantining
+    one from inside the worker. The refusal names the exact host
+    command that configures the key.
+    """
+    from vaibify.config.secretManager import fsRetrieveSecret
+    from ..providerApiTransport import (
+        S_PROVIDER_ANTHROPIC,
+        fsProviderKeySlotName,
+    )
+    try:
+        return fsRetrieveSecret(
+            fsProviderKeySlotName(S_PROVIDER_ANTHROPIC), "keyring",
+        )
+    except Exception:
+        raise HTTPException(
+            409,
+            "No Anthropic API key is configured on this host. "
+            "Store one with: vaibify secret set-provider-key "
+            "--provider anthropic",
+        )
+
+
 async def _fdictRunTestGeneration(
     dictCtx, sContainerId, iStepIndex,
-    dictWorkflow, fdictGenerate, request, requestHttp,
+    dictWorkflow, fdictGenerate, request, requestHttp, sApiKey,
 ):
     """Invoke the test generator under the drain; return its result dict.
 
@@ -109,7 +138,7 @@ async def _fdictRunTestGeneration(
                 lambda: fdictGenerate(
                     dictCtx["docker"], sContainerId, iStepIndex,
                     dictWorkflow, dictVars,
-                    request.bUseApi, request.sApiKey,
+                    request.bUseApi, sApiKey,
                     sUser=sUser,
                     bDeterministic=request.bDeterministic,
                     bForceOverwrite=request.bForceOverwrite,
@@ -518,9 +547,13 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex)
+        sResolvedApiKey = (
+            _fsRequireConfiguredProviderKey() if request.bUseApi else None
+        )
         dictResult = await _fdictRunTestGeneration(
             dictCtx, sContainerId, iStepIndex,
             dictWorkflow, fdictGenerateAllTests, request, requestHttp,
+            sResolvedApiKey,
         )
         if dictResult.get("bNeedsOverwriteConfirm"):
             return {
@@ -534,6 +567,34 @@ def _fnRegisterTestGenerate(app, dictCtx):
             iStepIndex, dictResult, requestHttp,
         )
         return _fdictBuildGenerateResponse(dictResult)
+
+    @app.get("/api/provider-key/{sProvider}")
+    async def fdictReportProviderKeyStatus(
+        sProvider: str, requestHttp: Request,
+    ):
+        """Report whether the host keyring holds this provider's API key.
+
+        Browser-only capability route (agent-council design 9.5): it
+        answers ``bConfigured`` and the exact host command, never the
+        key value, and the in-container agent lane is refused because
+        the answer is host state.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        from vaibify.config.secretManager import fbSecretExists
+        from ..providerApiTransport import (
+            SET_SUPPORTED_PROVIDERS,
+            fsProviderKeySlotName,
+        )
+        if sProvider not in SET_SUPPORTED_PROVIDERS:
+            raise HTTPException(404, f"Unknown provider: {sProvider}")
+        return {
+            "bConfigured": fbSecretExists(
+                fsProviderKeySlotName(sProvider), "keyring",
+            ),
+            "sConfigureCommand": (
+                "vaibify secret set-provider-key --provider " + sProvider
+            ),
+        }
 
     @ffnAgentAction("delete-generated-tests")
     @app.delete(

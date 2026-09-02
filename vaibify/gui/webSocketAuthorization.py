@@ -40,10 +40,13 @@ __all__ = [
     "I_REJECT_POISONED",
 ]
 
+import logging
+
 from . import browserSession
 from . import containerOwnership
 from .pipelineServer import fbHasAgentToken, fbValidateWebSocketOrigin
 
+logger = logging.getLogger("vaibify")
 
 I_REJECT_AUTHORIZED = 0
 I_REJECT_BAD_ORIGIN = 4003
@@ -261,6 +264,9 @@ async def fnCloseWithCode(connection, iCloseCode):
     report the true reason instead of "cannot reach server" and knows
     not to retry.
     """
+    logger.info(
+        "SOCKET refused with deliberate close code %d", iCloseCode,
+    )
     await connection.accept()
     await connection.close(code=iCloseCode)
 
@@ -293,6 +299,10 @@ async def fnServeUnderLiveConnectionCounters(
     if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
         dictContainerOwners, sName,
     ):
+        logger.info(
+            "SOCKET duplicate pipeline connection for container %r "
+            "refused 4409", sName,
+        )
         await fnCloseWithCode(connection, I_REJECT_DUPLICATE_SESSION)
         return
     recordConnection = None

@@ -176,8 +176,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/hostControlChannel.py::fnRegisterHostControlChannel.fnStartHostControlServer.serverControl", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/hostControlChannel.py::fnRegisterHostControlChannel.fnStopHostControlServer.serverControl", "sReason": ""},
     {"sDebtClass": "interface-method", "sIdentity": "vaibify/gui/hostIncidents.py::HostIncidentHandler.emit", "sReason": "logging.Handler override; the name is the protocol"},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/llmInvoker.py::fsGenerateViaApi.client", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/llmInvoker.py::fsGenerateViaApi.message", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/mtimeCache.py::fdictLoadCache.handle", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/mtimeCache.py::fnSaveCache.handle", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/pathContract.py::fdictAbsKeysToRepoRelative.value", "sReason": ""},
@@ -395,7 +393,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 376,
+    "legacy-variable": 374,
     "legacy-yield": 0
   }
 }

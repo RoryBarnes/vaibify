@@ -1,0 +1,351 @@
+"""Falsification tests for the stopping-point descriptor.
+
+The descriptor is the listing's answer to "what was this doing when it
+stopped, and can it go on" (continuation plan sections 0.3 and 4.1).
+Each wrong answer here has already cost a researcher something real: an
+accepted campaign reading as resumable offers continuation of a council
+that is finished; a fixed-order failed-phase scan blamed a tolerated
+proposal failure for a death synthesis caused; and a phase-order mirror
+nobody checks is a second authority waiting to drift.
+"""
+
+import pytest
+
+from tests.agentCouncilHarness import (
+    fdictDecideCompleted,
+    fdictMakeTurnResult,
+    fixtureBuildCouncil,
+)
+from vaibify.gui.agentCouncilResolution import (
+    LIST_FIRST_ROUND_PHASES,
+    LIST_LATER_ROUND_PHASES,
+    fdictDescribeStoppingPoint,
+)
+
+LIST_TWO_SPECS = [
+    {"sHandle": "alpha", "sProvider": "fake", "sRequestedModel": "model-a"},
+    {"sHandle": "beta", "sProvider": "fake", "sRequestedModel": "model-b"},
+]
+
+
+def _ffnDecideAllAccept(sHandle, dictTurnRequest):
+    return fdictDecideCompleted(fdictMakeTurnResult(sVerdict="accept"))
+
+
+def _fdictDriveToAccepted():
+    """Drive a real council to acceptance and return its durable record."""
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideAllAccept, sChairbotHandle="alpha")
+    fixtureCouncil.fdictDrive()
+    dictAccepted = fixtureCouncil.engine.fdictAcceptPlan()
+    # Make the record resumable-shaped in every OTHER respect, so the
+    # only thing standing between an accepted campaign and a Resume
+    # button is the terminal-state check this test defends.
+    dictAccepted.setdefault("dictProjectIdentity", {})[
+        "sSnapshotIdentity"] = "sealed-content-identity-0001"
+    return dictAccepted
+
+
+@pytest.mark.falsification
+def testAnAcceptedCampaignIsFinishedNotResumable():
+    """Acceptance is terminal BY CHOICE; the listing must say so.
+
+    Acceptance transitions planAccepted -> awaitingImplementation
+    inside one call, so the PERSISTED state of every accepted campaign
+    is the successor state — a terminal set holding only planAccepted
+    matches no accepted campaign that ever reached disk, and every one
+    of them read as resumable.
+
+    The record is driven through the real engine to acceptance, never
+    hand-built, and the assertion names the terminal reason: the
+    snapshot and coherence guards below the terminal check also answer
+    "not resumable", so bResumable alone cannot identify this cause.
+
+    Kills: dropping awaitingImplementation from SET_TERMINAL_BY_CHOICE.
+    """
+    dictStopping = fdictDescribeStoppingPoint(_fdictDriveToAccepted())
+
+    assert dictStopping["sState"] == "awaitingImplementation"
+    assert dictStopping["bResumable"] is False
+    assert "finished" in dictStopping["sBlockedReason"]
+
+
+@pytest.mark.falsification
+def testTheDescriptorBlamesNoPhaseItCannotProve():
+    """A turn-record scan cannot say which phase KILLED a campaign.
+
+    A participant failing during proposals is tolerated — marked
+    bFailed, dropped from the active set, council continues — so when
+    synthesis later kills the campaign, a fixed-order scan of the turn
+    records blames proposals. Until the durable phase-attempt record
+    exists (continuation plan section 2), the descriptor must report
+    nothing it would have to guess: no failed-phase field at all.
+
+    Kills: reintroducing a failed-phase attribution into the
+    descriptor.
+    """
+    dictRecord = {
+        "sState": "failed",
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "",
+            "dictTurnsByPhase": {
+                # The tolerated failure a fixed-order scan blames:
+                "independentProposals": [
+                    {"sStatus": "failed"}, {"sStatus": "completed"}],
+                "crossReview": [{"sStatus": "completed"}],
+                # The failure that actually killed the campaign:
+                "synthesis": [{"sStatus": "failed"}],
+            },
+        }],
+    }
+
+    dictStopping = fdictDescribeStoppingPoint(dictRecord)
+
+    assert "sFailedPhase" not in dictStopping
+    assert "bRequiresRetry" not in dictStopping
+
+
+def _fdictBuildFailedRecord(sFailureReason):
+    return {
+        "sState": "failed",
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "synthesisFailed",
+            "dictTurnsByPhase": {
+                "independentProposals": [{"sStatus": "completed"}],
+                "crossReview": [{"sStatus": "completed"}],
+                "synthesis": [{"sStatus": "failed",
+                               "sFailureReason": sFailureReason}],
+            },
+            "dictPhaseAttempt": {
+                "sPhase": "synthesis", "iRoundNumber": 1,
+                "iAttemptNumber": 1,
+                "listEligibleParticipantIds": ["participant-a"],
+                "sCompletionRule": "firstAuthorOrExhaustion",
+                "sAttemptState": "outcomeSettled",
+                "sOutcome": "transitioned:failed",
+                "dictPrePhaseState": {},
+            },
+        }],
+    }
+
+
+@pytest.mark.falsification
+def testOnlyARetryableFailureIsOfferedTheRetry():
+    """Not every failure is retryable (continuation plan 2.6).
+
+    A rate-limited synthesis fails differently on a re-run and is
+    offered Retry; an authentication failure fails identically and
+    would spend the researcher's subscription proving it — refused
+    with the reason NAMED, because a refusal that names its cause is
+    the difference between "log in again" and a mystery.
+
+    Kills: the whitelist admitting every failure reason.
+    """
+    dictRetryable = fdictDescribeStoppingPoint(
+        _fdictBuildFailedRecord("rateLimit"))
+    assert dictRetryable["sAction"] == "retry"
+    assert dictRetryable["bResumable"] is True
+
+    dictRefused = fdictDescribeStoppingPoint(
+        _fdictBuildFailedRecord("authenticationFailure"))
+    assert dictRefused["sAction"] == "none"
+    assert dictRefused["bResumable"] is False
+    assert "authenticationFailure" in dictRefused["sBlockedReason"]
+
+
+def _fdictBuildMisfiledLimitRecord(sRawResultText):
+    """A record shaped exactly like the 2026-08-27 live failure.
+
+    The validator filed the CLI's limit message as a schema failure:
+    no failure class, an invalidStructuredResultAfterRepair reason,
+    and a rejected payload that is precisely the raw-text wrap.
+    """
+    import json as moduleJson
+    dictRecord = _fdictBuildFailedRecord(
+        "invalidStructuredResultAfterRepair: 'sSummary' must be a "
+        "non-empty string")
+    dictRecord["listRounds"][0]["dictTurnsByPhase"]["synthesis"][0][
+        "sRejectedPayload"] = moduleJson.dumps(
+        {"sRawResultText": sRawResultText})
+    return dictRecord
+
+
+def testAMisfiledLimitRefusalIsRescuedIntoRetry():
+    """A recorded limit message unlocks Retry; other prose stays blocked.
+
+    Two live agents hit an org spend limit and both records read
+    "convene a fresh council" over a failure that resets at a stated
+    time (2026-08-27). The stopping point is recomputed on every read,
+    so the rescue reads the same recorded evidence — only the exact
+    raw-text wrap carrying a limit-shaped message — and files it
+    honestly. Genuine schema garbage keeps its refusal: retrying it
+    spends the researcher's subscription proving the same thing.
+    """
+    dictRescued = fdictDescribeStoppingPoint(_fdictBuildMisfiledLimitRecord(
+        "You've hit your org's monthly spend limit - your session "
+        "limit resets 1:40am (UTC)"))
+    assert dictRescued["sAction"] == "retry"
+    assert dictRescued["bResumable"] is True
+
+    dictStillBlocked = fdictDescribeStoppingPoint(
+        _fdictBuildMisfiledLimitRecord("here is my plan as prose"))
+    assert dictStillBlocked["sAction"] == "none"
+    assert dictStillBlocked["bResumable"] is False
+
+
+def _fdictBuildCliErrorRecord(sFailureReason):
+    """A record whose failed turn carries the pre-network-class shape."""
+    dictRecord = _fdictBuildFailedRecord(sFailureReason)
+    dictRecord["listRounds"][0]["dictTurnsByPhase"]["synthesis"][0][
+        "sFailureClass"] = "cliReportedErrorResult"
+    return dictRecord
+
+
+def testAConnectionRefusedCliErrorIsRescuedIntoRetry():
+    """A network-shaped CLI error unlocks Retry; other errors stay blocked.
+
+    A live retry died with "API Error: Connection refused" over a
+    mid-restart Docker VM, classified cliReportedErrorResult before
+    the network class existed — and the gate refused a failure that
+    heals on its own (2026-08-27). An unrecognized CLI error keeps its
+    refusal: nothing says a re-run changes it.
+    """
+    dictRescued = fdictDescribeStoppingPoint(_fdictBuildCliErrorRecord(
+        "emptyTurn: the CLI reported an error instead of an answer "
+        "(cliReportedErrorResult). The CLI said: API Error: Connection "
+        "refused (ConnectionRefused)"))
+    assert dictRescued["sAction"] == "retry"
+    assert dictRescued["bResumable"] is True
+
+    dictStillBlocked = fdictDescribeStoppingPoint(_fdictBuildCliErrorRecord(
+        "emptyTurn: the CLI reported an error instead of an answer "
+        "(cliReportedErrorResult). The CLI said: something exploded"))
+    assert dictStillBlocked["sAction"] == "none"
+    assert dictStillBlocked["bResumable"] is False
+
+
+@pytest.mark.falsification
+def testAMidPhaseRecordIsNotResumable():
+    """A turn the record shows launched but never settled blocks resume.
+
+    A hub killed after turn one of a five-participant phase leaves a
+    record whose phase key exists and whose recorded turns are all
+    terminal-looking — except the one that was running. Handing that
+    record back to the engine would run the next phase over a fraction
+    of the deliberation and present it as clean continuation (the
+    section 2.1 hazard).
+
+    Kills: dropping the incoherent-turn guard from the descriptor.
+    """
+    dictRecord = {
+        "sState": "planning",
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "",
+            "dictTurnsByPhase": {
+                "independentProposals": [
+                    {"sStatus": "completed"}, {"sStatus": "running"}],
+            },
+        }],
+    }
+
+    dictStopping = fdictDescribeStoppingPoint(dictRecord)
+
+    assert dictStopping["bResumable"] is False
+    assert "still running" in dictStopping["sBlockedReason"]
+
+
+@pytest.mark.falsification
+def testTheActionVocabularyNamesEachRecoveryLane():
+    """answer, review, resume, none — never one flag for three lanes.
+
+    The resume route refuses needsHuman and planReady, whose real
+    continuations are Answer and Review; a listing keying everything
+    on bResumable offered the one action those states cannot take.
+
+    Kills: the action map collapsing every continuable state onto
+    resume.
+    """
+    dictBase = {
+        "dictProjectIdentity": {
+            "sSnapshotIdentity": "sealed-content-identity-0001"},
+        "listRounds": [{
+            "iRoundNumber": 1,
+            "sResolution": "",
+            "dictTurnsByPhase": {
+                "independentProposals": [{"sStatus": "completed"}]},
+            "dictPhaseAttempt": {
+                "sPhase": "independentProposals", "iRoundNumber": 1,
+                "iAttemptNumber": 1,
+                "listEligibleParticipantIds": ["participant-a"],
+                "sCompletionRule": "allEligible",
+                "sAttemptState": "outcomeSettled",
+                "sOutcome": "advancedToNextPhase",
+                "dictPrePhaseState": {},
+            },
+        }],
+    }
+    for sState, sExpectedAction in (
+            ("needsHuman", "answer"),
+            ("planReady", "review"),
+            ("planning", "resume")):
+        dictStopping = fdictDescribeStoppingPoint(
+            {**dictBase, "sState": sState})
+        assert dictStopping["sAction"] == sExpectedAction, sState
+        assert dictStopping["bResumable"] is True
+    dictStopping = fdictDescribeStoppingPoint(
+        {**dictBase, "sState": "failed"})
+    assert dictStopping["sAction"] == "none"
+    assert dictStopping["bResumable"] is False
+
+
+@pytest.mark.falsification
+def testTheStoppingPointMirrorsTheEnginesPhaseOrder():
+    """The mirror the module comment promises, made checkable.
+
+    ``LIST_FIRST_ROUND_PHASES`` exists so a reader can be told what
+    would run next WITHOUT constructing an engine; the engine's
+    ``_fsNextPhaseForRound`` stays the authority. A mirror nobody
+    checks is a second authority, so this drives BOTH over the same
+    open rounds and requires identical answers.
+
+    Kills: reordering the mirrored phase lists.
+    """
+    from vaibify.gui.agentCouncilResolution import _fsFindNextPhase
+
+    fixtureCouncil = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideAllAccept, sChairbotHandle="alpha")
+    engine = fixtureCouncil.engine
+
+    listRoundShapes = []
+    for iRoundNumber in (1, 2):
+        listPhases = (LIST_FIRST_ROUND_PHASES if iRoundNumber == 1
+                      else LIST_LATER_ROUND_PHASES)
+        for iSettledCount in range(len(listPhases) + 1):
+            dictTurnsByPhase = {
+                sPhase: [{"sStatus": "completed"}]
+                for sPhase in listPhases[:iSettledCount]}
+            listRoundShapes.append({
+                "iRoundNumber": iRoundNumber,
+                "bFinalVetoRound": False,
+                "bSynthesisSettled": "synthesis" in dictTurnsByPhase,
+                "sResolution": "",
+                "dictTurnsByPhase": dictTurnsByPhase,
+            })
+    listRoundShapes.append({
+        "iRoundNumber": 3, "bFinalVetoRound": True,
+        "bSynthesisSettled": False, "sResolution": "",
+        "dictTurnsByPhase": {}})
+
+    for dictRound in listRoundShapes:
+        sEngineAnswer = engine._fsNextPhaseForRound(dictRound) or ""
+        sMirrorAnswer = _fsFindNextPhase(dictRound)
+        assert sMirrorAnswer == sEngineAnswer, dictRound

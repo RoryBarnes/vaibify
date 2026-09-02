@@ -15,6 +15,9 @@ import time
 
 from fastapi import FastAPI
 
+from . import agentCouncilController
+from . import agentCouncilRegistry
+from . import agentCouncilStore
 from . import browserSession
 from . import commitCarrier
 from . import containerOwnership
@@ -64,6 +67,26 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     )
     app.state.dictStartResults = (
         startResultStore.fdictCreateStartResultStore()
+    )
+    # The council's two app-owned authorities (design sections 9.3, 7.3):
+    # the registry accounts for live runner/API work and vetoes idle
+    # self-exit; the campaign store holds campaigns and checkpoints their
+    # durable record to host app-data. Both are plain dicts driven by
+    # module functions, so ``app.state`` owns one value each.
+    setattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY,
+        agentCouncilRegistry.fdictCreateCouncilRegistry(),
+    )
+    setattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
+        agentCouncilStore.fdictCreateCampaignStore(),
+    )
+    # The controller is the sole writer of campaign state (remediation
+    # R1): routes submit bounded commands onto its per-campaign
+    # serialization primitive rather than mutating the store themselves.
+    setattr(
+        app.state, agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY,
+        agentCouncilController.fdictCreateCouncilControllerState(),
     )
     app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
@@ -166,6 +189,13 @@ def _fappBuildApplication(dictConfig):
     # hook may only run after the guarded workers have been drained
     # (design §8 — shutdown ordering is a correctness boundary).
     _fnRegisterShutdownDrainGuardedMutations(app)
+    # The council drain is registered AFTER the guarded-mutation drain
+    # and BEFORE the hub lifecycle so it runs before keep-alive shutdown
+    # and flock release (design section 21 — shutdown ordering). Its
+    # startup twin discovers and reconciles labeled runners a crash left
+    # behind, and reloads accepted campaigns from durable app-data,
+    # before any new council starts.
+    _fnRegisterCouncilLifecycle(app)
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
     routeScope.fnValidateRouteScopesOrRaise(app)
@@ -279,6 +309,199 @@ def _fnRegisterShutdownDrainGuardedMutations(app):
         )
 
     app.state.listLifespanShutdown.append(fnDrainGuardedMutations)
+
+
+def _fdockerCreateCouncilClientOrNone():
+    """Return a council Docker client, or None when no daemon is reachable.
+
+    The council is container-only, but the hub it runs in may be a host-
+    only machine with no Docker daemon at all. Reconcile and drain then
+    have no runners to act on, so a failed client construction is a
+    graceful skip rather than a startup or shutdown error.
+    """
+    try:
+        from . import agentCouncilDockerGateway
+        return agentCouncilDockerGateway.fdockerCreateCouncilClient()
+    except Exception:
+        return None
+
+
+def _fnRegisterCouncilLifecycle(app):
+    """Reconcile crashed-runner survivors and reload campaigns; drain on stop.
+
+    Startup (design section 9.4, 7.5): reload accepted campaigns from
+    durable app-data so a restarted hub shows them again, then discover
+    and settle any labeled runner a crash left behind before a new
+    council starts. Shutdown (design section 9.3): stop admitting new
+    turns and destroy or visibly quarantine every live runner. Both are
+    best-effort against the daemon — a host-only hub has none.
+    """
+
+    async def fnReconcileCouncilOnStartup(app):
+        dictStore = getattr(
+            app.state,
+            agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY, None)
+        if isinstance(dictStore, dict):
+            await asyncio.to_thread(
+                agentCouncilStore.fdictReloadDurableCampaigns, dictStore)
+            # A reloaded ``planning`` campaign is classified as
+            # interrupted ONLY when its attempt record cannot prove a
+            # clean stop — a running attempt, or no record at all. A
+            # proven boundary stays in planning for the researcher's
+            # EXPLICIT resume; nothing relaunches here (amended
+            # section 3, 2026-08-27). The labeled runner reconcile
+            # below settles whatever an unproven turn left.
+            await asyncio.to_thread(
+                agentCouncilController
+                .fiClassifyInterruptedCampaignsOnStartup, dictStore)
+        await asyncio.to_thread(_fnReconcileCouncilRunners, app)
+
+    async def fnDrainCouncilOnShutdown(app):
+        # Live drive tasks stop BEFORE the registry drain destroys
+        # runners: a drive still launching turns would race the drain's
+        # closed admission and report a spurious refusal instead of a
+        # clean stop.
+        dictControllerState = getattr(
+            app.state,
+            agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY, None)
+        if isinstance(dictControllerState, dict):
+            agentCouncilController.fnDrainControllerOnShutdown(
+                dictControllerState)
+            # A bounded settle, never a proof: drives that miss the
+            # deadline are handed to the registry drain below, and the
+            # provisioned runner access (egress boundary, staged host
+            # credential) is released for every campaign either way.
+            await agentCouncilController.fnAwaitControllerSettleOnShutdown(
+                dictControllerState)
+        await asyncio.to_thread(_fnDrainCouncilRunners, app)
+
+    app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
+    app.state.listLifespanShutdown.append(fnDrainCouncilOnShutdown)
+    _fnRegisterCouncilChatReaper(app)
+
+
+# The reaper's cadence. It only has to be fine enough that a bound
+# overruns by at most one tick, and coarse enough that an idle hub is
+# not doing dictionary walks every second.
+F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS = 60.0
+
+
+async def _fnCouncilChatReaperLoop(app, fInterval):
+    """Close expired ask-the-chairbot conversations, forever.
+
+    On the HUB's clock, never the browser's: the bound this enforces
+    exists for the tab that was closed, crashed, or navigated away, and
+    a client that is gone cannot be the thing that reports it. One
+    failed pass is logged and the loop continues — a reaper that exits
+    on a transient daemon fault would leave every later session
+    unbounded for the rest of the process lifetime.
+    """
+    from . import agentCouncilChat
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            dictControllerState = getattr(
+                app.state,
+                agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY, None)
+            if isinstance(dictControllerState, dict):
+                await agentCouncilChat.fiReapExpiredChatSessions(
+                    dictControllerState)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Council chat reaper iteration failed", exc_info=True)
+
+
+def _fnRegisterCouncilChatReaper(app):
+    """Install the chat-session reaper on the lifespan."""
+
+    async def fnStartChatReaper(app):
+        app.state.taskCouncilChatReaper = asyncio.create_task(
+            _fnCouncilChatReaperLoop(
+                app, F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            name="vaibify-council-chat-reaper")
+
+    async def fnStopChatReaper(app):
+        await serverLifespan.fnCancelBackgroundTask(
+            app, "taskCouncilChatReaper")
+
+    serverLifespan.fnRegisterLifespanTask(
+        app, fnStartChatReaper, fnStopChatReaper)
+
+
+def _fnReconcileCouncilRunners(app):
+    """Discover and settle council runners and egress left by a crash."""
+    dictRegistry = getattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY, None)
+    dockerCouncil = _fdockerCreateCouncilClientOrNone()
+    if not isinstance(dictRegistry, dict) or dockerCouncil is None:
+        return
+    agentCouncilRegistry.fdictReconcileLabeledRunnersOnRestart(
+        dictRegistry, dockerCouncil)
+    # The egress backstop: no council drive of OURS survives a restart,
+    # so every stored campaign's proxy and network is a leftover —
+    # including one an earlier hub's teardown answered INDETERMINATE
+    # for and could only log. (A proxy whose campaign record is gone
+    # is caught by the labeled reconcile above instead — proxies wear
+    # the council label for exactly that.) Indeterminate again here
+    # stays in the log and the next start sweeps again.
+    dictStore = getattr(
+        app.state, agentCouncilStore.S_COUNCIL_CAMPAIGN_STORE_STATE_KEY,
+        None)
+    if not isinstance(dictStore, dict):
+        return
+    from vaibify.gui import agentCouncilDockerGateway
+    dictSwept = agentCouncilDockerGateway.fdictSweepCouncilEgressLeftovers(
+        dockerCouncil, _flistSelectSweepableCampaigns(dictStore))
+    if dictSwept["listIndeterminateResources"]:
+        logger.warning(
+            "startup council egress sweep could not settle: %s",
+            dictSwept["listIndeterminateResources"])
+
+
+def _flistSelectSweepableCampaigns(dictStore):
+    """Return the stored campaign ids this hub may sweep egress for.
+
+    The durable store is machine-wide, so a booting hub reloads a LIVE
+    PEER's campaigns beside its own crash leftovers. Removing a peer's
+    proxy and internal network cuts the egress its running turns are
+    using — the same daemon-wide over-reach the labeled runner reconcile
+    already learned to avoid, on the resources beside the runners.
+
+    Filtered at the caller so the gateway stays free of lock knowledge
+    and adds no new untraceable SDK roots to the blind-spot budget.
+
+    Each sweepable campaign contributes TWO scopes: its deliberation's
+    and its ask-the-chairbot conversation's
+    (``agentCouncilChat.fsComposeChatEgressScope``). A chat session is
+    purely in-process, so at startup every chat network and proxy is by
+    definition a leftover — but only if this sweep names them, and the
+    name is the only handle the store can compose.
+    """
+    from . import agentCouncilChat
+    listSweepable = []
+    for sCampaignId in list(dictStore["listInsertionOrder"]):
+        dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+            dictStore, sCampaignId)
+        if dictCampaign is not None and (
+                agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(
+                    dictCampaign)):
+            continue
+        listSweepable.append(sCampaignId)
+        listSweepable.append(
+            agentCouncilChat.fsComposeChatEgressScope(sCampaignId))
+    return listSweepable
+
+
+def _fnDrainCouncilRunners(app):
+    """Close council admission and destroy or quarantine live runners."""
+    dictRegistry = getattr(
+        app.state, agentCouncilRegistry.S_COUNCIL_REGISTRY_STATE_KEY, None)
+    if not isinstance(dictRegistry, dict):
+        return
+    agentCouncilRegistry.fdictDrainCouncilRegistry(
+        dictRegistry, _fdockerCreateCouncilClientOrNone())
 
 
 def _fnRegisterHubShutdownReleaseLocks(app):

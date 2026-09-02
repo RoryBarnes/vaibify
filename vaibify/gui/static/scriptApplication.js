@@ -542,6 +542,9 @@ const VaibifyApp = (function () {
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();
+        if (typeof VaibifyAgentCouncil !== "undefined") {
+            VaibifyAgentCouncil.fnTeardown();
+        }
         VaibifyProofTab.fnSetContainerId(null);
     }
 
@@ -755,6 +758,9 @@ const VaibifyApp = (function () {
         // researchers are actually in.
         VaibifyProofTab.fnSetContainerId(sId);
         VaibifyReposPanel.fnInit(sId);
+        if (typeof VaibifyAgentCouncil !== "undefined") {
+            VaibifyAgentCouncil.fnActivate(sId);
+        }
         // Badges otherwise stay empty until a sync action bumps the
         // epoch mid-session: the per-file remote icons render grey
         // and the declaration commit/remove buttons gate wrong on
@@ -924,6 +930,16 @@ const VaibifyApp = (function () {
             VaibifyTerminal.fnEnsureTab();
             await VaibifyReposPanel.fnInit(sId);
             VaibifyProofTab.fnSetContainerId(sId);
+            // The Blank Project convenes too (2026-08-22). The backend
+            // resolves its directory from the tracked-repos sidecar, so
+            // a council needs no open workflow — but the panel is
+            // activated from _fnActivateWorkflow, so without this line
+            // it has no container id here and every click answers "open
+            // this project", which is the state the researcher is
+            // already in.
+            if (typeof VaibifyAgentCouncil !== "undefined") {
+                VaibifyAgentCouncil.fnActivate(sId);
+            }
             VaibifyPolling.fnStartDiscoveryPolling(sId);
             VaibifyPolling.fnStartFileTreePolling();
         } catch (error) {
@@ -5241,6 +5257,9 @@ const VaibifyApp = (function () {
             return _dictSessionState.sContainerId;
         },
         fbIsRemoteSession: fbIsRemoteSession,
+        fsGetExecutionHostname: function () {
+            return _dictSessionState.sExecutionHostname || "";
+        },
         fnApplyExecutionTopology: fnApplyExecutionTopology,
         fbExecutionHostIsTheEnvironment:
             fbExecutionHostIsTheEnvironment,
