@@ -34,6 +34,8 @@ from vaibify.reproducibility.repoFiles import (
 
 
 __all__ = [
+    "T_LOCK_INPUT_CANDIDATES",
+    "S_VAIBIFY_REQUIREMENTS_PATH",
     "fnGenerateRequirementsLock",
     "flistVerifyRequirementsLock",
     "fbIsUvAvailable",
@@ -56,6 +58,10 @@ _S_LOCK_TOOL_MISSING_MESSAGE = (
     + S_LOCK_TOOL_INSTALL_HINT
 )
 _S_LOCK_FILENAME = "requirements.lock"
+# The per-repo dependency file vaibify's own container entrypoint
+# installs on startup, and the one the container docs tell researchers
+# to maintain.
+S_VAIBIFY_REQUIREMENTS_PATH = ".vaibify/requirements.txt"
 
 
 def fbIsUvAvailable():
@@ -120,11 +126,20 @@ def fnGenerateRequirementsLock(filesRepo):
 def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
     """Compile the lock in a host temp directory; write back via adapter."""
     sInputContents = filesRepo.fsReadText(sInput)
+    # Staged FLAT, under the basename only. A candidate may live in a
+    # subdirectory (``.vaibify/requirements.txt``), and joining the
+    # relative path onto the staging root would write into a directory
+    # that does not exist there. The basename is what every supported
+    # compiler dispatches on -- ``pyproject.toml`` keeps its meaning,
+    # and a requirements file is read the same way from any directory.
+    sStagedName = os.path.basename(sInput)
     with tempfile.TemporaryDirectory() as sStagingDir:
-        sStagedInput = os.path.join(sStagingDir, sInput)
+        sStagedInput = os.path.join(sStagingDir, sStagedName)
         with open(sStagedInput, "w", encoding="utf-8") as fileHandle:
             fileHandle.write(sInputContents)
-        _fnRunLockCompile(Path(sStagingDir), sInput, listCompilePrefix)
+        _fnRunLockCompile(
+            Path(sStagingDir), sStagedName, listCompilePrefix,
+        )
         with open(
             os.path.join(sStagingDir, _S_LOCK_FILENAME),
             "r", encoding="utf-8",
@@ -133,27 +148,40 @@ def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
     filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sLockContents)
 
 
+T_LOCK_INPUT_CANDIDATES = (
+    "pyproject.toml",
+    "requirements.in",
+    "requirements.txt",
+    S_VAIBIFY_REQUIREMENTS_PATH,
+)
+
+
 def _fsResolveLockInput(filesRepo):
     """Return the input filename uv should compile from.
 
-    ``requirements.txt`` is the last fallback: research repos commonly
+    ``requirements.txt`` is a fallback because research repos commonly
     declare loose dependencies there without adopting pyproject.toml
     or the pip-tools ``.in`` convention, and every supported compiler
     accepts it as input. The lock output is always
     ``requirements.lock``, so compiling *from* requirements.txt is
     unambiguous.
+
+    ``.vaibify/requirements.txt`` is last and is the one vaibify
+    itself tells researchers to maintain -- the entrypoint installs it
+    on container startup. Probing only the repo root meant the
+    documented dependency file had no connection to the file this
+    tier compiles, so a project that followed the documented workflow
+    exactly could never turn the L3 dependency row green, and the
+    tier said nothing about why.
     """
-    if filesRepo.fbIsFile("pyproject.toml"):
-        return "pyproject.toml"
-    if filesRepo.fbIsFile("requirements.in"):
-        return "requirements.in"
-    if filesRepo.fbIsFile("requirements.txt"):
-        return "requirements.txt"
+    for sCandidate in T_LOCK_INPUT_CANDIDATES:
+        if filesRepo.fbIsFile(sCandidate):
+            return sCandidate
     raise FileNotFoundError(
         "No dependency input found in '"
         + fsRepoRootOf(filesRepo)
-        + "'; expected pyproject.toml, requirements.in, or "
-        + "requirements.txt"
+        + "'; expected one of "
+        + ", ".join(T_LOCK_INPUT_CANDIDATES)
     )
 
 

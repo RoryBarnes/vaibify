@@ -30,6 +30,8 @@ __all__ = [
     "fbImageDigestPullable",
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
+    "fdictCaptureLiveImageIdentity",
+    "fsReadImageRecipeLabel",
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
     "fdictReadEnvironmentJson",
@@ -80,6 +82,69 @@ def _fsInspectFormatValue(sTarget, sFormat):
     return _fsRunCheckedCommand(
         ["docker", "inspect", "--format", sFormat, sTarget],
     )
+
+
+def fdictCaptureLiveImageIdentity(sContainerName):
+    """Return both identities of the image a container is running NOW.
+
+    ``sImageDigest`` is the same preferred form the envelope capture
+    records (registry digest when one exists, else the image ID);
+    ``sImageId`` is the raw content ID unconditionally. Both travel
+    because the envelope may have pinned either form: an image pushed
+    to a registry between the envelope capture and this call gains a
+    registry digest without changing, and a comparison holding only
+    the preferred form would flag that as a rebuild.
+
+    One capture at connect is truth for the whole session — a
+    container's image cannot change while it runs; a rebuild creates a
+    fresh container, which arrives through a fresh connect.
+    """
+    _fnEnsureDockerAvailable()
+    sImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
+    sRepoDigest = None
+    if sImageId:
+        sRepoDigest = _fsParseRepoDigests(
+            _fsInspectFormatValue(sImageId, "{{.RepoDigests}}"),
+        )
+    dictEntry = _fdictBuildImageDigestEntry(
+        sContainerName, sImageId, sRepoDigest,
+    )
+    return {
+        "sImageDigest": dictEntry.get("sImageDigest") or "",
+        "sImageId": sImageId or "",
+    }
+
+
+def fsReadImageRecipeLabel(sImageReference):
+    """Return the recipe fingerprint an IMAGE carries, or ''.
+
+    ``sImageReference`` may be a registry digest, an image ID, or a
+    tag — whatever the envelope pins; ``docker image inspect`` accepts
+    all three against the local store. Empty means the image predates
+    fingerprint labelling, is not in the local store, or the daemon is
+    unreachable — every one of which reads as "nothing determined"
+    downstream, never as a mismatch.
+    """
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_RECIPE_IMAGE_LABEL,
+    )
+    try:
+        _fnEnsureDockerAvailable()
+        sValue = _fsRunCheckedCommand([
+            "docker", "image", "inspect", "--format",
+            '{{index .Config.Labels "' + S_RECIPE_IMAGE_LABEL + '"}}',
+            sImageReference,
+        ])
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return ""
+    sStripped = (sValue or "").strip()
+    # A nil label map renders as "<no value>"; anything that is not a
+    # hex digest is an absent label, not evidence of one.
+    if len(sStripped) != 64 or any(
+        sCharacter not in "0123456789abcdef" for sCharacter in sStripped
+    ):
+        return ""
+    return sStripped
 
 
 def _fdictBuildImageDigestEntry(sContainerName, sImageId, sRepoDigest):

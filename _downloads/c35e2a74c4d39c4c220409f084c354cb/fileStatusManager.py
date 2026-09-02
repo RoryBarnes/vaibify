@@ -2036,7 +2036,7 @@ def _fnRefreshEnvelopeIfLevel1(
         return
     try:
         from vaibify.reproducibility import dataArchiver
-        dataArchiver.fnGenerateReproducibilityEnvelope(
+        dataArchiver.fdictGenerateReproducibilityEnvelope(
             filesRepo, dictWorkflow,
             sContainerName=sContainerId,
             listHostBinaries=dictWorkflow.get("saHostBinaries"),
@@ -2120,7 +2120,7 @@ def fbMaybeAutoArchive(
 ):
     """Push step's tracked files to Overleaf/Zenodo on L1 transition.
 
-    SYNCHRONOUS by carrier requirement: it reads the AICS level (a
+    SYNCHRONOUS by carrier requirement: it reads the PROOF level (a
     general exec via ``fdictHashFiles`` once a workflow is L2) then
     writes the L3 envelope and pushes, so an enforced-branch caller
     must run it inside a carrier admission, and mode (b)'s worker runs
