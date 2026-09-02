@@ -355,6 +355,7 @@ async def _fnLaunchStartTask(appState, sName, reservation, configProject):
         lambda: asyncio.ensure_future(
             _fnRunStartTask(appState, sName, reservation, configProject),
         ),
+        sOperation="the container start",
     )
     if not dictLaunch["bLaunched"]:
         await _fnSettleStartFailure(appState, sName, reservation, RuntimeError(

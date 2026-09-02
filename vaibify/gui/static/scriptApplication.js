@@ -64,6 +64,7 @@ const VaibifyApp = (function () {
             dictWorkflowScopeLevels: null,
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
+            dictRemoteChecks: {},
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
@@ -93,6 +94,11 @@ const VaibifyApp = (function () {
         setExpandedIntegrity: new Set(),
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
+        // Records a flip AWAY from each file group's default
+        // open state, not the state itself, so the defaults
+        // keep applying to groups the researcher never
+        // touched — including ones that did not exist yet.
+        setToggledFileGroups: new Set(),
         // Per-step level sections in the Step Viewer: keys are
         // "iStep:iLevel". A step is seeded once (its target rung
         // opens) and remembered in setLevelSeededSteps so the
@@ -394,6 +400,15 @@ const VaibifyApp = (function () {
         VaibifyWebSocket.fnOnEvent("_wsError", function (dictEvent) {
             _fnReportConnectionLossToMonitor(dictEvent);
         });
+        VaibifyWebSocket.fnOnEvent("_wsReconnect", function () {
+            // The link was down for an unknown span, over which a
+            // remote could have gained or lost a published file. The
+            // badges are re-asked for the same reason they are on
+            // project open: the alternative is presenting evidence
+            // gathered before the gap as if it survived it.
+            VaibifySyncManager.fnRefreshConfiguredRemotes(
+                _dictSessionState.sContainerId);
+        });
     }
 
     function _fnReportConnectionLossToMonitor(dictEvent) {
@@ -557,6 +572,7 @@ const VaibifyApp = (function () {
         _dictUiState.setExpandedIntegrity.clear();
         _dictUiState.setExpandedRequirementGroups.clear();
         _dictUiState.setExpandedRequirementRows.clear();
+        _dictUiState.setToggledFileGroups.clear();
         _dictUiState.setExpandedStepLevels.clear();
         _dictUiState.setLevelSeededSteps.clear();
         _dictUiState.setExpandedStepDescriptions.clear();
@@ -765,11 +781,38 @@ const VaibifyApp = (function () {
         // epoch mid-session: the per-file remote icons render grey
         // and the declaration commit/remove buttons gate wrong on
         // every fresh load. One fetch here seeds them.
-        if (typeof VaibifyGitBadges !== "undefined") {
-            VaibifyGitBadges.fnRefresh(sId);
-        }
+        // Every configured remote is re-checked on entry, and its
+        // badge pulses until its own answer arrives. Painting a
+        // day-old cached green on open presents stale evidence as
+        // current fact; painting orange because the cache aged is a
+        // colour change with nothing wrong behind it. Asking is the
+        // only honest third option.
+        //
+        // CHAINED, not fired alongside: the badge read is an
+        // AUTOMATIC read that PAUSES (returning no badge map at all)
+        // when the container has live durable work, and the refresh
+        // registers exactly that. Fired together the refresh won the
+        // race, the badge read came back paused, and on a fresh hub
+        // there is no previous map to fall back on -- so every
+        // Published-copies row read "No files tracked for this remote
+        // yet" until something bumped the sync epoch. Observed on a
+        // real project, 2026-08-30.
+        _fnSeedBadgesThenAskTheRemotes(sId);
         VaibifyPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
+    }
+
+    function _fnSeedBadgesThenAskTheRemotes(sId) {
+        // Badges first so the first paint is never an empty map; the
+        // remote checks follow, and their own completion bumps the
+        // sync epoch, which repaints the badges with what they found.
+        if (typeof VaibifyGitBadges === "undefined") {
+            VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+            return;
+        }
+        VaibifyGitBadges.fnRefresh(sId).then(function () {
+            VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+        });
     }
 
     function _fnSurfaceStateLoadNotice(dictWorkflow) {
@@ -900,6 +943,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictWorkflowScopeLevels = null;
         _dictWorkflowState.dictWorkflowLevelHighWater = {};
         _dictWorkflowState.dictWorkflowEnvelopeDetail = null;
+        _dictWorkflowState.dictRemoteChecks = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
         _dictWorkflowState.iL3BlockerCount = 0;
@@ -1794,6 +1838,8 @@ const VaibifyApp = (function () {
                 _dictUiState.setExpandedRequirementGroups,
             setExpandedRequirementRows:
                 _dictUiState.setExpandedRequirementRows,
+            setToggledFileGroups:
+                _dictUiState.setToggledFileGroups,
             bProjectBlockCollapsed: _dictUiState.bProjectBlockCollapsed,
             bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
@@ -1851,6 +1897,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictStepLevelWarnings,
             dictWorkflowEnvelopeDetail:
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
+            dictRemoteChecks:
+                _dictWorkflowState.dictRemoteChecks,
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
@@ -3278,6 +3326,11 @@ const VaibifyApp = (function () {
             _dictUiState.setExpandedRequirementRows, sReqKey);
     }
 
+    function fnToggleFileGroup(sGroupKey) {
+        _fnToggleInSet(
+            _dictUiState.setToggledFileGroups, sGroupKey);
+    }
+
     function fnExpandRequirementRow(sGroupKey, sReqKey) {
         // Idempotent open (never toggle) for PROOF-tab deep links:
         // .add() into the shared Sets in place — reassigning them
@@ -3286,6 +3339,43 @@ const VaibifyApp = (function () {
         _dictUiState.setExpandedRequirementRows.add(sReqKey);
         _dictUiState.bProjectBlockCollapsed = false;
         fnRenderStepList();
+    }
+
+    function _fdictDescribeDeterminismScan(dictSafe) {
+        /* The scan answers TWO of the three determinism questions'
+           worth of evidence, and the toast used to report only one.
+           A researcher who ran it to settle the MKL question read
+           "none of the known non-determinism patterns found" and
+           reasonably concluded the scan had told them nothing —
+           because about MKL it had (reported 2026-08-30). The maths
+           library reading rides every branch now, in the short form
+           the backend authors beside the long one. */
+        var sMaths = (dictSafe.dictMathsLibrary || {}).sHeadline || "";
+        var sSuffix = sMaths ? " " + sMaths : "";
+        var listIssues = dictSafe.listIssues || [];
+        var listUnreadable = dictSafe.listUnreadable || [];
+        if (listIssues.length > 0) {
+            return {sMessage: listIssues.length +
+                " non-determinism finding(s): " +
+                listIssues.slice(0, 3).join("; ") + sSuffix,
+                sType: "warning"};
+        }
+        if (listUnreadable.length > 0) {
+            return {sMessage: "No anti-patterns found, but " +
+                listUnreadable.length + " script(s) could not be " +
+                "read: " + listUnreadable.join(", ") +
+                ". That is not the same as clean." + sSuffix,
+                sType: "warning"};
+        }
+        // Deliberately not "your workflow is deterministic": the scan
+        // finds known anti-patterns and cannot see seeded RNG or
+        // iteration order.
+        return {sMessage: "Scanned " +
+            (dictSafe.listScanned || []).length +
+            " script(s); none of the known non-determinism patterns " +
+            "found. This does not prove determinism — the " +
+            "declaration is still yours." + sSuffix,
+            sType: "info"};
     }
 
     var _DICT_PROJECT_ACTIONS = {
@@ -3314,6 +3404,35 @@ const VaibifyApp = (function () {
             fdictBodyFromElement: _fdictReadBinaryForm,
             sToast: "Package declared. Now capture its version and " +
                 "hash from its row.",
+        },
+        "scan-determinism": {
+            sPath: "/determinism/scan",
+            sMethod: "GET",
+            fdictAfterResponse: function (dictResult) {
+                return _fdictDescribeDeterminismScan(dictResult || {});
+            },
+        },
+        "declare-no-binaries": {
+            // The waiver, reachable directly. It used to be settable
+            // only as a side effect of removing the last declared
+            // package, which no researcher would discover.
+            sPath: "/binaries/declare",
+            fdictBody: function () {
+                return {
+                    bNoStandaloneBinaries: true,
+                    listDeclaredBinaries: [],
+                };
+            },
+            dictConfirm: {
+                sTitle: "Declare no standalone binaries",
+                sMessage: "Confirm that this project calls no " +
+                    "standalone scientific binaries — only Python " +
+                    "packages pinned in requirements.lock. This is a " +
+                    "claim Level 3 records; adding a package later " +
+                    "retracts it automatically.",
+            },
+            sToast: "Declared: this project uses no standalone " +
+                "binaries.",
         },
         "remove-binary": {
             sPath: "/binaries/declare",
@@ -3384,6 +3503,31 @@ const VaibifyApp = (function () {
                     sType: "warning"};
             },
         },
+        "copy-image-dockerfile": {
+            sPath: "/level3/dockerfile",
+            bOfferCommitAfterGenerate: true,
+            fdictAfterResponse: function (dictResult) {
+                // A refusal is a 200 carrying sRefusal, not an error:
+                // declining to overwrite the researcher's own
+                // Dockerfile is the route working correctly, and
+                // surfacing it as a failure would read as a bug.
+                var dictSafe = dictResult || {};
+                if (dictSafe.sRefusal) {
+                    return {sMessage: dictSafe.sRefusal,
+                        sType: "warning"};
+                }
+                if (dictSafe.bManifestRefreshed === true) {
+                    return {sMessage: "Dockerfile composed from the " +
+                        "image's build chain and pinned in the " +
+                        "manifest — the check will pass on the next " +
+                        "status poll.", sType: "info"};
+                }
+                return {sMessage: "Dockerfile was written, but " +
+                    "re-pinning the manifest failed — click " +
+                    "'Regenerate now' on the Manifest row, then " +
+                    "check the hub log.", sType: "warning"};
+            },
+        },
         "generate-reproduce-script": {
             sPath: "/level3/reproduce-script",
             bOfferCommitAfterGenerate: true,
@@ -3402,9 +3546,11 @@ const VaibifyApp = (function () {
         },
         "verify-l3": {
             sPath: "/level3/verify",
-            sToast: "Level 3 verification started. The rebuild runs " +
-                "in the container; the result appears in the " +
-                "Attestation row when it completes.",
+            fnConfirm: fnConfirmLevel3Verification,
+            sToast: "Level 3 verification started. The workflow is " +
+                "re-run in a throwaway copy of this project; the " +
+                "result appears in the Attestation row when it " +
+                "completes.",
         },
         "declare-determinism": {
             sPath: "/determinism/declare",
@@ -3475,26 +3621,45 @@ const VaibifyApp = (function () {
     }
 
     function _fdictReadDeterminismForm(elButton) {
-        // Gather the declare-determinism form inputs from the same
-        // requirement-row detail the button lives in. A blank thread
-        // box sends an explicit null so a previously pinned count is
-        // REMOVED — the endpoint merges keys, so omitting it would
-        // silently keep the old pin forever.
-        var elDetail = elButton.closest(".requirement-row-detail");
-        if (!elDetail) return null;
-        var elBlas = elDetail.querySelector(".determinism-accept-blas");
-        var elThreads = elDetail.querySelector(
-            ".determinism-omp-threads");
-        var dictBody = {
-            bAcceptBlasVariance: Boolean(elBlas && elBlas.checked),
-            dOmpNumThreads: null,
-        };
-        if (elThreads && elThreads.value !== "") {
-            var iThreads = parseInt(elThreads.value, 10);
-            if (!isNaN(iThreads) && iThreads > 0) {
-                dictBody.dOmpNumThreads = iThreads;
-            }
+        /* Read ONE question's answer from the form the button sits
+           in. Each question is now its own row with its own Save, so
+           a body carries one answer and the endpoint's key merge
+           leaves the other two alone.
+
+           An unanswered form submits NOTHING rather than a default.
+           The previous version sent `bAcceptBlasVariance: false` for
+           an unticked box, which recorded a block that satisfied no
+           gate while turning the row green — the defect this whole
+           change came from. A researcher who saves without choosing
+           now gets told to choose. */
+        var elForm = elButton.closest(".determinism-form");
+        if (!elForm) return null;
+        var elChecked = elForm.querySelector(
+            ".determinism-answer:checked");
+        if (!elChecked) {
+            fnShowToast(
+                "Choose one of the answers before saving.", "error");
+            return null;
         }
+        return _fdictBuildDeterminismBody(elForm, elChecked.value);
+    }
+
+    function _fdictBuildDeterminismBody(elForm, sAnswer) {
+        // The answer, plus the value that answer needs. A value is
+        // sent as null when the chosen answer does not want one, so a
+        // thread count survives no longer than the decision to pin.
+        var dictBody = {};
+        dictBody[elForm.dataset.answerKey] = sAnswer;
+        var sValueKey = elForm.dataset.valueKey || "";
+        if (!sValueKey) return dictBody;
+        var elValue = elForm.querySelector(".determinism-value");
+        var sRaw = elValue ? String(elValue.value).trim() : "";
+        if (sRaw === "" || sAnswer !== "pinned") {
+            dictBody[sValueKey] = null;
+            return dictBody;
+        }
+        dictBody[sValueKey] = (sValueKey === "dOmpNumThreads")
+            ? parseInt(sRaw, 10) : sRaw;
         return dictBody;
     }
 
@@ -3533,6 +3698,21 @@ const VaibifyApp = (function () {
                 });
             return;
         }
+        // An action whose warning is too specific for the generic
+        // dictConfirm shape brings its own opener. It is a FUNCTION
+        // rather than more fields so the same warning can be raised
+        // from a second entry point -- the PROOF tab has its own Verify
+        // button, and two hand-written copies of a safety warning are
+        // two warnings that drift.
+        if (dictAction.fnConfirm) {
+            var dictUnconfirmed = Object.assign({}, dictAction);
+            delete dictUnconfirmed.fnConfirm;
+            dictAction.fnConfirm(function () {
+                _fnExecuteProjectAction(
+                    dictUnconfirmed, sContainerId, sArg, elButton);
+            }, elButton);
+            return;
+        }
         await _fnExecuteProjectAction(
             dictAction, sContainerId, sArg, elButton);
     }
@@ -3552,6 +3732,11 @@ const VaibifyApp = (function () {
             var dictResult;
             if (dictAction.sMethod === "DELETE") {
                 dictResult = await VaibifyApi.fnDelete(sUrl);
+            } else if (dictAction.sMethod === "GET") {
+                // Read-only actions (the determinism scan) ask a
+                // question rather than changing anything; posting to
+                // a GET route answers 405.
+                dictResult = await VaibifyApi.fdictGet(sUrl);
             } else {
                 dictResult = await VaibifyApi.fdictPost(sUrl, oBody);
             }
@@ -4168,6 +4353,300 @@ const VaibifyApp = (function () {
     }
 
     var fnShowConfirmModal = VaibifyModals.fnShowConfirmModal;
+
+
+    // The one place the Level 3 warning is written. Both entry points
+    // -- the Project block's verify-l3 action and the PROOF tab's own
+    // Verify button -- call this, because a safety warning maintained
+    // in two places is a warning that drifts, and the half that goes
+    // stale is the half nobody reads.
+    //
+    // It exists at all because the reproduction is a black box to the
+    // researcher: it copies their project and re-runs the whole
+    // workflow somewhere they cannot watch. Vaibify's premise is that
+    // a researcher always knows what agents are doing, so the one
+    // moment that premise is hard to keep is the moment to say so
+    // plainly -- BEFORE the copy, when acting on it is still cheap.
+    // The backend refuses a copy taken while the repository moved, so
+    // this is not the safety mechanism; it is what turns a refusal the
+    // researcher would find baffling into one they were expecting.
+    // The readiness labels, in the researcher's words. Kept beside
+    // the modal that shows them rather than derived from the API's
+    // boolean keys, because the point is to say the thing the row is
+    // called, not the thing the flag is called.
+    var _DICT_L3_READINESS_LABELS = {
+        bManifestComplete:
+            "Manifest — it does not yet cover every declared file",
+        bDependencyLockHashed:
+            "Dependency lock — missing, or not hashed",
+        bEnvironmentDigestPinned:
+            "Environment snapshot — not pinned",
+        bDockerfilePinned: "Dockerfile — not pinned",
+        bReproduceScriptPinned:
+            "reproduce.sh — missing, or not pinned",
+        bDeterminismDeclared:
+            "Repeatability rules — not declared",
+        bBinariesDeclaredOrWaived:
+            "Standalone packages — neither declared nor waived",
+        /* Not one of the seven envelope gaps — a fact about the
+           CONTAINER — but it refuses the verify just the same, and a
+           precondition absent from this list reaches the researcher
+           as a bare failure toast instead of this modal's checklist
+           (reported 2026-09-01). */
+        bImageMatchesDeclaredPackages:
+            "Container image — disagrees with the dependency " +
+            "declaration in vaibify.yml (see the error on Verify " +
+            "for which packages, and which side to fix)",
+        bDockerfileDescribesPinnedImage:
+            "Dockerfile — exported from a different build chain " +
+            "than the pinned image's; re-export it from the " +
+            "Dockerfile row",
+    };
+
+    async function _fdictFetchL3Readiness() {
+        /* Returns the GAPS DICT, not the envelope around it. The
+           route answers {iProofLevel, dictL3ReadinessGaps}, and
+           reading the flags off the outer object gave `undefined` for
+           every one -- so `!== true` held for all seven and the
+           pre-flight declared a fully-ready project unready, making
+           the verification unstartable from the dashboard. The
+           browser test missed it because its fake answered a FLAT
+           payload nobody sends (reported 2026-08-30). */
+        try {
+            var dictResponse = await VaibifyApi.fdictGet(
+                "/api/workflow/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/level3/readiness");
+            var dictGaps = (dictResponse || {}).dictL3ReadinessGaps
+                || null;
+            if (dictGaps) {
+                dictGaps.dictImageCurrency =
+                    (dictResponse || {}).dictImageCurrency || null;
+            }
+            return dictGaps;
+        } catch (error) {
+            // A readiness fetch that fails must not block the action:
+            // the route re-checks and refuses on its own, naming the
+            // gaps. Falling through means the researcher sees the
+            // copy warning and then the server's answer, which is the
+            // behaviour before this pre-flight existed.
+            console.warn("[l3] readiness pre-flight failed:",
+                error && error.message);
+            return null;
+        }
+    }
+
+    function _flistNamePendingReadiness(dictReady) {
+        var listPending = [];
+        Object.keys(_DICT_L3_READINESS_LABELS).forEach(function (sKey) {
+            if (dictReady[sKey] !== true) {
+                listPending.push(_DICT_L3_READINESS_LABELS[sKey]);
+            }
+        });
+        return listPending;
+    }
+
+    function _fsDescribeNonBlockingWarnings() {
+        /* Named so a researcher looking at a red glyph learns it is
+           NOT what stopped them. A step whose directory disagrees with
+           its name still re-runs from the directory as recorded, so it
+           cannot change whether the project reproduces — but it is the
+           loudest red thing on the screen, and silence about it invites
+           exactly the wrong conclusion. */
+        var iNonconforming = _fiCountNonconformingSteps();
+        if (iNonconforming === 0) return "";
+        return "Not blocking this: " + iNonconforming +
+            " step directory name" + (iNonconforming === 1 ? "" : "s") +
+            " disagree with the step name. That is a naming contract, " +
+            "not a reproducibility one — the rerun uses each directory " +
+            "as recorded, so it cannot change whether your project " +
+            "reproduces. Fix it whenever you like with Align step " +
+            "directories.";
+    }
+
+    async function fnShowL3AttestationModal() {
+        /* "On file" earns a way to open the file
+           (researcher-requested, 2026-09-02). Fetched fresh rather
+           than read off the poll: the poll carries a summary, and a
+           researcher opening the record wants the record. Every field
+           is escaped — the attestation is an agent-writable JSON
+           file — and the full document rides below the summary,
+           because a curated view of a scientific record must never
+           be the only view of it. */
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        var dictPayload;
+        try {
+            dictPayload = await VaibifyApi.fdictGet(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                "/level3/attestation");
+        } catch (error) {
+            fnShowToast("Could not load the attestation: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        }
+        var dictCurrent = (dictPayload || {}).dictCurrentAttestation;
+        if (!dictCurrent) {
+            VaibifyModals.fnShowInfoModal("Rebuild attestation",
+                "<p>No attestation is on file yet.</p>");
+            return;
+        }
+        VaibifyModals.fnShowInfoModal(
+            "Rebuild attestation",
+            _fsRenderAttestationDocument(dictCurrent));
+    }
+
+    function _fsRenderAttestationDocument(dictCurrent) {
+        var fnRow = function (sLabel, sValue) {
+            return "<div><strong>" + fnEscapeHtml(sLabel) +
+                ":</strong> " + fnEscapeHtml(String(sValue)) +
+                "</div>";
+        };
+        var listCarried = dictCurrent.listCarriedPaths || [];
+        var sHtml = '<div class="attestation-summary">' +
+            fnRow("Status", dictCurrent.sStatus || "unknown") +
+            fnRow("Attested", dictCurrent.sAttestedAtUtc || "?") +
+            fnRow("Manifest digest",
+                dictCurrent.sManifestDigestAtAttestation || "?") +
+            fnRow("Image", dictCurrent.sImageDigest || "?") +
+            fnRow("Re-derived files matched",
+                (dictCurrent.iOutputHashesMatched || 0) + " of " +
+                (dictCurrent.iOutputHashesTotal || 0)) +
+            fnRow("Duration",
+                (dictCurrent.fDurationSeconds || 0).toFixed(1) +
+                " s") +
+            (listCarried.length
+                ? fnRow("Carried human-made files",
+                    listCarried.join(", "))
+                : "") +
+            "</div>" +
+            '<p class="modal-info-note">The full record, exactly as ' +
+            "committed to the repository at " +
+            ".vaibify/l3_attestation.json:</p>" +
+            '<pre class="attestation-json-view">' +
+            fnEscapeHtml(JSON.stringify(dictCurrent, null, 2)) +
+            "</pre>";
+        return sHtml;
+    }
+
+    function _fnShowLevel3NotReadyModal(dictReady) {
+        /* An INFO modal, not the confirm one. The copy warning
+           describes the risks of an operation that is not going to
+           happen, and a modal offering "Copy and verify" over a list
+           of reasons it cannot is a button that lies. fnShowInfoModal
+           has one dismiss control and no proceed path, which is the
+           shape of this message. */
+        var sHtml = '<p>Level 3 verification re-runs your whole ' +
+            'workflow and compares the result, so the envelope it ' +
+            're-runs FROM has to be complete first. Still to do:</p>' +
+            '<ul class="l3-pending-list">';
+        _flistNamePendingReadiness(dictReady).forEach(function (sItem) {
+            sHtml += '<li>' + fnEscapeHtml(sItem) + '</li>';
+        });
+        sHtml += '</ul><p class="modal-info-note">Each of these has a ' +
+            'row in the Project block that explains what it wants.</p>';
+        var sWarnings = _fsDescribeNonBlockingWarnings();
+        if (sWarnings) {
+            sHtml += '<p class="modal-info-note">' +
+                fnEscapeHtml(sWarnings) + '</p>';
+        }
+        VaibifyModals.fnShowInfoModal("Not ready to verify yet", sHtml);
+    }
+
+    function _ffnHoldButtonBusy(elButton, sBusyLabel) {
+        // Returns the restore. A control that reaches the network
+        // before it can show anything must say so: this opener spends
+        // five to ten seconds on the readiness round trip before the
+        // modal appears, and an unchanged button in that window reads
+        // as a click that did not register, so researchers click again
+        // (reported 2026-08-31).
+        if (!elButton) return function () {};
+        var sOriginalText = elButton.textContent;
+        var bOriginallyDisabled = elButton.disabled;
+        elButton.disabled = true;
+        elButton.classList.add("btn-busy");
+        if (sBusyLabel) elButton.textContent = sBusyLabel;
+        return function () {
+            // The element may have been replaced by a re-render while
+            // the request was in flight; restoring a detached node is
+            // harmless, and checking would not make it less so.
+            elButton.disabled = bOriginallyDisabled;
+            elButton.classList.remove("btn-busy");
+            elButton.textContent = sOriginalText;
+        };
+    }
+
+    function _fsImageCurrencyModalWarning(dictReady) {
+        /* One paragraph, only on a DETERMINED mismatch. This is the
+           moment the warning pays for itself: a researcher who
+           rebuilt and forgot to regenerate the snapshot is about to
+           spend a workflow-length rerun grading the OLD image, and
+           learned it from a failing step deep inside the shadow
+           (reported 2026-09-01). null paints nothing — an absent
+           capture is not evidence of a mismatch. */
+        var dictCurrency = (dictReady || {}).dictImageCurrency || {};
+        if (dictCurrency.bPinnedImageIsLive !== false) return "";
+        return "NOTE: your envelope pins an image that is NOT the " +
+            "one this container is running. The verification will " +
+            "grade the pinned image — if you rebuilt and meant to " +
+            "verify the new build, cancel and click Regenerate now " +
+            "on the Environment snapshot row first.\n\n";
+    }
+
+    async function fnConfirmLevel3Verification(fnOnConfirm, elButton) {
+        // Readiness FIRST. The copy warning is about a real risk, but
+        // only of an operation that can actually start; asking a
+        // researcher to accept it and then refusing them is how a
+        // safety notice becomes noise (reported 2026-08-30).
+        //
+        // The busy hold covers the readiness fetch only. It is
+        // released before either modal opens, because from there the
+        // researcher is looking at a dialog and the button behind it
+        // is no longer the thing they are waiting on.
+        var fnRelease = _ffnHoldButtonBusy(elButton, "Checking\u2026");
+        var dictReady;
+        try {
+            dictReady = await _fdictFetchL3Readiness();
+        } finally {
+            fnRelease();
+        }
+        /* BOTH refusal classes route to the checklist modal. The
+           package mismatch is not one of the seven envelope gaps, so
+           gating on bL3ReadinessOK alone let it slip past this
+           pre-flight and reach the researcher as a bare failure toast
+           (reported 2026-09-01). */
+        if (dictReady && (dictReady.bL3ReadinessOK !== true ||
+                dictReady.bImageMatchesDeclaredPackages === false ||
+                dictReady.bDockerfileDescribesPinnedImage === false)) {
+            _fnShowLevel3NotReadyModal(dictReady);
+            return;
+        }
+        fnShowConfirmModal(
+            "Copy this project and verify it reproduces",
+            "Vaibify will copy this project out of its container and " +
+            "re-run the whole workflow in a fresh, throwaway " +
+            "container built from the image your envelope pins. Your " +
+            "own files are not touched, and the copy is deleted " +
+            "afterwards.\n\n" +
+            _fsImageCurrencyModalWarning(dictReady) +
+            "Before you continue, make sure nothing is writing inside " +
+            "the container \u2014 an agent part-way through a task, a " +
+            "command running in the terminal, or a step still going. " +
+            "The copy is taken while the container keeps running, so " +
+            "a write landing during it means the copy would hold a " +
+            "mixture of two moments; vaibify refuses that rather than " +
+            "reporting a result you could not trust.",
+            fnOnConfirm,
+            {
+                sDetails: "The rerun takes about as long as running " +
+                    "the workflow yourself.",
+                sCommand: "vaibify reproduce --rerun",
+                sConfirmLabel: "Copy and verify",
+                sCancelLabel: "Not now",
+            }
+        );
+    }
     var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
@@ -4964,6 +5443,14 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
         }
+        // An empty map is a real answer here — "no check is running"
+        // — and `{}` is truthy, so it is adopted. Only a payload from
+        // a hub that predates the key is skipped, which leaves the
+        // badges rendering from the cache exactly as they did before.
+        if (dictStatus.dictRemoteChecks) {
+            _dictWorkflowState.dictRemoteChecks =
+                dictStatus.dictRemoteChecks;
+        }
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {
@@ -5308,6 +5795,8 @@ const VaibifyApp = (function () {
         },
         fdictBuildClientVariables: fdictBuildClientVariables,
         fnShowConfirmModal: fnShowConfirmModal,
+        fnConfirmLevel3Verification: fnConfirmLevel3Verification,
+        fnShowL3AttestationModal: fnShowL3AttestationModal,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
@@ -5405,6 +5894,7 @@ const VaibifyApp = (function () {
         fnToggleBinaryAddForm: fnToggleBinaryAddForm,
         fnToggleRequirementGroup: fnToggleRequirementGroup,
         fnToggleRequirementRow: fnToggleRequirementRow,
+        fnToggleFileGroup: fnToggleFileGroup,
         fnExpandRequirementRow: fnExpandRequirementRow,
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,

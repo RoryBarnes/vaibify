@@ -12,19 +12,21 @@ inside a project repository. Walks five tiers in sequence:
   ``levelGates.fbL3ReadinessOK`` composes; see :func:`fbVerifyTier4`
   for the one it cannot evaluate and why.
 * Tier 5 — opt-in rebuild and hash compare via ``--rerun``. The
-  workflow is re-run inside its container, then every
-  ``MANIFEST.sha256`` entry is re-hashed *in that container*, against
-  what the rerun produced; the tier passes only when the rerun exits
-  zero, every hash still matches, and the manifest itself did not move
-  during the run. Writes ``.vaibify/l3_attestation.json`` on completion
-  (pass or fail) and archives a copy to ``.vaibify/l3_attestations/``.
-  Tiers 1-4 read the host repo named by ``--repo``; tier 5 reads the
-  container's project repo, because ``/workspace`` is a Docker-managed
-  named volume and the two are different filesystems.
+  workflow is re-run in a SHADOW container built from the image digest
+  ``.vaibify/environment.json`` pins — the same container
+  ``reproduce.sh`` would build on a fresh host — carrying a copy of the
+  project repository and nothing else. Every ``MANIFEST.sha256`` entry
+  is then re-hashed *inside that shadow*, against what the rerun
+  produced; the tier passes only when the rerun exits zero, every hash
+  still matches, and the manifest itself did not move during the run.
+  Writes ``.vaibify/l3_attestation.json`` on completion (pass or fail)
+  and archives a copy to ``.vaibify/l3_attestations/``. Tiers 1-4 read
+  the host repo named by ``--repo``.
 
-Tiers 1-4 are read-only over the project repo. Tier 5 is not: the
-rerun executes the workflow, so it rewrites whatever the workflow's
-steps produce, and the command then writes the attestation files.
+Tiers 1-4 are read-only over the project repo. Tier 5 no longer writes
+to the researcher's own working tree at all — the rerun's output lands
+in the shadow, which is destroyed with proof afterwards — but the
+command still writes the attestation files into the project repo.
 Tier 2's ``pip install`` updates the user's Python environment.
 """
 
@@ -71,8 +73,10 @@ from vaibify.reproducibility.manifestWriter import flistVerifyManifest
 from vaibify.reproducibility.repoFiles import ContainerRepoFiles
 from vaibify.reproducibility.rerunVerification import (
     S_DIVERGENCE_PIPELINE_FAILED,
-    fdictRerunAndVerifyWorkflow,
     fdictUnrunOutcome,
+)
+from vaibify.reproducibility.shadowRerun import (
+    fdictRerunAndVerifyThroughShadow,
 )
 
 
@@ -495,6 +499,7 @@ def fdictRerunAndVerify(sProjectRepo, sWorkflowName=None):
         f"5/{_S_TIER_DENOMINATOR}",
         "Re-running workflow",
     )
+    _fnNoticeTheCopyIsAboutToBeTaken()
     try:
         return _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName)
     except (Exception, SystemExit) as error:
@@ -509,17 +514,50 @@ def fdictRerunAndVerify(sProjectRepo, sWorkflowName=None):
         )
 
 
+def _fnNoticeTheCopyIsAboutToBeTaken():
+    """Say a copy is being taken, and what would spoil it.
+
+    The dashboard raises this as a modal the researcher must dismiss;
+    here it is a printed line, because a prompt would break every
+    script and CI job that runs ``vaibify reproduce --rerun``
+    unattended. Consent is not the point in either lane -- the export
+    refuses a repository that moved under it either way. The point is
+    that a researcher who sees the refusal has already been told what
+    causes it, instead of meeting a message about "a mixture of two
+    moments" with no idea what it means.
+    """
+    click.echo()
+    click.echo(
+        "      Copying the project out of its container. Make sure "
+        "nothing is writing"
+    )
+    click.echo(
+        "      inside it -- an agent mid-task, a terminal command, a "
+        "running step -- or"
+    )
+    click.echo(
+        "      the copy is refused rather than verified against a "
+        "state that never existed."
+    )
+
+
 def _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName):
-    """Resolve the container-side rerun target and drive the shared lane."""
+    """Resolve the rerun target and drive the shadow-container lane.
+
+    ``filesRepoLive`` is rooted on the researcher's own project repo
+    because that is where the image pin is READ from. Nothing is
+    compared against it: the shadow lane builds the comparison root
+    inside the container it creates.
+    """
     tTarget = _ftResolveRerunTarget(sProjectRepo, sWorkflowName)
     connectionDocker, sContainerName, dictWorkflow, sWorkflowPath = tTarget
-    filesRepo = ContainerRepoFiles(
+    filesRepoLive = ContainerRepoFiles(
         connectionDocker, sContainerName,
         dictWorkflow.get("sProjectRepoPath", ""),
     )
-    dictOutcome = fdictRerunAndVerifyWorkflow(
+    dictOutcome = fdictRerunAndVerifyThroughShadow(
         connectionDocker, sContainerName, dictWorkflow, sWorkflowPath,
-        filesRepo,
+        filesRepoLive,
     )
     _fnReportRerunExecution(dictOutcome)
     return dictOutcome
@@ -531,11 +569,82 @@ def _fnReportRerunExecution(dictOutcome):
         click.echo("... rerun refused before any step executed:")
         for sReason in dictOutcome["listDivergedHashes"]:
             click.echo(f"      {sReason}")
+        click.echo("      no attestation written: nothing was verified")
+        _fnReportShadowTeardown(dictOutcome)
         return
     if S_DIVERGENCE_PIPELINE_FAILED in dictOutcome["listDivergedHashes"]:
         click.echo("... pipeline runner exited non-zero")
+        _fnReportFailingStep(dictOutcome.get("dictRerunFailure"))
+    else:
+        click.echo("... workflow re-ran successfully in a shadow "
+                   "container ✓")
+    _fnReportCarriedPaths(dictOutcome)
+    _fnReportShadowTeardown(dictOutcome)
+
+
+def _fnReportFailingStep(dictFailure):
+    """Name the step that failed and show its last output.
+
+    The shadow container is destroyed as soon as the comparison is
+    made, so this is the only evidence the researcher will ever have.
+    Printing only "exited non-zero" left them with nothing to act on
+    and nowhere to look (reported 2026-09-01).
+    """
+    if not dictFailure:
         return
-    click.echo("... workflow re-ran successfully ✓")
+    if dictFailure.get("sKind") == "preflight":
+        listMissing = dictFailure.get("listCommandsMissingFromImage") or []
+        if listMissing:
+            click.echo(
+                "      MISSING FROM THE PINNED IMAGE: "
+                + ", ".join(listMissing)
+            )
+            click.echo(f"      {dictFailure.get('sImageGapNote') or ''}")
+        click.echo("      the run was stopped before any step started:")
+        for sError in dictFailure.get("listErrors") or []:
+            click.echo(f"      | {sError}")
+        return
+    click.echo(
+        f"      step {dictFailure.get('sStepLabel') or '?'} "
+        f"'{dictFailure.get('sStepName') or ''}' stopped with error "
+        f"code {dictFailure.get('iExitCode')}"
+    )
+    for sLine in dictFailure.get("listOutputTail") or []:
+        click.echo(f"      | {sLine}")
+
+
+def _fnReportCarriedPaths(dictOutcome):
+    """Name the files the rerun did not re-derive.
+
+    The matched/total counts printed after this cover only what
+    execution produced. Silence here would let that ratio read as a
+    claim about the whole manifest, when a step a human runs
+    contributed files the rerun carried in unchanged.
+    """
+    listCarried = dictOutcome.get("listCarriedPaths") or []
+    if not listCarried:
+        return
+    click.echo("... not re-derived (produced by a step a human runs, "
+               "carried in unchanged):")
+    for sPath in listCarried:
+        click.echo(f"      {sPath}")
+
+
+def _fnReportShadowTeardown(dictOutcome):
+    """Say so when the shadow container could not be proven destroyed.
+
+    Silence here would report a clean run over a container still on the
+    researcher's daemon. The verdict is never softened: a quarantined
+    shadow is named with the daemon's own reason so the researcher can
+    remove it.
+    """
+    sTeardown = dictOutcome.get("sShadowTeardown", "")
+    if not sTeardown or sTeardown == "destroyed":
+        return
+    click.echo(
+        f"      shadow container NOT proven destroyed ({sTeardown}): "
+        + dictOutcome.get("sShadowTeardownReason", "")
+    )
 
 
 def _ftResolveRerunTarget(sProjectRepo, sWorkflowName):
@@ -714,6 +823,12 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
     against — the container's, which need not be byte-identical to the
     host clone ``--repo`` names. Falling back to the host digest is for
     the tiers-only path, where no container comparison happened.
+
+    ``sImageDigest`` follows the same rule for the same reason: the
+    outcome carries the pin the shadow was BUILT from, read from the
+    container repo's ``environment.json``. The host clone's recorded
+    digest is a different file and can lag it, so recording the host's
+    over the outcome's names an image the rerun never executed under.
     """
     return fdictBuildAttestation(
         sStatus=(
@@ -723,11 +838,16 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
             dictOutcome.get("sManifestDigest")
             or fsCurrentManifestDigest(sProjectRepo)
         ),
-        sImageDigest=_fsRecordedImageDigest(sProjectRepo),
+        sImageDigest=(
+            dictOutcome.get("sImageDigest")
+            or _fsRecordedImageDigest(sProjectRepo)
+        ),
         fDurationSeconds=fDuration,
         iOutputHashesMatched=dictOutcome["iOutputHashesMatched"],
         iOutputHashesTotal=dictOutcome["iOutputHashesTotal"],
         listDivergedHashes=dictOutcome["listDivergedHashes"],
+        listCarriedPaths=list(dictOutcome.get("listCarriedPaths") or []),
+        dictRerunFailure=dict(dictOutcome.get("dictRerunFailure") or {}),
         sRunLogPath="",
         dictAiProvenance=_fdictBuildCliProvenanceStamp(sProjectRepo),
     )
@@ -755,9 +875,20 @@ def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
 
     Called only when ``--rerun`` ran end-to-end so the attestation
     records an actual rebuild attempt (not just envelope coherence).
-    Failures are recorded with the same schema as passes so the
-    history table can show "last rebuild failed".
+    A DIVERGED rerun is recorded with the same schema as a pass, so the
+    history table can show "last rebuild failed" -- that is a verdict.
+
+    A rerun that reached NO verdict is not, and writes nothing. It was
+    refused before any step executed, so it established nothing about
+    whether this workflow reproduces; recording it as ``failed`` would
+    put that claim on disk anyway, and would destroy an earlier passing
+    attestation the unchanged manifest still entitles the project to.
+    The dashboard lane makes the same distinction in
+    ``reproducibilityRoutes._fnRecordOutcome``; the two must agree,
+    because they write the same file.
     """
+    if not dictOutcome.get("bRerunAttempted", True):
+        return False
     dictAttestation = _fdictBuildRerunAttestation(
         sProjectRepo, dictOutcome, fDuration,
     )

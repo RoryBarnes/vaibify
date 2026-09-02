@@ -43,6 +43,9 @@ S_ENVELOPE = "reproduce.sh"
 S_MARKER = ".vaibify/test_markers/project/MakeData.json"
 
 
+S_VERIFIED_SHA = "cafe" * 16
+
+
 class _FakeRepoFiles:
     """A repo whose files are whatever the test says exist."""
 
@@ -53,6 +56,16 @@ class _FakeRepoFiles:
 
     def fbIsFile(self, sRelPath):
         return sRelPath in self._setPresent
+
+    def fdictHashFiles(self, listRelPaths):
+        # Every present file hashes to the shared verify-time value,
+        # so the envelope gate's changed-since-verify check passes
+        # unless a test drifts one side on purpose.
+        return {
+            sRelPath: {"sSha256": S_VERIFIED_SHA}
+            for sRelPath in listRelPaths
+            if sRelPath in self._setPresent
+        }
 
     def flistListJsonFilenames(self, sRelDir):
         if sRelDir == publicationScope.S_PROJECTS_DIRECTORY:
@@ -95,6 +108,10 @@ def _fdictStatus(listCompared, listDivergedPaths=(),
             {"sPath": s, "sExpected": "aaa", "sActual": "bbb"}
             for s in listDivergedPaths
         ],
+        # The local hash each path was compared AS, matching the fake
+        # repo's live answer — what a real verify writes since the
+        # staleness fix (2026-09-01).
+        "dictComparedHashes": {s: S_VERIFIED_SHA for s in listCompared},
     }
     if bScopeCurrent:
         dictStatus["iScopeVersion"] = (
@@ -308,13 +325,22 @@ def test_an_envelope_never_compared_does_not_pass(monkeypatch):
     by asking whether every envelope file ON DISK appears in the
     compared set.
 
+    The fixture records the envelope's hash in dictComparedHashes
+    even though nothing compared it, deliberately: without that
+    entry the changed-since-verify check downstream refuses the same
+    fixture and the subset guard's mutation is unobservable — the
+    survivor CI reported on 2026-09-02. No real writer produces this
+    record, which is exactly why it isolates the guard.
+
     Kills: drop the `set(listOnDisk).issubset(setCompared)` check in
     fbEnvelopeMatchesGithubMirror, which then reports a match over an
     envelope no verify ever looked at.
     """
+    dictStatus = _fdictStatus([S_DATA, S_SCRIPT])
+    dictStatus["dictComparedHashes"][S_ENVELOPE] = S_VERIFIED_SHA
     assert _fbEnvelopeMatches(
         monkeypatch,
-        _fdictStatus([S_DATA, S_SCRIPT]),
+        dictStatus,
         {S_ENVELOPE},
     ) is False
 

@@ -61,7 +61,7 @@ def test_refresh_envelope_no_op_when_below_l1():
         ],
     }
     with patch(
-        "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
     assert not mockGenerate.called
@@ -71,7 +71,7 @@ def test_refresh_envelope_calls_archiver_when_at_l1():
     """An L1-ready workflow triggers a single archiver call with the repo path."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     with patch(
-        "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
     assert mockGenerate.called
@@ -84,7 +84,7 @@ def test_refresh_envelope_swallows_archiver_exception(caplog):
     """Lines 1334-1335: an exception from the archiver is logged and swallowed."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     with patch(
-        "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
         side_effect=RuntimeError("boom"),
     ):
         # Must not raise.
@@ -96,7 +96,7 @@ def test_refresh_envelope_passes_host_binaries():
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["saHostBinaries"] = ["/usr/bin/gcc"]
     with patch(
-        "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
     assert mockGenerate.called
@@ -135,7 +135,7 @@ def test_auto_archive_promoted_runs_envelope_refresh():
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = False
     with patch(
-        "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 0, 0,

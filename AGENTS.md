@@ -298,6 +298,114 @@ ugly, show it. This applies to `fileStatusManager.py`,
 `pipelineRoutes.py`, `pipelineState.py`, and every frontend render
 path.
 
+**Determinism is THREE questions, and answering is the criterion.**
+The L3 determinism gate was an OR until 2026-08-30 — any one of a BLAS
+waiver, a pinned thread count or an MKL mode satisfied it — so a
+project could attest at Level 3 having answered a third of the
+question. The researcher's ruling made them three requirements with
+three markers. A DECLINING answer passes ("I do not accept last-digit
+differences", "the thread count is not fixed", "this project does not
+use Intel MKL"); only silence fails, exactly as for Personal AI
+Configuration. Two things not to undo: answers live in their own keys
+because a VALUE cannot express consideration (`bAcceptBlasVariance:
+false` is what the old form wrote when nothing was ticked, so it means
+"unanswered" and "declined" at once), and an answer naming a pinned
+value must carry it. The schema-v13 migration promotes only
+unambiguous legacy values — never the `false` waiver — and spells the
+key names as literals because this module may import only leaf
+modules, so `testTheMigrationSpellsTheSameKeysTheGateReads` pins them
+to the gate's constants. Researcher-facing wording lives in
+`LIST_DETERMINISM_QUESTIONS` beside the gate and must never carry a
+schema key.
+
+**A requirement row renders the gate's VERDICT, never re-derives it.**
+The Reproducibility-rules row computed "declared" in JavaScript as
+"the `dictDeterminism` block is non-empty", while
+`fbWorkflowDeclaresDeterminism` required a `true` waiver or a pinned
+thread count. The declare form writes `{bAcceptBlasVariance: false}`
+when submitted with nothing ticked — non-empty, and a declaration of
+nothing — so the row went green, the L3 verify refused, and every
+component was internally consistent while the screen contradicted the
+machinery (researcher-reported, 2026-08-30). The poll now ships
+`bDeterminismDeclared` and `listDeterminismIssues`; the row renders
+them. **A mirrored predicate in JS is a second authority on a question
+that has one** — the slug mirror in `scriptUtilities.js` is tolerated
+only because it is display-only with the backend enforcing. Two
+corollaries, both from the same report: a reason must distinguish the
+shapes it describes ("no block" and "a block that pins nothing" read
+identically, and one was false), and a refusal names its cause rather
+than pointing at a tab. Guarded by
+`tests/testDeterminismRowMatchesItsGate.py` and
+`tests/browser/testDeterminismRowFollowsTheGate.py`.
+
+**A level CELL and the rows beneath it must fail on the same set.**
+The Project header's L2 cell counts criteria from a fixed tuple
+(`_T_WORKFLOW_LEVEL2_BASE_CRITERIA`) and INTERSECTS the live blocker
+list against it — so a criterion the gates emit but the tuple omits is
+silently dropped and the cell over-reports. That shipped: the tuple
+listed only `*-verify-stale` and not `not-in-*`, so a fresh verify that
+proved published files DIFFERED painted a check above two orange
+Published-copies rows (researcher-reported, 2026-08-30). The scalar
+gate `_fbComputeLevel2` was correct throughout, which is what makes
+this class nasty — the display disagreed with itself and only the
+display was wrong. **When you add or rename an L2/L3 blocker criterion,
+check whether the workflow-scope tuple should carry it**; a criterion
+absent from the tuple is invisible to the header, not merely
+uncounted. `tests/testProjectHeaderNeverOutranksItsRows.py` is the
+kill-confirmed guard, and it also pins the opposite error: the two
+halves of one remote's check are mutually exclusive by construction, so
+neither may charge a service twice.
+
+**A batched container probe must be split to fit ONE exec argument.**
+Both badge probes render their whole path list into a single argument —
+one embeds it in the typed-read program, one appends it as a
+here-string, and a here-string is part of the command string too.
+Linux caps a single argument at 128 KB, so unbatched they stopped
+working: `flistContainerPathsExist` RAISED at ~1,845 paths (inside a
+carrier worker, which poisons the journal record and **quarantines the
+container**), and `fdictComputeBlobShasInContainer` answered `{}`
+SILENTLY at ~2,562, so every badge was computed from an empty hash map
+and shown as fact. Both measured against a real daemon, 2026-08-30.
+`vaibify/docker/execArgumentBudget.py` owns the split; never re-derive a budget
+beside it. Two things not to "simplify": the split preserves ORDER
+(the existence probe zips answers back onto paths), and a failed batch
+collapses the whole blob-sha answer rather than returning the batches
+that worked (a partial map reads as a claim about the files it omits).
+Any NEW batched probe must go through the same splitter —
+`tests/testExecArgumentBudget.py` is the kill-confirmed guard.
+
+**A remote badge pulses while vaibify is asking, and a failed ask is
+never red.** Opening a project re-checks every CONFIGURED remote
+(`POST /api/workflow/{id}/remotes/refresh`), the poll REPORTS where
+each check has got to (`dictRemoteChecks`), and the badge pulses until
+its own answer arrives. Four things hold that honest, and each is a way
+to turn it back into a lie:
+
+- A check that could not complete settles UNCHECKABLE with a reason.
+  Red means *diverged* — a claim about the remote nobody earned — and
+  the cached record on disk stays untouched
+  (`scheduledReverify.fdictAttemptOneVerify` writes only on success; do
+  not add a write beside it).
+- Which remotes pulse comes from
+  `scheduledReverify.flistSelectConfiguredServices`, the predicate the
+  scheduled loop skips on. A remote absent from `dictRemoteChecks`
+  renders exactly as it did before any of this existed.
+- A check in flight moves no colour. It has compared nothing.
+- The CHECKING timeout is evaluated when the state is READ, never on a
+  timer: the failure it covers is a worker that never returns, and such
+  a worker cannot clear its own flag.
+
+The refresh cannot move into the poll —
+`_fdictBuildWorkflowEnvelopeDetail` is built with no extra container
+execs and no network I/O. `docs/architecture.md` carries the model and
+the one accepted residual (a Run Step in the first seconds after open
+is refused by name while the checks hold the drain).
+`tests/testRemoteBadgeRefresh.py` and
+`tests/browser/testARunningRemoteCheckPulsesTheBadge.py` are the
+kill-confirmed guards; the browser one reads `animationName` off a live
+element, because asserting the CSS class alone passes against a
+stylesheet with no rule in it.
+
 **Container paths are `posixpath`, host paths are `os.path`.**
 `workflowManager.py` handles container paths, which are POSIX on every
 host operating system. Any module handling host paths must use
@@ -451,6 +559,253 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testWebSocketGatesUseSharedAuthorizationGuard`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
+
+## A human step's outputs are GIVEN, not reproduced
+
+**The rerun carries an interactive step's outputs instead of refusing
+the workflow (2026-08-31 ruling).** Before this, any interactive step
+refused the whole tier-5 rerun. That made Level 3 **unreachable for
+every project vaibify builds**: vaibify creates an interactive AI
+Declaration step, Level 2 blocks on `missing-ai-declaration-step`, so
+reaching L2 the product's own way guaranteed L3 could never pass. The
+researcher found it by clicking Verify; no test combined the two,
+because the refusal tests used generic interactive steps.
+
+The model is that a human step's outputs are **input** to the rerun,
+like the repository's source files — data a person produced, which the
+steps below consume. Nothing new carries them: the shadow's coherent
+export already copies everything git can enumerate, so they arrive
+verbatim and the executable steps run against the bytes the original
+run used.
+
+**The carve-out is exclusion, and both directions of it are load-bearing.**
+`flistCarriedOutputRepoPaths` drops those paths from the comparison,
+`fdictBuildAttestation` records them in `listCarriedPaths`, and both
+lanes report them. Three ways to break it, each already pinned by a
+kill-confirmed test:
+
+- **An exclusion set that matches nothing.** It must resolve paths
+  through the SAME `fdictWorkflowTemplateValues` +
+  `flistStepOutputRepoPaths` helpers the manifest writer uses. Resolved
+  any other way the paths simply fail to match, nothing is excluded,
+  nothing says so, and every given file is graded as reproduced.
+- **An exclusion that leaves nothing.** A workflow whose every pinned
+  entry is human-made has nothing for a rerun to reproduce, so it fails
+  closed on `S_DIVERGENCE_EVERY_ENTRY_GIVEN` rather than passing 0 of 0.
+- **A silent count.** `iOutputHashesTotal` now covers only what
+  executed. Displaying that ratio without `listCarriedPaths` beside it
+  turns a narrow true statement into a broad false one — the same shape
+  as the "Outputs match the GitHub mirror" projection bug.
+
+**DISABLED steps still refuse, and the asymmetry is deliberate.** Being
+interactive is a declared property of the workflow; being disabled is a
+switch. Carrying a disabled step's outputs would let anyone silence a
+step and still attest around it. The AI Declaration needs no case of
+its own — it is an interactive step, and the general rule covers it.
+
+**A rerun that reached no verdict is NEVER written as an attestation.**
+It used to be: a refusal became `sStatus: "failed"` plus a history
+entry, i.e. a scientific claim keyed to a manifest digest saying the
+project does not reproduce, on the strength of a precondition the run
+could not meet. It also destroyed any earlier passing attestation the
+unchanged manifest still entitled the project to. Both lanes now branch
+on `bRerunAttempted` — `reproducibilityRoutes._fnRecordOutcome` and
+`commandReproduce._fbWriteAttestationFromRun` — and they **must agree,
+because they write the same file**. The hub remembers the reason
+in-process (`_DICT_LAST_NO_VERDICT`) and the PROOF tab renders it; that
+lifetime is the honest one, since nothing was established.
+
+**A verification reports progress, or it reads as a hang.** The tab
+polls only while the server says a verification is live, and disarms
+when it settles. Until this existed the "started" toast was the last
+thing a researcher saw — a 2.5 second refusal and a two-hour rerun were
+indistinguishable from the chair. Do not make this a standing cadence,
+and do not let the card pulse over a finished run.
+
+**The shadow is destroyed, so the FAILURE RECORD is the only evidence.**
+The rerun's status callback used to be `_fnDiscardStatusEvent`: every
+step result and every line of output went to the floor, so a failed
+rerun produced one sentence — "pipeline rerun exited non-zero" — about
+a container that no longer existed. The researcher could not re-run the
+shadow, could not read its logs, and could not tell a missing
+dependency from a real divergence (researcher-reported, 2026-09-01).
+`rerunDiagnostics.ftBuildRerunDiagnosticsCollector` keeps the first
+failing step's label, name, exit code and a bounded output tail, and
+both lanes persist it as `dictRerunFailure`. Three properties are
+load-bearing: the FIRST failure (later steps fail because the first
+did), a BOUNDED tail (this record is committed and published to Zenodo
+— an unbounded log would put a researcher's whole console into a public
+artefact), and unconditional FORWARDING (the CLI prints the same
+stream; an observer that swallowed events would break the caller it was
+added beside).
+
+**Three states, not a boolean — twice over.** The row said "No current
+rebuild attestation. Run this once every other check passes" over a
+rerun that HAD run and reported a failing step, because the poll shipped
+only `bRebuildAttestationCurrent`. "Never run", "ran and failed" and
+"passed but stale" are different things and a researcher acts on them
+differently; the poll now ships `dictRebuildAttestation` so the row can
+tell them apart. Likewise `null` and `{}` in `dictRerunFailure` are
+"this record predates capture" and "no step reported a failure" — the
+migrators write `None` for exactly that reason.
+
+**A shared summarizer does not know your new state.**
+`fsSummarizeLevelStates` is shared with the Steps banner, so it counted
+a `running` row as *nothing assessed* and painted a pulsing `?` over a
+rerun plainly under way. `_fdictGroupStateByLevel` maps `running` to
+`partial` before summarizing. When adding a level-cell state, check
+every aggregation it flows into — the row and its banner are computed
+by different code.
+
+## The L3 rerun happens in a shadow container, not the researcher's
+
+**Tier 5 no longer re-runs the workflow in the live project
+container.** `shadowRerun.fdictRerunAndVerifyThroughShadow` is the one
+entry point both attestation lanes use — the dashboard's
+`/level3/verify` route and `vaibify reproduce --rerun`. It creates a
+fresh container from the image digest the envelope's environment
+snapshot pins,
+copies the repository in, drives the shared `rerunVerification`
+comparison against **the shadow's** filesystem, and destroys the shadow
+with proof.
+
+Two reasons, and the second is the one worth remembering. The rerun
+used to overwrite the researcher's real outputs. And it exercised
+whatever the project container had *become* — packages from a debugging
+session, files from an interactive step — rather than the image
+`reproduce.sh` would pull, so it could pass where a stranger's
+reproduction would fail. `docs/architecture.md` carries the full model.
+
+**`filesRepoLive` is the source of the image PIN, never the comparison
+root.** The parameter is spelled that way on purpose: the older
+function beside it takes a `filesRepo` that must be rooted on the
+filesystem the rerun writes to, and passing the live adapter into the
+comparison is the substitution that makes a verification grade a tree
+the rerun never touched — every entry clean, every attestation passing.
+`testTheComparisonIsRootedOnTheShadowNeverOnTheLiveRepository` drives
+the lane with the two roots made distinct and is kill-confirmed against
+exactly that swap.
+
+**The shadow needs its own mutation admission, and forgetting it breaks
+every rerun.** The rerun drives the ordinary `DockerConnection`, whose
+execs ask the gate about the container id they name. On the dashboard
+lane that runs inside a mode-(c) durable carrier opened for the
+**project** container, so the shadow's execs are refused —
+`MutationNotAdmittedError`, from inside a background task, reported to
+the researcher as an unexplained attestation failure. That is not
+hypothetical: the lane was written without it.
+`commitCarrier.ftOpenDisposableContainerAdmission` is the seam, and it
+is narrow in both directions —
+`tests/testShadowContainerAdmission.py` asserts that the shadow's
+admission reaches nothing but the shadow, and the project's reaches
+nothing of the shadow.
+
+**Do not read a green route-test as evidence this lane works.** The
+route tests patch the shadow entry point out, precisely so they do not
+touch a daemon. What exercises the lane is
+`tests/testRerunVerifiesWhatItRan.py`, which builds the host clone, the
+live container repo and the shadow copy as three genuinely distinct
+directories and runs real commands against them, and
+`tests/testDisposableContainerLive.py`, which drives a real daemon.
+
+**The archive's parent directories must be stamped, not left to the
+daemon.** A tarball may name `repo/data/file` without naming
+`repo/data`, and both `put_archive` and `tar` then create the gap
+ROOT-owned — so the container user owns its files and cannot create a
+sibling beside them. Verified live: without the synthesized parents the
+first write into the copied repository is refused. `disposableSpecification`
+emits every parent as its own 1000:1000 member, and
+`testFnWriteFileDefaultsToContainerUserOwnership` pins it as the second
+tar-building write path.
+
+**The shadow's execs run as the image's declared `USER`.**
+`DockerConnection` resolves every exec's user from the image's
+`Config.User`, falling back to `researcher`. The create specification
+sets the container user numerically (`1000:1000`), which is always
+valid, but the per-exec override is by NAME — so a shadow built from an
+image that declares no `USER` and has no `researcher` account is refused
+by the daemon with "unable to find user", on every step. An L3 envelope
+pins the image vaibify built for the project, which carries the
+directive, so this is a constraint on what a shadow can be built FROM
+rather than a live defect. It was found by pointing the live test at a
+stock base image; do not "fix" it by making the exec numeric without
+working out what that does to the project-container lane, which relies
+on the name.
+
+**`/shadow` is not `/workspace`, and that is deliberate.** The shadow
+carries no volumes at all, so borrowing the workspace name would invite
+a reader to assume a mount that is not there. Ask
+`shadowRerun.ftResolveShadowPaths` rather than composing the path.
+
+**The repository export is coherence-pinned, and BOTH halves of the
+check are load-bearing.** `coherentExport.fbaExportRepositoryCoherently`
+observes every path git can enumerate immediately before and
+immediately after the archive stream, and refuses unless (a) the two
+observations are exactly equal AND (b) every archive member matches the
+before-observation by an identity recomputed host-side over the
+archived bytes. Neither implies the other, which is the thing most
+likely to be "simplified" away:
+
+- a file changed after the walk passed it leaves the archive perfectly
+  consistent with the before-observation — only (a) sees it;
+- a file changed and changed back leaves both observations identical —
+  only (b) sees it.
+
+Two registry entries exist precisely to prove that, one per half:
+delete either check and exactly one of them survives. Do not collapse
+them.
+
+**The exemption is `.git/` only, and its narrowness is a real bug
+class.** Git enumerates the working tree, not its own internals, so
+`.git/` is exempt from the member check. Writing that test as
+`startswith(".git")` instead of `startswith(".git/")` silently exempts
+`.gitignore`, `.gitattributes` and `.gitmodules` — real,
+manifest-relevant files — and
+`testTheGitInternalsExemptionIsNarrow` is the kill-confirmed guard.
+Any OTHER unobserved member is refused, naming a checked-out submodule
+as the likely cause, because a submodule's files are listed by no
+superproject git command.
+
+**A researcher is warned before the copy, and the warning has one
+home.** `VaibifyApp.fnConfirmLevel3Verification` is the single opener;
+both entry points (the Project block's `verify-l3` action and the PROOF
+tab's own Verify button) call it, because a safety warning maintained
+in two places is one that drifts. The CLI prints the equivalent notice
+rather than prompting — a prompt would break every unattended
+`vaibify reproduce --rerun`. Neither is the safety mechanism: the
+export refuses a torn copy either way. They exist so a researcher who
+meets that refusal was already told what causes it, which is the whole
+premise of vaibify — never a baffling debugging session.
+`tests/browser/testVerifyWarnsBeforeCopyingTheProject.py` asserts the
+ORDER (no POST before the confirm), not the wording.
+
+**Two container facts this lane depends on, both found the hard way.**
+`get_archive` cannot read out of a **tmpfs** mount — it answers 404 for
+a directory an exec in the same container lists happily. It reads out
+of a named **volume** fine, which is what real project repos live in
+(verified live). And `DockerConnection` execs `/bin/bash`, so an image
+without bash fails with a non-zero exit and empty stderr, which reads
+like a broken program rather than a missing shell.
+
+**The disposable lifecycle is SHARED with the Agent Council.**
+`vaibify/docker/disposableContainer.py` (the SDK authority),
+`disposableSpecification.py` (the pure half) and `daemonCapacity.py`
+were extracted from the council's gateway so both lanes have one
+container lifecycle. Changes here reach both. The ledger in the gateway
+records reservations and outcomes and NOTHING else — admission quotas,
+per-provider accounting and the idle-watchdog veto belong to whoever is
+spending the resource, and the council wraps this rather than replacing
+it. Do not grow those policies into this module.
+
+**Bound a container from the DAEMON's memory, never the host's.** On
+Linux they agree and the bug is invisible; on macOS the daemon is a VM
+with its own allocation (measured: 16 GB host over an 8.3 GB daemon), so
+a container sized from host RAM is over-provisioned and the kill arrives
+mid-workflow. `daemonCapacity` keeps the two figures apart by name —
+`iHostMemoryBytes` bounds what the hub materialises in its own address
+space, `iDaemonMemoryBytes` bounds the container — and
+`tests/testDaemonCapacity.py` drives them 16x apart so a test cannot
+pass while reading the wrong one.
 
 ## Container mutations go through the commit-guard carrier
 
@@ -1440,6 +1795,24 @@ correct approach.
   computation MEANS, grep for the other consumers of the same cached
   record — a summary, a count, a file list — and check each one
   against the new meaning.
+- **A cached comparison is a claim about verify-TIME bytes, and read
+  time is a different moment.** The envelope gate quoted a Zenodo
+  verify's divergence list after the local `environment.json` had been
+  regenerated — so the per-file badge (live hashes) showed red while
+  the Level 3 cell (this cache) stayed green on the same screen
+  (researcher-reported, 2026-09-01). A cached verdict about a file is
+  only usable while the file still IS the bytes that were graded:
+  record the local hash each path was compared AS
+  (`dictComparedHashes` in `syncStatus.json`) and re-check it at read
+  time, treating a mismatch or a pre-field cache as UNPROVEN.
+  `test_an_envelope_regenerated_after_the_verify_no_longer_passes` is
+  the kill-confirmed guard; `_fsEnvelopeStateFingerprint` keeps the
+  blocker cache from masking the transition. The same session added
+  the twin alert for the other direction of staleness — the envelope
+  pinning an image the container no longer runs
+  (`fdictAssessEnvelopeImageCurrency`, captured once at connect) —
+  because both were found the same way: a rebuild landed, nothing on
+  the screen moved.
 
 ## Pointers
 

@@ -52,6 +52,7 @@ from .manifestWriter import (
     flistParseManifestLines,
 )
 from .repoFiles import ffilesEnsureRepoFiles, fsRepoRootOf
+from .manifestPaths import fdictWorkflowTemplateValues
 from .reproduceScriptGenerator import S_REPRODUCE_SCRIPT_FILENAME
 from .stepPredicates import (
     _T_GREEN_VERIF_VALUES,
@@ -575,7 +576,9 @@ def _fdictUpstreamModifiedBlocker(
     listUpstreamIndices = sorted(_flistOffendingUpstream(
         iStepIndex, dictNewModTimes, dictUpstreamByStep,
     ))
-    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    listOffendingFiles = _flistStepOutputFiles(
+        dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+    )
     dictBlocker = {
         "iLevel": 1,
         "iStepIndex": iStepIndex,
@@ -786,7 +789,9 @@ def _fdictAxisNotGreenBlocker(
         "sScope": "step",
         "sCriterion": "axis-not-green",
         "sSubState": sSubState,
-        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingFiles": _flistStepOutputFiles(
+            dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+        ),
         "listOffendingUpstreamSteps": [],
         "sRemediationHint": _fsAxisNotGreenHint(dictStep),
     }
@@ -849,7 +854,9 @@ def _fdictAttestationStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     *re-verify-or-re-run* remediation; each offending file also
     carries the same fact in ``dictOffendingFileHints``.
     """
-    listOffendingFiles = _flistStepOutputFiles(dictStep)
+    listOffendingFiles = _flistStepOutputFiles(
+        dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+    )
     sFileHint = "This output changed after you verified — re-verify or re-run"
     dictBlocker = {
         "iLevel": 1,
@@ -977,7 +984,9 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
         "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
         "sScope": "step",
         "sCriterion": "script-stale",
-        "listOffendingFiles": _flistStepOutputFiles(dictStep),
+        "listOffendingFiles": _flistStepOutputFiles(
+            dictStep, fdictWorkflowTemplateValues(dictWorkflow),
+        ),
         "listOffendingUpstreamSteps": [],
         "sRemediationHint":
             "Script edited after output — re-run step to clear blocker",
@@ -986,14 +995,36 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     return dictBlocker
 
 
-def _flistStepOutputFiles(dictStep):
-    """Return repo-relative data + plot file paths declared on a step."""
-    listFiles = []
-    for sKey in ("saOutputDataFiles", "saPlotFiles"):
-        for sPath in dictStep.get(sKey, []) or []:
-            if isinstance(sPath, str) and sPath:
-                listFiles.append(sPath)
-    return listFiles
+def _flistStepOutputFiles(dictStep, dictTemplateValues):
+    """Return repo-relative data + plot file paths declared on a step.
+
+    Delegates to the SAME collector the manifest writer uses, because
+    the two must agree about what a step's outputs are called. This
+    used to return the raw declarations, which disagreed twice over:
+    a non-templated file kept no step-directory prefix
+    (``aiPowerFits.json`` vs ``AiPowerOverTime/aiPowerFits.json``) and
+    a templated one kept its literal token
+    (``{sPlotDirectory}/fig.{sFigureType}`` vs ``Plot/fig.png``).
+
+    The L3 manifest check then searched a correctly-written manifest
+    for names it does not contain, so the step reported
+    ``missing-from-manifest`` permanently and told the researcher to
+    refresh the manifest -- which rewrites exactly the resolved paths
+    this function was not asking for. No action could clear it. The
+    same raw list fed the per-step SYNC projection, where the failure
+    is the opposite and worse: paths that cannot intersect the
+    diverged set produce no blocker, i.e. a false pass.
+
+    ``dictTemplateValues`` has NO default on purpose. A default would
+    let a missed call site fall back to the broken behaviour silently;
+    without one, the missed hop is a TypeError.
+    """
+    from .manifestPaths import flistStepOutputRepoPaths
+    # SORTED, because these lists are user-visible (the dashboard marks
+    # each offending file) and delegation would otherwise make the
+    # display order an artefact of TUPLE_OUTPUT_KEYS in another module.
+    # The manifest writer sorts its own final list for the same reason.
+    return sorted(flistStepOutputRepoPaths(dictStep, dictTemplateValues))
 
 
 def _flistOffendingUpstream(
@@ -1318,20 +1349,33 @@ def fbVerifyDockerfilePinned(filesRepo):
 
 
 def fbVerifyReproduceScript(filesRepo, dictWorkflow):
-    """Return True iff ``reproduce.sh`` exists and is in MANIFEST.sha256.
+    """Return True iff ``reproduce.sh`` exists, is manifested, and can run.
 
     Presence-on-disk alone is insufficient: an unhashed copy could
     be tampered with. The script's repo-relative path must appear
     in the parsed manifest entries so a downstream consumer's
     ``sha256sum -c`` would detect drift.
+
+    Nor is presence-plus-manifest sufficient, which is what this gate
+    used to ask. A script whose commands still carry vaibify template
+    tokens is hashed, pinned, and unrunnable -- it creates a literal
+    ``{sPlotDirectory}`` directory and fails on the first cross-step
+    path. Reporting that green sends the researcher into an
+    hours-long rebuild to discover it, so the residue is checked here
+    too. Renderer-side rejection alone would not cover it: scripts
+    emitted before the renderer resolved tokens are already on disk.
     """
+    from vaibify.gui.workflowManager import flistResidualWorkflowTokens
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
         return False
     try:
         listEntries = flistParseManifestLines(filesRepo)
+        sScript = filesRepo.fsReadText(S_REPRODUCE_SCRIPT_FILENAME)
     except (FileNotFoundError, OSError, ValueError) as error:
         fnReRaiseControlPlaneRefusal(error)
+        return False
+    if flistResidualWorkflowTokens(sScript):
         return False
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     return S_REPRODUCE_SCRIPT_FILENAME in setPaths
@@ -1412,6 +1456,12 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bEnvelopeInZenodoArchive"] = (
         fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
     )
+    # The determinism row's own detail. bDeterminismDeclared is a
+    # verdict with no subject: an agent asked "what is wrong with
+    # determinism here" had a false boolean and nothing else, so
+    # audit-determinism could only echo the readiness card. These are
+    # the issues the verdict is computed FROM.
+    dictResult["listDeterminismIssues"] = flistAuditWorkflow(dictWorkflow)
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
         fsCurrentManifestDigest(filesRepo) if bRepo else ""
@@ -2056,23 +2106,88 @@ def _fbSyncCacheStale(dictStatus):
 def _flistPerStepSyncBlockers(
     dictWorkflow, dictStatus, sCriterion, sRemediationHint,
 ):
-    """Project the divergence list onto each step's declared outputs."""
+    """Project the divergence list onto steps, and home what is left over.
+
+    The projection alone under-reports, and it did so silently for as
+    long as every published path belonged to some step. A Level 2 path
+    that no step declares -- ``project.json`` is the standing example,
+    and it JOINED Level 2 scope in 2026-08-27 -- falls out of the
+    intersection and produces no blocker at all, while
+    ``_fbCachedSyncStatusFullMatch`` goes on refusing the level for it.
+    The researcher then clears every blocker the dashboard lists, stays
+    at Level 1, and is given nothing to act on. That was observed on a
+    real project: with the GitHub cache freshly re-verified the blocker
+    list came back EMPTY while the gate still answered Level 1.
+
+    So the projection's leftovers are homed at workflow scope rather
+    than dropped. The rule is a relationship, not a list: whatever the
+    gate can refuse for, the blockers must be able to name.
+    """
     setDiverged = _fsetDivergedPaths(dictStatus)
     if not setDiverged:
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
     listBlockers = []
+    setClaimed = set()
     for iStepIndex, dictStep in enumerate(listSteps):
         if not isinstance(dictStep, dict):
             continue
-        listOffending = _flistStepDivergedFiles(dictStep, setDiverged)
+        listOffending = _flistStepDivergedFiles(
+            dictStep, setDiverged,
+            fdictWorkflowTemplateValues(dictWorkflow),
+        )
         if not listOffending:
             continue
+        setClaimed.update(listOffending)
         listBlockers.append(_fdictBuildSyncStepBlocker(
             dictWorkflow, iStepIndex,
             listOffending, sCriterion, sRemediationHint,
         ))
+    listBlockers.extend(_flistUnclaimedSyncBlockers(
+        dictStatus, setClaimed, sCriterion, sRemediationHint,
+    ))
     return listBlockers
+
+
+def _flistUnclaimedSyncBlockers(
+    dictStatus, setClaimed, sCriterion, sRemediationHint,
+):
+    """Return the workflow-scope blocker for diverged paths no step owns.
+
+    The set is derived the way the GATE derives it -- Level 2 paths of
+    ``listComparedPaths``, intersected with the divergences -- and not
+    from the divergence list alone. That is the difference between
+    naming what the gate refuses for and inventing a second opinion
+    about it, and the second opinion fails in both directions: a path
+    the verify never compared would manufacture a blocker the gate does
+    not hold, while a path outside the Level 2 selection would go
+    unreported. Mirroring ``_fbCachedSyncStatusFullMatch``'s final line
+    is what keeps the two in lockstep.
+
+    Level 2 only, deliberately. An envelope file that diverged is Level
+    3's business and already has its own criterion; emitting it here
+    would re-couple the two rungs through the blocker list after the
+    gates were split apart.
+    """
+    from . import publicationScope
+    setLevel2 = publicationScope.fsetSelectLevel2Paths(
+        (dictStatus or {}).get("listComparedPaths") or [],
+    )
+    listUnclaimed = sorted(
+        (setLevel2 & _fsetDivergedPaths(dictStatus)) - setClaimed
+    )
+    if not listUnclaimed:
+        return []
+    return [{
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listUnclaimed,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sRemediationHint,
+    }]
 
 
 def _fsetDivergedPaths(dictStatus):
@@ -2086,13 +2201,13 @@ def _fsetDivergedPaths(dictStatus):
     return setPaths
 
 
-def _flistStepDivergedFiles(dictStep, setDiverged):
+def _flistStepDivergedFiles(dictStep, setDiverged, dictTemplateValues):
     """Return the step's published files that intersect ``setDiverged``."""
-    listFiles = _flistStepPublishedPaths(dictStep)
+    listFiles = _flistStepPublishedPaths(dictStep, dictTemplateValues)
     return [sPath for sPath in listFiles if sPath in setDiverged]
 
 
-def _flistStepPublishedPaths(dictStep):
+def _flistStepPublishedPaths(dictStep, dictTemplateValues):
     """Return every repo-relative path a step declares, any category.
 
     The set the per-step sync projection intersects with the remote
@@ -2130,7 +2245,7 @@ def _flistStepPublishedPaths(dictStep):
     )
     from .manifestWriter import flistStepTestFileRepoPaths
 
-    listPaths = list(_flistStepOutputFiles(dictStep))
+    listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     for flistCollectCategory in (
         flistStepInputRepoPaths,
         flistStepScriptRepoPaths,
@@ -2397,6 +2512,7 @@ def flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject):
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
         _fsBinaryStateFingerprint(dictWorkflow, filesRepo),
+        _fsEnvelopeStateFingerprint(filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2404,6 +2520,35 @@ def flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject):
     listResult = _flistComputeLevel3Blockers(dictWorkflow, filesRepo)
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
+
+
+def _fsEnvelopeStateFingerprint(filesRepo):
+    """SHA over each envelope file's live content hash.
+
+    The envelope-agreement gate now compares each envelope file's
+    CURRENT hash against the one the last remote verify graded, so its
+    answer changes when an envelope file is regenerated -- an event no
+    other cache-key component sees (the sync cache is untouched, the
+    mtime fingerprint covers step outputs only). Without this
+    component the fixed gate flips and the cached blocker list keeps
+    quoting the old answer, which is the masked-transition class
+    ``_fsBinaryStateFingerprint`` exists for. Reads the snapshot's
+    pre-fetched hashes, so on the poll path it costs no extra exec.
+    """
+    listOnDisk = _flistEnvelopePathsOnDisk(filesRepo)
+    if not listOnDisk:
+        return "none"
+    try:
+        dictLive = filesRepo.fdictHashFiles(listOnDisk)
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        dictLive = {}
+    listEntries = [
+        (sPath, (dictLive.get(sPath) or {}).get("sSha256"))
+        for sPath in listOnDisk
+    ]
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
 def _fsBinaryStateFingerprint(dictWorkflow, filesRepo):
@@ -2550,7 +2695,46 @@ def _fbEnvelopeMatchesRemote(filesRepo, sService):
         return True
     if not set(listOnDisk).issubset(setCompared):
         return False
-    return not (set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))
+    if set(listOnDisk) & _fsetDivergedPathsOf(dictStatus):
+        return False
+    return _fbEnvelopeUnchangedSinceVerify(
+        filesRepo, listOnDisk, dictStatus,
+    )
+
+
+def _fbEnvelopeUnchangedSinceVerify(filesRepo, listOnDisk, dictStatus):
+    """Return True iff each envelope file still IS the bytes verify graded.
+
+    The cache's divergence list answers "did the copies agree at
+    verify time". It says nothing about the file on disk NOW: an
+    envelope file regenerated after the verify left this gate quoting
+    a comparison of bytes that no longer existed -- the per-file
+    Zenodo badge went red (it compares live blob SHAs) while the
+    Level 3 cell stayed green off this cache, and the two truths sat
+    on one screen (researcher-reported, 2026-09-01). Verify time and
+    read time are different moments, and only the recorded local hash
+    connects them.
+
+    A cache without ``dictComparedHashes`` predates the field and
+    proves nothing about the current bytes -- unproven blocks, exactly
+    as an uncompared path does, and the next verify writes the new
+    shape (the ``listComparedPaths`` precedent: honest and
+    self-correcting). A live hash the adapter cannot answer blocks the
+    same way, never guesses.
+    """
+    dictRecorded = dictStatus.get("dictComparedHashes") or {}
+    try:
+        dictLive = filesRepo.fdictHashFiles(listOnDisk)
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return False
+    for sPath in listOnDisk:
+        sLiveSha = (dictLive.get(sPath) or {}).get("sSha256")
+        if not sLiveSha:
+            return False
+        if dictRecorded.get(sPath) != sLiveSha:
+            return False
+    return True
 
 
 def _flistEnvelopePathsOnDisk(filesRepo):
@@ -2599,7 +2783,11 @@ _DICT_L3_REMEDIATION_HINTS = {
         "archive the tarball with the deposit), then re-capture the "
         "environment snapshot.",
     "reproduce-script-missing":
-        "Generate reproduce.sh and pin it in MANIFEST.sha256.",
+        "Generate reproduce.sh and pin it in MANIFEST.sha256. A "
+        "script already present fails this too when its commands "
+        "still carry unresolved {token} references; regenerating it "
+        "resolves them, and resolve-commands reports any that name "
+        "no declared output.",
     "l3-attestation-stale":
         "Re-run the L3 verification to refresh the attestation.",
     "binaries-not-declared-or-waived":
@@ -2672,6 +2860,10 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
     return {
         "dictManifestPathHashes": dictManifestHashes,
         "setManifestPaths": set(dictManifestHashes.keys()),
+        # Carried on the context so the per-step collectors resolve
+        # declared outputs exactly as the manifest writer wrote them.
+        # Computed once per poll rather than per step.
+        "dictTemplateValues": fdictWorkflowTemplateValues(dictWorkflow),
         "setNondeterministicSteps": _fsetNondeterministicSteps(
             dictWorkflow,
         ),
@@ -2890,14 +3082,14 @@ def _fdictBuildL3StepEntry(
     }
 
 
-def _flistStepDeclaredPaths(dictStep):
+def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
     """Return repo-relative outputs + scripts + standards for a step."""
     from .manifestPaths import (
         flistStepDeclarationRepoPaths,
         flistStepScriptRepoPaths,
         flistStepStandardsRepoPaths,
     )
-    listPaths = list(_flistStepOutputFiles(dictStep))
+    listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     listPaths.extend(flistStepScriptRepoPaths(dictStep))
     listPaths.extend(flistStepStandardsRepoPaths(dictStep))
     listPaths.extend(flistStepDeclarationRepoPaths(dictStep))
@@ -2908,7 +3100,9 @@ def _flistStepPathsMissingFromManifest(dictStep, dictContext):
     """Return step-declared paths absent from MANIFEST.sha256."""
     setManifest = dictContext["setManifestPaths"]
     listMissing = []
-    for sPath in _flistStepDeclaredPaths(dictStep):
+    for sPath in _flistStepDeclaredPaths(
+        dictStep, dictContext["dictTemplateValues"],
+    ):
         if sPath not in setManifest:
             listMissing.append(sPath)
     return listMissing
@@ -3141,7 +3335,23 @@ _T_STEP_LEVEL3_CRITERIA = (
 )
 
 _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
+    # Two ways ONE remote's published-copy check fails, and both
+    # belong here (2026-08-30). Staleness was listed from the start;
+    # divergence was not, so a project whose files demonstrably
+    # DIFFERED from GitHub and Zenodo counted 4 of 4 and painted the
+    # Project header cell attained while both Published-copies rows
+    # correctly sat orange beside it. Reported by the researcher, and
+    # the scalar gate (_fbComputeLevel2) was right throughout — only
+    # this projection overstated, which is the more insidious half:
+    # the chip said Level 1 while the row above it showed a check.
+    #
+    # Adding them cannot double-count a service. The builders are
+    # exclusive by construction: _flistGithubLevel2Blockers returns
+    # the STALE blocker and nothing else when the cache is stale, and
+    # the divergence blockers otherwise. So at most one of each pair
+    # can ever fire.
     "github-verify-stale", "zenodo-verify-stale",
+    "not-in-github-mirror", "not-in-zenodo-deposit",
     # The AI-provenance declarations count here (2026-08-27 ruling):
     # they are independent project-level checks, so a green one earns
     # the header cell partial credit — without them a project whose
@@ -3234,6 +3444,13 @@ def _fdictStepProjectionContext(
     )
     dictContext["listDeclaredBinaries"] = (
         _flistDeclaredBinariesNormalized(dictWorkflow)
+    )
+    # The SECOND context that per-step readers consult (the first is
+    # _fdictL3PerStepContext). Both must carry this, because a step's
+    # declared outputs have to be spelled the way the manifest writer
+    # spelled them no matter which context the reader was handed.
+    dictContext["dictTemplateValues"] = fdictWorkflowTemplateValues(
+        dictWorkflow,
     )
     return dictContext
 
@@ -3587,6 +3804,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
         ]
     setApplicable = _fsetStepApplicableLevel3Criteria(
         dictStep, dictContext["listDeclaredBinaries"],
+        dictContext["dictTemplateValues"],
     )
     setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
     return [
@@ -3607,7 +3825,9 @@ def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
     return (iSatisfied, iTotal)
 
 
-def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
+def _fsetStepApplicableLevel3Criteria(
+    dictStep, listDeclaredBinaries, dictTemplateValues,
+):
     """Return the L3 criteria with a non-empty domain on this step.
 
     A criterion applies only when the step owns something it can fail
@@ -3623,7 +3843,7 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
     if not isinstance(dictStep, dict):
         return set()
     setApplicable = set()
-    if _flistStepDeclaredPaths(dictStep):
+    if _flistStepDeclaredPaths(dictStep, dictTemplateValues):
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")

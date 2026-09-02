@@ -120,17 +120,64 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
         If True, pass --no-cache to docker build.
     """
     sProjectName = config.sProjectName
-    fnBuildBase(config, sDockerDir, bNoCache)
     listOverlays = flistDetermineOverlays(config)
+    sRecipeFingerprint = _fsComputeChainFingerprint(
+        sDockerDir, listOverlays,
+    )
+    fnBuildBase(
+        config, sDockerDir, bNoCache,
+        sRecipeFingerprint=sRecipeFingerprint,
+    )
     sPreviousTag = "base"
     for sOverlayName in listOverlays:
         sNewTag = sOverlayName
         fnApplyOverlay(
             sProjectName, sOverlayName, sDockerDir,
-            sPreviousTag, bNoCache)
+            sPreviousTag, bNoCache,
+            sRecipeFingerprint=sRecipeFingerprint,
+        )
         sPreviousTag = sNewTag
     _fnTagFinalImage(sProjectName, sPreviousTag)
     _fnPruneDanglingImages()
+
+
+def _fsComputeChainFingerprint(sDockerDir, listOverlays):
+    """Fingerprint the exact Dockerfile texts this build will use.
+
+    Stamped onto every image in the chain as
+    ``dockerfileComposer.S_RECIPE_IMAGE_LABEL`` so the exported repo
+    Dockerfile — which carries the fingerprint of the texts IT was
+    composed from — can later be proven to describe this image rather
+    than merely resemble one. An unreadable file yields "" and no
+    label: an image with no fingerprint reads as "nothing determined"
+    downstream, never as a match.
+    """
+    from vaibify.reproducibility.dockerfileComposer import (
+        fsComputeRecipeFingerprint,
+    )
+    try:
+        sBaseText = (Path(sDockerDir) / "Dockerfile").read_text()
+        listTOverlays = [
+            (sOverlayName,
+             Path(_fsResolveOverlayDockerfile(
+                 sOverlayName, sDockerDir)).read_text())
+            for sOverlayName in listOverlays
+        ]
+    except OSError:
+        return ""
+    return fsComputeRecipeFingerprint(sBaseText, listTOverlays)
+
+
+def _flistRecipeLabelArguments(sRecipeFingerprint):
+    """Return the ``--label`` argv pair, or nothing for no fingerprint."""
+    if not sRecipeFingerprint:
+        return []
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_RECIPE_IMAGE_LABEL,
+    )
+    return [
+        "--label", f"{S_RECIPE_IMAGE_LABEL}={sRecipeFingerprint}",
+    ]
 
 
 def _fnPruneDanglingImages():
@@ -182,7 +229,7 @@ def _flistSortByCanonicalOrder(listOverlayNames):
     return [s for s in _LIST_OVERLAY_ORDER if s in listOverlayNames]
 
 
-def fnBuildBase(config, sDockerDir, bNoCache):
+def fnBuildBase(config, sDockerDir, bNoCache, sRecipeFingerprint=""):
     """Build the base Dockerfile with build args from config.
 
     Parameters
@@ -193,9 +240,14 @@ def fnBuildBase(config, sDockerDir, bNoCache):
         Path to the directory containing Dockerfiles.
     bNoCache : bool
         If True, pass --no-cache to docker build.
+    sRecipeFingerprint : str
+        Chain fingerprint to stamp as an image label ("" stamps none).
     """
     sBaseImage = _fsResolveBaseImage(config)
     saCommand = _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache)
+    # Spliced BEFORE the trailing context path: docker build takes the
+    # path as its positional argument and it must stay last.
+    saCommand[-1:-1] = _flistRecipeLabelArguments(sRecipeFingerprint)
     _fnRunDockerBuild(saCommand)
 
 
@@ -239,7 +291,7 @@ def _flistBuildArgPairs(config, sBaseImage):
 
 def fnApplyOverlay(
     sProjectName, sOverlayName, sDockerDir, sFromTag,
-    bNoCache=False,
+    bNoCache=False, sRecipeFingerprint="",
 ):
     """Build a single overlay Dockerfile on top of the previous tag.
 
@@ -263,6 +315,7 @@ def fnApplyOverlay(
         sDockerfile, sNewTag, sFromImage, sDockerDir)
     if bNoCache:
         saCommand.append("--no-cache")
+    saCommand += _flistRecipeLabelArguments(sRecipeFingerprint)
     _fnRunDockerBuild(saCommand)
 
 

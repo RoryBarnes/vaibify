@@ -29,6 +29,7 @@ __all__ = [
     "fbStepDirectoryConforms",
     "fsDescribeRemoteDataPathConflict",
     "fsDescribeStepIdConflict",
+    "T_EXECUTED_COMMAND_KEYS",
     "T_RUN_CLEARED_VERIFICATION_FLAGS",
 ]
 
@@ -293,6 +294,24 @@ def fsBuildUniqueTemporaryPath(sTargetPath):
 
 _T_INTERACTIVE_FALSE_TOKENS = (
     "", "false", "0", "no", "off", "none", "null",
+)
+
+
+# The command lists a RUN actually executes, in the order the runner
+# runs them. Named here, in the leaf, because pre-flight validated a
+# different set than the runner executed: it checked
+# ``saTestCommands`` too, so a project whose test tool was absent from
+# the container had every run refused over a command no run path would
+# ever invoke. That blocked a researcher's Level 3 verification for a
+# missing ``pytest`` that ``reproduce.sh`` neither installs into the
+# step environment nor calls (2026-09-01).
+#
+# Tests are a SEPARATE action with its own lane, and validating them
+# here is not "failing early" -- it is refusing one operation because
+# a different operation could not run. Adding a key to this tuple must
+# mean the runner executes it.
+T_EXECUTED_COMMAND_KEYS = (
+    "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",
 )
 
 

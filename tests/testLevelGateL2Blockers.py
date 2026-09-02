@@ -60,11 +60,17 @@ def _fnWriteSyncStatusFile(sProjectRepo, dictPerService):
 
 
 def _fdictGreenStep(sName="A"):
-    """Return a step dict that satisfies every L1 criterion."""
+    """Return a step dict that satisfies every L1 criterion.
+
+    Outputs are declared STEP-relative, which is the production
+    convention: the collectors prefix sDirectory themselves, so
+    declaring "B/data.csv" under sDirectory "B" resolves to
+    "B/B/data.csv" — a path no manifest holds and no verify compares.
+    """
     return {
         "sName": sName, "sDirectory": sName,
-        "saOutputDataFiles": [sName + "/data.csv"],
-        "saPlotFiles": [sName + "/plot.pdf"],
+        "saOutputDataFiles": ["data.csv"],
+        "saPlotFiles": ["plot.pdf"],
         "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",

@@ -28,9 +28,10 @@ migration is needed yet. Two extension points are anticipated:
 * **L5 ("Attested")** will generalize the single-attestor block
   (``sStatus``, ``sAttestedAtUtc``) to ``listAttestations: [
   {sAttestor, sAttestedAtUtc, sStatus}, ...]`` so external auditors
-  can co-sign. An L5 record bumps ``iSchemaVersion`` to 3; the
-  migrator at index 1 wraps the legacy single-attestor fields into
-  the new list shape.
+  can co-sign. An L5 record bumps ``iSchemaVersion`` to 5; the
+  migrator wraps the legacy single-attestor fields into the new list
+  shape. (It read 3 until carrying claimed that number — see the v3
+  migrator below.)
 
 Adding a future migrator is one tuple append: see
 ``_fdictMigrateAttestation`` for the contract.
@@ -59,7 +60,7 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 2
+I_SCHEMA_VERSION = 4
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
@@ -75,12 +76,42 @@ def _fdictMigrateAttestationV1ToV2(dictPayload):
     return dictMigrated
 
 
+def _fdictMigrateAttestationV2ToV3(dictPayload):
+    """Bring a v2 record to v3: carried paths were not distinguished.
+
+    ``None`` rather than ``[]``. An empty list is the positive claim
+    "this rerun carried nothing", which a v2 record cannot support: it
+    was written when a workflow containing a human step was refused
+    outright, so its comparison covered whatever the manifest pinned
+    and nobody asked which entries were given.
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 3
+    dictMigrated["listCarriedPaths"] = None
+    return dictMigrated
+
+
+def _fdictMigrateAttestationV3ToV4(dictPayload):
+    """Bring a v3 record to v4: the failure reason was discarded then.
+
+    ``None`` rather than ``{}``. An empty dict is the positive claim
+    "no step reported a failure", and a v3 record cannot support it:
+    the rerun's status events went to the floor, so nobody looked.
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 4
+    dictMigrated["dictRerunFailure"] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
 # v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L5 work
 # appends one tuple each. See module docstring.
 _LIST_ATTESTATION_MIGRATORS = [
     (1, _fdictMigrateAttestationV1ToV2),
+    (2, _fdictMigrateAttestationV2ToV3),
+    (3, _fdictMigrateAttestationV3ToV4),
 ]
 
 
@@ -171,6 +202,7 @@ def fdictBuildAttestation(
     sStatus, sManifestDigest, sImageDigest,
     fDurationSeconds, iOutputHashesMatched, iOutputHashesTotal,
     listDivergedHashes=None, sRunLogPath="", dictAiProvenance=None,
+    listCarriedPaths=None, dictRerunFailure=None,
 ):
     """Return a fully-populated attestation dict (no file IO).
 
@@ -181,6 +213,23 @@ def fdictBuildAttestation(
     stamp (:mod:`vaibify.reproducibility.aiProvenanceStamp`), rebuilt
     fresh at attestation time; ``None`` records that no capture was
     possible, never that provenance was clean.
+
+    ``listCarriedPaths`` names the manifest entries the rerun did NOT
+    re-derive — outputs of human-driven steps, carried into the shadow
+    verbatim so the steps below them had their real inputs. They are
+    excluded from ``iOutputHashesTotal``, so the counts describe only
+    what execution actually produced, and naming them here is what
+    keeps a passing attestation from reading as a claim about files
+    nobody re-computed. ``None`` means the record predates carrying,
+    which is not the same as carrying nothing.
+
+    ``dictRerunFailure`` names the first step that failed, its exit
+    code, and a bounded tail of its output. The shadow container is
+    destroyed as soon as the comparison is made, so this record is the
+    ONLY surviving evidence of why a rerun failed -- without it the
+    researcher is told "exited non-zero" about a container that no
+    longer exists. It is bounded because this file is committed and
+    published; see :mod:`vaibify.reproducibility.rerunDiagnostics`.
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
@@ -191,6 +240,12 @@ def fdictBuildAttestation(
         "fDurationSeconds": float(fDurationSeconds),
         "iOutputHashesMatched": int(iOutputHashesMatched),
         "iOutputHashesTotal": int(iOutputHashesTotal),
+        "listCarriedPaths": (
+            None if listCarriedPaths is None else list(listCarriedPaths)
+        ),
+        "dictRerunFailure": (
+            None if dictRerunFailure is None else dict(dictRerunFailure)
+        ),
         "listDivergedHashes": list(listDivergedHashes or []),
         "sRunLogPath": sRunLogPath,
         "dictAiProvenance": dictAiProvenance,

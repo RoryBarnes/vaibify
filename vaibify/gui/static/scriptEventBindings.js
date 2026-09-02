@@ -320,6 +320,10 @@ var VaibifyEventBindings = (function () {
         VaibifyApp.fnToggleRequirementRow(elMatch.dataset.req);
     }
 
+    function _fnHandleFileGroupToggle(event, elMatch) {
+        VaibifyApp.fnToggleFileGroup(elMatch.dataset.fileGroup);
+    }
+
     function _fnHandleProjectAction(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -388,6 +392,26 @@ var VaibifyEventBindings = (function () {
         event.stopPropagation();
         VaibifySyncManager.fnVerifyRemoteFromDashboard(
             elMatch.dataset.service || "", elMatch);
+    }
+
+    function _fnHandleViewAttestation(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyApp.fnShowL3AttestationModal();
+    }
+
+    function _fnHandlePushEnvelope(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        var listPaths = [];
+        try {
+            listPaths = JSON.parse(
+                decodeURIComponent(elMatch.dataset.paths || ""));
+        } catch (error) {
+            listPaths = [];
+        }
+        VaibifySyncManager.fnPushEnvelopeFromDashboard(
+            listPaths, elMatch);
     }
 
     function _fnHandleStepLevelInfo(event, elMatch) {
@@ -507,6 +531,8 @@ var VaibifyEventBindings = (function () {
         ".wf-personal-layer-set": _fnHandlePersonalLayerSet,
         ".wf-personal-layer-add": _fnHandlePersonalLayerAdd,
         ".wf-open-prompt-record": _fnHandleOpenPromptRecord,
+        ".wf-push-envelope": _fnHandlePushEnvelope,
+        ".wf-view-attestation": _fnHandleViewAttestation,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
@@ -517,6 +543,12 @@ var VaibifyEventBindings = (function () {
         ".steps-block-header": _fnHandleStepsBlockToggle,
         ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
+        // Order is not load-bearing here, unlike the Align button
+        // above: the dispatcher matches with closest(), which walks
+        // ANCESTORS, and a requirement row's header is a sibling of
+        // the detail a file group lives in rather than its parent. It
+        // sits beside its neighbours for reading, nothing more.
+        ".file-group-header": _fnHandleFileGroupToggle,
         ".requirement-row-header": _fnHandleRequirementRowToggle,
         // The ⓘ link precedes its enclosing section header so the
         // registry's first-match dispatch opens the modal instead of

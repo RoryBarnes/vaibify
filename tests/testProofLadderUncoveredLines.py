@@ -204,7 +204,15 @@ def test_urandom_call_via_non_attribute_name_is_not_clock_match(tmp_path):
 def test_flistAuditWorkflow_skips_corrupt_steps():
     """Line 213: a non-dict entry in listSteps must be skipped, not crashed on."""
     dictWorkflow = {
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "listSteps": [None, "not a dict", {"sName": "S"}],
     }
     listIssues = flistAuditWorkflow(dictWorkflow)

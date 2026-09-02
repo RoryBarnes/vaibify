@@ -98,12 +98,44 @@ var VaibifyWorkflowRequirements = (function () {
         return "red";
     }
 
-    function _fsDeterminismState(dictDeterminism) {
-        if (!dictDeterminism ||
-                Object.keys(dictDeterminism).length === 0) {
-            return "red";
+
+    /* --- Remote check state (poll key dictRemoteChecks) ---
+       The verify of a remote reaches the network, so it cannot run in
+       the poll; the dashboard starts one per configured remote on
+       project open and on reconnect, and the poll reports only where
+       each has got to. A service this hub process never started a
+       check for is ABSENT from the map, which is how an unconfigured
+       remote avoids pulsing for an answer that is not coming. */
+
+    var _S_CHECK_CHECKING = "checking";
+    var _S_CHECK_UNCHECKABLE = "uncheckable";
+
+    function _fdictCheckForService(dictChecks, sService) {
+        return (dictChecks || {})[sService] || null;
+    }
+
+    function _fbCheckIsRunning(dictCheck) {
+        return Boolean(dictCheck) &&
+            dictCheck.sState === _S_CHECK_CHECKING;
+    }
+
+    function _fsDescribeCheck(dictCheck) {
+        /* One line above the cached counts, and only when there is
+           something to say. "Could not check" is deliberately not a
+           divergence claim: nothing was compared, so the cached
+           record stands and the light keeps whatever colour the last
+           real verify earned. */
+        if (!dictCheck) return "";
+        if (dictCheck.sState === _S_CHECK_CHECKING) {
+            return "Checking this remote now\u2026";
         }
-        return "green";
+        if (dictCheck.sState === _S_CHECK_UNCHECKABLE) {
+            return "Could not check \u2014 " +
+                (dictCheck.sReason || "no reason was reported") +
+                ". Nothing below was compared just now; it is the " +
+                "last completed verify.";
+        }
+        return "";
     }
 
     function _fsSyncRowState(dictSync) {
@@ -241,22 +273,7 @@ var VaibifyWorkflowRequirements = (function () {
             "'Capture version + SHA' button below";
     }
 
-    var _DICT_DETERMINISM_LABELS = {
-        bAcceptBlasVariance: "BLAS numeric variance accepted",
-        dOmpNumThreads: "OpenMP threads pinned",
-        sMklCbwr: "Intel MKL reproducibility mode pinned",
-    };
 
-    function _fsSummarizeDeterminism(dictDeterminism) {
-        return Object.keys(dictDeterminism).map(function (sKey) {
-            var sLabel = _DICT_DETERMINISM_LABELS[sKey] || sKey;
-            if (dictDeterminism[sKey] !== true) {
-                sLabel += " = " + _fsStringifyEnvelopeValue(
-                    dictDeterminism[sKey]);
-            }
-            return sLabel;
-        }).join("; ");
-    }
 
     function _fsStringifyEnvelopeValue(jsonValue) {
         if (jsonValue === null || jsonValue === undefined) return "—";
@@ -289,10 +306,46 @@ var VaibifyWorkflowRequirements = (function () {
         return false;
     }
 
-    function _fsRenderRemoteFileRows(sBadgeKey, listExcludePaths) {
-        // Files this remote knows about, each with just this remote's
-        // badge. Manuscript remotes (Overleaf, arXiv) list only
-        // figure files. Empty when nothing is tracked yet.
+    /* --- Files grouped by disposition, within one remote ---
+       The remote stays the OUTER grouping: the question a researcher
+       brings to this block is "is my data published to Zenodo", so
+       splitting one remote's answer across three disposition blocks
+       would fragment it the way the L2/L3 scope split deliberately
+       un-fragmented it. A file's disposition is also per-remote — the
+       same file can be synced to GitHub and unknown to Zenodo — so
+       there is no global bucket to sort into anyway.
+
+       Order is by what the researcher must DO. The two groups nobody
+       acts on come last and start closed, because they are the ones
+       that grow: on a real project most files match, and a flat list
+       made the researcher scroll past every one of them to find the
+       four that did not. */
+
+    var _LIST_FILE_DISPOSITIONS = [
+        {sState: "drifted", sLabel: "Differs from the published copy",
+         bOpenByDefault: true},
+        {sState: "none", sLabel: "Not on the remote",
+         bOpenByDefault: true},
+        {sState: "unknown", sLabel: "Not checked yet",
+         bOpenByDefault: true},
+        {sState: "synced", sLabel: "Matching",
+         bOpenByDefault: false},
+        // Never a to-do: no verify compares these, so the researcher
+        // has nothing to run. Closed, and labelled so the count is not
+        // read as work.
+        {sState: "not-compared", sLabel: "Not compared by vaibify",
+         bOpenByDefault: false},
+    ];
+
+    // A cap, so one bad day cannot render ten thousand rows into a
+    // string the block rebuilds on every change. The footer SAYS what
+    // it is not showing -- a silent truncation reads as a complete
+    // list, which is the same lie as a missing file.
+    var _I_MAX_ROWS_PER_GROUP = 50;
+
+    function _flistSelectRemoteFiles(sBadgeKey, listExcludePaths) {
+        // Files this remote knows about. Manuscript remotes (Overleaf,
+        // arXiv) list only figure files.
         var listFiles = VaibifyGitBadges.flistFilesForRemote(sBadgeKey);
         if (sBadgeKey === "sOverleaf" || sBadgeKey === "sArxiv") {
             listFiles = listFiles.filter(_fbIsFigureFile);
@@ -307,25 +360,117 @@ var VaibifyWorkflowRequirements = (function () {
                 return listExcludePaths.indexOf(sPath) === -1;
             });
         }
+        return listFiles;
+    }
+
+    function _fdictGroupFilesByDisposition(listFiles, sBadgeKey) {
+        // Keyed by the badge vocabulary itself, so a state the badge
+        // renderer knows and this list does not cannot vanish: an
+        // unrecognized state lands in its own key and is reported by
+        // the leftovers group rather than silently dropped.
+        var dictGroups = {};
+        listFiles.forEach(function (sPath) {
+            var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+                sPath, "") || {};
+            var sState = dictBadges[sBadgeKey] || "unknown";
+            (dictGroups[sState] = dictGroups[sState] || []).push(sPath);
+        });
+        return dictGroups;
+    }
+
+    function _fbFileGroupIsOpen(dictDisposition, sGroupKey, setToggled) {
+        // The Set records a flip AWAY from the default, not the open
+        // state itself: that way the defaults keep applying to groups
+        // the researcher has never touched, including ones that did
+        // not exist when they last looked.
+        var bToggled = Boolean(setToggled) && setToggled.has(sGroupKey);
+        return dictDisposition.bOpenByDefault !== bToggled;
+    }
+
+    function _fsRenderOneFileGroup(
+        sBadgeKey, dictDisposition, listFiles, setToggled,
+    ) {
+        var sGroupKey = sBadgeKey + ":" + dictDisposition.sState;
+        var bOpen = _fbFileGroupIsOpen(
+            dictDisposition, sGroupKey, setToggled);
+        var sHtml = '<div class="file-group">' +
+            '<div class="file-group-header" data-file-group="' +
+            fnEscapeHtml(sGroupKey) + '">' +
+            _fsExpandTriangle(bOpen) +
+            fnEscapeHtml(dictDisposition.sLabel) +
+            ' <span class="file-group-count">' +
+            listFiles.length + '</span></div>';
+        if (!bOpen) return sHtml + '</div>';
+        var listShown = listFiles.slice(0, _I_MAX_ROWS_PER_GROUP);
+        for (var i = 0; i < listShown.length; i++) {
+            sHtml += _fsRenderFileRowWithBadges(
+                listShown[i], [sBadgeKey]);
+        }
+        if (listFiles.length > listShown.length) {
+            sHtml += '<div class="file-group-truncated">Showing ' +
+                listShown.length + ' of ' + listFiles.length +
+                ' — open the Repos panel to see them all.</div>';
+        }
+        return sHtml + '</div>';
+    }
+
+    function _fsRenderRemoteFileRows(
+        sBadgeKey, listExcludePaths, setToggled,
+    ) {
+        var listFiles = _flistSelectRemoteFiles(
+            sBadgeKey, listExcludePaths);
         if (listFiles.length === 0) {
             return '<div class="envelope-empty-note">' +
                 'No files tracked for this remote yet.</div>';
         }
+        var dictGroups = _fdictGroupFilesByDisposition(
+            listFiles, sBadgeKey);
         var sHtml = "";
-        for (var i = 0; i < listFiles.length; i++) {
-            sHtml += _fsRenderFileRowWithBadges(
-                listFiles[i], [sBadgeKey]);
-        }
+        var setRendered = {};
+        _LIST_FILE_DISPOSITIONS.forEach(function (dictDisposition) {
+            setRendered[dictDisposition.sState] = true;
+            var listGroup = dictGroups[dictDisposition.sState];
+            if (!listGroup || listGroup.length === 0) return;
+            sHtml += _fsRenderOneFileGroup(
+                sBadgeKey, dictDisposition, listGroup, setToggled);
+        });
+        return sHtml + _fsRenderUnknownDispositions(
+            dictGroups, setRendered, sBadgeKey, setToggled);
+    }
+
+    function _fsRenderUnknownDispositions(
+        dictGroups, setRendered, sBadgeKey, setToggled,
+    ) {
+        // A badge state this list does not know about still has files
+        // behind it. Rendering them under their own raw state name is
+        // ugly and correct; dropping them would make the group counts
+        // disagree with the row's own total, which is the shape that
+        // reads as a bug in vaibify rather than a gap in this list.
+        var sHtml = "";
+        Object.keys(dictGroups).sort().forEach(function (sState) {
+            if (setRendered[sState]) return;
+            sHtml += _fsRenderOneFileGroup(
+                sBadgeKey,
+                {sState: sState, sLabel: sState, bOpenByDefault: true},
+                dictGroups[sState], setToggled);
+        });
         return sHtml;
     }
 
     function _fsRenderSyncRequirementDetail(dictSync, sBadgeKey,
                                             sHowto, sExtraHtml,
-                                            listExcludePaths) {
+                                            listExcludePaths,
+                                            dictCheck, setToggled) {
+        var sCheck = _fsDescribeCheck(dictCheck);
         return '<div class="requirement-row-detail">' +
+            (sCheck
+                ? '<div class="requirement-row-check">' +
+                  fnEscapeHtml(sCheck) + '</div>'
+                : '') +
             '<div class="requirement-row-status">' +
             fnEscapeHtml(_fsDescribeSyncState(dictSync)) + '</div>' +
-            _fsRenderRemoteFileRows(sBadgeKey, listExcludePaths) +
+            _fsRenderRemoteFileRows(
+                sBadgeKey, listExcludePaths, setToggled) +
             '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + ' ' +
             '<a href="#" class="envelope-open-repos">' +
@@ -333,14 +478,17 @@ var VaibifyWorkflowRequirements = (function () {
             (sExtraHtml || '') + '</div>';
     }
 
-    function _fsRenderArtifactDetail(sKey, dictArtifact, sHowto) {
+    function _fsRenderArtifactDetail(sKey, dictArtifact, sHowto,
+                                     dictImageCurrency) {
         // Every artifact shows its repo location (with git/Zenodo
         // badges — these files are canonical), plain-English guidance,
         // and a direct action where one exists: envelope artifacts
         // regenerate on demand, reproduce.sh has its generator, the
         // manifest additionally offers a hash check, and the
-        // Dockerfile is user-authored (guidance only).
-        var sActions = '<div class="requirement-row-howto">' +
+        // Dockerfile can be composed from the image's own build chain.
+        var sActions = _fsRenderImageCurrencyWarning(
+            sKey, dictImageCurrency || {}) +
+            '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + '</div>';
         if (_SET_REGENERABLE_ARTIFACTS[sKey] === true) {
             sActions += _fsRenderActionButton(
@@ -361,8 +509,22 @@ var VaibifyWorkflowRequirements = (function () {
                 "generate-reproduce-script", "",
                 "Generate reproduce.sh");
         }
+        if (sKey === "dockerfile") {
+            // The image is built from vaibify's own packaged
+            // Dockerfiles, which are not in the researcher's repo, so
+            // this row used to be red with nothing to click. The
+            // action composes the real chain (base + enabled overlays,
+            // in order) into one multi-stage file. It refuses to
+            // overwrite a Dockerfile vaibify did not generate, so it
+            // is safe to offer unconditionally.
+            sActions += _fsRenderActionButton(
+                "copy-image-dockerfile", "",
+                "Copy image Dockerfile into repo");
+        }
         return '<div class="requirement-row-detail">' +
             _fsRenderArtifactFileRow(sKey) +
+            '<div class="requirement-row-howto detail-badge-scope">' +
+            fnEscapeHtml(_S_BADGE_SCOPE_NOTE) + '</div>' +
             _fsRenderEnvelopeMarkHeader([
                 ["F", "File — does this artifact exist in the " +
                     "project repository?"],
@@ -389,75 +551,132 @@ var VaibifyWorkflowRequirements = (function () {
             '</span></div>' + sActions + '</div>';
     }
 
-    function _fsRenderDeterminismDetail(dictDeterminism) {
-        // Declared: show the rules with edit + delete. Undeclared: the
-        // inline declare form. The declaration is the researcher's
-        // statement of how exactly a rerun must match their results;
-        // it is stored in project.json (there is no separate file).
-        var bDeclared = Boolean(dictDeterminism &&
-            Object.keys(dictDeterminism).length > 0);
-        if (bDeclared) {
-            return '<div class="requirement-row-detail">' +
-                '<div class="requirement-row-status">Declared: ' +
-                fnEscapeHtml(
-                    _fsSummarizeDeterminism(dictDeterminism)) +
-                '</div>' +
-                '<div class="requirement-row-howto">These rules tell ' +
-                'a verifier how exactly a rerun must match your ' +
-                'results. There is no separate rules file — this is ' +
-                'the exact entry stored in project.json:</div>' +
-                '<pre class="determinism-raw">"dictDeterminism": ' +
-                fnEscapeHtml(JSON.stringify(dictDeterminism, null, 2)) +
-                '</pre>' +
-                '<div class="requirement-row-howto">Change them by ' +
-                'declaring again, or delete them to start over.' +
-                '</div>' +
-                _fsRenderDeterminismForm(dictDeterminism) +
-                _fsRenderActionButton("delete-determinism", "",
-                    "Delete rules…") + '</div>';
-        }
-        return '<div class="requirement-row-detail">' +
-            '<div class="requirement-row-status">No repeatability ' +
-            'rules declared yet. State how exactly a rerun must ' +
-            'reproduce your numbers (stored in project.json):</div>' +
-            _fsRenderDeterminismForm(null) + '</div>';
+
+
+    // The controls for one question: the two answers as radios, plus
+    // the value field the pinned answer needs. Rendered per question
+    // so each row is self-contained -- a researcher answering the
+    // thread question should not have to scroll past the MKL one.
+    var _DICT_DETERMINISM_CONTROLS = {
+        blasVariance: [
+            ["accepted", "Accept last-digit differences"],
+            ["rejected", "Do not accept them"],
+        ],
+        ompThreads: [
+            ["pinned", "Fix the thread count"],
+            ["unpinned", "Leave it free"],
+        ],
+        mklMode: [
+            ["pinned", "Set the reproducibility mode"],
+            ["not-used", "This project does not use Intel MKL"],
+        ],
+    };
+
+    var _DICT_DETERMINISM_VALUE_FIELDS = {
+        ompThreads: {
+            sType: "number", sPlaceholder: "e.g. 8",
+            sHint: "How many threads a rerun must use.",
+        },
+        mklMode: {
+            sType: "text", sPlaceholder: "e.g. COMPATIBLE",
+            sHint: "The mode name a rerun must set.",
+        },
+    };
+
+    function _fsRenderDeterminismQuestionForm(dictQuestion) {
+        var listChoices =
+            _DICT_DETERMINISM_CONTROLS[dictQuestion.sKey] || [];
+        var sName = "determinism-answer-" + dictQuestion.sKey;
+        var sHtml = '<div class="determinism-form" ' +
+            'data-question="' + fnEscapeHtml(dictQuestion.sKey) + '" ' +
+            'data-answer-key="' +
+            fnEscapeHtml(dictQuestion.sAnswerKey) + '" ' +
+            'data-value-key="' +
+            fnEscapeHtml(dictQuestion.sValueKey || "") + '">';
+        listChoices.forEach(function (aChoice) {
+            sHtml += '<label class="determinism-form-row">' +
+                '<input type="radio" name="' + fnEscapeHtml(sName) +
+                '" class="determinism-answer" value="' +
+                fnEscapeHtml(aChoice[0]) + '"' +
+                (dictQuestion.sAnswer === aChoice[0] ? ' checked' : '') +
+                '> ' + fnEscapeHtml(aChoice[1]) + '</label>';
+        });
+        sHtml += _fsRenderDeterminismValueField(dictQuestion);
+        return sHtml + _fsRenderActionButton(
+            "declare-determinism", "", "Save this answer") + '</div>';
     }
 
-    function _fsRenderDeterminismForm(dictDeterminism) {
-        var dictSafe = dictDeterminism || {};
-        var bBlas = dictSafe.bAcceptBlasVariance === true;
-        var sThreads = (dictSafe.dOmpNumThreads !== undefined &&
-            dictSafe.dOmpNumThreads !== null)
-            ? String(dictSafe.dOmpNumThreads) : "";
-        return '<div class="determinism-form">' +
-            '<label class="determinism-form-row">' +
-            '<input type="checkbox" class="determinism-accept-blas"' +
-            (bBlas ? ' checked' : '') + '> ' +
-            'Accept tiny run-to-run numeric differences from ' +
-            'linear-algebra libraries (BLAS thread ordering)' +
-            '</label>' +
-            '<details class="determinism-advanced">' +
-            '<summary>Advanced: thread pinning</summary>' +
-            '<div class="requirement-row-howto">Multi-threaded ' +
-            'linear algebra can sum in a different order on each ' +
-            'run, changing the last digits. Pinning the OpenMP ' +
-            'thread count makes runs comparable; most projects ' +
-            'can leave this blank.</div>' +
-            '<label class="determinism-form-row">' +
-            'Pin OpenMP threads: ' +
-            '<input type="number" min="1" ' +
-            'class="determinism-omp-threads" value="' +
-            fnEscapeHtml(sThreads) + '"> (leave blank for ' +
-            'unpinned)</label></details>' +
-            _fsRenderActionButton("declare-determinism", "",
-                "Declare rules") + '</div>';
+    function _fsRenderDeterminismValueField(dictQuestion) {
+        var dictField =
+            _DICT_DETERMINISM_VALUE_FIELDS[dictQuestion.sKey];
+        if (!dictField) return "";
+        return '<label class="determinism-form-row ' +
+            'determinism-value-row">' +
+            fnEscapeHtml(dictField.sHint) + ' ' +
+            '<input type="' + dictField.sType + '" ' +
+            (dictField.sType === "number" ? 'min="1" ' : '') +
+            'class="determinism-value" placeholder="' +
+            fnEscapeHtml(dictField.sPlaceholder) + '" value="' +
+            fnEscapeHtml(dictQuestion.sValue || "") + '"></label>';
     }
 
-    function _fsRenderActionButton(sAction, sArg, sLabel) {
+    function _fsRenderMathsLibraryEvidence(dictQuestion, dictDetail) {
+        /* Shown on the MKL row only, because it is the one question a
+           researcher cannot answer by reading their own code. The
+           backend reads it from the dependency lock and states its own
+           limits; this renders that verbatim rather than summarising
+           it into a claim the evidence does not support. */
+        if (dictQuestion.sKey !== "mklMode") return "";
+        var dictMaths = dictDetail.dictMathsLibrary;
+        if (!dictMaths || !dictMaths.sNote) return "";
+        return '<div class="determinism-evidence">' +
+            fnEscapeHtml(dictMaths.sNote) + '</div>';
+    }
+
+    function _fsRenderDeterminismScanHint(dictDetail) {
+        return '<div class="requirement-row-howto">Not sure? Scan the ' +
+            'step scripts for things that would make a rerun differ — ' +
+            'random seeds taken from the clock, or values read from ' +
+            'the operating system\u2019s randomness source. A clean ' +
+            'scan means none of those were found; it is not proof ' +
+            'that the project is repeatable, so the answers above are ' +
+            'still yours to give.</div>' +
+            _fsRenderActionButton("scan-determinism", "",
+                "Scan scripts for non-determinism") +
+            _fsRenderDeterminismRecordedEntry(dictDetail);
+    }
+
+    function _fsRenderDeterminismRecordedEntry(dictDetail) {
+        /* The raw entry, behind a disclosure and labelled as raw. It
+           used to sit open in the middle of the row with the key
+           names presented as if they were the vocabulary -- which is
+           what made this section unreadable. Kept at all because a
+           researcher publishing a project is entitled to see the
+           exact bytes their declaration became. */
+        var dictBlock = dictDetail.dictDeterminism;
+        if (!dictBlock) return "";
+        return '<details class="determinism-raw-disclosure">' +
+            '<summary>What is stored in project.json</summary>' +
+            '<div class="requirement-row-howto">Shown so you can see ' +
+            'what was recorded, not so you edit it by hand. There is ' +
+            'no separate rules file.</div>' +
+            '<pre class="determinism-raw">' +
+            fnEscapeHtml(JSON.stringify(dictBlock, null, 2)) +
+            '</pre></details>';
+    }
+
+
+    function _fsRenderActionButton(sAction, sArg, sLabel, bDestructive) {
         // A button that runs a project action in place (the
         // functionality that used to live only on the PROOF card).
+        // bDestructive paints it red — the same signal
+        // .container-menu-item.danger already uses — so an action that
+        // discards work does not look like the one beside it that
+        // records work. Both still confirm before acting; this is the
+        // signal available BEFORE the click.
         return '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn wf-action-btn" ' +
+            '<button type="button" class="btn wf-action-btn' +
+            (bDestructive ? ' wf-action-danger' : '') + '" ' +
             'data-wf-action="' + fnEscapeHtml(sAction) + '" ' +
             'data-wf-arg="' + fnEscapeHtml(sArg || "") + '">' +
             fnEscapeHtml(sLabel) + '</button></div>';
@@ -488,20 +707,56 @@ var VaibifyWorkflowRequirements = (function () {
         return "red";
     }
 
+    function _fdictNoBinariesRow(bWaived) {
+        /* An empty list is not an answer, and this row used to render
+           one as "?" forever while its guidance offered only "Add
+           package…". The L3 gate accepts exactly two coherent states —
+           a waiver, or a non-empty declaration — so a project with no
+           binaries (most pure-Python ones) had no reachable way to
+           satisfy it except declaring a package and deleting it, which
+           set the waiver as a side effect nobody could guess. */
+        if (bWaived) {
+            return {
+                sKey: "software-none", iLevel: 3,
+                sTitle: "No standalone binaries (declared)",
+                sState: "green",
+                fsDetail: function () {
+                    return _fsRenderPlainDetail(
+                        "You have declared that this project calls " +
+                        "no standalone scientific binaries, so there " +
+                        "are no external versions or hashes to pin.",
+                        "Adding a package below retracts the " +
+                        "declaration automatically.");
+                }};
+        }
+        return {
+            sKey: "software-none", iLevel: 3,
+            sTitle: "No declared binaries",
+            sState: "unknown",
+            fsDetail: function () {
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-howto">' +
+                    fnEscapeHtml(
+                        "Level 3 asks one question here, and an empty " +
+                        "list does not answer it: does this project " +
+                        "call standalone scientific binaries? If it " +
+                        "does, add each one below and capture its " +
+                        "version and hash. If it does not — a " +
+                        "pure-Python project, say — declare that, and " +
+                        "the row is satisfied.") +
+                    '</div>' +
+                    _fsRenderActionButton(
+                        "declare-no-binaries", "",
+                        "This project uses no standalone binaries") +
+                    '</div>';
+            }};
+    }
+
     function _flistSoftwareRows(dictDetail) {
         var listBinaries = dictDetail.listBinaries || [];
         if (listBinaries.length === 0) {
-            return [{
-                sKey: "software-none", iLevel: 3,
-                sTitle: "No declared binaries",
-                sState: "unknown",
-                fsDetail: function () {
-                    return _fsRenderPlainDetail(
-                        "No scientific binaries are declared.",
-                        "Add packages with the 'Add package…' " +
-                        "button below, then use 'Capture version " +
-                        "+ SHA' on each package's row.");
-                }}];
+            return [_fdictNoBinariesRow(
+                dictDetail.bNoStandaloneBinaries === true)];
         }
         return listBinaries.map(function (dictBinary) {
             return {
@@ -524,7 +779,7 @@ var VaibifyWorkflowRequirements = (function () {
                             dictBinary.sBinaryPath || "") + '">' +
                         'Capture version + SHA</button> ' +
                         '<button type="button" ' +
-                        'class="btn wf-action-btn" ' +
+                        'class="btn wf-action-btn wf-action-danger" ' +
                         'data-wf-action="remove-binary" ' +
                         'data-wf-arg="' + fnEscapeHtml(
                             dictBinary.sBinaryPath || "") + '">' +
@@ -535,14 +790,15 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _flistArtifactRows(dictDetail) {
         var dictArtifacts = dictDetail.dictArtifacts || {};
+        var dictImageCurrency = dictDetail.dictImageCurrency || {};
         return Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS).map(
             function (sKey) {
                 return _fdictArtifactRow(
-                    sKey, dictArtifacts[sKey] || {});
+                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency);
             });
     }
 
-    function _flistEnvelopeMirrorRows(dictDetail) {
+    function _flistEnvelopeMirrorRows(dictDetail, dictChecks) {
         /* The Level 3 published-copy rows, in their own section so
            they read as the parallel of the Level 2 sync rows rather
            than as sub-items of one. Zenodo's twin joined on
@@ -556,6 +812,7 @@ var VaibifyWorkflowRequirements = (function () {
                 "envelopeMirror", "GitHub mirror", "github",
                 "sGithub", listEnvelope,
                 dictDetail.bEnvelopeInGithubMirror === true,
+                _fdictCheckForService(dictChecks, "github"),
                 'The published reproduce script, manifest, ' +
                 'dependency lock, environment snapshot and ' +
                 'Dockerfile match the copies in this repository.',
@@ -568,6 +825,7 @@ var VaibifyWorkflowRequirements = (function () {
                 "envelopeArchive", "Zenodo archive", "zenodo",
                 "sZenodo", listEnvelope,
                 dictDetail.bEnvelopeInZenodoArchive === true,
+                _fdictCheckForService(dictChecks, "zenodo"),
                 'The envelope files are in the Zenodo archive under ' +
                 'a DOI. Zenodo versions are immutable, so this row ' +
                 'goes red after any envelope change and comes back ' +
@@ -583,14 +841,71 @@ var VaibifyWorkflowRequirements = (function () {
         ];
     }
 
+    function _fdictEnvelopeRemoteRowHealth(
+        bMatched, sBadgeKey, listEnvelope,
+    ) {
+        /* The row summarizes the per-file badges beside it and must
+           not contradict them: green = every file checked and
+           matching; orange = partially — some files diverge while
+           others still match, OR nothing has been compared yet; red =
+           checked and NOTHING matches. Red used to fire on the first
+           drifted file, so two changed envelope files over three
+           matching ones painted total failure above a list that was
+           mostly green (researcher-ruled, 2026-09-02): red is for a
+           requirement that is fully failed, and "two of five differ"
+           is the definition of partial.
+
+           The GATE is unchanged and blocks on any divergence or
+           unproven file: colour is granularity for the researcher,
+           never a softer claim. listNeedsPush collects the files a
+           push would actually fix — proven diverged, or proven absent
+           from the remote — and deliberately NOT the merely-unproven,
+           which want a verify, not a push. */
+        var dictHealth = {
+            sState: "orange", iSynced: 0, listNeedsPush: [],
+        };
+        if (bMatched) {
+            dictHealth.sState = "green";
+            return dictHealth;
+        }
+        for (var i = 0; i < listEnvelope.length; i++) {
+            var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+                listEnvelope[i], "") || {};
+            var sBadge = dictBadges[sBadgeKey];
+            if (sBadge === "synced") dictHealth.iSynced += 1;
+            /* "none" is push-worthy ONLY in GitHub's five-state
+               vocabulary, where it means "the verify looked and the
+               mirror lacks the file". Zenodo's three-state badge
+               spells "not tracked" with the same word — no claim at
+               all — and counting that as divergence painted a
+               never-verified project's archive row red (caught by
+               testUnprovenEnvelopeIsNotAnAlarm). */
+            if (sBadge === "drifted" ||
+                    (sBadge === "none" && sBadgeKey === "sGithub")) {
+                dictHealth.listNeedsPush.push(listEnvelope[i]);
+            }
+        }
+        if (dictHealth.listNeedsPush.length > 0) {
+            dictHealth.sState =
+                dictHealth.iSynced > 0 ? "orange" : "red";
+        }
+        return dictHealth;
+    }
+
     function _fdictEnvelopeRemoteRow(
         sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
-        sMatchedNote, sDivergedNote,
+        dictCheck, sMatchedNote, sDivergedNote,
     ) {
+        var dictHealth = _fdictEnvelopeRemoteRowHealth(
+            bMatched, sBadgeKey, listEnvelope);
+        var sState = dictHealth.sState;
         return {
             sKey: sKey, iLevel: 3,
             sTitle: sTitle,
-            sState: bMatched ? "green" : "red",
+            sState: sState,
+            // One verify answers both scopes, so the Level 3 row
+            // pulses on the same service's check as its Level 2 twin.
+            bChecking: _fbCheckIsRunning(dictCheck),
             fsDetail: function () {
                 // The per-file rows the Level 2 sync rows no longer
                 // carry. Without them the split is invisible: the
@@ -611,30 +926,159 @@ var VaibifyWorkflowRequirements = (function () {
                 // pass, so the action that resolves this row belongs
                 // on it. Sending the researcher to another section to
                 // press a button is how a row becomes a dead end.
+                /* The push button appears only on GitHub — a Zenodo
+                   "sync" is a new immutable deposit version, its own
+                   deliberate act — and only over files a push would
+                   actually fix: proven diverged or proven absent.
+                   Merely-unproven files want a verify, and pushing
+                   them would be acting on a claim nobody made
+                   (researcher-requested, 2026-09-02). */
+                var sPush = "";
+                if (sService === "github" &&
+                        dictHealth.listNeedsPush.length > 0) {
+                    sPush = '<button type="button" class="btn ' +
+                        'wf-push-envelope" data-service="github" ' +
+                        'data-paths="' + fnEscapeHtml(
+                            encodeURIComponent(JSON.stringify(
+                                dictHealth.listNeedsPush))) + '">' +
+                        'Push changed files to GitHub</button> ';
+                }
                 var sVerify = '<div class="requirement-row-actions">' +
+                    sPush +
                     '<button type="button" class="btn ' +
                     'wf-verify-remote" data-service="' +
                     fnEscapeHtml(sService) + '">' +
                     'Verify now</button></div>';
-                var sNote = bMatched ? sMatchedNote : sDivergedNote;
-                return sFiles + '<div class="detail-note">' + sNote +
-                    '</div>' + sVerify;
+                // Four notes for four situations. Telling a researcher
+                // a file "differs" when nothing has compared it sends
+                // them to push a file that may already be identical;
+                // the unchecked case names the verify instead, and the
+                // MIXED case says how much of the requirement still
+                // stands rather than reading as total failure.
+                var sNote = sDivergedNote;
+                if (bMatched) {
+                    sNote = sMatchedNote;
+                } else if (dictHealth.listNeedsPush.length > 0 &&
+                        dictHealth.iSynced > 0) {
+                    sNote = dictHealth.listNeedsPush.length +
+                        ' of these files differ from (or are missing ' +
+                        'from) the published copies; the rest match. ' +
+                        'Publish the changed files, then verify.';
+                } else if (sState === "orange") {
+                    sNote = 'No verify has compared every envelope ' +
+                        'file against this remote yet, so vaibify ' +
+                        'cannot say whether they match. Nothing here ' +
+                        'is known to differ. Run Verify now.';
+                }
+                var sCheck = _fsDescribeCheck(dictCheck);
+                /* Wrapped like every other row's detail: the
+                   requirement-row-detail class carries the indent, and
+                   these two rows were the only detail renderers that
+                   returned bare content — their body sat fully
+                   left-aligned under the banner while Published
+                   copies indented (researcher-reported, 2026-09-02,
+                   twice: first read as "a tab has been lost"). */
+                return '<div class="requirement-row-detail">' +
+                    (sCheck
+                        ? '<div class="requirement-row-check">' +
+                          fnEscapeHtml(sCheck) + '</div>'
+                        : '') +
+                    sFiles + '<div class="detail-note">' + sNote +
+                    '</div>' + sVerify + '</div>';
             }};
     }
 
+    function _fsRenderDeterminismFooter(dictDetail) {
+        /* Deleting is all-or-nothing on the whole block, so it is a
+           SECTION action rather than one per question — there is no
+           such thing as deleting one third of a declaration.
+
+           It lives here because the rewrite that split the section
+           into three rows deleted it along with the single-row form it
+           had been attached to, leaving the researcher no way to
+           withdraw a declaration the route still accepts
+           (caught by tests/browser/testDestructiveActionsLookDestructive.py). */
+        if (!dictDetail.dictDeterminism) return "";
+        return '<div class="determinism-section-footer">' +
+            _fsRenderActionButton("delete-determinism", "",
+                "Delete all answers…", true) + '</div>';
+    }
+
     function _flistDeterminismRows(dictDetail) {
-        return [{
-            sKey: "determinism", iLevel: 3,
-            sTitle: "Reproducibility rules",
-            sState: _fsDeterminismState(dictDetail.dictDeterminism),
-            fsDetail: function () {
-                return _fsRenderDeterminismDetail(
-                    dictDetail.dictDeterminism);
-            }}];
+        /* One row per QUESTION since the 2026-08-30 ruling. They used
+           to be one row over an OR — any one of three values satisfied
+           the gate — so a single light stood for three independent
+           sources of run-to-run difference and a researcher could not
+           see which was open. Pinning a thread count says nothing
+           about whether last-digit variance is acceptable.
+
+           The labels and question text come from the BACKEND, beside
+           the gate that asks them. A second copy here would be a
+           second account of what is being asked. */
+        /* An empty list means the payload predates the per-question
+           shape (or the poll shipped no envelope at all). Rendering
+           NO rows is right: the previous single row's form submitted
+           key names this build no longer reads, so offering it would
+           be a Save button that quietly does nothing — which is the
+           class of defect this change exists to remove. */
+        var listQuestions = dictDetail.listDeterminismQuestions || [];
+        return listQuestions.map(function (dictQuestion) {
+            return {
+                sKey: "determinism-" + dictQuestion.sKey,
+                iLevel: 3,
+                sTitle: dictQuestion.sLabel,
+                sState: dictQuestion.bAnswered ? "green" : "red",
+                fsDetail: function () {
+                    return _fsRenderDeterminismQuestionDetail(
+                        dictQuestion, dictDetail);
+                }};
+        });
+    }
+
+
+    var _DICT_DETERMINISM_ANSWER_LABELS = {
+        accepted: "Accepted — a rerun may differ in the last digits",
+        rejected: "Not accepted — a rerun must match exactly",
+        pinned: "Fixed",
+        unpinned: "Not fixed — a rerun may use any thread count",
+        "not-used": "Not used by this project",
+    };
+
+    function _fsDescribeDeterminismAnswer(dictQuestion) {
+        var sLabel = _DICT_DETERMINISM_ANSWER_LABELS[
+            dictQuestion.sAnswer] || dictQuestion.sAnswer;
+        if (dictQuestion.sValue) {
+            return sLabel + ": " + dictQuestion.sValue;
+        }
+        return sLabel;
+    }
+
+    function _fsRenderDeterminismQuestionDetail(
+        dictQuestion, dictDetail,
+    ) {
+        /* The question in plain words, then the answer or the
+           controls to give one. No key names: a researcher is being
+           asked about their science, and the old copy put
+           `bAcceptBlasVariance` in front of them as if it were a
+           word. */
+        var sHtml = '<div class="requirement-row-detail">' +
+            '<div class="requirement-row-status">' +
+            fnEscapeHtml(dictQuestion.sQuestion) + '</div>';
+        if (dictQuestion.bAnswered) {
+            sHtml += '<div class="determinism-answer">Your answer: ' +
+                fnEscapeHtml(
+                    _fsDescribeDeterminismAnswer(dictQuestion)) +
+                '</div>';
+        }
+        sHtml += _fsRenderMathsLibraryEvidence(
+            dictQuestion, dictDetail);
+        return sHtml + _fsRenderDeterminismQuestionForm(dictQuestion) +
+            _fsRenderDeterminismScanHint(dictDetail) + '</div>';
     }
 
     function _fdictSyncRow(sTitle, sKey, dictSync, sBadgeKey, sHowto,
-                           sExtraHtml, listExcludePaths) {
+                           sExtraHtml, listExcludePaths, dictCheck,
+                           setToggled) {
         // Every sync row carries a Verify-now button: the row reports
         // the last verify result, so the action that moves it to the
         // passing state must be reachable from the row itself, not
@@ -645,12 +1089,17 @@ var VaibifyWorkflowRequirements = (function () {
             'Verify now</button></div>';
         return {
             sKey: sKey, sTitle: sTitle, iLevel: 2,
+            // The light keeps reporting the last completed verify
+            // while a check runs. Only the PULSE says "asking now" —
+            // a running check has proven nothing yet, so it must not
+            // move the colour in either direction.
             sState: _fsSyncRowState(dictSync),
+            bChecking: _fbCheckIsRunning(dictCheck),
             fsDetail: function () {
                 return _fsRenderSyncRequirementDetail(
                     dictSync, sBadgeKey, sHowto,
                     sVerifyButton + (sExtraHtml || ""),
-                    listExcludePaths);
+                    listExcludePaths, dictCheck, setToggled);
             }};
     }
 
@@ -664,23 +1113,33 @@ var VaibifyWorkflowRequirements = (function () {
             }};
     }
 
-    function _flistPublishedCopiesRows(dictDetail) {
+    function _flistPublishedCopiesRows(
+        dictDetail, dictChecks, setToggled,
+    ) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
         var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
         return [
             _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
                 "sGithub", "Push and re-verify from the Repos panel.",
-                "", listEnvelope),
+                "", listEnvelope,
+                _fdictCheckForService(dictChecks, "github"),
+                setToggled),
             _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
                 "sZenodo",
                 "Publish or re-verify from the Repos panel.",
-                "", listEnvelope),
-            _fdictOverleafRow(dictDetail, dictSyncs),
-            _fdictArxivRow(dictDetail, dictSyncs),
+                "", listEnvelope,
+                _fdictCheckForService(dictChecks, "zenodo"),
+                setToggled),
+            _fdictOverleafRow(
+                dictDetail, dictSyncs, dictChecks, setToggled),
+            _fdictArxivRow(
+                dictDetail, dictSyncs, dictChecks, setToggled),
         ];
     }
 
-    function _fdictOverleafRow(dictDetail, dictSyncs) {
+    function _fdictOverleafRow(
+        dictDetail, dictSyncs, dictChecks, setToggled,
+    ) {
         if (dictDetail.bOverleafBound !== true) {
             // The backend exempts figure freezing from Level 2 when
             // no manuscript is bound (levelGates), so a data-only
@@ -696,7 +1155,10 @@ var VaibifyWorkflowRequirements = (function () {
             dictSyncs.overleaf, "sOverleaf",
             "Only figure files (.pdf, .png, …) travel to the " +
             "manuscript. Push figures from the Repos panel — a " +
-            "successful push re-verifies this row automatically.");
+            "successful push re-verifies this row automatically.",
+            "", null,
+            _fdictCheckForService(dictChecks, "overleaf"),
+            setToggled);
     }
 
     var _S_ARXIV_CONFIG_BUTTON =
@@ -704,7 +1166,9 @@ var VaibifyWorkflowRequirements = (function () {
         '<button type="button" class="btn wf-open-arxiv-config">' +
         'Configure arXiv…</button></div>';
 
-    function _fdictArxivRow(dictDetail, dictSyncs) {
+    function _fdictArxivRow(
+        dictDetail, dictSyncs, dictChecks, setToggled,
+    ) {
         // The arXiv criterion is opt-in: recording an ID claims
         // correspondence with the posted e-print, so the claim is
         // checked; without one the row is neutral ("not tracked"),
@@ -713,7 +1177,9 @@ var VaibifyWorkflowRequirements = (function () {
             return _fdictSyncRow("arXiv submission", "arxiv",
                 dictSyncs.arxiv, "sArxiv",
                 "The posted e-print's figures must match the " +
-                "frozen Overleaf figures.", _S_ARXIV_CONFIG_BUTTON);
+                "frozen Overleaf figures.", _S_ARXIV_CONFIG_BUTTON,
+                null, _fdictCheckForService(dictChecks, "arxiv"),
+                setToggled);
         }
         return _fdictArxivNotTrackedRow(
             dictDetail.bOverleafBound === true);
@@ -919,25 +1385,169 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _flistAttestationRows(dictDetail, dictContext) {
+        // A rerun takes as long as the workflow does, so while one is
+        // live the row PULSES and goes orange. That is a claim about
+        // ACTIVITY, and it is why this row may move its colour where a
+        // remote badge may not: a remote's colour encodes a comparison
+        // RESULT, so moving it mid-check would assert something the
+        // check has not earned. Here orange asserts only "running",
+        // which is observable, and the row text says so too, so the
+        // colour is never the only signal. Do not "make these
+        // consistent" in either direction.
+        var bRunning = dictDetail.bRebuildAttestationRunning === true;
         return [
             {sKey: "rebuildAttestation", iLevel: 3,
              sTitle: "Rebuild attestation",
-             sState: _fsLightStateFromBoolean(
+             sState: bRunning ? "running" : _fsLightStateFromBoolean(
                  dictDetail.bRebuildAttestationCurrent === true),
+             bChecking: bRunning,
              fsDetail: function () {
+                 /* "On file" earns a way to OPEN the file: the row
+                    asserted a record existed and offered no way to
+                    read it (researcher-requested, 2026-09-02). The
+                    button renders whenever any attestation exists —
+                    current, stale, or failed — because a failed or
+                    stale record is exactly the one a researcher
+                    wants to inspect. */
+                 var bViewable = !bRunning && (
+                     dictDetail.bRebuildAttestationCurrent === true ||
+                     Boolean(dictDetail.dictRebuildAttestation));
                  return '<div class="requirement-row-detail">' +
                      '<div class="requirement-row-status">' +
-                     fnEscapeHtml(
-                         dictDetail.bRebuildAttestationCurrent === true
-                             ? "A current rebuild attestation is on file."
-                             : "No current rebuild attestation. Run " +
-                               "this once every other check passes; " +
-                               "the rebuild runs in the container and " +
-                               "the result appears here.") + '</div>' +
-                     _fsRenderActionButton("verify-l3", "",
-                         "Verify Level 3 reproducibility") + '</div>';
+                     fnEscapeHtml(_fsDescribeAttestation(
+                         dictDetail, bRunning)) + '</div>' +
+                     _fsRenderAttestationFailure(dictDetail, bRunning) +
+                     (bRunning ? "" : _fsRenderActionButton(
+                         "verify-l3", "",
+                         "Verify Level 3 reproducibility")) +
+                     (bViewable
+                         ? ' <button type="button" class="btn ' +
+                           'wf-view-attestation">View attestation' +
+                           '</button>'
+                         : "") + '</div>';
              }},
         ];
+    }
+
+    function _fsDescribeAttestation(dictDetail, bRunning) {
+        if (bRunning) {
+            return "Re-running this workflow now, in a throwaway copy " +
+                "of the project. This takes as long as the workflow " +
+                "itself; the verdict replaces this line when it lands.";
+        }
+        if (dictDetail.bRebuildAttestationCurrent === true) {
+            return "A current rebuild attestation is on file.";
+        }
+        // "Ran and failed" is not "never run", and saying the second
+        // over the first told a researcher whose rerun had just
+        // reported a failing step to go and run it. The attestation's
+        // own status is what separates them.
+        var dictLast = dictDetail.dictRebuildAttestation || null;
+        if (dictLast && dictLast.sStatus === "failed") {
+            return "The last rebuild ran and did NOT reproduce. " +
+                _fsSummarizeHashCounts(dictLast);
+        }
+        if (dictLast && dictLast.sStatus) {
+            return "The last rebuild passed, but the envelope has " +
+                "changed since — run it again to attest the current " +
+                "manifest.";
+        }
+        /* "Once every other check passes" was the old sentence, and it
+           over-claimed: it read as including the Published-envelope
+           rows, so a green attestation over a red Zenodo row looked
+           like a contradiction (researcher-asked, 2026-09-02). The
+           real rule is narrower and has a reason on each side: the
+           ENVELOPE checks come first because fixing one edits local
+           bytes and stales the attestation; the PUBLISHED rows come
+           after because pushing edits nothing local — and because an
+           immutable Zenodo version should receive an envelope already
+           proven to reproduce, not immortalize an unproven one. */
+        return "No rebuild attempted yet. Run this once the envelope " +
+            "checks above pass (fixing those changes local files and " +
+            "would invalidate the attestation). Publish AFTER it " +
+            "passes — publishing changes nothing locally, so the " +
+            "attestation survives, and the archive receives an " +
+            "envelope already proven to reproduce.";
+    }
+
+    function _fsSummarizeHashCounts(dictLast) {
+        // The counts cover only what EXECUTION produced. Carried files
+        // were made by a human step and re-derived by nobody, so they
+        // are named separately rather than folded into the ratio.
+        var sCounts = (dictLast.iOutputHashesMatched || 0) + " of " +
+            (dictLast.iOutputHashesTotal || 0) +
+            " re-derived files matched.";
+        var listCarried = dictLast.listCarriedPaths || [];
+        if (!listCarried.length) return sCounts;
+        return sCounts + " " + listCarried.length + " file" +
+            (listCarried.length === 1 ? " was" : "s were") +
+            " carried in unchanged from a step a human runs, and is " +
+            "not part of that count.";
+    }
+
+    function _fsRenderAttestationFailure(dictDetail, bRunning) {
+        // The shadow container is destroyed as soon as the comparison
+        // is made, so this record is the ONLY surviving evidence of
+        // why a rerun failed. Before it existed the researcher got
+        // "exited non-zero" about a container that no longer existed
+        // and had nothing to act on (reported 2026-09-01).
+        if (bRunning) return "";
+        var dictLast = dictDetail.dictRebuildAttestation || null;
+        if (!dictLast || dictLast.sStatus !== "failed") return "";
+        var listReasons = dictLast.listDivergedHashes || [];
+        var sReasons = listReasons.slice(0, 12).map(function (sLine) {
+            return '<li>' + fnEscapeHtml(sLine) + '</li>';
+        }).join("");
+        return '<div class="attestation-failure">' +
+            _fsRenderImageGapNote(dictLast.dictRerunFailure) +
+            (sReasons ? '<ul>' + sReasons + '</ul>' : '') +
+            _fsRenderFailingStepOutput(dictLast.dictRerunFailure) +
+            '</div>';
+    }
+
+    function _fsRenderImageGapNote(dictFailure) {
+        // The finding the shadow container exists to produce, stated
+        // FIRST because it is the actionable one: a tool present in
+        // the researcher's running container and absent from the
+        // image their envelope pins means nobody else can reproduce
+        // the work. Rendered above the raw errors, which stay so the
+        // researcher can still see exactly what was checked.
+        var sNote = (dictFailure || {}).sImageGapNote || "";
+        var listMissing =
+            (dictFailure || {}).listCommandsMissingFromImage || [];
+        if (!sNote || !listMissing.length) return "";
+        return '<div class="attestation-image-gap">' +
+            '<strong>Missing from the image your envelope pins: ' +
+            fnEscapeHtml(listMissing.join(", ")) + '</strong>' +
+            '<div>' + fnEscapeHtml(sNote) + '</div></div>';
+    }
+
+    function _fsRenderFailingStepOutput(dictFailure) {
+        // Three shapes, three different things to say. null means the
+        // record predates capture; an empty object means capture ran
+        // and nothing reported a cause; a populated one has the
+        // evidence. Showing an empty box for all three would make the
+        // first two look like a step that printed nothing.
+        if (dictFailure === null || dictFailure === undefined) {
+            return '<div class="attestation-failure-note">' +
+                'This attestation predates failure capture, so the ' +
+                'cause was not recorded. Run the verification again ' +
+                'to collect it.</div>';
+        }
+        if (!dictFailure.sKind) {
+            return '<div class="attestation-failure-note">' +
+                'Vaibify could not determine which part of the run ' +
+                'failed. Please report this \u2014 the run reported a ' +
+                'failure that named no step and no validation ' +
+                'error.</div>';
+        }
+        var listTail = dictFailure.listOutputTail || [];
+        if (!listTail.length) return "";
+        return '<div class="attestation-failure-note">Last output ' +
+            'from step ' + fnEscapeHtml(
+                dictFailure.sStepLabel || "?") + ':</div>' +
+            '<pre class="attestation-failure-output">' +
+            fnEscapeHtml(listTail.join("\n")) + '</pre>';
     }
 
     var _DICT_ARTIFACT_HOWTO = {
@@ -952,10 +1562,15 @@ var VaibifyWorkflowRequirements = (function () {
             "tools, captured so the compute environment is exact. " +
             "Recaptured automatically at each Level 1 pass, or on " +
             "demand with the button below.",
-        dockerfile: "The Dockerfile is yours to edit: pin the base " +
-            "image to an exact digest (FROM <image>@sha256:…) so " +
-            "the build environment is reproducible. You can ask the " +
-            "in-container agent to pin it for you.",
+        dockerfile: "Your container image is built from vaibify's " +
+            "own Dockerfiles, which are not in this repository — so " +
+            "this row starts red with nothing you could have done " +
+            "about it. Copy composes them (the base plus each " +
+            "feature overlay, in the order they were applied) into " +
+            "one multi-stage Dockerfile here, and refuses to " +
+            "overwrite a Dockerfile you wrote. It records HOW the " +
+            "image was made; reproduction itself runs from the " +
+            "pinned image digest, not from a rebuild.",
         reproduceScript: "One script, at the repository " +
             "root, that reruns the whole project. It must match " +
             "the current manifest; Generate rewrites it and makes " +
@@ -981,6 +1596,21 @@ var VaibifyWorkflowRequirements = (function () {
         environmentSnapshot: true,
     };
 
+    // Says, once per artifact row, what those inline badges are and
+    // are NOT. The row's own light answers existence + the artifact's
+    // Level 3 check; whether the published copies AGREE is a separate
+    // requirement, answered by the "Published envelope" section. A
+    // green row beside an orange octocat is both marks telling the
+    // truth about different questions, but nothing on screen said so,
+    // so the row read as claiming the badges were fine.
+    var _S_BADGE_SCOPE_NOTE =
+        'The badges show each published copy: blue = checked and ' +
+        'matching, orange = not checked yet, red = differs. This ' +
+        "row's own status does not depend on them — it asks whether " +
+        'the file exists and meets its Level 3 check. Whether the ' +
+        'published copies agree is asked by the Published envelope ' +
+        'section below, and Level 3 needs both.';
+
     function _fsRenderFileRowWithBadges(sPath, aBadgeKeys) {
         // A clickable file row: the path opens in the figure/file
         // viewer, the badges show the remote sync state.
@@ -994,9 +1624,19 @@ var VaibifyWorkflowRequirements = (function () {
         // one. The value is repo-relative with an empty workdir,
         // which is the same pair the badge lookup above uses and the
         // form `git add` wants, since the push runs `cd <repo>` first.
+        //
+        // The badge strip is absolutely positioned at left:0 and the
+        // row reserves space for it with padding-left. The shared
+        // default reserves room for the Step Viewer's FOUR badges, so
+        // a Project-block row rendering one left ~60px of dead space
+        // between the octocat and the filename. The count travels with
+        // the markup rather than being guessed in CSS, so a row that
+        // gains a badge cannot silently overlap its own text.
         var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
             sPath, "");
-        return '<div class="detail-item tracked-file" ' +
+        var iBadgeCount = (aBadgeKeys || []).length || 4;
+        return '<div class="detail-item tracked-file ' +
+            'detail-item--badges-' + iBadgeCount + '" ' +
             'data-resolved="' + fnEscapeHtml(sPath) + '" ' +
             'data-workdir="">' +
             VaibifyGitBadges.fsRenderBadgeRow(dictBadges, aBadgeKeys) +
@@ -1012,7 +1652,35 @@ var VaibifyWorkflowRequirements = (function () {
             sPath, ["sGithub", "sZenodo"]);
     }
 
-    function _fdictArtifactRow(sKey, dictArtifact) {
+    function _fsRenderImageCurrencyWarning(sKey, dictImageCurrency) {
+        /* Rendered only on the Environment snapshot row, and only on a
+           determined MISMATCH (bPinnedImageIsLive === false). null is
+           "nothing determined" and must paint nothing — a warning
+           built from an absent capture would cry wolf on every
+           restart. This is a NOTE, not a row-state change: the pinned
+           envelope is still internally coherent and Level 3 is a
+           claim about the PUBLISHED artifact, but every verification
+           grades the pinned image, so a researcher who rebuilt and
+           forgot to regenerate must hear it here rather than from a
+           failed two-hour rerun (researcher-reported, 2026-09-01). */
+        if (sKey !== "environmentSnapshot") return "";
+        if (dictImageCurrency.bPinnedImageIsLive !== false) return "";
+        var sPinned = (dictImageCurrency.sPinnedImageDigest || "")
+            .slice(0, 27);
+        var sLive = (dictImageCurrency.sLiveImageDigest || "")
+            .slice(0, 27);
+        return '<div class="requirement-image-currency-warning">' +
+            'This envelope pins <code>' + fnEscapeHtml(sPinned) +
+            '…</code>, but the container you have open is ' +
+            'running <code>' + fnEscapeHtml(sLive) + '…</code>. ' +
+            'Verifications grade the pinned image, not the one you ' +
+            'are working in. If you rebuilt on purpose, click ' +
+            'Regenerate now (then re-verify); if not, your published ' +
+            'claim does not cover the container you are using.' +
+            '</div>';
+    }
+
+    function _fdictArtifactRow(sKey, dictArtifact, dictImageCurrency) {
         return {
             sKey: sKey,
             iLevel: 3,
@@ -1021,7 +1689,8 @@ var VaibifyWorkflowRequirements = (function () {
             fsDetail: function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,
-                    _DICT_ARTIFACT_HOWTO[sKey] || "");
+                    _DICT_ARTIFACT_HOWTO[sKey] || "",
+                    dictImageCurrency || {});
             }};
     }
 
@@ -1032,12 +1701,21 @@ var VaibifyWorkflowRequirements = (function () {
     var _DICT_MARK_TO_LEVEL_STATE = {
         green: "attained", red: "none",
         orange: "partial", unknown: "unknown",
+        // Its own state rather than a reuse of "partial": both paint
+        // orange, but partial says "some of this requirement is met"
+        // and running says "vaibify is working on it". The cell's
+        // TOOLTIP is built from these phrases, so borrowing partial
+        // would have put "partially met" on a row where nothing is
+        // met yet -- the pulse would read honestly and the hover
+        // would not.
+        running: "running",
         "not-applicable": "not-applicable",
     };
 
     var _DICT_LEVEL_STATE_PHRASES = {
         attained: "met", none: "not met",
-        partial: "partially met", unknown: "not checked yet",
+        partial: "partially met", running: "being verified now",
+        unknown: "not checked yet",
         "not-started": "nothing to check yet",
         unassessed: "present but not yet checked",
         "not-applicable": "no requirement at this level",
@@ -1084,7 +1762,9 @@ var VaibifyWorkflowRequirements = (function () {
         dictStateByLevel[dictRow.iLevel || 3] =
             _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] || "unknown";
         var sHtml = '<div class="requirement-row' +
-            (bOpen ? ' expanded' : '') + '">' +
+            (bOpen ? ' expanded' : '') +
+            (dictRow.bChecking === true
+                ? ' requirement-row-checking' : '') + '">' +
             '<div class="requirement-row-header" data-req="' +
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
@@ -1198,6 +1878,16 @@ var VaibifyWorkflowRequirements = (function () {
             });
             if (listAtLevel.length === 0) continue;
             var listStates = listAtLevel.map(function (dictRow) {
+                // A running row summarizes as PARTIAL, not as its own
+                // state: fsSummarizeLevelStates is shared with the
+                // Steps banner and knows nothing about "running", so
+                // it counted such a row as nothing assessed and the
+                // banner rendered a pulsing "?" over a rerun that was
+                // plainly under way (researcher-reported, 2026-09-01).
+                // Partial is the honest summary -- work in progress is
+                // progress -- and it paints the same orange circle the
+                // row itself shows.
+                if (dictRow.sState === "running") return "partial";
                 return _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] ||
                     "unknown";
             });
@@ -1213,8 +1903,15 @@ var VaibifyWorkflowRequirements = (function () {
     ) {
         var bOpen = setExpandedGroups &&
             setExpandedGroups.has(sGroupKey);
+        // A collapsed group hides its rows, so the pulse has to reach
+        // the banner or a researcher who never opens Published copies
+        // sees a settled-looking light over a question still open.
+        var bChecking = listRows.some(function (dictRow) {
+            return dictRow.bChecking === true;
+        });
         var sHtml = '<div class="requirement-group' +
-            (bOpen ? '' : ' collapsed') + '">' +
+            (bOpen ? '' : ' collapsed') +
+            (bChecking ? ' requirement-group-checking' : '') + '">' +
             '<div class="requirement-group-header" data-group="' +
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
@@ -1267,6 +1964,8 @@ var VaibifyWorkflowRequirements = (function () {
 
     function fsRenderProjectBlock(dictContext) {
         var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
+        var dictChecks = dictContext.dictRemoteChecks || {};
+        var setToggled = dictContext.setToggledFileGroups;
         var bOpen = dictContext.bProjectBlockCollapsed !== true;
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
@@ -1286,7 +1985,8 @@ var VaibifyWorkflowRequirements = (function () {
              _fsRenderBinaryAddForm(
                  dictContext.bBinaryAddFormOpen === true)],
             ["artifacts", _flistArtifactRows(dictDetail), ""],
-            ["determinism", _flistDeterminismRows(dictDetail), ""],
+            ["determinism", _flistDeterminismRows(dictDetail),
+             _fsRenderDeterminismFooter(dictDetail)],
             // Two parallel published-copy sections, one per level.
             // "Published copies" answers Level 2 — is the generating
             // DATA published — and "Published envelope" answers Level
@@ -1299,9 +1999,10 @@ var VaibifyWorkflowRequirements = (function () {
             // removed from the gates, and a merged section would put
             // it straight back on the screen.
             ["publishedCopies",
-             _flistPublishedCopiesRows(dictDetail), ""],
+             _flistPublishedCopiesRows(
+                 dictDetail, dictChecks, setToggled), ""],
             ["publishedEnvelope",
-             _flistEnvelopeMirrorRows(dictDetail), ""],
+             _flistEnvelopeMirrorRows(dictDetail, dictChecks), ""],
             ["ai", _flistAiRows(dictDetail), ""],
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],

@@ -651,15 +651,34 @@ class ContainerRepoFiles:
         return dictResult
 
     def fdictHashFiles(self, listRelPaths):
-        """Hash repo-relative container files in ONE exec.
+        """Hash repo-relative container files as a typed READ.
 
         Same result shape as ``HostRepoFiles.fdictHashFiles``; the
         symlink-component and realpath-containment enforcement run
         inside the container, where container-side symlinks are
         actually visible.
+
+        Routed through the connection's declared read operation
+        (``fdictHashContainerRepoPaths``), never an assembled command:
+        the embedded-script shape travelled through the GENERAL exec
+        primitive, which the mutation gate must treat as mutating, so
+        every remote verify running in an enforced lane had its
+        comparison refused wholesale — both Published-envelope rows
+        answered "could not check" with the raw admission error
+        (researcher-reported, 2026-09-02; the same class as the
+        ``fbIsFile`` migration above). The legacy script remains ONLY
+        for connection doubles that predate the operation; the real
+        connection and the router both declare it.
         """
         if not listRelPaths:
             return {}
+        fnTypedHash = getattr(
+            self.connectionDocker, "fdictHashContainerRepoPaths", None,
+        )
+        if fnTypedHash is not None:
+            return fnTypedHash(
+                self.sContainerId, self.sRootPath, list(listRelPaths),
+            )
         sCommand = _fsBuildEmbeddedScriptCommand(
             _S_HASH_SCRIPT,
             {"sRoot": self.sRootPath, "listRelPaths": list(listRelPaths)},
@@ -853,9 +872,20 @@ def _fsBuildSnapshotScriptCommand(
     binaries) hashed in the SAME exec so the poll stays one round
     trip — the snapshot then answers ``fdictHashAbsolutePaths`` from
     pre-fetched values instead of a forbidden second exec.
+
+    The Level 3 envelope paths are always in the hash batch: the
+    envelope-agreement gate compares each one's CURRENT hash against
+    the hash the last remote verify graded, on every poll, and a
+    snapshot that had not sampled them would answer ``sSha256: None``
+    — read by that gate as unproven, blocking Level 3 for a project
+    whose envelope is perfectly synced. Five small files in the same
+    exec. The import is deferred because ``publicationScope`` imports
+    this module at its top level.
     """
+    from .publicationScope import TUPLE_LEVEL3_ENVELOPE_PATHS
     listHashPaths = sorted(
         set(["MANIFEST.sha256"])
+        | set(TUPLE_LEVEL3_ENVELOPE_PATHS)
         | set(listScriptRelPaths or [])
         | set(listHashRelPaths or []),
     )

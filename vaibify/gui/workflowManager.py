@@ -66,7 +66,9 @@ __all__ = [
     "fdictBuildImplicitDependencies",
     "fdictBuildDownstreamMap",
     "fnClearDepGraphCache",
+    "flistResidualWorkflowTokens",
     "fdictBuildGlobalVariables",
+    "fdictBuildGlobalVariablesForRoot",
     "fdictBuildStepDirectoryMap",
     "fdictBuildStepVariables",
     "fdictCreateStep",
@@ -1058,17 +1060,35 @@ def fsDeriveRepoRootFromDirectory(sWorkflowDirectory):
 
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
     """Build the global variable dict from project.json top-level keys."""
-    sRepoRoot = fsDeriveRepoRootFromDirectory(
-        posixpath.dirname(sWorkflowPath),
+    return fdictBuildGlobalVariablesForRoot(
+        dictWorkflow,
+        fsDeriveRepoRootFromDirectory(posixpath.dirname(sWorkflowPath)),
     )
-    sPlotDirectory = dictWorkflow.get("sPlotDirectory", "Plot")
+
+
+def fdictBuildGlobalVariablesForRoot(dictWorkflow, sRepoRoot):
+    """Build the global variable dict as seen from an explicit repo root.
+
+    The live runner derives its root from the workflow file's own
+    location. ``reproduce.sh`` executes the same commands under a
+    DIFFERENT root -- the reproducer bind-mounts the repo at its own
+    mount point, and the authoring container's ``/workspace/<repo>``
+    names a directory that host does not have. So the root is a
+    parameter here rather than a derivation, and both callers compose
+    the variable set through this one function: a second composition
+    would let the run and its replay disagree about which variables
+    exist at all.
+    """
+    sPlotDirectory = (dictWorkflow or {}).get("sPlotDirectory", "Plot")
     if not posixpath.isabs(sPlotDirectory):
         sPlotDirectory = posixpath.join(sRepoRoot, sPlotDirectory)
     return {
         "sPlotDirectory": sPlotDirectory,
         "sRepoRoot": sRepoRoot,
-        "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
-        "sFigureType": dictWorkflow.get("sFigureType", "pdf").lower(),
+        "iNumberOfCores": (dictWorkflow or {}).get("iNumberOfCores", -1),
+        "sFigureType": (
+            (dictWorkflow or {}).get("sFigureType", "pdf").lower()
+        ),
     }
 
 
@@ -1865,6 +1885,31 @@ def flistResidualStepTokens(sResolvedCommand):
         listTokens.append(f"{{Step{sNum}.{sVar}}}")
     for sId, sVar in re.findall(S_STEP_SYMBOLIC_PATTERN, sResolvedCommand):
         listTokens.append(f"{{step:{sId}.{sVar}}}")
+    return listTokens
+
+
+T_GLOBAL_VARIABLE_NAMES = (
+    "sPlotDirectory", "sRepoRoot", "iNumberOfCores", "sFigureType",
+)
+
+
+def flistResidualWorkflowTokens(sText):
+    """Return every vaibify-owned template token still unexpanded in sText.
+
+    Deliberately NOT "any ``{...}``". Shell bodies legitimately carry
+    braces -- ``awk '{print $1}'``, ``find -exec {} \\;`` -- so a
+    blanket brace scan would reject working scripts and the guard
+    would have to be switched off again. Only the vocabulary vaibify
+    itself substitutes counts as a residue: the two cross-step
+    reference forms, plus the workflow globals. A global surviving
+    means the text was never resolved at all; a cross-step token
+    surviving means it names an output no step declares.
+    """
+    listTokens = flistResidualStepTokens(sText)
+    for sName in T_GLOBAL_VARIABLE_NAMES:
+        sToken = "{" + sName + "}"
+        if sToken in sText:
+            listTokens.append(sToken)
     return listTokens
 
 

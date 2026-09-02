@@ -34,22 +34,44 @@ S_DATA = "MakeData/output.json"
 S_ENVELOPE = "reproduce.sh"
 
 
-class _FakeRepoFiles:
-    """A repo whose files are whatever the test says exist."""
+S_VERIFIED_SHA = "cafe" * 16
 
-    def __init__(self, setPresent=()):
+
+class _FakeRepoFiles:
+    """A repo whose files are whatever the test says exist.
+
+    Each present file answers ``fdictHashFiles`` with
+    ``S_VERIFIED_SHA`` unless the test overrides it through
+    ``dictHashOverrides`` — which is how a test says "this file was
+    regenerated after the verify".
+    """
+
+    def __init__(self, setPresent=(), dictHashOverrides=None):
         self.sRootPath = "/repo"
         self._setPresent = set(setPresent)
+        self._dictHashOverrides = dict(dictHashOverrides or {})
 
     def fbIsFile(self, sRelPath):
         return sRelPath in self._setPresent
+
+    def fdictHashFiles(self, listRelPaths):
+        return {
+            sRelPath: {
+                "sSha256": self._dictHashOverrides.get(
+                    sRelPath, S_VERIFIED_SHA,
+                ),
+            }
+            for sRelPath in listRelPaths
+            if sRelPath in self._setPresent
+        }
 
     def flistListJsonFilenames(self, sRelDir):
         return []
 
 
 def _fdictStatus(listCompared, listDivergedPaths=(),
-                 sVerified=fsRecentVerifyIso()):
+                 sVerified=fsRecentVerifyIso(),
+                 dictComparedHashes=None):
     return {
         "sService": "zenodo",
         "sLastVerified": sVerified,
@@ -63,10 +85,18 @@ def _fdictStatus(listCompared, listDivergedPaths=(),
         "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
         "sZenodoDoi": "10.5281/zenodo.1234",
         "sEndpointVerified": "sandbox",
+        # The local hash each path was compared AS, defaulting to the
+        # fake repo's live answer so the agreement check passes unless
+        # a test deliberately drifts one side.
+        "dictComparedHashes": (
+            {s: S_VERIFIED_SHA for s in listCompared}
+            if dictComparedHashes is None else dict(dictComparedHashes)
+        ),
     }
 
 
-def _fbArchiveMatches(monkeypatch, dictStatus, setPresent):
+def _fbArchiveMatches(monkeypatch, dictStatus, setPresent,
+                      dictHashOverrides=None):
     monkeypatch.setattr(
         scheduledReverify, "fdictReadCachedSyncStatus",
         lambda filesRepo, sService: (
@@ -74,7 +104,7 @@ def _fbArchiveMatches(monkeypatch, dictStatus, setPresent):
         ),
     )
     return levelGates.fbEnvelopeMatchesZenodoArchive(
-        _FakeRepoFiles(setPresent),
+        _FakeRepoFiles(setPresent, dictHashOverrides),
     )
 
 
@@ -98,6 +128,50 @@ def test_a_matching_envelope_passes_the_archive_criterion(monkeypatch):
         _fdictStatus([S_DATA, S_ENVELOPE], [S_DATA]),
         {S_ENVELOPE},
     ) is True
+
+
+@pytest.mark.falsification
+def test_an_envelope_regenerated_after_the_verify_no_longer_passes(
+    monkeypatch,
+):
+    """Verify time and read time are different moments; connect them.
+
+    The exact shipped failure (researcher-reported, 2026-09-01): a
+    Zenodo verify graded environment.json as matching, the researcher
+    then regenerated the envelope, and the gate went on quoting the
+    old comparison for up to F_MAX_STALE_HOURS while the per-file
+    badge — which hashes the LIVE file — showed red on the same
+    screen. Level 3 stood on a comparison of bytes that no longer
+    existed.
+
+    Kills: In _fbEnvelopeMatchesRemote, return True after the
+    divergence-set check without calling
+    _fbEnvelopeUnchangedSinceVerify, so the recorded local hashes are
+    never compared against the file on disk now.
+    """
+    assert _fbArchiveMatches(
+        monkeypatch,
+        _fdictStatus([S_DATA, S_ENVELOPE]),
+        {S_ENVELOPE},
+        dictHashOverrides={S_ENVELOPE: "beef" * 16},
+    ) is False
+
+
+def test_a_cache_that_never_recorded_local_hashes_is_unproven(
+    monkeypatch,
+):
+    """A pre-field cache proves nothing about the bytes on disk now.
+
+    Same self-correcting shape as ``listComparedPaths``: the old cache
+    reads unproven (blocked), and the next verify writes the new
+    field. Passing it through instead would grandfather exactly the
+    stale-comparison hole the field was added to close.
+    """
+    assert _fbArchiveMatches(
+        monkeypatch,
+        _fdictStatus([S_DATA, S_ENVELOPE], dictComparedHashes={}),
+        {S_ENVELOPE},
+    ) is False
 
 
 def test_an_envelope_never_compared_against_zenodo_does_not_pass(

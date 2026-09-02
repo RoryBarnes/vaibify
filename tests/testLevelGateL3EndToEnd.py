@@ -61,8 +61,19 @@ def _fsIsoNow(fHoursAgo=0.0):
 
 
 def _fnWriteSyncStatus(tmp_path):
+    from vaibify.reproducibility.repoFiles import HostRepoFiles
     pathDir = tmp_path / ".vaibify"
     pathDir.mkdir(parents=True, exist_ok=True)
+    # The local hash each compared path was verified AS, read off the
+    # real files the fixture just wrote — what a real verify records,
+    # and what the envelope gate now re-checks at read time.
+    dictComparedHashes = {
+        sPath: (dictEntry or {}).get("sSha256")
+        for sPath, dictEntry in HostRepoFiles(
+            str(tmp_path),
+        ).fdictHashFiles(list(_LIST_COMPARED)).items()
+        if (dictEntry or {}).get("sSha256")
+    }
     dictPayload = {
         "github": {
             "iTotalFiles": len(_LIST_COMPARED),
@@ -70,6 +81,7 @@ def _fnWriteSyncStatus(tmp_path):
             "listComparedPaths": _LIST_COMPARED,
             "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),
+            "dictComparedHashes": dictComparedHashes,
             "sCommittedShaVerified": "abc123",
         },
         "zenodo": {
@@ -78,6 +90,7 @@ def _fnWriteSyncStatus(tmp_path):
             "listComparedPaths": _LIST_COMPARED,
             "iScopeVersion": _I_SCOPE_VERSION,
             "sLastVerified": _fsIsoNow(0.5),
+            "dictComparedHashes": dictComparedHashes,
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",
         },
@@ -152,7 +165,15 @@ def _fdictBuildLevel3Workflow():
                 "sDoi": "10.1000/example",
             },
         },
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
         "dictAiProvenance": {
@@ -170,11 +191,15 @@ def _fdictBuildLevel3Workflow():
 @pytest.fixture
 def fixtureLevel3Repo(tmp_path):
     """Seed a project repo that satisfies every L1, L2, L3 criterion."""
-    _fnWriteSyncStatus(tmp_path)
+    # Files first, THEN the sync status: since the staleness fix the
+    # cache records the local hash each path was compared AS
+    # (dictComparedHashes), and a cache written before the files exist
+    # would honestly read as unproven — which is a different fixture.
     _fnWriteL3EnvelopeFiles(tmp_path)
     _fnWriteManifest(
         tmp_path, [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME],
     )
+    _fnWriteSyncStatus(tmp_path)
     return tmp_path
 
 

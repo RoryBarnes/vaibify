@@ -40,12 +40,22 @@ quietly disagree with the other about what "reproduced" means.
 """
 
 import asyncio
+import posixpath
 
 from vaibify.gui.pipelineUtils import fbStepIsInteractive
 from vaibify.reproducibility.environmentSnapshot import (
     fiRecordedSourceDateEpoch,
 )
 from vaibify.reproducibility.l3Attestation import fsCurrentManifestDigest
+from vaibify.reproducibility.rerunDiagnostics import (
+    S_FAILURE_KIND_PREFLIGHT,
+    ftBuildRerunDiagnosticsCollector,
+)
+from vaibify.reproducibility.manifestPaths import (
+    fdictWorkflowTemplateValues,
+    flistStepDeclarationRepoPaths,
+    flistStepOutputRepoPaths,
+)
 from vaibify.reproducibility.manifestWriter import (
     fiCountManifestEntries,
     flistParseManifestLines,
@@ -58,6 +68,9 @@ from vaibify.reproducibility.repoFiles import (
 
 
 __all__ = [
+    "S_DIVERGENCE_EVERY_ENTRY_GIVEN",
+    "S_DIVERGENCE_LOCK_UNSATISFIED",
+    "S_DIVERGENCE_ROOT_MISMATCH",
     "S_DIVERGENCE_MANIFEST_EMPTY",
     "S_DIVERGENCE_MANIFEST_MUTATED",
     "S_DIVERGENCE_MANIFEST_UNREADABLE",
@@ -68,7 +81,9 @@ __all__ = [
     "fdictUnrunOutcome",
     "fdictVerifyRerunOutputs",
     "fiCountManifestEntriesOrZero",
-    "flistNameUnexecutableSteps",
+    "flistCarriedOutputRepoPaths",
+    "flistNameStepsThatBlockARerun",
+    "flistSelectStepsWhoseOutputsAreGiven",
 ]
 
 
@@ -76,10 +91,27 @@ __all__ = [
 # failure of the comparison itself rather than a file whose hash moved,
 # and are always listed before any diverged path so the first line of a
 # failed attestation states the dominant cause.
-S_DIVERGENCE_PIPELINE_FAILED = "pipeline rerun exited non-zero"
+# Plain language on purpose. This string is read by a researcher on
+# their dashboard, not by an engineer reading a log: "exited
+# non-zero" names a POSIX convention and says nothing about what
+# went wrong, and it was the whole of what one researcher was told
+# about a failed reproduction (2026-09-01). The cause follows on
+# its own line, from the diagnostics collector.
+S_DIVERGENCE_PIPELINE_FAILED = "the reproduction run failed"
 S_DIVERGENCE_MANIFEST_UNREADABLE = "MANIFEST.sha256 missing or unreadable"
 S_DIVERGENCE_MANIFEST_MUTATED = "MANIFEST.sha256 changed during the rerun"
 S_DIVERGENCE_MANIFEST_EMPTY = "MANIFEST.sha256 pins no files"
+S_DIVERGENCE_ROOT_MISMATCH = (
+    "the rerun would execute in a different directory from the one "
+    "the comparison reads"
+)
+S_DIVERGENCE_EVERY_ENTRY_GIVEN = (
+    "every manifest entry is an output of a step the rerun does not "
+    "execute"
+)
+S_DIVERGENCE_LOCK_UNSATISFIED = (
+    "the pinned image does not satisfy requirements.lock"
+)
 
 
 def fdictRerunAndVerifyWorkflow(
@@ -105,68 +137,200 @@ def fdictRerunAndVerifyWorkflow(
     itself with some other envelope's digest — the host clone's, say —
     would be naming a thing it did not check.
 
-    A workflow containing steps the unattended runner would silently
-    skip — interactive steps, or steps disabled in the dashboard — is
-    refused before any step executes (``bRerunAttempted`` False, one
-    divergence line per unexecutable step). A skipped step leaves its
-    pinned outputs untouched, so every hash would trivially match and
-    the attestation would certify a rerun that ran nothing.
+    A workflow containing DISABLED steps is refused before any step
+    executes (``bRerunAttempted`` False, one divergence line per such
+    step): a disabled step leaves its pinned outputs untouched, so
+    every hash would trivially match and the attestation would certify
+    a rerun that ran nothing. INTERACTIVE steps do not refuse. Their
+    outputs are human-made data the steps below them consume, so the
+    rerun carries them verbatim and drops them from the comparison,
+    reporting them in ``listCarriedPaths`` — see
+    :func:`flistSelectStepsWhoseOutputsAreGiven`.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
-    listUnexecutable = flistNameUnexecutableSteps(dictWorkflow)
-    if listUnexecutable:
+    listBlocking = flistNameStepsThatBlockARerun(dictWorkflow)
+    if listBlocking:
         dictOutcome = {
             "bPassed": False,
             "bRerunAttempted": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
-            "listDivergedHashes": listUnexecutable,
+            "listCarriedPaths": [],
+            "dictRerunFailure": {},
+            "listDivergedHashes": listBlocking,
         }
         dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
         return dictOutcome
+    sRootRefusal = _fsRefuseAMismatchedRunRoot(
+        dictWorkflow, sWorkflowPath, filesRepo,
+    )
+    if sRootRefusal:
+        dictOutcome = fdictUnrunOutcome(sRootRefusal)
+        dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
+        return dictOutcome
+    listCarriedPaths = flistCarriedOutputRepoPaths(dictWorkflow)
+    fnCollect, dictDiagnostics = ftBuildRerunDiagnosticsCollector(
+        dictWorkflow, fnStatusCallback,
+    )
     bRerunSucceeded = fbRunWorkflowInContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-        fsRepoRootOf(filesRepo), fnStatusCallback,
+        posixpath.dirname(sWorkflowPath), fnCollect,
         iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),
     )
     dictOutcome = fdictVerifyRerunOutputs(
-        filesRepo, bRerunSucceeded, dictExpectedManifest,
+        filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
+        dictDiagnostics,
     )
     dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
     return dictOutcome
 
 
-def flistNameUnexecutableSteps(dictWorkflow):
-    """Name every step an unattended rerun cannot or would not execute.
+def fsResolveRunnerRepoRoot(dictWorkflow, sWorkflowPath):
+    """Return the repo root the pipeline runner will resolve steps against.
 
-    A tier 5 rerun runs with no researcher present, so an interactive
-    step can never execute — the runner's unattended path returns
-    success without running anything, which is precisely the outcome an
-    attestation must never absorb silently. A step disabled in the
-    dashboard is skipped the same way. In both cases the step's pinned
-    outputs sit untouched on disk, every hash trivially matches, and a
-    "byte-identical rerun" would be certified with nothing rerun. The
-    honest verdict is a refusal that names each step, before any compute
-    is spent: the researcher either enables the step, removes it, or
-    accepts that this workflow cannot attest at tier 5.
+    Asked of the runner's OWN derivation rather than recomposed here,
+    because a second derivation is how the two came to disagree in the
+    first place. The runner takes a workflow DIRECTORY and peels a
+    level before cutting at ``.vaibify``; handing it a repository root
+    instead yields that root's PARENT, silently.
     """
-    listSteps = dictWorkflow.get("listSteps", [])
+    from vaibify.gui.workflowManager import fdictBuildGlobalVariables
+
+    return fdictBuildGlobalVariables(
+        dictWorkflow, posixpath.dirname(sWorkflowPath),
+    ).get("sRepoRoot", "")
+
+
+def _fsRefuseAMismatchedRunRoot(dictWorkflow, sWorkflowPath, filesRepo):
+    """Return a refusal when the run root and the comparison root differ.
+
+    This is a FALSE PASS guard, not tidiness. The rerun executes steps
+    under the runner's resolved root and the comparison re-hashes under
+    ``filesRepo``. If those are different directories, the steps write
+    somewhere the comparison never looks -- so every pinned artefact is
+    found exactly as the archive left it, every hash matches, and a
+    workflow that reproduced nothing is attested as byte-identical.
+
+    It is not hypothetical. The shadow lane passed the repository root
+    where the runner wanted the workflow directory, so steps resolved
+    against ``/shadow`` while the comparison read
+    ``/shadow/<repo>`` (researcher-reported, 2026-09-01). That run
+    happened to fail preflight because ``/shadow/<step>`` did not
+    exist; had the layout put anything runnable there, the attestation
+    would have PASSED.
+    """
+    sComparisonRoot = posixpath.normpath(fsRepoRootOf(filesRepo) or "")
+    sRunnerRoot = posixpath.normpath(
+        fsResolveRunnerRepoRoot(dictWorkflow, sWorkflowPath) or "",
+    )
+    if not sRunnerRoot or sRunnerRoot == sComparisonRoot:
+        return ""
+    return (
+        f"{S_DIVERGENCE_ROOT_MISMATCH}: it would run in "
+        f"{sRunnerRoot!r} while the comparison reads "
+        f"{sComparisonRoot!r}"
+    )
+
+
+def flistNameStepsThatBlockARerun(dictWorkflow):
+    """Name every step that would make an unattended rerun meaningless.
+
+    A step DISABLED in the dashboard is skipped by the unattended
+    runner, so its pinned outputs sit untouched, every hash trivially
+    matches, and a "byte-identical rerun" would be certified with
+    nothing rerun. Interactive steps are skipped by that same runner
+    and are NOT blocking: the researcher declared them human-driven,
+    and their outputs are carried as given (see
+    :func:`flistSelectStepsWhoseOutputsAreGiven`). The difference is
+    that being disabled is a switch, not a declared property of the
+    workflow — carrying a disabled step's outputs would let anyone
+    silence a step and still attest around it.
+
+    The degenerate workflow blocks too: with no steps at all, 0-of-0
+    execution exits zero and proves nothing. Every reason here is
+    returned before any compute is spent.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
         return ["workflow contains no steps to execute"]
-    listReasons = []
+    return [
+        f"step '{dictStep.get('sName', '')}' is disabled and would not "
+        f"execute"
+        for dictStep in listSteps
+        if not fbStepIsInteractive(dictStep)
+        and not dictStep.get("bRunEnabled", True)
+    ]
+
+
+def flistSelectStepsWhoseOutputsAreGiven(dictWorkflow):
+    """Return every step the rerun carries instead of executing.
+
+    An interactive step needs a researcher and a rerun has none, so its
+    outputs are not a computation the rerun could repeat: they are data
+    a human produced, which the steps below it consume as input. The
+    shadow's repository copy already carries those files verbatim — it
+    copies everything git can enumerate, tracked or not — so the
+    executable steps run against exactly the bytes the original run
+    used. That is what makes a workflow with a human step in the middle
+    reproducible for every step that is not one.
+
+    What must never follow is counting those files as reproduced. They
+    were given, not re-derived, so they leave the comparison
+    (:func:`flistCarriedOutputRepoPaths`) and the attestation names
+    them. The AI Declaration needs no case of its own here: it is an
+    interactive step, and this is the rule that covers it.
+    """
+    return [
+        dictStep
+        for dictStep in dictWorkflow.get("listSteps", []) or []
+        if fbStepIsInteractive(dictStep)
+    ]
+
+
+def flistCarriedOutputRepoPaths(dictWorkflow):
+    """Return the repo-relative paths the comparison must not count.
+
+    Resolved through the SAME helpers the manifest writer uses. An
+    exclusion set resolved differently from the inclusion set excludes
+    nothing and reports nothing: the paths simply fail to match, and
+    every given file is silently graded as reproduced — which is the
+    false pass this whole lane exists to prevent.
+
+    A path an EXECUTED step also declares stays in the comparison. The
+    rerun genuinely re-derives it, and where the two claims disagree
+    the one backed by execution is the stronger.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
+    setGiven = _fsetDeclaredOutputPaths(
+        flistSelectStepsWhoseOutputsAreGiven(dictWorkflow),
+        dictTemplateValues,
+    )
+    setExecuted = _fsetDeclaredOutputPaths(
+        [
+            dictStep for dictStep in listSteps
+            if not fbStepIsInteractive(dictStep)
+        ],
+        dictTemplateValues,
+    )
+    return sorted(setGiven - setExecuted)
+
+
+def _fsetDeclaredOutputPaths(listSteps, dictTemplateValues):
+    """Return every declared output path of these steps, repo-relative.
+
+    An ai-declaration step's declaration file joins its outputs: the
+    manifest pins it as a publication artefact, and a human wrote it,
+    so it is given for exactly the reason its step is.
+    """
+    setPaths = set()
     for dictStep in listSteps:
-        sStepName = dictStep.get("sName", "")
-        if fbStepIsInteractive(dictStep):
-            listReasons.append(
-                f"step '{sStepName}' is interactive and cannot execute "
-                f"unattended"
-            )
-        elif not dictStep.get("bRunEnabled", True):
-            listReasons.append(
-                f"step '{sStepName}' is disabled and would not execute"
-            )
-    return listReasons
+        setPaths.update(
+            flistStepOutputRepoPaths(dictStep, dictTemplateValues),
+        )
+        setPaths.update(flistStepDeclarationRepoPaths(dictStep))
+    return {sPath for sPath in setPaths if sPath}
 
 
 def fbRunWorkflowInContainer(
@@ -221,6 +385,7 @@ def fdictSnapshotExpectedManifest(filesRepo):
 
 def fdictVerifyRerunOutputs(
     filesRepo, bRerunSucceeded, dictExpectedManifest=None,
+    listCarriedPaths=(), dictRerunFailure=None,
 ):
     """Re-hash the pinned artefacts and return the attestation's hash fields.
 
@@ -254,10 +419,17 @@ def fdictVerifyRerunOutputs(
         return _fdictNoComparisonOutcome(
             S_DIVERGENCE_MANIFEST_EMPTY, bRerunSucceeded,
         )
-    listMismatches = _flistVerifyEntriesOrNone(filesRepo, listEntries)
+    listCompared, listCarried = _ftPartitionManifestEntries(
+        listEntries, listCarriedPaths,
+    )
+    if not listCompared:
+        return _fdictNoComparisonOutcome(
+            S_DIVERGENCE_EVERY_ENTRY_GIVEN, bRerunSucceeded, listCarried,
+        )
+    listMismatches = _flistVerifyEntriesOrNone(filesRepo, listCompared)
     if listMismatches is None:
         return _fdictNoComparisonOutcome(
-            S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded,
+            S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded, listCarried,
         )
     bManifestMoved = _fbManifestMovedDuringRerun(
         filesRepo, dictExpectedManifest,
@@ -269,24 +441,105 @@ def fdictVerifyRerunOutputs(
             and not bManifestMoved
         ),
         "iOutputHashesMatched": max(
-            len(listEntries) - len(listMismatches), 0,
+            len(listCompared) - len(listMismatches), 0,
         ),
-        "iOutputHashesTotal": len(listEntries),
+        "iOutputHashesTotal": len(listCompared),
+        "listCarriedPaths": listCarried,
+        "dictRerunFailure": dict(dictRerunFailure or {}),
         "listDivergedHashes": _flistOrderDivergences(
             [dictMismatch["sPath"] for dictMismatch in listMismatches],
-            bRerunSucceeded, bManifestMoved,
+            bRerunSucceeded, bManifestMoved, dictRerunFailure,
         ),
     }
 
 
-def _flistOrderDivergences(listPaths, bRerunSucceeded, bManifestMoved):
-    """Prepend the comparison-level failures so the dominant cause reads first."""
+def _ftPartitionManifestEntries(listEntries, listCarriedPaths):
+    """Split manifest entries into (compared, carried-path names).
+
+    The carried half is intersected with the entries actually pinned
+    rather than reported as declared: a given step may name an output
+    the manifest does not pin, and calling that "excluded from the
+    comparison" would describe an exclusion that never happened.
+    """
+    setCarried = set(listCarriedPaths or ())
+    listCompared = [
+        dictEntry for dictEntry in listEntries
+        if dictEntry["sPath"] not in setCarried
+    ]
+    listCarried = sorted(
+        dictEntry["sPath"] for dictEntry in listEntries
+        if dictEntry["sPath"] in setCarried
+    )
+    return listCompared, listCarried
+
+
+def _flistOrderDivergences(
+    listPaths, bRerunSucceeded, bManifestMoved, dictRerunFailure=None,
+):
+    """Prepend the comparison-level failures so the dominant cause reads first.
+
+    A failed pipeline keeps its generic first line -- callers match on
+    ``S_DIVERGENCE_PIPELINE_FAILED`` to decide what to print -- and
+    gains a second naming the step, because the generic line alone told
+    a researcher nothing they could act on and the shadow that held the
+    evidence was already destroyed.
+    """
     listDiverged = list(listPaths)
     if bManifestMoved:
         listDiverged = [S_DIVERGENCE_MANIFEST_MUTATED] + listDiverged
     if not bRerunSucceeded:
-        listDiverged = [S_DIVERGENCE_PIPELINE_FAILED] + listDiverged
+        listDiverged = (
+            [S_DIVERGENCE_PIPELINE_FAILED]
+            + _flistExplainTheFailure(dictRerunFailure)
+            + listDiverged
+        )
     return listDiverged
+
+
+def _flistExplainTheFailure(dictRerunFailure):
+    """Return the researcher-facing lines naming what actually failed.
+
+    Empty when nothing was collected, which is honest: a caller that
+    passed no diagnostics did not fail to find the cause, it never
+    looked.
+
+    The two kinds are worded so they cannot be confused. A step that
+    ran and failed is a problem inside that step; a run refused by
+    preflight never started at all, and telling a researcher their
+    workflow "failed" when it was never attempted sends them looking
+    at the wrong thing entirely.
+    """
+    if not dictRerunFailure:
+        return []
+    if dictRerunFailure.get("sKind") == S_FAILURE_KIND_PREFLIGHT:
+        return _flistDescribePreflight(
+            dictRerunFailure.get("listErrors") or [],
+        )
+    sLabel = dictRerunFailure.get("sStepLabel") or "?"
+    sName = dictRerunFailure.get("sStepName") or ""
+    iExit = dictRerunFailure.get("iExitCode") or 0
+    return [
+        f"step {sLabel} '{sName}' stopped with error code {iExit}"
+    ]
+
+
+def _flistDescribePreflight(listErrors):
+    """Say the cause once, then list each DISTINCT problem beneath it.
+
+    Repeating "the run was stopped before any step could start" in
+    front of every error turned two broken directories into twelve
+    near-identical lines, which reads as a wall rather than a list of
+    things to fix. Duplicates are dropped in order: preflight can
+    report the same fault once per command in a step, and a researcher
+    fixes it once.
+    """
+    listUnique, setSeen = [], set()
+    for sError in listErrors:
+        if sError in setSeen:
+            continue
+        setSeen.add(sError)
+        listUnique.append(sError)
+    return ["the run was stopped before any step could start"] + listUnique
 
 
 def _fbManifestMovedDuringRerun(filesRepo, dictExpectedManifest):
@@ -318,22 +571,31 @@ def fdictUnrunOutcome(sReason):
         "bRerunAttempted": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
+        "listCarriedPaths": [],
+        "dictRerunFailure": {},
         "listDivergedHashes": [sReason],
     }
 
 
-def _fdictNoComparisonOutcome(sDivergence, bRerunSucceeded):
+def _fdictNoComparisonOutcome(
+    sDivergence, bRerunSucceeded, listCarriedPaths=(),
+):
     """Return the fail-closed outcome when no comparison was possible.
 
-    An unreadable manifest and a manifest that pins no files fail the
+    An unreadable manifest, a manifest that pins no files, and a
+    manifest whose every entry is a given step's output all fail the
     same way: a comparison against nothing must never be recorded as
     one that passed — zero of zero is a vacuous match, not a
-    reproduction.
+    reproduction. The last of those is the one carrying introduced, and
+    it is why carrying cannot be a blanket exemption: a workflow whose
+    outputs are ALL human-made has nothing for a rerun to reproduce.
     """
     return {
         "bPassed": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
+        "listCarriedPaths": list(listCarriedPaths or []),
+        "dictRerunFailure": {},
         "listDivergedHashes": _flistOrderDivergences(
             [sDivergence], bRerunSucceeded, False,
         ),

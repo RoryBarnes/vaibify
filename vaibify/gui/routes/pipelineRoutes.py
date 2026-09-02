@@ -13,13 +13,16 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 
 from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
+from ...reproducibility import remoteCheckState
 
 from .. import containerOwnership
+from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
     WORKSPACE_ROOT,
+    fdictAssessEnvelopeImageCurrency,
     fdictRequireWorkflow,
     fiGetSyncEpoch,
     fnHandlePipelineWs,
@@ -1104,6 +1107,12 @@ async def _fdictFetchOutputStatus(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
         fbIsHostProject(sContainerId),
+        bVerificationRunning=verificationProgress.fbVerificationIsLive(
+            sContainerId,
+        ),
+        dictImageCurrency=fdictAssessEnvelopeImageCurrency(
+            dictCtx, sContainerId, filesPoll,
+        ),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1113,6 +1122,16 @@ async def _fdictFetchOutputStatus(
             dictModTimes, sRepoRoot,
         ),
         "dictRunState": _fdictRunStateForWire(dictPipelineState),
+        # Which remote checks this hub process has in flight for this
+        # project. REPORTED here, never RUN here: the refresh is its
+        # own route (remoteRefreshRoutes) precisely because this poll
+        # is built with no extra container execs and no network I/O.
+        # Read at the top level rather than inside the envelope detail
+        # because the container id is what keys it, and the envelope
+        # builder is given the workflow alone.
+        "dictRemoteChecks": remoteCheckState.fdictDescribeChecks(
+            sContainerId,
+        ),
         **dictRest,
     }
 
@@ -1897,7 +1916,7 @@ def _fsFetchManifestTextFromContainer(
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
-    bHostProject=False,
+    bHostProject=False, *, bVerificationRunning, dictImageCurrency,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1908,6 +1927,13 @@ def _fdictBuildPollResponseRest(
     snapshot (one docker exec, fetched by the caller); every level
     gate and the manifest short-circuit read it so the dashboard
     reflects container truth. ``sRepoRoot`` remains for path math.
+
+    ``bVerificationRunning`` is keyword-only with NO default. It is
+    computed three hops up, where the container id lives, and a
+    defaulted parameter dropped at any hop is indistinguishable from
+    one that arrived False -- the attestation row silently never
+    pulses, and every function in the chain still reads correctly.
+    Requiring it makes a dropped hop a TypeError instead.
     """
     if filesPoll is None:
         filesPoll = sRepoRoot
@@ -1922,6 +1948,8 @@ def _fdictBuildPollResponseRest(
     return _fdictAssemblePollResponse(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
+        bVerificationRunning=bVerificationRunning,
+        dictImageCurrency=dictImageCurrency,
     )
 
 
@@ -1948,7 +1976,7 @@ def _fdictComputePollLevelGates(
     dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
     bHostProject,
 ):
-    """Evaluate the AICS level and the three blocker lists for one poll."""
+    """Evaluate the PROOF level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
         fiProofLevel, flistLevel1Blockers, flistLevel2Blockers,
         flistLevel3Blockers,
@@ -1973,8 +2001,13 @@ def _fdictComputePollLevelGates(
 def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
+    *, bVerificationRunning, dictImageCurrency,
 ):
-    """Assemble the poll wire payload from the computed pieces."""
+    """Assemble the poll wire payload from the computed pieces.
+
+    ``bVerificationRunning`` is keyword-only with no default, for
+    the reason given in ``_fdictBuildPollResponseRest``.
+    """
     from vaibify.reproducibility.levelGates import fdictBinaryStaleByStep
     from .. import workflowManager
     dictBinaryStaleByStep = fdictBinaryStaleByStep(
@@ -1991,6 +2024,8 @@ def _fdictAssemblePollResponse(
         **dictMtimes,
         "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesPoll,
+            bVerificationRunning=bVerificationRunning,
+            dictImageCurrency=dictImageCurrency,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
@@ -2167,7 +2202,37 @@ def _fnSaveIfLevelHighWaterChanged(
 _T_ENVELOPE_SYNC_SERVICES = ("github", "zenodo", "overleaf", "arxiv")
 
 
-def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
+def _fdictSummarizeAttestation(filesRepo):
+    """Return the wire summary of the last attestation, or ``None``.
+
+    Reads the same snapshot ``fbL3AttestationCurrent`` already reads,
+    so this adds no container work to the poll. The failure record is
+    passed through verbatim rather than pre-formatted: the row decides
+    how to say it, and a second phrasing here would be a second
+    authority on what the attestation means.
+    """
+    from ...reproducibility.l3Attestation import fdictReadAttestation
+    dictAttestation = fdictReadAttestation(filesRepo)
+    if not dictAttestation:
+        return None
+    return {
+        "sStatus": dictAttestation.get("sStatus") or "",
+        "sAttestedAtUtc": dictAttestation.get("sAttestedAtUtc") or "",
+        "iOutputHashesMatched": dictAttestation.get(
+            "iOutputHashesMatched") or 0,
+        "iOutputHashesTotal": dictAttestation.get(
+            "iOutputHashesTotal") or 0,
+        "listCarriedPaths": dictAttestation.get("listCarriedPaths"),
+        "listDivergedHashes": dictAttestation.get(
+            "listDivergedHashes") or [],
+        "dictRerunFailure": dictAttestation.get("dictRerunFailure"),
+    }
+
+
+def _fdictBuildWorkflowEnvelopeDetail(
+    dictWorkflow, filesPoll, bVerificationRunning=False,
+    dictImageCurrency=None,
+):
     """Assemble the expandable Workflow-row envelope payload.
 
     Built entirely from sources this poll already fetched (the
@@ -2181,6 +2246,8 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "dictRemoteSyncs": {sService: dictSummary or None},
          "bAiDeclarationAttested": bool,
          "bRebuildAttestationCurrent": bool,
+         "bRebuildAttestationRunning": bool,
+         "dictRebuildAttestation": last attestation summary or None,
          "bOverleafBound": bool,
          "bArxivConfigured": bool,
          "dictAiProvenance": declared block or None,
@@ -2204,7 +2271,7 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ffilesEnsureRepoFiles, fsRepoRootOf,
     )
     from vaibify.reproducibility import (
-        levelGates, publicationScope, replayGate,
+        determinismGate, levelGates, publicationScope, replayGate,
     )
     from vaibify.reproducibility.l3Attestation import (
         fbL3AttestationCurrent,
@@ -2226,14 +2293,61 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
             if bHasRepo else {}
         ),
+        # THREE-state: True (envelope pins the image this container is
+        # running), False (it pins a different one -- a rebuild without
+        # a snapshot regeneration, so verifications grade an image the
+        # researcher is no longer using), None (nothing determined; no
+        # surface may warn from it). Computed where the container id
+        # lives and threaded keyword-only, like bVerificationRunning.
+        "dictImageCurrency": dictImageCurrency or {
+            "bPinnedImageIsLive": None,
+            "sPinnedImageDigest": "",
+            "sLiveImageDigest": "",
+        },
         "dictDeterminism":
             (dictWorkflow or {}).get("dictDeterminism") or None,
+        # The VERDICT, not the raw block, because the row must not
+        # re-derive it. The frontend used to paint green for any
+        # non-empty dictDeterminism — and the declare form writes
+        # `{"bAcceptBlasVariance": false}` when submitted with nothing
+        # ticked, which is non-empty and declares NOTHING. So the row
+        # went green, the researcher believed the requirement met, and
+        # the L3 verify refused them with a readiness error they had no
+        # way to connect to it (reported 2026-08-30). One authority.
+        "bDeterminismDeclared":
+            determinismGate.fbWorkflowDeclaresDeterminism(dictWorkflow),
+        "listDeterminismIssues":
+            determinismGate.flistAuditWorkflow(dictWorkflow),
+        # Per QUESTION, since the 2026-08-30 ruling made determinism
+        # three separately-answered requirements rather than one
+        # satisfiable three ways. Each gets its own row and its own
+        # marker, so a researcher can see which of the three is open
+        # instead of one light standing for all of them.
+        "listDeterminismQuestions": _flistEnvelopeDeterminismQuestions(
+            dictWorkflow,
+        ),
+        # Evidence for the one question a researcher cannot answer by
+        # reading their own code: which maths library is underneath
+        # NumPy. Read from the dependency lock the snapshot already
+        # has, so this costs the poll no extra container work.
+        "dictMathsLibrary": (
+            determinismGate.fdictDetectMathsLibrary(filesRepo)
+            if bHasRepo else None
+        ),
         "dictRemoteSyncs": (
             _fdictEnvelopeRemoteSyncs(filesRepo) if bHasRepo
             else dict.fromkeys(_T_ENVELOPE_SYNC_SERVICES)
         ),
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+        # The waiver half of the binary declaration. Without it the
+        # Software row could not tell "no binaries declared yet" from
+        # "the researcher answered: there are none", so an answered
+        # project kept showing an unanswered "?" and the only way to
+        # set the waiver was to declare a package and delete it.
+        "bNoStandaloneBinaries": bool(
+            (dictWorkflow or {}).get("bNoStandaloneBinaries", False)
+        ),
         # The Level 3 half of the published-copy question. Its Level 2
         # twin lives in dictRemoteSyncs; this pair is scoped to the
         # reproducibility envelope, which the L2 rows deliberately do
@@ -2259,6 +2373,23 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bRebuildAttestationCurrent": (
             fbL3AttestationCurrent(filesRepo) if bHasRepo else False
+        ),
+        # Whether a rerun is running RIGHT NOW -- transient hub state,
+        # not a verdict, and deliberately a separate key from the one
+        # above. The row renders the gate's answer for its colour and
+        # this only for its pulse; folding them into one tri-state
+        # would make a running verification look like an attestation
+        # result, which is the class of error the level-cell and
+        # determinism-row bugs both were.
+        "bRebuildAttestationRunning": bool(bVerificationRunning),
+        # The last attestation's own words, so the row can tell
+        # "never run" from "ran and failed". A boolean could not: the
+        # row said "No current rebuild attestation. Run this once
+        # every other check passes" over a rerun that HAD run and had
+        # reported a failing step, which reads as vaibify having
+        # ignored the click (researcher-reported, 2026-09-01).
+        "dictRebuildAttestation": (
+            _fdictSummarizeAttestation(filesRepo) if bHasRepo else None
         ),
         "bOverleafBound":
             levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),
@@ -2286,6 +2417,50 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             dictWorkflow, filesRepo if bHasRepo else None,
         ),
     }
+
+
+def _flistEnvelopeDeterminismQuestions(dictWorkflow):
+    """Return one wire entry per determinism question.
+
+    Carries the researcher-facing label and question text from the
+    gate module rather than letting the frontend hold its own copy:
+    the words describe what the gate is asking, and two copies of that
+    is how the row and the gate came to disagree in the first place.
+    """
+    from vaibify.reproducibility import determinismGate
+    dictDeterminism = (dictWorkflow or {}).get("dictDeterminism") or {}
+    setUnanswered = set(
+        determinismGate.flistUnansweredDeterminismQuestions(dictWorkflow),
+    )
+    return [
+        {
+            "sKey": dictQuestion["sKey"],
+            "sLabel": dictQuestion["sLabel"],
+            "sQuestion": dictQuestion["sPlainQuestion"],
+            "bAnswered": dictQuestion["sKey"] not in setUnanswered,
+            "sAnswer": dictDeterminism.get(
+                dictQuestion["sAnswerKey"],
+            ) or "",
+            "sAnswerKey": dictQuestion["sAnswerKey"],
+            "sValueKey": dictQuestion["sValueKey"],
+            "sValue": _fsStringifyDeterminismValue(
+                dictDeterminism, dictQuestion["sValueKey"],
+            ),
+        }
+        for dictQuestion in determinismGate.LIST_DETERMINISM_QUESTIONS
+    ]
+
+
+def _fsStringifyDeterminismValue(dictDeterminism, sValueKey):
+    """Return the pinned value as display text, or ""."""
+    if not sValueKey:
+        return ""
+    jsonValue = dictDeterminism.get(sValueKey)
+    if jsonValue is None:
+        return ""
+    if isinstance(jsonValue, float) and jsonValue.is_integer():
+        return str(int(jsonValue))
+    return str(jsonValue)
 
 
 def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):

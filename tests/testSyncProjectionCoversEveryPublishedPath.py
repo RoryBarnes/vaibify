@@ -123,23 +123,34 @@ def test_the_requirement_row_reads_unmet_end_to_end():
     )
 
 
-@pytest.mark.parametrize("sKey,sPath", [
-    ("saOutputDataFiles", "Step/out.json"),
-    ("saInputDataFiles", "Step/input.csv"),
-    ("saPlotFiles", "Step/figure.png"),
+@pytest.mark.parametrize("sKey,sDeclared,sResolved", [
+    # OUTPUTS and scripts are declared step-relative and the collector
+    # prefixes sDirectory; INPUTS are already repo-relative. Declaring
+    # an output repo-relative resolves to "MakeData/Step/out.json",
+    # which is a path nothing publishes.
+    ("saOutputDataFiles", "out.json", "MakeData/out.json"),
+    ("saInputDataFiles", "Step/input.csv", "Step/input.csv"),
+    ("saPlotFiles", "figure.png", "MakeData/figure.png"),
 ])
-def test_every_declared_path_array_reaches_the_row(sKey, sPath):
+def test_every_declared_path_array_reaches_the_row(
+    sKey, sDeclared, sResolved,
+):
     """Outputs kept working, and the other arrays started to.
 
     Outputs are included so a regression that swapped one subset for
     another — rather than widening — still fails here.
+
+    The diverged path is the RESOLVED spelling, because that is what a
+    remote verify records: it compares repo-relative paths, so a
+    projection that emitted the raw declaration could never intersect
+    the divergence list and would report a diverged file as published.
     """
     dictStep = {
         "sName": "Make Data", "sDirectory": "MakeData",
         "saOutputDataFiles": [], "saPlotFiles": [],
-        sKey: [sPath],
+        sKey: [sDeclared],
     }
-    assert _flistBlockersFor(dictStep, sPath), (
+    assert _flistBlockersFor(dictStep, sResolved), (
         f"a diverged {sKey} entry produced no blocker"
     )
 
@@ -158,7 +169,7 @@ def test_a_diverged_script_reaches_the_row():
         "saDataCommands": ["python3 makeData.py --out x.json"],
         "saOutputDataFiles": [], "saPlotFiles": [],
     }
-    listPaths = _flistStepPublishedPaths(dictStep)
+    listPaths = _flistStepPublishedPaths(dictStep, {})
     assert "MakeData/makeData.py" in listPaths, listPaths
     assert _flistBlockersFor(dictStep, "MakeData/makeData.py"), (
         "a step whose SCRIPT differs from the published copy still "

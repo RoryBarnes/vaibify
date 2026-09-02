@@ -179,6 +179,32 @@ DICT_PRIMITIVE_ACCESS = {
     "fbaFetchFile": S_ACCESS_TYPED_READ,
     "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
+    # Bulk export through the SAME daemon archive API fiterStreamFile
+    # uses, at repository scale instead of one file. Classified with the
+    # typed reads because it shares their decisive property and not
+    # merely their intent: it runs NO program in the container -- the
+    # daemon serializes the filesystem itself -- so nothing a caller
+    # supplies can become program text. It is deliberately not IN the
+    # typed-read program table, whose safety argument is that each entry
+    # is a small fixed program over a path literal; a repository-scale
+    # export does not belong there.
+    "fbaFetchDirectoryArchive": S_ACCESS_TYPED_READ,
+    # The coherence observation behind a bulk export: the declared
+    # ``gitWorktreeIdentities`` program enumerates every present
+    # worktree path with git and computes each one's blob identity over
+    # the raw bytes, in the container. Same property as the poll read
+    # below: what the caller varies is only the repo path literal, and
+    # the argv around it is fixed text in the program table.
+    "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
+    # A DAEMON-info query, not a container call: it runs no program
+    # anywhere, takes no caller value, and reads only how much memory
+    # and CPU the daemon has to give. Classified as a typed read
+    # because that is the narrowest kind this vocabulary has and it
+    # over-states rather than under-states what the call can do; the
+    # shadow lane sizes a container's limits from the answer, because
+    # host RAM is the wrong number for anything that runs in a
+    # container.
+    "fdictReadDaemonCapacity": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     # Metadata about what the DAEMON is running in a container: the
     # exec-id list plus one Running flag per id, via fdictInspectExec.
@@ -228,6 +254,11 @@ DICT_PRIMITIVE_ACCESS = {
     # write was the dashboard's only mutation on a timer.
     "fdictStatPathMtimes": S_ACCESS_TYPED_READ,
     "fsHashContainerFileSha256": S_ACCESS_TYPED_READ,
+    # The remote verify's hash batch, on the same terms as the mtime
+    # and existence migrations above: it replaced an embedded script
+    # the repo-files adapter assembled for the GENERAL exec primitive,
+    # which enforced lanes refused wholesale (2026-09-02).
+    "fdictHashContainerRepoPaths": S_ACCESS_TYPED_READ,
     # The Repositories panel's five-second poll, and the first typed
     # read whose program runs an EXTERNAL binary: git is the only way
     # to ask git. What varies is still only the path literal, and the

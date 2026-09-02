@@ -568,11 +568,16 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
      "bAgentSafe": True,
      "sDescription": "Read-only diagnostic view of the determinism row "
-                     "of the L3 readiness card (RNG seeds, BLAS "
-                     "pinning, non-deterministic kernels). Returns the "
-                     "same JSON as check-l3-readiness; the CLI extracts "
-                     "the determinism row and renders it as prose. "
-                     "Does not modify the workflow or the project repo."},
+                     "of the L3 readiness card. Returns the same JSON "
+                     "as check-l3-readiness; read bDeterminismDeclared "
+                     "for the verdict and listDeterminismIssues for "
+                     "what produced it (a missing dictDeterminism "
+                     "block or BLAS waiver, and any step flagged "
+                     "bUnseededRandomnessWarning). A project with no "
+                     "RNG still needs the declaration or the waiver: "
+                     "the gate asks what you assert, not what the "
+                     "scripts happen to do. Does not modify the "
+                     "workflow or the project repo."},
     {"sName": "generate-l3-envelope", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
@@ -605,6 +610,22 @@ LIST_AGENT_ACTIONS = [
                      "hashes. Returns listProblems (empty = clean); "
                      "format-only — actual install verification is "
                      "pip install --require-hashes."},
+    {"sName": "scan-determinism", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/determinism/scan",
+     "bAgentSafe": True,
+     "sDescription": "Scan every step script for determinism "
+                     "ANTI-PATTERNS: clock-derived seeds, os.urandom, "
+                     "/dev/urandom, the secrets module, and torch "
+                     "non-determinism opt-outs. Returns {listIssues, "
+                     "listScanned, listUnreadable, sScopeNote}. "
+                     "Read-only. An empty listIssues means none of "
+                     "those patterns were found -- it is NOT proof "
+                     "the workflow is deterministic and does not "
+                     "discharge the declaration, which is the "
+                     "researcher's assertion. Report it that way; "
+                     "listUnreadable names scripts that could not be "
+                     "read, which is not the same as clean."},
     {"sName": "delete-determinism", "sCategory": "verification",
      "sMethod": "DELETE",
      "sPath": "/api/workflow/{sContainerId}/determinism",
@@ -623,6 +644,20 @@ LIST_AGENT_ACTIONS = [
                      "root. Idempotent; safe to invoke whenever the "
                      "readiness card flags the script as absent or "
                      "out of date."},
+    {"sName": "copy-image-dockerfile", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/level3/dockerfile",
+     "bAgentSafe": False,
+     "sDescription": "Compose the container image's build chain (the "
+                     "base Dockerfile plus each enabled feature "
+                     "overlay, in order) into one multi-stage "
+                     "Dockerfile at the project repo root, then re-pin "
+                     "the manifest. Refuses to overwrite a Dockerfile "
+                     "vaibify did not generate. USER-ONLY twice over: "
+                     "it reads the researcher's registry and "
+                     "vaibify.yml, which are HOST files outside the "
+                     "workspace volume, and the handler rejects the "
+                     "agent lane itself."},
     {"sName": "view-l3-attestation", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/attestation",
@@ -665,14 +700,20 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/determinism/declare",
      "bAgentSafe": False,
-     "sDescription": "Write the workflow's dictDeterminism block "
-                     "read by the L3 determinism gate. Args: at "
-                     "least one of {bAcceptBlasVariance: bool, "
-                     "dOmpNumThreads: number, sMklCbwr: str}; "
-                     "scalar JSON values only. User-only because "
-                     "the bAcceptBlasVariance waiver passes the L3 "
-                     "determinism gate and must remain a researcher "
-                     "decision."},
+     "sDescription": "Record the researcher's answer to ONE of the "
+                     "three determinism questions (2026-08-30 ruling: "
+                     "each must be answered; answering is the "
+                     "criterion, not any particular answer). Args: "
+                     "one of {sBlasVarianceAnswer: accepted|rejected, "
+                     "sOmpThreadsAnswer: pinned|unpinned, "
+                     "sMklModeAnswer: pinned|not-used}, plus "
+                     "dOmpNumThreads: number or sMklCbwr: str when "
+                     "that answer is 'pinned' (a pinned answer with "
+                     "no value does not count). Keys merge, so send "
+                     "one question at a time; send null to clear a "
+                     "value. User-only: these are claims about the "
+                     "researcher's own science and an agent must not "
+                     "make them on their behalf."},
     {"sName": "declare-ai-model", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/ai-models/declare",
@@ -872,12 +913,19 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/pipeline/{sContainerId}/host-log-tail",
      "bAgentSafe": True,
      "saQueryFields": ["iLines"],
-     "sDescription": "Return the last N lines of ~/.vaibify/vaibify.log "
-                     "filtered to this container. Args: {iLines: int, "
-                     "default 200, cap 1000}. Read-only; lets an "
-                     "in-container agent self-diagnose a run that died "
-                     "with exit-code -9999 by reading the actual host "
-                     "trigger instead of the symptom in pipeline_state.json."},
+     "sDescription": "Return recent host-side diagnostics for this "
+                     "container. Args: {iLines: int, default 200, cap "
+                     "1000}; --lines is accepted as an alias. Read-only. "
+                     "THE AGENT LANE RECEIVES NO LOG LINES: the raw log "
+                     "spans every container and carries host paths, so "
+                     "an agent token gets {bSanitized: true, "
+                     "listIncidents: [...]} only -- an allowlisted view "
+                     "of host exceptions tagged with this container id. "
+                     "An empty listIncidents means nothing was recorded "
+                     "against this container, NOT that nothing went "
+                     "wrong; a failure logged without that tag is not "
+                     "visible here at all. The browser lane also gets "
+                     "listLines from ~/.vaibify/vaibify.log."},
     {"sName": "get-pipeline-state", "sCategory": "diagnostics",
      "sMethod": "GET",
      "sPath": "/api/pipeline/{sContainerId}/state",
@@ -1005,6 +1053,15 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
     ("POST",
      "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),
+    # The dashboard's open-time remote refresh. It starts the same
+    # checks the agent already has as `verify-remote`, but returns no
+    # verdict — only which services it began asking about — so an
+    # agent invoking it learns nothing it could not learn better one
+    # service at a time. It also consumes the container's single
+    # durable-task slot, which would refuse the researcher's next
+    # action for as long as four network round-trips take. Browser
+    # trigger only, on project open and reconnect.
+    ("POST", "/api/workflow/{sContainerId}/remotes/refresh"),
     # Sync setup / tracking — credentials and service wiring; user-only.
     ("POST", "/api/sync/{sContainerId}/setup"),
     ("POST", "/api/sync/{sContainerId}/track"),

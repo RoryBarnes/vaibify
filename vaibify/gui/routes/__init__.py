@@ -22,6 +22,7 @@ __all__ = [
     "falsificationRoutes",
     "replayRoutes",
     "preferencesRoutes",
+    "remoteRefreshRoutes",
     "councilRoutes",
     "councilChatRoutes",
 ]
@@ -48,6 +49,7 @@ from . import (
     falsificationRoutes,
     replayRoutes,
     preferencesRoutes,
+    remoteRefreshRoutes,
     councilRoutes,
     councilChatRoutes,
 )

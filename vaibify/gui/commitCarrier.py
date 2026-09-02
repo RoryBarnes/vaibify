@@ -97,6 +97,7 @@ from vaibify.config.mutationAdmission import (
     S_ADMISSION_MODE_LOCK_HELD,
     S_ADMISSION_MODE_REQUEST,
     S_ADMISSION_MODE_SYNCHRONOUS,
+    S_ADMISSION_MODE_DISPOSABLE,
     _fadmissionMintForCommitCarrier,
     fnAssertOperationAdmittedByIdentity,
     fnDeactivateAdmission,
@@ -362,6 +363,48 @@ def ftOpenEstablishingAdmission(sContainerName, sContainerId):
     tokenLane = ftokenMarkEnforcedLane()
     admission = _fadmissionMintForCommitCarrier(
         sContainerName, sContainerId, S_ADMISSION_MODE_ESTABLISHING,
+    )
+    return (tokenLane, ftokenActivateAdmission(admission))
+
+
+def ftOpenDisposableContainerAdmission(sContainerName, sContainerId):
+    """Open the admission for a container vaibify created and will destroy.
+
+    The shadow-rerun lane's seam. A disposable container is not the
+    researcher's: this hub created it moments ago from a pinned image,
+    is its only user for its whole lifetime, and destroys it with proof
+    when the job ends. So the machinery the other modes carry has
+    nothing to arbitrate here -- there is no owner record to revalidate,
+    no lease to hold, and no journal record to settle, because
+    namespace destruction is the containment proof rather than a
+    record.
+
+    What still holds, and is the whole point of routing through the
+    carrier at all: the admission names ONE container id. Work inside it
+    can mutate the shadow and NOTHING else, so an L3 rerun executing
+    inside a durable carrier opened for the project container cannot
+    reach that project container through this admission, and cannot
+    reach the shadow through the project's. Returns the token pair
+    :func:`fnCloseRequestAdmission` closes.
+
+    The caller must have created the container it names. That is not
+    checkable here -- the carrier cannot know which daemon objects the
+    caller made -- which is why the only caller is the lane that mints
+    the gateway handle in the same function.
+
+    ``bDurable`` is True because the rerun's steps execute through the
+    STREAMED exec primitive, whose gate requires a durable admission
+    (``fnAssertDurableExecAdmitted``) -- not merely the ordinary
+    command gate. Minted non-durable, the admission satisfies preflight
+    (plain execs) and then refuses the first real step, so the lane
+    appears wired and fails only when a workflow survives preflight.
+    That is exactly how it shipped: every live run to that point had
+    died at preflight, so the refusal had never been reached.
+    """
+    tokenLane = ftokenMarkEnforcedLane()
+    admission = _fadmissionMintForCommitCarrier(
+        sContainerName, sContainerId, S_ADMISSION_MODE_DISPOSABLE,
+        bDurable=True,
     )
     return (tokenLane, ftokenActivateAdmission(admission))
 
@@ -775,10 +818,20 @@ class DurableTaskRecord:
     taskAsync: Optional["Task"]
     admission: Optional["MutationAdmission"]
     sState: str = "running"
+    # What this task IS, in the researcher's words. The mode-(b) lane
+    # has named its holder since it existed
+    # (_fsDescribeBlockingMutationWork); the durable lane refused with
+    # "a durable task is already live in this container" and left the
+    # researcher unable to tell "your verification is running" from
+    # "something is stuck" (reported 2026-08-30).
+    # Defaults to the SHARED wording, never a fourth spelling
+    # of the same state.
+    sOperation: str = S_DESCRIBED_DURABLE_TASK
 
 
 async def fdictLaunchDurableTask(
     appState, sName, sContainerId, dictLaneTuple, fnStartTask,
+    sOperation=S_DESCRIBED_DURABLE_TASK,
 ):
     """Launch a durable task under the briefly-held mutation lock.
 
@@ -799,8 +852,9 @@ async def fdictLaunchDurableTask(
         if recordLive is not None and not recordLive.taskAsync.done():
             return {
                 "bLaunched": False,
-                "sReason": "a durable task is already live in this "
-                           "container",
+                "sReason": recordLive.sOperation + " is already "
+                           "running in this container",
+                "sLiveOperation": recordLive.sOperation,
                 "sLiveTaskId": recordLive.sTaskId,
             }
         if not fbLaneTupleStillCurrent(appState, dictLaneTuple):
@@ -811,6 +865,7 @@ async def fdictLaunchDurableTask(
             )
         recordTask = _frecordStartDurableTask(
             appState, sName, sContainerId, dictLaneTuple, fnStartTask,
+            sOperation,
         )
         dictRegistry[sName] = recordTask
     return {
@@ -823,13 +878,14 @@ async def fdictLaunchDurableTask(
 
 def _frecordStartDurableTask(
     appState, sName, sContainerId, dictLaneTuple, fnStartTask,
+    sOperation=S_DESCRIBED_DURABLE_TASK,
 ):
     """Mint the durable guard, start the task inside it, register."""
     recordTask = DurableTaskRecord(
         sTaskId=secrets.token_hex(16), sName=sName,
         sContainerId=sContainerId,
         iOwnerGeneration=dictLaneTuple["iOwnerGeneration"],
-        taskAsync=None, admission=None,
+        taskAsync=None, admission=None, sOperation=sOperation,
     )
     admission = _fadmissionMintForCommitCarrier(
         sName, sContainerId, S_ADMISSION_MODE_DURABLE_TASK,

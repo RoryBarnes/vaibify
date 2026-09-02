@@ -27,6 +27,7 @@ __all__ = [
     "S_ADMISSION_MODE_SYNCHRONOUS",
     "S_ADMISSION_MODE_LOCK_HELD",
     "S_ADMISSION_MODE_DURABLE_TASK",
+    "S_ADMISSION_MODE_DISPOSABLE",
     "ControlPlaneRefusalError",
     "MutationNotAdmittedError",
     "MutationAdmission",
@@ -64,6 +65,15 @@ S_ADMISSION_MODE_ESTABLISHING = "ownerEstablishing"
 S_ADMISSION_MODE_SYNCHRONOUS = "synchronousCommit"
 S_ADMISSION_MODE_LOCK_HELD = "lockHeldAsync"
 S_ADMISSION_MODE_DURABLE_TASK = "durableTask"
+# A container vaibify created for one bounded job, owns for its whole
+# lifetime, and destroys with proof. It has no owner record, no lease
+# and no journal, so no revalidator could be written for it -- there is
+# no second party whose claim could change. What bounds it instead is
+# that the admission names ONE container id, minted from a handle the
+# disposable gateway just created: an admission for a shadow container
+# authorizes nothing against the researcher's project container, which
+# is the only thing the lease machinery would have been protecting.
+S_ADMISSION_MODE_DISPOSABLE = "disposableContainer"
 
 _OBJECT_MINT_KEY = object()
 

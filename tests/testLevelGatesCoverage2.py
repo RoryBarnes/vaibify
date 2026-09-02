@@ -480,7 +480,7 @@ def test_figure_freeze_not_applicable_for_non_dict_step():
 
 
 def test_applicable_l3_criteria_empty_for_non_dict_step():
-    assert lg._fsetStepApplicableLevel3Criteria(None, []) == set()
+    assert lg._fsetStepApplicableLevel3Criteria(None, [], {}) == set()
 
 
 def test_step_binary_newer_than_outputs_false_on_bad_mtime():

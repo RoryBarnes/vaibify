@@ -13,6 +13,8 @@ The L3 blocker list pins both the per-step criteria
 import hashlib
 import json
 
+import posixpath
+
 import pytest
 
 from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
@@ -92,7 +94,15 @@ def fixtureL3Repo(tmp_path):
 def _fdictWaivedWorkflow():
     return {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }
@@ -114,7 +124,7 @@ def testMissingFromManifestCriterionFires(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -139,7 +149,7 @@ def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -166,6 +176,9 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     fires.
     """
     sRel = "A/data.csv"
+    # Declared step-relative; sRel is the repo-relative path it
+    # resolves to, and the one written to disk and pinned.
+    sRelDeclared = "data.csv"
     pathStep = fixtureL3Repo / "A"
     pathStep.mkdir()
     (fixtureL3Repo / sRel).write_text("x\n")
@@ -181,7 +194,7 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [sRelDeclared],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],
@@ -207,11 +220,18 @@ def _fnSeedStepDataFile(pathRepo, sRel):
 
 
 def _fdictWaivedWorkflowWithCommand(sCommand, sRel):
-    """Build a falsely-waivered workflow whose step runs ``sCommand``."""
+    """Build a falsely-waivered workflow whose step runs ``sCommand``.
+
+    ``sRel`` is the repo-relative path on disk; the step DECLARES it
+    step-relative, because flistStepOutputRepoPaths joins sDirectory.
+    Declaring the repo-relative form would resolve to "A/A/data.csv",
+    raising a missing-from-manifest blocker that dominates the
+    priority order and masks the binary criterion under test.
+    """
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [posixpath.basename(sRel)],
         "saPlotFiles": [],
         "saDataCommands": [sCommand],
         "saPlotCommands": [],
@@ -257,6 +277,9 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
 ):
     """A declared binary referenced but not in environment.json fires."""
     sRel = "A/data.csv"
+    # Declared step-relative; sRel is the repo-relative path it
+    # resolves to, and the one written to disk and pinned.
+    sRelDeclared = "data.csv"
     (fixtureL3Repo / "A").mkdir()
     (fixtureL3Repo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
@@ -271,7 +294,7 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saOutputDataFiles": [sRel],
+        "saOutputDataFiles": [sRelDeclared],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],
@@ -417,7 +440,15 @@ def testL3GateFailsWithoutBinaryAnswer(fixtureL3Repo):
     """A workflow missing both waiver and declaration fails L3 readiness."""
     dictWorkflow = {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
     }
     assert not fbL3ReadinessOK(dictWorkflow, str(fixtureL3Repo))
 
@@ -426,7 +457,15 @@ def testL3BlockerListIncludesBinariesNotDeclaredOrWaived(fixtureL3Repo):
     """A workflow with no binary state emits the workflow-scope blocker."""
     dictWorkflow = {
         "listSteps": [],
-        "dictDeterminism": {"bAcceptBlasVariance": True},
+        "dictDeterminism": {
+            # All three questions answered (2026-08-30 ruling).
+            # A lone waiver used to satisfy the gate; it is now
+            # one answer of three, so a fixture carrying only it
+            # builds a project that is NOT L3-ready.
+            "sBlasVarianceAnswer": "accepted",
+            "sOmpThreadsAnswer": "unpinned",
+            "sMklModeAnswer": "not-used",
+        },
     }
     listBlockers = flistLevel3Blockers(
         dictWorkflow, str(fixtureL3Repo), False,

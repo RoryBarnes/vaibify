@@ -24,6 +24,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from vaibify.config import mutationAdmission
+from vaibify.docker.execArgumentBudget import (
+    flistBatchPathsForOneExec,
+)
 
 
 _CACHED_CONTAINER_USER = {}
@@ -269,6 +272,7 @@ S_TYPED_READ_PATHS_EXIST = "pathsExist"
 S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
+S_TYPED_READ_REPO_HASHES = "repoRelativeHashes"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
 S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
@@ -476,6 +480,55 @@ _DICT_TYPED_READ_PROGRAMS = {
         "[os.path.exists(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
     ),
+    # The batched repo-relative HASH, replacing an embedded script the
+    # repo-files adapter assembled and ran through the general exec
+    # primitive -- which the mutation gate must treat as mutating, so
+    # under an enforced lane every remote verify's hashing was refused
+    # (surfaced as both Published-envelope rows "could not check",
+    # 2026-09-02; the same class as the `test -f` and mtime
+    # migrations above). The slot is a flat list of path strings whose
+    # FIRST element is the repository root and the rest are
+    # repo-relative paths; the semantics are the adapter script's,
+    # preserved exactly: a symlink component is reported by segment
+    # name, a path resolving outside the root's realpath answers
+    # bEscapesRoot instead of a hash, and the content read opens with
+    # O_NOFOLLOW so the file hashed is the file checked.
+    S_TYPED_READ_REPO_HASHES: (
+        "import hashlib,json,os,sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sRoot = listArgs[0]\n"
+        "sRootReal = os.path.realpath(sRoot)\n"
+        "dictOut = {}\n"
+        "for sRel in listArgs[1:]:\n"
+        "    dictEntry = {'sSha256': None, 'sSymlinkSegment': None,\n"
+        "                 'bEscapesRoot': False}\n"
+        "    dictOut[sRel] = dictEntry\n"
+        "    if os.path.isabs(sRel):\n"
+        "        dictEntry['bEscapesRoot'] = True\n"
+        "        continue\n"
+        "    sCur = sRoot\n"
+        "    for sSeg in [s for s in sRel.split('/') if s]:\n"
+        "        sCur = os.path.join(sCur, sSeg)\n"
+        "        if os.path.islink(sCur):\n"
+        "            dictEntry['sSymlinkSegment'] = sSeg\n"
+        "            break\n"
+        "    sReal = os.path.realpath(os.path.join(sRootReal, sRel))\n"
+        "    if sReal != sRootReal and not sReal.startswith("
+        "sRootReal + os.sep):\n"
+        "        dictEntry['bEscapesRoot'] = True\n"
+        "        continue\n"
+        "    try:\n"
+        "        iFd = os.open(sReal, os.O_RDONLY | "
+        "getattr(os, 'O_NOFOLLOW', 0))\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "    hashFile = hashlib.sha256()\n"
+        "    with os.fdopen(iFd, 'rb') as fileIn:\n"
+        "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
+        "            hashFile.update(baChunk)\n"
+        "    dictEntry['sSha256'] = hashFile.hexdigest()\n"
+        "sys.stdout.write(json.dumps(dictOut))"
+    ),
     # The same batch, asking whether each path is a DIRECTORY. It is
     # its own program because the question cannot be spelled as a path
     # and asked through the one above: `<name>/.` exists only for a
@@ -598,7 +651,7 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    listStatuses.append(dictStatus)\n"
         "sys.stdout.write(json.dumps(listStatuses))\n"
     ),
-    # The council snapshot's coherence observation (remediation R5):
+    # The coherence observation behind every bulk repository export:
     # the type and content identity of EVERY present worktree path —
     # all tracked paths plus untracked-not-ignored — read immediately
     # before and immediately after the archive streams, so a capture
@@ -1345,12 +1398,60 @@ class DockerConnection:
         """
         if not listPaths:
             return []
-        return _flistInterpretBooleanBatch(
-            self._ftRunTypedRead(
-                sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
-            ),
-            listPaths, "existence",
-        )
+        # Batched against the exec argument budget, because the whole
+        # list is rendered into ONE argument: unbatched this raised
+        # "argument list too long" at ~1,845 paths of 59 bytes, and
+        # inside a carrier worker that raise poisons the journal
+        # record and quarantines the container. See
+        # execArgumentBudget for the measurement.
+        listAnswers = []
+        for listBatch in flistBatchPathsForOneExec(list(listPaths)):
+            listAnswers.extend(_flistInterpretBooleanBatch(
+                self._ftRunTypedRead(
+                    sContainerId, S_TYPED_READ_PATHS_EXIST, listBatch,
+                ),
+                listBatch, "existence",
+            ))
+        return listAnswers
+
+    def fdictHashContainerRepoPaths(
+        self, sContainerId, sRootPath, listRelPaths,
+    ):
+        """Hash repo-relative container files as a typed READ, batched.
+
+        The hashing sibling of :meth:`flistContainerPathsExist`. It
+        exists because the repo-files adapter's embedded hash script
+        travelled through the GENERAL exec primitive, which the gate
+        must treat as mutating -- so a remote verify running in an
+        enforced lane had every comparison refused (2026-09-02). The
+        caller supplies the repository root and repo-relative paths;
+        the program, its symlink walk and its realpath containment are
+        fixed module text.
+
+        Batched against the exec argument budget like every batched
+        probe; the root rides at the head of each batch. A batch that
+        fails or answers garbage collapses the WHOLE result to ``{}``,
+        never a partial map -- a partial map reads as a claim about
+        the files it omits, which is the badge-probe lesson.
+        """
+        if not listRelPaths:
+            return {}
+        dictMerged = {}
+        for listBatch in flistBatchPathsForOneExec(list(listRelPaths)):
+            tExecResult = self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_REPO_HASHES,
+                [sRootPath] + listBatch,
+            )
+            if tExecResult.iExitCode != 0:
+                return {}
+            try:
+                dictBatch = json.loads(tExecResult.sStdout or "{}")
+            except ValueError:
+                return {}
+            if not isinstance(dictBatch, dict):
+                return {}
+            dictMerged.update(dictBatch)
+        return dictMerged
 
     def flistContainerDirectoriesExist(self, sContainerId, listPaths):
         """Return one is-a-directory answer per path, in the order given.
@@ -1412,7 +1513,7 @@ class DockerConnection:
     def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
         """Return the changed-path identity observation for one repo.
 
-        The council snapshot's coherence read (remediation R5): the
+        The coherence read behind a bulk repository export: the
         declared ``gitWorktreeIdentities`` program enumerates every
         changed worktree path and computes each one's content identity
         in the container, over the raw bytes. The command is not built
@@ -1518,19 +1619,19 @@ class DockerConnection:
         """Return ``{iMemoryBytes, iCpuCount}`` the DAEMON has to give.
 
         Not a container read: a daemon-API query, so no typed-read seam
-        applies. It exists because the host's memory is the wrong
-        number for anything that runs in a container. On Linux the
-        daemon shares the host's kernel and the two agree; on macOS and
-        Windows the daemon lives in a virtual machine with its own,
-        usually much smaller, allocation -- 16 GB of host RAM over a
-        7.7 GB Docker VM on the machine this was measured on. Sizing a
-        container from host RAM would over-provision it by 2x there and
-        the kill would arrive at run time.
+        applies. It exists because the host's memory is the wrong number
+        for anything that runs in a container. On Linux the daemon
+        shares the host's kernel and the two agree; on macOS and Windows
+        the daemon lives in a virtual machine with its own, usually much
+        smaller, allocation -- 16 GB of host RAM over an 8.3 GB Docker
+        VM on the machine this was measured on. Sizing a container from
+        host RAM would over-provision it there and the kill would arrive
+        at run time.
 
         A daemon that will not answer yields zeroes rather than an
         exception: every caller has a declared floor to fall back to,
-        and refusing a council because ``docker info`` hiccuped would
-        be a worse answer than using the conservative bound.
+        and refusing work because ``docker info`` hiccuped would be a
+        worse answer than using the conservative bound.
         """
         try:
             dictInfo = self._clientDocker.info()
@@ -1540,6 +1641,43 @@ class DockerConnection:
             "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
             "iCpuCount": int(dictInfo.get("NCPU") or 0),
         }
+
+    def fbaFetchDirectoryArchive(
+        self, sContainerId, sDirectoryPath, iMaxBytes,
+    ):
+        """Return one container directory as tar bytes, under a hard cap.
+
+        Bulk export is a different primitive from a file read, and it is
+        deliberately NOT a typed read. The typed-read carve-out is
+        granted at exactly one private method, and its whole safety
+        argument is that each entry is a small fixed program over a path
+        literal; a repository-scale export does not belong in that
+        table. ``container.get_archive`` is neither a typed read nor a
+        general command: it is a daemon API read that executes NO
+        program in the container -- the daemon itself serializes the
+        filesystem -- so nothing caller-supplied can become program text
+        and the container gains no process. The same API already backs
+        :meth:`fiterStreamFile`.
+
+        ``iMaxBytes`` is a HOST bound: the archive is materialised in
+        the hub's own address space, so the cap is a fraction of the
+        researcher's RAM rather than of the daemon's. Exceeding it
+        raises ``ValueError`` mid-stream, before the whole tree has been
+        paid for -- a cap applied after materialisation would refuse
+        only what it had already accepted.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        try:
+            tStreamStat = container.get_archive(sDirectoryPath)
+        except Exception as error:
+            raise FileNotFoundError(
+                "Cannot read directory from container: "
+                f"{sDirectoryPath}: {error}"
+            )
+        iterTarStream, _ = tStreamStat
+        return _fbaCollectBoundedTarStream(
+            iterTarStream, iMaxBytes, sDirectoryPath,
+        )
 
     def fdictWeighRepository(self, sContainerId, sRepositoryPath):
         """Return ``{iFileCount, iTotalBytes, bTruncated}`` for a repo.
@@ -2022,6 +2160,27 @@ def fbErrorMeansContainerUnreachable(error):
     except ImportError:
         return False
     return isinstance(error, APIError)
+
+
+def _fbaCollectBoundedTarStream(iterTarStream, iMaxBytes, sDirectoryPath):
+    """Concatenate a get_archive stream, refusing past ``iMaxBytes``.
+
+    The bound is checked as each chunk arrives rather than on the
+    finished archive: a cap that inspects the total has already paid
+    for every byte it refuses, which on a repository-scale export is
+    the cost the cap exists to avoid.
+    """
+    listChunks = []
+    iTotalBytes = 0
+    for baChunk in iterTarStream:
+        iTotalBytes += len(baChunk)
+        if iTotalBytes > iMaxBytes:
+            raise ValueError(
+                f"The archive of {sDirectoryPath} exceeds the "
+                f"{iMaxBytes} byte ceiling; nothing was returned."
+            )
+        listChunks.append(baChunk)
+    return b"".join(listChunks)
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):

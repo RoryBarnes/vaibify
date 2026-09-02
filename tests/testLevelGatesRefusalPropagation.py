@@ -173,6 +173,16 @@ LIST_SWALLOWING_GATES = [
         ),
     ),
     (
+        "_fbEnvelopeUnchangedSinceVerify",
+        lambda files: levelGates._fbEnvelopeUnchangedSinceVerify(
+            files, ["reproduce.sh"], {"dictComparedHashes": {}},
+        ),
+    ),
+    (
+        "_fsEnvelopeStateFingerprint",
+        lambda files: levelGates._fsEnvelopeStateFingerprint(files),
+    ),
+    (
         "_fsetDriftedBinaryPaths",
         lambda files: levelGates._fsetDriftedBinaryPaths(
             DICT_WORKFLOW, files,

@@ -27,6 +27,7 @@ import shlex
 import time
 
 from . import gitStatus
+from ..docker.execArgumentBudget import flistBatchPathsForOneExec
 
 __all__ = [
     "S_CONTAINER_WORKSPACE",
@@ -166,15 +167,47 @@ def fdictComputeBlobShasInContainer(
     connectionDocker, sContainerId, listRepoRelPaths,
     sWorkspace=S_CONTAINER_WORKSPACE,
 ):
-    """Compute git blob SHAs for a list of files in one docker-exec call.
+    """Compute git blob SHAs for a list of files, batched by exec size.
 
     Returns ``{repo-rel-path: 40-hex-sha}`` for every file that was
     readable; missing or unreadable files are silently omitted.
-    Hashing every file in one subprocess keeps per-poll latency flat
-    regardless of file count.
+
+    Batched rather than one exec, because the here-string carrying the
+    path list is part of the command STRING and therefore part of the
+    single exec argument the kernel caps. Unbatched this stopped
+    answering at ~2,562 paths of 47 bytes — and stopped SILENTLY, since
+    a non-zero exit answers ``{}`` here, so every badge downstream was
+    computed from an empty hash map and shown as fact. Measured
+    2026-08-30; see ``execArgumentBudget``.
+
+    A batch that fails still collapses the WHOLE call to ``{}`` rather
+    than returning the batches that worked. A partial map is
+    indistinguishable from "these files could not be read", which is
+    the reading that put wrong badges on screen in the first place.
     """
     if not listRepoRelPaths:
         return {}
+    dictAll = {}
+    for listBatch in flistBatchPathsForOneExec(list(listRepoRelPaths)):
+        dictBatch = _fdictHashOneBatchInContainer(
+            connectionDocker, sContainerId, listBatch, sWorkspace,
+        )
+        if dictBatch is None:
+            return {}
+        dictAll.update(dictBatch)
+    return dictAll
+
+
+def _fdictHashOneBatchInContainer(
+    connectionDocker, sContainerId, listRepoRelPaths, sWorkspace,
+):
+    """Hash one batch; return None when the exec itself failed.
+
+    ``None`` rather than ``{}`` so the caller can tell a batch that
+    FAILED from a batch whose files were all unreadable — the
+    distinction the single-exec version could not make and did not
+    need to.
+    """
     sPathsJson = json.dumps(list(listRepoRelPaths))
     sScript = (
         "import hashlib, json, os, sys\n"
@@ -200,13 +233,13 @@ def fdictComputeBlobShasInContainer(
         sContainerId, sCommand,
     )
     if iExit != 0:
-        return {}
+        return None
     try:
         dictLoaded = json.loads((sOutput or "").strip().splitlines()[-1])
     except (ValueError, IndexError):
-        return {}
+        return None
     if not isinstance(dictLoaded, dict):
-        return {}
+        return None
     return dictLoaded
 
 

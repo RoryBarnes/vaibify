@@ -203,8 +203,13 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|fdictExecuteBoundedTurn|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
-    "gui/agentCouncilDockerGateway.py|fdictExecuteBoundedTurn|"
-    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    # The turn's inspect_container moved into
+    # _fbConcludeOomKilledForContainer on 2026-09-02, when OOM
+    # attribution grew its cgroup-counter half. Re-read at the new
+    # site: the helper's only caller hands it a handle-resolved
+    # container id, so the same runner judgement covers it.
+    "gui/agentCouncilDockerGateway.py|_fbConcludeOomKilledForContainer|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|fdictProbeRunnerAbsence|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|fdictReserveAndCreateRunner|"

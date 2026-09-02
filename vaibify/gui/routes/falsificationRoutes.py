@@ -13,7 +13,7 @@ Two endpoints back the Quantitative Tests block's Falsification row:
   plus its quantitative tests per mutant, summarizes the session, and
   persists the digest-keyed record.
 
-The attestation is NON-GATING: no AICS rung reads it, and the
+The attestation is NON-GATING: no PROOF rung reads it, and the
 ``levelGates`` chain is untouched. The kill-rate states the tests'
 fault-detection sensitivity, not the result's accuracy.
 """
@@ -280,6 +280,7 @@ async def _fdictLaunchFalsificationDurably(
     dictLaunched = await commitCarrier.fdictLaunchDurableTask(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, ftaskStartFalsification,
+        sOperation="the falsification run",
     )
     if not dictLaunched["bLaunched"]:
         raise HTTPException(

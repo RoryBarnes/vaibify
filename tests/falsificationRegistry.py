@@ -57,6 +57,302 @@ class Falsification:
 # Each entry below is confirmed by tools/reconfirmFalsification.py to
 # actually kill its falsification test.
 LIST_FALSIFICATIONS = [
+    # --- 2026-08-27: the per-file Zenodo action opens the archive
+    # flow instead of publishing a single-file deposit version ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testPerFileZenodoSyncOpensTheModal.py::'
+            'test_a_per_file_zenodo_sync_never_publishes_directly'
+        ),
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old=(
+            '        if (sRemoteKey === "sZenodo") {\n'
+            '            // A Zenodo "sync" publishes a new deposit'
+            ' VERSION, and a\n'
+            '            // version REPLACES the file set: vaibify'
+            ' clears the\n'
+            '            // inherited files and uploads exactly the'
+            ' selection. A\n'
+            '            // direct per-file push therefore published'
+            ' a version\n'
+            '            // containing only the clicked file and'
+            ' silently shrank\n'
+            '            // the public record (live, 2026-08-27).'
+            ' The modal serves\n'
+            '            // the full publication union preselected,'
+            ' so leaving a\n'
+            '            // file out of the archive is an act the'
+            ' researcher\n'
+            '            // performs, never a side effect of one'
+            ' click.\n'
+            '            fnOpenPushModal("zenodo");\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    # --- 2026-08-27: the archive route resolves repo-relative
+    # selections before the upload script opens them ---
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_resolves_repo_relative_selections'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        request.listFilePaths = _flistResolveArchivePaths('
+            '\n'
+            '            request.listFilePaths,\n'
+            '            dictWorkflow.get("sProjectRepoPath") or "",\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    # --- 2026-08-27: AI provenance counts in the workflow L2 header
+    # cell; the AI Declaration is homed on its step only ---
+    Falsification(
+        nodeid=(
+            'tests/testStepLevelStates.py::'
+            'testWorkflowScopeStaleCachesWithGreenAiProvenance'
+            'ReadPartial'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    "ai-models-undeclared", "personal-layer-unanswered"'
+            ',\n'
+        ),
+        new='',
+    ),
+    # --- 2026-08-27: the project-bookkeeping sidecar split ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_a_publish_does_not_change_the_serialized_definition'
+        ),
+        source='vaibify/reproducibility/syncBookkeeping.py',
+        old='    "dictSyncStatus",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_publish_bookkeeping_does_not_move_the_'
+            'attestation_fingerprint'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        old=(
+            '    syncBookkeeping.fdictExtractSyncBookkeeping('
+            'dictDeclarative)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectBookkeepingSidecar.py::'
+            'test_sidecar_values_win_over_legacy_fielded_keys'
+        ),
+        source='vaibify/reproducibility/syncBookkeeping.py',
+        old='    if not dictBookkeeping:\n        return',
+        new='    if True:\n        return',
+    ),
+    # --- 2026-08-27: the publish advances the verify's record, and
+    # the Zenodo modal offers the full publication union ---
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_a_new_publish_advances_the_verify_record'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        dictRemotes = dictWorkflow.setdefault('
+             '"dictRemotes", {})\n'
+             '        dictZenodo = dictRemotes.setdefault('
+             '"zenodo", {})\n'
+             '        dictZenodo["sRecordId"] = '
+             'str(dictResult["iDepositId"])\n'
+             '        dictZenodo["sService"] = sZenodoService\n'
+             '        if dictResult.get("sDoi"):\n'
+             '            dictZenodo["sDoi"] = dictResult["sDoi"]\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_candidates_cover_the_publication_union'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        if sService == "zenodo":\n'
+            '            # Zenodo candidates are the full publication '
+            'union — the',
+        new='        if False:\n'
+            '            # Zenodo candidates are the full publication '
+            'union — the',
+    ),
+    # --- 2026-08-27: flat-deposit honesty — approved ruling (a)/(b)/(c) ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_colliding_basenames_read_not_in_deposit'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=('        if dictCounts[posixpath.basename(sRelativePath)]'
+             ' == 1'),
+        new='        if True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_refuses_basename_collisions'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseBasenameCollisions('
+             'request.listFilePaths)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGeneratorPure.py::'
+            'test_generated_test_names_carry_the_step_suffix'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        old='    return sBase[0].lower() + sBase[1:]',
+        new='    return ""',
+    ),
+    # --- 2026-08-27: the archive's post-push verify hop ---
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_success_refreshes_the_verify_cache'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(\n'
+             '        dictCtx, sContainerId, dictWorkflow, "zenodo", '
+             'requestHttp,\n'
+             '    )\n'
+             '    if sVerifyWarning:\n'
+             '        dictResult["sPostPushVerifyWarning"] = '
+             'sVerifyWarning'),
+        new=('    sVerifyWarning = ""\n'
+             '    if sVerifyWarning:\n'
+             '        dictResult["sPostPushVerifyWarning"] = '
+             'sVerifyWarning'),
+    ),
+    # --- 2026-08-27: the phantom test-file paths and the archive
+    # failure that misreported them as a remote notFound ---
+    Falsification(
+        nodeid=(
+            'tests/testManifestWriter.py::'
+            'test_both_spellings_of_one_file_yield_it_exactly_once'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        old='    return fsResolveStepPathToRepoPath(sFilePath, sDirectory)',
+        new='    return sVerbatim',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_refuses_when_a_selected_file'
+            '_is_missing'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseMissingPushFiles(\n'
+             '            dictCtx["docker"], sContainerId, '
+             'request.listFilePaths,\n'
+             '            dictWorkflow.get("sProjectRepoPath") or "",\n'
+             '        )\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncTestGenFull.py::'
+            'test_a_local_file_error_never_classifies_as_remote'
+            '_not_found'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=('    if "local-file-error" in sLower:\n'
+             '        return {\n'
+             '            "sErrorType": "localFileMissing", '
+             '"sMessage": sOutput,\n'
+             '        }'),
+        new=('    if False:\n'
+             '        return {\n'
+             '            "sErrorType": "localFileMissing", '
+             '"sMessage": sOutput,\n'
+             '        }'),
+    ),
+    # --- 2026-08-26: the Zenodo envelope-archive criterion and the
+    # published-envelope pair gating Level 3 ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_missing_zenodo_archive_refuses_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if not fbEnvelopeMatchesZenodoArchive(filesRepo):\n'
+             '        return False'),
+        new=('    if False:\n'
+             '        return False'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_drifted_github_envelope_refuses_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if not fbEnvelopeMatchesGithubMirror(filesRepo):\n'
+             '        return False'),
+        new=('    if False:\n'
+             '        return False'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_the_refusal_names_itself_in_the_blocker_list'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('        "envelope-not-in-zenodo-archive":\n'
+             '            fbEnvelopeMatchesZenodoArchive(filesRepo),\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_file_agrees_with_zenodo_when_any_declared_record'
+            '_serves_it'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=('        if sExpected is not None and sExpected in '
+             'listHashes:\n'
+             '            dictMerged[sRelativePath] = sExpected\n'
+             '            continue'),
+        new=('        if False:\n'
+             '            dictMerged[sRelativePath] = sExpected\n'
+             '            continue'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_a_version_two_cache_is_no_longer_scope_current'
+        ),
+        source='vaibify/reproducibility/publicationScope.py',
+        old='I_PUBLICATION_SCOPE_VERSION = 4',
+        new='I_PUBLICATION_SCOPE_VERSION = 3',
+    ),
+    # --- 2026-08-26: guards added with the publication-scope work ---
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):\n        return True',
+        new='    if False:\n        return True',
+    ),
+    # Every entry below defends a guard whose REMOVAL changes what the
+    # researcher is told. The pure selectors that came with the same
+    # change (fsetSelectLevel2Paths, fbPathIsCompared,
+    # flistCollectComparisonPaths) have unit tests and no entry: there
+    # is no guard to disable, so a mutation just breaks their own
+    # assertions directly.
     Falsification(
         nodeid=(
             'tests/testPublicationScopeSeparatesTheLevels.py::'
@@ -86,6 +382,8 @@ LIST_FALSIFICATIONS = [
         old='    if not publicationScope.fbPathIsCompared(sRepoRelPath):',
         new='    if False:',
     ),
+    # The four JS guards. Deferred on a host with no browser, the way
+    # every other browser-nodeid entry is.
     Falsification(
         nodeid=(
             'tests/browser/testPushRunsTheVerifyThatProvesIt.py::'
@@ -122,6 +420,7 @@ LIST_FALSIFICATIONS = [
         old='        if (dictSync.bScopeStale === true) return "orange";',
         new='        if (false) return "orange";',
     ),
+
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -137,6 +436,7 @@ LIST_FALSIFICATIONS = [
             '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -152,6 +452,7 @@ LIST_FALSIFICATIONS = [
             '        return True\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -169,6 +470,7 @@ LIST_FALSIFICATIONS = [
             '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -185,6 +487,7 @@ LIST_FALSIFICATIONS = [
             '            pass\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testStyleInvariants.py::'
@@ -200,6 +503,7 @@ LIST_FALSIFICATIONS = [
             '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -213,6 +517,7 @@ LIST_FALSIFICATIONS = [
             'executor\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -232,6 +537,7 @@ LIST_FALSIFICATIONS = [
             '"zenodoClient.py",\n    "levelGates.py",\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
@@ -241,6 +547,7 @@ LIST_FALSIFICATIONS = [
         old='    "credentialRedactor.py",\n',
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -255,6 +562,7 @@ LIST_FALSIFICATIONS = [
                 )
 ''',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -271,6 +579,7 @@ LIST_FALSIFICATIONS = [
             ) from errorScan""",
         new='        except OSError:\n            continue',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -287,6 +596,7 @@ LIST_FALSIFICATIONS = [
         ) from errorStat""",
         new='    except OSError:\n        return False',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -301,6 +611,7 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -310,6 +621,7 @@ LIST_FALSIFICATIONS = [
         old='    _fnRejectContainedSocket(sResolved)\n',
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -322,6 +634,7 @@ LIST_FALSIFICATIONS = [
         ),
         new='    _fnRejectDeniedPrefix(sResolved)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -336,6 +649,7 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
@@ -349,6 +663,7 @@ LIST_FALSIFICATIONS = [
         )""",
         new='    return',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -377,6 +692,7 @@ LIST_FALSIFICATIONS = [
         listOwn.append(nodeChild)
     return (listOwn, listNested)""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -410,6 +726,7 @@ LIST_FALSIFICATIONS = [
         listOwn.append(nodeChild)
     return (listOwn, listNested)""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -422,6 +739,7 @@ LIST_FALSIFICATIONS = [
         ),
         new='    setClientNames = set(dictInherited["setClientNames"])',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -439,6 +757,7 @@ LIST_FALSIFICATIONS = [
         )""",
         new="""    ]""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -454,6 +773,16 @@ LIST_FALSIFICATIONS = [
                 self.tupleSourceLines,
             ),""",
     ),
+
+    # --- The capability record (plan rule R3) -------------------------
+    #
+    # Two of these mutate a vaibify module rather than the scanner, and
+    # deliberately: the claim is that a capability arriving in a module
+    # nobody was watching is caught. Planting it in a module the record
+    # already lists as dangerous would be caught by that module's
+    # existing entries while the real hole stayed open, so the fixture
+    # is pipelineUtils.py -- a leaf holding no capability of any kind.
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -467,6 +796,7 @@ LIST_FALSIFICATIONS = [
             '_S_SEPARATOR = getattr(posixpath, _S_MEMBER_NAME)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -476,6 +806,7 @@ LIST_FALSIFICATIONS = [
         old='import posixpath\nimport re\nimport time\n',
         new='import posixpath\nimport re\nimport subprocess\nimport time\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -489,6 +820,7 @@ LIST_FALSIFICATIONS = [
             self.listUnresolvedSubprocessSites.append(""",
         new="""            self.listUnresolvedSubprocessSites.append(""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -502,6 +834,7 @@ LIST_FALSIFICATIONS = [
                 )""",
         new="""            del sCapability""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -517,6 +850,7 @@ LIST_FALSIFICATIONS = [
         nodeScope = None
         dictAcquisition = {""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -526,6 +860,7 @@ LIST_FALSIFICATIONS = [
         old='    ("sys", "modules"): S_CAPABILITY_REFLECTION,\n',
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::testEvalAndExecAreAcquisitions'
@@ -534,6 +869,7 @@ LIST_FALSIFICATIONS = [
         old='SET_REFLECTION_BUILTINS = frozenset({"eval", "exec", "__import__"})',
         new='SET_REFLECTION_BUILTINS = frozenset({"__import__"})',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -545,6 +881,7 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return False""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -554,6 +891,7 @@ LIST_FALSIFICATIONS = [
         old="""        sCapability = _fsCapabilityForMember(sModule, sMember)""",
         new="""        sCapability = None""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -566,6 +904,7 @@ LIST_FALSIFICATIONS = [
 """,
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -581,6 +920,7 @@ LIST_FALSIFICATIONS = [
         new="""        if isinstance(nodeChild, ast.ImportFrom):
             continue""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -592,6 +932,7 @@ LIST_FALSIFICATIONS = [
         new="""        listChain = []
         if len(listChain) < 2 or listChain[0] not in setProcessModuleNames:""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -604,6 +945,7 @@ LIST_FALSIFICATIONS = [
         )""",
         new="""        return True""",
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -613,6 +955,7 @@ LIST_FALSIFICATIONS = [
         old='    return listChain[0] in setDockerModuleNames\n',
         new='    return True\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -625,6 +968,7 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return False""",
     ),
+
     Falsification(
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',
@@ -642,6 +986,7 @@ LIST_FALSIFICATIONS = [
         dictKwargs = self._fdictBuildExecKwargs(
             sCommand, sWorkdir, sUser)""",
     ),
+
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testATransferBeforeTheLaunchRefusesAndChangesNothing',
         source='vaibify/gui/sessionLifecycle.py',
@@ -676,6 +1021,7 @@ LIST_FALSIFICATIONS = [
         if True:
             return _ftReserveForStartUnderLocks(""",
     ),
+
     Falsification(
         nodeid='tests/testReconciliation.py::test_break_glass_refuses_when_the_stop_is_not_proven',
         source='vaibify/config/reconciliation.py',
@@ -703,12 +1049,14 @@ LIST_FALSIFICATIONS = [
             sContainerName, error,
         )""",
     ),
+
     Falsification(
         nodeid='tests/testArchitecturalInvariants.py::testScienceTermScanMatchesSeparatedSpellings',
         source='tests/testArchitecturalInvariants.py',
         old='    regexTerm = re.compile(\n        r"\\b" + _S_TERM_SEPARATOR_PATTERN.join(\n            re.escape(sCharacter) for sCharacter in sTerm\n        ),\n        re.IGNORECASE,\n    )',
         new='    regexTerm = re.compile(r"\\b" + re.escape(sTerm), re.IGNORECASE)',
     ),
+
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_agent_token_with_empty_container_id_fails_closed',
         source='vaibify/gui/containerOwnership.py',
@@ -739,12 +1087,19 @@ LIST_FALSIFICATIONS = [
     ):""",
         new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:""",
     ),
+    # The HTTP-boundary counterpart of the copied-lease WebSocket gate:
+    # ContainerAwareRoute short-circuits a container-owner request that
+    # the strong predicate refuses. Neutralizing the short-circuit lets a
+    # non-owning browser session mutate a container it never claimed.
     Falsification(
         nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpMutationRequiresOwningLease',
         source='vaibify/gui/routeScope.py',
         old='                if iCode:\n                    return _fresponseRefused(iCode)',
         new='                if False:\n                    return _fresponseRefused(iCode)',
     ),
+    # The read half of the same boundary: dropping container-read from the
+    # enforced-scope set reverts owned-container GETs to the old
+    # declared-but-unenforced state while every mutation test stays green.
     Falsification(
         nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpReadRequiresOwningLease',
         source='vaibify/gui/routeScope.py',
@@ -983,16 +1338,47 @@ LIST_FALSIFICATIONS = [
     return sResolvedPath""",
     ),
     Falsification(
-        nodeid='tests/testDeterminismGate.py::test_blas_waiver_requires_literal_true',
+        nodeid=(
+            'tests/testDeterminismGate.py::'
+            'test_a_legacy_waiver_value_never_attests_on_its_own'
+        ),
+        # Read the legacy waiver key as the blasVariance answer. Every
+        # project that ever opened the old form is silently credited,
+        # including one whose block says false.
         source='vaibify/reproducibility/determinismGate.py',
-        old='if dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY) is True:',
-        new='if dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY):',
+        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
+        new=(
+            '    sAnswer = dictDeterminism.get('
+            'dictQuestion["sAnswerKey"])\n'
+            '    if dictQuestion["sKey"] == "blasVariance" and '
+            'dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY):\n'
+            '        sAnswer = S_BLAS_ACCEPTED\n'
+        ),
     ),
     Falsification(
-        nodeid='tests/testDeterminismGate.py::test_mkl_cbwr_alone_declares_determinism',
+        nodeid=(
+            'tests/testDeterminismGate.py::'
+            'test_mkl_cbwr_alone_no_longer_declares_determinism'
+        ),
+        # Let a stored VALUE stand in for an answer -- the belief the
+        # ruling overturned, and the one this fixture can actually
+        # see. The "restore the OR" mutation is INVISIBLE here: the
+        # fixture records only `sMklCbwr` and no answers, so all three
+        # questions are open under both the OR and the AND and the
+        # gate refuses either way. It survived once for exactly that
+        # reason; testEveryQuestionMustBeAnsweredNotJustOne owns the OR.
         source='vaibify/reproducibility/determinismGate.py',
-        old='if dictDeterminism.get(S_MKL_CBWR_KEY):',
-        new='if False and dictDeterminism.get(S_MKL_CBWR_KEY):',
+        old=(
+            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
+            '        return _fbValueIsPresent(\n'
+            '            dictDeterminism.get('
+            'dictQuestion["sValueKey"]),\n'
+            '        )\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_bare_imported_seed_with_clock_is_flagged',
@@ -1009,8 +1395,11 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_missing_determinism_block_is_an_issue',
         source='vaibify/reproducibility/determinismGate.py',
-        old='if not fbWorkflowDeclaresDeterminism(dictWorkflow):',
-        new='if False and not fbWorkflowDeclaresDeterminism(dictWorkflow):',
+        old=(
+            '    listIssues = list('
+            '_flistDescribeUnansweredQuestions(dictWorkflow))\n'
+        ),
+        new='    listIssues = []\n'
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_from_secrets_import_is_flagged',
@@ -1311,6 +1700,11 @@ LIST_FALSIFICATIONS = [
         old='    if iRefNumber > iStepCount:',
         new='    if iRefNumber >= iStepCount:',
     ),
+    # The divergence guard reached through its READER rather than its
+    # return, so this entry stays distinct from the one below that
+    # mutates the return itself. Two tests defend the same guard from
+    # different sides, and a shared mutation string would collapse
+    # them into one entry the registry cannot attribute.
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
@@ -1328,6 +1722,13 @@ LIST_FALSIFICATIONS = [
         old="""    if dictStatus.get("iMatching") != iTotal - len(""",
         new="""    if False and dictStatus.get("iMatching") != iTotal - len(""",
     ),
+    # Absence of evidence is not agreement. A cached verify written
+    # under an EARLIER definition of the published set is silent about
+    # the files the scope has since added, in exactly the way it is
+    # silent about files that matched -- so without this guard the gate
+    # reports a full match over a comparison nobody performed. That is
+    # not hypothetical: it is what shipped when project.json joined
+    # Level 2.
     Falsification(
         nodeid='tests/testPublicationScopeSeparatesTheLevels.py::test_a_cache_from_an_older_scope_cannot_carry_level_two',
         source='vaibify/reproducibility/levelGates.py',
@@ -1342,6 +1743,9 @@ LIST_FALSIFICATIONS = [
         ),
         new="    if False:\n        return False",
     ),
+    # The writer half of the same guard. A scope check whose writer
+    # never stamps the field is not a check, it is an outage in which
+    # no project can ever reach Level 2 again.
     Falsification(
         nodeid='tests/testScheduledReverify.py::testVerifyStampsTheScopeItRanUnder',
         source='vaibify/reproducibility/scheduledReverify.py',
@@ -1402,13 +1806,19 @@ LIST_FALSIFICATIONS = [
         old='''"iOutputHashesMatched": int(iOutputHashesMatched),''',
         new='''"iOutputHashesMatched": int(iOutputHashesTotal),''',
     ),
+    # The builder guard above cannot see a CALLER performing the same
+    # substitution one frame up; the CLI lane did exactly that. These
+    # four sit at the shared derivation and at each lane's call site.
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_shared_hash_compare_excludes_mismatches_from_matched',
         source='vaibify/reproducibility/rerunVerification.py',
+        # RE-ANCHORED 2026-08-31: the count is now over the COMPARED
+        # entries rather than every manifest entry, because a given
+        # step's outputs are carried out of the comparison.
         old='''        "iOutputHashesMatched": max(
-            len(listEntries) - len(listMismatches), 0,
+            len(listCompared) - len(listMismatches), 0,
         ),''',
-        new='''        "iOutputHashesMatched": len(listEntries),''',
+        new='''        "iOutputHashesMatched": len(listCompared),''',
     ),
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
@@ -1433,10 +1843,139 @@ LIST_FALSIFICATIONS = [
         new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
     Falsification(
-        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_interactive_step_refuses_rerun_before_any_execution',
+        nodeid=(
+            'tests/testRerunHashCompareMutationCoverage.py::'
+            'test_cli_attestation_names_the_image_the_shadow_ran_under'
+        ),
+        # Record the host clone's digest over the outcome's. The shadow
+        # was built from the CONTAINER repo's environment.json; the
+        # host --repo clone is a different file that can lag it, so
+        # this substitution names an image the rerun never ran under
+        # (external review, 2026-09-01).
+        source='vaibify/cli/commandReproduce.py',
+        old=(
+            '        sImageDigest=(\n'
+            '            dictOutcome.get("sImageDigest")\n'
+            '            or _fsRecordedImageDigest(sProjectRepo)\n'
+            '        ),'
+        ),
+        new='        sImageDigest=_fsRecordedImageDigest(sProjectRepo),',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunHashCompareMutationCoverage.py::'
+            'test_route_attestation_manifest_digest_comes_from_the_'
+            'comparison'
+        ),
+        # Key the attestation to the readiness snapshot instead of the
+        # digest the comparison reports. Anything that re-pins the
+        # manifest between the snapshot and the coherent export then
+        # produces an attestation naming a manifest nobody compared
+        # (external review, 2026-09-01).
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    _fnPersistAttestation(\n'
+            '        filesRepo,\n'
+            '        dictResult.get("sManifestDigest") or '
+            'sManifestDigest,\n'
+            '        dictResult, fDuration, dictAiProvenance,\n'
+            '    )'
+        ),
+        new=(
+            '    _fnPersistAttestation(\n'
+            '        filesRepo, sManifestDigest, dictResult, fDuration,\n'
+            '        dictAiProvenance,\n'
+            '    )'
+        ),
+    ),
+    # A rerun that silently skips steps leaves pinned outputs untouched,
+    # so every hash trivially matches and the attestation certifies a run
+    # that ran nothing. A DISABLED step is refused outright; an
+    # INTERACTIVE step's outputs are carried out of the comparison
+    # instead, which introduces its own way to lie -- an exclusion set
+    # that matches nothing grades the human's files as reproduced, and
+    # one that matches everything leaves a vacuous 0-of-0 pass. These
+    # four guard the refusal scanner, both halves of the exclusion, and
+    # the empty-manifest fail-close.
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_disabled_step_refuses_rerun_before_any_execution',
         source='vaibify/reproducibility/rerunVerification.py',
-        old='    return listReasons',
+        old='        and not dictStep.get("bRunEnabled", True)',
+        new='        and False',
+    ),
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_given_steps_output_is_carried_out_of_the_comparison',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    return sorted(setGiven - setExecuted)',
         new='    return []',
+    ),
+    # The shadow is built from the pinned IMAGE, so a tool installed
+    # into the live container after that image was built is absent
+    # here -- and absent for anyone reproducing the work. Reported as
+    # "command not found" that finding is thrown away: the researcher
+    # reads it as vaibify failing to find a tool on their own PATH.
+    Falsification(
+        nodeid='tests/testShadowNamesTheImageGap.py::test_the_outcome_carries_the_explanation_not_just_the_error',
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='    dictFailure["listCommandsMissingFromImage"] = listMissing',
+        new='    return',
+    ),
+    # The mirror replaces a repo's requirements file, so a package
+    # declared only there stops being installed. Naming which ones is
+    # the whole migration aid; a name-lister that eats newlines
+    # collapses the file to one token and names the wrong package.
+    Falsification(
+        nodeid='tests/testRequirementsMirrorNamesWhatItDrops.py::test_a_package_only_in_the_repo_file_is_detected_as_dropped',
+        source='vaibify/containerImage/entrypoint.sh',
+        old="        | tr -d '[:blank:]' \\",
+        new="        | tr -d '[:space:]' \\",
+    ),
+    # vaibify.yml is the one dependency declaration and the image is
+    # built from it, but editing it without rebuilding leaves every
+    # downstream artefact agreeing with the stale IMAGE while the
+    # declaration names a package it does not have.
+    Falsification(
+        nodeid='tests/testDeclaredPackagesMatchTheImage.py::test_a_package_declared_but_absent_from_the_image_is_reported',
+        source='vaibify/reproducibility/declaredPackages.py',
+        old='    listMissing = [s for s in listDeclaredNames if s not in setImage]',
+        new='    listMissing = []',
+    ),
+    # Pre-flight must validate what a RUN executes, never everything
+    # declared. It checked saTestCommands, which no run path invokes,
+    # so a container without the test tool had every run refused.
+    Falsification(
+        nodeid='tests/testPreflightNamesTheCauseNotTheCascade.py::test_a_command_no_run_executes_is_never_validated',
+        source='vaibify/gui/pipelineUtils.py',
+        old='    "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",',
+        new='    "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",\n    "saTestCommands",',
+    ),
+    # Pre-flight reports a step's missing directory and then, because
+    # the command probe is "cd <dir> && test -f <script>", one
+    # "command not found" per command in the same step. Suppressing
+    # the cascade must not reach a step whose directory is fine, or
+    # pre-flight silently stops catching missing scripts.
+    Falsification(
+        nodeid='tests/testPreflightNamesTheCauseNotTheCascade.py::test_a_sound_directory_still_has_every_command_checked',
+        source='vaibify/gui/pipelineRunner.py',
+        old='        if len(listErrors) > iBeforeDirectory:',
+        new='        if True:',
+    ),
+    # Running one directory and grading another is the false-pass
+    # class: the steps write where the comparison never reads, so every
+    # pinned artefact matches untouched. The shadow lane shipped with
+    # its two roots one level apart and was caught only because the
+    # wrong directory happened not to exist.
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_run_root_that_differs_from_the_comparison_root_is_refused',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if not sRunnerRoot or sRunnerRoot == sComparisonRoot:',
+        new='    if True or not sRunnerRoot or sRunnerRoot == sComparisonRoot:',
+    ),
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_a_workflow_of_only_given_steps_is_not_a_pass',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if not listCompared:',
+        new='    if False and not listCompared:',
     ),
     Falsification(
         nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_manifest_pinning_no_files_fails_closed',
@@ -1444,6 +1983,10 @@ LIST_FALSIFICATIONS = [
         old='    if not listEntries:',
         new='    if False and not listEntries:',
     ),
+    # The publishing commit moves HEAD, so a rerun that re-derives the
+    # epoch salts its figures differently from the pinned artefacts.
+    # These two guard the override short-circuit and the rerun lane's
+    # hand-off of the recorded epoch.
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_override_bypasses_the_head_derivation',
         source='vaibify/gui/determinismEnvironment.py',
@@ -1464,6 +2007,10 @@ LIST_FALSIFICATIONS = [
         old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
         new='        iSourceDateEpochOverride=0,',
     ),
+    # A bind-mount denylist that checks only the descendant direction is
+    # bypassed by mounting the parent of a protected directory ($HOME
+    # exposes ~/.ssh). The ancestor direction of the overlap check is
+    # what closes it.
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_mounting_home_itself_is_rejected',
         source='vaibify/config/bindMountValidator.py',
@@ -1473,6 +2020,9 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return sFirst.startswith(sSecond + os.sep)""",
     ),
+    # A repo destination becomes rm -rf "${WORKSPACE}/${destination}" in
+    # the entrypoint; unvalidated, it deletes host data via '../' escape
+    # or a bind-mount collision. These guard the host-side validator.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_traversal_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1490,12 +2040,18 @@ LIST_FALSIFICATIONS = [
     return listTargets
     for dictMount in dictConfig.get("bindMounts") or []:""",
     ),
+    # The repo NAME derives the clone SOURCE path ${WORKSPACE}/${name};
+    # dropping the source from the bind-overlap check lets a name that
+    # equals a bind target clone into the mounted host directory.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_name_colliding_with_bind_mount_is_rejected',
         source='vaibify/config/projectConfig.py',
         old="        for sPath in (sSourceAbs, sDestAbs):",
         new="        for sPath in (sDestAbs,):",
     ),
+    # An unreachable Docker daemon yields no protected paths; proceeding
+    # with an empty protected set deletes credential files a live
+    # container still mounts. Enumeration failure must forbid the sweep.
     Falsification(
         nodeid='tests/testEphemeralStore.py::test_sweep_is_forbidden_when_the_daemon_is_unreachable',
         source='vaibify/gui/routes/syncRoutes.py',
@@ -1504,24 +2060,36 @@ LIST_FALSIFICATIONS = [
         new="""        setMounted = _fsetMountedHostPaths(dictCtx)
         if False:""",
     ),
+    # The host-log-tail endpoint returns the raw host-wide log and
+    # free-text incidents; the agent lane must receive only an
+    # allowlisted per-container view, never the raw log or free text.
     Falsification(
         nodeid='tests/testAgentLaneEnforcement.py::test_host_log_tail_agent_lane_is_sanitized',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="        if serverMiddleware.fbRequestRidesAgentLane(request):",
         new="        if False:",
     ),
+    # The browser lane's streamed exec must be as fail-closed as the
+    # blocking one; a catch-all iExitCode=0 lets a step whose real
+    # command would fail look green through the streamed path.
     Falsification(
         nodeid='tests/testBrowserLaneContract.py::testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer',
         source='tests/browser/fakeDockerAdapter.py',
         old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
         new='        iExitCode, sStdout = (0, "ok")',
     ),
+    # fiApplyMigrations stamped the version DOWN to the current at the
+    # end, silently downgrading a future-version project.json and dropping
+    # fields this build does not understand on the next save.
     Falsification(
         nodeid='tests/testWorkflowSchemaForwardCompat.py::test_future_schema_version_is_refused_not_downgraded',
         source='vaibify/gui/workflowMigrations.py',
         old="    if iVersion > I_CURRENT_WORKFLOW_VERSION:",
         new="    if False:",
     ),
+    # A mount at the workspace root is an ANCESTOR of the destination;
+    # the destination is a descendant of the mount. Dropping the
+    # descendant direction of the overlap check lets that rm -rf through.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_under_a_workspace_root_mount_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1531,6 +2099,9 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return sSecond.startswith(sFirst + "/")""",
     ),
+    # repr() is Python escaping, not shell escaping; embedded in a
+    # double-quoted bash -c string, a crafted container path executes on
+    # preview/fetch. Shell-quoting the whole -c argument closes it.
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_npy_preview_quotes_the_whole_program',
         source='vaibify/gui/dataPreview.py',
@@ -1556,6 +2127,10 @@ LIST_FALSIFICATIONS = [
             _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
+    # The ownerless-connect exception is the viewer's bootstrap; extending
+    # it to the hub lets an unclaimed connect run its write path (empty
+    # agent token clobbers the owner's) against a container another hub may
+    # hold via the flock.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_hub_refuses_connect_to_an_unclaimed_container',
         source='vaibify/gui/routes/workflowRoutes.py',
@@ -1577,6 +2152,9 @@ LIST_FALSIFICATIONS = [
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
     ),
+    # Sweep C1: connect must consult the SESSION-BOUND lease, not the lease
+    # VALUE. Reverting the connect gate to the value-only fbSessionOwnsContainer
+    # admits a second browser session replaying the owner's copied lease.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_hub_connect_refuses_second_session_with_a_copied_lease',
         source='vaibify/gui/routes/workflowRoutes.py',
@@ -1589,12 +2167,19 @@ LIST_FALSIFICATIONS = [
     ):
         return""",
     ),
+    # Sweep C2: release must consult the SESSION-BOUND lease, not the lease
+    # VALUE. Reverting the guard to a lease-value comparison lets a second
+    # browser session drop the true owner's record with a copied lease.
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_release_refuses_second_session_presenting_a_copied_lease',
         source='vaibify/gui/containerOwnership.py',
         old="""    return bBoundOwner or bUnboundOwner""",
         new="""    return recordOwner.sLeaseId == sLeaseId""",
     ),
+    # Sweep C8: the repo-URL check must reject a leading-dash argument
+    # injection and non-vetted git transports (ext::, file://). Dropping the
+    # guard readmits those remote-code primitives, which carry no shell
+    # metacharacter and so clear the metacharacter filter.
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_url_argument_and_scheme_injection_is_rejected',
         source='vaibify/config/projectConfig.py',
@@ -1605,12 +2190,19 @@ LIST_FALSIFICATIONS = [
     return bool(_S_SCP_LIKE_URL.match(sUrl))""",
         new="""    return True""",
     ),
+    # Without base-uri, an injected <base> tag (from a hostile filename
+    # rendered into innerHTML) re-homes the dashboard's root-relative
+    # API calls; base-uri does not fall back to default-src.
     Falsification(
         nodeid='tests/testContentSecurityPolicy.py::test_base_uri_is_locked_to_none',
         source='vaibify/gui/serverMiddleware.py',
         old='            "base-uri \'none\'; "\n            "form-action \'self\'; "',
         new='            "form-action \'self\'; "',
     ),
+    # init swallowed the duplicate-name error and reported success, so a
+    # second project reusing a name was scaffolded but unregistered and
+    # --project resolved to the other directory. The outcome must
+    # distinguish same-dir re-init from a cross-directory name conflict.
     Falsification(
         nodeid='tests/testInitRegistrationOutcome.py::test_name_conflict_with_a_different_dir_fails_loudly',
         source='vaibify/cli/commandInit.py',
@@ -1624,6 +2216,10 @@ LIST_FALSIFICATIONS = [
         new="""    except ValueError:
         return "registered\"""",
     ),
+    # The build-progress record is read by every later build click (the
+    # 409 duplicate refusal) and by re-attached tabs; these guard that a
+    # dead build always closes its record and that no unredacted line
+    # can reach the dashboard tail.
     Falsification(
         nodeid='tests/testBuildProgressRoutes.py::test_failed_build_closes_the_record_as_failed',
         source='vaibify/gui/buildRoutes.py',
@@ -1975,6 +2571,8 @@ def _fdictEntry(sRel):
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal):""",
     ),
+
+    # --- 2026-07-03: declaration/push cosmic-ray survivors (ux/dashboard-clarity) ---
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_generic_verify_failure_returns_the_generic_warning',
         source='vaibify/gui/routeContext.py',
@@ -2082,6 +2680,16 @@ def _fdictEntry(sRel):
         old='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") or "",\n        )',
         new='        _fbStepReferencesDeclaredBinary(\n            listCommands, dictEntry.get("sBinaryPath") and "",\n        )',
     ),
+    # The commit guard had three byte-identical copies (2026-07-02
+    # added it to two variants, 2026-08-26 to the third after it
+    # shipped the unguarded chain to a researcher). Both entries below
+    # then needed iExpectedOccurrences=3, because mutating one copy of
+    # a three-copy guard changes nothing any test can observe.
+    #
+    # 2026-08-26: the tail was extracted to _fsComposePublishSuffix, so
+    # there is ONE copy and these mutate it directly. That is a
+    # strengthening, not bookkeeping — a single-copy guard is one a
+    # mutation can actually falsify.
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_staged_pushes_an_already_committed_repo_real_git',
         source='vaibify/gui/syncDispatcher.py',
@@ -2094,6 +2702,8 @@ def _fdictEntry(sRel):
         old='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push && "',
         new='        f"git {sHardening} commit -m {fsShellQuote(sCommitMessage)}) && "\n        f"git {sHardening} push --dry-run && "',
     ),
+
+    # --- 2026-07-03: untrack real-git regressions (pathspec-commit bug, staged-index guard) ---
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_clean_declaration_really_untracks_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
@@ -2112,6 +2722,8 @@ def _fdictEntry(sRel):
         old='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if iExit != 0:',
         new='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if False and iExit != 0:',
     ),
+
+    # --- 2026-07-11: per-step falsification attestation honesty guards ---
     Falsification(
         nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_na_step_never_presents_current_record',
         source='vaibify/reproducibility/falsificationAttestation.py',
@@ -2178,6 +2790,7 @@ def _fdictEntry(sRel):
         old='    fDurationSeconds=0.0, sReason="",',
         new='    fDurationSeconds=1.0, sReason="",',
     ),
+    # --- Step name <-> directory slug contract (2026-07-18) ---
     Falsification(
         nodeid='tests/testStepSlugContract.py::test_slug_enforces_camelcase_on_lowercase_words',
         source='vaibify/gui/pipelineUtils.py',
@@ -2247,6 +2860,7 @@ def _fdictEntry(sRel):
         old='        if fbStepDirectoryConforms(dictStep):\n            continue',
         new='        if fbStepDirectoryConforms(dictStep) or True:\n            continue',
     ),
+    # --- Personal instruction layer (Replay axis, 2026-07-19) ---
     Falsification(
         # Dropping the agent-lane rejection hands a compromised
         # in-container agent a hash oracle over host files.
@@ -2289,6 +2903,8 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
+    # --- Config values that survive being written but not being read
+    #     back (resource limits, wizard save; 2026-07-25) ---
     Falsification(
         # The range check also rejects NaN (it fails every
         # comparison), so what the finiteness check defends is the
@@ -2307,6 +2923,7 @@ def _fdictEntry(sRel):
         old='    if not numberMinimum <= numberValue <= numberMaximum:',
         new='    if not numberMinimum <= numberValue:',
     ),
+    # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
     Falsification(
         # The empty secret name is rejected by fsRetrieveSecret before
         # it dispatches on the method, so the gh-auth fallback becomes
@@ -2366,6 +2983,7 @@ def _fdictEntry(sRel):
         old='if "" in listParts or "." in listParts or ".." in listParts:',
         new='if "" in listParts or ".." in listParts:',
     ),
+    # --- Step identity: labels and the rename cascade (2026-07-25) ---
     Falsification(
         # The shipped bug, restored on the RESOLVER side: comparing the
         # raw field against a bool made a hand-edited
@@ -2457,6 +3075,7 @@ def _fdictEntry(sRel):
 """,
         new='',
     ),
+    # --- Dashboard honesty (Opus 5 review, phase 3, 2026-07-25) ---
     Falsification(
         # Reading a timezone-less stamp as the host's LOCAL time
         # relocates a recorded cause by the host's UTC offset, so a
@@ -2590,6 +3209,7 @@ def _fdictEntry(sRel):
         old='    "piAutoUpdate": "bPiAutoUpdate",\n',
         new='',
     ),
+    # ---- Phase 4 security remediation (2026-07-25) ----
     Falsification(
         # Without the catalog check the agent lane returns to an
         # unconditional pass-through, and every user-only action --
@@ -2915,6 +3535,12 @@ def _fdictEntry(sRel):
             '                continue'
         ),
     ),
+
+    # ── Documented hard rules that no test could previously falsify ──
+    # (2026-07-26 audit). Mutation testing cannot reach this class: it
+    # finds weak tests over EXISTING code, and there is no mutant for an
+    # enforcement point that was never written.
+
     Falsification(
         # AGENTS.md "Ask first" names five sensitive categories; the
         # credential manager is the one whose loss is unrecoverable
@@ -3232,6 +3858,9 @@ def _fdictEntry(sRel):
         old='    for sAgent in claude codex gemini opencode cline openhands pi; do',
         new='    for sAgent in claude codex gemini opencode cline openhands pi newagent; do',
     ),
+    # ORPHANED_SESSION slice 4 (design §9, falsification case 19 claim
+    # half): neutralizing the cardinality read-check lets one browser
+    # session accumulate two owner records.
     Falsification(
         nodeid='tests/testSessionCardinality.py::test_second_claim_by_the_same_session_is_refused',
         source='vaibify/gui/containerOwnership.py',
@@ -3254,36 +3883,53 @@ def _fdictEntry(sRel):
         old='    if sHeldElsewhereName:\n        raise HTTPException(',
         new='    if False:\n        raise HTTPException(',
     ),
+    # ORPHANED_SESSION slice 3 sub-step 3a (design §8/§13): the
+    # write-ahead operation journal and its quarantine. Case 27 —
+    # acquisition must consult the journal atomically with the fresh
+    # flock; bypassing the consult reverts to the silent dead-PID reap.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_quarantine_survives_hub_sigkill_and_blocks_the_next_claim',
         source='vaibify/config/containerLock.py',
         old='        if fileHandle is not None:\n            return _ffileRefuseUnsettledJournal(\n                fileHandle, sProjectName, connectionDocker,\n            )',
         new='        if fileHandle is not None:\n            return fileHandle',
     ),
+    # Case 36, auto-clear half: a provably-dead, provably-settled
+    # leftover must clear automatically, or every interrupted multi-hour
+    # run demands a human and the gate becomes a rubber stamp.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_auto_tier_clears_a_provably_dead_leftover_with_a_logged_note',
         source='vaibify/config/operationJournal.py',
         old='    if dictProbe["bSettled"]:\n        return ("settled", dictProbe["sDetail"])',
         new='    if dictProbe["bSettled"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
     ),
+    # Case 36, busy half: a live IN_FLIGHT holder is in use, never
+    # quarantined; quarantining it would poison a working run.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_live_in_flight_holder_reads_busy_never_quarantined',
         source='vaibify/config/operationJournal.py',
         old='    if dictProbe["bHolderAlive"]:\n        return ("busy", dictProbe["sDetail"])',
         new='    if dictProbe["bHolderAlive"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
     ),
+    # Case 37, fail-closed half: with the malformed branch disabled, a
+    # damaged journal falls through to the valid-records path with zero
+    # records and resolves SETTLED — damage reading as clean.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_malformed_unreadable_and_newer_journals_read_quarantined',
         source='vaibify/config/operationJournal.py',
         old='    if dictOutcomeRead["sReadState"] == "malformed":',
         new='    if False and dictOutcomeRead["sReadState"] == "malformed":',
     ),
+    # Case 37, durability half: writing in place instead of staging into
+    # a temp file lets a crash mid-write destroy the previous journal.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_survives_a_torn_write',
         source='vaibify/config/operationJournal.py',
         old='    sTemporaryPath = f"{sPath}{_S_TEMPORARY_WRITE_SUFFIX}.{os.getpid()}"',
         new='    sTemporaryPath = sPath',
     ),
+    # Case 42, semantics half: an ordinary write that treats a damaged
+    # journal as fresh silently replaces (and so clears) the quarantine
+    # marker — the acknowledge-shaped clear the design forbids.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_newer_version_requires_upgrade_and_malformed_refuses_writes',
         source='vaibify/config/operationJournal.py',
@@ -3296,12 +3942,19 @@ def _fdictEntry(sRel):
         new='''    if dictOutcomeRead["sReadState"] != "valid":
         return _fdictBuildEmptyPayload(sContainerName)''',
     ),
+    # Case 45, journal half (the carrier half lands with sub-step 3b):
+    # replacing the record SET on every prepare loses coexistence, so a
+    # pipeline task, a terminal exec, and a file write cannot be
+    # journaled at once.
     Falsification(
         nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_is_a_set_and_claimable_only_when_every_record_settles',
         source='vaibify/config/operationJournal.py',
         old='        dictPayload["dictOperations"][sOperationId] = dictRecord',
         new='        dictPayload["dictOperations"] = {sOperationId: dictRecord}',
     ),
+    # Case 39: without the journal entry in the home-relative denylist,
+    # a mount of ~/.vaibify (or the journal itself) reaches the
+    # quarantine markers from inside a container.
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_journal_directory_mount_is_rejected_in_every_direction',
         source='vaibify/config/bindMountValidator.py',
@@ -3313,6 +3966,10 @@ def _fdictEntry(sRel):
     ".vaibify/journal",''',
         new='''    ".kube",''',
     ),
+
+    # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
+    # Case 16, mode (a): with the write-funnel gate removed, a dummy
+    # route's direct container write reaches put_archive unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
         source='vaibify/docker/dockerConnection.py',
@@ -3321,6 +3978,9 @@ def _fdictEntry(sRel):
         )''',
         new='''        pass''',
     ),
+    # Case 16, mode (b): inverting the enforced-lane check makes the
+    # funnel a no-op exactly where it must fail closed, so a write
+    # laundered across asyncio.to_thread lands unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_b',
         source='vaibify/config/mutationAdmission.py',
@@ -3331,6 +3991,8 @@ def _fdictEntry(sRel):
         return
     admission = fadmissionActiveForContainerId(sContainerId)''',
     ),
+    # Case 16c: with the durable-launch gate removed, a route reaches
+    # exec_create without a carrier-minted mode-(c) guard.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_durable_exec_without_mode_c_guard_is_refused',
         source='vaibify/docker/dockerConnection.py',
@@ -3339,12 +4001,18 @@ def _fdictEntry(sRel):
         )''',
         new='''        pass''',
     ),
+    # Case 16b: without the shield, cancelling the requesting coroutine
+    # cancels the supervisor, the drain frees while the worker thread
+    # keeps running, and a competitor acquires mid-effect.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_cancelled_requester_leaves_drain_held_until_worker_ends',
         source='vaibify/gui/commitCarrier.py',
         old='    return await asyncio.shield(taskSupervisor)',
         new='    return await taskSupervisor',
     ),
+    # Case 26: without the retained-names skip, hub shutdown frees the
+    # flock of a container whose guarded worker is still live, handing
+    # it to the next hub mid-commit.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_hub_shutdown_retains_flock_while_guarded_worker_lives',
         source='vaibify/gui/appFactory.py',
@@ -3353,6 +4021,9 @@ def _fdictEntry(sRel):
                 continue''',
         new='''        for sName, recordOwner in list(dictContainerOwners.items()):''',
     ),
+    # Case 31 (carrier half): a cancel plane that settles the journal
+    # record itself clears the write-ahead record while the worker can
+    # still commit — the supervisor must be the single settler.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_out_of_band_cancel_leaves_supervisor_as_single_releaser',
         source='vaibify/gui/commitCarrier.py',
@@ -3362,6 +4033,8 @@ def _fdictEntry(sRel):
         _fnMarkSupervisorCancelRequested(supervisor)
         operationJournal.fnSettleOperation(sName, supervisor.sOperationId)''',
     ),
+    # Case 32 (carrier half): dropping the carrier veto lets the idle
+    # reaper force-release an owner whose guarded worker is live.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_reaper_never_releases_owner_with_live_guarded_work',
         source='vaibify/gui/serverLifespan.py',
@@ -3373,6 +4046,8 @@ def _fdictEntry(sRel):
         new='''    def fbGuardedWorkLive(sName):
         return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
     ),
+    # Case 38 (holder half): neutralizing the holder comparison admits
+    # any holder under a merely-present record.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_identity_gate_admits_own_record_and_refuses_foreign_holder',
         source='vaibify/config/mutationAdmission.py',
@@ -3381,6 +4056,8 @@ def _fdictEntry(sRel):
         new='''    for sIdentityKey, valueExpected in (dictHolderIdentity or {}).items():
         if False and dictOwnRecord.get(sIdentityKey) != valueExpected:''',
     ),
+    # Case 38 (quarantine half): neutralizing the NEEDS_RECONCILIATION
+    # scan lets a sitting owner resume mid-quarantine.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_identity_gate_refuses_sitting_owner_mid_quarantine',
         source='vaibify/config/mutationAdmission.py',
@@ -3393,6 +4070,8 @@ def _fdictEntry(sRel):
             operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
         ):''',
     ),
+    # Case 45 (carrier half): an added presence-based refusal denies an
+    # operation its own record whenever any other record coexists.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_carrier_admits_each_operation_against_its_own_record',
         source='vaibify/config/mutationAdmission.py',
@@ -3403,6 +4082,9 @@ def _fdictEntry(sRel):
         )
     dictOwnRecord = dictOperations.get(sOperationId)''',
     ),
+    # Case 41 (gate part): reordering the helper stub to act BEFORE
+    # reading the stdin gate lets a killed parent leave a landed effect
+    # with no identity-persisted releasing gate.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_parent_kill_at_each_two_phase_transition_leaves_no_actor',
         source='vaibify/gui/commitCarrier.py',
@@ -3422,6 +4104,7 @@ def _fdictEntry(sRel):
     "sys.exit(iExitCode)\\n"
 )''',
     ),
+
     Falsification(
         nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_cli_clears_a_sigkill_quarantine_and_restores_claim',
         source='vaibify/config/reconciliation.py',
@@ -3474,6 +4157,12 @@ def _fdictEntry(sRel):
         new='''    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
     if False:''',
     ),
+
+    # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
+    # The terminal exec id must be durable BEFORE exec_start (the
+    # create -> journal -> start split applied to terminals); the
+    # mutation starts the exec first, leaving a crash window with an
+    # unidentified writer.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_start_journals_the_exec_id_before_exec_start',
         source='vaibify/gui/terminalSession.py',
@@ -3492,6 +4181,9 @@ def _fdictEntry(sRel):
             self._sContainerId, self._dictContainment["iOwnerGeneration"],
         )''',
     ),
+    # Terminate-and-prove must PROVE the group empty; the mutation is
+    # the optimistic proceed the design forbids (v13: "never an
+    # optimistic proceed").
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_surviving_group_member_quarantines_never_settles',
         source='vaibify/gui/terminalContainment.py',
@@ -3504,6 +4196,10 @@ def _fdictEntry(sRel):
     """Return True only for a conclusive zero-member probe."""
     return True''',
     ),
+    # The codex-round-12 hole, unit half (case 43): settling a terminal
+    # record on ``exec_inspect Running == false`` alone lets a detached
+    # signal-trapping descendant write after the record clears. The
+    # real-container half is tests/testTerminalContainmentLive.py.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_terminal_probe_refuses_to_settle_on_exec_dead_alone',
         source='vaibify/config/operationJournal.py',
@@ -3514,6 +4210,9 @@ def _fdictEntry(sRel):
         return dictExecProbe
     return dictExecProbe''',
     ),
+    # Shutdown half of case 44 (unit): the flock-release hook must skip
+    # a container whose terminal group may still write, exactly as it
+    # skips live mutation work.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_shutdown_retains_the_flock_of_a_live_terminal_container',
         source='vaibify/gui/appFactory.py',
@@ -3526,6 +4225,9 @@ def _fdictEntry(sRel):
             app.state,
         )''',
     ),
+    # A closed socket is not a dead terminal (design §7): the run
+    # loop's teardown must terminate-and-prove, not merely send exit
+    # keystrokes and close the socket.
     Falsification(
         nodeid='tests/testTerminalContainment.py::test_socket_close_drains_the_containment_record',
         source='vaibify/gui/pipelineServer.py',
@@ -3542,6 +4244,16 @@ def _fdictEntry(sRel):
     )''',
         new='''    taskDrain = asyncio.create_task(asyncio.sleep(0))''',
     ),
+
+    # --- Slice 3d, real-container halves (cases 43, 44, 45). These
+    # five tests are docker_live-marked: they SKIP without a reachable
+    # daemon (VAIBIFY_REQUIRE_DOCKER_DAEMON turns the skip into a
+    # failure in the opt-in CI job), so kill-confirming them REQUIRES
+    # a live daemon — under a daemon-less reconfirm run the mutant
+    # survives vacuously via the skip, which is a limit of the
+    # harness, not of the tests. Each was kill-confirmed by hand
+    # against Docker 28.x. Case 43's transfer-commit half and case
+    # 44's transfer/expiry halves land with slices 5 and 6.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_prover_reports_survivors_after_exec_inspect_says_dead',
         source='vaibify/docker/dockerConnection.py',
@@ -3554,6 +4266,12 @@ def _fdictEntry(sRel):
             "sDetail": f"{iMemberCount} live member(s)",
         }''',
     ),
+    # The zombie exemption (2026-08-14). The mutant restores the
+    # pre-fix walk that counted Z-state entries, which is exactly the
+    # unclearable-quarantine bug: a defunct child reparented to a
+    # non-reaping PID 1 held the count forever and reconcile refused
+    # until the container was restarted. Live-gated like its
+    # neighbours: needs a daemon, kill-confirmed by hand.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_a_zombie_does_not_hold_the_group_count',
         source='vaibify/docker/dockerConnection.py',
@@ -3619,6 +4337,27 @@ def _fdictEntry(sRel):
         dictPayload["dictOperations"] = {}
         _fnStoreJournalPayload(sContainerName, dictPayload)''',
     ),
+
+    # --- Slice 5: the host-authorized transfer transaction (design
+    # §6.1/§6.2). Cases 2/3/4/5/6/8/12/14/15/23/26b/31/44/46, transfer
+    # halves. Three of these conditions are checked at BOTH the pre-mint
+    # layer and the commit point, so disabling one copy changes nothing
+    # observable and reads as SURVIVED.
+    #
+    # These entries originally mutated the pre-mint copy alone and
+    # detected it through a DRAINING side effect: a doomed transfer must
+    # not drain the sitting owner's terminals, so the backstop's refusal
+    # arrived with the terminals already gone. That phase was later
+    # removed -- a transfer now refuses a busy container at once and
+    # never waits for a drain (AGENTS.md, "A busy container refuses a
+    # hand-over at once") -- which silently made the discriminator
+    # vacuous and the three entries unkillable. They survived for a week
+    # while reading as three undefended ownership guards.
+    #
+    # So the mutation is now "the guard is gone", every copy, with the
+    # count stated. Where two guards can still produce the same refusal,
+    # the TEST discriminates on the message that names the cause.
+    # Case 2 (stale-generation refusal, the ABA guard):
     Falsification(
         nodeid='tests/testHostTransfer.py::testStaleGenerationTransferIsRefused',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3626,6 +4365,7 @@ def _fdictEntry(sRel):
         new='    if False:',
         iExpectedOccurrences=2,
     ),
+    # Case 2/15 (ACTIVE transfer revokes the old session in-commit):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3634,12 +4374,14 @@ def _fdictEntry(sRel):
         new='''    browserSession.fbRevokeSessionById(
         dictStore, "",''',
     ),
+    # Case 3 (bounded replay returns the STORED tuple):
     Falsification(
         nodeid='tests/testHostTransfer.py::testLostTransferResponseReplaysTheStoredTuple',
         source='vaibify/gui/browserSession.py',
         old='        recordCap.sIssuedLease = sLeaseId',
         new='        recordCap.sIssuedLease = ""',
     ),
+    # Case 14 (reaped record answers "claim normally", never retry):
     Falsification(
         nodeid='tests/testHostTransfer.py::testReapedRecordYieldsClaimNormally',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3652,6 +4394,7 @@ def _fdictEntry(sRel):
         browserSession.fnExpireCapability(dictStore, sCapability)
         return (S_TRANSFER_BUSY_RETRY, {''',
     ),
+    # Case 26b (a poisoned record refuses every transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testPoisonedRecordRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3659,6 +4402,7 @@ def _fdictEntry(sRel):
         new='    if False:',
         iExpectedOccurrences=2,
     ),
+    # Case 31 (a cancel that won the lock blocks the transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCancelRequestedDurableTaskRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3666,6 +4410,9 @@ def _fdictEntry(sRel):
         new='    if recordTask is not None and False:',
         iExpectedOccurrences=2,
     ),
+    # Case 23 (the barrier test: adoption, not a blanket live-task
+    # refusal — the exact "different operation ⇒ refuse" mistake the
+    # §8 adoption exception exists to prevent):
     Falsification(
         nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningDurableTask',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3686,12 +4433,15 @@ def _fdictEntry(sRel):
         })
     sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
     ),
+    # Case 5 (the preserved task is retagged in place, not left stale):
     Falsification(
         nodeid='tests/testHostTransfer.py::testPreservedTaskCompletesAttributedToNewGeneration',
         source='vaibify/gui/sessionLifecycle.py',
         old='    _fnRetagLiveDurableTask(appState, sName, iNewGeneration)',
         new='    pass',
     ),
+    # Case 4 (an old-generation ordinary mutation fails at the
+    # carrier's linearization check after a REAL transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldLaneTupleCannotCommitAfterTransfer',
         source='vaibify/gui/commitCarrier.py',
@@ -3705,6 +4455,7 @@ def _fdictEntry(sRel):
     dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
     recordOwner = dictContainerOwners.get(dictLaneTuple["sContainerName"])''',
     ),
+    # Case 6 (old sockets are detached, closed, and inert afterwards):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldGenerationCleanupCannotTouchNewGenerationState',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3717,6 +4468,7 @@ def _fdictEntry(sRel):
         return []
     return []''',
     ),
+    # Case 8 (the agent token rides through the transfer untouched):
     Falsification(
         nodeid='tests/testHostTransfer.py::testAgentAuthorizationSurvivesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3726,6 +4478,9 @@ def _fdictEntry(sRel):
     recordOwner.sAgentToken = containerOwnership.fsMintAgentToken()
     recordOwner.sBrowserSessionId = sNewSessionId''',
     ),
+    # Case 12 (a half-implemented transfer that bumps the generation
+    # without rotating the browser principals lets the displaced
+    # session release the successor's record):
     Falsification(
         nodeid='tests/testHostTransfer.py::testStaleGenerationReleaseIsRefusedAfterTransfer',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3734,6 +4489,11 @@ def _fdictEntry(sRel):
     recordOwner.iOwnerGeneration = iNewGeneration''',
         new='''    recordOwner.iOwnerGeneration = iNewGeneration''',
     ),
+    # Case 44, transfer half. The DRAINING phase is DELETED (wave 2.4):
+    # a hand-over must not carry a terminal execution nobody has proven
+    # dead, and draining one would have settled it on the strength of a
+    # probe rather than a stop -- while forcing a wait inside the held
+    # lock. The refusal replaces it.
     Falsification(
         nodeid='tests/testHostTransfer.py::testTransferRefusesOverALiveTerminalRecordAndSignalsNothing',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3744,6 +4504,8 @@ def _fdictEntry(sRel):
         return (S_TRANSFER_BUSY_RETRY, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
+    # Case 46, transfer half: a refused transfer rolls back only what it
+    # minted, and leaves the record it did not create standing.
     Falsification(
         nodeid='tests/testHostTransfer.py::testARefusedTransferRollsBackOnlyWhatItMinted',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3753,24 +4515,44 @@ def _fdictEntry(sRel):
         new='''        return (S_TRANSFER_REFUSED, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
+    # Wave 2.4: a busy container refuses AT ONCE and names the holder.
     Falsification(
         nodeid='tests/testHostTransfer.py::testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation',
         source='vaibify/gui/sessionLifecycle.py',
         old='''    if lockMutation.locked():''',
         new='''    if False and lockMutation.locked():''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 2 — the mint-transfer socket
+    # operation and the vaibify open client (design §6b).
+    # ------------------------------------------------------------------
+    # Case 2, mint half (the socket handshake: a stale CLI can never
+    # mint against a successor generation without seeing it):
     Falsification(
         nodeid='tests/testHostControlChannel.py::test_mint_transfer_refuses_a_generation_the_hub_no_longer_serves',
         source='vaibify/gui/hostControlChannel.py',
         old='    if valueExpectedGeneration != recordOwner.iOwnerGeneration:',
         new='    if False and valueExpectedGeneration != recordOwner.iOwnerGeneration:',
     ),
+    # Case 15, end-to-end half (real Unix-socket mint -> real HTTP
+    # redemption; a client that skips the peer-authenticated mint and
+    # presents an unminted token must be refused, and the command must
+    # report the failure instead of opening a browser):
     Falsification(
         nodeid='tests/testVaibifyOpen.py::test_open_transfers_over_real_socket_and_http',
         source='vaibify/cli/commandOpen.py',
         old='    return dictMinted["sTransferCapability"]',
         new='    return "an-unminted-transfer-token"',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 3 — the safe reaper's
+    # ORPHANED->RELEASED conditions and the agent-liveness stamps
+    # (design §7; cases 7, 20, and the orphaned half of 32).
+    # ------------------------------------------------------------------
+    # Case 7, orphan-grace half (the reap grace measures from the
+    # orphan stamp, never from the last socket):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapGraceRunsFromTheOrphanStampNotTheLastSocket',
         source='vaibify/gui/containerOwnership.py',
@@ -3781,6 +4563,8 @@ def _fdictEntry(sRel):
         time.monotonic() - recordOwner.fLastSeenMonotonic
     )''',
     ),
+    # Case 7, agent-stamp half (reap succeeds only with a STALE agent
+    # activity stamp):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapRequiresAStaleAgentActivityStamp',
         source='vaibify/gui/containerOwnership.py',
@@ -3790,12 +4574,17 @@ def _fdictEntry(sRel):
     )''',
         new='''    return False''',
     ),
+    # Case 7, journal half (ORPHANED->RELEASED requires every journal
+    # record settled; the veto lives in the reaper loop):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapVetoedWhileAJournalRecordIsUnsettled',
         source='vaibify/gui/serverLifespan.py',
         old='            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)',
         new='            or False',
     ),
+    # Case 32, orphaned half (the reaper and a cancelling durable task
+    # cannot both release the record; same busy-veto mutation as the
+    # carrier half, killed here through an ORPHANED_SESSION record):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapAndCancelCannotBothReleaseTheRecord',
         source='vaibify/gui/serverLifespan.py',
@@ -3807,18 +4596,31 @@ def _fdictEntry(sRel):
         new='''    def fbGuardedWorkLive(sName):
         return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
     ),
+    # Case 20, slice-5 half (an admitted agent request pins the record
+    # for its FULL duration through the in-flight bracket):
     Falsification(
         nodeid='tests/testSafeReaper.py::testLongRunningAgentRequestHoldsTheRecordLiveFullDuration',
         source='vaibify/gui/serverMiddleware.py',
         old='    recordOwner.iInFlightAgentRequests += 1',
         new='    recordOwner.iInFlightAgentRequests += 0',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 4 — the remaining transfer
+    # halves (cases 16b, 4's 3b half, 26b's lifecycle, 43's and 46's
+    # real-container transfer halves).
+    # ------------------------------------------------------------------
+    # Case 16b, slice-5 half (the shielded supervisor keeps the drain
+    # held across a requester cancel, so a transfer stays busy-refused
+    # until the worker truly dies):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCancelledRequesterKeepsTransferBlockedUntilWorkerDies',
         source='vaibify/gui/commitCarrier.py',
         old='    return await asyncio.shield(taskSupervisor)',
         new='    return await taskSupervisor',
     ),
+    # Case 4, 3b half (the mode-(b) supervisor's own lane-tuple
+    # revalidation under the drain refuses a pre-transfer tuple):
     Falsification(
         nodeid='tests/testHostTransfer.py::testOldTupleLockHeldMutationIsRefusedAfterTransfer',
         source='vaibify/gui/commitCarrier.py',
@@ -3827,6 +4629,9 @@ def _fdictEntry(sRel):
         new='''        if False:
             raise CommitRefusedError(''',
     ),
+    # Case 26b, full lifecycle (force-abandon must actually SET the
+    # poison — an acknowledge-without-poison leaves the transfer
+    # refusal misattributed to the journal and the claim un-poisoned):
     Falsification(
         nodeid='tests/testHostControlChannel.py::test_force_abandon_lifecycle_poisons_refuses_and_reconciles',
         source='vaibify/gui/hostControlChannel.py',
@@ -3844,6 +4649,13 @@ def _fdictEntry(sRel):
         new='''    listFenced = []
     sessionLifecycle.fnScheduleConnectionFencing(listFenced)''',
     ),
+    # Case 43, transfer-commit half (real container; also drives case
+    # 44's transfer path): under the agree-with-exec_inspect prover
+    # mutant, the DRAINING phase "proves" a live group empty, the
+    # transfer commits over it, and the surviving signal-trapping
+    # descendant writes its marker under the successor's ownership.
+    # Kill-confirmation requires a reachable Docker daemon; without
+    # one the test skips and the mutant survives vacuously.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_transfer_refuses_over_a_live_terminal_against_a_real_container',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3854,6 +4666,12 @@ def _fdictEntry(sRel):
         return (S_TRANSFER_BUSY_RETRY, {
             "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
+    # Case 46, real-container half (a PAUSED container makes every
+    # drain probe indeterminate; the optimistic-commit mutant settles
+    # whatever the final probe says, so the transfer commits instead
+    # of refusing retained-and-quarantined). Kill-confirmation
+    # requires a reachable Docker daemon; without one the test skips
+    # and the mutant survives vacuously.
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_an_indeterminate_drain_quarantines_rather_than_settling',
         source='vaibify/gui/terminalContainment.py',
@@ -3866,6 +4684,14 @@ def _fdictEntry(sRel):
     )''',
         new='''    return _fdictSettleProvenRecord(recordTerminal, dictProbe)''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 1 — the orphan transition,
+    # the §4 zero-sockets trigger, and the §5 per-frame backstop
+    # (cases 10, 18, the orphan-transition half of 7, the real-orphan
+    # halves of 13 and 20).
+    # ------------------------------------------------------------------
+    # Case 10 (reload/pagehide during a live task retains ownership):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testReloadReconnectWithinWindowRetainsOwnership',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3878,6 +4704,8 @@ def _fdictEntry(sRel):
         >= 0.0
     )''',
     ),
+    # Case 18 (closing one terminal socket doesn't orphan; per-lane
+    # counting — every browser lane vetoes the trigger):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testTerminalLaneSocketVetoesTheOrphanTrigger',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3886,12 +4714,20 @@ def _fdictEntry(sRel):
         new='''    if recordOwner.iLivePipelineConnectionCount > 0:
         return False''',
     ),
+    # Case 7, orphan-transition half (the reap grace measures from the
+    # REAL orphan commit's stamp, not the long-dead last socket — the
+    # mutant stamps the commit with the last-socket time, the exact
+    # bug shape the case forbids):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testReapGraceMeasuresFromTheRealOrphanTransition',
         source='vaibify/gui/sessionLifecycle.py',
         old='    recordOwner.fOrphanedSinceMonotonic = time.monotonic()',
         new='    recordOwner.fOrphanedSinceMonotonic = recordOwner.fLastSeenMonotonic',
     ),
+    # Case 13, real-orphan half (a live agent's REST activity pins a
+    # record orphaned through the real transition; same predicate
+    # mutation as the slice-5 hand-set-state entry, killed here
+    # end-to-end through fnOrphanSession + the real middleware):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testOrphanedRecordWithLiveAgentRestActivityIsNotReaped',
         source='vaibify/gui/containerOwnership.py',
@@ -3901,12 +4737,16 @@ def _fdictEntry(sRel):
     )''',
         new='''    return False''',
     ),
+    # Case 20, real-orphan half (mid-dispatch, with the admission
+    # stamp aged stale, ONLY the in-flight bracket pins the record):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testInFlightAgentRequestPinsARealOrphanedRecordInTheReaperLoop',
         source='vaibify/gui/serverMiddleware.py',
         old='    recordOwner.iInFlightAgentRequests += 1',
         new='    recordOwner.iInFlightAgentRequests += 0',
     ),
+    # The §5 per-frame backstop, pipeline lane (a frame in flight at
+    # revocation is refused, never dispatched):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testPipelineFrameFromARevokedSessionIsRefusedNotDispatched',
         source='vaibify/gui/pipelineServer.py',
@@ -3919,6 +4759,8 @@ def _fdictEntry(sRel):
                 await websocket.close(code=4401)
                 return''',
     ),
+    # The §5 per-frame backstop, terminal lane (a revoked session's
+    # keystroke never reaches the container):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testTerminalKeystrokeFromARevokedSessionIsRefused',
         source='vaibify/gui/pipelineServer.py',
@@ -3931,6 +4773,14 @@ def _fdictEntry(sRel):
             await websocket.close(code=4401)
             break''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 2 — the owner-aware session
+    # sweep and the live-socket veto on sliding idle (design §11).
+    # ------------------------------------------------------------------
+    # The owner-aware rule: an expired OWNING session must be committed
+    # through the orphan transition, never a bare credential revoke that
+    # would strand an ACTIVE record no reaper condition can release.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testExpiredOwningSessionIsOrphanedNotBareRevoked',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3942,6 +4792,9 @@ def _fdictEntry(sRel):
         dictStore, sSessionId, sEndedMessage=sEndedMessage,
     )''',
     ),
+    # A live WebSocket vetoes sliding idle: the socket layer never
+    # refreshes the credential stamp, so without the veto a streaming
+    # dashboard is revoked under the researcher.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testLiveWebSocketVetoesSlidingIdle',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3950,6 +4803,14 @@ def _fdictEntry(sRel):
     return dictLifetime["fIdleSeconds"] >= fIdleSeconds''',
         new='''    return dictLifetime["fIdleSeconds"] >= fIdleSeconds''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 7 — the absolute cap and the pre-expiry
+    # warning's backend truth (design §11).
+    # ------------------------------------------------------------------
+    # The socket veto is scoped to sliding idle ALONE: a forgotten-open
+    # tab holds a live socket by definition, so generalizing the veto
+    # makes the cap unreachable in exactly its target case.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testAbsoluteCapFiresDespiteALiveWebSocket',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3962,6 +4823,8 @@ def _fdictEntry(sRel):
     if dictLifetime["fAgeSeconds"] >= fCapSeconds:
         return True''',
     ),
+    # The warning counts down the CAP, the deadline with no veto — not
+    # the sliding-idle clock a live socket forbids from ever firing.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testExpiryViewCountsDownTheCapForThePresentingSessionOnly',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3972,6 +4835,14 @@ def _fdictEntry(sRel):
         0.0, ffResolveSlidingIdleSeconds() - dictLifetime["fIdleSeconds"],
     )''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 4 — the remaining normative
+    # cases: 1 (expiry orphans, never releases) and 11/17 (the §10
+    # explicit-release authority).
+    # ------------------------------------------------------------------
+    # Case 1: an expired session holding a live run must be ORPHANED.
+    # Releasing would free the flock over work that can still commit.
     Falsification(
         nodeid='tests/testSessionLifecycleEvaluator.py::testCapDuringALiveRunOrphansAndNeverReleases',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3984,6 +4855,8 @@ def _fdictEntry(sRel):
         getattr(appState, "dictSessionOwner", None),
     )''',
     ),
+    # Case 11: the agent refusal is about a LIVE agent; a stale stamp
+    # must not lock a researcher out of releasing an idle container.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testIdleReleaseWithAStaleAgentStampSucceeds',
         source='vaibify/gui/sessionLifecycle.py',
@@ -3992,6 +4865,8 @@ def _fdictEntry(sRel):
     ):''',
         new='''    if recordOwner is not None:''',
     ),
+    # Case 17, force half: force overrides the agent refusal and ONLY
+    # that one — never a live durable task.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testReleaseUnderALiveAgentNeedsForceAndForceNeverBeatsALiveRun',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4002,6 +4877,8 @@ def _fdictEntry(sRel):
         return ""
     if _frecordLiveDurableTask(appState, sName) is not None:''',
     ),
+    # Case 17, ordering half: the channels close while the flock is
+    # still held, never after the container has been handed back.
     Falsification(
         nodeid='tests/testExplicitReleaseAuthority.py::testPermittedReleaseClosesChannelsBeforeFreeingTheFlock',
         source='vaibify/gui/sessionLifecycle.py',
@@ -4020,6 +4897,15 @@ def _fdictEntry(sRel):
                 )
             await _fnDrainAndCloseBeforeRelease(appState, sName)''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 8 — the `vaibify do` headless bootstrap and
+    # the lease attachment (design §6b). The omission mutated here is
+    # the one that shipped: fiSendHttpAction sent the credential alone,
+    # so every owner-scoped call was refused while the CLI's own mocked
+    # tests stayed green. Under the mutation the flow dies at connect
+    # ("In use in another browser session") and the command exits 4.
+    # ------------------------------------------------------------------
     Falsification(
         nodeid='tests/testVaibifyDoHeadless.py::test_do_bootstraps_over_the_socket_and_acts_under_its_lease',
         source='vaibify/cli/hubSession.py',
@@ -4029,6 +4915,18 @@ def _fdictEntry(sRel):
         new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
     )''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 9 — lifecycle owner-gating and the
+    # server-owned start reservation (design §10b / §12 slice 9).
+    # ------------------------------------------------------------------
+    # The residual this slice closes: stop was browser-hub, so any
+    # same-hub tab could tear down the container another session was
+    # working in.
+    # The hung-start kill path, the label-keyed cleanup, and the two
+    # result-delivery paths (design §10b, cases 19/21/22/24/25/28/29/
+    # 33/40/41). Each mutation is the shortcut that would have been
+    # taken if the rule were prose instead of code.
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testInitiatorCancelOfAStaleStartKillsAndFreesTheContainer',
         source='vaibify/docker/containerManager.py',
@@ -4169,12 +5067,19 @@ def _fdictEntry(sRel):
     )""",
         new="""    del appState, sName, sNewSessionId""",
     ),
+
     Falsification(
         nodeid='tests/testContainerLifecycleGating.py::test_stop_by_a_session_that_does_not_hold_the_lease_is_refused',
         source='vaibify/gui/routeScope.py',
         old='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,',
         new='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,',
     ),
+
+    # Migration plan phase 1b (R5): runtime attribution of a container
+    # mutation back to ONE inventory row, or an explicit refusal that
+    # routes the row to manual tracing. Each mutant below was applied by
+    # hand, watched to fail its own test, reverted, and the source
+    # confirmed byte-identical with `shasum -a 256`.
     Falsification(
         nodeid='tests/testMutationAttribution.py::testTheIndexCoversExactlyTheCheckedInInventoryRows',
         source='tools/mutationAttribution.py',
@@ -4254,6 +5159,15 @@ def _fdictEntry(sRel):
         old='for sPart in pathRelative.parts',
         new='for sPart in pathCandidate.parts',
     ),
+
+    # --- R4: no unauthorised capability anywhere the hub can reach ---
+    #
+    # The unnamed-authority mutation is applied to the SOURCE, not to the
+    # record: an authority arriving in a hub-reachable module is the
+    # event the rule exists for, and mutating the record instead would
+    # only prove the record can be edited. pipelineUtils is the leaf
+    # module -- it holds no capability of any kind, so a subprocess
+    # import there is unambiguously new.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4266,6 +5180,11 @@ def _fdictEntry(sRel):
             '"""Pure utility functions for pipeline execution (leaf module).'
         ),
     ),
+    # The transitive half. buildRoutes imports imageBuilder directly for
+    # an unrelated helper, so the real chain is only visible with that
+    # shortcut edge set aside -- which is why a one-hop reading of
+    # reachability passes every other check here and still authorises
+    # `docker build` by omission.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4275,6 +5194,8 @@ def _fdictEntry(sRel):
         old='    while listStack:\n        sModule = listStack.pop()',
         new='    while False and listStack:\n        sModule = listStack.pop()',
     ),
+    # The synthetic chain, unrelated to the build chain, driven route ->
+    # helper -> raw authority through the same closure.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4284,6 +5205,10 @@ def _fdictEntry(sRel):
         old='    setSeen = set(setSeeds)\n    listStack = list(setSeen)',
         new='    setSeen = set(setSeeds)\n    listStack = []',
     ),
+    # The one CLASS disposition, kept from stretching. The mutation is on
+    # the record because the record IS the artifact this guard polices:
+    # filing a real client under the exception-type class is the failure
+    # mode, and it can only be written there.
     Falsification(
         nodeid=(
             'tests/testCapabilityAuthorities.py::'
@@ -4301,6 +5226,13 @@ def _fdictEntry(sRel):
             '            [S_LANE_EXCEPTION_TYPE],'
         ),
     ),
+
+    # --- Blind-spot dispositions: a ruling bound to what it read ---
+    #
+    # The gated helper is the one generic command authority under
+    # vaibify/gui/. It is disposed of as an EXCEPTIONAL authority on the
+    # strength of two structural constraints, and these are the mutants
+    # that prove each constraint is real rather than described.
     Falsification(
         nodeid=(
             'tests/testCommitCarrier.py::'
@@ -4329,6 +5261,10 @@ def _fdictEntry(sRel):
             'valueExpected:'
         ),
     ),
+    # A fingerprint proves "same site". It does not preserve "somebody
+    # reviewed this", and the gap is a constant two files away from the
+    # call: "the executable is git and the flags are a module constant"
+    # is a claim about THAT symbol, which the site hashes never see.
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'
@@ -4341,6 +5277,12 @@ def _fdictEntry(sRel):
             '    "-c", "credential.helper=osxkeychain",'
         ),
     ),
+    # --- The lifecycle audit: findings, not a family declaration ---
+    #
+    # The population is resolved from the live application, so the mutant
+    # is a route JOINING the family rather than a list somebody forgot to
+    # extend -- which is the way an unaudited lifecycle route would
+    # actually arrive.
     Falsification(
         nodeid=(
             'tests/testLifecycleRouteAuthority.py::'
@@ -4373,6 +5315,9 @@ def _fdictEntry(sRel):
             '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
         ),
     ),
+    # The pin on a documented refusal that no state transition reaches.
+    # It fires the moment somebody makes it reachable, which is exactly
+    # when the cancel route's recorded transfer behaviour needs re-reading.
     Falsification(
         nodeid=(
             'tests/testLifecycleRouteAuthority.py::'
@@ -4386,6 +5331,15 @@ def _fdictEntry(sRel):
             'def _fbDurableTaskStillCurrent(appState, recordTask):'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Phase 1c: the carrier-mode declaration mechanism.
+    #
+    # The two audit mutants below are deliberately separate branches of
+    # _ftJudgeOneObservation, and each was confirmed to kill ONLY its own
+    # test: a shape protected by two guards survives every single
+    # mutation and proves nothing about either.
+    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierModeDeclaration.py::'
@@ -4492,6 +5446,19 @@ def _fdictEntry(sRel):
             '    ))\n'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Phase 2 group 1: the routes migrated onto the enforced branch.
+    #
+    # Each mutant deletes ONE route's carrier call, and each was
+    # confirmed to kill ONLY its own test. The first attempt at these
+    # kills failed to kill at all: it was run against
+    # tests/testDraftRoutes.py, whose Docker mock answers a write by
+    # storing bytes and never calls the admission gate, so deleting the
+    # carrier outright left 17 tests passing. The double in
+    # testCarrierMigratedRoutes.py calls the same gates the real
+    # DockerConnection calls, which is why these kills are kills.
+    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4594,6 +5561,20 @@ def _fdictEntry(sRel):
             '    return False\n'
         ),
     ),
+
+    # ------------------------------------------------------------------
+    # Phase 2 group 2: the lock-held migration of the clean route.
+    #
+    # The recorded mutation for the transfer test restores the EXACT
+    # pre-migration code -- a bare asyncio.to_thread holding no lock --
+    # so the kill re-creates the named live exploit rather than an
+    # approximation of it. It kills the mode test too, and correctly:
+    # dropping the drain breaks both the refusal and the observed mode.
+    # Each test also has an isolating mutant, checked by hand: the save
+    # bypass below fails only the mode test, and making
+    # fsDescribeLiveMutationWork return a bare "a guarded operation"
+    # fails only the transfer test (its naming assertion).
+    # ------------------------------------------------------------------
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4625,6 +5606,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4683,6 +5665,7 @@ def _fdictEntry(sRel):
             '    return await asyncio.to_thread(fgenericRewriteTheSidecar, None)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4886,6 +5869,7 @@ def _fdictEntry(sRel):
             '        return None\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'
@@ -4900,6 +5884,16 @@ def _fdictEntry(sRel):
             '    return subprocess.run(listCommand, capture_output=True)'
         ),
     ),
+
+    # The three test-execution routes. Each mutant below was confirmed
+    # to kill EXACTLY ONE of the three tests -- a clean diagonal. The
+    # obvious mutants (delete the carrier call) were tried first and
+    # rejected: an unadmitted mutation refuses, and a refusal empties
+    # the hash ledger every later test reads, so one defect killed two
+    # or three tests and none of them was isolated. All three are mode
+    # SWAPS for that reason, which is also the sharper claim -- the
+    # route reached the container under a real admission, just the
+    # wrong one, so "it did not raise" would not catch any of them.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4923,6 +5917,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4946,6 +5941,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4966,6 +5962,16 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
+    # The run-dispatch gate over the carrier's live-work registry. The
+    # two mutants are deliberately opposite in direction -- one makes
+    # the refusal uninformative, the other makes it fire when it must
+    # not -- because a gate like this has two ways to be wrong and only
+    # one of them looks like a failure. A third mutant (degrade to
+    # fbContainerHasLiveMutationWork plus a generic string) was tried
+    # and lands on the naming test, not the false-refusal one; it is
+    # recorded in that test's docstring rather than here, since a
+    # second entry for the same kill would double-count one guard.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -4987,6 +5993,7 @@ def _fdictEntry(sRel):
             '                )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5009,6 +6016,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         # has-credential reads the researcher's HOST keyring and
         # ignores the container id in its own path. It is a GET, so
@@ -5036,6 +6044,16 @@ def _fdictEntry(sRel):
             '_fbServiceHasStoredCredential(sService),\n'
         ),
     ),
+
+    # --- The seven declaration saves, carrier mode (a) (2026-08-05) ---
+    # One entry for a parametrized family, matching the convention the
+    # two push families already use: the invariant requires exactly one
+    # entry per marked FUNCTION. The registered mutant reverts the
+    # ai-models/declare call site; the other six call sites were each
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case, which is what establishes that sharing
+    # fdictCommitWorkflowSave did not collapse seven guards into one
+    # untested claim.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5050,6 +6068,13 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # --- The six step-CRUD saves, carrier mode (a) (2026-08-05) ---
+    # One entry for the parametrized family, same convention as above.
+    # The registered mutant reverts the create call site. All six were
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case (create additionally kills the warning-flag test
+    # below, which must drive create to reach the flag at all).
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5064,6 +6089,11 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # The create route's SECOND save. Registered separately because it
+    # is a separate call site, and because this mutant is what proves
+    # the family above does NOT cover it: reverting the warning-flag
+    # save kills ONLY this test and none of the six parameter cases.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5085,6 +6115,13 @@ def _fdictEntry(sRel):
             '            "iIndex": iIndex,\n'
         ),
     ),
+
+    # --- The file upload, carrier mode (a) (2026-08-05) ---
+    # Measured while confirming this: with the carrier call removed the
+    # twelve upload tests in tests/testFileEndpointsAndMiddleware.py
+    # ALL still passed, and only the test below failed. That is the
+    # finding tests/testCarrierMigratedRoutes.py exists for, reproduced
+    # on a fresh route rather than taken on trust.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5108,6 +6145,8 @@ def _fdictEntry(sRel):
         ),
         new='    fnWriteTheUpload()\n',
     ),
+
+    # --- Project creation, carrier mode (b) (2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5127,6 +6166,13 @@ def _fdictEntry(sRel):
         ),
         new='    return fdictProbeThenCreate()\n',
     ),
+
+    # The separate guard inside that route: an expected 4xx must be
+    # RETURNED from the worker, never raised out of it. Raising poisons
+    # the journal record and quarantines the container, so a researcher
+    # who picked a filename already in use is told to reconcile. This
+    # mutant kills ONLY the refusal test, which is what establishes the
+    # two guards are separately proven rather than jointly assumed.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5152,6 +6198,14 @@ def _fdictEntry(sRel):
             '            )}\n'
         ),
     ),
+
+    # --- Five Sync-panel routes, carrier modes (a) and (b)
+    # (2026-08-05) ---
+    # Each mutant below was applied by hand, the whole
+    # testCarrierMigratedRoutes.py file run, the source restored from an
+    # in-memory copy and re-hashed byte-identical. Every one killed
+    # EXACTLY its own test, with one stated exception recorded on the
+    # arXiv save's entry.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5166,6 +6220,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5187,6 +6242,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5206,6 +6262,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5229,6 +6286,14 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
+
+    # The arXiv handler's mode-(a) half. This mutant kills BOTH arXiv
+    # tests, not one, and the reason is sequencing rather than a weak
+    # assertion: the save runs first, so an unadmitted write 500s the
+    # handler before the verify that would rewrite the cache can run.
+    # Recorded here so a re-confirmation run does not read the second
+    # failure as drift. The reverse direction DOES isolate -- see the
+    # entry below.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5247,6 +6312,13 @@ def _fdictEntry(sRel):
             '    dictCtx["save"](sContainerId, dictWorkflow)\n'
         ),
     ),
+
+    # The arXiv handler's mode-(b) half, and the entry that proves the
+    # two are separately guarded: removing this carrier failed ONLY this
+    # test while the save's test still passed. It isolates because
+    # _fdictRunArxivVerifyAfterConfig catches the refusal and reports it
+    # as sVerifyError, so the response stays 200 and only the cache
+    # write goes missing from the ledger.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5271,6 +6343,13 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
+    # --- The two routes ruled WRITES governed elsewhere (2026-08-05) ---
+    # Neither is a carrier migration, so neither mutant removes a
+    # carrier. What each proves is that the route's separate-authority
+    # claim is checkable: reach a mutation-capable container primitive
+    # and the enforced branch refuses, which is what makes an empty
+    # gated ledger evidence rather than an assumption.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5292,6 +6371,7 @@ def _fdictEntry(sRel):
             '        fileTarget.write(sOut.encode("utf-8"))\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5310,6 +6390,16 @@ def _fdictEntry(sRel):
             '[sContainerId] = {\n'
         ),
     ),
+
+    # --- The git panel's six mutating routes, carrier modes (a) and
+    # (b) (2026-08-05). Every mutant is that ROUTE's own call of
+    # _fgenericRunGitWorkerUnderTheDrain reverted to a direct call of its
+    # worker, so each kills exactly its own test. Mutating the shared
+    # wrapper -- or the shared
+    # routeContext.fdictCarryARefusalBackInsteadOfRaising it calls --
+    # legitimately kills all of them at once, which is one guard
+    # reported once per route that depends on it, not six guards none
+    # of which is proven.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5423,6 +6513,11 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+    # This mutant kills BOTH reconcile tests, and that is straight-line
+    # sequencing rather than drift: the fetch runs first, so an
+    # unadmitted exec 500s the handler before the bookkeeping save the
+    # sibling test asserts on can run. The isolation is one-directional
+    # -- removing the SAVE's carrier below fails only its own test.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5460,6 +6555,10 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+    # The panel's own 5xx carry-back. Dropping 502 from the carried set
+    # sends a failed git fetch back through the default 4xx/5xx split,
+    # which re-raises it inside the worker -- poisoning the journal and
+    # quarantining the container over an unreachable remote.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5469,6 +6568,24 @@ def _fdictEntry(sRel):
         old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
         new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
     ),
+    # --- The badge refresh: the first AUTOMATIC read to migrate ---
+    #
+    # (host mode wave 3, 2026-08-08). An automatic read must do two
+    # things a clicked mutation need not: run under a carrier like any
+    # exec, and never QUEUE behind live work. The five levers below are
+    # one per branch that can be lost on its own -- the carrier itself,
+    # then each of the three states that make a container busy, then
+    # the self-exclusion that keeps an idle container from reporting
+    # itself busy forever.
+    #
+    # Measured isolation, not assumed. The first mutant fails all six
+    # badge tests: with the carrier gone the exec is refused at the
+    # primitive and the handler 500s before any of them can assert.
+    # The three BRANCH levers each fail only their own test. The
+    # self-exclusion lever fails four -- its own, the payload shape,
+    # the drain-read, and the durable one, whose reason then names the
+    # asking read instead of the run -- which is the same statement as
+    # "an always-busy container stops answering", seen four ways.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5559,6 +6676,10 @@ def _fdictEntry(sRel):
             '        if supervisor.sName != supervisorSelf.sName:\n'
         ),
     ),
+    # The stat batch's OUTPUT SHAPE, which nothing else in the suite
+    # executes. Reverting it to line-oriented text is the plausible
+    # regression -- it is what the program replaced -- and it brings
+    # back the parse that a path containing a space used to defeat.
     Falsification(
         nodeid=(
             'tests/testDockerConnection.py::'
@@ -5571,6 +6692,8 @@ def _fdictEntry(sRel):
             'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
         ),
     ),
+    # A host project a researcher can actually create: until the mode
+    # rode the registration route, one could be made only from Python.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -5583,6 +6706,16 @@ def _fdictEntry(sRel):
         ),
         new='            fnAddProject(request.sDirectory)\n',
     ),
+    # --- The two claims host mode gives up (host mode wave 3) ---
+    #
+    # Level 3 is DEFINED by a pinned container image, and Supervised
+    # mode's claim holds only while vaibify mediates every path to the
+    # files. Neither survives on the host, and both fail SILENTLY if
+    # the gate is lost: the researcher is handed a to-do list that
+    # cannot be completed, or an attribution log that goes on claiming
+    # a supervised period while their editor rewrites the files beside
+    # it. Each lever is one gate; each has a container-direction test
+    # beside it that the lever must NOT kill.
     Falsification(
         nodeid=(
             'tests/testHostModeHonestyGates.py::'
@@ -5634,6 +6767,15 @@ def _fdictEntry(sRel):
         ),
         new='    if False:\n        return False\n',
     ),
+    # --- The Repos panel's write, deleted (host mode wave 3) ---
+    #
+    # Both directions of one change. Auto-tracking every discovered
+    # repository is the product behaviour and is unchanged; PERSISTING
+    # it from a GET is what stopped, because the panel polls that GET
+    # on a timer. The second lever guards the regression the first one
+    # creates: with the read no longer writing, a mutation that fell
+    # back to an empty state would persist a sidecar holding only the
+    # repository the researcher just touched.
     Falsification(
         nodeid=(
             'tests/testTrackedReposManager.py::'
@@ -5677,6 +6819,14 @@ def _fdictEntry(sRel):
             '        dictSidecar = fdictBuildInitialState([])\n'
         ),
     ),
+    # --- The poll's write, deleted (host mode wave 3) ---
+    #
+    # The mutant restores the pathfile push while leaving the typed
+    # read in place, so the poll still answers correctly and the only
+    # thing that changes is that it writes into the container again on
+    # a five-second timer. That is the whole point: the defect this
+    # guards against is invisible in every functional assertion, which
+    # is why it survived as long as it did.
     Falsification(
         nodeid=(
             'tests/testFileStatusManager.py::'
@@ -5696,6 +6846,11 @@ def _fdictEntry(sRel):
             '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
         ),
     ),
+    # --- The rest of the activation surface (host mode wave 3) ---
+    #
+    # The settings read declares typed-read in its strongest form -- it
+    # reaches NO container primitive -- so the only way to break it is
+    # to add a reach, exactly as the compare-plot entry does.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5714,6 +6869,12 @@ def _fdictEntry(sRel):
             '        return fdictExtractSettings(\n'
         ),
     ),
+    # The state poll's two directions. Its carrier opens on a branch it
+    # usually does not take, so "carried" and "not carried on the
+    # ordinary path" are separate guarantees: hoisting the carrier out
+    # of the branch makes every tenth second hold the drain, and
+    # dropping the persister returns a real container write to the
+    # background lane where the gate is a documented no-op.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -5761,6 +6922,15 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+    # --- Container-only capabilities, refused for host projects ---
+    #
+    # (host mode wave 3, 2026-08-08). Both directions of one branch,
+    # plus its position. The two levers share the same `old` text and
+    # differ only in what they replace it with, because "never refuses"
+    # and "always refuses" ARE the two ways one predicate can be wrong,
+    # and they are indistinguishable in a report while being opposite
+    # in the product: one drives Docker at a project with no container,
+    # the other makes every containerized project unstartable.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -5791,6 +6961,8 @@ def _fdictEntry(sRel):
             '        return\n'
         ),
     ),
+    # Position, not presence: the refusal above the daemon check is
+    # what keeps a host-only hub from being told to install Docker.
     Falsification(
         nodeid=(
             'tests/testHostModeContainerOnlyRefusals.py::'
@@ -5808,6 +6980,12 @@ def _fdictEntry(sRel):
             '"Stopping a container")\n'
         ),
     ),
+    # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
+    #
+    # Each entry mutates the route's OWN call site. The rename has three
+    # separable guarantees -- the cascade's drain, the save sharing it,
+    # and the refusal being carried -- so each has its own lever; a
+    # single mutant covering all three would isolate none of them.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6015,6 +7193,7 @@ def _fdictEntry(sRel):
             '        raise dictCarried["errorRefused"]\n'
         ),
     ),
+    # --- Replay-axis routes (phase 2, 2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6125,6 +7304,7 @@ def _fdictEntry(sRel):
             '    return fdictRunTheCapturePass()\n'
         ),
     ),
+    # --- The batched existence probe (ruling 3, 2026-08-05) ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6181,6 +7361,9 @@ def _fdictEntry(sRel):
             '        return repr(objPaths)\n'
         ),
     ),
+
+    # --- Group 6 (2026-08-06): the step panel's probe-and-record
+    # routes, and the three POSTs that turn out to be reads. ---
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6195,6 +7378,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6216,6 +7400,7 @@ def _fdictEntry(sRel):
             '    return dictCarried["objResult"]\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6230,6 +7415,7 @@ def _fdictEntry(sRel):
         ),
         new='    await asyncio.to_thread(fdictWriteTheStoppedState)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6254,6 +7440,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6289,6 +7476,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6303,6 +7491,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6330,6 +7519,7 @@ def _fdictEntry(sRel):
             '    return dictCarried["objResult"]\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6344,6 +7534,7 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6368,6 +7559,7 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6393,6 +7585,7 @@ def _fdictEntry(sRel):
             '    listEntries = [s for s in sOutput.split("\\n") if s]\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6427,6 +7620,7 @@ def _fdictEntry(sRel):
             '        return sOutput\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6460,6 +7654,14 @@ def _fdictEntry(sRel):
             '            listPlots, sFileName)\n'
         ),
     ),
+
+    # --- The Sync panel's remaining Overleaf and Zenodo routes ---
+    # (2026-08-06). Each mode-(b) mutant reverts the route to the bare
+    # ``asyncio.to_thread`` it used before migration, which is the
+    # state the migration exists to leave behind: no mutation lock, no
+    # journal record, so a transfer arriving mid-flight sees an idle
+    # container. Each mode-(a) mutant reverts a ``fdictCommitWorkflowSave``
+    # to the raw ``dictCtx["save"]``.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6479,6 +7681,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6499,6 +7702,12 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
+    # The two mirror mutants are not carrier removals -- these routes
+    # HAVE no carrier, which is the claim. Each gives the route a
+    # container touch, and the enforced branch refuses it, which is
+    # what makes an empty gated ledger evidence rather than an
+    # assumption.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6521,6 +7730,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6541,6 +7751,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6556,6 +7767,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6574,6 +7786,7 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6589,6 +7802,14 @@ def _fdictEntry(sRel):
         ),
         new='            dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # The archive handler carries THREE mutations and the three mutants
+    # below cascade in one direction, which is the diagnosis to keep:
+    # the upload's mutant fails all three tests, the digests' fails two,
+    # and the save's fails one. That is sequencing -- an unadmitted exec
+    # 500s the handler before the next carrier is reached -- and no test
+    # can separate a downstream carrier from an upstream refusal in a
+    # straight-line handler.
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6615,6 +7836,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6639,6 +7861,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6653,6 +7876,9 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # ---------------- phase 2 group 1: the two repository pushes -----
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6666,6 +7892,7 @@ def _fdictEntry(sRel):
             '    return (await asyncio.to_thread(fdictHandlePushToGithub))["objResult"]\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6680,6 +7907,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6699,6 +7927,7 @@ def _fdictEntry(sRel):
             '            "GitHub push bookkeeping failed for container %s",\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6719,6 +7948,7 @@ def _fdictEntry(sRel):
             '        sContainerId, fdictHandlePushToGithub,\n        containerGit.fsRemoteUrlInContainer(\n            dictCtx["docker"], sContainerId, sWorkdir,\n        ), requestHttp,\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6736,6 +7966,7 @@ def _fdictEntry(sRel):
             '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6753,6 +7984,7 @@ def _fdictEntry(sRel):
         ),
         new='    return await asyncio.to_thread(ftPushWorker)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6768,6 +8000,7 @@ def _fdictEntry(sRel):
         ),
         new='    await asyncio.to_thread(fdictRecordTheBookkeeping, None)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6782,6 +8015,9 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # ------- phase 2 group 2: the AICS Level 3 reproducibility surface
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6800,6 +8036,7 @@ def _fdictEntry(sRel):
             '        dictCtx["save"](sContainerId, dictWorkflow)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6814,6 +8051,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6828,6 +8066,7 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6845,6 +8084,7 @@ def _fdictEntry(sRel):
             'sBinaryPath)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6863,6 +8103,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6876,6 +8117,7 @@ def _fdictEntry(sRel):
             '    except Exception as errorCaught:\n        logging.getLogger("vaibify").warning(\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6895,6 +8137,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6909,6 +8152,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
             '    return {\n'
+            '        "dictTierResults": dictTierResults,\n'
             '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
             '            dictWorkflow, filesRepo,\n'
             '        ),\n'
@@ -6918,12 +8162,14 @@ def _fdictEntry(sRel):
             '    import concurrent.futures\n'
             '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
             '        return {\n'
+            '            "dictTierResults": dictTierResults,\n'
             '            "dictL3ReadinessGaps": pool.submit(\n'
             '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
             '            ).result(),\n'
             '        }\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6945,6 +8191,9 @@ def _fdictEntry(sRel):
             '    )[0] != 0:\n'
         ),
     ),
+
+    # -------- phase 2: the two routes left over from the group edges --
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6962,6 +8211,7 @@ def _fdictEntry(sRel):
             '    return _fdictProbeThenWriteTemplate(filesRepo, sRelative)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -6984,6 +8234,7 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7004,6 +8255,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7026,6 +8278,9 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
+
+    # -------------- phase 2 group 3: the two durable launches --------
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7045,6 +8300,7 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7058,6 +8314,7 @@ def _fdictEntry(sRel):
             '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, ftaskStartFalsification,\n'
+            '        sOperation="the falsification run",\n'
             '    )\n'
             '    if not dictLaunched["bLaunched"]:\n'
             '        raise HTTPException(\n'
@@ -7068,6 +8325,7 @@ def _fdictEntry(sRel):
         ),
         new='    ftaskStartFalsification()\n',
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7086,6 +8344,7 @@ def _fdictEntry(sRel):
             'dictWorkflow, filesRepo)\n'
         ),
     ),
+
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7096,6 +8355,7 @@ def _fdictEntry(sRel):
             '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, ftaskStartVerification,\n'
+            '        sOperation="the Level 3 verification",\n'
             '    )\n'
             '    if not dictLaunched["bLaunched"]:\n'
             '        raise HTTPException(\n'
@@ -7146,6 +8406,12 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
+    # --- Host-mode Phase A (2026-08-08). The mode-aware guarantees are
+    # registered in symmetric pairs where a pair exists: one mutant
+    # proves the host branch works, its twin proves the container
+    # branch still does. A green suite over only one direction would
+    # hide a mode detector stuck at a constant.
     Falsification(
         nodeid=(
             'tests/testRegistryManager.py::'
@@ -7270,6 +8536,8 @@ def _fdictEntry(sRel):
             '            pass\n'
         ),
     ),
+
+    # --- Host-mode Phase B: the HostConnection's contract (2026-08-08).
     Falsification(
         nodeid=(
             'tests/testHostConnection.py::TestHostPathGuard::'
@@ -7414,6 +8682,10 @@ def _fdictEntry(sRel):
             '            raise\n'
         ),
     ),
+
+    # --- Host-mode wave 2: the connection router, in symmetric pairs
+    # (2026-08-08). A dispatcher stuck at either leg is invisible to a
+    # suite that only proves one direction.
     Falsification(
         nodeid=(
             'tests/testConnectionRouter.py::TestRouterDispatch::'
@@ -7467,6 +8739,11 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
+    # --- Host-mode wave 2 chunk B: registry status, claim path, busy
+    # oracle (2026-08-08). Symmetric pairs throughout: for every
+    # mode-aware branch, one mutant proves the host direction works and
+    # its twin proves the container direction still does.
     Falsification(
         nodeid=(
             'tests/testRegistryManager.py::'
@@ -7856,6 +9133,14 @@ def _fdictEntry(sRel):
             '    return True\n'
         ),
     ),
+    # --- The root a project's files live under (host mode wave 4) ---
+    #
+    # One resolver, two directions. Stuck on the container volume, a
+    # host project finds no Projects (an empty list, not an error) and
+    # every connect is refused 403 "path traversal". Stuck on the
+    # registry directory, every containerized project searches the
+    # researcher's config folder from INSIDE the container, where it
+    # does not exist. The two read identically in a report.
     Falsification(
         nodeid=(
             'tests/testHostModeProjectRoots.py::'
@@ -8008,6 +9293,18 @@ def _fdictEntry(sRel):
         ),
         iExpectedOccurrences=2,
     ),
+    # --- The root an EPHEMERAL file may be written under (phase C) ---
+    #
+    # A container writes a throwaway program, a graph description or a
+    # credential to /tmp, which the container throws away with itself.
+    # On the host /tmp is admitted by nothing: the path guard permits
+    # the project root and the host-diagnostics subtree and refuses
+    # everything else, so every one of these lanes answered 500 for a
+    # host project. Both directions, because the container answer has
+    # a footprint the host answer must not acquire: sending a
+    # container's scratch to ~/.vaibify writes the researcher's home
+    # for work that never left their container, and hands the
+    # container a path that does not exist inside it.
     Falsification(
         nodeid=(
             'tests/testHostModeProjectRoots.py::'
@@ -8113,6 +9410,16 @@ def _fdictEntry(sRel):
             '"sDirectory", "/workspace"),\n'
         ),
     ),
+    # --- The panels that mutate a repository (phase C) ---
+    #
+    # Every one of these was found by driving the routes against a real
+    # repository, and every one is a container path composed as a
+    # literal: the push validator measuring against /workspace, the
+    # Repositories panel composing "/workspace/" + name, and discovery
+    # asking only whether an entry has a .git child. The container
+    # direction for each lives with the doubles in testRepoRoutes and
+    # testSyncRoutesCoverage, which drive the same routes with
+    # /workspace fixtures and are untouched by this work.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -8180,6 +9487,16 @@ def _fdictEntry(sRel):
         ),
         new='        listIsDirectory = [True] * len(listPaths)\n',
     ),
+    # --- Which keyring holds this project's credentials (phase C) ---
+    #
+    # The container leg writes the value to a temporary file and runs an
+    # in-container python that reads it back into keyring. For a host
+    # project that lane is wrong twice: there is no container to run it
+    # in, and the file would be a secret written to the researcher's
+    # own disk on the way to a keyring this process can reach directly.
+    # The other direction is the wider failure -- a container project
+    # whose token went to the host keychain would authenticate every
+    # push with nothing.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -8210,6 +9527,7 @@ def _fdictEntry(sRel):
             '        from vaibify.config.secretManager import fnStoreSecret\n'
         ),
     ),
+    # --- push and pull with no container to cross (phase C) ---
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -8228,6 +9546,13 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(configProject.sProjectName):\n',
         new='    if False:\n',
     ),
+    # --- Which interpreter runs a vaibify-authored program (phase C) ---
+    #
+    # Not the same question as which root a file lives under, and it
+    # has the same two-sided failure: `python3` on the host is
+    # whatever the researcher's PATH resolves and routinely lacks
+    # vaibify's dependencies, while `sys.executable` names nothing at
+    # all inside a container.
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -8246,6 +9571,7 @@ def _fdictEntry(sRel):
         old='    if not fbIsHostProject(sResourceId):\n',
         new='    if False:\n',
     ),
+    # --- The isolation gate has no container to ask about (phase C) ---
     Falsification(
         nodeid=(
             'tests/testHostGitAndReposPanel.py::'
@@ -8264,6 +9590,11 @@ def _fdictEntry(sRel):
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if True:\n        return\n',
     ),
+    # --- Sharding the standing negative control (2026-08-12) ---
+    #
+    # Splitting the re-kill harness across machines is a throughput
+    # change that can quietly become a weaker CLAIM. Each of these
+    # mutations is a way that happens while every job stays green.
     Falsification(
         nodeid=(
             'tests/testFalsificationSharding.py::'
@@ -8326,6 +9657,7 @@ def _fdictEntry(sRel):
         old="            if dictSummary.get('iShards') != iShards:\n",
         new='            if False:\n',
     ),
+    # --- Contention classes and workers (2026-08-12) ---
     Falsification(
         nodeid=(
             'tests/testFalsificationSharding.py::'
@@ -8413,6 +9745,12 @@ def _fdictEntry(sRel):
         ),
         new='    sWorktree = str(pathlib.Path(sParent) / "tree")\n',
     ),
+    # --- The class both temp-name bugs belong to (2026-08-12) ---
+    #
+    # An INSTANCE guard proves one line is defended. A CLASS guard has
+    # to be shown catching a member it has never seen, so the mutation
+    # ADDS one rather than breaking an existing site -- the same shape
+    # as the path-corpus entry above, which adds an unguarded method.
     Falsification(
         nodeid=(
             'tests/testArchitecturalInvariants.py::'
@@ -8426,6 +9764,12 @@ def _fdictEntry(sRel):
             '    return f"{sTargetPath}.{uuid.uuid4().hex}.tmp"\n'
         ),
     ),
+    # --- The daemon gate names its resource (host mode wave 4) ---
+    #
+    # Host mode exists for the researcher who has no Docker, so a hub
+    # serving a host project must never answer "install Docker". The
+    # inverse is just as bad: a gate that stops asking lets a
+    # container request reach code holding None for a connection.
     Falsification(
         nodeid=(
             'tests/testHostModeDaemonGate.py::'
@@ -8457,6 +9801,11 @@ def _fdictEntry(sRel):
         ),
         new='    if True:\n        return\n',
     ),
+    # --- The picker's host tile (host mode wave 4) ---
+    #
+    # Frontend mutations, observable only to a test that loads the
+    # page; the harness defers them by the `browser` marker on a host
+    # with no Playwright rather than scoring them blind.
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -8514,6 +9863,7 @@ def _fdictEntry(sRel):
         old='        if (elTile && elTile.dataset.mode === "host") {\n',
         new='        if (false) {\n',
     ),
+    # --- The uncontained-execution disclosure (host mode wave 4) ---
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -8567,6 +9917,7 @@ def _fdictEntry(sRel):
         old='        var bHost = sProjectMode === "host";\n',
         new='        var bHost = true;\n',
     ),
+    # --- Adding a host project from the dialog (host mode wave 4) ---
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
@@ -8627,6 +9978,14 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
+    # --- Cancelling a host run (host mode wave 5) ---
+    #
+    # The dangerous mutant on this path is not "Cancel does nothing".
+    # It is "Cancel signals a group it cannot prove is still ours",
+    # which on a researcher's own machine means killing a stranger's
+    # process with the researcher's authority. Both halves of the one
+    # predicate are therefore mutated, and the refusing direction is
+    # scored by a test in which a LIVE process must survive.
     Falsification(
         nodeid=(
             'tests/testHostCancel.py::'
@@ -8766,6 +10125,8 @@ def _fdictEntry(sRel):
         old='            "listCancellationRefusals": listRefused,\n',
         new='            "listCancellationRefusals": [],\n',
     ),
+    # The two frontend halves. A refusal the dashboard never renders
+    # is a dashboard that says the machine is quiet.
     Falsification(
         nodeid=(
             'tests/browser/testHostCancelSurface.py::'
@@ -8802,6 +10163,12 @@ def _fdictEntry(sRel):
         new='        if (true) {\n',
         old='        if (listRefusals.length > 0) {\n',
     ),
+    # --- The host-diagnostics sweeper (host mode wave 5) ---
+    #
+    # A sweeper does permanent harm by working correctly on the wrong
+    # tree, and this repository has already lost a container to one.
+    # Both directions of the TTL, plus the two ways a traversal can be
+    # talked into following a link out of the subtree.
     Falsification(
         nodeid=(
             'tests/testHostScratchSweeper.py::'
@@ -8897,6 +10264,11 @@ def _fdictEntry(sRel):
             'mode=I_SCRATCH_DIRECTORY_MODE, exist_ok=True)\n'
         ),
     ),
+    # --- Abandoning a host journal (host mode wave 5) ---
+    #
+    # Two exits from a quarantine that look alike and are not: one
+    # proves, one asserts and is recorded. The mutations below are the
+    # ways that distinction can be lost.
     Falsification(
         nodeid=(
             'tests/testAbandonHostJournal.py::'
@@ -9010,6 +10382,7 @@ def _fdictEntry(sRel):
             'sContainerName, sExpectedSha256)\n'
         ),
     ),
+    # --- What a quarantined HOST project says and offers (wave 5) ---
     Falsification(
         nodeid=(
             'tests/testHostQuarantineSurface.py::'
@@ -9077,6 +10450,7 @@ def _fdictEntry(sRel):
         old='        if bTerminateRecorded:\n',
         new='        if False:\n',
     ),
+    # --- Backend-supplied workspace root + the paused label (wave 5) ---
     Falsification(
         nodeid=(
             'tests/testWorkspaceRootHandshake.py::'
@@ -9158,6 +10532,7 @@ def _fdictEntry(sRel):
         old='        _fnShowRefreshPaused(false, "");\n        var dictDiff = _fbBadgeMapChanged(\n',
         new='        var dictDiff = _fbBadgeMapChanged(\n',
     ),
+    # --- The adversarial host path corpus (host mode wave 5) ---
     Falsification(
         nodeid=(
             'tests/testHostPathGuardCorpus.py::'
@@ -9206,6 +10581,7 @@ def _fdictEntry(sRel):
             '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
         ),
     ),
+    # --- Process signalling joins the dangerous vocabulary (2026-08-10) ---
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
@@ -9218,6 +10594,11 @@ def _fdictEntry(sRel):
         old='SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})\n',
         new='SET_OS_SIGNAL_MEMBERS = frozenset()\n',
     ),
+    # --- The Repos poll becomes a typed read (2026-08-10) ---
+    #
+    # One migration, five separately-observable guarantees, because the
+    # shell script it replaced was wrong in five separate ways and a
+    # single happy-path test would have covered none of them.
     Falsification(
         nodeid=(
             'tests/testRepoStatusTypedRead.py::'
@@ -9334,6 +10715,13 @@ def _fdictEntry(sRel):
             '        ),\n'
         ),
     ),
+    # --- What the FIRST real host workflow found (2026-08-10) ---
+    #
+    # Four backend paths written as the container constant, each found
+    # by opening a host workflow in a browser and reading the network
+    # log, and each breaking a different part of the journey. Plus the
+    # relative-path rule, which the file poll disproved on the first
+    # tick.
     Falsification(
         nodeid=(
             'tests/testWorkspaceRootHandshake.py::'
@@ -9400,6 +10788,11 @@ def _fdictEntry(sRel):
             '            raise HostPathOutsideProjectError(sPath)\n'
         ),
     ),
+    # --- The launch path told the researcher three untrue things ---
+    #
+    # Found by a maintainer trying to follow a test plan (2026-08-10).
+    # From outside they compose into "vaibify is hanging", which is not
+    # what was happening and is why each is scored separately.
     Falsification(
         nodeid=(
             'tests/testGuiLaunchHonesty.py::'
@@ -11800,6 +13193,11 @@ def _fdictEntry(sRel):
             ';\n'
         ),
     ),
+
+    # --- Headless launch contract. A symmetric pair, and it has to be
+    # a pair: "a suppressed launch mints nothing" is equally true of a
+    # mint that was deleted outright, so either half alone can go
+    # vacuous without anything failing.
     Falsification(
         nodeid=(
             'tests/testCliMain.py::'
@@ -11840,6 +13238,9 @@ def _fdictEntry(sRel):
         ),
         new='    return sBaseUrl\n',
     ),
+
+    # --- One launcher, so socket-liveness settings cannot be lost by
+    # a call site that simply forgot them.
     Falsification(
         nodeid=(
             'tests/testServerLaunchContract.py::'
@@ -11856,6 +13257,13 @@ def _fdictEntry(sRel):
             '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
         ),
     ),
+
+    # --- The reconnect ladder is sized from the server's hold window.
+    # Withhold the window and the client silently falls back to its
+    # built-in default, which is the two-constants-that-must-agree
+    # arrangement this replaced. The no-workflow payload is the anchor
+    # because that is the branch a bare connect takes; its indentation
+    # is what distinguishes it from the workflow branch.
     Falsification(
         nodeid=(
             'tests/testReconnectWindowContract.py::'
@@ -12313,6 +13721,1295 @@ def _fdictEntry(sRel):
             '        return\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_global_tokens_are_expanded_not_copied'
+        ),
+        # Back to copying command text verbatim -- the shipped defect.
+        # Every emitted script then creates a literal
+        # "{sPlotDirectory}" directory and dies on the first
+        # cross-step path, while the L3 row stays green.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old=(
+            '                listOut.append(\n'
+            '                    fsResolveCommand(sStripped, dictVariables),\n'
+            '                )\n'
+        ),
+        new='                listOut.append(sStripped)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_cross_step_tokens_resolve_to_the_reproduction_root'
+        ),
+        # Substitute against the AUTHORING container's root instead of
+        # the reproduction mount. Every token still resolves, so a
+        # "no token survived" assertion passes -- and every path in
+        # the emitted script names a directory the reproducer does
+        # not have. This is why that test asserts the root.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old="S_REPRODUCTION_REPO_ROOT = \"/work\"\n",
+        new="S_REPRODUCTION_REPO_ROOT = \"/workspace/project\"\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGateRejectsResidualTokens.py::'
+            'test_gate_reads_the_script_not_only_its_presence'
+        ),
+        # The gate back to presence-plus-manifest, which reports an
+        # unrunnable script green and sends the researcher into an
+        # hours-long rebuild to find out.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if flistResidualWorkflowTokens(sScript):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvelopeTierResultsAreVisible.py::'
+            'test_a_tier_failure_reaches_the_per_container_incident_ring'
+        ),
+        # Drop the sContainerId tag. HostIncidentHandler discards every
+        # untagged record, so the failure reaches the host log only --
+        # which the agent lane of get-host-log-tail withholds. The
+        # warning still "is logged"; the agent still sees nothing.
+        source='vaibify/reproducibility/dataArchiver.py',
+        old=(
+            '        "Reproducibility envelope: %s", sMessage,\n'
+            '        extra={"sContainerId": sContainerName or ""},\n'
+        ),
+        new='        "Reproducibility envelope: %s", sMessage,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLockInputFallsBackToVaibifyRequirements.py::'
+            'test_a_subdirectory_input_compiles_through_the_staging_path'
+        ),
+        # Stage under the candidate's RELATIVE path again. For a
+        # repo-root input the join is harmless, so only a candidate in
+        # a subdirectory exposes it -- the staging directory has no
+        # .vaibify/ and the open() fails.
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='    sStagedName = os.path.basename(sInput)\n',
+        new='    sStagedName = sInput\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_a_forward_stage_reference_is_not_exempt'
+        ),
+        # Record every stage name up front instead of as the scan
+        # passes each FROM. The multi-stage case still passes, so the
+        # exemption reads as working -- while a FROM naming a stage
+        # declared BELOW it is waived, which Docker itself rejects.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '    dictArgDefaults = _fdictCollectArgDefaults(listLines)\n'
+            '    setStageNames = set()\n'
+        ),
+        new=(
+            '    dictArgDefaults = _fdictCollectArgDefaults(listLines)\n'
+            '    setStageNames = {\n'
+            '        m.group(1).strip().lower() for m in (\n'
+            '            _REGEX_FROM_STAGE_NAME.match(\n'
+            '                _fsStripLineComment(x).strip()) '
+            'for x in listLines)\n'
+            '        if m\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_arg_default_that_is_a_floating_tag_is_unpinned'
+        ),
+        # Skip any FROM that references an ARG instead of judging the
+        # RESOLVED text. The pinned case still passes, so the fix looks
+        # done -- while every floating-tag base hidden behind a
+        # variable is waived, which is the check's whole purpose.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '        sResolved = _fsResolveArgReferences(sImage, '
+            'dictArgDefaults)\n'
+        ),
+        new=(
+            '        sResolved = _fsResolveArgReferences(sImage, '
+            'dictArgDefaults)\n'
+            '        if "$" in sImage:\n'
+            '            _fnRecordStageName(matchStage, setStageNames)\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_the_chain_is_stitched_in_application_order'
+        ),
+        # Point every overlay at the base instead of at its
+        # predecessor. The file still builds and still passes the
+        # lint; it simply drops all but the last overlay's work, so
+        # the artifact misdescribes the image it claims to document.
+        source='vaibify/reproducibility/dockerfileComposer.py',
+        old='        sPreviousStage = sStageName\n',
+        new='        sPreviousStage = S_BASE_STAGE_NAME\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_a_researcher_authored_dockerfile_is_never_overwritten'
+        ),
+        # Treat any existing Dockerfile as replaceable. A button press
+        # then destroys the file that may actually build the
+        # researcher's image -- the provenance this feature exists to
+        # record.
+        source='vaibify/reproducibility/imageDockerfileExport.py',
+        old='    if fbTextWasGeneratedByVaibify(sExisting):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnprovenEnvelopeIsNotAnAlarm.py::'
+            'test_the_project_block_stops_making_unactionable_claims'
+        ),
+        # The two-state row restored: an envelope file nobody has
+        # compared paints the row RED, which in the badge vocabulary
+        # beside it means "checked, and it differs". The gate is
+        # unchanged either way, so nothing else in the suite notices.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
+            '            bMatched, sBadgeKey, listEnvelope);\n'
+            '        var sState = dictHealth.sState;\n'
+        ),
+        new=(
+            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
+            '            bMatched, sBadgeKey, listEnvelope);\n'
+            '        var sState = bMatched ? "green" : "red";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_trailing_shell_is_not_read_as_a_package_list'
+        ),
+        # The old extractor: delete the separators and keep reading, so
+        # every word of a trailing command becomes an unpinned-package
+        # finding. Invisible while every apt block was waived, because
+        # the marker short-circuits the check entirely.
+        source='vaibify/reproducibility/dockerfileLint.py',
+        old=(
+            '    return _fsTruncateAtShellSeparator(\n'
+            '        sStripped[matchInstall.end():],\n'
+            '    )\n'
+        ),
+        new=(
+            '    return sStripped[matchInstall.end():].replace(\n'
+            '        "&&", " ").replace(";", " ")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileComposition.py::'
+            'test_the_compiler_toolchain_is_pinned_and_not_waived'
+        ),
+        # Waive the toolchain block like every other apt block. The
+        # pins stay textually present, so a reader still sees exact
+        # versions -- but the lint stops enforcing them and a later
+        # edit can drop them silently. This is the guard that keeps a
+        # rebuild from swapping a compiler without telling anyone.
+        source='vaibify/containerImage/Dockerfile',
+        old='            rpcsvc-proto=1.4.2-0ubuntu7; then \\\n',
+        new=(
+            '            rpcsvc-proto=1.4.2-0ubuntu7; then '
+            '# allow-unpinned \\\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepGateAgreesWithManifestWriter.py::'
+            'test_a_templated_plot_path_never_reaches_a_caller_unresolved'
+        ),
+        # The shipped defect: the gate reads raw declarations while the
+        # manifest writer resolves them, so a correct manifest is
+        # searched for names it cannot contain. The step reports
+        # missing-from-manifest forever and the remediation text sends
+        # the researcher to refresh the manifest, which rewrites the
+        # very paths the gate is not asking for.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    from .manifestPaths import flistStepOutputRepoPaths\n'
+            '    # SORTED, because these lists are user-visible (the '
+            'dashboard marks\n'
+            '    # each offending file) and delegation would otherwise '
+            'make the\n'
+            '    # display order an artefact of TUPLE_OUTPUT_KEYS in '
+            'another module.\n'
+            '    # The manifest writer sorts its own final list for the '
+            'same reason.\n'
+            '    return sorted(flistStepOutputRepoPaths(dictStep, '
+            'dictTemplateValues))\n'
+        ),
+        new=(
+            '    return [\n'
+            '        sPath\n'
+            '        for sKey in ("saOutputDataFiles", "saPlotFiles")\n'
+            '        for sPath in (dictStep.get(sKey, []) or [])\n'
+            '        if isinstance(sPath, str) and sPath\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepGateAgreesWithManifestWriter.py::'
+            'test_both_per_step_contexts_carry_the_same_reader_keys'
+        ),
+        # Drop the key from the SECOND context builder, which is how
+        # this actually went wrong: threading it into one of two
+        # independently-built contexts. The per-step reader then
+        # raises KeyError on the poll path -- a 500 that blanks every
+        # badge and level cell.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    dictContext["dictTemplateValues"] = '
+            'fdictWorkflowTemplateValues(\n'
+            '        dictWorkflow,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDestructiveActionsLookDestructive.py::'
+            'test_delete_rules_is_painted_destructive_and_declare_is_not'
+        ),
+        # Paint the destructive action like every other button. "Delete
+        # rules..." then renders identically to "Declare rules"
+        # directly above it -- the pair a researcher read as one
+        # repeated control, which is how this styling came to be asked
+        # for. The confirm dialog still fires; this removes the only
+        # signal available BEFORE the click.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old="            (bDestructive ? ' wf-action-danger' : '') + '\" ' +\n",
+        new="            '\" ' +\n",
+    ),
+    # --- 2026-08-28: the shadow-container rerun lane -------------------
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testTheComparisonIsRootedOnTheShadowNeverOnTheLiveRepository'
+        ),
+        # Root the post-rerun re-hash on the LIVE repository instead of
+        # the shadow copy. This is the substitution the whole lane
+        # exists to prevent, and it is invisible in every other
+        # observable: the rerun still runs, the container is still
+        # created and destroyed, and the comparison still reports
+        # counts -- against a tree the rerun never wrote to, which
+        # therefore matches unconditionally.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='                tShadowPaths[1]),',
+        new='                "/workspace/liveRepo"),',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAnUnpinnedEnvironmentRefusesBeforeAnyContainerExists'
+        ),
+        # Answer an unpinned environment.json with a floating tag
+        # instead of refusing. A tag can be repointed without any
+        # container changing, so the shadow would attest an environment
+        # nobody pinned -- the exact fallback the refusal exists to
+        # forbid.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '        raise ShadowRerunRefusedError(\n'
+            '            "environment.json pins no container image '
+            'digest, so no "'
+        ),
+        new=(
+            '        return "fallback:latest" or ShadowRerunRefusedError(\n'
+            '            "environment.json pins no container image '
+            'digest, so no "'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAComparisonThatRaisesStillTearsTheShadowDown'
+        ),
+        # Move the teardown out of ``finally``. Every ordinary run still
+        # cleans up, so the suite stays green except for the one case
+        # that matters: a workflow that errors mid-rerun leaves its
+        # container running on the researcher's daemon, and they
+        # accumulate invisibly.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '        finally:\n'
+            '            dictTeardown = _fdictTearDownShadow(\n'
+            '                dictGateway, dictCreated["sHandle"])\n'
+            '            if dictTeardown["sOutcome"] != ('
+        ),
+        new=(
+            '        except BaseException:\n'
+            '            raise\n'
+            '        dictTeardown = _fdictTearDownShadow(\n'
+            '            dictGateway, dictCreated["sHandle"])\n'
+            '        if True:\n'
+            '            if dictTeardown["sOutcome"] != ('
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowContainerAdmission.py::'
+            'testTheShadowLaneOpensTheAdmissionAroundTheComparison'
+        ),
+        # Drop the shadow's own mutation admission. This is not a
+        # hypothetical: the lane was WRITTEN without it, and the
+        # dashboard would have refused every step of every rerun with
+        # MutationNotAdmittedError from inside a background task,
+        # because the durable carrier it runs under names the
+        # researcher's project container and not the shadow.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    tTokens = ftOpenDisposableContainerAdmission(\n'
+            '        dictCreated["sContainerName"], '
+            'dictCreated["sContainerName"])\n'
+            '    try:'
+        ),
+        new='    tTokens = None\n    try:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowContainerAdmission.py::'
+            'testTheShadowsAdmissionSatisfiesTheDurableExecGate'
+        ),
+        # Mint the disposable admission non-durable. The plain command
+        # gate still admits it, so preflight works and every admission
+        # test above stays green -- but the steps stream through
+        # fnAssertDurableExecAdmitted, which filters on bDurable, so
+        # every real step of every rerun is refused. This is exactly
+        # how the lane first shipped (found by external review,
+        # 2026-09-01): no live run had survived preflight, so the
+        # refusal had never been reached.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '        sContainerName, sContainerId, '
+            'S_ADMISSION_MODE_DISPOSABLE,\n'
+            '        bDurable=True,\n'
+            '    )'
+        ),
+        new=(
+            '        sContainerName, sContainerId, '
+            'S_ADMISSION_MODE_DISPOSABLE,\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_stale_image_refusal_survives_a_docker_id_'
+            'path_parameter'
+        ),
+        # Feed the registry lookup the raw path parameter -- a Docker
+        # container ID -- where it needs the project NAME. The lookup
+        # misses, the comparison answers bChecked: False, and the
+        # stale-image refusal is silently disabled for every real
+        # dashboard request while every fixture with name == id stays
+        # green. This is how it shipped (external review, 2026-09-01).
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        sContainerName = fsContainerNameForId(\n'
+            '            dictCtx["docker"], sContainerId,\n'
+            '        )'
+        ),
+        new='        sContainerName = sContainerId',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testTheOutcomeNamesTheImageTheShadowWasBuiltFrom'
+        ),
+        # Drop the pin from the outcome. Both attestation writers then
+        # fall back to re-reading a recorded digest at write time --
+        # the CLI from the host --repo clone, a DIFFERENT file from
+        # the one the shadow lane pinned -- so the attestation can
+        # name an image the rerun never executed under.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    dictOutcome["sImageDigest"] = sImageReference\n'
+            '    return dictOutcome'
+        ),
+        new='    return dictOutcome',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testASecondRerunOfTheSameProjectRefusesInsteadOfSweeping'
+        ),
+        # Never take the lane lock. The second rerun of the same
+        # project then proceeds to its crash-sweep, which destroys
+        # every survivor stamped with the project's name -- including
+        # the FIRST rerun's still-running shadow, mid-comparison.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    if not sResourceName:\n'
+            '        yield\n'
+            '        return'
+        ),
+        new=(
+            '    if True:\n'
+            '        yield\n'
+            '        return'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_an_envelope_regenerated_after_the_verify_no_longer_'
+            'passes'
+        ),
+        # Revert the gate to trusting the cached divergence list
+        # alone. A verify graded the file at verify TIME; regenerating
+        # it afterwards leaves the cache quoting bytes that no longer
+        # exist, so the badge (live hashes) goes red while the level
+        # cell (this gate) stays green -- shipped and
+        # researcher-reported, 2026-09-01.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if set(listOnDisk) & _fsetDivergedPathsOf(dictStatus):\n'
+            '        return False\n'
+            '    return _fbEnvelopeUnchangedSinceVerify(\n'
+            '        filesRepo, listOnDisk, dictStatus,\n'
+            '    )'
+        ),
+        new=(
+            '    return not '
+            '(set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvelopeImageCurrency.py::'
+            'test_a_rebuilt_container_is_reported_as_not_pinned'
+        ),
+        # Answer "current" whenever both sides are known. The warning
+        # machinery all still renders -- it just never fires, and a
+        # rebuild without a snapshot regeneration goes back to being
+        # discovered by a failing step deep inside the shadow.
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    dictAnswer["bPinnedImageIsLive"] = '
+            'sPinned in (sLiveDigest, sLiveId)'
+        ),
+        new='    dictAnswer["bPinnedImageIsLive"] = True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesCoverage.py::'
+            'TestPollLevelStatePayload::'
+            'test_image_currency_travels_from_handler_to_wire'
+        ),
+        # Cut the wire at the first hop. The leaf's None default fills
+        # in, which renders as "nothing determined" -- the honest
+        # UNKNOWN -- so no test of the leaf or of the renderer can
+        # tell a dropped parameter from a container that was never
+        # inspected. Only asserting a non-default value on the wire
+        # can (the threaded-parameter lesson).
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictImageCurrency='
+            'fdictAssessEnvelopeImageCurrency(\n'
+            '            dictCtx, sContainerId, filesPoll,\n'
+            '        ),'
+        ),
+        new='        dictImageCurrency=None,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAnImageThatCannotHonourItsLockIsRefusedBeforeAnyStepRuns'
+        ),
+        # Skip the lock-satisfaction gate and go straight to the
+        # comparison. A hermetic rerun of an image that cannot honour
+        # its own lock then tests an environment neither reproduce.sh
+        # nor the shadow's design describes, and the divergence
+        # surfaces as a baffling mid-workflow step failure -- the
+        # pytest saga's exact shape (ruling B, 2026-09-01).
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '        dictLockRefusal = '
+            '_fdictRefusalIfImageLacksLockedPackages(\n'
+            '            connectionDocker, dictCreated["sContainerName"],'
+            '\n'
+            '            tShadowPaths[1],\n'
+            '        )\n'
+            '        if dictLockRefusal is not None:\n'
+            '            return dictLockRefusal\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_the_builder_labels_every_build_with_the_chain_'
+            'fingerprint'
+        ),
+        # Never stamp the label. The check can then determine nothing
+        # -- every answer is the honest None -- and Dockerfile
+        # staleness goes back to being invisible while every surface
+        # still renders.
+        source='vaibify/docker/imageBuilder.py',
+        old=(
+            '    sRecipeFingerprint = _fsComputeChainFingerprint(\n'
+            '        sDockerDir, listOverlays,\n'
+            '    )'
+        ),
+        new='    sRecipeFingerprint = ""',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_a_mismatched_fingerprint_is_reported_not_absorbed'
+        ),
+        # Answer True whenever both fingerprints exist. The label and
+        # the header are still collected and shipped, so everything
+        # AROUND the comparison keeps working -- only the one line
+        # that makes it a check is gone.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    dictAnswer["bDockerfileDescribesPinnedImage"] = '
+            'sHeader == sLabel'
+        ),
+        new=(
+            '    dictAnswer["bDockerfileDescribesPinnedImage"] = True'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_the_compare_runs_outside_the_enforced_lane'
+        ),
+        # Re-inherit the request's enforced lane by swapping back to
+        # asyncio.to_thread, whose contextvar copy carries the route
+        # class's flag into the compare thread. The compare's container
+        # hashing then meets the mutation gate with no admission and
+        # is refused wholesale -- every open-triggered refresh settles
+        # both remotes UNCHECKABLE with the raw admission error as the
+        # researcher-facing reason (reported 2026-09-02).
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    return await '
+            'asyncio.get_running_loop().run_in_executor(\n'
+            '        None, _fdictVerifyWithoutWriting, dictWorkflow, '
+            'filesRepo,\n'
+            '        sService,\n'
+            '    )'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictVerifyWithoutWriting, dictWorkflow, '
+            'filesRepo, sService,\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_the_repo_hash_program_enforces_containment_and_'
+            'symlinks'
+        ),
+        # Neutralize the realpath containment check in the typed-read
+        # hash program. An escaping relative path (../outside) is then
+        # hashed and answered as an ordinary repository file -- the
+        # migration out of the adapter script must not weaken what the
+        # script enforced.
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        "    if sReal != sRootReal and not '
+            'sReal.startswith("\n'
+            '        "sRootReal + os.sep):\\n"\n'
+        ),
+        new='        "    if False:\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoFiles.py::'
+            'test_container_hashing_rides_the_typed_read_not_the_'
+            'raw_exec'
+        ),
+        # Skip the declared-read lookup and always assemble the
+        # embedded script for the general exec primitive. Every double
+        # without the typed method still passes, and every ENFORCED
+        # lane refuses the hash wholesale -- the 2026-09-02 shape,
+        # where both Published-envelope rows settled "could not check"
+        # with the raw admission error on the researcher's screen.
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '        fnTypedHash = getattr(\n'
+            '            self.connectionDocker, '
+            '"fdictHashContainerRepoPaths", None,\n'
+            '        )\n'
+            '        if fnTypedHash is not None:\n'
+            '            return fnTypedHash(\n'
+            '                self.sContainerId, self.sRootPath, '
+            'list(listRelPaths),\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/'
+            'testAPartlyDivergedEnvelopeReadsPartial.py::'
+            'test_mixed_divergence_reads_partial_and_offers_a_push'
+        ),
+        # Paint red on the first diverged file, ignoring how many
+        # still match -- the pre-ruling reading, in which "2 of 5
+        # differ" showed as total failure over a mostly-green file
+        # list (researcher-ruled, 2026-09-02: red is for a
+        # requirement with nothing left standing).
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (dictHealth.listNeedsPush.length > 0) {\n'
+            '            dictHealth.sState =\n'
+            '                dictHealth.iSynced > 0 ? "orange" : '
+            '"red";\n'
+            '        }'
+        ),
+        new=(
+            '        if (dictHealth.listNeedsPush.length > 0) {\n'
+            '            dictHealth.sState = "red";\n'
+            '        }'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubMirror.py::'
+            'test_the_fetch_reads_the_resolved_sha_never_the_branch_'
+            'cache'
+        ),
+        # Fetch at the branch name again. Every raw URL is then an
+        # edge-cache read, and the verify compares the researcher's
+        # files against whatever that cache last held -- one edge
+        # served the PREVIOUS commit fifteen hours after the push
+        # that replaced it, so a freshly pushed envelope verified as
+        # diverged (researcher-reported, 2026-09-02).
+        source='vaibify/reproducibility/githubMirror.py',
+        old=(
+            '        sUrl = _fsBuildRawUrl(sOwner, sRepo, sPinnedSha, '
+            'sRelativePath)'
+        ),
+        new=(
+            '        sUrl = _fsBuildRawUrl(sOwner, sRepo, sBranch, '
+            'sRelativePath)'
+        ),
+    ),
+    # --- 2026-08-30: the export coherence check ------------------------
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testARepositoryThatMovesDuringTheCopyIsRefused'
+        ),
+        # Drop the before/after observation comparison. The archive
+        # still agrees with the BEFORE observation perfectly -- the walk
+        # read each file before it changed -- so nothing else in the
+        # check notices that the repository has moved on. This is the
+        # half that catches a write landing after the walk passed.
+        source='vaibify/docker/coherentExport.py',
+        old='    _fnRefuseTornObservation(dictBefore, dictAfter)\n',
+        new='    del dictAfter\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAFileRewrittenAndRestoredDuringTheCopyIsStillRefused'
+        ),
+        # Drop the per-member archive check. The other half survives and
+        # sees a perfectly quiet repository, because a file changed and
+        # changed back leaves HEAD, the porcelain digest and every path
+        # identity identical -- only the archived BYTES disagree. The
+        # pair of entries above and here is the proof that neither half
+        # is redundant.
+        source='vaibify/docker/coherentExport.py',
+        old='    _fnRefuseArchiveMismatch(dictBefore, baArchive)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoherentExport.py::'
+            'testTheGitInternalsExemptionIsNarrow'
+        ),
+        # Strip the trailing slash from the exemption prefix, so the
+        # test becomes "begins with .git" and silently exempts
+        # .gitignore, .gitattributes and .gitmodules -- real,
+        # manifest-relevant files -- from the only check that would
+        # notice them being rewritten mid-copy.
+        source='vaibify/docker/coherentExport.py',
+        old='        or sRelative.startswith(sPrefix)\n',
+        new='        or sRelative.startswith(sPrefix.rstrip("/"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBlockersExplainEveryRefusal.py::'
+            'testADivergedPathNoStepOwnsStillProducesABlocker'
+        ),
+        # Drop the workflow-scope homing of the divergence projection's
+        # leftovers. The gate goes on refusing Level 2 for a diverged
+        # project.json while the blocker list reports nothing at all --
+        # observed on a real project, where clearing every listed
+        # blocker left the level unmoved and the screen silent about
+        # why.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    listBlockers.extend(_flistUnclaimedSyncBlockers(\n'
+            '        dictStatus, setClaimed, sCriterion, '
+            'sRemediationHint,\n'
+            '    ))\n'
+        ),
+        new='',
+    ),
+
+    # --- 2026-08-30: a configured remote pulses until its own check
+    # answers, and a check that could not run never claims a
+    # divergence ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
+            'test_a_running_check_pulses_without_moving_the_colour'
+        ),
+        # Stop emitting the pulse class. The badge then renders the
+        # aged cache as settled fact while vaibify is still asking --
+        # which is the state the whole feature exists to remove.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            (dictRow.bChecking === true\n"
+            "                ? ' requirement-row-checking' : '') + '\">' +\n"
+        ),
+        new="            '\">' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
+            'test_a_check_that_could_not_run_says_so_and_stays_out_of_red'
+        ),
+        # Swallow the "could not check" line. The row then shows the
+        # last verify's counts with nothing saying they were not
+        # refreshed, so stale evidence reads as current fact.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictCheck.sState === _S_CHECK_UNCHECKABLE) {',
+        new='        if (false) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_an_unreachable_remote_leaves_the_cached_record_untouched'
+        ),
+        # Settle a failed check as though it had answered. The badge
+        # stops pulsing and reports a comparison that never ran.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    if dictOutcome["dictStatus"] is None:\n'
+            '        remoteCheckState.fnMarkUncheckable(\n'
+            '            sContainerId, sService, dictOutcome["sError"],\n'
+            '        )\n'
+            '        return\n'
+        ),
+        new=(
+            '    if dictOutcome["dictStatus"] is None:\n'
+            '        dictOutcome["dictStatus"] = {"sService": sService,\n'
+            '            "sLastVerified": "", "iTotalFiles": 0,\n'
+            '            "iMatching": 0, "listDiverged": []}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_a_check_that_never_returns_stops_pulsing'
+        ),
+        # Remove the read-time age-out. A worker that never returns
+        # then pulses its badge for the rest of the session.
+        source='vaibify/reproducibility/remoteCheckState.py',
+        old=(
+            '    if (sState == S_STATE_CHECKING\n'
+            '            and fElapsed > F_CHECK_TIMEOUT_SECONDS):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteRefreshLeavesTheContainerFreeToWorkOn'
+        ),
+        # Register the sweep as durable work again. The container reads
+        # busy for the whole network round-trip and the researcher's
+        # own Level 3 verification is refused -- which is what shipped.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    asyncio.create_task(_fnRunRefreshWorker(\n',
+        new=(
+            '    _ = commitCarrier.fdictLaunchDurableTask\n'
+            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_github_is_checked_when_only_the_checkout_configures_it'
+        ),
+        # Back to a key-presence test. GitHub is configured by
+        # DERIVATION from the checkout's origin on real projects, so
+        # this drops it from the selection and its badge never pulses
+        # and never gets re-checked on open.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        try:\n'
+            '            _fdictRequireServiceConfig('
+            'dictWorkflow, sService, filesRepo)\n'
+            '        except ReverifyConfigError:\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if sService not in (\n'
+            '            (dictWorkflow or {}).get("dictRemotes") or {}\n'
+            '        ):\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_a_finished_refresh_bumps_the_epoch_so_badges_repaint'
+        ),
+        # Drop the epoch bump. The refresh rewrites syncStatus.json and
+        # nothing repaints the per-file octocats that read it.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    _fnBumpSoTheBadgesRepaint(dictCtx, sContainerId)\n',
+        new='',
+    ),
+    # --- 2026-08-30: a batched container probe is split to fit one
+    # exec argument. Measured: the existence probe RAISED at ~1,845
+    # paths (quarantining the container from inside a carrier worker)
+    # and the blob-sha probe emptied SILENTLY at ~2,562. ---
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testTheExistenceProbeSplitsInsteadOfOverflowingOneExec'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        listAnswers = []\n'
+            '        for listBatch in flistBatchPathsForOneExec('
+            'list(listPaths)):\n'
+            '            listAnswers.extend(_flistInterpretBooleanBatch(\n'
+            '                self._ftRunTypedRead(\n'
+            '                    sContainerId, S_TYPED_READ_PATHS_EXIST, '
+            'listBatch,\n'
+            '                ),\n'
+            '                listBatch, "existence",\n'
+            '            ))\n'
+            '        return listAnswers\n'
+        ),
+        new=(
+            '        return _flistInterpretBooleanBatch(\n'
+            '            self._ftRunTypedRead(\n'
+            '                sContainerId, S_TYPED_READ_PATHS_EXIST, '
+            'list(listPaths),\n'
+            '            ),\n'
+            '            listPaths, "existence",\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testTheBlobShaProbeSplitsInsteadOfOverflowingOneExec'
+        ),
+        source='vaibify/gui/containerGit.py',
+        old=(
+            '    dictAll = {}\n'
+            '    for listBatch in flistBatchPathsForOneExec('
+            'list(listRepoRelPaths)):\n'
+        ),
+        new=(
+            '    dictAll = {}\n'
+            '    for listBatch in [list(listRepoRelPaths)]:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecArgumentBudget.py::'
+            'testAFailedBatchEmptiesTheWholeAnswerRatherThanHalfOfIt'
+        ),
+        # Skip a failed batch and keep the ones that worked. The caller
+        # cannot tell the partial map from "those files are unreadable".
+        source='vaibify/gui/containerGit.py',
+        old=(
+            '        if dictBatch is None:\n'
+            '            return {}\n'
+        ),
+        new=(
+            '        if dictBatch is None:\n'
+            '            continue\n'
+        ),
+    ),
+    # --- 2026-08-30: a remote's files group by disposition, so the
+    # matching majority stops burying the handful that need work ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_the_matching_majority_is_collapsed_and_the_problems'
+            '_are_not'
+        ),
+        # Open the matching group by default: the flat list returns,
+        # with headings.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        {sState: "synced", sLabel: "Matching",\n'
+            '         bOpenByDefault: false},\n'
+        ),
+        new=(
+            '        {sState: "synced", sLabel: "Matching",\n'
+            '         bOpenByDefault: true},\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_a_collapsed_group_still_says_how_many_it_holds'
+        ),
+        # Drop the count. A closed group then cannot be told from an
+        # empty one.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            ' <span class=\"file-group-count\">' +\n"
+            "            listFiles.length + '</span></div>';\n"
+        ),
+        new="            '</div>';\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteFilesGroupByDisposition.py::'
+            'test_a_capped_group_says_what_it_is_not_showing'
+        ),
+        # Truncate silently. The capped list then reads as the whole
+        # set and the omitted files look absent.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (listFiles.length > listShown.length) {\n'
+            "            sHtml += '<div class=\"file-group-truncated\">"
+            "Showing ' +\n"
+            '                listShown.length + \' of \' + '
+            'listFiles.length +\n'
+            "                ' \u2014 open the Repos panel to see them "
+            "all.</div>';\n"
+            '        }\n'
+        ),
+        new='',
+    ),
+    # --- 2026-08-30: the Project header cell counted only the STALE
+    # half of each remote's published-copy check, so a fresh verify
+    # that proved divergence still painted a check above two orange
+    # rows. Reported by the researcher. ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testAProvenDivergenceDeniesTheProjectHeaderItsCheck'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    "github-verify-stale", "zenodo-verify-stale",\n'
+            '    "not-in-github-mirror", "not-in-zenodo-deposit",\n'
+        ),
+        new='    "github-verify-stale", "zenodo-verify-stale",\n',
+    ),
+    # --- 2026-08-30: a determinism block that pins nothing read as
+    # satisfied on screen while the L3 gate refused it. Reported by
+    # the researcher, who had pressed Declare and watched it go green. ---
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testEveryQuestionMustBeAnsweredNotJustOne'
+        ),
+        # Restore the OR: any one answer satisfies the whole gate,
+        # which is what let a project attest at Level 3 having
+        # answered a third of the question.
+        source='vaibify/reproducibility/determinismGate.py',
+        old=(
+            '    return not flistUnansweredDeterminismQuestions'
+            '(dictWorkflow)\n'
+        ),
+        new=(
+            '    return len(flistUnansweredDeterminismQuestions('
+            'dictWorkflow)) < 3\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testThePollShipsTheVerdictRatherThanTheRawBlock'
+        ),
+        # Stop shipping the verdict; the row is forced back onto the
+        # raw block and can disagree with the gate again.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        "bDeterminismDeclared":\n'
+            '            determinismGate.fbWorkflowDeclaresDeterminism'
+            '(dictWorkflow),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_each_question_gets_its_own_row_and_marker'
+        ),
+        # Collapse the three question rows back into one, which is the
+        # rendering the 2026-08-30 ruling replaced: one marker over
+        # three independent sources of run-to-run difference.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return listQuestions.map(function (dictQuestion) {\n',
+        new=(
+            '        return listQuestions.slice(0, 1).map('
+            'function (dictQuestion) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_the_questions_are_asked_in_words_not_schema_keys'
+        ),
+        # Drop the plain-language question, leaving a label and no
+        # explanation -- the state the section was reported in.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            "            fnEscapeHtml(dictQuestion.sQuestion) + "
+            "'</div>';\n"
+        ),
+        new="            '</div>';\n",
+    ),
+    # Both L3 controls must SAY they are working: the button through a
+    # readiness round trip nothing else marks, the row through a rerun
+    # that can last hours. Each is asserted on a computed style rather
+    # than a class, because a class with no stylesheet rule behind it
+    # is an affordance that is invisible in production and green in CI.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerifyControlsSayTheyAreWorking.py::'
+            'test_the_verify_button_says_it_is_working_then_gives_'
+            'itself_back'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (!elButton) return function () {};',
+        new='        if (elButton) return function () {};',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerifyControlsSayTheyAreWorking.py::'
+            'test_the_attestation_row_pulses_while_the_rerun_runs'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='             bChecking: bRunning,',
+        new='             bChecking: false,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_an_unready_project_is_told_what_is_missing'
+        ),
+        # RE-ANCHORED 2026-08-31: the fetch is now wrapped in a
+        # try/finally that releases the button's busy hold, so the
+        # deletion has to take the wrapper with it. The mutant still
+        # releases the button -- a mutant that left it disabled would
+        # be killed by the button never re-enabling rather than by the
+        # missing pre-flight, which is a different guard.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var dictReady;\n'
+            '        try {\n'
+            '            dictReady = await _fdictFetchL3Readiness();\n'
+            '        } finally {\n'
+            '            fnRelease();\n'
+            '        }\n'
+            '        /* BOTH refusal classes route to the checklist '
+            'modal. The\n'
+            '           package mismatch is not one of the seven '
+            'envelope gaps, so\n'
+            '           gating on bL3ReadinessOK alone let it slip '
+            'past this\n'
+            '           pre-flight and reach the researcher as a bare '
+            'failure toast\n'
+            '           (reported 2026-09-01). */\n'
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='        fnRelease();\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_a_ready_project_still_gets_the_copy_warning'
+        ),
+        # Suppress the copy warning for everyone: the pre-flight would
+        # then have traded one failure for a worse one.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new=(
+            '        _fnShowLevel3NotReadyModal(dictReady || {});\n'
+            '        return;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testAPinnedAnswerWithoutItsValueIsHalfAnAnswer'
+        ),
+        # Accept "pinned" with nothing pinned: a rule no rerun could
+        # follow, recorded as though it were one.
+        source='vaibify/reproducibility/determinismGate.py',
+        old=(
+            '    if sAnswer != dictQuestion["sAnswerNeedingValue"]:\n'
+            '        return True\n'
+        ),
+        new='    return True\n    if False:\n        return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheLegacyFalseWaiverIsNotReadAsAnAnswer'
+        ),
+        # Read the legacy waiver key as the answer. Every project that
+        # ever opened the old form is silently credited.
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
+        new=(
+            '    sAnswer = dictDeterminism.get('
+            'dictQuestion["sAnswerKey"])\n'
+            '    if dictQuestion["sKey"] == "blasVariance" and '
+            'S_ACCEPT_BLAS_WAIVER_KEY in dictDeterminism:\n'
+            '        sAnswer = S_BLAS_ACCEPTED if dictDeterminism['
+            'S_ACCEPT_BLAS_WAIVER_KEY] else S_BLAS_REJECTED\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheMigrationPromotesOnlyUnambiguousLegacyValues'
+        ),
+        # Promote the false waiver too, attesting a choice that may
+        # never have been made.
+        source='vaibify/gui/workflowMigrations.py',
+        old='        dictDeterminism.get("bAcceptBlasVariance") is True,\n',
+        new=(
+            '        "bAcceptBlasVariance" in dictDeterminism,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheMigrationSpellsTheSameKeysTheGateReads'
+        ),
+        # Spell one answer key differently in the migrator than in the
+        # gate. The migrator's own behavioural tests cannot see this --
+        # they assert the literal too -- so a project's promoted answer
+        # would be written under a key nothing reads.
+        source='vaibify/gui/workflowMigrations.py',
+        old='        dictDeterminism, "sBlasVarianceAnswer",\n',
+        new='        dictDeterminism, "sBlasAnswer",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheScanToastReportsTheMathsLibrary'
+        ),
+        # Drop the maths reading from the toast. The scan then answers
+        # a different question than the button it sits under, which is
+        # how it shipped the first time.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var sMaths = (dictSafe.dictMathsLibrary || {})'
+            '.sHeadline || "";\n'
+            '        var sSuffix = sMaths ? " " + sMaths : "";\n'
+        ),
+        new='        var sSuffix = "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_the_preflight_reads_the_gaps_from_inside_their_envelope'
+        ),
+        # Read the flags off the response ENVELOPE instead of the gaps
+        # dict inside it. Every flag comes back undefined, `!== true`
+        # holds for all seven, and a fully-ready project is told it is
+        # not ready -- which made the L3 verification unstartable from
+        # the dashboard. Shipped once, because the test's fake answered
+        # a flat payload nobody sends.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            var dictGaps = (dictResponse || {})'
+            '.dictL3ReadinessGaps\n'
+            '                || null;\n'
+            '            if (dictGaps) {\n'
+            '                dictGaps.dictImageCurrency =\n'
+            '                    (dictResponse || {}).dictImageCurrency '
+            '|| null;\n'
+            '            }\n'
+            '            return dictGaps;\n'
+        ),
+        new='            return dictResponse;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testABusyDurableRefusalNamesTheLiveWork'
+        ),
+        # Restore the generic sentence. The researcher is told the
+        # container is busy and given nothing to act on -- they cannot
+        # tell their own verification running from something stuck.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '                "sReason": recordLive.sOperation + '
+            '" is already "\n'
+            '                           "running in this container",\n'
+        ),
+        new=(
+            '                "sReason": "a durable task is already '
+            'live in this "\n'
+            '                           "container",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_the_refresh_leaves_the_durable_slot_free'
+        ),
+        # The same restoration, seen from the route: a durable launch
+        # reappears in the module.
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old='    return {"listChecking": listServices, "listUncheckable": []}\n',
+        new=(
+            '    _ = commitCarrier.fdictLaunchDurableTask\n'
+            '    return {"listChecking": listServices, '
+            '"listUncheckable": []}\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -14263,280 +16960,6 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testPerFileZenodoSyncOpensTheModal.py::'
-            'test_a_per_file_zenodo_sync_never_publishes_directly'
-        ),
-        source='vaibify/gui/static/scriptSyncManager.js',
-        old=(
-            '        if (sRemoteKey === "sZenodo") {\n'
-            '            // A Zenodo "sync" publishes a new deposit'
-            ' VERSION, and a\n'
-            '            // version REPLACES the file set: vaibify'
-            ' clears the\n'
-            '            // inherited files and uploads exactly the'
-            ' selection. A\n'
-            '            // direct per-file push therefore published'
-            ' a version\n'
-            '            // containing only the clicked file and'
-            ' silently shrank\n'
-            '            // the public record (live, 2026-08-27).'
-            ' The modal serves\n'
-            '            // the full publication union preselected,'
-            ' so leaving a\n'
-            '            // file out of the archive is an act the'
-            ' researcher\n'
-            '            // performs, never a side effect of one'
-            ' click.\n'
-            '            fnOpenPushModal("zenodo");\n'
-            '            return;\n'
-            '        }\n'
-        ),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_zenodo_archive_resolves_repo_relative_selections'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old=(
-            '        request.listFilePaths = _flistResolveArchivePaths('
-            '\n'
-            '            request.listFilePaths,\n'
-            '            dictWorkflow.get("sProjectRepoPath") or "",\n'
-            '        )\n'
-        ),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testStepLevelStates.py::'
-            'testWorkflowScopeStaleCachesWithGreenAiProvenance'
-            'ReadPartial'
-        ),
-        source='vaibify/reproducibility/levelGates.py',
-        old=(
-            '    "ai-models-undeclared", "personal-layer-unanswered"'
-            ',\n'
-        ),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectBookkeepingSidecar.py::'
-            'test_a_publish_does_not_change_the_serialized_definition'
-        ),
-        source='vaibify/reproducibility/syncBookkeeping.py',
-        old='    "dictSyncStatus",\n',
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectBookkeepingSidecar.py::'
-            'test_publish_bookkeeping_does_not_move_the_'
-            'attestation_fingerprint'
-        ),
-        source='vaibify/gui/workflowManager.py',
-        old=(
-            '    syncBookkeeping.fdictExtractSyncBookkeeping('
-            'dictDeclarative)\n'
-        ),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectBookkeepingSidecar.py::'
-            'test_sidecar_values_win_over_legacy_fielded_keys'
-        ),
-        source='vaibify/reproducibility/syncBookkeeping.py',
-        old='    if not dictBookkeeping:\n        return',
-        new='    if True:\n        return',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_a_new_publish_advances_the_verify_record'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old=('        dictRemotes = dictWorkflow.setdefault('
-             '"dictRemotes", {})\n'
-             '        dictZenodo = dictRemotes.setdefault('
-             '"zenodo", {})\n'
-             '        dictZenodo["sRecordId"] = '
-             'str(dictResult["iDepositId"])\n'
-             '        dictZenodo["sService"] = sZenodoService\n'
-             '        if dictResult.get("sDoi"):\n'
-             '            dictZenodo["sDoi"] = dictResult["sDoi"]\n'),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_zenodo_candidates_cover_the_publication_union'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old='        if sService == "zenodo":\n'
-            '            # Zenodo candidates are the full publication '
-            'union — the',
-        new='        if False:\n'
-            '            # Zenodo candidates are the full publication '
-            'union — the',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_colliding_basenames_read_not_in_deposit'
-        ),
-        source='vaibify/reproducibility/scheduledReverify.py',
-        old=('        if dictCounts[posixpath.basename(sRelativePath)]'
-             ' == 1'),
-        new='        if True',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_zenodo_archive_refuses_basename_collisions'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old=('        _fnRefuseBasenameCollisions('
-             'request.listFilePaths)\n'),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testTestGeneratorPure.py::'
-            'test_generated_test_names_carry_the_step_suffix'
-        ),
-        source='vaibify/gui/testGenerator.py',
-        old='    return sBase[0].lower() + sBase[1:]',
-        new='    return ""',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_zenodo_archive_success_refreshes_the_verify_cache'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old=('    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(\n'
-             '        dictCtx, sContainerId, dictWorkflow, "zenodo", '
-             'requestHttp,\n'
-             '    )\n'
-             '    if sVerifyWarning:\n'
-             '        dictResult["sPostPushVerifyWarning"] = '
-             'sVerifyWarning'),
-        new=('    sVerifyWarning = ""\n'
-             '    if sVerifyWarning:\n'
-             '        dictResult["sPostPushVerifyWarning"] = '
-             'sVerifyWarning'),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testManifestWriter.py::'
-            'test_both_spellings_of_one_file_yield_it_exactly_once'
-        ),
-        source='vaibify/reproducibility/manifestWriter.py',
-        old='    return fsResolveStepPathToRepoPath(sFilePath, sDirectory)',
-        new='    return sVerbatim',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncRoutesCoverage.py::'
-            'test_zenodo_archive_refuses_when_a_selected_file'
-            '_is_missing'
-        ),
-        source='vaibify/gui/routes/syncRoutes.py',
-        old=('        _fnRefuseMissingPushFiles(\n'
-             '            dictCtx["docker"], sContainerId, '
-             'request.listFilePaths,\n'
-             '            dictWorkflow.get("sProjectRepoPath") or "",\n'
-             '        )\n'),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testSyncTestGenFull.py::'
-            'test_a_local_file_error_never_classifies_as_remote'
-            '_not_found'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        old=('    if "local-file-error" in sLower:\n'
-             '        return {\n'
-             '            "sErrorType": "localFileMissing", '
-             '"sMessage": sOutput,\n'
-             '        }'),
-        new=('    if False:\n'
-             '        return {\n'
-             '            "sErrorType": "localFileMissing", '
-             '"sMessage": sOutput,\n'
-             '        }'),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_a_missing_zenodo_archive_refuses_level_three'
-        ),
-        source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesZenodoArchive(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_a_drifted_github_envelope_refuses_level_three'
-        ),
-        source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesGithubMirror(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_the_refusal_names_itself_in_the_blocker_list'
-        ),
-        source='vaibify/reproducibility/levelGates.py',
-        old=('        "envelope-not-in-zenodo-archive":\n'
-             '            fbEnvelopeMatchesZenodoArchive(filesRepo),\n'),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_a_file_agrees_with_zenodo_when_any_declared_record'
-            '_serves_it'
-        ),
-        source='vaibify/reproducibility/scheduledReverify.py',
-        old=('        if sExpected is not None and sExpected in '
-             'listHashes:\n'
-             '            dictMerged[sRelativePath] = sExpected\n'
-             '            continue'),
-        new=('        if False:\n'
-             '            dictMerged[sRelativePath] = sExpected\n'
-             '            continue'),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testZenodoEnvelopeArchive.py::'
-            'test_a_version_two_cache_is_no_longer_scope_current'
-        ),
-        source='vaibify/reproducibility/publicationScope.py',
-        old='I_PUBLICATION_SCOPE_VERSION = 4',
-        new='I_PUBLICATION_SCOPE_VERSION = 3',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testPublicationScopeSeparatesTheLevels.py::'
-            'test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal'
-        ),
-        source='vaibify/reproducibility/levelGates.py',
-        old='    if not publicationScope.fbCachedScopeIsCurrent(dictStatus):\n        return True',
-        new='    if False:\n        return True',
-    ),
-    Falsification(
-        nodeid=(
             'tests/testCouncilTurnBudgetsAreEnforced.py::'
             'test_a_short_login_shortens_the_turn_that_actually_runs'
         ),
@@ -14633,6 +17056,94 @@ def _fdictEntry(sRel):
             '        if (dictCampaign.bStopRequested) {\n'
             '            return _fsStoppingSurface(dictCampaign);\n'
             '        }'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_parser_matches_the_counter_token_exactly'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # A prefix match reads the v1 file's oom_kill_disable line as
+        # the kill count.
+        old=(
+            '        if len(listFields) == 2 and '
+            'listFields[0] == "oom_kill":'
+        ),
+        new=(
+            '        if len(listFields) == 2 and '
+            'listFields[0].startswith("oom_kill"):'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_a_risen_counter_concludes_oom_with_the_daemon_flag_'
+            'quiet'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # Reduce the verdict to the daemon's State flag alone -- the
+        # exact intermittent false negative CI reported twice on
+        # 2026-09-02.
+        old=(
+            '    bCounterRose = (\n'
+            '        iOomKillsBefore is not None and iOomKillsAfter '
+            'is not None\n'
+            '        and iOomKillsAfter > iOomKillsBefore\n'
+            '    )\n'
+            '    return bCounterRose or bool(bStateOomKilled)'
+        ),
+        new='    return bool(bStateOomKilled)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_an_unreadable_before_count_cannot_conclude_a_kill'
+        ),
+        source='vaibify/docker/disposableSpecification.py',
+        # Treat an unreadable count as zero: every command after a
+        # container's first legitimate OOM kill is then reported
+        # killed whenever one read fails.
+        old=(
+            '    bCounterRose = (\n'
+            '        iOomKillsBefore is not None and iOomKillsAfter '
+            'is not None\n'
+            '        and iOomKillsAfter > iOomKillsBefore\n'
+            '    )'
+        ),
+        new=(
+            '    bCounterRose = (\n'
+            '        (iOomKillsAfter or 0) > (iOomKillsBefore or 0)\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_disposable_command_threads_the_before_count'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # Drop the threaded snapshot: the counter half can never
+        # conclude, and the outcome quietly reverts to the daemon
+        # flag alone.
+        old='        fStartedMonotonic, iOomKillsBefore)',
+        new='        fStartedMonotonic, None)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOomAttribution.py::'
+            'test_the_council_turn_threads_the_before_count'
+        ),
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        # The council lane's copy of the same dropped-snapshot wiring.
+        old=(
+            '    bOomKilled = _fbConcludeOomKilledForContainer(\n'
+            '        dockerCouncil, dictHandle["sContainerId"], '
+            'iOomKillsBefore)'
+        ),
+        new=(
+            '    bOomKilled = _fbConcludeOomKilledForContainer(\n'
+            '        dockerCouncil, dictHandle["sContainerId"], None)'
         ),
     ),
 ]

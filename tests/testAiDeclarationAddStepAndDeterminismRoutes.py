@@ -254,7 +254,20 @@ def test_declare_determinism_writes_dict_and_saves(
         "sMklCbwr": "COMPATIBLE",
     }
     assert response.json()["dictDeterminism"] == dictDeterminism
-    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is True
+    # Values are still WRITTEN — a rerun acts on them — but since the
+    # 2026-08-30 ruling they are not ANSWERS, so writing all three
+    # satisfies nothing. This assertion used to read `is True`; the
+    # pair below is what the route now guarantees.
+    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is False
+    fixtureClient.post(S_DETERMINISM_URL, json={
+        "sBlasVarianceAnswer": "rejected",
+        "sOmpThreadsAnswer": "pinned",
+        "sMklModeAnswer": "pinned",
+    })
+    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is True, (
+        "answering all three questions, with the values already "
+        "pinned above, still does not declare determinism"
+    )
     assert fixtureSaves and fixtureSaves[-1][0] == S_CONTAINER_ID
 
 

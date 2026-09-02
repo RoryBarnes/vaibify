@@ -1057,6 +1057,7 @@ async def _ftLaunchDispatchTask(
             dictDurableContext["appState"], dictDurableContext["sName"],
             sContainerId, dictDurableContext["dictLaneTuple"],
             ftaskStartDispatch,
+            sOperation="a pipeline run",
         )
     except commitCarrier.CommitRefusedError as error:
         logger.warning(
@@ -2194,6 +2195,76 @@ def _fnCheckSupervisedIntervalAtConnect(
         )
 
 
+def fnCaptureLiveImageIdentityAtConnect(dictCtx, sContainerId):
+    """Record which image this container is RUNNING, once per session.
+
+    The envelope pins the image a project's results claim to come
+    from; nothing compared that pin against the container actually
+    open on screen, so a researcher who rebuilt and forgot to
+    regenerate the snapshot had every verification silently grade the
+    old image (researcher-reported, 2026-09-01). A container's image
+    cannot change while it runs, so one capture here is truth for the
+    session, and every later comparison is a pure dict read — the
+    poll path adds no exec and no daemon call.
+
+    Failure records nothing: an absent capture reads as "could not
+    determine" everywhere downstream, never as a claim either way.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictCaptureLiveImageIdentity,
+    )
+    try:
+        if fbIsHostProject(sContainerId):
+            return
+        dictCtx.setdefault("dictLiveImageIdentities", {})[sContainerId] = (
+            fdictCaptureLiveImageIdentity(sContainerId)
+        )
+    except Exception as errorCapture:  # noqa: BLE001 — absent reads as unknown
+        logger.warning(
+            "Could not capture the live image identity for %s: %s",
+            sContainerId, errorCapture,
+        )
+
+
+def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
+    """Compare the envelope's pinned image against the running one.
+
+    Returns ``bPinnedImageIsLive`` as a THREE-state answer: True
+    (same image), False (the container runs an image the envelope
+    does not pin — regenerate or the published claim does not cover
+    current work), or None (no pin, no capture, or a host project —
+    nothing was determined, and no surface may paint a warning from
+    it). The pin matches if it equals EITHER identity form, because
+    an image pushed to a registry after the capture gains a registry
+    digest without changing.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fsExtractImageDigest,
+        fdictReadEnvironmentJson,
+    )
+    dictIdentity = (
+        dictCtx.get("dictLiveImageIdentities") or {}
+    ).get(sContainerId) or {}
+    try:
+        sPinned = _fsExtractImageDigest(
+            fdictReadEnvironmentJson(filesRepo) or {},
+        )
+    except (OSError, ValueError, KeyError):
+        sPinned = ""
+    sLiveDigest = dictIdentity.get("sImageDigest") or ""
+    sLiveId = dictIdentity.get("sImageId") or ""
+    dictAnswer = {
+        "sPinnedImageDigest": sPinned,
+        "sLiveImageDigest": sLiveDigest or sLiveId,
+    }
+    if not sPinned or not (sLiveDigest or sLiveId):
+        dictAnswer["bPinnedImageIsLive"] = None
+        return dictAnswer
+    dictAnswer["bPinnedImageIsLive"] = sPinned in (sLiveDigest, sLiveId)
+    return dictAnswer
+
+
 async def fdictHandleConnect(
     dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId="",
 ):
@@ -2249,6 +2320,9 @@ async def fdictHandleConnect(
         await asyncio.to_thread(
             _fnCheckSupervisedIntervalAtConnect,
             dictCtx, sContainerId, dictWorkflow,
+        )
+        await asyncio.to_thread(
+            fnCaptureLiveImageIdentityAtConnect, dictCtx, sContainerId,
         )
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
@@ -2878,6 +2952,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
     routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
+    routes.remoteRefreshRoutes.fnRegisterAll(app, dictCtx)
     routes.councilRoutes.fnRegisterAll(app, dictCtx)
     routes.councilChatRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)

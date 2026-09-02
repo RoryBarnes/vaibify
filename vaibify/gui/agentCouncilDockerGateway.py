@@ -44,6 +44,7 @@ import secrets
 import socket
 import time
 
+from vaibify.docker import disposableSpecification
 from vaibify.docker.dockerConnection import (
     _fmoduleGetDocker,
     _fnEnsureDockerHost,
@@ -264,6 +265,52 @@ def _ftStartExecStream(dockerCouncil, sContainerId, listCommand,
     return (dictExecCreated["Id"], socketRaw)
 
 
+def _fiReadOomKillCount(dockerCouncil, sContainerId):
+    """Read the container cgroup's oom_kill counter; None if unreadable.
+
+    Runs through the same exec-stream helpers as every other turn, so
+    no new daemon surface is reached. Any failure -- a dead container,
+    a missing shell, a truncated stream -- answers None, which the
+    pure combiner treats as "cannot conclude", never as 0.
+    """
+    try:
+        tExecStarted = _ftStartExecStream(
+            dockerCouncil, sContainerId,
+            disposableSpecification.LIST_OOM_COUNTER_COMMAND,
+            bStdin=False,
+        )
+        socketRaw = tExecStarted[1]
+        try:
+            dictPumped = agentCouncilRunner.fdictPumpBoundedExecStream(
+                socketRaw, 65536, time.monotonic() + 10.0)
+        finally:
+            socketRaw.close()
+        return disposableSpecification.fiParseOomKillCount(
+            dictPumped["baCaptured"].decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
+def _fbConcludeOomKilledForContainer(dockerCouncil, sContainerId,
+                                     iOomKillsBefore):
+    """Combine the cgroup counter and the daemon flag into one verdict.
+
+    The counter re-read happens FIRST: it needs a live container, and
+    the inspect below works either way. The rationale for the two
+    halves lives on ``disposableSpecification.fbConcludeOomKilled``,
+    which this shares with the disposable-container lane.
+    """
+    iOomKillsAfter = _fiReadOomKillCount(dockerCouncil, sContainerId)
+    bStateOomKilled = False
+    try:
+        dictInspected = dockerCouncil.api.inspect_container(sContainerId)
+        bStateOomKilled = bool(dictInspected["State"]["OOMKilled"])
+    except Exception:
+        pass
+    return disposableSpecification.fbConcludeOomKilled(
+        iOomKillsBefore, iOomKillsAfter, bStateOomKilled)
+
+
 def fnCopySnapshotIntoRunner(
         dictGateway, sHandle, baSnapshotTar,
         sDestinationDirectory=agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT):
@@ -354,6 +401,8 @@ def fdictExecuteBoundedTurn(
             agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS)
     fStartedMonotonic = time.monotonic()
     fDeadlineMonotonic = fStartedMonotonic + fWallClockSeconds
+    iOomKillsBefore = _fiReadOomKillCount(
+        dockerCouncil, dictHandle["sContainerId"])
     sExecId, socketRaw = _ftStartExecStream(
         dockerCouncil, dictHandle["sContainerId"], listCommand,
         bStdin=baStdinPayload is not None,
@@ -392,19 +441,16 @@ def fdictExecuteBoundedTurn(
         iExitCode = dictExecInspected["ExitCode"]
     except Exception:
         pass
-    # Read the CONTAINER's own verdict before anything destroys it. An
-    # exit code of 137 is SIGKILL and says nothing about who sent it:
-    # this gateway kills on a breached bound, and the kernel kills on
-    # memory pressure. Without OOMKilled the two are indistinguishable,
-    # and a live opus turn stayed ambiguous for a whole session because
-    # nothing asked (external review, 2026-08-25).
-    bOomKilled = False
-    try:
-        dictInspected = dockerCouncil.api.inspect_container(
-            dictHandle["sContainerId"])
-        bOomKilled = bool(dictInspected["State"]["OOMKilled"])
-    except Exception:
-        pass
+    # Attribute a SIGKILL before anything destroys the container. An
+    # exit code of 137 names no sender: this gateway kills on a
+    # breached bound, and the kernel kills on memory pressure. A live
+    # opus turn stayed ambiguous for a whole session because nothing
+    # asked (external review, 2026-08-25); the daemon's State flag
+    # alone then missed an exec-level kill intermittently in CI
+    # (2026-09-02), which is why the verdict now also reads the
+    # cgroup's own counter.
+    bOomKilled = _fbConcludeOomKilledForContainer(
+        dockerCouncil, dictHandle["sContainerId"], iOomKillsBefore)
     return {
         "iExitCode": iExitCode,
         "sOutput": dictPumped["baCaptured"].decode(

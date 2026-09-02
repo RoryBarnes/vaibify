@@ -437,7 +437,8 @@ def test_step_l3_satisfied_arithmetic_is_subtraction():
     listDeclared = [{"sBinaryPath": "/usr/local/bin/simtool"}]
     tCounts = levelGates._ftStepLevel3Counts(
         dictStep, {"missing-from-manifest"},
-        {"bHasRepo": True, "listDeclaredBinaries": listDeclared},
+        {"bHasRepo": True, "listDeclaredBinaries": listDeclared,
+         "dictTemplateValues": {}},
     )
     assert tCounts == (4, 5)
 
@@ -452,7 +453,7 @@ def test_randomness_criterion_requires_literal_true():
     """
     def _fsetFor(xFlagValue):
         return levelGates._fsetStepApplicableLevel3Criteria(
-            {"bUnseededRandomnessWarning": xFlagValue}, [],
+            {"bUnseededRandomnessWarning": xFlagValue}, [], {},
         )
     assert "nondeterminism-undeclared" in _fsetFor(True)
     assert "nondeterminism-undeclared" not in _fsetFor(False)

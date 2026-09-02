@@ -47,7 +47,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 12
+I_CURRENT_WORKFLOW_VERSION = 13
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 # The remote-data timestamp, named for what the code actually observes.
@@ -719,6 +719,67 @@ def _fnMigrateV11ToV12(dictWorkflow, sProjectRepoPath):
                 dictRemote[S_DIGEST_TIMESTAMP_KEY] = sLegacy
 
 
+def _fnMigrateV12ToV13(dictWorkflow, sProjectRepoPath):
+    """Promote the legacy determinism VALUES into explicit answers.
+
+    The determinism gate became three separately-answered questions on
+    2026-08-30 (it was an OR over three values). A stored block
+    records values, not answers, so this reads each value for the
+    answer it unambiguously implies — and stops there.
+
+    Only POSITIVE values carry over. ``bAcceptBlasVariance: true`` can
+    only have come from a researcher ticking the box, so it becomes an
+    accepted answer; a pinned thread count and a set MKL mode likewise.
+    A ``false`` waiver does NOT become "rejected", because the old form
+    wrote exactly that whenever it was submitted with nothing ticked —
+    so it means "unanswered" and "declined" at once, and choosing
+    either reading would attest a claim the researcher may never have
+    made. Those projects are left with the question open, which is the
+    honest outcome and the one the researcher can close in one click.
+
+    The legacy value keys are KEPT. They are what a rerun acts on, and
+    ``vaibify reproduce`` carries the block forward verbatim; only the
+    answers are new.
+
+    The key names are LITERALS here rather than imports from
+    ``determinismGate``: this module must depend only on leaf modules
+    or its callers form a cycle
+    (``testWorkflowMigrationsImportsOnlyLeafModules``), and a migrator
+    reads documents written under fixed on-disk names in any case. The
+    ANSWER names must still match the live gate, so
+    ``testTheMigrationSpellsTheSameKeysTheGateReads`` pins every one
+    of them to the gate's constants rather than trusting this copy.
+    """
+    dictDeterminism = dictWorkflow.get("dictDeterminism")
+    if not isinstance(dictDeterminism, dict) or not dictDeterminism:
+        return
+    _fnAnswerFromLegacyValue(
+        dictDeterminism, "sBlasVarianceAnswer",
+        dictDeterminism.get("bAcceptBlasVariance") is True,
+        "accepted",
+    )
+    _fnAnswerFromLegacyValue(
+        dictDeterminism, "sOmpThreadsAnswer",
+        dictDeterminism.get("dOmpNumThreads") is not None,
+        "pinned",
+    )
+    _fnAnswerFromLegacyValue(
+        dictDeterminism, "sMklModeAnswer",
+        bool(dictDeterminism.get("sMklCbwr")),
+        "pinned",
+    )
+
+
+def _fnAnswerFromLegacyValue(
+    dictDeterminism, sAnswerKey, bImplied, sAnswer,
+):
+    """Record one implied answer, never overwriting an explicit one."""
+    if dictDeterminism.get(sAnswerKey):
+        return
+    if bImplied:
+        dictDeterminism[sAnswerKey] = sAnswer
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -732,4 +793,5 @@ T_MIGRATORS = (
     (9, _fnMigrateV9ToV10),
     (10, _fnMigrateV10ToV11),
     (11, _fnMigrateV11ToV12),
+    (12, _fnMigrateV12ToV13),
 )

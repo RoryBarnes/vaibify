@@ -25,11 +25,16 @@ from vaibify.reproducibility.levelGates import (
 
 
 def _fdictAllGreenStep(sName="A"):
-    """Return a step dict that satisfies every L1 criterion."""
+    """Return a step dict that satisfies every L1 criterion.
+
+    Outputs are declared STEP-relative, matching production: the
+    collectors prefix ``sDirectory`` themselves, so declaring
+    "A/data.csv" under sDirectory "A" resolved to "A/A/data.csv".
+    """
     return {
         "sName": sName, "sDirectory": sName,
-        "saOutputDataFiles": [sName + "/data.csv"],
-        "saPlotFiles": [sName + "/plot.pdf"],
+        "saOutputDataFiles": ["data.csv"],
+        "saPlotFiles": ["plot.pdf"],
         "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
