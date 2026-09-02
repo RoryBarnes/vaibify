@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev1270 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev1272 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=81dadb48"></script>
+      <script src="_static/documentation_options.js?v=125ad53b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -388,6 +388,18 @@ window.</p>
 <td><p>that every path referenced in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> resolves</p></td>
 <td><p>one Linux cell</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">security.yml</span></code></p></td>
+<td><p>the security-boundary suite, in its own named lane so a green architectural badge can never launder a red security one</p></td>
+<td><p>Ubuntu 24 + macOS 26 × Python 3.9 &amp; 3.14</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">styleContract.yml</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/testStyleInvariants.py</span></code>, then <code class="docutils literal notranslate"><span class="pre">tools/generateStyleInventory.py</span> <span class="pre">--check</span></code> for inventory drift</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remoteSsh.yml</span></code></p></td>
+<td><p>the remote transport against a real <code class="docutils literal notranslate"><span class="pre">sshd</span></code>, with <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_REMOTE_SSH</span></code> turning the no-daemon skip into a failure</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
 </tbody>
 </table>
 <p><strong>After a merge — these publish what <code class="docutils literal notranslate"><span class="pre">main</span></code> now is:</strong></p>
@@ -477,6 +489,15 @@ varies across the matrix, and a bare noun for anything that does not:</p>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">agent-docs</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">security:&lt;os&gt;:python-&lt;version&gt;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">security</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">style-contract</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">styleContract</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote-ssh</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">remoteSsh</span></code></p></td>
 </tr>
 </tbody>
 </table>
