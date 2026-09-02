@@ -122,3 +122,72 @@ def test_route_attestation_matched_count_comes_from_the_rehash(tmp_path):
     )
     assert dictAttestation["iOutputHashesMatched"] == 4
     assert dictAttestation["iOutputHashesTotal"] == 5
+
+
+def test_cli_attestation_names_the_image_the_shadow_ran_under(tmp_path):
+    """The CLI must record the pin the shadow was BUILT from.
+
+    The host ``--repo`` clone's environment.json is a different file
+    from the container repo's the shadow lane read, and it can lag.
+    The two digests are made distinct so recording the host's over the
+    outcome's fails here instead of shipping.
+
+    Kills: In commandReproduce._fdictBuildRerunAttestation, source
+    sImageDigest from _fsRecordedImageDigest(sProjectRepo) alone,
+    dropping the dictOutcome["sImageDigest"] preference.
+    """
+    sShadowPin = "registry.example/pinned@sha256:" + "c" * 64
+    (tmp_path / ".vaibify").mkdir()
+    (tmp_path / ".vaibify" / "environment.json").write_text(json.dumps(
+        {"sImageDigest": "host-stale@sha256:" + "d" * 64},
+    ))
+    dictOutcome = {
+        "bPassed": True,
+        "iOutputHashesMatched": 1,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": [],
+        "sImageDigest": sShadowPin,
+    }
+    dictAttestation = commandReproduce._fdictBuildRerunAttestation(
+        str(tmp_path), dictOutcome, 4.0,
+    )
+    assert dictAttestation["sImageDigest"] == sShadowPin
+
+
+def test_route_attestation_manifest_digest_comes_from_the_comparison(
+    tmp_path,
+):
+    """The dashboard must key the attestation to the SHADOW's manifest.
+
+    The readiness snapshot is taken from the live repository before the
+    export; the comparison reports the digest of the manifest it was
+    actually made against. Anything that re-pins the manifest between
+    the two puts a digest on the attestation the comparison never read,
+    so the outcome's digest must win when present.
+
+    Kills: In reproducibilityRoutes._fnRecordOutcome, pass
+    sManifestDigest to _fnPersistAttestation instead of preferring
+    dictResult["sManifestDigest"].
+    """
+    from vaibify.gui.routes.reproducibilityRoutes import _fnRecordOutcome
+
+    sShadowDigest = "sha256:" + "e" * 64
+    sSnapshotDigest = "sha256:" + "f" * 64
+    dictResult = {
+        "bPassed": True,
+        "bRerunAttempted": True,
+        "iOutputHashesMatched": 1,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": [],
+        "sManifestDigest": sShadowDigest,
+        "sImageDigest": "img@sha256:" + "a" * 64,
+        "sRunLogPath": "",
+    }
+    _fnRecordOutcome(
+        "teardown_cid", str(tmp_path), sSnapshotDigest, dictResult,
+        9.0, None,
+    )
+    dictAttestation = json.loads(
+        (tmp_path / ".vaibify" / "l3_attestation.json").read_text()
+    )
+    assert dictAttestation["sManifestDigestAtAttestation"] == sShadowDigest

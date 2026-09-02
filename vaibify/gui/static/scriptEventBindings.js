@@ -394,6 +394,26 @@ var VaibifyEventBindings = (function () {
             elMatch.dataset.service || "", elMatch);
     }
 
+    function _fnHandleViewAttestation(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyApp.fnShowL3AttestationModal();
+    }
+
+    function _fnHandlePushEnvelope(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        var listPaths = [];
+        try {
+            listPaths = JSON.parse(
+                decodeURIComponent(elMatch.dataset.paths || ""));
+        } catch (error) {
+            listPaths = [];
+        }
+        VaibifySyncManager.fnPushEnvelopeFromDashboard(
+            listPaths, elMatch);
+    }
+
     function _fnHandleStepLevelInfo(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -511,6 +531,8 @@ var VaibifyEventBindings = (function () {
         ".wf-personal-layer-set": _fnHandlePersonalLayerSet,
         ".wf-personal-layer-add": _fnHandlePersonalLayerAdd,
         ".wf-open-prompt-record": _fnHandleOpenPromptRecord,
+        ".wf-push-envelope": _fnHandlePushEnvelope,
+        ".wf-view-attestation": _fnHandleViewAttestation,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,

@@ -257,6 +257,23 @@ class HostConnection:
             for sPath in listPaths
         ]
 
+    def fdictHashContainerRepoPaths(
+        self, sContainerId, sRootPath, listRelPaths,
+    ):
+        """Hash repo-relative host files with the shared entry shape.
+
+        The host twin of the container leg's typed read, answering the
+        one contract both legs serve. It delegates to the host repo
+        adapter, whose symlink-segment and realpath-containment
+        enforcement is the same rule the container program applies —
+        after this leg's own path guard has vetted the root.
+        """
+        from vaibify.reproducibility.repoFiles import HostRepoFiles
+        sRootReal = self._fsValidateHostPath(sContainerId, sRootPath)
+        return HostRepoFiles(sRootReal).fdictHashFiles(
+            list(listRelPaths),
+        )
+
     def fdictStatPathMtimes(self, sContainerId, listPaths):
         """Return ``{sPath: sMtime}`` for the host paths that exist.
 

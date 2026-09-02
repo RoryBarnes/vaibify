@@ -105,7 +105,55 @@ def _fdictVerifyWithoutWriting(dictWorkflow, filesRepo, sService):
             "sError": "",
         }
     except Exception as errorAny:  # noqa: BLE001 — carried, not raised
-        return {"dictStatus": None, "sError": str(errorAny)}
+        return {
+            "dictStatus": None,
+            "sError": _fsDescribeCheckFailure(errorAny),
+        }
+
+
+def _fsDescribeCheckFailure(errorCheck):
+    """Return the researcher-facing reason a remote check failed.
+
+    Raw exception text reached the screen here once, carrying a Docker
+    container id and the mutation gate's design-document citation — an
+    internal refusal a researcher was never meant to diagnose
+    (reported 2026-09-02). A control-plane refusal at this distance is
+    a vaibify defect and is named as one; every other error keeps its
+    message, because for a network check the message is usually the
+    actionable part ("Name or service not known").
+    """
+    from ...config.mutationAdmission import ControlPlaneRefusalError
+    if isinstance(errorCheck, ControlPlaneRefusalError):
+        return (
+            "vaibify refused its own container read while comparing — "
+            "a defect in vaibify, not in your project or the remote; "
+            "the hub log has the details"
+        )
+    return str(errorCheck)
+
+
+async def _fdictCompareOutsideTheLane(
+    dictWorkflow, filesRepo, sService,
+):
+    """Run the compare on a thread with NO inherited request context.
+
+    ``asyncio.to_thread`` copies contextvars, so a worker spawned from
+    a request task inherits the route class's enforced-lane flag — and
+    the compare's container hashing then meets the mutation gate with
+    no admission and is refused, wholesale. The scheduled loop runs
+    THIS SAME compare from a plain thread, where the gate's documented
+    remainder ("background threads") applies; ``run_in_executor``
+    copies nothing, which makes the two lanes genuinely the same lane.
+    The compare writes nothing — the write half runs separately under
+    its own mode-(b) carrier — so no admission is being dodged here,
+    only an accidentally-inherited flag whose refusals were reaching
+    the researcher as the reason both remotes "could not check"
+    (reported 2026-09-02).
+    """
+    return await asyncio.get_running_loop().run_in_executor(
+        None, _fdictVerifyWithoutWriting, dictWorkflow, filesRepo,
+        sService,
+    )
 
 
 async def _fnWriteOneStatusUnderACarrier(
@@ -142,8 +190,8 @@ async def _fnCheckOneRemote(
 ):
     """Compare one remote off-carrier, then write its result on one."""
     sContainerId = dictCarrier["sContainerId"]
-    dictOutcome = await asyncio.to_thread(
-        _fdictVerifyWithoutWriting, dictWorkflow, filesRepo, sService,
+    dictOutcome = await _fdictCompareOutsideTheLane(
+        dictWorkflow, filesRepo, sService,
     )
     if dictOutcome["dictStatus"] is None:
         remoteCheckState.fnMarkUncheckable(
@@ -187,7 +235,8 @@ async def _fnRunRefreshWorker(
                 "Remote refresh of %s failed: %s", sService, errorCheck,
             )
             remoteCheckState.fnMarkUncheckable(
-                sContainerId, sService, str(errorCheck),
+                sContainerId, sService,
+                _fsDescribeCheckFailure(errorCheck),
             )
     _fnBumpSoTheBadgesRepaint(dictCtx, sContainerId)
 

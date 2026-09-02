@@ -25,6 +25,7 @@ The generated header says so in the file itself, so the statement
 travels with the artifact rather than living only here.
 """
 
+import hashlib
 import re
 
 from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
@@ -33,8 +34,12 @@ from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
 __all__ = [
     "S_GENERATED_MARKER",
     "S_BASE_STAGE_NAME",
+    "S_RECIPE_HEADER_PREFIX",
+    "S_RECIPE_IMAGE_LABEL",
     "fsComposeImageDockerfile",
     "fbTextWasGeneratedByVaibify",
+    "fsComputeRecipeFingerprint",
+    "fsExtractRecipeFingerprint",
     "fsStageNameForOverlay",
 ]
 
@@ -46,6 +51,21 @@ __all__ = [
 S_GENERATED_MARKER = "# vaibify:generated-image-dockerfile"
 
 S_BASE_STAGE_NAME = "vaibifybase"
+
+# The recipe fingerprint ties the exported Dockerfile to the IMAGE it
+# claims to describe, with build-time evidence on both ends: the
+# builder computes it over the exact base + overlay texts it is about
+# to build with and stamps it onto the image as this label; the export
+# computes it over the texts it composed from and writes it into the
+# generated header. Equal fingerprints mean the repo Dockerfile
+# describes the pinned image's actual recipe; unequal means the image
+# was rebuilt from different inputs (an overlay change, a vaibify
+# upgrade) after the Dockerfile was exported. Recompose-and-compare
+# could not make this distinction: it reports the Dockerfile stale
+# whenever the INSTALLED vaibify's packaged texts changed, even though
+# the file still describes the pinned image perfectly.
+S_RECIPE_IMAGE_LABEL = "vaibify-recipe-sha256"
+S_RECIPE_HEADER_PREFIX = "# vaibify:recipe-sha256="
 
 # Docker compares stage names case-insensitively and accepts
 # [a-zA-Z0-9][a-zA-Z0-9_.-]*; overlay names like "nestedSampling"
@@ -75,7 +95,41 @@ def fbTextWasGeneratedByVaibify(sText):
     return S_GENERATED_MARKER in (sText or "")
 
 
-def fsComposeImageDockerfile(sBaseText, listTOverlays, sImageDigest=""):
+def fsComputeRecipeFingerprint(sBaseText, listTOverlays):
+    """Return the SHA-256 over the exact build-chain inputs, in order.
+
+    Both the builder and the exporter call this over the same
+    ``(sBaseText, [(sOverlayName, sText), ...])`` shape, which is what
+    makes label-equals-header a proof rather than a coincidence. The
+    name separators keep the digest injective over the pair list — two
+    different overlay splits of the same concatenated bytes must not
+    collide. Build ARGUMENT values are deliberately outside it: the
+    exported Dockerfile does not capture them either, so including
+    them here would fail files that agree with everything the file
+    says.
+    """
+    listParts = [(sBaseText or "").encode("utf-8")]
+    for sOverlayName, sOverlayText in listTOverlays or []:
+        listParts.append(b"\x00" + str(sOverlayName).encode("utf-8"))
+        listParts.append(b"\x00" + (sOverlayText or "").encode("utf-8"))
+    return hashlib.sha256(b"".join(listParts)).hexdigest()
+
+
+def fsExtractRecipeFingerprint(sText):
+    """Return the recipe fingerprint a generated header carries, or ''.
+
+    Empty for a file exported before the fingerprint existed — the
+    checker reads that as "nothing determined", never as a mismatch.
+    """
+    for sLine in (sText or "").splitlines():
+        if sLine.startswith(S_RECIPE_HEADER_PREFIX):
+            return sLine[len(S_RECIPE_HEADER_PREFIX):].strip()
+    return ""
+
+
+def fsComposeImageDockerfile(
+    sBaseText, listTOverlays, sImageDigest="", sRecipeFingerprint="",
+):
     """Return the chain as one multi-stage Dockerfile.
 
     ``listTOverlays`` is an ordered list of ``(sOverlayName, sText)``
@@ -83,7 +137,9 @@ def fsComposeImageDockerfile(sBaseText, listTOverlays, sImageDigest=""):
     IS the semantics, because each overlay builds on the previous
     image.
     """
-    listParts = [_fsRenderHeader(listTOverlays, sImageDigest)]
+    listParts = [
+        _fsRenderHeader(listTOverlays, sImageDigest, sRecipeFingerprint),
+    ]
     listParts.append(_fsNameBaseStage(sBaseText))
     sPreviousStage = S_BASE_STAGE_NAME
     for sOverlayName, sOverlayText in listTOverlays:
@@ -152,7 +208,7 @@ def _fsStripComment(sLine):
     return sLine if iHash < 0 else sLine[:iHash]
 
 
-def _fsRenderHeader(listTOverlays, sImageDigest):
+def _fsRenderHeader(listTOverlays, sImageDigest, sRecipeFingerprint=""):
     """Return the provenance header stamped into the generated file."""
     sOverlays = ", ".join(
         sName for sName, _ in listTOverlays
@@ -180,5 +236,9 @@ def _fsRenderHeader(listTOverlays, sImageDigest):
     ]
     if sImageDigest:
         listLines.extend(["#", f"# image digest: {sImageDigest}"])
+    if sRecipeFingerprint:
+        # Machine-read by the provenance check against the image's
+        # S_RECIPE_IMAGE_LABEL; see fsComputeRecipeFingerprint.
+        listLines.append(S_RECIPE_HEADER_PREFIX + sRecipeFingerprint)
     listLines.append("")
     return "\n".join(listLines)

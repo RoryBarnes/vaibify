@@ -222,7 +222,12 @@ I_UNCLASSIFIED_ROW_BUDGET = 284
 # to sit under the project's registered directory before the worker
 # opens, and the destination is composed, never accepted. Classified
 # on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 211
+# +1 (2026-09-01): the shadow lane's lock-satisfaction check (ruling
+# B). One pip-enumeration exec against the SHADOW container, a fixed
+# module constant with no caller text, running strictly inside the
+# disposable admission opened one frame up -- the carrier authority
+# for containers vaibify creates and destroys. Classified on arrival.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed

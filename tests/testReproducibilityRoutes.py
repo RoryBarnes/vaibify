@@ -102,14 +102,14 @@ def fixtureWorkflow(fixtureProjectRepo):
     return _fdictBuildWorkflow(fixtureProjectRepo)
 
 
-@pytest.fixture
-def fixtureClient(fixtureWorkflow):
+def _fclientBuildTestClient(dictWorkflow, connectionDocker=None):
+    """Build the test app around one workflow; return its client."""
     app = FastAPI()
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []
-    dictWorkflows = {S_CONTAINER_ID: fixtureWorkflow}
+    dictWorkflows = {S_CONTAINER_ID: dictWorkflow}
     sWorkflowPath = (
-        fixtureWorkflow["sProjectRepoPath"]
+        dictWorkflow["sProjectRepoPath"]
         + "/.vaibify/workflows/project.json"
     )
 
@@ -117,7 +117,7 @@ def fixtureClient(fixtureWorkflow):
         pass
 
     dictCtx = {
-        "docker": None,
+        "docker": connectionDocker,
         "workflows": dictWorkflows,
         "paths": {S_CONTAINER_ID: sWorkflowPath},
         "pipelineTasks": {},
@@ -127,10 +127,15 @@ def fixtureClient(fixtureWorkflow):
         "require": lambda *aArgs: None,
         "save": _fnSave,
         "variables": lambda sId: {},
-        "workflowDir": lambda sId: fixtureWorkflow["sProjectRepoPath"],
+        "workflowDir": lambda sId: dictWorkflow["sProjectRepoPath"],
     }
     fnRegisterAll(app, dictCtx)
     return TestClient(app)
+
+
+@pytest.fixture
+def fixtureClient(fixtureWorkflow):
+    return _fclientBuildTestClient(fixtureWorkflow)
 
 
 def _fnSeedReadyL3Repo(sProjectRepo):
@@ -326,6 +331,75 @@ def test_l3_verify_without_readiness_returns_409(
         "the refusal names no specific readiness gap, so the "
         f"researcher must go hunting for it: {sDetail!r}"
     )
+
+
+@pytest.mark.falsification
+def test_the_stale_image_refusal_survives_a_docker_id_path_parameter(
+    fixtureWorkflow, fixtureCarrierStoodDown, monkeypatch,
+):
+    """The package check must fire when the route is addressed by ID.
+
+    The dashboard addresses this route by DOCKER CONTAINER ID (the
+    tile's ``data-container-id``), while the registry that maps a
+    project to its ``vaibify.yml`` is keyed by project NAME. Fed the
+    raw path parameter, the lookup finds nothing, answers
+    ``bChecked: False``, and the stale-image refusal is silently
+    disabled for every real dashboard request — which is how it
+    shipped (found by external review, 2026-09-01). The two identities
+    are kept distinct here for the same reason the owner-map lesson
+    demands it: with name == id the defect is invisible.
+
+    Kills: In fdictL3Verify, assign sContainerName = sContainerId
+    instead of resolving it through fsContainerNameForId, so the
+    registry lookup misses and the declaration comparison is disabled.
+    """
+    from types import SimpleNamespace
+
+    sProjectName = "distinct-project-name"
+    assert sProjectName != S_CONTAINER_ID
+    sRepo = fixtureWorkflow["sProjectRepoPath"]
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    with open(
+        os.path.join(sRepo, ".vaibify", "requirements.txt"), "w",
+    ) as fileMirror:
+        fileMirror.write("numpy\n")
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.fdictLoadRegistry",
+        lambda: {"listProjects": [{
+            "sName": sProjectName,
+            "sContainerName": sProjectName,
+            "sMode": "container",
+            "sConfigPath": "/nonexistent/vaibify.yml",
+        }]},
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        lambda sPath: SimpleNamespace(
+            listPythonPackages=["numpy", "pytest"],
+        ),
+    )
+
+    class _FakeDaemon:
+        def flistGetRunningContainers(self):
+            return [{"sContainerId": S_CONTAINER_ID,
+                     "sName": sProjectName}]
+
+    clientTest = _fclientBuildTestClient(fixtureWorkflow, _FakeDaemon())
+    response = clientTest.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
+    )
+    assert response.status_code == 409
+    sDetail = response.json()["detail"]
+    assert "missing from the image" in sDetail, (
+        "the declaration mismatch did not refuse, so the lookup never "
+        f"found the project: {sDetail!r}"
+    )
+    assert "pytest" in sDetail
+    # The remedy is direction-specific: a declared-but-missing package
+    # is fixed by a rebuild. The other direction says the opposite, so
+    # a shared remedy sentence would send one researcher in circles —
+    # which it did (2026-09-01).
+    assert "rebuild the image" in sDetail
 
 
 def test_l3_verify_returns_202_with_handle_when_ready(
@@ -966,3 +1040,215 @@ def test_regenerate_envelope_runs_and_returns_readiness(
     assert response.status_code == 200
     assert "dictL3ReadinessGaps" in response.json()
     mockGenerate.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# The unsettled-teardown record
+# ---------------------------------------------------------------------------
+
+
+def test_a_quarantined_teardown_is_recorded_and_shipped(
+    fixtureProjectRepo,
+):
+    """A shadow not proven destroyed must reach the PROOF tab.
+
+    The teardown fields ride the outcome dict, the attestation writer
+    ignores them, and the verify task self-evicts on completion — so
+    without a standing record the quarantine was absorbed into a
+    passed attestation's response and shown nowhere, while a container
+    possibly still ran on the researcher's daemon (external review,
+    2026-09-01).
+    """
+    from vaibify.gui import verificationProgress
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fnRecordTeardownOutcome,
+    )
+
+    verificationProgress.DICT_UNSETTLED_TEARDOWN.clear()
+    _fnRecordTeardownOutcome("teardown_cid", {
+        "sShadowTeardown": "quarantined",
+        "sShadowTeardownReason": "the absence probe answered present",
+    })
+    dictResponse = _fdictBuildAttestationResponse(
+        "teardown_cid", fixtureProjectRepo,
+    )
+    assert dictResponse["dictUnsettledTeardown"] == {
+        "sOutcome": "quarantined",
+        "sReason": "the absence probe answered present",
+    }
+
+
+def test_a_clean_teardown_clears_the_standing_record(fixtureProjectRepo):
+    """The warning is about the daemon NOW, not about history."""
+    from vaibify.gui import verificationProgress
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fnRecordTeardownOutcome,
+    )
+
+    verificationProgress.DICT_UNSETTLED_TEARDOWN.clear()
+    _fnRecordTeardownOutcome("teardown_cid", {
+        "sShadowTeardown": "quarantined",
+        "sShadowTeardownReason": "removal raised",
+    })
+    _fnRecordTeardownOutcome("teardown_cid", {
+        "sShadowTeardown": "destroyed",
+    })
+    dictResponse = _fdictBuildAttestationResponse(
+        "teardown_cid", fixtureProjectRepo,
+    )
+    assert dictResponse["dictUnsettledTeardown"] is None
+
+
+def test_a_refusal_before_any_shadow_leaves_the_record_alone(
+    fixtureProjectRepo,
+):
+    """A rerun that built nothing learned nothing about the daemon."""
+    from vaibify.gui import verificationProgress
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fnRecordTeardownOutcome,
+    )
+
+    verificationProgress.DICT_UNSETTLED_TEARDOWN.clear()
+    _fnRecordTeardownOutcome("teardown_cid", {
+        "sShadowTeardown": "quarantined",
+        "sShadowTeardownReason": "removal raised",
+    })
+    _fnRecordTeardownOutcome("teardown_cid", {
+        "bRerunAttempted": False,
+    })
+    dictResponse = _fdictBuildAttestationResponse(
+        "teardown_cid", fixtureProjectRepo,
+    )
+    assert dictResponse["dictUnsettledTeardown"] is not None
+
+
+def test_an_undeclared_package_is_not_answered_with_rebuild_alone():
+    """Each mismatch direction must carry ITS OWN remedy.
+
+    A package in the image but absent from vaibify.yml cannot be fixed
+    by rebuilding — the rebuild reads the same declaration and produces
+    the same mismatch. The first version of this refusal said "rebuild
+    the image, then try again" for both directions; a researcher
+    rebuilt, changed nothing, and asked whether to rebuild again
+    (2026-09-01).
+    """
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fsDescribePackageMismatch,
+    )
+
+    sDetail = _fsDescribePackageMismatch({
+        "bChecked": True,
+        "bMatches": False,
+        "listMissingFromImage": [],
+        "listExtraInImage": ["pytest"],
+    })
+    assert "pytest" in sDetail
+    assert "pythonPackages" in sDetail
+    assert "Rebuilding alone cannot fix this direction" in sDetail
+    assert "missing from the image" not in sDetail, (
+        "the refusal names a direction with nothing in it"
+    )
+
+
+def test_readiness_resolves_the_docker_id_before_the_package_lookup(
+    fixtureWorkflow, monkeypatch,
+):
+    """The readiness payload's package flag must survive an ID path.
+
+    Same defect class as the verify route's, on its sibling: the
+    pre-flight modal reads bImageMatchesDeclaredPackages from this
+    payload, and a lookup fed the raw Docker ID answers bChecked
+    False — flag True — so the modal shows nothing and the researcher
+    meets the mismatch as a bare failure toast after the POST.
+    """
+    from types import SimpleNamespace
+
+    sProjectName = "distinct-project-name"
+    sRepo = fixtureWorkflow["sProjectRepoPath"]
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    with open(
+        os.path.join(sRepo, ".vaibify", "requirements.txt"), "w",
+    ) as fileMirror:
+        fileMirror.write("numpy\n")
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.fdictLoadRegistry",
+        lambda: {"listProjects": [{
+            "sName": sProjectName,
+            "sContainerName": sProjectName,
+            "sMode": "container",
+            "sConfigPath": "/nonexistent/vaibify.yml",
+        }]},
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        lambda sPath: SimpleNamespace(
+            listPythonPackages=["numpy", "pytest"],
+        ),
+    )
+
+    class _FakeDaemon:
+        def flistGetRunningContainers(self):
+            return [{"sContainerId": S_CONTAINER_ID,
+                     "sName": sProjectName}]
+
+    clientTest = _fclientBuildTestClient(fixtureWorkflow, _FakeDaemon())
+    dictBody = clientTest.get(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
+    ).json()
+    assert dictBody["dictL3ReadinessGaps"][
+        "bImageMatchesDeclaredPackages"] is False
+    assert "dictImageCurrency" in dictBody
+
+
+def test_one_refusal_names_every_unmet_precondition(
+    fixtureWorkflow, fixtureCarrierStoodDown, monkeypatch,
+):
+    """A researcher with two problems must not be told them one POST
+    at a time.
+
+    Both refusal classes are staged here — a package mismatch AND an
+    unready envelope — and the single 409 must name both, because the
+    old ordering refused on the package first, was fixed, and then
+    refused again on readiness (researcher-requested, 2026-09-01).
+    """
+    from types import SimpleNamespace
+
+    sProjectName = "distinct-project-name"
+    sRepo = fixtureWorkflow["sProjectRepoPath"]
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    with open(
+        os.path.join(sRepo, ".vaibify", "requirements.txt"), "w",
+    ) as fileMirror:
+        fileMirror.write("numpy\n")
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.fdictLoadRegistry",
+        lambda: {"listProjects": [{
+            "sName": sProjectName,
+            "sContainerName": sProjectName,
+            "sMode": "container",
+            "sConfigPath": "/nonexistent/vaibify.yml",
+        }]},
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        lambda sPath: SimpleNamespace(
+            listPythonPackages=["numpy", "pytest"],
+        ),
+    )
+
+    class _FakeDaemon:
+        def flistGetRunningContainers(self):
+            return [{"sContainerId": S_CONTAINER_ID,
+                     "sName": sProjectName}]
+
+    clientTest = _fclientBuildTestClient(fixtureWorkflow, _FakeDaemon())
+    response = clientTest.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
+    )
+    assert response.status_code == 409
+    sDetail = response.json()["detail"]
+    assert "pytest" in sDetail, "the package mismatch is missing"
+    assert "manifest" in sDetail.lower(), (
+        "the readiness gaps are missing — the refusal reverted to "
+        "one problem per POST"
+    )

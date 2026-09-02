@@ -55,7 +55,13 @@ researcher concludes their workflow is non-deterministic. A named
 refusal is the whole point.
 """
 
+import contextlib
+import fcntl
+import hashlib
+import logging
+import os
 import posixpath
+import re
 
 from vaibify.docker import coherentExport
 from vaibify.docker import daemonCapacity
@@ -66,6 +72,9 @@ from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+
+
+logger = logging.getLogger(__name__)
 
 
 __all__ = [
@@ -109,6 +118,14 @@ def fsResolvePinnedImageReference(dictEnvironmentPayload):
     is refused rather than falling back to the live container's image --
     the fallback is precisely the substitution this module exists to
     remove.
+
+    The SHAPE is checked, not just presence, because a payload whose
+    digest field holds a tag (``some-image:latest``) satisfies a
+    non-empty check and reintroduces the substitution under the pinned
+    field's own name. The two accepted forms are the two the capture
+    writes: a registry digest (``repo@sha256:<hex>``) or, for a locally
+    built image with no registry record, the image ID itself
+    (``sha256:<hex>``) -- itself a content digest.
     """
     sDigest = _fsExtractImageDigest(dictEnvironmentPayload or {})
     if not sDigest:
@@ -117,7 +134,23 @@ def fsResolvePinnedImageReference(dictEnvironmentPayload):
             "shadow container can be built from it. Regenerate the "
             "environment snapshot before attesting at tier 5."
         )
+    if not _fbReferenceIsContentPinned(sDigest):
+        raise ShadowRerunRefusedError(
+            f"environment.json records {sDigest!r} as the container "
+            "image, which is a tag, not a content digest. A tag can be "
+            "repointed without anything changing, so a shadow built "
+            "from it would attest an environment nobody pinned. "
+            "Regenerate the environment snapshot before attesting at "
+            "tier 5."
+        )
     return sDigest
+
+
+def _fbReferenceIsContentPinned(sReference):
+    """Return True when the reference names content, not a movable tag."""
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", sReference):
+        return True
+    return bool(re.search(r"@sha256:[0-9a-f]{64}$", sReference))
 
 
 def ftResolveShadowPaths(sProjectRepoPath, sWorkflowPath):
@@ -193,11 +226,18 @@ def fdictRerunInShadowContainer(
             dictCapacity["iArchiveTotalBytes"],
         )
     )
-    return _fdictDriveShadowLifecycle(
+    dictOutcome = _fdictDriveShadowLifecycle(
         connectionDocker, dictWorkflow, sImageReference, tShadowPaths,
         baRepositoryArchive, dictCapacity, sResourceName,
         fnStatusCallback, fdictRunAndVerify,
     )
+    # The attestation must name the image the shadow was BUILT from,
+    # so the pin travels with the outcome. Re-reading it at write time
+    # names whatever environment.json says THEN -- the CLI lane read a
+    # different file entirely (the host --repo clone's) and recorded
+    # its digest over the one the rerun executed under.
+    dictOutcome["sImageDigest"] = sImageReference
+    return dictOutcome
 
 
 def _fdictDriveShadowLifecycle(
@@ -216,23 +256,36 @@ def _fdictDriveShadowLifecycle(
         disposableContainer.fdockerCreateDisposableClient())
     dictGateway = disposableContainer.fdictCreateDisposableGateway(
         dockerDisposable, sResourceName)
-    _fnSweepShadowsLeftByACrash(dockerDisposable, sResourceName)
-    dictCreated = disposableContainer.fdictReserveAndCreateContainer(
-        dictGateway, S_SHADOW_ROLE, sImageReference,
-        disposableSpecification.fdictBuildDefaultLimits(dictCapacity),
-    )
-    try:
-        disposableContainer.fnCopyArchiveIntoContainer(
-            dictGateway, dictCreated["sHandle"], baRepositoryArchive,
-            sDestinationDirectory="/", sPathPrefix=tShadowPaths[0],
+    with _fcontextHoldShadowLaneLock(sResourceName):
+        _fnSweepShadowsLeftByACrash(dockerDisposable, sResourceName)
+        dictCreated = disposableContainer.fdictReserveAndCreateContainer(
+            dictGateway, S_SHADOW_ROLE, sImageReference,
+            disposableSpecification.fdictBuildDefaultLimits(dictCapacity),
         )
-        dictOutcome = _fdictCompareUnderTheShadowsOwnAdmission(
-            connectionDocker, dictCreated, tShadowPaths, dictWorkflow,
-            fnStatusCallback, fdictRunAndVerify,
-        )
-    finally:
-        dictTeardown = _fdictTearDownShadow(
-            dictGateway, dictCreated["sHandle"])
+        try:
+            disposableContainer.fnCopyArchiveIntoContainer(
+                dictGateway, dictCreated["sHandle"], baRepositoryArchive,
+                sDestinationDirectory="/", sPathPrefix=tShadowPaths[0],
+            )
+            dictOutcome = _fdictCompareUnderTheShadowsOwnAdmission(
+                connectionDocker, dictCreated, tShadowPaths, dictWorkflow,
+                fnStatusCallback, fdictRunAndVerify,
+            )
+        finally:
+            dictTeardown = _fdictTearDownShadow(
+                dictGateway, dictCreated["sHandle"])
+            if dictTeardown["sOutcome"] != (
+                    disposableSpecification.S_OUTCOME_DESTROYED):
+                # Logged INSIDE the finally, because on the exception
+                # path the outcome dict below is never built: the
+                # comparison's error propagates and the teardown record
+                # would otherwise vanish with it -- leaving a container
+                # that may still be running with no evidence anywhere
+                # that it exists.
+                logger.error(
+                    "Shadow container teardown not proven: %s (%s)",
+                    dictTeardown["sOutcome"], dictTeardown["sReason"],
+                )
     _fnExplainAMissingCommandAsAnImageGap(dictOutcome)
     dictOutcome["bShadowContainerUsed"] = True
     dictOutcome["sShadowTeardown"] = dictTeardown["sOutcome"]
@@ -350,9 +403,10 @@ def _fnExplainAMissingCommandAsAnImageGap(dictOutcome):
     already in ``requirements.lock`` -- the pinned image was simply
     two days older than the declaration -- so "add it to your
     dependencies" would have sent the researcher to edit a file that
-    was already correct. Vaibify does not currently check that a
-    pinned image satisfies its own lock, which is the gap underneath
-    all of this.
+    was already correct. Since the 2026-09-01 ruling the
+    lock-satisfaction gate refuses that shape before any step runs,
+    so this note now covers what remains: a tool a step invokes
+    without it being locked at all.
 
     The note is attached rather than substituted: the original errors
     still name the steps, and a researcher who disagrees with the
@@ -410,6 +464,12 @@ def _fdictCompareUnderTheShadowsOwnAdmission(
     tTokens = ftOpenDisposableContainerAdmission(
         dictCreated["sContainerName"], dictCreated["sContainerName"])
     try:
+        dictLockRefusal = _fdictRefusalIfImageLacksLockedPackages(
+            connectionDocker, dictCreated["sContainerName"],
+            tShadowPaths[1],
+        )
+        if dictLockRefusal is not None:
+            return dictLockRefusal
         return fdictRunAndVerify(
             connectionDocker, dictCreated["sContainerName"], dictWorkflow,
             tShadowPaths[2],
@@ -420,6 +480,153 @@ def _fdictCompareUnderTheShadowsOwnAdmission(
         )
     finally:
         fnCloseRequestAdmission(tTokens)
+
+
+@contextlib.contextmanager
+def _fcontextHoldShadowLaneLock(sResourceName):
+    """Hold the per-project shadow-lane flock for one whole lifecycle.
+
+    The crash-sweep destroys every surviving shadow stamped with this
+    project's resource name, and it cannot tell an orphan from a shadow
+    another rerun is USING right now -- a second concurrent CLI rerun
+    of the same project would therefore destroy the first's live
+    container mid-comparison. The flock is the liveness signal the
+    stamp lacks: held for sweep, create, compare and teardown, released
+    by the OS the instant the holding process dies. So a crashed run's
+    orphan is sweepable immediately, and a live run's shadow is
+    protected for exactly as long as the run lives, with no timestamp
+    heuristics anywhere.
+
+    A second acquisition REFUSES rather than waits, because the holder
+    is a workflow rerun of unknown length and a queued rerun would grade
+    a repository the first rerun is still writing its verdict about.
+    The name is hashed into the lock filename, because one lane holds a
+    Docker id and the other a container name and neither is a
+    filesystem-safe string this module should be validating.
+    """
+    if not sResourceName:
+        yield
+        return
+    from vaibify.config.pidFileRegistry import (
+        ffileOpenNoFollow,
+        fnEnsureDirectory,
+    )
+    sLockDirectory = os.path.expanduser("~/.vaibify/locks")
+    fnEnsureDirectory(sLockDirectory)
+    sDigest = hashlib.sha256(sResourceName.encode()).hexdigest()[:16]
+    fileHandleLock = ffileOpenNoFollow(
+        os.path.join(sLockDirectory, f"shadow-{sDigest}.lock"))
+    try:
+        try:
+            fcntl.flock(fileHandleLock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise ShadowRerunRefusedError(
+                "Another shadow rerun for this project is live on this "
+                "machine. Two reruns of one repository would sweep each "
+                "other's containers; wait for the running one to finish."
+            )
+        yield
+    finally:
+        fileHandleLock.close()
+
+
+# The command the lock-satisfaction check runs inside the shadow. Its
+# output shares the ``name==version`` grammar with the lock, which is
+# what lets one parser read both sides of the comparison.
+S_SHADOW_PIP_ENUMERATE_COMMAND = (
+    "python3 -m pip list --format=freeze --disable-pip-version-check"
+)
+
+
+def _fdictRefusalIfImageLacksLockedPackages(
+    connectionDocker, sShadowContainerName, sShadowRepoPath,
+):
+    """Refuse the rerun when the pinned image cannot honour its lock.
+
+    The 2026-09-01 ruling (option B): the shadow stays HERMETIC — no
+    network, no install — and this check is what reconciles that with
+    ``reproduce.sh``, whose published procedure runs ``pip install
+    --require-hashes -r requirements.lock`` before the workflow. When
+    the image already satisfies the lock, that install is a no-op and
+    the two procedures converge; when it does not, a hermetic rerun
+    would exercise an environment NEITHER procedure describes, and
+    every failure it produced would arrive as a baffling mid-workflow
+    step error (the shape of the pytest saga this whole area grew out
+    of). So the divergence is refused in seconds, by name, before any
+    step runs.
+
+    Returns ``None`` to proceed, or a no-verdict refusal outcome
+    (``bRerunAttempted`` False — nothing was compared, so nothing may
+    be attested). A repository with no lock proceeds: lock PRESENCE is
+    owned by the readiness gate and the CLI's lock tier, and a second
+    refusal here would just repeat theirs. An image whose packages
+    cannot be enumerated refuses, fail-closed: satisfaction that
+    cannot be checked is not satisfaction.
+    """
+    from vaibify.reproducibility.declaredPackages import (
+        fdictParsePinnedVersions,
+    )
+    from vaibify.reproducibility.rerunVerification import (
+        fdictUnrunOutcome,
+    )
+    filesShadow = ContainerRepoFiles(
+        connectionDocker, sShadowContainerName, sShadowRepoPath,
+    )
+    try:
+        if not filesShadow.fbIsFile("requirements.lock"):
+            return None
+        dictLocked = fdictParsePinnedVersions(
+            filesShadow.fsReadText("requirements.lock"),
+        )
+    except (OSError, ValueError) as errorRead:
+        return fdictUnrunOutcome(
+            "the shadow's requirements.lock could not be read: "
+            f"{errorRead}"
+        )
+    if not dictLocked:
+        return None
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
+        sShadowContainerName, S_SHADOW_PIP_ENUMERATE_COMMAND,
+    )
+    if tExecResult.iExitCode != 0:
+        return fdictUnrunOutcome(
+            "the pinned image's installed packages could not be "
+            "enumerated (pip list exited "
+            f"{tExecResult.iExitCode}), so lock satisfaction cannot "
+            "be checked — and unverifiable is not satisfied"
+        )
+    return _fdictRefusalFromLockDiff(
+        dictLocked, fdictParsePinnedVersions(tExecResult.sStdout),
+    )
+
+
+def _fdictRefusalFromLockDiff(dictLocked, dictInstalled):
+    """Return the named refusal for a lock/image disagreement, or None."""
+    from vaibify.reproducibility.rerunVerification import (
+        S_DIVERGENCE_LOCK_UNSATISFIED,
+        fdictUnrunOutcome,
+    )
+    listMismatched = [
+        f"{sName}=={sVersion} (image has "
+        f"{dictInstalled.get(sName) or 'nothing'})"
+        for sName, sVersion in sorted(dictLocked.items())
+        if dictInstalled.get(sName) != sVersion
+    ]
+    if not listMismatched:
+        return None
+    dictOutcome = fdictUnrunOutcome(
+        S_DIVERGENCE_LOCK_UNSATISFIED
+        + " — reproduce.sh would install these before running, so a "
+        "hermetic rerun of this image would test an environment "
+        "neither procedure describes. Rebuild the image, regenerate "
+        "the environment snapshot, then verify again."
+    )
+    dictOutcome["listDivergedHashes"].extend(listMismatched[:15])
+    if len(listMismatched) > 15:
+        dictOutcome["listDivergedHashes"].append(
+            f"... and {len(listMismatched) - 15} more"
+        )
+    return dictOutcome
 
 
 def _fnSweepShadowsLeftByACrash(dockerDisposable, sResourceName):

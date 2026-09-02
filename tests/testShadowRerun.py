@@ -120,6 +120,31 @@ class _FakeConnection:
         })
         self.fnWriteDuringCopy = None
         self.dictArchiveOnlyContent = {}
+        # The lock-satisfaction gate reads the SHADOW's files and runs
+        # one pip enumeration inside it. Keyed by absolute container
+        # path; empty means "no lock in the shadow", which the gate
+        # deliberately skips (lock PRESENCE is the readiness gate's
+        # question). sPipFreezeOutput is the enumeration's stdout.
+        self.dictShadowFiles = {}
+        self.sPipFreezeOutput = ""
+        self.iPipExitCode = 0
+
+    def fbContainerPathIsFile(self, sContainerId, sAbsPath):
+        del sContainerId
+        return sAbsPath in self.dictShadowFiles
+
+    def fbaFetchFile(self, sContainerId, sAbsPath):
+        del sContainerId
+        return self.dictShadowFiles[sAbsPath]
+
+    def ftRunInContainerStreamed(self, sContainerId, sCommand,
+                                 sWorkdir=None, sUser=None):
+        del sContainerId, sCommand, sWorkdir, sUser
+        import types
+        return types.SimpleNamespace(
+            iExitCode=self.iPipExitCode,
+            sStdout=self.sPipFreezeOutput, sStderr="",
+        )
 
     def fbaFetchDirectoryArchive(self, sContainerId, sPath, iMaxBytes):
         self.listArchiveReads.append((sContainerId, sPath, iMaxBytes))
@@ -167,7 +192,7 @@ def _fbaBuildRepositoryArchive(sBasename, dictContent):
 
 
 @pytest.fixture
-def dictHarness(monkeypatch):
+def dictHarness(monkeypatch, tmp_path):
     """Wire the real gateway to a fake daemon and a fake repack.
 
     The repack is stubbed because it parses real tar bytes and this
@@ -175,10 +200,13 @@ def dictHarness(monkeypatch):
     correctness is asserted against a real daemon in
     ``testDisposableContainerLive.py``. Everything else — the gateway,
     the reservation ledger, the identity-verified destroy — is the real
-    code.
+    code. ``HOME`` is redirected because the lane holds a real flock
+    under ``~/.vaibify/locks`` for its whole lifecycle, and a test must
+    never contend with (or leave files in) the researcher's own home.
     """
     import io
 
+    monkeypatch.setenv("HOME", str(tmp_path))
     dictState = {
         "listCreated": [], "listCopies": [], "setRemoved": set(),
         "dictLabels": {}, "bRemovalFails": False,
@@ -585,3 +613,222 @@ def testAnUnobservableRepositoryIsRefusedRatherThanAssumedQuiet(
             fdictRunAndVerify=_fnRecordingComparison([]),
         )
     assert dictHarness["listCreated"] == []
+
+
+@pytest.mark.falsification
+def testTheOutcomeNamesTheImageTheShadowWasBuiltFrom(dictHarness):
+    """The attestation's image field must travel WITH the outcome.
+
+    Both writer lanes used to re-read a recorded digest at write time
+    — the CLI from the host ``--repo`` clone, a different file from
+    the one the shadow lane pinned — so the attestation could name an
+    image the rerun never executed under. The outcome carrying the pin
+    is what makes both lanes name the container they actually built.
+
+    Kills: In fdictRerunInShadowContainer, return the lifecycle's
+    outcome without stamping dictOutcome["sImageDigest"] =
+    sImageReference onto it.
+    """
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        _FakeConnection(), "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        fdictRunAndVerify=_fnRecordingComparison([]),
+    )
+    assert dictOutcome["sImageDigest"] == S_PINNED_IMAGE
+
+
+def testAFloatingTagInThePinnedFieldIsRefused(dictHarness):
+    """A tag in the digest field must refuse before any container exists.
+
+    ``fsResolvePinnedImageReference`` checks presence AND shape: a
+    payload whose digest field holds ``some-image:latest`` satisfies a
+    non-empty check, and a shadow built from it attests an environment
+    nobody pinned — a tag can be repointed without anything changing.
+    """
+    with pytest.raises(shadowRerun.ShadowRerunRefusedError) as infoRefusal:
+        shadowRerun.fdictRerunInShadowContainer(
+            _FakeConnection(), "liveContainer", _fdictWorkflow(),
+            S_LIVE_WORKFLOW, S_LIVE_REPO,
+            {"dictContainer": {"sImageDigest": "some-image:latest"}},
+            fdictRunAndVerify=_fnRecordingComparison([]),
+        )
+    assert "tag" in str(infoRefusal.value)
+    assert dictHarness["listCreated"] == [], (
+        "a container was built from a floating tag"
+    )
+
+
+def testALocalImageIdIsAcceptedAsAContentPin():
+    """A locally built image pins by its image ID — itself a digest."""
+    sImageId = "sha256:" + "9a" * 32
+    assert shadowRerun.fsResolvePinnedImageReference(
+        {"sImageDigest": sImageId},
+    ) == sImageId
+
+
+@pytest.mark.falsification
+def testASecondRerunOfTheSameProjectRefusesInsteadOfSweeping(
+    dictHarness,
+):
+    """The crash-sweep cannot tell an orphan from a LIVE rerun's shadow.
+
+    It destroys every survivor stamped with this project's name, so a
+    second concurrent rerun of the same project would sweep the first's
+    still-running container mid-comparison. The flock is the liveness
+    signal the stamp lacks: held for the whole lifecycle, released by
+    the OS if the holder dies. The nested attempt here runs INSIDE the
+    first rerun's comparison — the moment a real collision would occur
+    — and must refuse before its sweep destroys anything.
+
+    Kills: In _fcontextHoldShadowLaneLock, replace the empty-name guard
+    "if not sResourceName:" with "if True:", so the lock is never
+    taken, the nested rerun proceeds to its sweep, and the live shadow
+    is destroyed.
+    """
+    listRemovedAtRefusal = []
+
+    def fdictCompareThenCollide(connection, sContainerId, dictWorkflow,
+                                sWorkflowPath, filesRepo,
+                                fnStatusCallback=None):
+        del connection, dictWorkflow, sWorkflowPath, fnStatusCallback
+        del filesRepo
+        with pytest.raises(shadowRerun.ShadowRerunRefusedError):
+            shadowRerun.fdictRerunInShadowContainer(
+                _FakeConnection(), "liveContainer", _fdictWorkflow(),
+                S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+                sResourceName="liveContainer",
+                fdictRunAndVerify=_fnRecordingComparison([]),
+            )
+        listRemovedAtRefusal.append(set(dictHarness["setRemoved"]))
+        return {"bPassed": True, "iOutputHashesMatched": 1,
+                "iOutputHashesTotal": 1, "listDivergedHashes": []}
+
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        _FakeConnection(), "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        sResourceName="liveContainer",
+        fdictRunAndVerify=fdictCompareThenCollide,
+    )
+    assert listRemovedAtRefusal == [set()], (
+        "the nested rerun reached its sweep and destroyed the live "
+        "rerun's shadow before refusing"
+    )
+    assert dictOutcome["bPassed"] is True
+
+
+def testTheShadowLaneLockIsReleasedWhenTheRerunEnds(dictHarness):
+    """A finished rerun must not leave its project locked forever."""
+    for _ in range(2):
+        dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+            _FakeConnection(), "liveContainer", _fdictWorkflow(),
+            S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+            sResourceName="liveContainer",
+            fdictRunAndVerify=_fnRecordingComparison([]),
+        )
+        assert dictOutcome["bPassed"] is True
+
+
+def _fnStockShadowLock(connectionFake, sLockText, sPipOutput):
+    """Stock the fake shadow with a lock and a pip enumeration answer."""
+    connectionFake.dictShadowFiles[
+        "/shadow/liveRepo/requirements.lock"] = sLockText.encode()
+    connectionFake.sPipFreezeOutput = sPipOutput
+
+
+@pytest.mark.falsification
+def testAnImageThatCannotHonourItsLockIsRefusedBeforeAnyStepRuns(
+    dictHarness,
+):
+    """Ruling B (2026-09-01): hermetic shadow + lock-satisfaction gate.
+
+    reproduce.sh installs the lock before running; the shadow,
+    hermetic by design, does not. When the image already satisfies the
+    lock the two procedures converge and the rerun proceeds; when it
+    does not, a hermetic rerun would exercise an environment NEITHER
+    procedure describes — the pytest saga's exact shape, which cost
+    six diagnostic rounds arriving as a mid-workflow step failure.
+    The refusal must come in seconds, by name, with the comparison
+    never invoked and nothing attested.
+
+    Kills: In _fdictCompareUnderTheShadowsOwnAdmission, drop the
+    _fdictRefusalIfImageLacksLockedPackages call and proceed straight
+    to the comparison.
+    """
+    listCalls = []
+    connectionLive = _FakeConnection()
+    _fnStockShadowLock(
+        connectionLive,
+        "numpy==1.26.4 \\\n    --hash=sha256:" + "aa" * 32 + "\n"
+        "pytest==9.1.1 \\\n    --hash=sha256:" + "bb" * 32 + "\n",
+        "numpy==1.26.4\n",
+    )
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        connectionLive, "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        fdictRunAndVerify=_fnRecordingComparison(listCalls),
+    )
+    assert dictOutcome["bRerunAttempted"] is False
+    assert dictOutcome["bPassed"] is False
+    sReasons = "\n".join(dictOutcome["listDivergedHashes"])
+    assert "does not satisfy requirements.lock" in sReasons
+    assert "pytest==9.1.1 (image has nothing)" in sReasons
+    assert listCalls == [], (
+        "the comparison ran against an image the lock disqualifies"
+    )
+
+
+def testAnImageThatSatisfiesItsLockProceedsToTheComparison(dictHarness):
+    """Convergence: the install step would be a no-op, so run."""
+    listCalls = []
+    connectionLive = _FakeConnection()
+    _fnStockShadowLock(
+        connectionLive,
+        "numpy==1.26.4 \\\n    --hash=sha256:" + "aa" * 32 + "\n",
+        # pip spells the name differently; PyPA normalization must
+        # reconcile them, and extra installed packages are fine.
+        "NumPy==1.26.4\nsetuptools==70.0.0\n",
+    )
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        connectionLive, "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        fdictRunAndVerify=_fnRecordingComparison(listCalls),
+    )
+    assert len(listCalls) == 1
+    assert dictOutcome["bPassed"] is True
+
+
+def testAnUnenumerableImageRefusesRatherThanAssumingSatisfaction(
+    dictHarness,
+):
+    """Fail-closed: satisfaction that cannot be checked is not
+    satisfaction."""
+    connectionLive = _FakeConnection()
+    _fnStockShadowLock(
+        connectionLive,
+        "numpy==1.26.4 \\\n    --hash=sha256:" + "aa" * 32 + "\n",
+        "",
+    )
+    connectionLive.iPipExitCode = 127
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        connectionLive, "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        fdictRunAndVerify=_fnRecordingComparison([]),
+    )
+    assert dictOutcome["bRerunAttempted"] is False
+    assert "could not be enumerated" in "\n".join(
+        dictOutcome["listDivergedHashes"],
+    )
+
+
+def testALocklessShadowProceedsBecausePresenceIsAnotherGatesQuestion(
+    dictHarness,
+):
+    """No lock, no satisfaction question; readiness owns presence."""
+    listCalls = []
+    dictOutcome = shadowRerun.fdictRerunInShadowContainer(
+        _FakeConnection(), "liveContainer", _fdictWorkflow(),
+        S_LIVE_WORKFLOW, S_LIVE_REPO, _fdictEnvironment(),
+        fdictRunAndVerify=_fnRecordingComparison(listCalls),
+    )
+    assert len(listCalls) == 1
+    assert dictOutcome["bPassed"] is True

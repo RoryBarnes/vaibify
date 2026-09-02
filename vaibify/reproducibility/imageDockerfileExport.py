@@ -28,6 +28,7 @@ from vaibify import resources
 from vaibify.reproducibility.dockerfileComposer import (
     fbTextWasGeneratedByVaibify,
     fsComposeImageDockerfile,
+    fsComputeRecipeFingerprint,
 )
 from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -70,15 +71,27 @@ def _fsConfigPathForContainer(listProjects, sContainerName):
 
 
 def fsBuildImageDockerfileText(sContainerName, sImageDigest=""):
-    """Return the composed multi-stage Dockerfile for this container."""
+    """Return the composed multi-stage Dockerfile for this container.
+
+    The header carries the recipe fingerprint of the texts this
+    composition read, computed by the same function the image builder
+    stamps onto the image as a label — equal values later PROVE the
+    exported file describes the pinned image's actual build inputs.
+    """
     listOverlayNames = flistResolveOverlayNamesForContainer(
         sContainerName,
     )
     pathImageRoot = resources.fpathContainerImageRoot()
+    sBaseText = _fsReadPackagedDockerfile(
+        pathImageRoot, S_DOCKERFILE_FILENAME,
+    )
+    listTOverlays = _flistTReadOverlays(pathImageRoot, listOverlayNames)
     return fsComposeImageDockerfile(
-        _fsReadPackagedDockerfile(pathImageRoot, S_DOCKERFILE_FILENAME),
-        _flistTReadOverlays(pathImageRoot, listOverlayNames),
+        sBaseText, listTOverlays,
         sImageDigest=sImageDigest,
+        sRecipeFingerprint=fsComputeRecipeFingerprint(
+            sBaseText, listTOverlays,
+        ),
     )
 
 

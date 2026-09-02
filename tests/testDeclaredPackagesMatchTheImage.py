@@ -123,3 +123,27 @@ def test_editable_and_url_requirements_are_skipped_not_guessed():
         "--index-url https://example.invalid/simple\n"
         "numpy>=1.26\n",
     ) == ["numpy"]
+
+
+def test_exact_pins_parse_to_name_version_pairs():
+    """The one grammar both a lockfile and pip's freeze output share."""
+    from vaibify.reproducibility.declaredPackages import (
+        fdictParsePinnedVersions,
+    )
+    sLock = (
+        "# via uv pip compile\n"
+        "numpy==1.26.4 \\\n"
+        "    --hash=sha256:" + "aa" * 32 + "\n"
+        "Pytest_Asyncio[extra]==0.23.5 ; python_version >= \"3.9\"\n"
+        "requests>=2.31\n"
+        "-e ./local-package\n"
+        "https://example.invalid/wheel.whl\n"
+    )
+    assert fdictParsePinnedVersions(sLock) == {
+        "numpy": "1.26.4",
+        # Extras collapse onto the name and PyPA normalization folds
+        # case and underscores; the environment marker ends the
+        # version read. Ranges, editables and URLs pin nothing exact
+        # and are skipped rather than guessed at.
+        "pytest-asyncio": "0.23.5",
+    }

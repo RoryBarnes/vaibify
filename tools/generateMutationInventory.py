@@ -238,6 +238,11 @@ DICT_PRIMITIVE_ACCESS = {
     # write was the dashboard's only mutation on a timer.
     "fdictStatPathMtimes": S_ACCESS_TYPED_READ,
     "fsHashContainerFileSha256": S_ACCESS_TYPED_READ,
+    # The remote verify's hash batch, on the same terms as the mtime
+    # and existence migrations above: it replaced an embedded script
+    # the repo-files adapter assembled for the GENERAL exec primitive,
+    # which enforced lanes refused wholesale (2026-09-02).
+    "fdictHashContainerRepoPaths": S_ACCESS_TYPED_READ,
     # The Repositories panel's five-second poll, and the first typed
     # read whose program runs an EXTERNAL binary: git is the only way
     # to ask git. What varies is still only the path literal, and the

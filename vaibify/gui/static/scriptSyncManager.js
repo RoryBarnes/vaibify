@@ -2726,6 +2726,81 @@ var VaibifySyncManager = (function () {
             " differ from the published copy.";
     }
 
+    async function fnPushEnvelopeFromDashboard(listPaths, elButton) {
+        /* The GitHub-mirror row's "Push changed files" button
+           (researcher-requested, 2026-09-02). Runs the same Level-2
+           publication route the Repos panel and the in-container
+           agent use — stage, commit, push, refresh the verify cache —
+           over exactly the files the row's badges prove diverged or
+           absent. A confirm stands between the click and the push
+           because the push is externally visible, and the modal
+           names every file so the researcher approves a list, not a
+           count. */
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        if (!sContainerId || !listPaths || !listPaths.length) return;
+        VaibifyApp.fnShowConfirmModal(
+            "Publish envelope files to GitHub",
+            "Commit and push these " + listPaths.length + " file" +
+            (listPaths.length === 1 ? "" : "s") +
+            " to the GitHub mirror?\n\n" + listPaths.join("\n"),
+            async function () {
+                if (elButton) elButton.disabled = true;
+                VaibifyApp.fnShowToast(
+                    "Publishing " + listPaths.length +
+                    " envelope file" +
+                    (listPaths.length === 1 ? "" : "s") +
+                    " to GitHub\u2026", "info");
+                try {
+                    var dictResult = await VaibifyApi.fdictPost(
+                        "/api/github/" +
+                        encodeURIComponent(sContainerId) + "/push",
+                        {listFilePaths: listPaths,
+                         sCommitMessage:
+                             "Publish reproducibility envelope"});
+                    fnInvalidateVerifyCache();
+                    if (typeof VaibifyGitBadges !== "undefined") {
+                        await VaibifyGitBadges.fnRefresh(sContainerId);
+                    }
+                    /* The route can succeed at pushing and FAIL
+                       at the follow-up verify refresh, reporting
+                       that as sPostPushVerifyWarning. The first
+                       version of this toast ignored it and said only
+                       "pushed" — so a researcher whose rows stayed
+                       red had a success toast and no explanation
+                       (researcher-reported, 2026-09-02). A warning
+                       is surfaced as one, with the remedy. */
+                    var sWarning = dictResult &&
+                        (dictResult.sPostPushVerifyWarning ||
+                         dictResult.sBookkeepingWarning) || "";
+                    if (dictResult && dictResult.bSuccess === false) {
+                        VaibifyApp.fnShowToast(
+                            "Push failed: " +
+                            (dictResult.sError || "see the hub log"),
+                            "error");
+                    } else if (sWarning) {
+                        VaibifyApp.fnShowToast(
+                            "Pushed, but: " + sWarning +
+                            " Click Verify now to settle the row.",
+                            "warning");
+                    } else {
+                        VaibifyApp.fnShowToast(
+                            "Envelope pushed \u2014 the row settles " +
+                            "when the refreshed verify lands.",
+                            "success");
+                    }
+                } catch (error) {
+                    VaibifyApp.fnShowToast(
+                        "Push failed: " + VaibifyUtilities
+                            .fsSanitizeErrorForUser(error.message),
+                        "error");
+                } finally {
+                    if (elButton) elButton.disabled = false;
+                }
+            },
+            {sConfirmLabel: "Commit and push"}
+        );
+    }
+
     async function fnVerifyRemoteFromDashboard(sService, elButton) {
         // The Project block's per-row "Verify now" button. Runs the
         // same verify the Repos panel uses; the requirement row picks
@@ -3104,6 +3179,7 @@ var VaibifySyncManager = (function () {
     return {
         fnOpenPushModal: fnOpenPushModal,
         fnVerifyRemoteFromDashboard: fnVerifyRemoteFromDashboard,
+        fnPushEnvelopeFromDashboard: fnPushEnvelopeFromDashboard,
         fnRefreshConfiguredRemotes: fnRefreshConfiguredRemotes,
         fnOpenZenodoMetadataModal: fnOpenZenodoMetadataModal,
         fnBindPushModalEvents: fnBindPushModalEvents,

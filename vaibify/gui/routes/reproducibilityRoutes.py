@@ -37,7 +37,11 @@ from ..actionCatalog import ffnAgentAction
 from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import verificationProgress
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
-from ..pipelineServer import fdictRequireWorkflow
+from ..pipelineServer import (
+    fdictAssessEnvelopeImageCurrency,
+    fdictRequireWorkflow,
+    fsContainerNameForId,
+)
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -109,7 +113,7 @@ _DICT_LAST_NO_VERDICT = verificationProgress.DICT_LAST_NO_VERDICT
 S_MIRROR_RELATIVE_PATH = ".vaibify/requirements.txt"
 
 
-def _flistDeclaredPackagesForContainer(sContainerId):
+def _flistDeclaredPackagesForContainer(sContainerName):
     """Return the project's declared pythonPackages, or [] if unknown.
 
     Read from ``vaibify.yml`` on the HOST, because that is where the
@@ -117,6 +121,13 @@ def _flistDeclaredPackagesForContainer(sContainerId):
     means "could not be determined" and disables the comparison rather
     than asserting agreement: a project whose config cannot be found
     has not been shown to match its image.
+
+    The parameter is the registry NAME, and the caller must have
+    resolved it: the verify route's path carries the Docker container
+    ID, which matches no registry ``sContainerName``, so a lookup fed
+    the raw path parameter finds nothing, answers ``bChecked: False``,
+    and silently disables the stale-image refusal for every real
+    dashboard request (found by external review, 2026-09-01).
     """
     from vaibify.config.registryManager import fdictLoadRegistry
     try:
@@ -124,7 +135,7 @@ def _flistDeclaredPackagesForContainer(sContainerId):
     except (OSError, ValueError):
         return []
     for dictEntry in dictRegistry.get("listProjects", []):
-        if dictEntry.get("sContainerName") != sContainerId:
+        if dictEntry.get("sContainerName") != sContainerName:
             continue
         return _flistLoadPackagesFromConfig(dictEntry.get("sConfigPath"))
     return []
@@ -161,6 +172,53 @@ def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):
     return fdictComparePackageDeclarations(listDeclared, sMirror)
 
 
+def fdictAssessDockerfileProvenance(filesRepo):
+    """Does the repo's Dockerfile describe the PINNED image's recipe?
+
+    THREE-state, like the image-currency check beside it:
+    ``bDockerfileDescribesPinnedImage`` is True (the exported header's
+    recipe fingerprint equals the label the builder stamped onto the
+    pinned image), False (they differ — the image was rebuilt from
+    different inputs after the Dockerfile was exported, so the file
+    looks like provenance and is not), or None (a hand-written
+    Dockerfile, a pre-fingerprint export, a pre-label image, or an
+    unreadable pin — nothing determined, nothing refused). Build-time
+    evidence on both ends is what makes True a proof; recomposing
+    today's packaged texts and diffing would flag every vaibify
+    upgrade as staleness the envelope does not have.
+    """
+    from ...reproducibility.dockerfileComposer import (
+        fbTextWasGeneratedByVaibify,
+        fsExtractRecipeFingerprint,
+    )
+    from ...reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
+    from ...reproducibility.environmentSnapshot import (
+        fsReadImageRecipeLabel,
+    )
+    dictAnswer = {"bDockerfileDescribesPinnedImage": None,
+                  "sHeaderFingerprint": "", "sImageFingerprint": ""}
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    try:
+        if not filesRepo.fbIsFile(S_DOCKERFILE_FILENAME):
+            return dictAnswer
+        sText = filesRepo.fsReadText(S_DOCKERFILE_FILENAME)
+    except (OSError, ValueError, KeyError):
+        return dictAnswer
+    if not fbTextWasGeneratedByVaibify(sText):
+        return dictAnswer
+    sHeader = fsExtractRecipeFingerprint(sText)
+    sPinned = _fsRecordedImageDigest(filesRepo)
+    if not sHeader or not sPinned:
+        return dictAnswer
+    sLabel = fsReadImageRecipeLabel(sPinned)
+    dictAnswer["sHeaderFingerprint"] = sHeader
+    dictAnswer["sImageFingerprint"] = sLabel
+    if not sLabel:
+        return dictAnswer
+    dictAnswer["bDockerfileDescribesPinnedImage"] = sHeader == sLabel
+    return dictAnswer
+
+
 def _fsRequireProjectRepo(dictWorkflow):
     """Return the workflow's project repo path or raise HTTP 409."""
     sProjectRepo = (
@@ -187,8 +245,13 @@ def _fnRegisterReadiness(app, dictCtx):
         )
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
+        # Resolved to the registry NAME, like the verify route: the
+        # path parameter is the Docker container ID, which matches no
+        # registry entry, and an unresolved lookup silently disables
+        # the comparison (bChecked False).
         dictPackageCheck = fdictCheckImageMatchesDeclaration(
-            sContainerId, filesRepo,
+            fsContainerNameForId(dictCtx["docker"], sContainerId),
+            filesRepo,
         )
         # Reported beside the gaps rather than folded into them: a
         # stale image is a fact about the CONTAINER, while every gap
@@ -199,10 +262,24 @@ def _fnRegisterReadiness(app, dictCtx):
         dictGaps["bImageMatchesDeclaredPackages"] = (
             not dictPackageCheck["bChecked"] or dictPackageCheck["bMatches"]
         )
+        dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
+        # None (undetermined) reads as passing here: only a PROVEN
+        # mismatch may refuse anything or light a checklist row.
+        dictGaps["bDockerfileDescribesPinnedImage"] = (
+            dictProvenance["bDockerfileDescribesPinnedImage"] is not False
+        )
         return {
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
             "dictDeclaredPackageCheck": dictPackageCheck,
+            # Whether the envelope pins the image this container is
+            # RUNNING. Advisory, not a gap: the verification grades
+            # the pinned image either way, and the researcher must
+            # know which image that will be BEFORE spending a rerun.
+            "dictImageCurrency": fdictAssessEnvelopeImageCurrency(
+                dictCtx, sContainerId, filesRepo,
+            ),
+            "dictDockerfileProvenance": dictProvenance,
         }
 
 
@@ -238,6 +315,9 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
             sContainerId,
         ),
+        "dictUnsettledTeardown": (
+            verificationProgress.fdictReadUnsettledTeardown(sContainerId)
+        ),
         "sLiveManifestDigest": (
             fsCurrentManifestDigest(filesRepo)
             if bHasRepo else ""
@@ -262,8 +342,15 @@ def _fnRegisterVerify(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         sWorkflowPath = _fsRequireWorkflowPath(dictCtx, sContainerId)
         _fnRefuseIfTaskInFlight(sContainerId)
+        # The path parameter is the Docker container ID; the registry
+        # is keyed by project NAME. Resolved here, once, so the
+        # package-declaration lookup below compares like with like.
+        sContainerName = fsContainerNameForId(
+            dictCtx["docker"], sContainerId,
+        )
         sManifestDigest = await _fsGateReadinessAndSnapshotDigest(
-            sContainerId, dictWorkflow, filesRepo, requestHttp,
+            sContainerId, sContainerName, dictWorkflow, filesRepo,
+            requestHttp,
         )
         return await _fdictLaunchVerificationDurably(
             sContainerId, filesRepo, sManifestDigest, dictWorkflow,
@@ -272,7 +359,7 @@ def _fnRegisterVerify(app, dictCtx):
 
 
 async def _fsGateReadinessAndSnapshotDigest(
-    sContainerId, dictWorkflow, filesRepo, requestHttp,
+    sContainerId, sContainerName, dictWorkflow, filesRepo, requestHttp,
 ):
     """Check L3 readiness and snapshot the manifest digest under one drain.
 
@@ -290,14 +377,16 @@ async def _fsGateReadinessAndSnapshotDigest(
     is not ready yet -- the ordinary state before the envelope exists.
     """
     dictPackageCheck = fdictCheckImageMatchesDeclaration(
-        sContainerId, filesRepo,
+        sContainerName, filesRepo,
     )
+    dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
 
     def fsGateThenSnapshot(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fsRequireReadinessThenDigest(
                 dictWorkflow, filesRepo, dictPackageCheck,
+                dictProvenance,
             ),
         )
 
@@ -341,36 +430,71 @@ def _fsNameTheReadinessGaps(dictWorkflow, filesRepo):
     return listFailing or ["a readiness check this message cannot name"]
 
 
-def _fsRequireReadinessThenDigest(
-    dictWorkflow, filesRepo, dictPackageCheck,
-):
-    """Return the manifest digest, or raise 409 naming what is missing.
+def _fsDescribePackageMismatch(dictPackageCheck):
+    """Name each direction of the mismatch with its OWN remedy.
 
-    ``dictPackageCheck`` is refused FIRST because it invalidates the
-    others: verifying reproducibility against an image that predates
-    the project's own dependency declaration grades a container nobody
-    would reproduce with, and every other readiness answer is about
-    that same stale image.
+    The two directions need different fixes, and the first version of
+    this refusal said "rebuild the image" for both. A researcher whose
+    image carried an UNDECLARED package rebuilt, changed nothing, and
+    asked whether to rebuild again (2026-09-01) -- rebuilding cannot
+    reconcile an image with a declaration the package was never added
+    to. A refusal names its cause, and a remedy is part of the cause.
     """
+    listParts = [
+        "The container image and this project's dependency declaration "
+        "(pythonPackages in vaibify.yml) disagree, so a verification "
+        "would grade an image nobody would reproduce with."
+    ]
+    listMissing = dictPackageCheck["listMissingFromImage"]
+    if listMissing:
+        listParts.append(
+            "Declared but missing from the image: "
+            + ", ".join(listMissing)
+            + " — rebuild the image so it carries them."
+        )
+    listExtra = dictPackageCheck["listExtraInImage"]
+    if listExtra:
+        listParts.append(
+            "In the image but not declared: "
+            + ", ".join(listExtra)
+            + " — add them to pythonPackages in vaibify.yml (or, if "
+            "they were dropped on purpose, rebuild without them). "
+            "Rebuilding alone cannot fix this direction."
+        )
+    return " ".join(listParts)
+
+
+def _fsRequireReadinessThenDigest(
+    dictWorkflow, filesRepo, dictPackageCheck, dictProvenance,
+):
+    """Return the manifest digest, or raise ONE 409 naming everything.
+
+    Every unmet precondition travels in a single refusal. It used to
+    be two — the package mismatch first, then the readiness gaps — so
+    a researcher with both fixed one, retried, and met the other: a
+    round of verification-refused per problem, each round spending the
+    click, the drain, and the wait (researcher-requested, 2026-09-01).
+    """
+    listUnmet = []
     if dictPackageCheck.get("bChecked") and not dictPackageCheck["bMatches"]:
-        raise HTTPException(
-            409,
-            "The container image is older than this project's "
-            "dependency declaration, so a verification would grade an "
-            "image nobody would reproduce with. Declared but missing "
-            "from the image: "
-            + (", ".join(dictPackageCheck["listMissingFromImage"]) or "none")
-            + ". In the image but no longer declared: "
-            + (", ".join(dictPackageCheck["listExtraInImage"]) or "none")
-            + ". Rebuild the image, then try again.",
+        listUnmet.append(_fsDescribePackageMismatch(dictPackageCheck))
+    if dictProvenance.get("bDockerfileDescribesPinnedImage") is False:
+        listUnmet.append(
+            "the repo Dockerfile was exported from a different build "
+            "chain than the pinned image's (the image's recipe label "
+            "and the file's header fingerprint disagree) — click "
+            "'Copy image Dockerfile into repo' on the Dockerfile row "
+            "to re-export it"
         )
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
-        listGaps = _fsNameTheReadinessGaps(dictWorkflow, filesRepo)
+        listUnmet.extend(_fsNameTheReadinessGaps(dictWorkflow, filesRepo))
+    if listUnmet:
         raise HTTPException(
             409,
-            "Cannot start the Level 3 verification yet — "
-            + "; ".join(listGaps)
-            + ". Fix these in the Project block, then try again.",
+            "Cannot start the Level 3 verification yet. Still to "
+            "resolve: "
+            + "; ".join(listUnmet)
+            + ". Each has a row in the Project block.",
         )
     return fsCurrentManifestDigest(filesRepo)
 
@@ -533,6 +657,24 @@ async def _fnRunVerificationWorker(
     dictStatus["listCarriedPaths"] = list(
         dictResult.get("listCarriedPaths") or []
     )
+    _fnRecordTeardownOutcome(sContainerId, dictResult)
+
+
+def _fnRecordTeardownOutcome(sContainerId, dictResult):
+    """Surface a shadow the rerun could not prove destroyed.
+
+    ``sShadowTeardown`` is present exactly when a shadow existed and
+    its teardown ran; absent (a refusal before any container was
+    created) the standing record is left alone, because this rerun
+    learned nothing about the daemon. A clean destruction clears it.
+    """
+    if "sShadowTeardown" not in dictResult:
+        return
+    verificationProgress.fnRecordUnsettledTeardown(
+        sContainerId,
+        dictResult.get("sShadowTeardown", ""),
+        dictResult.get("sShadowTeardownReason", ""),
+    )
 
 
 def _fsPhaseForOutcome(dictResult):
@@ -567,9 +709,16 @@ def _fnRecordOutcome(
         )
         return
     verificationProgress.fnForgetNoVerdict(sContainerId)
+    # The comparison reports the digest of the manifest it was
+    # actually made against -- the SHADOW's copy. The readiness
+    # snapshot taken before launch is the fallback, not the record:
+    # anything that re-pins the manifest between the snapshot and the
+    # coherent export would otherwise put a digest on the attestation
+    # that the comparison never read.
     _fnPersistAttestation(
-        filesRepo, sManifestDigest, dictResult, fDuration,
-        dictAiProvenance,
+        filesRepo,
+        dictResult.get("sManifestDigest") or sManifestDigest,
+        dictResult, fDuration, dictAiProvenance,
     )
 
 
@@ -625,9 +774,17 @@ def _fdictRunReproductionSync(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         filesRepo,
     )
+    # The outcome's own sImageDigest is the pin the shadow was built
+    # from; re-reading environment.json here would name whatever it
+    # says NOW, which can differ if the envelope was regenerated while
+    # the rerun ran. The fallback covers a refusal issued before any
+    # shadow existed.
     return {
         **dictOutcome,
-        "sImageDigest": _fsResolveImageDigest(filesRepo),
+        "sImageDigest": (
+            dictOutcome.get("sImageDigest")
+            or _fsResolveImageDigest(filesRepo)
+        ),
         "sRunLogPath": "",
     }
 

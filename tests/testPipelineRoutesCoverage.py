@@ -1708,6 +1708,37 @@ def _fdictStripStepCellRequirements(dictStepLevels):
 
 
 class TestPollLevelStatePayload:
+    @pytest.mark.falsification
+    @pytest.mark.asyncio
+    async def test_image_currency_travels_from_handler_to_wire(self):
+        """The currency verdict is computed where the container id
+        lives and crosses three hops to the envelope detail. A hop
+        that drops it leaves the leaf's None default -- honest-looking
+        and permanently silent -- so this asserts a value the default
+        cannot produce arrives on the wire (the threaded-parameter
+        lesson: signatures agree, wire cut).
+
+        Kills: In _fdictFetchOutputStatus's poll assembly, pass
+        dictImageCurrency=None instead of the assessed dict.
+        """
+        dictSentinel = {
+            "bPinnedImageIsLive": False,
+            "sPinnedImageDigest": "img@sha256:" + "ab" * 32,
+            "sLiveImageDigest": "img@sha256:" + "cd" * 32,
+        }
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
+        dictCtx = _fdictBuildLevelPollContext()
+        with _fstackEnterPollLevelPatches([], [], []), patch(
+            "vaibify.gui.routes.pipelineRoutes."
+            "fdictAssessEnvelopeImageCurrency",
+            return_value=dictSentinel,
+        ):
+            dictResult = await _fdictFetchOutputStatus(
+                dictCtx, "cid1", dictWorkflow, {},
+            )
+        assert dictResult["dictWorkflowEnvelopeDetail"][
+            "dictImageCurrency"] == dictSentinel
+
     @pytest.mark.asyncio
     async def test_response_carries_level_state_keys(self):
         """The level-state wire keys arrive with their documented shapes."""
@@ -1826,6 +1857,11 @@ class TestPollLevelStatePayload:
         dictDetail = dictResult["dictWorkflowEnvelopeDetail"]
         assert set(dictDetail.keys()) == {
             "listBinaries", "dictArtifacts",
+            # Added 2026-09-01: whether the envelope pins the image
+            # this container is RUNNING, so a rebuild without a
+            # snapshot regeneration is announced instead of every
+            # verification silently grading the old image.
+            "dictImageCurrency",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bRebuildAttestationRunning", "dictRebuildAttestation",

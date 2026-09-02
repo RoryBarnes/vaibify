@@ -55,12 +55,27 @@ def _fobjectMakeHttpError(iCode, dictHeaders=None):
     return error
 
 
+S_PINNED_SHA = "ab" * 20
+
+
 def _fdispatcherFromMap(dictUrlToOutcome):
-    """Return a urlopen replacement that consults a URL outcome map."""
+    """Return a urlopen replacement that consults a URL outcome map.
+
+    Branch-head resolutions (api.github.com/repos/<o>/<r>/commits/<b>)
+    are answered with ``S_PINNED_SHA`` by default, because since the
+    CDN-staleness fix every fetch resolves its branch first — raw
+    URLs are keyed at that sha. A test about resolution FAILURE maps
+    the API URL explicitly to its error, which overrides the default;
+    every other URL stays fail-closed.
+    """
 
     def fobjectFakeUrlOpen(objectRequest, *args, **kwargs):
         sUrl = objectRequest.full_url
         outcome = dictUrlToOutcome.get(sUrl)
+        if (outcome is None
+                and sUrl.startswith("https://api.github.com/repos/")
+                and "/commits/" in sUrl):
+            return _FakeResponse(S_PINNED_SHA.encode("ascii"))
         if outcome is None:
             raise AssertionError(f"Unexpected URL fetched: {sUrl}")
         if isinstance(outcome, BaseException):
@@ -82,7 +97,7 @@ def test_fdictFetchRemoteHashes_happy_path_three_files():
         "gamma.txt": b"\x00\x01\x02\x03\x04",
     }
     dictUrls = {
-        f"https://raw.githubusercontent.com/owner/repo/main/{sName}": baBody
+        f"https://raw.githubusercontent.com/owner/repo/{S_PINNED_SHA}/{sName}": baBody
         for sName, baBody in dictBodies.items()
     }
     with patch.object(
@@ -105,10 +120,10 @@ def test_fdictFetchRemoteHashes_mixed_200_and_404():
     baAlpha = b"alpha"
     baGamma = b"gamma"
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/alpha.txt": baAlpha,
-        "https://raw.githubusercontent.com/owner/repo/main/beta.txt":
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/alpha.txt": baAlpha,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/beta.txt":
             _fobjectMakeHttpError(404),
-        "https://raw.githubusercontent.com/owner/repo/main/gamma.txt": baGamma,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/gamma.txt": baGamma,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -133,7 +148,7 @@ def test_fdictFetchRemoteHashes_rate_limit_raises_actionable():
         403, {"X-RateLimit-Remaining": "0"},
     )
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorHttp,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/x.txt": errorHttp,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -156,7 +171,7 @@ def test_fdictFetchRemoteHashes_rate_limit_raises_actionable():
 def test_fdictFetchRemoteHashes_auth_failure_raises_actionable():
     errorHttp = _fobjectMakeHttpError(401)
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorHttp,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/x.txt": errorHttp,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -178,7 +193,7 @@ def test_fdictFetchRemoteHashes_auth_failure_raises_actionable():
 def test_fdictFetchRemoteHashes_network_error_propagates_clean():
     errorUrl = urllib.error.URLError("Connection refused")
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorUrl,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/x.txt": errorUrl,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -219,6 +234,10 @@ def test_fdictFetchRemoteHashes_large_file_streamed_in_chunks():
             return False
 
     def fobjectFakeUrlOpen(objectRequest, *args, **kwargs):
+        if objectRequest.full_url.startswith(
+            "https://api.github.com/",
+        ):
+            return _FakeResponse(S_PINNED_SHA.encode("ascii"))
         return _StreamingResponse(baBody)
 
     with patch.object(
@@ -243,7 +262,7 @@ def test_fdictFetchRemoteHashes_redacts_token_in_error_messages():
         f"HTTPS proxy denied authorization {sFakeToken}"
     )
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorUrl,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/x.txt": errorUrl,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -280,7 +299,7 @@ def test_fsRedactStderr_scrubs_authorization_lines():
 def test_fdictFetchRemoteHashes_preserves_caller_order():
     listPaths = ["zeta.txt", "alpha.txt", "mu.txt", "beta.txt"]
     dictUrls = {
-        f"https://raw.githubusercontent.com/owner/repo/main/{sName}":
+        f"https://raw.githubusercontent.com/owner/repo/{S_PINNED_SHA}/{sName}":
             sName.encode("utf-8")
         for sName in listPaths
     }
@@ -319,6 +338,10 @@ def test_fdictFetchRemoteHashes_url_encodes_special_characters():
     sCapturedUrl = {"sValue": ""}
 
     def fobjectFakeUrlOpen(objectRequest, *args, **kwargs):
+        if objectRequest.full_url.startswith(
+            "https://api.github.com/",
+        ):
+            return _FakeResponse(S_PINNED_SHA.encode("ascii"))
         sCapturedUrl["sValue"] = objectRequest.full_url
         return _FakeResponse(b"content")
 
@@ -441,7 +464,7 @@ def test_classified_http_error_has_no_chained_context():
     """``raise X from None`` ensures __cause__ / __context__ are clean."""
     errorHttp = _fobjectMakeHttpError(401)
     dictUrls = {
-        "https://raw.githubusercontent.com/owner/repo/main/x.txt": errorHttp,
+        "https://raw.githubusercontent.com/owner/repo/" + S_PINNED_SHA + "/x.txt": errorHttp,
     }
     with patch.object(
         githubMirror.urllib.request, "urlopen",
@@ -483,3 +506,75 @@ def test_keyring_failure_emits_warning_log(caplog):
     sMessage = listWarnings[0].getMessage()
     assert "RuntimeError" in sMessage
     assert sExceptionText not in sMessage
+
+
+# ----------------------------------------------------------------------
+# The fetch is pinned to the branch's resolved sha
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_the_fetch_reads_the_resolved_sha_never_the_branch_cache():
+    """A branch-name raw URL is a CDN cache, not the repository.
+
+    One edge served a file's PREVIOUS commit fifteen hours after the
+    push that replaced it, so a verify recorded "diverged" as fact
+    about two files GitHub already held correctly, and a freshly
+    pushed envelope stayed red (researcher-reported, 2026-09-02).
+    The branch head is resolved through api.github.com — which
+    answers from the repository — and content is fetched at that
+    sha, whose raw URL is immutable. The dispatcher here maps ONLY
+    the sha-addressed URL, so a fetch that reverts to the branch
+    name dies on the fail-closed map.
+
+    Kills: In fdictFetchRemoteHashes, build the raw URL at sBranch
+    instead of the resolved sPinnedSha.
+    """
+    baBody = b"fresh-bytes"
+    dictUrls = {
+        "https://raw.githubusercontent.com/owner/repo/"
+        + S_PINNED_SHA + "/x.txt": baBody,
+    }
+    with patch.object(
+        githubMirror.urllib.request, "urlopen",
+        side_effect=_fdispatcherFromMap(dictUrls),
+    ):
+        dictResult = githubMirror.fdictFetchRemoteHashes(
+            "owner", "repo", "main", ["x.txt"],
+        )
+    assert dictResult["x.txt"] == hashlib.sha256(baBody).hexdigest()
+
+
+def test_an_unresolvable_branch_refuses_rather_than_unpinning():
+    """No fall-back to the branch name: an unpinned fetch would
+    quietly reintroduce the cache comparison this exists to end."""
+    dictUrls = {
+        "https://api.github.com/repos/owner/repo/commits/main":
+            _fobjectMakeHttpError(500),
+    }
+    with patch.object(
+        githubMirror.urllib.request, "urlopen",
+        side_effect=_fdispatcherFromMap(dictUrls),
+    ):
+        with pytest.raises(githubMirror.GithubMirrorError):
+            githubMirror.fdictFetchRemoteHashes(
+                "owner", "repo", "main", ["x.txt"],
+            )
+
+
+def test_a_forty_hex_ref_skips_resolution():
+    """Pinned callers stay pinned with no API round trip at all."""
+    sSha = "cd" * 20
+    baBody = b"pinned"
+    dictUrls = {
+        "https://raw.githubusercontent.com/owner/repo/"
+        + sSha + "/x.txt": baBody,
+    }
+    with patch.object(
+        githubMirror.urllib.request, "urlopen",
+        side_effect=_fdispatcherFromMap(dictUrls),
+    ):
+        dictResult = githubMirror.fdictFetchRemoteHashes(
+            "owner", "repo", sSha, ["x.txt"],
+        )
+    assert dictResult["x.txt"] == hashlib.sha256(baBody).hexdigest()

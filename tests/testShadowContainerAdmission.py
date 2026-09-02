@@ -94,6 +94,41 @@ def testTheShadowsOwnAdmissionMakesItsRerunPossible(
         commitCarrier.fnCloseRequestAdmission(tTokens)
 
 
+@pytest.mark.falsification
+def testTheShadowsAdmissionSatisfiesTheDurableExecGate(
+    fnOpenProjectDurableCarrier,
+):
+    """The rerun's STEPS run through the durable gate, not the plain one.
+
+    Preflight execs ask ``fnAssertContainerCommandAdmitted``; the steps
+    themselves stream through ``ftRunInContainerStreamedWithChunks``,
+    whose gate is ``fnAssertDurableExecAdmitted`` and filters on
+    ``bDurable``. An admission that satisfies only the plain gate passes
+    every test above, survives preflight on a live daemon, and refuses
+    the FIRST real step -- so the lane looks wired right up until a
+    workflow actually survives preflight. That is how it shipped: minted
+    non-durable, and no live run had yet reached a step.
+
+    Kills: In ftOpenDisposableContainerAdmission, mint the admission
+    without bDurable=True, so the durable gate finds no qualifying
+    admission for the shadow and refuses every step of every rerun.
+    """
+    fnOpenProjectDurableCarrier()
+    with pytest.raises(mutationAdmission.MutationNotAdmittedError):
+        mutationAdmission.fnAssertDurableExecAdmitted(
+            S_SHADOW_CONTAINER, "ftRunInContainerStreamedWithChunks",
+        )
+    tTokens = commitCarrier.ftOpenDisposableContainerAdmission(
+        S_SHADOW_CONTAINER, S_SHADOW_CONTAINER,
+    )
+    try:
+        mutationAdmission.fnAssertDurableExecAdmitted(
+            S_SHADOW_CONTAINER, "ftRunInContainerStreamedWithChunks",
+        )
+    finally:
+        commitCarrier.fnCloseRequestAdmission(tTokens)
+
+
 def testTheShadowsAdmissionReachesNothingButTheShadow():
     """The narrowness IS the safety property, so assert it directly.
 

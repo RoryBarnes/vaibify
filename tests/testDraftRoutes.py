@@ -128,6 +128,35 @@ class MockDockerDraft:
     def fdictStatPathMtimes(self, sContainerId, listPaths):
         return {}
 
+    def fdictHashContainerRepoPaths(
+        self, sContainerId, sRootPath, listRelPaths,
+    ):
+        """The remote verify's typed hash batch, over the content store.
+
+        Answers the real entry shape from the bytes this double
+        actually holds; a path it does not hold hashes to None — the
+        honest "no such file" the real program gives. Added when the
+        hashing migrated off the general exec primitive: the adapter
+        asks the CONNECTION for this operation, and a router-fronted
+        double without it turned every connect into "Workflow load
+        failed" (2026-09-02).
+        """
+        import posixpath
+        dictOut = {}
+        for sRel in listRelPaths:
+            baContent = self._dictFiles.get(
+                posixpath.join(sRootPath, sRel),
+            )
+            dictOut[sRel] = {
+                "sSha256": (
+                    hashlib.sha256(baContent).hexdigest()
+                    if baContent is not None else None
+                ),
+                "sSymlinkSegment": None,
+                "bEscapesRoot": False,
+            }
+        return dictOut
+
     def fsHashContainerFileSha256(self, sContainerId, sPath):
         return ""
 

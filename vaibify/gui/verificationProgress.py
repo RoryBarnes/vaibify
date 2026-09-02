@@ -37,12 +37,15 @@ readable after the run is gone.
 
 __all__ = [
     "DICT_LAST_NO_VERDICT",
+    "DICT_UNSETTLED_TEARDOWN",
     "DICT_VERIFY_TASKS",
     "fbVerificationIsLive",
     "fdictReadNoVerdict",
     "fdictReadStatus",
+    "fdictReadUnsettledTeardown",
     "fnForgetNoVerdict",
     "fnRecordNoVerdict",
+    "fnRecordUnsettledTeardown",
     "fnRegisterTask",
 ]
 
@@ -51,6 +54,16 @@ __all__ = [
 # in-process and why they are separate.
 DICT_VERIFY_TASKS = {}
 DICT_LAST_NO_VERDICT = {}
+
+# The most recent rerun whose SHADOW container could not be proven
+# destroyed. In-process like the records above, but for a different
+# reason: the container itself outlives any record of it, and the next
+# rerun's crash-sweep is what actually reclaims it. This record exists
+# so the researcher is told a container may still be running on their
+# daemon, instead of the quarantine being absorbed into a passed
+# attestation's response and shown nowhere (found by external review,
+# 2026-09-01). Cleared when a later rerun tears down cleanly.
+DICT_UNSETTLED_TEARDOWN = {}
 
 # The phases a verification passes through before it settles. A phase
 # outside this set is a settled one, so a caller cannot make the row
@@ -115,3 +128,24 @@ def fdictReadNoVerdict(sContainerId):
 def fnForgetNoVerdict(sContainerId):
     """Drop the no-verdict record; a new attempt supersedes the old one."""
     DICT_LAST_NO_VERDICT.pop(sContainerId, None)
+
+
+def fnRecordUnsettledTeardown(sContainerId, sOutcome, sReason):
+    """Remember, or clear, whether the last shadow was proven destroyed.
+
+    Called after EVERY rerun that reached the teardown: a clean
+    destruction clears the record, because the standing warning is
+    about the researcher's daemon now, not about history.
+    """
+    if not sReason:
+        DICT_UNSETTLED_TEARDOWN.pop(sContainerId, None)
+        return
+    DICT_UNSETTLED_TEARDOWN[sContainerId] = {
+        "sOutcome": sOutcome,
+        "sReason": sReason,
+    }
+
+
+def fdictReadUnsettledTeardown(sContainerId):
+    """Return the unsettled-teardown record for a container, or ``None``."""
+    return DICT_UNSETTLED_TEARDOWN.get(sContainerId)

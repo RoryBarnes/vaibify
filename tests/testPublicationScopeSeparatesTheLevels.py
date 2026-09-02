@@ -43,6 +43,9 @@ S_ENVELOPE = "reproduce.sh"
 S_MARKER = ".vaibify/test_markers/project/MakeData.json"
 
 
+S_VERIFIED_SHA = "cafe" * 16
+
+
 class _FakeRepoFiles:
     """A repo whose files are whatever the test says exist."""
 
@@ -53,6 +56,16 @@ class _FakeRepoFiles:
 
     def fbIsFile(self, sRelPath):
         return sRelPath in self._setPresent
+
+    def fdictHashFiles(self, listRelPaths):
+        # Every present file hashes to the shared verify-time value,
+        # so the envelope gate's changed-since-verify check passes
+        # unless a test drifts one side on purpose.
+        return {
+            sRelPath: {"sSha256": S_VERIFIED_SHA}
+            for sRelPath in listRelPaths
+            if sRelPath in self._setPresent
+        }
 
     def flistListJsonFilenames(self, sRelDir):
         if sRelDir == publicationScope.S_PROJECTS_DIRECTORY:
@@ -80,6 +93,10 @@ def _fdictStatus(listCompared, listDivergedPaths=(),
             {"sPath": s, "sExpected": "aaa", "sActual": "bbb"}
             for s in listDivergedPaths
         ],
+        # The local hash each path was compared AS, matching the fake
+        # repo's live answer — what a real verify writes since the
+        # staleness fix (2026-09-01).
+        "dictComparedHashes": {s: S_VERIFIED_SHA for s in listCompared},
     }
     if bScopeCurrent:
         dictStatus["iScopeVersion"] = (

@@ -35,12 +35,16 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "GithubMirrorError",
+    "fsResolveBranchHeadSha",
     "fdictFetchRemoteHashes",
     "fsRedactStderr",
 ]
 
 
 _S_RAW_HOST = "https://raw.githubusercontent.com"
+# Branch heads are resolved here, never read off the raw CDN: the API
+# answers from the repository, the CDN answers from an edge cache.
+_S_API_HOST = "https://api.github.com"
 _I_HASH_BLOCK_SIZE = 65536
 
 
@@ -274,18 +278,80 @@ def fdictFetchRemoteHashes(sOwner, sRepo, sBranch, listRelativePaths):
     """Return ``{relpath: sha256_hex_or_None}`` for each requested file.
 
     Each entry in ``listRelativePaths`` is fetched from
-    raw.githubusercontent.com. A 404 response records ``None`` for
-    that path (the caller wants a complete picture of what is and
-    isn't there). The returned mapping preserves the input order.
-    Raises :class:`GithubMirrorError` on rate limits, auth failures,
-    and network errors.
+    raw.githubusercontent.com **at the branch's resolved commit
+    sha**, never at the branch name. A branch-name raw URL is a CDN
+    cache, and verifying a cache is not verifying the repository: one
+    edge served a file's PREVIOUS commit fifteen hours after the push
+    that replaced it, so a verify recorded "diverged" as fact about
+    two files GitHub itself already held correctly — and the
+    researcher's freshly-pushed envelope stayed red
+    (researcher-reported, 2026-09-02). The branch head is resolved
+    through api.github.com, which answers from the repository; a
+    sha-addressed raw URL is immutable, so a stale edge cannot
+    misreport it.
+
+    A 404 response records ``None`` for that path (the caller wants a
+    complete picture of what is and isn't there). The returned
+    mapping preserves the input order. Raises
+    :class:`GithubMirrorError` on rate limits, auth failures, network
+    errors, and an unresolvable branch — an unpinned fetch would
+    quietly reintroduce the cache comparison, so there is no
+    fall-back to the branch name.
     """
     fnValidateOwnerRepo(sOwner, sRepo)
     if not listRelativePaths:
         return {}
     sToken = _fsResolveTokenSafely(sOwner, sRepo)
+    sPinnedSha = fsResolveBranchHeadSha(sOwner, sRepo, sBranch, sToken)
     dictResult = {}
     for sRelativePath in listRelativePaths:
-        sUrl = _fsBuildRawUrl(sOwner, sRepo, sBranch, sRelativePath)
+        sUrl = _fsBuildRawUrl(sOwner, sRepo, sPinnedSha, sRelativePath)
         dictResult[sRelativePath] = _fsHashOneRemote(sUrl, sToken)
     return dictResult
+
+
+def fsResolveBranchHeadSha(sOwner, sRepo, sBranch, sToken):
+    """Return the commit sha a branch currently points at.
+
+    Asked of the GitHub API rather than the raw CDN, because the API
+    answers from the repository. A caller already holding a 40-hex
+    sha gets it back untouched — sha-addressed fetches need no
+    resolution, and skipping the round trip keeps pinned callers
+    working when the API is rate-limited.
+    """
+    sCandidate = (sBranch or "").strip()
+    if len(sCandidate) == 40 and all(
+        sCharacter in "0123456789abcdef" for sCharacter in sCandidate
+    ):
+        return sCandidate
+    if _fbContainsPathTraversal(sCandidate):
+        raise ValueError(
+            f"Invalid GitHub branch (path traversal): {sBranch!r}"
+        )
+    sUrl = (
+        f"{_S_API_HOST}/repos/{sOwner}/{sRepo}/commits/"
+        + urllib.parse.quote(sCandidate, safe="")
+    )
+    requestCommit = _frequestBuildGithub(sUrl, sToken)
+    # The sha media type answers the bare 40-hex commit id, so there
+    # is no JSON to parse and nothing else to trust.
+    requestCommit.add_header("Accept", "application/vnd.github.sha")
+    try:
+        with _fhttpresponseOpenRequest(
+            requestCommit, _F_REQUEST_TIMEOUT_SECONDS,
+        ) as httpresponseCommit:
+            sSha = httpresponseCommit.read(64).decode(
+                "ascii", "replace",
+            ).strip()
+    except urllib.error.HTTPError as errorHttp:
+        _fnRaiseClassifiedHttpError(errorHttp, sUrl)
+    except urllib.error.URLError as errorUrl:
+        _fnRaiseClassifiedUrlError(errorUrl, sUrl)
+    if len(sSha) != 40 or any(
+        sCharacter not in "0123456789abcdef" for sCharacter in sSha
+    ):
+        raise GithubMirrorError(
+            f"GitHub answered no commit sha for branch {sBranch!r} "
+            f"of {sOwner}/{sRepo}; the verify cannot pin its ref."
+        )
+    return sSha

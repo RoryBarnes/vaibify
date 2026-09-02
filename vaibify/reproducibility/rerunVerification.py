@@ -69,6 +69,7 @@ from vaibify.reproducibility.repoFiles import (
 
 __all__ = [
     "S_DIVERGENCE_EVERY_ENTRY_GIVEN",
+    "S_DIVERGENCE_LOCK_UNSATISFIED",
     "S_DIVERGENCE_ROOT_MISMATCH",
     "S_DIVERGENCE_MANIFEST_EMPTY",
     "S_DIVERGENCE_MANIFEST_MUTATED",
@@ -107,6 +108,9 @@ S_DIVERGENCE_ROOT_MISMATCH = (
 S_DIVERGENCE_EVERY_ENTRY_GIVEN = (
     "every manifest entry is an output of a step the rerun does not "
     "execute"
+)
+S_DIVERGENCE_LOCK_UNSATISFIED = (
+    "the pinned image does not satisfy requirements.lock"
 )
 
 

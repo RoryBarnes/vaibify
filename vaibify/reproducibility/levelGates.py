@@ -2512,6 +2512,7 @@ def flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject):
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
         _fsBinaryStateFingerprint(dictWorkflow, filesRepo),
+        _fsEnvelopeStateFingerprint(filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2519,6 +2520,35 @@ def flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject):
     listResult = _flistComputeLevel3Blockers(dictWorkflow, filesRepo)
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
+
+
+def _fsEnvelopeStateFingerprint(filesRepo):
+    """SHA over each envelope file's live content hash.
+
+    The envelope-agreement gate now compares each envelope file's
+    CURRENT hash against the one the last remote verify graded, so its
+    answer changes when an envelope file is regenerated -- an event no
+    other cache-key component sees (the sync cache is untouched, the
+    mtime fingerprint covers step outputs only). Without this
+    component the fixed gate flips and the cached blocker list keeps
+    quoting the old answer, which is the masked-transition class
+    ``_fsBinaryStateFingerprint`` exists for. Reads the snapshot's
+    pre-fetched hashes, so on the poll path it costs no extra exec.
+    """
+    listOnDisk = _flistEnvelopePathsOnDisk(filesRepo)
+    if not listOnDisk:
+        return "none"
+    try:
+        dictLive = filesRepo.fdictHashFiles(listOnDisk)
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        dictLive = {}
+    listEntries = [
+        (sPath, (dictLive.get(sPath) or {}).get("sSha256"))
+        for sPath in listOnDisk
+    ]
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
 def _fsBinaryStateFingerprint(dictWorkflow, filesRepo):
@@ -2665,7 +2695,46 @@ def _fbEnvelopeMatchesRemote(filesRepo, sService):
         return True
     if not set(listOnDisk).issubset(setCompared):
         return False
-    return not (set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))
+    if set(listOnDisk) & _fsetDivergedPathsOf(dictStatus):
+        return False
+    return _fbEnvelopeUnchangedSinceVerify(
+        filesRepo, listOnDisk, dictStatus,
+    )
+
+
+def _fbEnvelopeUnchangedSinceVerify(filesRepo, listOnDisk, dictStatus):
+    """Return True iff each envelope file still IS the bytes verify graded.
+
+    The cache's divergence list answers "did the copies agree at
+    verify time". It says nothing about the file on disk NOW: an
+    envelope file regenerated after the verify left this gate quoting
+    a comparison of bytes that no longer existed -- the per-file
+    Zenodo badge went red (it compares live blob SHAs) while the
+    Level 3 cell stayed green off this cache, and the two truths sat
+    on one screen (researcher-reported, 2026-09-01). Verify time and
+    read time are different moments, and only the recorded local hash
+    connects them.
+
+    A cache without ``dictComparedHashes`` predates the field and
+    proves nothing about the current bytes -- unproven blocks, exactly
+    as an uncompared path does, and the next verify writes the new
+    shape (the ``listComparedPaths`` precedent: honest and
+    self-correcting). A live hash the adapter cannot answer blocks the
+    same way, never guesses.
+    """
+    dictRecorded = dictStatus.get("dictComparedHashes") or {}
+    try:
+        dictLive = filesRepo.fdictHashFiles(listOnDisk)
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return False
+    for sPath in listOnDisk:
+        sLiveSha = (dictLive.get(sPath) or {}).get("sSha256")
+        if not sLiveSha:
+            return False
+        if dictRecorded.get(sPath) != sLiveSha:
+            return False
+    return True
 
 
 def _flistEnvelopePathsOnDisk(filesRepo):

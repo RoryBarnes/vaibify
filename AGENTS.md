@@ -1795,6 +1795,24 @@ correct approach.
   computation MEANS, grep for the other consumers of the same cached
   record — a summary, a count, a file list — and check each one
   against the new meaning.
+- **A cached comparison is a claim about verify-TIME bytes, and read
+  time is a different moment.** The envelope gate quoted a Zenodo
+  verify's divergence list after the local `environment.json` had been
+  regenerated — so the per-file badge (live hashes) showed red while
+  the Level 3 cell (this cache) stayed green on the same screen
+  (researcher-reported, 2026-09-01). A cached verdict about a file is
+  only usable while the file still IS the bytes that were graded:
+  record the local hash each path was compared AS
+  (`dictComparedHashes` in `syncStatus.json`) and re-check it at read
+  time, treating a mismatch or a pre-field cache as UNPROVEN.
+  `test_an_envelope_regenerated_after_the_verify_no_longer_passes` is
+  the kill-confirmed guard; `_fsEnvelopeStateFingerprint` keeps the
+  blocker cache from masking the transition. The same session added
+  the twin alert for the other direction of staleness — the envelope
+  pinning an image the container no longer runs
+  (`fdictAssessEnvelopeImageCurrency`, captured once at connect) —
+  because both were found the same way: a rebuild landed, nothing on
+  the screen moved.
 
 ## Pointers
 

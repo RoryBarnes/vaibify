@@ -1842,6 +1842,52 @@ LIST_FALSIFICATIONS = [
         old='''        iOutputHashesMatched=dictResult["iOutputHashesMatched"],''',
         new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunHashCompareMutationCoverage.py::'
+            'test_cli_attestation_names_the_image_the_shadow_ran_under'
+        ),
+        # Record the host clone's digest over the outcome's. The shadow
+        # was built from the CONTAINER repo's environment.json; the
+        # host --repo clone is a different file that can lag it, so
+        # this substitution names an image the rerun never ran under
+        # (external review, 2026-09-01).
+        source='vaibify/cli/commandReproduce.py',
+        old=(
+            '        sImageDigest=(\n'
+            '            dictOutcome.get("sImageDigest")\n'
+            '            or _fsRecordedImageDigest(sProjectRepo)\n'
+            '        ),'
+        ),
+        new='        sImageDigest=_fsRecordedImageDigest(sProjectRepo),',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunHashCompareMutationCoverage.py::'
+            'test_route_attestation_manifest_digest_comes_from_the_'
+            'comparison'
+        ),
+        # Key the attestation to the readiness snapshot instead of the
+        # digest the comparison reports. Anything that re-pins the
+        # manifest between the snapshot and the coherent export then
+        # produces an attestation naming a manifest nobody compared
+        # (external review, 2026-09-01).
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    _fnPersistAttestation(\n'
+            '        filesRepo,\n'
+            '        dictResult.get("sManifestDigest") or '
+            'sManifestDigest,\n'
+            '        dictResult, fDuration, dictAiProvenance,\n'
+            '    )'
+        ),
+        new=(
+            '    _fnPersistAttestation(\n'
+            '        filesRepo, sManifestDigest, dictResult, fDuration,\n'
+            '        dictAiProvenance,\n'
+            '    )'
+        ),
+    ),
     # A rerun that silently skips steps leaves pinned outputs untouched,
     # so every hash trivially matches and the attestation certifies a run
     # that ran nothing. A DISABLED step is refused outright; an
@@ -13831,10 +13877,15 @@ def _fdictEntry(sRel):
         # unchanged either way, so nothing else in the suite notices.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old=(
-            '        var sState = _fsEnvelopeRemoteRowState(\n'
+            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
             '            bMatched, sBadgeKey, listEnvelope);\n'
+            '        var sState = dictHealth.sState;\n'
         ),
-        new='        var sState = bMatched ? "green" : "red";\n',
+        new=(
+            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
+            '            bMatched, sBadgeKey, listEnvelope);\n'
+            '        var sState = bMatched ? "green" : "red";\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -13992,15 +14043,18 @@ def _fdictEntry(sRel):
         # accumulate invisibly.
         source='vaibify/reproducibility/shadowRerun.py',
         old=(
-            '    finally:\n'
-            '        dictTeardown = _fdictTearDownShadow(\n'
-            '            dictGateway, dictCreated["sHandle"])'
+            '        finally:\n'
+            '            dictTeardown = _fdictTearDownShadow(\n'
+            '                dictGateway, dictCreated["sHandle"])\n'
+            '            if dictTeardown["sOutcome"] != ('
         ),
         new=(
-            '    except BaseException:\n'
-            '        raise\n'
-            '    dictTeardown = _fdictTearDownShadow(\n'
-            '        dictGateway, dictCreated["sHandle"])'
+            '        except BaseException:\n'
+            '            raise\n'
+            '        dictTeardown = _fdictTearDownShadow(\n'
+            '            dictGateway, dictCreated["sHandle"])\n'
+            '        if True:\n'
+            '            if dictTeardown["sOutcome"] != ('
         ),
     ),
     Falsification(
@@ -14022,6 +14076,332 @@ def _fdictEntry(sRel):
             '    try:'
         ),
         new='    tTokens = None\n    try:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowContainerAdmission.py::'
+            'testTheShadowsAdmissionSatisfiesTheDurableExecGate'
+        ),
+        # Mint the disposable admission non-durable. The plain command
+        # gate still admits it, so preflight works and every admission
+        # test above stays green -- but the steps stream through
+        # fnAssertDurableExecAdmitted, which filters on bDurable, so
+        # every real step of every rerun is refused. This is exactly
+        # how the lane first shipped (found by external review,
+        # 2026-09-01): no live run had survived preflight, so the
+        # refusal had never been reached.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '        sContainerName, sContainerId, '
+            'S_ADMISSION_MODE_DISPOSABLE,\n'
+            '        bDurable=True,\n'
+            '    )'
+        ),
+        new=(
+            '        sContainerName, sContainerId, '
+            'S_ADMISSION_MODE_DISPOSABLE,\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_stale_image_refusal_survives_a_docker_id_'
+            'path_parameter'
+        ),
+        # Feed the registry lookup the raw path parameter -- a Docker
+        # container ID -- where it needs the project NAME. The lookup
+        # misses, the comparison answers bChecked: False, and the
+        # stale-image refusal is silently disabled for every real
+        # dashboard request while every fixture with name == id stays
+        # green. This is how it shipped (external review, 2026-09-01).
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        sContainerName = fsContainerNameForId(\n'
+            '            dictCtx["docker"], sContainerId,\n'
+            '        )'
+        ),
+        new='        sContainerName = sContainerId',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testTheOutcomeNamesTheImageTheShadowWasBuiltFrom'
+        ),
+        # Drop the pin from the outcome. Both attestation writers then
+        # fall back to re-reading a recorded digest at write time --
+        # the CLI from the host --repo clone, a DIFFERENT file from
+        # the one the shadow lane pinned -- so the attestation can
+        # name an image the rerun never executed under.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    dictOutcome["sImageDigest"] = sImageReference\n'
+            '    return dictOutcome'
+        ),
+        new='    return dictOutcome',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testASecondRerunOfTheSameProjectRefusesInsteadOfSweeping'
+        ),
+        # Never take the lane lock. The second rerun of the same
+        # project then proceeds to its crash-sweep, which destroys
+        # every survivor stamped with the project's name -- including
+        # the FIRST rerun's still-running shadow, mid-comparison.
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '    if not sResourceName:\n'
+            '        yield\n'
+            '        return'
+        ),
+        new=(
+            '    if True:\n'
+            '        yield\n'
+            '        return'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoEnvelopeArchive.py::'
+            'test_an_envelope_regenerated_after_the_verify_no_longer_'
+            'passes'
+        ),
+        # Revert the gate to trusting the cached divergence list
+        # alone. A verify graded the file at verify TIME; regenerating
+        # it afterwards leaves the cache quoting bytes that no longer
+        # exist, so the badge (live hashes) goes red while the level
+        # cell (this gate) stays green -- shipped and
+        # researcher-reported, 2026-09-01.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if set(listOnDisk) & _fsetDivergedPathsOf(dictStatus):\n'
+            '        return False\n'
+            '    return _fbEnvelopeUnchangedSinceVerify(\n'
+            '        filesRepo, listOnDisk, dictStatus,\n'
+            '    )'
+        ),
+        new=(
+            '    return not '
+            '(set(listOnDisk) & _fsetDivergedPathsOf(dictStatus))'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvelopeImageCurrency.py::'
+            'test_a_rebuilt_container_is_reported_as_not_pinned'
+        ),
+        # Answer "current" whenever both sides are known. The warning
+        # machinery all still renders -- it just never fires, and a
+        # rebuild without a snapshot regeneration goes back to being
+        # discovered by a failing step deep inside the shadow.
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    dictAnswer["bPinnedImageIsLive"] = '
+            'sPinned in (sLiveDigest, sLiveId)'
+        ),
+        new='    dictAnswer["bPinnedImageIsLive"] = True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesCoverage.py::'
+            'TestPollLevelStatePayload::'
+            'test_image_currency_travels_from_handler_to_wire'
+        ),
+        # Cut the wire at the first hop. The leaf's None default fills
+        # in, which renders as "nothing determined" -- the honest
+        # UNKNOWN -- so no test of the leaf or of the renderer can
+        # tell a dropped parameter from a container that was never
+        # inspected. Only asserting a non-default value on the wire
+        # can (the threaded-parameter lesson).
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictImageCurrency='
+            'fdictAssessEnvelopeImageCurrency(\n'
+            '            dictCtx, sContainerId, filesPoll,\n'
+            '        ),'
+        ),
+        new='        dictImageCurrency=None,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShadowRerun.py::'
+            'testAnImageThatCannotHonourItsLockIsRefusedBeforeAnyStepRuns'
+        ),
+        # Skip the lock-satisfaction gate and go straight to the
+        # comparison. A hermetic rerun of an image that cannot honour
+        # its own lock then tests an environment neither reproduce.sh
+        # nor the shadow's design describes, and the divergence
+        # surfaces as a baffling mid-workflow step failure -- the
+        # pytest saga's exact shape (ruling B, 2026-09-01).
+        source='vaibify/reproducibility/shadowRerun.py',
+        old=(
+            '        dictLockRefusal = '
+            '_fdictRefusalIfImageLacksLockedPackages(\n'
+            '            connectionDocker, dictCreated["sContainerName"],'
+            '\n'
+            '            tShadowPaths[1],\n'
+            '        )\n'
+            '        if dictLockRefusal is not None:\n'
+            '            return dictLockRefusal\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_the_builder_labels_every_build_with_the_chain_'
+            'fingerprint'
+        ),
+        # Never stamp the label. The check can then determine nothing
+        # -- every answer is the honest None -- and Dockerfile
+        # staleness goes back to being invisible while every surface
+        # still renders.
+        source='vaibify/docker/imageBuilder.py',
+        old=(
+            '    sRecipeFingerprint = _fsComputeChainFingerprint(\n'
+            '        sDockerDir, listOverlays,\n'
+            '    )'
+        ),
+        new='    sRecipeFingerprint = ""',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_a_mismatched_fingerprint_is_reported_not_absorbed'
+        ),
+        # Answer True whenever both fingerprints exist. The label and
+        # the header are still collected and shipped, so everything
+        # AROUND the comparison keeps working -- only the one line
+        # that makes it a check is gone.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    dictAnswer["bDockerfileDescribesPinnedImage"] = '
+            'sHeader == sLabel'
+        ),
+        new=(
+            '    dictAnswer["bDockerfileDescribesPinnedImage"] = True'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_the_compare_runs_outside_the_enforced_lane'
+        ),
+        # Re-inherit the request's enforced lane by swapping back to
+        # asyncio.to_thread, whose contextvar copy carries the route
+        # class's flag into the compare thread. The compare's container
+        # hashing then meets the mutation gate with no admission and
+        # is refused wholesale -- every open-triggered refresh settles
+        # both remotes UNCHECKABLE with the raw admission error as the
+        # researcher-facing reason (reported 2026-09-02).
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    return await '
+            'asyncio.get_running_loop().run_in_executor(\n'
+            '        None, _fdictVerifyWithoutWriting, dictWorkflow, '
+            'filesRepo,\n'
+            '        sService,\n'
+            '    )'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictVerifyWithoutWriting, dictWorkflow, '
+            'filesRepo, sService,\n'
+            '    )'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_the_repo_hash_program_enforces_containment_and_'
+            'symlinks'
+        ),
+        # Neutralize the realpath containment check in the typed-read
+        # hash program. An escaping relative path (../outside) is then
+        # hashed and answered as an ordinary repository file -- the
+        # migration out of the adapter script must not weaken what the
+        # script enforced.
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        "    if sReal != sRootReal and not '
+            'sReal.startswith("\n'
+            '        "sRootReal + os.sep):\\n"\n'
+        ),
+        new='        "    if False:\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoFiles.py::'
+            'test_container_hashing_rides_the_typed_read_not_the_'
+            'raw_exec'
+        ),
+        # Skip the declared-read lookup and always assemble the
+        # embedded script for the general exec primitive. Every double
+        # without the typed method still passes, and every ENFORCED
+        # lane refuses the hash wholesale -- the 2026-09-02 shape,
+        # where both Published-envelope rows settled "could not check"
+        # with the raw admission error on the researcher's screen.
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '        fnTypedHash = getattr(\n'
+            '            self.connectionDocker, '
+            '"fdictHashContainerRepoPaths", None,\n'
+            '        )\n'
+            '        if fnTypedHash is not None:\n'
+            '            return fnTypedHash(\n'
+            '                self.sContainerId, self.sRootPath, '
+            'list(listRelPaths),\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/'
+            'testAPartlyDivergedEnvelopeReadsPartial.py::'
+            'test_mixed_divergence_reads_partial_and_offers_a_push'
+        ),
+        # Paint red on the first diverged file, ignoring how many
+        # still match -- the pre-ruling reading, in which "2 of 5
+        # differ" showed as total failure over a mostly-green file
+        # list (researcher-ruled, 2026-09-02: red is for a
+        # requirement with nothing left standing).
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (dictHealth.listNeedsPush.length > 0) {\n'
+            '            dictHealth.sState =\n'
+            '                dictHealth.iSynced > 0 ? "orange" : '
+            '"red";\n'
+            '        }'
+        ),
+        new=(
+            '        if (dictHealth.listNeedsPush.length > 0) {\n'
+            '            dictHealth.sState = "red";\n'
+            '        }'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGithubMirror.py::'
+            'test_the_fetch_reads_the_resolved_sha_never_the_branch_'
+            'cache'
+        ),
+        # Fetch at the branch name again. Every raw URL is then an
+        # edge-cache read, and the verify compares the researcher's
+        # files against whatever that cache last held -- one edge
+        # served the PREVIOUS commit fifteen hours after the push
+        # that replaced it, so a freshly pushed envelope verified as
+        # diverged (researcher-reported, 2026-09-02).
+        source='vaibify/reproducibility/githubMirror.py',
+        old=(
+            '        sUrl = _fsBuildRawUrl(sOwner, sRepo, sPinnedSha, '
+            'sRelativePath)'
+        ),
+        new=(
+            '        sUrl = _fsBuildRawUrl(sOwner, sRepo, sBranch, '
+            'sRelativePath)'
+        ),
     ),
     # --- 2026-08-30: the export coherence check ------------------------
     Falsification(
@@ -14448,8 +14828,21 @@ def _fdictEntry(sRel):
             '        } finally {\n'
             '            fnRelease();\n'
             '        }\n'
-            '        if (dictReady && dictReady.bL3ReadinessOK !== true) '
-            '{\n'
+            '        /* BOTH refusal classes route to the checklist '
+            'modal. The\n'
+            '           package mismatch is not one of the seven '
+            'envelope gaps, so\n'
+            '           gating on bL3ReadinessOK alone let it slip '
+            'past this\n'
+            '           pre-flight and reach the researcher as a bare '
+            'failure toast\n'
+            '           (reported 2026-09-01). */\n'
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
             '            return;\n'
             '        }\n'
@@ -14465,8 +14858,12 @@ def _fdictEntry(sRel):
         # then have traded one failure for a worse one.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        if (dictReady && dictReady.bL3ReadinessOK !== true) '
-            '{\n'
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
             '            return;\n'
             '        }\n'
@@ -14563,8 +14960,15 @@ def _fdictEntry(sRel):
         # a flat payload nobody sends.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '            return (dictResponse || {})'
-            '.dictL3ReadinessGaps || null;\n'
+            '            var dictGaps = (dictResponse || {})'
+            '.dictL3ReadinessGaps\n'
+            '                || null;\n'
+            '            if (dictGaps) {\n'
+            '                dictGaps.dictImageCurrency =\n'
+            '                    (dictResponse || {}).dictImageCurrency '
+            '|| null;\n'
+            '            }\n'
+            '            return dictGaps;\n'
         ),
         new='            return dictResponse;\n',
     ),

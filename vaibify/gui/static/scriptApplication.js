@@ -4372,6 +4372,19 @@ const VaibifyApp = (function () {
             "Repeatability rules — not declared",
         bBinariesDeclaredOrWaived:
             "Standalone packages — neither declared nor waived",
+        /* Not one of the seven envelope gaps — a fact about the
+           CONTAINER — but it refuses the verify just the same, and a
+           precondition absent from this list reaches the researcher
+           as a bare failure toast instead of this modal's checklist
+           (reported 2026-09-01). */
+        bImageMatchesDeclaredPackages:
+            "Container image — disagrees with the dependency " +
+            "declaration in vaibify.yml (see the error on Verify " +
+            "for which packages, and which side to fix)",
+        bDockerfileDescribesPinnedImage:
+            "Dockerfile — exported from a different build chain " +
+            "than the pinned image's; re-export it from the " +
+            "Dockerfile row",
     };
 
     async function _fdictFetchL3Readiness() {
@@ -4388,7 +4401,13 @@ const VaibifyApp = (function () {
                 "/api/workflow/" +
                 encodeURIComponent(_dictSessionState.sContainerId) +
                 "/level3/readiness");
-            return (dictResponse || {}).dictL3ReadinessGaps || null;
+            var dictGaps = (dictResponse || {}).dictL3ReadinessGaps
+                || null;
+            if (dictGaps) {
+                dictGaps.dictImageCurrency =
+                    (dictResponse || {}).dictImageCurrency || null;
+            }
+            return dictGaps;
         } catch (error) {
             // A readiness fetch that fails must not block the action:
             // the route re-checks and refuses on its own, naming the
@@ -4427,6 +4446,72 @@ const VaibifyApp = (function () {
             "as recorded, so it cannot change whether your project " +
             "reproduces. Fix it whenever you like with Align step " +
             "directories.";
+    }
+
+    async function fnShowL3AttestationModal() {
+        /* "On file" earns a way to open the file
+           (researcher-requested, 2026-09-02). Fetched fresh rather
+           than read off the poll: the poll carries a summary, and a
+           researcher opening the record wants the record. Every field
+           is escaped — the attestation is an agent-writable JSON
+           file — and the full document rides below the summary,
+           because a curated view of a scientific record must never
+           be the only view of it. */
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        var dictPayload;
+        try {
+            dictPayload = await VaibifyApi.fdictGet(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                "/level3/attestation");
+        } catch (error) {
+            fnShowToast("Could not load the attestation: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        }
+        var dictCurrent = (dictPayload || {}).dictCurrentAttestation;
+        if (!dictCurrent) {
+            VaibifyModals.fnShowInfoModal("Rebuild attestation",
+                "<p>No attestation is on file yet.</p>");
+            return;
+        }
+        VaibifyModals.fnShowInfoModal(
+            "Rebuild attestation",
+            _fsRenderAttestationDocument(dictCurrent));
+    }
+
+    function _fsRenderAttestationDocument(dictCurrent) {
+        var fnRow = function (sLabel, sValue) {
+            return "<div><strong>" + fnEscapeHtml(sLabel) +
+                ":</strong> " + fnEscapeHtml(String(sValue)) +
+                "</div>";
+        };
+        var listCarried = dictCurrent.listCarriedPaths || [];
+        var sHtml = '<div class="attestation-summary">' +
+            fnRow("Status", dictCurrent.sStatus || "unknown") +
+            fnRow("Attested", dictCurrent.sAttestedAtUtc || "?") +
+            fnRow("Manifest digest",
+                dictCurrent.sManifestDigestAtAttestation || "?") +
+            fnRow("Image", dictCurrent.sImageDigest || "?") +
+            fnRow("Re-derived files matched",
+                (dictCurrent.iOutputHashesMatched || 0) + " of " +
+                (dictCurrent.iOutputHashesTotal || 0)) +
+            fnRow("Duration",
+                (dictCurrent.fDurationSeconds || 0).toFixed(1) +
+                " s") +
+            (listCarried.length
+                ? fnRow("Carried human-made files",
+                    listCarried.join(", "))
+                : "") +
+            "</div>" +
+            '<p class="modal-info-note">The full record, exactly as ' +
+            "committed to the repository at " +
+            ".vaibify/l3_attestation.json:</p>" +
+            '<pre class="attestation-json-view">' +
+            fnEscapeHtml(JSON.stringify(dictCurrent, null, 2)) +
+            "</pre>";
+        return sHtml;
     }
 
     function _fnShowLevel3NotReadyModal(dictReady) {
@@ -4476,6 +4561,23 @@ const VaibifyApp = (function () {
         };
     }
 
+    function _fsImageCurrencyModalWarning(dictReady) {
+        /* One paragraph, only on a DETERMINED mismatch. This is the
+           moment the warning pays for itself: a researcher who
+           rebuilt and forgot to regenerate the snapshot is about to
+           spend a workflow-length rerun grading the OLD image, and
+           learned it from a failing step deep inside the shadow
+           (reported 2026-09-01). null paints nothing — an absent
+           capture is not evidence of a mismatch. */
+        var dictCurrency = (dictReady || {}).dictImageCurrency || {};
+        if (dictCurrency.bPinnedImageIsLive !== false) return "";
+        return "NOTE: your envelope pins an image that is NOT the " +
+            "one this container is running. The verification will " +
+            "grade the pinned image — if you rebuilt and meant to " +
+            "verify the new build, cancel and click Regenerate now " +
+            "on the Environment snapshot row first.\n\n";
+    }
+
     async function fnConfirmLevel3Verification(fnOnConfirm, elButton) {
         // Readiness FIRST. The copy warning is about a real risk, but
         // only of an operation that can actually start; asking a
@@ -4493,7 +4595,14 @@ const VaibifyApp = (function () {
         } finally {
             fnRelease();
         }
-        if (dictReady && dictReady.bL3ReadinessOK !== true) {
+        /* BOTH refusal classes route to the checklist modal. The
+           package mismatch is not one of the seven envelope gaps, so
+           gating on bL3ReadinessOK alone let it slip past this
+           pre-flight and reach the researcher as a bare failure toast
+           (reported 2026-09-01). */
+        if (dictReady && (dictReady.bL3ReadinessOK !== true ||
+                dictReady.bImageMatchesDeclaredPackages === false ||
+                dictReady.bDockerfileDescribesPinnedImage === false)) {
             _fnShowLevel3NotReadyModal(dictReady);
             return;
         }
@@ -4504,6 +4613,7 @@ const VaibifyApp = (function () {
             "container built from the image your envelope pins. Your " +
             "own files are not touched, and the copy is deleted " +
             "afterwards.\n\n" +
+            _fsImageCurrencyModalWarning(dictReady) +
             "Before you continue, make sure nothing is writing inside " +
             "the container \u2014 an agent part-way through a task, a " +
             "command running in the terminal, or a step still going. " +
@@ -5667,6 +5777,7 @@ const VaibifyApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fnShowConfirmModal: fnShowConfirmModal,
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
+        fnShowL3AttestationModal: fnShowL3AttestationModal,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,

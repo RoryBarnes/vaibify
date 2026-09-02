@@ -29,6 +29,7 @@ import re
 
 __all__ = [
     "fdictComparePackageDeclarations",
+    "fdictParsePinnedVersions",
     "flistParseRequirementNames",
 ]
 
@@ -64,6 +65,39 @@ def flistParseRequirementNames(sText):
         if sName not in listNames:
             listNames.append(sName)
     return listNames
+
+
+_REGEX_EXACT_PIN = re.compile(
+    r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?==([^;\s\\]+)"
+)
+
+
+def fdictParsePinnedVersions(sText):
+    """Return ``{normalized-name: version}`` for exact ``==`` pins.
+
+    The shape both a compiled lockfile and ``pip list
+    --format=freeze`` share, which is what lets the shadow's
+    lock-satisfaction check compare them without a second grammar.
+    Lines that pin nothing exactly — editable installs, URLs, bare
+    names, ranges, flag lines — are skipped rather than guessed at;
+    an extras suffix collapses onto the name (``name[extra]==v`` IS
+    ``name==v`` once installed); hash continuations and environment
+    markers end the version read. Names take PyPA normalization for
+    the same reason ``flistParseRequirementNames`` applies it.
+    """
+    dictPinned = {}
+    for sLine in (sText or "").splitlines():
+        sStripped = sLine.split("#", 1)[0].strip()
+        if not sStripped:
+            continue
+        if any(sMarker in sStripped for sMarker in _T_URL_MARKERS):
+            continue
+        matchPin = _REGEX_EXACT_PIN.match(sStripped)
+        if not matchPin:
+            continue
+        sName = matchPin.group(1).lower().replace("_", "-")
+        dictPinned.setdefault(sName, matchPin.group(2))
+    return dictPinned
 
 
 def fdictComparePackageDeclarations(listDeclared, sImageText):

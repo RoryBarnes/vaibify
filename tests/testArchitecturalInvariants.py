@@ -4390,7 +4390,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # words, so the row can tell "never run" from "ran and failed".
     # A boolean could not, and the row told a researcher whose rerun
     # had just reported a failing step to go and run it.
-    "routes/pipelineRoutes.py": 3447,
+    # +18 (2026-09-01): the poll threads the image-currency verdict
+    # to the envelope detail, keyword-only like bVerificationRunning.
+    "routes/pipelineRoutes.py": 3465,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5008,7 +5010,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    "pipelineServer.py": 2995,
+    # +73 (2026-09-01): connect captures which image the container is
+    # RUNNING, and the pure three-state comparison against the
+    # envelope's pin lives beside it -- a rebuild without a snapshot
+    # regeneration is announced instead of silently graded around.
+    "pipelineServer.py": 3068,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5056,7 +5062,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    "commitCarrier.py": 1192,
+    # +10 (2026-09-01): the disposable admission's docstring explains
+    # why it is minted DURABLE -- the rerun's steps stream through the
+    # durable-exec gate, and minted plain it refuses every step of
+    # every shadow rerun (external-review finding).
+    "commitCarrier.py": 1202,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -5857,7 +5867,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # HOST file the gates cannot see, and the mirror is repo-relative
     # -- so the comparison is composed here rather than threaded
     # through fdictL3ReadinessGaps's twenty-two call sites.
-    "routes/reproducibilityRoutes.py": 1393,
+    # +76 (2026-09-01): external-review fixes -- the package check
+    # resolves the Docker id to the registry name, the attestation
+    # prefers the digests the shadow actually used, a shadow not
+    # proven destroyed is recorded and shipped to the PROOF tab, and
+    # the declaration-mismatch refusal names a remedy per direction
+    # (a researcher rebuilt twice chasing the shared one).
+    # +64 (2026-09-01, second batch): the Dockerfile-provenance
+    # assessment (recipe fingerprint vs pinned image's build label)
+    # joins the package check as a verify precondition, computed here
+    # because it reads host docker state the levelGates verifiers
+    # (repo-only) cannot.
+    "routes/reproducibilityRoutes.py": 1550,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

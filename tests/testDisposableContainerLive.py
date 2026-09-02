@@ -301,6 +301,12 @@ def test_the_shadow_lane_seeds_a_real_container_from_a_real_repository():
     dockerDisposable = (
         disposableContainer.fdockerCreateDisposableClient())
     fnRequireGitImage(dockerDisposable)
+    # The pin is the probe image's ID, not its tag: production
+    # environment.json records content digests, and the lane refuses a
+    # tag outright -- a tag can be repointed without anything changing.
+    # This test used to pass the tag, which was the unfaithful half.
+    sProbeImageId = dockerDisposable.images.get(
+        S_COHERENCE_PROBE_IMAGE).id
     dictGateway = disposableContainer.fdictCreateDisposableGateway(
         dockerDisposable, S_PROBE_RESOURCE)
     dictSource = disposableContainer.fdictReserveAndCreateContainer(
@@ -329,7 +335,7 @@ def test_the_shadow_lane_seeds_a_real_container_from_a_real_repository():
             {"sProjectRepoPath": S_SOURCE_REPO},
             S_SOURCE_REPO + "/project.json", S_SOURCE_REPO,
             {"dictContainer": {
-                "sImageDigest": S_COHERENCE_PROBE_IMAGE}},
+                "sImageDigest": sProbeImageId}},
             fdictRunAndVerify=fdictCompare,
         )
     finally:

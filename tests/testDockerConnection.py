@@ -1052,3 +1052,65 @@ def test_group_walk_reports_zero_for_an_emptied_group():
     processGroupLeader.kill()
     processGroupLeader.wait()
     assert "iMembers=0" in _fsRunGroupWalkScript(iProcessGroup)
+
+
+@pytest.mark.falsification
+def test_the_repo_hash_program_enforces_containment_and_symlinks(
+    tmp_path,
+):
+    """The hash batch's semantics, run rather than assumed.
+
+    This program replaced the repo-files adapter's embedded script —
+    which travelled through the GENERAL exec primitive and was refused
+    wholesale in enforced lanes (both Published-envelope rows "could
+    not check", 2026-09-02). The migration must not weaken what the
+    script enforced: a path resolving OUTSIDE the root's realpath
+    answers bEscapesRoot instead of a hash, a symlink component is
+    named by segment, and content is hashed through O_NOFOLLOW.
+
+    Kills: In the S_TYPED_READ_REPO_HASHES program, neutralize the
+    realpath containment check (the sReal != sRootReal branch), so an
+    escaping relative path is hashed and answered as an ordinary
+    repository file.
+    """
+    import hashlib
+    import json
+
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    (pathRepo / "inside.txt").write_text("inside\n")
+    (tmp_path / "outside.txt").write_text("secret\n")
+    (pathRepo / "aLink.txt").symlink_to(pathRepo / "inside.txt")
+
+    sOutput = _fdictRunTypedReadProgramLocally(
+        dockerConnectionModule.S_TYPED_READ_REPO_HASHES,
+        [str(pathRepo), "inside.txt", "../outside.txt", "aLink.txt"],
+    )
+    dictEntries = json.loads(sOutput)
+    assert dictEntries["inside.txt"]["sSha256"] == hashlib.sha256(
+        b"inside\n",
+    ).hexdigest()
+    assert dictEntries["../outside.txt"]["bEscapesRoot"] is True
+    assert dictEntries["../outside.txt"]["sSha256"] is None, (
+        "a path outside the repository was hashed and reported as an "
+        "ordinary repository file"
+    )
+    assert dictEntries["aLink.txt"]["sSymlinkSegment"] == "aLink.txt"
+
+
+def test_the_repo_hash_program_answers_none_for_an_absent_file(
+    tmp_path,
+):
+    """Missing is 'no hash', never an error or an omitted key."""
+    import json
+
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    sOutput = _fdictRunTypedReadProgramLocally(
+        dockerConnectionModule.S_TYPED_READ_REPO_HASHES,
+        [str(pathRepo), "nowhere.txt"],
+    )
+    dictEntries = json.loads(sOutput)
+    assert dictEntries["nowhere.txt"] == {
+        "sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False,
+    }

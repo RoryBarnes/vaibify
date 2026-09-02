@@ -391,10 +391,20 @@ def ftOpenDisposableContainerAdmission(sContainerName, sContainerId):
     checkable here -- the carrier cannot know which daemon objects the
     caller made -- which is why the only caller is the lane that mints
     the gateway handle in the same function.
+
+    ``bDurable`` is True because the rerun's steps execute through the
+    STREAMED exec primitive, whose gate requires a durable admission
+    (``fnAssertDurableExecAdmitted``) -- not merely the ordinary
+    command gate. Minted non-durable, the admission satisfies preflight
+    (plain execs) and then refuses the first real step, so the lane
+    appears wired and fails only when a workflow survives preflight.
+    That is exactly how it shipped: every live run to that point had
+    died at preflight, so the refusal had never been reached.
     """
     tokenLane = ftokenMarkEnforcedLane()
     admission = _fadmissionMintForCommitCarrier(
         sContainerName, sContainerId, S_ADMISSION_MODE_DISPOSABLE,
+        bDurable=True,
     )
     return (tokenLane, ftokenActivateAdmission(admission))
 

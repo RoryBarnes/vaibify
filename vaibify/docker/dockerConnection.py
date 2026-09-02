@@ -272,6 +272,7 @@ S_TYPED_READ_PATHS_EXIST = "pathsExist"
 S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
+S_TYPED_READ_REPO_HASHES = "repoRelativeHashes"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
 
@@ -338,6 +339,55 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps("
         "[os.path.exists(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
+    # The batched repo-relative HASH, replacing an embedded script the
+    # repo-files adapter assembled and ran through the general exec
+    # primitive -- which the mutation gate must treat as mutating, so
+    # under an enforced lane every remote verify's hashing was refused
+    # (surfaced as both Published-envelope rows "could not check",
+    # 2026-09-02; the same class as the `test -f` and mtime
+    # migrations above). The slot is a flat list of path strings whose
+    # FIRST element is the repository root and the rest are
+    # repo-relative paths; the semantics are the adapter script's,
+    # preserved exactly: a symlink component is reported by segment
+    # name, a path resolving outside the root's realpath answers
+    # bEscapesRoot instead of a hash, and the content read opens with
+    # O_NOFOLLOW so the file hashed is the file checked.
+    S_TYPED_READ_REPO_HASHES: (
+        "import hashlib,json,os,sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sRoot = listArgs[0]\n"
+        "sRootReal = os.path.realpath(sRoot)\n"
+        "dictOut = {}\n"
+        "for sRel in listArgs[1:]:\n"
+        "    dictEntry = {'sSha256': None, 'sSymlinkSegment': None,\n"
+        "                 'bEscapesRoot': False}\n"
+        "    dictOut[sRel] = dictEntry\n"
+        "    if os.path.isabs(sRel):\n"
+        "        dictEntry['bEscapesRoot'] = True\n"
+        "        continue\n"
+        "    sCur = sRoot\n"
+        "    for sSeg in [s for s in sRel.split('/') if s]:\n"
+        "        sCur = os.path.join(sCur, sSeg)\n"
+        "        if os.path.islink(sCur):\n"
+        "            dictEntry['sSymlinkSegment'] = sSeg\n"
+        "            break\n"
+        "    sReal = os.path.realpath(os.path.join(sRootReal, sRel))\n"
+        "    if sReal != sRootReal and not sReal.startswith("
+        "sRootReal + os.sep):\n"
+        "        dictEntry['bEscapesRoot'] = True\n"
+        "        continue\n"
+        "    try:\n"
+        "        iFd = os.open(sReal, os.O_RDONLY | "
+        "getattr(os, 'O_NOFOLLOW', 0))\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "    hashFile = hashlib.sha256()\n"
+        "    with os.fdopen(iFd, 'rb') as fileIn:\n"
+        "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
+        "            hashFile.update(baChunk)\n"
+        "    dictEntry['sSha256'] = hashFile.hexdigest()\n"
+        "sys.stdout.write(json.dumps(dictOut))"
     ),
     # The same batch, asking whether each path is a DIRECTORY. It is
     # its own program because the question cannot be spelled as a path
@@ -1140,6 +1190,45 @@ class DockerConnection:
                 listBatch, "existence",
             ))
         return listAnswers
+
+    def fdictHashContainerRepoPaths(
+        self, sContainerId, sRootPath, listRelPaths,
+    ):
+        """Hash repo-relative container files as a typed READ, batched.
+
+        The hashing sibling of :meth:`flistContainerPathsExist`. It
+        exists because the repo-files adapter's embedded hash script
+        travelled through the GENERAL exec primitive, which the gate
+        must treat as mutating -- so a remote verify running in an
+        enforced lane had every comparison refused (2026-09-02). The
+        caller supplies the repository root and repo-relative paths;
+        the program, its symlink walk and its realpath containment are
+        fixed module text.
+
+        Batched against the exec argument budget like every batched
+        probe; the root rides at the head of each batch. A batch that
+        fails or answers garbage collapses the WHOLE result to ``{}``,
+        never a partial map -- a partial map reads as a claim about
+        the files it omits, which is the badge-probe lesson.
+        """
+        if not listRelPaths:
+            return {}
+        dictMerged = {}
+        for listBatch in flistBatchPathsForOneExec(list(listRelPaths)):
+            tExecResult = self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_REPO_HASHES,
+                [sRootPath] + listBatch,
+            )
+            if tExecResult.iExitCode != 0:
+                return {}
+            try:
+                dictBatch = json.loads(tExecResult.sStdout or "{}")
+            except ValueError:
+                return {}
+            if not isinstance(dictBatch, dict):
+                return {}
+            dictMerged.update(dictBatch)
+        return dictMerged
 
     def flistContainerDirectoriesExist(self, sContainerId, listPaths):
         """Return one is-a-directory answer per path, in the order given.

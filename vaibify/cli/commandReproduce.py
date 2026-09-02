@@ -823,6 +823,12 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
     against — the container's, which need not be byte-identical to the
     host clone ``--repo`` names. Falling back to the host digest is for
     the tiers-only path, where no container comparison happened.
+
+    ``sImageDigest`` follows the same rule for the same reason: the
+    outcome carries the pin the shadow was BUILT from, read from the
+    container repo's ``environment.json``. The host clone's recorded
+    digest is a different file and can lag it, so recording the host's
+    over the outcome's names an image the rerun never executed under.
     """
     return fdictBuildAttestation(
         sStatus=(
@@ -832,7 +838,10 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
             dictOutcome.get("sManifestDigest")
             or fsCurrentManifestDigest(sProjectRepo)
         ),
-        sImageDigest=_fsRecordedImageDigest(sProjectRepo),
+        sImageDigest=(
+            dictOutcome.get("sImageDigest")
+            or _fsRecordedImageDigest(sProjectRepo)
+        ),
         fDurationSeconds=fDuration,
         iOutputHashesMatched=dictOutcome["iOutputHashesMatched"],
         iOutputHashesTotal=dictOutcome["iOutputHashesTotal"],

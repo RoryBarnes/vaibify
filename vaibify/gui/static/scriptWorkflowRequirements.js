@@ -478,14 +478,17 @@ var VaibifyWorkflowRequirements = (function () {
             (sExtraHtml || '') + '</div>';
     }
 
-    function _fsRenderArtifactDetail(sKey, dictArtifact, sHowto) {
+    function _fsRenderArtifactDetail(sKey, dictArtifact, sHowto,
+                                     dictImageCurrency) {
         // Every artifact shows its repo location (with git/Zenodo
         // badges — these files are canonical), plain-English guidance,
         // and a direct action where one exists: envelope artifacts
         // regenerate on demand, reproduce.sh has its generator, the
         // manifest additionally offers a hash check, and the
         // Dockerfile can be composed from the image's own build chain.
-        var sActions = '<div class="requirement-row-howto">' +
+        var sActions = _fsRenderImageCurrencyWarning(
+            sKey, dictImageCurrency || {}) +
+            '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + '</div>';
         if (_SET_REGENERABLE_ARTIFACTS[sKey] === true) {
             sActions += _fsRenderActionButton(
@@ -787,10 +790,11 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _flistArtifactRows(dictDetail) {
         var dictArtifacts = dictDetail.dictArtifacts || {};
+        var dictImageCurrency = dictDetail.dictImageCurrency || {};
         return Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS).map(
             function (sKey) {
                 return _fdictArtifactRow(
-                    sKey, dictArtifacts[sKey] || {});
+                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency);
             });
     }
 
@@ -837,38 +841,64 @@ var VaibifyWorkflowRequirements = (function () {
         ];
     }
 
-    function _fsEnvelopeRemoteRowState(bMatched, sBadgeKey, listEnvelope) {
-        /* Three states, because the per-file badges beside this row
-           already speak a three-state vocabulary and the row must not
-           contradict them: blue/synced = checked and matching, orange
-           = NOBODY HAS LOOKED, red = checked and it differs.
+    function _fdictEnvelopeRemoteRowHealth(
+        bMatched, sBadgeKey, listEnvelope,
+    ) {
+        /* The row summarizes the per-file badges beside it and must
+           not contradict them: green = every file checked and
+           matching; orange = partially — some files diverge while
+           others still match, OR nothing has been compared yet; red =
+           checked and NOTHING matches. Red used to fire on the first
+           drifted file, so two changed envelope files over three
+           matching ones painted total failure above a list that was
+           mostly green (researcher-ruled, 2026-09-02): red is for a
+           requirement that is fully failed, and "two of five differ"
+           is the definition of partial.
 
-           This row used to be `bMatched ? green : red`, so an envelope
-           file that no verify had ever compared painted the row red —
-           an alarm meaning "differs" over a file nothing had proven
-           anything about, sitting next to that same file's honest
-           orange octocat.
-
-           The GATE is unchanged and still blocks on unproven: an
-           envelope nobody compared cannot support a reproducibility
-           claim. Only the colour distinguishes "not proven" from
-           "proven wrong", which is the distinction the researcher
-           acts on — a verify versus a push. */
-        if (bMatched) return "green";
+           The GATE is unchanged and blocks on any divergence or
+           unproven file: colour is granularity for the researcher,
+           never a softer claim. listNeedsPush collects the files a
+           push would actually fix — proven diverged, or proven absent
+           from the remote — and deliberately NOT the merely-unproven,
+           which want a verify, not a push. */
+        var dictHealth = {
+            sState: "orange", iSynced: 0, listNeedsPush: [],
+        };
+        if (bMatched) {
+            dictHealth.sState = "green";
+            return dictHealth;
+        }
         for (var i = 0; i < listEnvelope.length; i++) {
             var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
                 listEnvelope[i], "") || {};
-            if (dictBadges[sBadgeKey] === "drifted") return "red";
+            var sBadge = dictBadges[sBadgeKey];
+            if (sBadge === "synced") dictHealth.iSynced += 1;
+            /* "none" is push-worthy ONLY in GitHub's five-state
+               vocabulary, where it means "the verify looked and the
+               mirror lacks the file". Zenodo's three-state badge
+               spells "not tracked" with the same word — no claim at
+               all — and counting that as divergence painted a
+               never-verified project's archive row red (caught by
+               testUnprovenEnvelopeIsNotAnAlarm). */
+            if (sBadge === "drifted" ||
+                    (sBadge === "none" && sBadgeKey === "sGithub")) {
+                dictHealth.listNeedsPush.push(listEnvelope[i]);
+            }
         }
-        return "orange";
+        if (dictHealth.listNeedsPush.length > 0) {
+            dictHealth.sState =
+                dictHealth.iSynced > 0 ? "orange" : "red";
+        }
+        return dictHealth;
     }
 
     function _fdictEnvelopeRemoteRow(
         sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
         dictCheck, sMatchedNote, sDivergedNote,
     ) {
-        var sState = _fsEnvelopeRemoteRowState(
+        var dictHealth = _fdictEnvelopeRemoteRowHealth(
             bMatched, sBadgeKey, listEnvelope);
+        var sState = dictHealth.sState;
         return {
             sKey: sKey, iLevel: 3,
             sTitle: sTitle,
@@ -896,18 +926,44 @@ var VaibifyWorkflowRequirements = (function () {
                 // pass, so the action that resolves this row belongs
                 // on it. Sending the researcher to another section to
                 // press a button is how a row becomes a dead end.
+                /* The push button appears only on GitHub — a Zenodo
+                   "sync" is a new immutable deposit version, its own
+                   deliberate act — and only over files a push would
+                   actually fix: proven diverged or proven absent.
+                   Merely-unproven files want a verify, and pushing
+                   them would be acting on a claim nobody made
+                   (researcher-requested, 2026-09-02). */
+                var sPush = "";
+                if (sService === "github" &&
+                        dictHealth.listNeedsPush.length > 0) {
+                    sPush = '<button type="button" class="btn ' +
+                        'wf-push-envelope" data-service="github" ' +
+                        'data-paths="' + fnEscapeHtml(
+                            encodeURIComponent(JSON.stringify(
+                                dictHealth.listNeedsPush))) + '">' +
+                        'Push changed files to GitHub</button> ';
+                }
                 var sVerify = '<div class="requirement-row-actions">' +
+                    sPush +
                     '<button type="button" class="btn ' +
                     'wf-verify-remote" data-service="' +
                     fnEscapeHtml(sService) + '">' +
                     'Verify now</button></div>';
-                // Three notes for three states. Telling a researcher
+                // Four notes for four situations. Telling a researcher
                 // a file "differs" when nothing has compared it sends
                 // them to push a file that may already be identical;
-                // the unchecked case names the verify instead.
+                // the unchecked case names the verify instead, and the
+                // MIXED case says how much of the requirement still
+                // stands rather than reading as total failure.
                 var sNote = sDivergedNote;
                 if (bMatched) {
                     sNote = sMatchedNote;
+                } else if (dictHealth.listNeedsPush.length > 0 &&
+                        dictHealth.iSynced > 0) {
+                    sNote = dictHealth.listNeedsPush.length +
+                        ' of these files differ from (or are missing ' +
+                        'from) the published copies; the rest match. ' +
+                        'Publish the changed files, then verify.';
                 } else if (sState === "orange") {
                     sNote = 'No verify has compared every envelope ' +
                         'file against this remote yet, so vaibify ' +
@@ -915,12 +971,20 @@ var VaibifyWorkflowRequirements = (function () {
                         'is known to differ. Run Verify now.';
                 }
                 var sCheck = _fsDescribeCheck(dictCheck);
-                return (sCheck
+                /* Wrapped like every other row's detail: the
+                   requirement-row-detail class carries the indent, and
+                   these two rows were the only detail renderers that
+                   returned bare content — their body sat fully
+                   left-aligned under the banner while Published
+                   copies indented (researcher-reported, 2026-09-02,
+                   twice: first read as "a tab has been lost"). */
+                return '<div class="requirement-row-detail">' +
+                    (sCheck
                         ? '<div class="requirement-row-check">' +
                           fnEscapeHtml(sCheck) + '</div>'
                         : '') +
                     sFiles + '<div class="detail-note">' + sNote +
-                    '</div>' + sVerify;
+                    '</div>' + sVerify + '</div>';
             }};
     }
 
@@ -1338,6 +1402,16 @@ var VaibifyWorkflowRequirements = (function () {
                  dictDetail.bRebuildAttestationCurrent === true),
              bChecking: bRunning,
              fsDetail: function () {
+                 /* "On file" earns a way to OPEN the file: the row
+                    asserted a record existed and offered no way to
+                    read it (researcher-requested, 2026-09-02). The
+                    button renders whenever any attestation exists —
+                    current, stale, or failed — because a failed or
+                    stale record is exactly the one a researcher
+                    wants to inspect. */
+                 var bViewable = !bRunning && (
+                     dictDetail.bRebuildAttestationCurrent === true ||
+                     Boolean(dictDetail.dictRebuildAttestation));
                  return '<div class="requirement-row-detail">' +
                      '<div class="requirement-row-status">' +
                      fnEscapeHtml(_fsDescribeAttestation(
@@ -1345,7 +1419,12 @@ var VaibifyWorkflowRequirements = (function () {
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
                      (bRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
-                         "Verify Level 3 reproducibility")) + '</div>';
+                         "Verify Level 3 reproducibility")) +
+                     (bViewable
+                         ? ' <button type="button" class="btn ' +
+                           'wf-view-attestation">View attestation' +
+                           '</button>'
+                         : "") + '</div>';
              }},
         ];
     }
@@ -1373,9 +1452,22 @@ var VaibifyWorkflowRequirements = (function () {
                 "changed since — run it again to attest the current " +
                 "manifest.";
         }
-        return "No rebuild attempted yet. Run this once every other " +
-            "check passes; the rebuild runs in a throwaway copy of " +
-            "the container and the result appears here.";
+        /* "Once every other check passes" was the old sentence, and it
+           over-claimed: it read as including the Published-envelope
+           rows, so a green attestation over a red Zenodo row looked
+           like a contradiction (researcher-asked, 2026-09-02). The
+           real rule is narrower and has a reason on each side: the
+           ENVELOPE checks come first because fixing one edits local
+           bytes and stales the attestation; the PUBLISHED rows come
+           after because pushing edits nothing local — and because an
+           immutable Zenodo version should receive an envelope already
+           proven to reproduce, not immortalize an unproven one. */
+        return "No rebuild attempted yet. Run this once the envelope " +
+            "checks above pass (fixing those changes local files and " +
+            "would invalidate the attestation). Publish AFTER it " +
+            "passes — publishing changes nothing locally, so the " +
+            "attestation survives, and the archive receives an " +
+            "envelope already proven to reproduce.";
     }
 
     function _fsSummarizeHashCounts(dictLast) {
@@ -1560,7 +1652,35 @@ var VaibifyWorkflowRequirements = (function () {
             sPath, ["sGithub", "sZenodo"]);
     }
 
-    function _fdictArtifactRow(sKey, dictArtifact) {
+    function _fsRenderImageCurrencyWarning(sKey, dictImageCurrency) {
+        /* Rendered only on the Environment snapshot row, and only on a
+           determined MISMATCH (bPinnedImageIsLive === false). null is
+           "nothing determined" and must paint nothing — a warning
+           built from an absent capture would cry wolf on every
+           restart. This is a NOTE, not a row-state change: the pinned
+           envelope is still internally coherent and Level 3 is a
+           claim about the PUBLISHED artifact, but every verification
+           grades the pinned image, so a researcher who rebuilt and
+           forgot to regenerate must hear it here rather than from a
+           failed two-hour rerun (researcher-reported, 2026-09-01). */
+        if (sKey !== "environmentSnapshot") return "";
+        if (dictImageCurrency.bPinnedImageIsLive !== false) return "";
+        var sPinned = (dictImageCurrency.sPinnedImageDigest || "")
+            .slice(0, 27);
+        var sLive = (dictImageCurrency.sLiveImageDigest || "")
+            .slice(0, 27);
+        return '<div class="requirement-image-currency-warning">' +
+            'This envelope pins <code>' + fnEscapeHtml(sPinned) +
+            '…</code>, but the container you have open is ' +
+            'running <code>' + fnEscapeHtml(sLive) + '…</code>. ' +
+            'Verifications grade the pinned image, not the one you ' +
+            'are working in. If you rebuilt on purpose, click ' +
+            'Regenerate now (then re-verify); if not, your published ' +
+            'claim does not cover the container you are using.' +
+            '</div>';
+    }
+
+    function _fdictArtifactRow(sKey, dictArtifact, dictImageCurrency) {
         return {
             sKey: sKey,
             iLevel: 3,
@@ -1569,7 +1689,8 @@ var VaibifyWorkflowRequirements = (function () {
             fsDetail: function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,
-                    _DICT_ARTIFACT_HOWTO[sKey] || "");
+                    _DICT_ARTIFACT_HOWTO[sKey] || "",
+                    dictImageCurrency || {});
             }};
     }
 

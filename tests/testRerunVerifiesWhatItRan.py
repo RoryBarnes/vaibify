@@ -258,8 +258,16 @@ def _fnSeedEnvelope(pathRepo):
     _fnWriteManifestFor(
         pathRepo, (pathOutput, pathReproduce, pathDocker),
     )
+    # Pinned to a package the LOCAL python3 actually has, at the
+    # version it actually has, read through the same enumeration the
+    # lock-satisfaction gate runs. This harness executes real commands
+    # on this machine — the machine IS the image — so a fictional
+    # `click==8.1.7` pin made the gate refuse every rerun here the day
+    # it landed (ruling B, 2026-09-01): a correct refusal of an
+    # incoherent fixture, not a defect in the gate.
     (pathRepo / "requirements.lock").write_text(
-        "click==8.1.7 \\\n    --hash=sha256:" + "a" * 64 + "\n"
+        _fsOneTruePinnedRequirement()
+        + " \\\n    --hash=sha256:" + "a" * 64 + "\n"
     )
     pathVaibify = pathRepo / ".vaibify"
     pathVaibify.mkdir(parents=True, exist_ok=True)
@@ -320,6 +328,29 @@ def _fnCommitEverything(pathRepo):
          "-c", "user.email=fixture@example.invalid",
          "-c", "user.name=Fixture",
          "commit", "-qm", "seed"], check=True)
+
+
+def _fsOneTruePinnedRequirement():
+    """Return one ``name==version`` line the local python3 will confirm.
+
+    Read through the SAME command the lock-satisfaction gate runs in
+    the shadow, against the same interpreter this harness's real
+    command execution resolves, so the fixture's lock is satisfied by
+    construction. Falls back to an empty-pin lock (which the gate
+    deliberately skips) on a machine whose python3 cannot enumerate.
+    """
+    import subprocess
+    processResult = subprocess.run(
+        ["python3", "-m", "pip", "list", "--format=freeze",
+         "--disable-pip-version-check"],
+        capture_output=True, text=True,
+    )
+    if processResult.returncode != 0:
+        return "# no exact pins on this machine"
+    for sLine in processResult.stdout.splitlines():
+        if "==" in sLine and "@" not in sLine:
+            return sLine.strip()
+    return "# no exact pins on this machine"
 
 
 def _fnWriteManifestFor(pathRepo, tPaths):

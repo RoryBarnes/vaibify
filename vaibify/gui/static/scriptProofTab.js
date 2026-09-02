@@ -608,6 +608,7 @@ var VaibifyProofTab = (function () {
         return _fsRenderVerifyL3Button(dictL3) +
             _fsRenderVerifyProgressCard() +
             _fsRenderNoVerdictCard() +
+            _fsRenderUnsettledTeardownCard() +
             _fsRenderL3AttestationCard(dictL3) +
             _fsRenderL3HistoryTable();
     }
@@ -879,6 +880,29 @@ var VaibifyProofTab = (function () {
             'unchanged. The run could not be completed:' +
             '<ul class="proof-no-verdict-reasons">' + sReasons +
             '</ul></div></div>';
+    }
+
+    function _fsRenderUnsettledTeardownCard() {
+        // A shadow container the rerun could not PROVE destroyed may
+        // still be running on the researcher's daemon. The verdict
+        // above it stands either way -- the comparison finished before
+        // the teardown -- but hiding this would absorb a live
+        // container into a passed attestation, and the dashboard never
+        // suppresses container state.
+        var dictTeardown = (_dictLastL3Attestation &&
+            _dictLastL3Attestation.dictUnsettledTeardown) || null;
+        if (!dictTeardown) return "";
+        return '<div class="proof-card proof-unsettled-teardown">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Throwaway container not ' +
+            'proven destroyed</span></div>' +
+            '<div class="proof-card-body">' +
+            'The last verification finished, but the throwaway copy ' +
+            'of this project could not be proven removed and may ' +
+            'still be running: ' +
+            fnEscapeHtml(dictTeardown.sReason || "") +
+            ' The next verification will attempt to reclaim it.' +
+            '</div></div>';
     }
 
     function _fsRenderL3AttestationCard(dictL3) {

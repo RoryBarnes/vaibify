@@ -20,6 +20,7 @@ make the pulse honest rather than merely friendlier:
 import asyncio
 import json
 import os
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -590,3 +591,80 @@ def test_the_poll_reports_the_checks_of_the_container_it_was_asked_about(
             "sState": remoteCheckState.S_STATE_CHECKING, "sReason": "",
         },
     }
+
+
+@pytest.mark.falsification
+def test_the_compare_runs_outside_the_enforced_lane():
+    """The compare thread must not inherit the request's lane flag.
+
+    ``asyncio.to_thread`` copies contextvars, so a compare launched
+    from a request-context task inherited the route class's
+    enforced-lane flag — and its container hashing (an embedded
+    script through the GENERAL exec primitive, not a typed read) was
+    refused by the mutation gate on every open-triggered refresh.
+    Both remotes then reported the raw MutationNotAdmittedError as
+    "Could not check", container id and design citation included
+    (researcher-reported, 2026-09-02). The scheduled loop runs the
+    SAME compare from a plain thread, where the gate's documented
+    background remainder applies; the refresh must run it in the same
+    lane-free condition, which run_in_executor's no-copy behaviour
+    provides. Nothing is dodged: the compare writes nothing, and the
+    write half takes its own mode-(b) carrier.
+
+    Kills: In _fdictCompareOutsideTheLane, run the compare through
+    asyncio.to_thread instead of loop.run_in_executor, re-inheriting
+    the caller's enforced-lane flag.
+    """
+    from vaibify.config import mutationAdmission
+
+    listLaneSeen = []
+
+    def fdictProbeLane(filesRepo, dictWorkflow, sService):
+        del filesRepo, dictWorkflow, sService
+        listLaneSeen.append(mutationAdmission.fbLaneEnforced())
+        return {"dictStatus": None, "sError": "probe"}
+
+    async def fnDriveFromAnEnforcedLane():
+        tokenLane = mutationAdmission.ftokenMarkEnforcedLane()
+        try:
+            with patch.object(
+                scheduledReverify, "fdictVerifyRemoteService",
+                side_effect=fdictProbeLane,
+            ):
+                await remoteRefreshRoutes._fdictCompareOutsideTheLane(
+                    {"listSteps": []}, "/tmp/nowhere", "github",
+                )
+        finally:
+            mutationAdmission.fnResetEnforcedLane(tokenLane)
+
+    asyncio.run(fnDriveFromAnEnforcedLane())
+    assert listLaneSeen == [False], (
+        "the compare thread inherited the request's enforced lane; "
+        "every container read it makes will be refused"
+    )
+
+
+def test_a_control_plane_refusal_is_translated_for_the_researcher():
+    """No container ids or design citations on the dashboard."""
+    from vaibify.config.mutationAdmission import (
+        MutationNotAdmittedError,
+    )
+
+    sReason = remoteRefreshRoutes._fsDescribeCheckFailure(
+        MutationNotAdmittedError(
+            "ftRunInContainerStreamed on container 'abc123' was "
+            "attempted from a request lane without a commit-guard "
+            "admission (design §8)."
+        ),
+    )
+    assert "abc123" not in sReason
+    assert "§" not in sReason
+    assert "defect in vaibify" in sReason
+
+
+def test_an_ordinary_network_error_keeps_its_message():
+    """The error text is the actionable part of a failed network check."""
+    sReason = remoteRefreshRoutes._fsDescribeCheckFailure(
+        OSError("zenodo.org: Name or service not known"),
+    )
+    assert "Name or service not known" in sReason

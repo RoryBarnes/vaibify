@@ -614,6 +614,15 @@ def fdictVerifyRemoteService(
         # never compared is absent from `listDiverged` in exactly the
         # same way as a file that matched.
         "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
+        # The LOCAL hash each path was compared AS. `listDiverged`
+        # answers "did the copies agree at verify time"; this is what
+        # lets a later reader ask "is the file I am holding the one
+        # that verify graded". Without it, regenerating an envelope
+        # file left the Level 3 gate quoting a comparison of bytes
+        # that no longer existed -- the per-file badge went red while
+        # the level cell stayed green (researcher-reported,
+        # 2026-09-01).
+        "dictComparedHashes": dict(dictExpected),
     }
     _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
     return dictStatus

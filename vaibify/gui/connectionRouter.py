@@ -50,6 +50,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "fbContainerPathIsDirectory",
     "flistContainerPathsExist",
     "flistContainerDirectoriesExist",
+    "fdictHashContainerRepoPaths",
     "fdictReadFilesystemUsage",
     "fdictStatPathMtimes",
     "flistReadGitRepoStatuses",
@@ -167,6 +168,16 @@ class ConnectionRouter:
         return self.fconnectionForResource(
             sResourceId,
         ).flistContainerDirectoriesExist(
+            sResourceId, *tArguments, **dictKeywords
+        )
+
+    def fdictHashContainerRepoPaths(
+        self, sResourceId, *tArguments, **dictKeywords
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictHashContainerRepoPaths(
             sResourceId, *tArguments, **dictKeywords
         )
 

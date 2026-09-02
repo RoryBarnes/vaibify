@@ -475,3 +475,49 @@ def test_container_never_touches_host_at_container_path(connectionFake):
     dictEntry = filesRepo.fdictHashFiles(["out.dat"])["out.dat"]
     assert dictEntry["sSha256"] is None
     assert not os.path.exists("/no/such/container/root")
+
+
+@pytest.mark.falsification
+def test_container_hashing_rides_the_typed_read_not_the_raw_exec():
+    """The adapter must choose the declared read when the connection
+    has one.
+
+    The embedded-script fallback exists only for doubles that predate
+    the operation. A real connection routed onto it hashes through the
+    GENERAL exec primitive, which the mutation gate refuses in every
+    enforced lane — the shape that settled both Published-envelope
+    rows "could not check" with the raw admission error on screen
+    (researcher-reported, 2026-09-02).
+
+    Kills: In ContainerRepoFiles.fdictHashFiles, skip the
+    fdictHashContainerRepoPaths lookup and always assemble the
+    embedded script for the general exec primitive.
+    """
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+
+    dictSentinel = {"alpha.txt": {
+        "sSha256": "ab" * 32, "sSymlinkSegment": None,
+        "bEscapesRoot": False,
+    }}
+
+    class _TypedOnlyConnection:
+        def fdictHashContainerRepoPaths(
+            self, sContainerId, sRootPath, listRelPaths,
+        ):
+            assert sContainerId == "cid1"
+            assert sRootPath == "/workspace/repo"
+            assert listRelPaths == ["alpha.txt"]
+            return dict(dictSentinel)
+
+        def ftRunInContainerStreamed(self, sContainerId, sCommand,
+                                     **dictKeywords):
+            raise AssertionError(
+                "the adapter assembled a command for the general exec "
+                "primitive; in an enforced lane this is refused and "
+                "every remote verify fails"
+            )
+
+    filesRepo = ContainerRepoFiles(
+        _TypedOnlyConnection(), "cid1", "/workspace/repo",
+    )
+    assert filesRepo.fdictHashFiles(["alpha.txt"]) == dictSentinel

@@ -5927,6 +5927,36 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding-left: 18px;
 }
 
+/* The attestation viewer: a short human summary, then the full JSON
+   record exactly as committed — a curated view of a scientific record
+   must never be the only view of it. */
+.attestation-summary {
+    display: grid;
+    gap: 3px;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.attestation-json-view {
+    max-height: 45vh;
+    overflow: auto;
+    background: var(--bg-secondary, rgba(128, 128, 128, 0.08));
+    padding: 8px;
+    font-size: 11px;
+    white-space: pre;
+}
+
+/* A throwaway container the rerun could not prove destroyed. The
+   verdict above it stands -- the comparison finished first -- so this
+   is an advisory about the researcher's daemon, painted like the
+   other advisories and never like a failed attestation. */
+.proof-unsettled-teardown .proof-card-body {
+    background: rgba(240, 160, 80, 0.15);
+    border-left: 3px solid #f0a050;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
 /* Files the rerun did not re-derive. The matched/total counts above
    cover only what execution produced, so this list is what stops that
    ratio reading as a claim about the whole manifest. */
@@ -6564,6 +6594,12 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--text-secondary);
     font-style: italic;
     padding: 2px 0;
+    /* A reason once carried a 64-character container id: one unbroken
+       token wider than the panel, which horizontally displaced the
+       detail block below the banner until its indentation appeared
+       lost (reported 2026-09-02). Reasons are sanitized now, but a
+       long hostname is still one token. */
+    overflow-wrap: anywhere;
 }
 
 /* Files inside a remote's row, grouped by what the researcher must do
@@ -6672,6 +6708,19 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--text-muted);
     font-size: 11px;
     padding-top: 4px;
+}
+
+/* The envelope pins an image that is not the one the container is
+   running (a rebuild without a snapshot regeneration). Painted as an
+   advisory, like the no-verdict card: the pinned envelope is still
+   internally coherent, but every verification grades the pinned
+   image, so the researcher must be told before spending a rerun. */
+.requirement-image-currency-warning {
+    background: rgba(240, 160, 80, 0.15);
+    border-left: 3px solid #f0a050;
+    padding: 6px 8px;
+    margin: 4px 0;
+    font-size: 11px;
 }
 
 .requirement-row-actions {

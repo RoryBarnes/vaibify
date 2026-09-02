@@ -22,6 +22,7 @@ from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
     WORKSPACE_ROOT,
+    fdictAssessEnvelopeImageCurrency,
     fdictRequireWorkflow,
     fiGetSyncEpoch,
     fnHandlePipelineWs,
@@ -1109,6 +1110,9 @@ async def _fdictFetchOutputStatus(
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
             sContainerId,
         ),
+        dictImageCurrency=fdictAssessEnvelopeImageCurrency(
+            dictCtx, sContainerId, filesPoll,
+        ),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1912,7 +1916,7 @@ def _fsFetchManifestTextFromContainer(
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
-    bHostProject=False, *, bVerificationRunning,
+    bHostProject=False, *, bVerificationRunning, dictImageCurrency,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1945,6 +1949,7 @@ def _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
         bVerificationRunning=bVerificationRunning,
+        dictImageCurrency=dictImageCurrency,
     )
 
 
@@ -1996,7 +2001,7 @@ def _fdictComputePollLevelGates(
 def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
-    *, bVerificationRunning,
+    *, bVerificationRunning, dictImageCurrency,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
@@ -2020,6 +2025,7 @@ def _fdictAssemblePollResponse(
         "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesPoll,
             bVerificationRunning=bVerificationRunning,
+            dictImageCurrency=dictImageCurrency,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
@@ -2225,6 +2231,7 @@ def _fdictSummarizeAttestation(filesRepo):
 
 def _fdictBuildWorkflowEnvelopeDetail(
     dictWorkflow, filesPoll, bVerificationRunning=False,
+    dictImageCurrency=None,
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
@@ -2286,6 +2293,17 @@ def _fdictBuildWorkflowEnvelopeDetail(
             _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
             if bHasRepo else {}
         ),
+        # THREE-state: True (envelope pins the image this container is
+        # running), False (it pins a different one -- a rebuild without
+        # a snapshot regeneration, so verifications grade an image the
+        # researcher is no longer using), None (nothing determined; no
+        # surface may warn from it). Computed where the container id
+        # lives and threaded keyword-only, like bVerificationRunning.
+        "dictImageCurrency": dictImageCurrency or {
+            "bPinnedImageIsLive": None,
+            "sPinnedImageDigest": "",
+            "sLiveImageDigest": "",
+        },
         "dictDeterminism":
             (dictWorkflow or {}).get("dictDeterminism") or None,
         # The VERDICT, not the raw block, because the row must not
