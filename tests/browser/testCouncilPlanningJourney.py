@@ -303,10 +303,20 @@ def _fnAnswerABlockingQuestion(page, serverHub, sCampaignId):
     assert "Decision 1 outranks the rest." in dictResponse["sText"], (
         "the comment reached the record but not the prose the next "
         "round's participants are quoted")
-    # And it does not survive into the next gate's box.
-    assert page.evaluate(
-        "() => (document.getElementById('councilComment') || {}).value"
-        " || ''") == ""
+    # The gate closes on send, so the box goes with it. WAITED for,
+    # never read the instant the POST returns: the panel re-renders on
+    # its own poll tick, so reading the live DOM immediately races that
+    # render. This assertion passed locally and failed in CI for
+    # exactly that reason (2026-09-02) — the box still held the typed
+    # text because nothing had re-rendered yet, which is harmless and
+    # transient.
+    #
+    # What this does NOT cover: that a LATER gate opens with an empty
+    # box. The guard for that is the draft deletion beside
+    # listDecisionAnswers in _fnAnswerQuestion, and this journey
+    # produces exactly one gate, so nothing here exercises it.
+    page.wait_for_selector(
+        "#councilComment", state="detached", timeout=16000)
 
 
 def _fnWaitForResponseRecorded(page, serverHub, sCampaignId):
