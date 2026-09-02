@@ -8,6 +8,7 @@ different directory.
 
 import fcntl
 import json
+import math
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -89,33 +90,97 @@ def fnRecordHostWarningAcknowledged(sProjectDirectory):
 
 
 _S_IDLE_TIMEOUT_KEY = "sIdleTimeoutSeconds"
+_S_SESSION_CAP_KEY = "sSessionCapSeconds"
+_S_SLIDING_IDLE_KEY = "sSlidingIdleSeconds"
 
 
-def fsIdleTimeoutPreference():
-    """Return the stored host-global idle-timeout preference, or empty.
+# Tokens (case-insensitive) that select "no bound at all" in an env
+# override, a stored preference, or the Settings API. There is no finite
+# sentinel for never: 0 keeps its historical meaning ("as soon as the
+# window is entered"), so the disabled case is carried as ``math.inf``
+# and a never-window is one no finite span can ever reach. An explicit
+# named choice is also the honest way to write "no expiry" down — a
+# 30-day number outlives every hub process, so it would never fire while
+# the dashboard still claimed a bound existed.
+SET_NEVER_TOKENS = frozenset({"never", "off", "none", "disabled"})
+
+
+def ffParseTimeoutSeconds(sValue):
+    """Parse a timeout string to seconds; math.inf for never, None if invalid.
+
+    The single vocabulary behind every host-global timeout: the hub idle
+    timeout, the absolute session cap, and the sliding-idle window all
+    accept the same strings from the same three tiers (environment
+    override, stored preference, built-in default), so they cannot drift
+    into meaning different things by "never".
+
+    A never token yields ``math.inf`` (disabled). A finite value must be
+    a non-negative, non-NaN number of seconds. Empty, malformed,
+    negative, or NaN input returns ``None`` so the caller falls through
+    to the next precedence tier rather than adopting a garbage timeout.
+    """
+    sNormalized = (sValue or "").strip().lower()
+    if not sNormalized:
+        return None
+    if sNormalized in SET_NEVER_TOKENS:
+        return math.inf
+    try:
+        fSeconds = float(sNormalized)
+    except ValueError:
+        return None
+    if math.isnan(fSeconds) or fSeconds < 0:
+        return None
+    return fSeconds
+
+
+def _fsTimeoutPreference(sKey):
+    """Return one stored host-global timeout preference string, or empty.
 
     The value is a string ("never" or a number of seconds) so a single
     parser serves the env override, this preference, and the Settings
     API. A missing or non-string value reads as empty, meaning "unset" —
-    the launch default then applies.
+    the next precedence tier then applies.
     """
-    jsonStored = fdictLoadPreferences().get(_S_IDLE_TIMEOUT_KEY, "")
+    jsonStored = fdictLoadPreferences().get(sKey, "")
     return jsonStored if isinstance(jsonStored, str) else ""
 
 
+def _fnRecordTimeoutPreference(sKey, sValue):
+    """Persist one host-global timeout preference string under its key."""
+    def fnStampTimeout(dictPreferences):
+        dictPreferences[sKey] = sValue
+
+    _fnMutatePreferencesLocked(fnStampTimeout)
+
+
+def fsIdleTimeoutPreference():
+    """Return the stored hub idle-timeout preference, or empty."""
+    return _fsTimeoutPreference(_S_IDLE_TIMEOUT_KEY)
+
+
 def fnRecordIdleTimeoutPreference(sValue):
-    """Persist the host-global idle-timeout preference string.
+    """Persist the hub idle-timeout preference, already validated."""
+    _fnRecordTimeoutPreference(_S_IDLE_TIMEOUT_KEY, sValue)
 
-    Parameters
-    ----------
-    sValue : str
-        Either the "never" token or a non-negative number of seconds,
-        already validated by the caller.
-    """
-    def fnStampIdleTimeout(dictPreferences):
-        dictPreferences[_S_IDLE_TIMEOUT_KEY] = sValue
 
-    _fnMutatePreferencesLocked(fnStampIdleTimeout)
+def fsSessionCapPreference():
+    """Return the stored absolute session-cap preference, or empty."""
+    return _fsTimeoutPreference(_S_SESSION_CAP_KEY)
+
+
+def fnRecordSessionCapPreference(sValue):
+    """Persist the absolute session-cap preference, already validated."""
+    _fnRecordTimeoutPreference(_S_SESSION_CAP_KEY, sValue)
+
+
+def fsSlidingIdlePreference():
+    """Return the stored sliding-idle preference, or empty."""
+    return _fsTimeoutPreference(_S_SLIDING_IDLE_KEY)
+
+
+def fnRecordSlidingIdlePreference(sValue):
+    """Persist the sliding-idle preference, already validated."""
+    _fnRecordTimeoutPreference(_S_SLIDING_IDLE_KEY, sValue)
 
 
 def _ffileOpenPreferencesLock():

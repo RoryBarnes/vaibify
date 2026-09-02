@@ -275,12 +275,71 @@ S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_REPO_HASHES = "repoRelativeHashes"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
+S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
+# The probe stops counting past this many files. Comfortably above the
+# council's own 20,000-member bound, so a repository that the snapshot
+# would accept is always counted exactly; only one that is already
+# refused gets a truncated answer, and "too many to count" is the same
+# verdict as "too many".
+I_MAX_REPOSITORY_WEIGHT_PROBE_FILES = 50000
+# The probe names its largest files so the dashboard can offer the
+# oversized ones for exclusion by NAME rather than saying only "too
+# big". Bounded because the list is an interactive checklist: past this
+# many, ticking them individually is not the action a researcher wants
+# anyway, and the answer becomes "exclude them all" or "this repository
+# is the wrong shape for a council".
+I_REPOSITORY_WEIGHT_LARGEST_FILES = 64
+
+# Path components the probe does not count, because the council
+# snapshot does not capture them. A DELIBERATE MIRROR of
+# agentCouncilContext.DICT_EXCLUDED_COMPONENT_REASONS, which owns the
+# policy: a container program cannot import from the host environment
+# (the same boundary that makes introspectionScript duplicate
+# dataLoaders), so the names are spelled twice and pinned together by
+# testTheProbePrunesExactlyWhatTheSnapshotExcludes.
+#
+# Not cosmetic. Measured on a real research repository (2026-08-22):
+# without pruning, the probe reported 463 MB and named a 315 MB git
+# pack as the largest file — refusing a council over an object store
+# the snapshot never carries, and offering the pack for "exclusion".
+# The same repository weighs 148 MB of actual content.
+_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
+    ".claude", ".cline", ".clinerules", ".codex", ".env", ".gemini",
+    ".git", ".git-credentials", ".ipynb_checkpoints", ".netrc",
+    ".opencode", ".openhands", ".pi", ".pytest_cache", ".ssh",
+    ".vaibify", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
+)
+S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
+
+# A provider login document is kilobytes. The council's credential read
+# bounds itself IN the container at this ceiling rather than inheriting
+# the 64 MB general-file cap, which can only reject after the bytes
+# have already crossed the socket and been decoded.
+I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
         "import base64,sys; "
         "sys.stdout.buffer.write(base64.b64encode(open("
         + _S_TYPED_READ_PATH_SLOT + ",'rb').read()))"
+    ),
+    # A credential document read with the bound enforced IN THE
+    # CONTAINER. The general file read above materializes the whole
+    # file and base64s it before the host can check any cap, so a
+    # host-side cap rejects a hostile multi-gigabyte file only AFTER
+    # paying for it twice — which is what the council's credential
+    # read used to do. This program reads one byte past the ceiling
+    # and stops: an oversized file costs the ceiling, never its size,
+    # and the extra byte is what lets the host tell "at the limit"
+    # from "over it". The ceiling is server-owned text, never a
+    # caller's value, so the typed-read seam still takes only an
+    # operation name and a path.
+    S_TYPED_READ_CREDENTIAL_FILE: (
+        "import base64,sys\n"
+        "with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
+        "    baHead=fileIn.read(" + str(I_MAX_CREDENTIAL_FILE_BYTES + 1)
+        + ")\n"
+        "sys.stdout.buffer.write(base64.b64encode(baHead))\n"
     ),
     S_TYPED_READ_DIRECTORY: (
         "import os,sys; "
@@ -298,6 +357,87 @@ _DICT_TYPED_READ_PROGRAMS = {
         "'iTotalBytes': st.f_blocks*st.f_frsize, "
         "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
         "'iFreeBytes': st.f_bavail*st.f_frsize}))"
+    ),
+    # The council snapshot pre-flight: how many files a repository holds
+    # and how many bytes, so the dashboard can say "this will not fit"
+    # BEFORE the researcher composes a question. Walking metadata is
+    # cheap where streaming 30 GB through get_archive to discover the
+    # same refusal is not, and the alternative — finding out at convene
+    # — throws away the researcher's actual thinking (live report,
+    # 2026-08-22). It stops counting once BOTH declared bounds are
+    # exceeded, so an enormous tree cannot make the probe itself the
+    # slow thing it exists to prevent. It prunes exactly what the
+    # snapshot excludes, so it weighs what would actually be captured
+    # rather than the directory that happens to contain it.
+    S_TYPED_READ_REPOSITORY_WEIGHT: (
+        "import heapq,json,os,stat,sys\n"
+        "root=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "cap=" + str(I_MAX_REPOSITORY_WEIGHT_PROBE_FILES) + "\n"
+        "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "\n"
+        "skip=" + repr(set(_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS))
+        + "\n"
+        "n=0; b=0; truncated=False; heap=[]\n"
+        "escaping=[]; special=[]; submodules=[]\n"
+        "for dirpath,dirnames,filenames in os.walk(root):\n"
+        "    dirnames[:]=[d for d in dirnames if d not in skip]\n"
+        # A checked-out submodule's files are enumerated by no
+        # superproject git command, so every one of them is an
+        # unobserved member and the capture refuses. Its marker is a
+        # .git that is a FILE rather than a directory — and .git is
+        # pruned above, so this looks for it before the prune applies
+        # to the next level down.
+        "    if dirpath!=root and os.path.isfile(\n"
+        "            os.path.join(dirpath,'.git')):\n"
+        "        submodules.append(os.path.relpath(dirpath,root))\n"
+        "        dirnames[:]=[]\n"
+        "        continue\n"
+        "    for name in filenames:\n"
+        "        if name in skip: continue\n"
+        "        p=os.path.join(dirpath,name)\n"
+        # A symlink contributes NO content bytes, because the snapshot
+        # stores it as a link rather than following it. os.lstat would
+        # report the length of the target NAME, which is neither the
+        # link's cost nor the target's — a live comparison against the
+        # capture caught the probe over-reporting by exactly
+        # len('dataFile.txt').
+        "        try:\n"
+        "            st=os.lstat(p)\n"
+        "            size=0 if stat.S_ISLNK(st.st_mode) else st.st_size\n"
+        "        except OSError: st=None; size=0\n"
+        # The capture's NON-SIZE refusals, spotted on the same walk.
+        # They are all properties of the tree as it sits, so a
+        # researcher can be told about them while choosing a directory
+        # instead of after writing a question — the same complaint the
+        # size bounds answered. A symlink out of the repository and an
+        # unrepresentable special file each refuse the whole capture.
+        "        if st is not None and stat.S_ISLNK(st.st_mode):\n"
+        "            try: target=os.readlink(p)\n"
+        "            except OSError: target=''\n"
+        "            resolved=os.path.normpath(os.path.join(\n"
+        "                os.path.dirname(p),target))\n"
+        "            if (not target or os.path.isabs(target)\n"
+        "                    or os.path.relpath(\n"
+        "                        resolved,root).startswith(os.pardir)):\n"
+        "                escaping.append({'sPath':os.path.relpath(p,root),\n"
+        "                    'sTarget':target})\n"
+        "        elif st is not None and not stat.S_ISREG(st.st_mode):\n"
+        "            special.append(os.path.relpath(p,root))\n"
+        "        b+=size; n+=1\n"
+        "        if len(heap)<top:\n"
+        "            heapq.heappush(heap,(size,os.path.relpath(p,root)))\n"
+        "        elif size>heap[0][0]:\n"
+        "            heapq.heapreplace("
+        "heap,(size,os.path.relpath(p,root)))\n"
+        "    if n>cap:\n"
+        "        truncated=True; break\n"
+        "sys.stdout.write(json.dumps({"
+        "'iFileCount': n, 'iTotalBytes': b, 'bTruncated': truncated, "
+        "'bLargestFilesTruncated': len(heap)>=top, "
+        "'listEscapingSymlinks': escaping[:top], "
+        "'listSpecialFiles': special[:top], "
+        "'listSubmodules': submodules[:top], "
+        "'listLargestFiles': [{'sPath': q, 'iSizeBytes': s} "
+        "for s,q in sorted(heap,reverse=True)]}))"
     ),
     # Existence probes, replacing `test -f` / `test -d` assembled by a
     # repo-files adapter and run through the general exec primitive.
@@ -773,6 +913,12 @@ class DockerConnection:
                     "sImage": str(container.image.tags[0])
                     if container.image.tags
                     else str(container.image.id[:12]),
+                    # The immutable content-addressed id, beside the
+                    # display tag: a tag can be repointed without the
+                    # containers changing, so anything that PINS an
+                    # identity (the council credential gate, runner
+                    # launches) must read this field, never sImage.
+                    "sImageIdentity": str(container.image.id),
                 }
             )
             self._dictContainers[container.id] = container
@@ -791,6 +937,54 @@ class DockerConnection:
             return self._dictContainers[sContainerId]
         container = self._clientDocker.containers.get(sContainerId)
         return self._dictContainers.setdefault(sContainerId, container)
+
+    def flistRunningExecIdentifiers(self, sContainerId):
+        """Return the ids of exec sessions the daemon still reports running.
+
+        Metadata only: this asks the daemon what it is running, it never
+        runs anything, so it needs no command authority and no admission.
+
+        It is EVIDENCE of work in the container, never proof of its
+        absence. An exec whose shell has exited leaves nothing here even
+        when a ``setsid`` descendant of it is still running — the same
+        limit ``terminalContainment`` documents for its process-group
+        prover. What the signal does carry is the property this exists
+        for, observed 2026-08-29: an exec outlives the death of the
+        client that started it, so a hub that crashed and restarted can
+        still see the work its predecessor launched.
+
+        The daemon prunes finished execs from ``ExecIDs``, so the list
+        alone would nearly answer the question; each id is confirmed
+        through ``exec_inspect`` anyway, because the pruning is
+        observed behaviour of one daemon and ``Running`` is a stated
+        one.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        container.reload()
+        listExecIds = container.attrs.get("ExecIDs") or []
+        listRunning = []
+        for sExecId in listExecIds:
+            if self._fbExecIsRunning(sExecId):
+                listRunning.append(sExecId)
+        return listRunning
+
+    def _fbExecIsRunning(self, sExecId):
+        """Return True when the daemon reports one exec still running.
+
+        Routed through :meth:`fdictInspectExec` — the gateway method the
+        operation journal's exec verifier already uses — rather than
+        touching the SDK again: a second raw ``exec_inspect`` would be a
+        second untraceable root for the mutation scan to answer for, and
+        the reading of ``Running`` is the same reading in both places.
+
+        A daemon failure is deliberately NOT caught here. Swallowing it
+        would answer "not running" for an exec nobody could read, and
+        the caller would withdraw a keep-alive under work that may be
+        live; letting it propagate lets the single decision point
+        (``sleepPrevention.fbContainerShowsRunningWorkEvidence``) break
+        the tie in the direction that cannot lose a job.
+        """
+        return bool(self.fdictInspectExec(sExecId).get("Running"))
 
     def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
@@ -1049,6 +1243,35 @@ class DockerConnection:
             return self.ftRunInContainerStreamed(sContainerId, sCommand)
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
+
+    def fbaFetchCredentialFile(self, sContainerId, sFilePath):
+        """Fetch a provider login, bounded IN the container.
+
+        The council's credential read. Unlike :meth:`fbaFetchFile`,
+        whose cap can only reject a payload the host has already
+        received and decoded, this one stops reading at
+        :data:`I_MAX_CREDENTIAL_FILE_BYTES` inside the container — so a
+        hostile multi-gigabyte file planted at the credential path
+        costs the ceiling rather than its own size. Over-ceiling
+        raises ``ValueError`` (the program returned the one extra byte
+        that distinguishes "at the limit" from "over" it); an
+        unreadable path raises ``FileNotFoundError``, as the general
+        read does.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_CREDENTIAL_FILE, sFilePath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot read credential file from container: {sFilePath}"
+            )
+        baContent = base64.b64decode(tExecResult.sStdout.strip())
+        if len(baContent) > I_MAX_CREDENTIAL_FILE_BYTES:
+            raise ValueError(
+                f"Credential file exceeds the {I_MAX_CREDENTIAL_FILE_BYTES} "
+                f"byte ceiling: {sFilePath}"
+            )
+        return baContent
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
@@ -1455,6 +1678,28 @@ class DockerConnection:
         return _fbaCollectBoundedTarStream(
             iterTarStream, iMaxBytes, sDirectoryPath,
         )
+
+    def fdictWeighRepository(self, sContainerId, sRepositoryPath):
+        """Return ``{iFileCount, iTotalBytes, bTruncated}`` for a repo.
+
+        An audited adapter on the same terms as its neighbours: the
+        caller supplies a PATH and this supplies the NAME of a declared
+        read, so a path cannot become program text.
+
+        It exists so the council can answer "would a snapshot of this
+        repository be accepted?" from metadata, before a researcher
+        composes a question. ``bTruncated`` means the walk stopped at
+        its own cap — an answer of "more files than we will ever
+        accept", which is the same verdict as an exact count too large.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_REPOSITORY_WEIGHT, sRepositoryPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot weigh repository in container: {sRepositoryPath}"
+            )
+        return json.loads(tExecResult.sStdout.strip())
 
     def fiterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,

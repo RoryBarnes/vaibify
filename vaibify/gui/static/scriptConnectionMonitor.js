@@ -130,6 +130,39 @@ var VaibifyConnectionMonitor = (function () {
         );
     }
 
+    function _fsBuildUnauthorizedMessage(dictError) {
+        /* A 401 used to be reported as "the server has been restarted",
+           which is a guess and, for the case that produces most 401s,
+           a false one: a session that reached its cap was ended by a
+           hub that is still running. The server now sends its own
+           account of the ending when it has one, so prefer it, and
+           keep the old sentence only for a 401 the hub could not
+           explain — which really is what a restart looks like. */
+        var dictDetail = dictError.dictDetail || {};
+        if (!dictDetail.sMessage) {
+            return (
+                "Vaibify server has been restarted (session expired). " +
+                "Click to reload the dashboard."
+            );
+        }
+        return (
+            dictDetail.sMessage +
+            _fsDescribeEndingTime(dictDetail.sEndedWallClockIso) +
+            " Click to reload the dashboard."
+        );
+    }
+
+    function _fsDescribeEndingTime(sEndedWallClockIso) {
+        /* Rendered in the researcher's own locale from the server's
+           ISO stamp. The countdown that was supposed to warn them
+           fires while nobody is at the screen, so the time it actually
+           happened is the part that makes the notice useful. */
+        if (!sEndedWallClockIso) return "";
+        var dateEnded = new Date(sEndedWallClockIso);
+        if (isNaN(dateEnded.getTime())) return "";
+        return " It ended at " + dateEnded.toLocaleTimeString() + ".";
+    }
+
     function _fsBuildToastMessage(dictError) {
         if (dictError && dictError.sKind === "windowExhausted") {
             return (
@@ -141,10 +174,7 @@ var VaibifyConnectionMonitor = (function () {
             );
         }
         if (dictError && dictError.sKind === "unauthorized") {
-            return (
-                "Vaibify server has been restarted (session expired). " +
-                "Click to reload the dashboard."
-            );
+            return _fsBuildUnauthorizedMessage(dictError);
         }
         if (dictError && dictError.sKind === "refused") {
             if (dictError.iCode === 4409) {

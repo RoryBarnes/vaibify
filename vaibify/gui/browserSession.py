@@ -15,6 +15,7 @@ until process exit, and the capability supports bounded replay so a lost
 bootstrap response is recoverable.
 """
 
+import datetime
 import logging
 import secrets
 import threading
@@ -42,6 +43,7 @@ __all__ = [
     "ftMintDetachedSessionRecord",
     "fnDiscardSessionRecord",
     "fbRevokeSessionById",
+    "fdictEndingNoticeForCredential",
     "fnStoreTransferResult",
     "fbValidateCredential",
     "fsSessionIdForCredential",
@@ -72,7 +74,15 @@ I_ARMED_CAPABILITY_CAP = 64
 # because the record IS the audit trail of a session that was cut, and a
 # tab that returns after a revocation should meet a record that says so
 # rather than a hole.
-F_REVOKED_RETENTION_SECONDS = 3600.0
+#
+# A day, not an hour, because the record is also the ONLY memory of why
+# a credential stopped working, and the case that motivates the notice
+# is a cap started in the afternoon firing in the small hours: an
+# hour's retention is swept clean long before the researcher wakes up,
+# and they meet a bare "Unauthorized" for an event the hub could have
+# explained. A REVOKED record authorizes nothing, so retaining it
+# longer widens no capability; the ACTIVE cap is what bounds the store.
+F_REVOKED_RETENTION_SECONDS = 86400.0
 
 _lockBrowserSessions = threading.Lock()
 
@@ -131,6 +141,13 @@ class BrowserSessionRecord:
     fLastSeenMonotonic: float
     sState: str = S_SESSION_STATE_ACTIVE
     bRemoteSession: bool = False
+    # Why this session ended, and when by the wall clock. Written once,
+    # at revocation. The wall clock is deliberate: every other stamp on
+    # this record is monotonic (correct for measuring windows, useless
+    # for telling a researcher what time it happened), and "your session
+    # ended at 05:28" is the whole content of the notice.
+    sEndedMessage: str = ""
+    sEndedWallClockIso: str = ""
 
 
 def fdictCreateBrowserSessionStore():
@@ -422,10 +439,18 @@ def fnDiscardSessionRecord(dictStore, sCredential):
         dictStore.get("dictSessionsByCredential", {}).pop(sCredential, None)
 
 
-def fbRevokeSessionById(dictStore, sSessionId):
-    """Revoke every ACTIVE record of a session id; return True if any."""
+def fbRevokeSessionById(dictStore, sSessionId, sEndedMessage=""):
+    """Revoke every ACTIVE record of a session id; return True if any.
+
+    ``sEndedMessage`` is the sentence a returning browser is shown in
+    place of a bare "Unauthorized". It is composed by the caller, which
+    is the only party that knows WHY it is revoking, and stored rather
+    than a code so the explanation and the event cannot drift apart in
+    a frontend lookup table.
+    """
     if not sSessionId:
         return False
+    sEndedWallClockIso = datetime.datetime.now().astimezone().isoformat()
     bRevokedAny = False
     with _lockBrowserSessions:
         for recordSession in dictStore.get(
@@ -435,8 +460,42 @@ def fbRevokeSessionById(dictStore, sSessionId):
                 recordSession.sState == S_SESSION_STATE_ACTIVE
             ):
                 recordSession.sState = S_SESSION_STATE_REVOKED
+                recordSession.sEndedMessage = sEndedMessage
+                recordSession.sEndedWallClockIso = sEndedWallClockIso
                 bRevokedAny = True
     return bRevokedAny
+
+
+def fdictEndingNoticeForCredential(dictStore, sCredential):
+    """Return why a revoked credential stopped working, or None.
+
+    The post-hoc half of the session-expiry story. The pre-expiry
+    warning assumes an audience: a cap that starts in the afternoon
+    fires in the small hours, and a countdown shown to an empty room
+    mitigates nothing. This is what the hub can still say afterwards,
+    and it is answered for the credential the request PRESENTS — never
+    for another session — so it discloses nothing a caller did not
+    already hold.
+
+    ``None`` for an unknown, still-ACTIVE, or already-swept credential:
+    the hub says what it knows and invents nothing for what it does not.
+    """
+    if not sCredential:
+        return None
+    with _lockBrowserSessions:
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
+        if recordSession is None or (
+            recordSession.sState != S_SESSION_STATE_REVOKED
+        ):
+            return None
+        if not recordSession.sEndedMessage:
+            return None
+        return {
+            "sEndedMessage": recordSession.sEndedMessage,
+            "sEndedWallClockIso": recordSession.sEndedWallClockIso,
+        }
 
 
 def fnStoreTransferResult(

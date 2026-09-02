@@ -177,6 +177,7 @@ DICT_PRIMITIVE_ACCESS = {
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
+    "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
     # Bulk export through the SAME daemon archive API fiterStreamFile
     # uses, at repository scale instead of one file. Classified with the
@@ -205,6 +206,12 @@ DICT_PRIMITIVE_ACCESS = {
     # container.
     "fdictReadDaemonCapacity": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
+    # Metadata about what the DAEMON is running in a container: the
+    # exec-id list plus one Running flag per id, via fdictInspectExec.
+    # It runs no program, takes no caller value, and cannot mutate; it
+    # is the sleep-prevention sweep's evidence that work is still live
+    # after the browser that started it has gone.
+    "flistRunningExecIdentifiers": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
     # The audited adapter behind `vaibify ls`: the caller supplies a
     # PATH, never a command, so it is a typed read even though it uses
@@ -216,6 +223,15 @@ DICT_PRIMITIVE_ACCESS = {
     # module, which the boundary had to read as an arbitrary command
     # because a primitive cannot tell a df from an rm -rf.
     "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
+    "fdictWeighRepository": S_ACCESS_TYPED_READ,
+    # A DAEMON-info query, not a container call: it runs no program
+    # anywhere, takes no caller value, and reads only how much memory
+    # and CPU the daemon has to give. Classified as a typed read
+    # because that is the narrowest kind this vocabulary has and it
+    # over-states rather than under-states what the call can do; the
+    # council sizes a runner's limits from the answer, because host RAM
+    # is the wrong number for anything that runs in a container.
+    "fdictReadDaemonCapacity": S_ACCESS_TYPED_READ,
     # The two existence probes, on the same terms again. They replaced
     # `test -f`/`test -d` assembled by ContainerRepoFiles and run
     # through the general exec primitive -- which the boundary had to
@@ -251,6 +267,15 @@ DICT_PRIMITIVE_ACCESS = {
     # interpolated raw -- the last exec keeping that route outside the
     # commit-guard boundary.
     "flistReadGitRepoStatuses": S_ACCESS_TYPED_READ,
+    # The council snapshot's coherence observation (remediation R5):
+    # the declared ``gitWorktreeIdentities`` program enumerates every
+    # changed worktree path with git and computes each one's blob
+    # identity over the raw bytes, in the container. Same property as
+    # the poll read above: what the caller varies is only the repo
+    # path literal, and the argv around it is fixed text in the
+    # program table. It replaced a bash while-loop the caller
+    # assembled and ran through the general exec primitive.
+    "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,

@@ -34,6 +34,11 @@ import json
 
 S_CONTAINER_ID = "browserlane0container0id0000000000000000000000000000000000000000"
 S_CONTAINER_NAME = "browser-lane-project"
+# The immutable image id a real daemon reports for every running
+# container. The council credential gate compares it against the
+# maintainer's evidence record, so a fake that omitted it would leave
+# the gate resolving against nothing.
+S_IMAGE_IDENTITY = "sha256:" + "fa4e" * 16
 S_WORKSPACE_ROOT = "/workspace"
 # Imported from the product rather than re-spelled: a fake that drifted
 # from the real marker path would answer the recognition probe for a
@@ -150,6 +155,13 @@ LIST_MODELLED_COMMANDS = [
 ]
 
 
+# When the modelled Claude login expires, in epoch milliseconds. Zero
+# means the document states no expiry, which is what every journey but
+# the login-cap one wants. Set and reset by that test; kept here rather
+# than on the adapter instance because the hub builds its own.
+I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS = 0
+
+
 class UnmodelledContainerCall(RuntimeError):
     """Raised when the fake is asked something its contract omits."""
 
@@ -176,11 +188,53 @@ class FailClosedDockerAdapter:
             f"{S_PROJECT_REPO}/Generate/output.dat": 1000,
             f"{S_PROJECT_REPO}/Analyze/summary.json": 2000,
         }
+        # What the council's snapshot pre-flight measures. Comfortably
+        # inside the capture bounds so a council is convenable; a
+        # journey may raise it to drive the refusal.
+        self.dictRepositoryWeight = {
+            "iFileCount": 120,
+            "iTotalBytes": 2 * 1024 * 1024,
+            "bTruncated": False,
+            "bLargestFilesTruncated": False,
+            "listLargestFiles": [
+                {"sPath": "README.md", "iSizeBytes": 2048},
+            ],
+            "listEscapingSymlinks": [], "listSpecialFiles": [],
+            "listSubmodules": [],
+        }
         # What the Repos panel's discovery finds under the workspace
         # root: the lane's one project repository.
         self.setWorkspaceRepositories = {
             S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
         }
+
+    def fdictReadDaemonCapacity(self):
+        """Report an unmeasurable daemon, so the bounds are the floors.
+
+        A daemon reading is not a container call, so it has no
+        container assertion to make — but it must be MODELLED rather
+        than left to the fail-closed default, because the council's
+        snapshot bounds ask for it on every pre-flight. Zero means
+        "unknown", which pins the lane to the declared floors instead
+        of to whatever machine is running the suite.
+        """
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
+
+    def fdictWeighRepository(self, sContainerId, sRepositoryPath):
+        """Answer the council's snapshot pre-flight: a small repository.
+
+        Modelled rather than left to raise, because the lane's project
+        repo IS small and a council must be convenable in the browser
+        journey. A journey wanting the too-large refusal raises
+        dictRepositoryWeight, exactly as a researcher's output tree does
+        to the real probe.
+        """
+        if not sRepositoryPath.startswith(S_WORKSPACE_ROOT):
+            raise UnmodelledContainerCall(
+                "Repository weigh outside the workspace volume, which "
+                f"this fake does not speak for: {sRepositoryPath}"
+            )
+        return dict(self.dictRepositoryWeight)
 
     def fnTouchFile(self, sPath, iModifiedTime):
         """Age or freshen one watched path, as an in-container edit would."""
@@ -192,6 +246,7 @@ class FailClosedDockerAdapter:
             "sShortId": S_CONTAINER_ID[:12],
             "sName": S_CONTAINER_NAME,
             "sImage": "ubuntu:24.04",
+            "sImageIdentity": S_IMAGE_IDENTITY,
         }] + list(self.listStartedContainers)
 
     def fnRecordContainerStarted(self, sName, sContainerId):
@@ -209,6 +264,7 @@ class FailClosedDockerAdapter:
             "sShortId": sContainerId[:12],
             "sName": sName,
             "sImage": "ubuntu:24.04",
+            "sImageIdentity": S_IMAGE_IDENTITY,
         })
 
     def _ftAnswerDirectoryCreate(self, sCommand):
@@ -355,6 +411,25 @@ class FailClosedDockerAdapter:
             for sPath in listPaths
         ]
 
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Answer the Repos panel's batched git-status typed read.
+
+        A typed read, not a command, so it is exempt from
+        ``LIST_MODELLED_COMMANDS`` — the fail-closed COMMAND contract is
+        untouched. The fake models no git history, so every requested
+        repo reports a clean, empty status rather than raising an
+        ``AttributeError`` the caller does not catch (it guards only
+        ``OSError``/``ValueError``). Returning the empty list per repo is
+        the honest "nothing to report" answer for a container with no
+        commits, and it keeps a project-open journey free of a spurious
+        500 the moment the panel polls.
+        """
+        return [
+            {"sPath": sRepoPath, "bMissing": False, "sBranch": "main",
+             "sPorcelain": "", "sUrl": ""}
+            for sRepoPath in listRepoPaths
+        ]
+
     def _fbPathExists(self, sPath):
         """Answer the typed existence read for the paths it models.
 
@@ -374,11 +449,26 @@ class FailClosedDockerAdapter:
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)
 
+    def fbaFetchCredentialFile(self, sContainerId, sPath):
+        """The council's bounded credential read, same modelled paths."""
+        return self.fbaFetchFile(sContainerId, sPath)
+
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
+        # The council's launch-time login-presence probe: the journey
+        # models a project the researcher has already logged in to.
+        if sPath.endswith("/.claude/.credentials.json"):
+            dictOauth = {"accessToken": "fixture-access-token"}
+            # Absent by default, exactly as the ordinary journeys want:
+            # a login with no stated expiry clamps nothing and the
+            # convene form says nothing about it. A test that needs the
+            # cap notice sets the module knob and resets it.
+            if I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS:
+                dictOauth["expiresAt"] = I_LOGIN_EXPIRES_AT_EPOCH_MILLISECONDS
+            return json.dumps({"claudeAiOauth": dictOauth}).encode("utf-8")
         raise FileNotFoundError(sPath)
 
     def fnWriteFile(

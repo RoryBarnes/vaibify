@@ -206,6 +206,7 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("PUT", "/api/preferences/host-warning-acknowledged"):
         S_SCOPE_BROWSER_HUB,
     ("PUT", "/api/preferences/idle-timeout"): S_SCOPE_BROWSER_HUB,
+    ("PUT", "/api/preferences/session-cap"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/registry/{sName}/release"): S_SCOPE_BROWSER_HUB,
@@ -268,6 +269,18 @@ _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
 # ``container-read`` must appear here, so a NEW owned-container GET fails
 # ``testContainerReadScopeIsAFrozenRatchetedAllowlist`` until acknowledged.
 SET_CONTAINER_READ_ROUTES = frozenset({
+    ("GET", "/api/agent-councils/{sContainerId}"),
+    ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
+    ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events"),
+    # The ask-the-chairbot transcript. Acknowledged as an owned-container
+    # read even though what it reads is in-process state rather than the
+    # container: it exposes the researcher's private conversation with
+    # the council, which is exactly the material the lease is what
+    # entitles somebody to.
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/chat"),
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/plan.md"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),

@@ -33,7 +33,7 @@ def fnStartKeepAlive(sContainerName):
     sContainerName : str
         The Docker container name used to locate the PID file.
     """
-    if sys.platform != "darwin":
+    if not fbPlatformSupportsKeepAlive():
         return
     fnStopKeepAlive(sContainerName)
     pidFileRegistry.fnEnsureDirectory(_S_PID_DIRECTORY)
@@ -65,6 +65,55 @@ def _fnWritePidFile(sContainerName, iPid):
     }
     with pidFileRegistry.ffileOpenNoFollow(sPath) as fileHandle:
         pidFileRegistry.fnWritePayload(fileHandle, dictPayload)
+
+
+def fbPlatformSupportsKeepAlive():
+    """Return True where a keep-alive can actually be held.
+
+    ``caffeinate`` is macOS-only, so on every other platform
+    :func:`fnStartKeepAlive` silently declines. A caller that asserts
+    keep-alives on a timer must ask this first — otherwise it announces
+    "holding the machine awake" once per tick for a process that was
+    never spawned, which is the dashboard misreporting its own state.
+    """
+    return sys.platform == "darwin"
+
+
+def fbKeepAliveIsLive(sContainerName):
+    """Return True when this name's caffeinate is recorded and still alive.
+
+    The idempotence predicate. :func:`fnStartKeepAlive` deliberately
+    kills and respawns, so a caller that re-asserts a keep-alive on a
+    timer would churn a process every tick; it asks this first and
+    starts only when the answer is False. The same start-clock gate the
+    kill uses answers it, so a recycled PID reads as not live.
+    """
+    sPath = _fsPidFilePath(sContainerName)
+    if not os.path.isfile(sPath):
+        return False
+    dictPayload = _fdictReadPidPayload(sPath)
+    iPid = dictPayload.get("iPid", 0)
+    if not iPid:
+        return False
+    return fbIsProcessAliveSince(iPid, dictPayload.get("sStartedIso"))
+
+
+def flistKeepAliveNames():
+    """Return every name this host currently records a keep-alive for.
+
+    Reads the registry directory rather than any in-process map, so a
+    hub that restarted still finds the keep-alives an earlier hub
+    started — the caffeinate outlives its hub (it is spawned into its
+    own session), so a registry nobody re-reads is how one leaks.
+    """
+    try:
+        listEntries = os.listdir(_S_PID_DIRECTORY)
+    except OSError:
+        return []
+    return [
+        sEntry[: -len(".pid")] for sEntry in listEntries
+        if sEntry.endswith(".pid")
+    ]
 
 
 def fnStopKeepAlive(sContainerName):

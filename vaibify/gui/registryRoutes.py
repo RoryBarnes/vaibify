@@ -595,6 +595,11 @@ def _fnRegisterReleaseContainer(app, dictCtx):
         dictBody = dict(dictPayload, sName=sName, bReleased=(
             sOutcome == sessionLifecycle.S_RELEASE_RELEASED
         ))
+        # Council settlement is INSIDE ftReleaseExplicit's ownership
+        # transaction (admission closed atomically, paused runtimes
+        # settled under the container-mutation lock, reopened on any
+        # non-commit) — a post-release drain here would race a new
+        # claim's admission reopen against its own async cleanup.
         if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
             # The refusal reason rides `detail`, the shape the client's
             # error extractor reads — the same one the claim 409 uses.

@@ -45,6 +45,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "fnWriteFileViaTar",
     "fnWriteTreeViaTar",
     "fbaFetchFile",
+    "fbaFetchCredentialFile",
     "flistDirectoryEntries",
     "fbContainerPathIsFile",
     "fbContainerPathIsDirectory",
@@ -134,6 +135,22 @@ class ConnectionRouter:
     def fbaFetchFile(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         return self.fconnectionForResource(sResourceId).fbaFetchFile(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fbaFetchCredentialFile(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fbaFetchCredentialFile(sResourceId, *tArguments, **dictKeywords)
+
+    def fdictFetchWorktreeIdentities(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictFetchWorktreeIdentities(
             sResourceId, *tArguments, **dictKeywords,
         )
 

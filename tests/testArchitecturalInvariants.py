@@ -1224,15 +1224,40 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
             listTarBuilders.append(
                 str(pathFile.relative_to(REPO_ROOT))
             )
+    # agentCouncilContext builds HOST-side snapshot archives that never
+    # reach ``put_archive``, so the uid-1000 contract does not apply to
+    # it; its own ownership invariants are
+    # ``testSnapshotTarEntriesCarryNeutralOwnership`` and
+    # ``testSnapshotModuleNeverWritesIntoTheContainer`` in
+    # ``tests/testAgentCouncilContext.py``.
+    #
+    # agentCouncilRunner builds the credential-delivery tarball
+    # (``fbaBuildStampedFileTarball``, section 9.7). It stamps BOTH
+    # entries to the unprivileged council user through the same
+    # ``_finfoStampCouncilOwnership`` discipline as the snapshot repack,
+    # so the tarfile default of 0 never leaks; its own ownership
+    # invariant is
+    # ``testStampedFileTarballCarriesCouncilUserOwnership`` in
+    # ``tests/testAgentCouncilProviders.py``, and the live copy-in path
+    # re-stamps every member besides.
+    #
+    # disposableSpecification repacks a repository archive for the
+    # shadow container and IS a host->container write, so it shares the
+    # uid-1000 contract; its own default assertion is
+    # ``_fnAssertDisposableArchiveStampsTheContainerUser`` below.
     assert sorted(listTarBuilders) == [
         "vaibify/docker/disposableSpecification.py",
         "vaibify/docker/dockerConnection.py",
+        "vaibify/gui/agentCouncilContext.py",
+        "vaibify/gui/agentCouncilRunner.py",
     ], (
-        f"tar entries are built in {listTarBuilders}; this invariant "
-        f"pins the uid-1000 default of EVERY builder that can write into "
-        f"a container. A new tar-building write path is outside its reach "
-        f"— either route the write through an existing builder, or extend "
-        f"this list AND add the builder's own default assertion below."
+        f"tar entries are built in {sorted(listTarBuilders)}; this "
+        f"invariant pins the uid-1000 default of EVERY builder that can "
+        f"write into a container (the council builders are host-side or "
+        f"carry their own ownership invariants, named above). A new "
+        f"tar-building write path is outside its reach — either route "
+        f"the write through an existing builder, or extend this list "
+        f"AND add the builder's own default assertion."
     )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
@@ -4145,7 +4170,432 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # decision 6) — a host project's credential is UNMINTED, not
     # undelivered, and the branch lives inside the mint so no caller
     # can forget it.
-    "containerOwnership.py": 907,
+    # 907 -> 952 (2026-08-27): every ownership transition announces
+    # itself in the log. A live hub lost a session's lease with zero
+    # operator-visible trace; the lines live at the commit points they
+    # describe (tests/testLifecycleLogging.py pins them).
+    "containerOwnership.py": 952,
+    # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
+    # default cap when the three exhausted-round exit routes and the
+    # credential-gate refusal joined it. One cohesive responsibility —
+    # every route is a campaign-lifecycle action over the same
+    # principal/identity guards; splitting the exits into a second
+    # module would scatter the guard ordering the module docstring
+    # states, which is the drift the R2/R3 fixes exist to prevent.
+    # +96 (2026-08-20, remediation R10/R12/R1): the credential-gate
+    # refusal helper, the real stale-baseline producer (a typed read —
+    # a declared lane may make no general exec), and the mode-(b)
+    # carrier admission around the snapshot capture, which the live
+    # controller lane demanded (an unadmitted capture exec refused at
+    # the funnel, exactly as designed). All read at the same
+    # principal/identity guard points as every other campaign action.
+    # +58 (2026-08-20, review fixes): start resolves the project image
+    # BEFORE the credential gate so the evidence record's image pin is
+    # always compared; the credential-stager closure the production
+    # factory stages the runner login through (route-built, because
+    # the controller must not import the route context); and the
+    # staleness producer gained its content axis (the per-path
+    # identity digest the porcelain digest cannot see).
+    # +28 (2026-08-20, second-review fixes): the resolver returns the
+    # IMMUTABLE image id (a repointable tag cannot pin the CLI the
+    # evidence record vouched for), capabilities resolves and compares
+    # that same id instead of evaluating the gate image-blind, and
+    # delete disposes the controller runtime before removing durable
+    # storage.
+    # +28 (2026-08-21): R10's launch-time login-presence probe — the
+    # gate says the maintainer's evidence permits paid work in this
+    # image, this says the project actually HAS a login to copy, and it
+    # refuses before the campaign registers or any runner exists.
+    # +16 (2026-08-21): capabilities carries the adapter's model
+    # discovery (design 8.2 amendment — labelled un-verified aliases
+    # for the subscription backend, live enumeration for the API one)
+    # so the picker stops being free text and the discovery code stops
+    # being unreachable.
+    # +7 (2026-08-22): capabilities marks a SHUT GATE distinctly from a
+    # wrong project type, so the toolbar can offer instructions for the
+    # one case that has any. The marker is a route-shaped fact — what
+    # this payload means to a client — so it belongs with the payload
+    # rather than in a new module.
+    # +38 (2026-08-22): the capabilities pre-flight — one call and the
+    # helper that downgrades the capability through the SAME
+    # bAvailable/sReason pair every other refusal uses, rather than
+    # growing a second unavailable-shaped concept for the toolbar to
+    # learn.
+    # +67 (2026-08-22): _fsResolveDominantRepositoryPath and the
+    # principal branch that uses it, so a Blank Project — no steps
+    # defined yet, arguably the state a planning council helps most —
+    # can convene against its tracked directory. Resolving WHICH repo
+    # a campaign is about belongs beside the principal that carries
+    # it; a separate module would put the identity and its resolution
+    # a call hop apart for one caller.
+    # +38 (2026-08-22): the directory CHOICE — the request field, its
+    # server-side validation against the tracked set, and publishing
+    # the candidates for the convene form. The first cut demanded
+    # exactly one tracked directory, which told a researcher whose
+    # toolkit container legitimately tracks nine to untrack eight.
+    # Asking belongs with the principal it resolves.
+    # 1198 -> 1267 (2026-08-22): the snapshot pre-flight became a
+    # decision rather than a verdict. A repository whose only problem
+    # is named oversized files now stays convenable, the offending
+    # files travel to the form, and a per-candidate feasibility route
+    # answers one directory at a time — because weighing all nine of a
+    # toolkit container's repositories on every capabilities poll would
+    # spend a metadata walk each on a question nobody asked. All three
+    # are the same responsibility this module already owns: resolving
+    # WHICH repository a council is about and what it may carry.
+    # 1267 -> 1278 (2026-08-24): the READ routes accept the chosen
+    # directory too, not only start. A toolkit container tracks several
+    # repositories, so a bare read could not resolve which one it meant
+    # and answered 409 on every poll — freezing a live panel for an
+    # entire deliberation.
+    # 1278 -> 1305 (2026-08-25): the per-decision answer body, and the
+    # gate grouping derived on READ. Derived here rather than stored on
+    # the gate so it applies to a campaign already waiting at one.
+    # +2 (2026-08-25): questions held for a gate that never opened are
+    # derived on read too, so an interrupted campaign can show them.
+    # 1307 -> 1312: and the phase in flight is re-checked on read, so
+    # the raw record never reaches a screen unguarded.
+    # 1312 -> 1481 (2026-08-25): the ask-the-chairbot lane — read,
+    # open, ask, close. Initially NOT split out, because a separate
+    # module would have had to import five of this one's private
+    # helpers.
+    # 1481 -> 1505 (2026-08-25): every campaign-scoped route can now
+    # be TOLD which tracked directory it means, not only the reads.
+    # On a project tracking several, a researcher could watch a
+    # council and not answer it.
+    # 1530 -> 1074 (2026-08-26): the ratchet forced the conversation
+    # the 2026-08-25 note deferred, and the continuation plan's answer
+    # dissolved its objection: the shared guards were hoisted to
+    # ``councilRouteGuards.py`` (a non-route module both skins may
+    # import), so the chat lane moved to ``councilChatRoutes.py``
+    # without importing anybody's privates. The conversation lane
+    # registers its own commands, owns its own session lifecycle and
+    # changes for its own reasons — a real fault line once the guards
+    # stopped being this module's privates. (+3 the same day: the
+    # campaign-name field's comment stopped promising uniqueness the
+    # store does not enforce.)
+    # +62 (2026-08-26): the plan.md deliverable — GET
+    # /{sCampaignId}/plan.md renders the candidate through the ONE
+    # composer acceptance uses (a council that dies at a gate still
+    # yields its plan), with the staleness sentence composed here
+    # because only the route may read the live repository. A
+    # campaign-lifecycle read at the same guard points as every other
+    # campaign route.
+    # +110 (2026-08-26): the resume route, the shared rebuild-materials
+    # builder the three gate-answer routes thread to the controller
+    # (paid work relaunching passes the same gates start passes), the
+    # stop-clear request body, and the GET response's liveness +
+    # stopping-point pair the panel renders resume from.
+    # +47 (2026-08-27, review fix R2): the retry route, through
+    # the same paid-work gates as start and resume.
+    # +19 (2026-08-27, review round 2): the retry request body
+    # (the explicit stop-clear choice) and the detail route adopting
+    # the store-aware stopping point.
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    # 1372 -> 1394 (2026-08-28): every login pre-flight is handed
+    # the campaign's OWN turn budget, so the refusal names the real
+    # number rather than a default the researcher may have changed.
+    # 1394 -> 1447 (2026-08-29), two changes landing together and
+    # MEASURED on the merged file, never summed from the two branch
+    # numbers (1441 and 1400): a ceiling ratchet reconciled by addition
+    # passes green while describing a file that does not exist.
+    # The pause route — the deliberate stand-down that stops after the
+    # CURRENT PHASE and stays resumable, distinct from the stop that
+    # archives — plus the campaign read that serves charter 1.7.0's
+    # notes channel beside the decision grouping it already derived.
+    # Both ride existing paths; the module gained no second concern.
+    # +1 (2026-08-29): the pause route binds its campaign id like every
+    # other campaign-scoped route. The merge is what exposed it — pause
+    # was written before that contract existed and the repo-binding
+    # branch had no pause route to catch, so neither branch's suite
+    # could fail on it and both were green.
+    # 1448 -> 1458 (2026-08-30): the accepted-plan seed accepts a
+    # source that has ALREADY been handed to an implementation council,
+    # not only one in planAccepted. Requiring planAccepted alone made
+    # the first implementation council a one-way door — a researcher
+    # whose implementation failed was told to "accept the plan first"
+    # about a plan they had accepted. Ten lines, on the guard that was
+    # already there.
+    # 1458 -> 1494 (2026-08-30): retry accepts a raised output
+    # budget and applies it to the campaign, so retry can change
+    # the condition that caused the failure rather than repeat
+    # it.
+    "routes/councilRoutes.py": 1494,
+    # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
+    # crossed the cap when the coherence check became a real algorithm —
+    # two independent pre/post per-path observations plus archive-member
+    # matching by git blob identity. Capture and coherence are ONE
+    # responsibility: the coherence refusal is what makes a sealed
+    # snapshot a snapshot, and a separate "coherence module" would split
+    # the refusal from the stream it judges, inviting the drift the
+    # check exists to catch.
+    # +16 (2026-08-20, remediation R11): the recorded
+    # agent-instruction-file policy decision in the module docstring —
+    # a decision that must live beside the exclusion table it governs.
+    # +47 (2026-08-20, review fix): the observation widened to EVERY
+    # present path and the archive match became total (an unobserved
+    # file or symlink member refuses), closing the clean-file
+    # change-then-revert hole; plus the per-path identity digest the
+    # staleness comparison rides. Same one responsibility: what makes
+    # a sealed snapshot a snapshot.
+    # +49 (2026-08-22): fdictAssessSnapshotFeasibility — the same
+    # bounds this module already enforces mid-capture, answered from
+    # metadata so a council can be refused BEFORE a researcher writes
+    # a question. It belongs here precisely because the bounds do: a
+    # pre-flight living anywhere else is a second opinion about what
+    # a snapshot accepts, and the two would drift.
+    # 965 -> 1124 (2026-08-22): the snapshot bounds became per-capture
+    # and machine-scaled, and the researcher gained a reviewed way to
+    # omit a file the bounds would refuse. Both belong here: the module
+    # that ENFORCES a bound is the one that must state it, and an
+    # exclusion honoured anywhere else would be a second authority on
+    # what a snapshot contains. The arithmetic of what this machine
+    # allows is split out to agentCouncilCapacity, which is a genuinely
+    # different question with a different reason to change.
+    # 1132 -> 1164 (2026-08-24): a .gitignore'd path is omitted and
+    # recorded rather than refusing the whole capture. It belongs to
+    # this module's existing responsibility — what a snapshot contains
+    # and why — and the reason it is here rather than in the exclusion
+    # POLICY table is that the answer comes from git per repository,
+    # not from a fixed component list.
+    # 1191 -> 1219 (2026-08-25): the sealed-snapshot READER moves in
+    # beside the writer. Three call sites were composing
+    # <store>/<campaign>/snapshot/... by hand, which is a layout
+    # spelled in several places and checked in none.
+    "agentCouncilContext.py": 1219,
+    # NEW at 837 (2026-08-26): the store crossed the default cap when
+    # the durable provenance sidecar landed — the evidence ledger's
+    # recorded state and the turn counter now survive a hub restart
+    # (design 7.5 lists the ledger as part of the durable record; the
+    # reload used to rebuild it EMPTY). One cohesive responsibility:
+    # the sidecar is written and read by the same checkpoint class,
+    # beside the same campaign record, with the same private-file
+    # discipline as everything else the store persists.
+    # +80 (2026-08-27, review fixes R2/R3): lost provenance is
+    # MARKED on reload and refused by the mint and the evidence
+    # funnel (an absent sidecar under recorded activity is not an
+    # empty history), and retirement marks a retired attempt's ledger
+    # entries — preserved, never deleted.
+    # +17 (2026-08-27, review round 2): the store-aware stopping
+    # point gains its detail-lane entry point, so the list and the
+    # open panel derive one answer about lost provenance.
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    # +pause (2026-08-29, researcher request): the deliberate
+    # stand-down — stop after the CURRENT PHASE, resumable, and
+    # distinct from the stop that archives. One flag on the record,
+    # one boundary check in the walk, one command, one route, and
+    # the surfaces that must never confuse the two. It rides the
+    # existing crash-resume machinery rather than adding a second,
+    # so no module gained a second responsibility.
+    # 982 -> 999 (2026-08-30): two listing fields and their reader.
+    # sCampaignKind, because a planning and an implementation council
+    # read alike in a list; and sAcceptedPlanPath, probed from disk so
+    # the listing can say where a plan landed instead of a researcher
+    # having to catch a five-second toast. Both belong to the summary
+    # this module already composes — same responsibility, more of it.
+    "agentCouncilStore.py": 999,
+    # NEW at 803 (2026-08-25): crossed the default cap by four lines,
+    # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
+    # out-of-memory case, which the gateway only started reporting the
+    # same day. The table is this module's own vocabulary for "the turn
+    # came back empty and here is why", so there is no seam to split
+    # along: the alternative homes an explanation away from the state
+    # machine that consults it. Still one responsibility.
+    # 803 -> 815 (2026-08-25): a question raised before synthesis is now
+    # HELD rather than gated on, so the researcher reads it against a
+    # plan instead of against an empty Plan tab. The twelve lines are
+    # the branch that parks them plus the round key that holds them —
+    # both in the phase-settle path that already decides what a settled
+    # phase means. Same responsibility, one ordering later.
+    # 815 -> 826 (2026-08-25): a recorded answer captures the questions
+    # it answered, because the gate holding them is discarded on the
+    # very next line and the next round would otherwise be handed bare
+    # prose. It belongs at the point of record — anywhere else and the
+    # questions are already gone.
+    # 826 -> 836 (2026-08-25): per-decision answers. The server composes
+    # the prose FROM them so the readable and machine-readable records
+    # cannot disagree, and that composition has to happen where the gate
+    # is still in hand — one line later it is cleared.
+    # 836 -> 881 (2026-08-25): the engine records the phase it is
+    # running and who is running it. It belongs in the engine because
+    # the engine is the only thing that knows — a turn record appears
+    # only once its turn has settled, so no reader can derive an
+    # in-flight phase from the campaign, and a council mid-cross-review
+    # read as hung for its whole duration.
+    # +205 (2026-08-26): the durable phase-attempt record — opened
+    # before the first launch with its eligible set and completion
+    # rule, turns-settled only when that rule is met, outcome settled
+    # atomically with the transition that decides it, plus the
+    # deterministic settlement replay recovery reads. The record and
+    # the loop that writes it are one lifecycle; a separate module
+    # would put every settlement call a hop away from the transition
+    # it must precede (continuation plan section 2).
+    # +94 (2026-08-27, review fix R2): retirement — the attempt
+    # binding evidence is written under, and the transaction that
+    # restores the pre-phase state, moves the attempt and its turns
+    # into the retired record, and re-enters planning in one
+    # checkpoint. Retirement inverts what the attempt captured, so it
+    # lives beside the capture.
+    # 1180 -> 1193 (2026-08-27): a failed turn logs a WARNING naming
+    # the campaign, participant, model, and reason — the dashboard
+    # showed a model failure the hub log knew nothing about
+    # (tests/testLifecycleLogging.py pins the line).
+    # 1193 -> 1209 (2026-08-27): the limit/auth/cli-error empty-turn
+    # explanations, carrying the CLI's own message so the researcher
+    # reads the reset time.
+    # 1209 -> 1214 (2026-08-27): the network-unreachable
+    # explanation.
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    # 1271 -> 1318 (2026-08-28): a SIGKILLed runner says so, names the
+    # exit code, and ACQUITS the council's own bounds — the record held
+    # all of it while the card said only "the cause is outside what the
+    # turn can see".
+    # 1324 -> 1512 (2026-08-29), MEASURED on the merged file rather
+    # than taken from either branch (1377 pause, 1459 charter): two
+    # endings landed together. The deliberate PAUSE — stand down after
+    # the current phase, resumable, distinct from the stop that
+    # archives — and the deliberation summary of a council that never
+    # converged. Both ride the round/phase/attempt machinery this
+    # module already owns, and the pause rides the existing
+    # crash-resume path rather than adding a second continuation. The
+    # engine gained two more endings, not a second responsibility.
+    # 1512 -> 1521 (2026-08-30): the stall explanation, which is a
+    # new way for a turn to end and belongs beside the other four.
+    "agentCouncil.py": 1549,
+    # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
+    # and the deliberation-summary phase instruction plus its schema
+    # extension. This module IS the instruction contract and the turn
+    # schema; growing the contract is what growing it looks like.
+    "agentCouncilCharter.py": 1154,
+    # NEW at 810 (2026-08-29): the notes derivation joins the decision
+    # grouping and the held-question descriptor. All three are the same
+    # responsibility — reading a settled record into what a researcher
+    # is entitled to be shown at a gate — so it lands beside them
+    # rather than in a fourth module nobody would look in.
+    "agentCouncilResolution.py": 810,
+    # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
+    # the default cap when the egress backstop joined it —
+    # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
+    # from the durable store and reuses the two existing removal
+    # probes, adding no new SDK blind spots) and the council label on
+    # the proxy create so the labeled reconcile can settle a proxy
+    # whose campaign record is gone. One responsibility: the sole
+    # council SDK authority, and the sweep is its crash-recovery leg.
+    # +13 (2026-08-21): the gateway carries the project container its
+    # council work belongs to, and stamps it onto every runner and
+    # proxy it creates. It lives on the gateway rather than on each
+    # create call precisely so there is ONE place the owner can be
+    # forgotten — the alternative threaded a new argument through four
+    # signatures and four call sites, which is more surface for the
+    # same fact. Still one responsibility.
+    # 862 -> 889 (2026-08-25): the bounded turn returns the observed
+    # stream size and the container's own OOMKilled state. Both were
+    # read by the diagnosis before anything produced them — one
+    # reported a constant zero, the other was never asked. Seven of
+    # those lines are the comment explaining why the two inspect
+    # results are bound before they are read; re-chaining them spends
+    # blind-spot budget per link, which is not visible at the call.
+    # 889 -> 897 (2026-08-25): the egress sweep's docstring stated the
+    # premise that WHICH campaigns are sweepable is obvious ("no drive
+    # survives a restart"). It is not — a second hub's live campaigns
+    # sit in the same machine-wide store — so the correction is recorded
+    # where the next reader of this function will find it.
+    # 897 -> 914 (2026-08-25): the egress proxy's memory ceiling
+    # rose to 1 GiB, and the reason it rose — seven observed OOM
+    # kills, and why headroom is not the real fix — is recorded
+    # beside the constant rather than in a commit message.
+    # 914 -> 927 (2026-08-27): the proxy-image resolver probes local
+    # presence by the digest pin before pulling — pull-always refused
+    # a retry over broken registry DNS while the reviewed bytes sat on
+    # disk.
+    # 927 -> 943 (2026-08-27): the presence probe became
+    # create-then-pull-on-miss so the blind-spot ratchet could keep
+    # falling; the create moved into a named closure the retry helper
+    # drives.
+    # 943 -> 951 (2026-08-30): the stall window threaded to the
+    # pump, and a stall joining the two breaches that already kill
+    # the container. Detecting silence and leaving the runner alive
+    # would be worse than the failure it replaces.
+    "agentCouncilDockerGateway.py": 951,
+    # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
+    # probe and the credential-specific read cap join the adapter that
+    # already owns every other credential-lane rule. One cohesive
+    # responsibility: what the runner backend may read, copy, and
+    # claim about a login.
+    # +7 (2026-08-21): the credential read moved to the BOUNDED
+    # adapter and maps an over-ceiling answer to RunnerCredentialError,
+    # so the launch probe answers 409 instead of letting a ValueError
+    # surface as a 500.
+    # +36 (2026-08-22): the staged login carries the token's SCOPES, and
+    # the two docstrings explain why at length. The prose is most of the
+    # growth and it is the point: the previous docstring asserted the
+    # access token alone was the narrowest document the CLI can read,
+    # which was never measured and was false — the CLI answers "Not
+    # logged in" without scopes. A measured field table beats a
+    # confident sentence, and it belongs where the next reader will
+    # otherwise re-derive it from a failed paid turn.
+    # 860 -> 926 (2026-08-24): the credential lane learned to refuse an
+    # EXPIRED login before a runner is built, and to say why in prose
+    # rather than a boolean. Both belong to the responsibility this
+    # module already owns — turning the project's persisted login into a
+    # runner credential — and the expiry check must live beside the
+    # extraction it guards, or a second caller would extract without it.
+    # 926 -> 957 (2026-08-24): an empty structured result now says
+    # WHICH empty it is — a stream that ended with no result event, or
+    # a result event carrying no text. The diagnosis belongs beside the
+    # extraction that produces it; anywhere else it would be a second
+    # reading of the same event list.
+    # 957 -> 971 (2026-08-24): an empty result caused by a RATE LIMIT
+    # is named as one. The signal is a distinct stream event type, and
+    # a rate limit can truncate a turn before any result event exists —
+    # so fsClassifyTurnFailure, which reads only the result event,
+    # could never have seen it.
+    # 971 -> 988 (2026-08-24): the empty-result diagnosis reads the
+    # EXECUTION record (wall-clock kill, elapsed time, exit code), not
+    # just the event stream. A turn killed at its time budget looks
+    # identical to a model that stopped, from the events alone.
+    # 988 -> 1002 (2026-08-25): the empty-result diagnosis records the
+    # OUTPUT-CAP kill as well as the wall-clock one. The gateway kills
+    # on either, only one was recorded, and two wrong causes were
+    # argued from the resulting record.
+    # 1002 -> 1008 (2026-08-25): the OOM verdict joins the empty-result
+    # diagnosis, so exit 137 no longer means "somebody killed this".
+    # 1008 -> 1063 (2026-08-25): the PROSE half of a result — the
+    # verbatim text and a researcher-facing explanation of an empty
+    # stream — for the ask-the-chairbot lane, composed from the same
+    # diagnosis the structured lane records so the two cannot
+    # disagree about which bound a turn hit.
+    # 1063 -> 1096 (2026-08-25): the result parser stopped requiring
+    # a code fence to be the FIRST thing in the text. A live council
+    # discarded a complete, schema-valid cross-review because one
+    # sentence of preamble preceded the block.
+    # 1096 -> 1138 (2026-08-27): an is_error result routes to a
+    # classified diagnosis instead of the schema validator — a live
+    # usage-limit refusal was filed as fifteen schema violations and
+    # the retry gate refused a failure that resets on its own.
+    # 1138 -> 1149 (2026-08-27): the network-unreachable class —
+    # a live retry died "Connection refused" over a mid-restart VM and
+    # the gate refused a failure that heals on its own.
+    # 1149 -> 1185 (2026-08-28): durations read in the largest
+    # informative unit ("0.0 hours ago" read as a broken clock), and a
+    # login that cannot outlive one turn is refused before a runner is
+    # built — a runner is given no refresh token and cannot renew.
+    # 1185 -> 1199 (2026-08-30): the stall failure class, its
+    # sentence, and the two execution facts it reports. The module
+    # already owns "what happened to a turn".
+    "agentCouncilProviders.py": 1300,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4412,6 +4862,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-15, slice 4e): the two test-outcome writers stamp
     # the definition producer (R8) — the stamp lives at the
     # producer's own seam, never at save time.
+    # +61 (2026-08-19, agent-council phase 0): the sApiKey raw-key lane
+    # is retired. The generate-test route resolves the stored provider
+    # key through secretManager BEFORE any carrier opens (a missing key
+    # must refuse an untouched container, so the pre-flight belongs
+    # beside the other pre-carrier refusals in this module), and the
+    # browser-only /api/provider-key/{sProvider} capability route
+    # reports bConfigured for the same consumer — the test-generation
+    # modal. Both sit at this module's existing seam: routes serving
+    # test generation.
     # +115 (2026-08-24): the agent-safe deterministic generator --
     # its route, its forced-flag request type, and its category
     # validator. Cohesive with the module (test routes), but this is
@@ -4422,7 +4881,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rather than raise this number again. Not split now because the
     # falsification registry keys entries to this path and a move is
     # its own reviewed change, not a side effect of adding a route.
-    "routes/testRoutes.py": 932,
+    # 2026-08-27 (on merge): the merged file's REAL line count, per
+    # the standing merge rule — never the sum of the two sides.
+    "routes/testRoutes.py": 993,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4979,6 +5440,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # predicate, in researcher language. Discovery began listing that
     # shape; the guard bouncing the very card the researcher was shown
     # was the live incident.
+    # +1 (2026-08-19): the Agent Council route module joined the route
+    # loader — one line, the unavoidable registration of a new route
+    # group through the existing path.
+    # 2026-08-21 (on merge): the figure is the merged file's REAL line
+    # count, not the sum of the two sides' recorded numbers. Both sides
+    # had already recorded a line or two of slack, and adding them
+    # together would have compounded it into a ceiling nothing reaches
+    # — a ratchet with slack is green for growth nobody justified.
     # +26 (2026-08-24): the plot-standard format split. pdftoppm and gs
     # read PDF/PostScript only, so a project whose figures were already
     # PNG had no path through the converter at all -- both commands
@@ -5004,6 +5473,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reusable one.
     # +5 (2026-08-26): ZenodoRecordRequest — the declare-record
     # body model, beside the other Zenodo request models.
+    # +1 (2026-08-26): the councilChatRoutes registration line — the
+    # chat lane split out of councilRoutes registers through the same
+    # canonical _fnRegisterAllRoutes list as every other route module.
+    # 2026-08-27 (on merge): the merged file's REAL line count again.
+    # 2996 (2026-08-29, on merge): MEASURED on the merged file.
     # +1 (2026-08-30): remoteRefreshRoutes joins the registration
     # block — one line, one new route module.
     # +N (2026-08-30): a durable task RECORDS what it is, so a busy
@@ -5014,7 +5488,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # RUNNING, and the pure three-state comparison against the
     # envelope's pin lives beside it -- a rebuild without a snapshot
     # regeneration is announced instead of silently graded around.
-    "pipelineServer.py": 3068,
+    # 3071 (2026-09-02, on merge): MEASURED on the merged file. The
+    # shadow branch recorded 3068 and main 2996 for changes that both
+    # landed; neither number describes the file that now exists.
+    "pipelineServer.py": 3071,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5194,7 +5671,177 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # session decides which applies. Same responsibility, and the
     # alternative -- a second module owning one constant -- would
     # put the pair somewhere they could drift apart.
-    "sessionLifecycle.py": 1406,
+    # +14 (2026-08-20): a live Agent Council drive joins the release
+    # busy-refusals, beside the durable-task and guarded-mutation
+    # vetoes it behaves like (not force-overridable): paid provider
+    # work no release should silently abandon. The predicate lives in
+    # the controller; this is only the arbitration point reading it.
+    # +56 (2026-08-20): council admission closes ATOMICALLY inside the
+    # release commit (close-then-recheck in one synchronous stretch
+    # under the mutation lock) and reopens on an aborted release or a
+    # fresh claim — the check-then-act race where a respond authorized
+    # in the same tick could start a paid turn after the busy check.
+    # The arbitration point lives here because the ordering against
+    # the flock is the whole point.
+    # +23 (2026-08-20): council settlement moved INSIDE the release
+    # transaction (_fnSettleCouncilStateBeforeRelease under the
+    # mutation lock, reopen-on-any-non-commit in finally) — the
+    # post-release drain raced a new claim's admission reopen.
+    # +31 (2026-08-21): the council settlement helper became a REFUSAL
+    # (busy when a boundary is unproven; the finally reopens and the
+    # owner is kept), and the start-reservation door reopens council
+    # admission exactly as a claim does — a released-then-restarted
+    # container inherited the previous era's closed admission.
+    # 1530 -> 1546 (2026-08-25): a chairbot answering a question is
+    # its own release-busy clause with its own words. Widening the
+    # council clause would have sent the researcher to "stop the
+    # council", which does not end a conversation.
+    # 1546 -> 1580 (2026-08-27): the orphan commit, session expiry,
+    # release outcomes, transfer, and start reservation each log the
+    # transition they commit (tests/testLifecycleLogging.py pins the
+    # orphan line — the one whose silence made a lease loss
+    # undiagnosable).
+    # 1580 -> 1724 (2026-08-29): the session windows became host-global
+    # SETTINGS. The three-tier resolvers, their live re-read at every
+    # evaluation (which is what lets raising the cap rescue a session
+    # that has not expired), and the sentence a returning researcher is
+    # shown in place of a bare "Unauthorized" all live where the
+    # windows are decided. Not split: they are the same responsibility
+    # this module already owns — deciding when a browser session ends —
+    # and moving them out would put the policy in one file and the
+    # numbers it reads in another.
+    "sessionLifecycle.py": 1758,
+    # NEW at 963 (2026-08-20, review fixes): the controller crossed the
+    # default cap when the enabled launch path became real — the
+    # once-per-campaign runner-access provisioner (egress boundary +
+    # staged credential) the production connection factory wears, its
+    # release on every no-further-turn settlement path, the
+    # transactional launch (a failed start leaves a failed record,
+    # never a phantom planning one), the release busy-predicate, the
+    # bounded shutdown settle, and the fuller plan.md composition. One
+    # cohesive responsibility: the controller is the sole writer of
+    # campaign state, and every one of these is a campaign-lifecycle
+    # transition it alone may make; a separate "provisioning module"
+    # would move the access lifecycle away from the settlement points
+    # that release it, which is how resources get stranded.
+    # +91 (2026-08-20, second-review fixes): credential staging became
+    # per-turn (the provisioner owns egress only), the release drain
+    # SETTLES paused runtimes instead of merely flagging them, delete
+    # gained its controller half (fdictDisposeCampaignRuntime), the
+    # launch window counts as live for the busy predicates, an
+    # indeterminate egress teardown keeps its retry state, and plan.md
+    # gained resolved model provenance and the sealed content hash.
+    # Still the one responsibility: every line is a campaign-lifecycle
+    # transition only the sole state-writer may make.
+    # +98 (2026-08-20, third-review fixes): teardown returns a
+    # SETTLEMENT (indeterminate keeps the retry state; delete refuses
+    # rather than orphan what the startup sweep could no longer name),
+    # cancellation takes the same launch-settlement path as any fault,
+    # and the release authority's atomic admission close/reopen pair
+    # plus the command gate that enforces it. Same one responsibility.
+    # +47 (2026-08-20, fourth-review fixes): the SHIELDED runtime
+    # build — cancelling the awaiting future never stops the worker
+    # thread, so the failure handler waits the thread out
+    # (_fnAwaitBuildWorkerCompletion) before cleaning, closing the
+    # reproduced late-registration leak — and the provisioner records
+    # its tombstone BEFORE creating anything, keeping it when its own
+    # in-line cleanup is indeterminate.
+    # +15 (2026-08-21): the resource drain returns a SETTLEMENT
+    # (bAllSettled + the campaigns whose boundaries are unproven) so
+    # the release authority can veto rather than drop a lease over a
+    # proxy nobody proved gone — retaining the runtime told the caller
+    # nothing.
+    # +7 (2026-08-21): the plan renderer gained the three design 7.1
+    # sections the turn schema now asks participants to produce
+    # (rejected alternatives, verification requirements, stop
+    # conditions) — the artifact half of the charter 1.1.0 change.
+    # +7 (2026-08-21): the runtime gateway is handed the campaign's own
+    # project container name, so the containers it creates say whose
+    # they are. This is the production join for the peer-hub isolation
+    # fix; the reconcile logic itself lives in the registry, which is
+    # where survivor settlement already lived.
+    # 1228 -> 1232 (2026-08-22): the launch records the snapshot's
+    # SCOPE beside its identity, so a partial snapshot travels to the
+    # participants as a statement rather than as silence.
+    # 1232 -> 1240 (2026-08-24): the connection is built with the
+    # CAMPAIGN's turn time budget rather than the module default, so
+    # raising the setting actually governs a turn.
+    # +1 (2026-08-25): the continuation carries the per-decision answers
+    # through to the engine.
+    # 1241 -> 1250 (2026-08-25): the startup classifier declines to
+    # declare a live peer hub's campaign interrupted. The check belongs
+    # in the loop that does the classifying — one line earlier and it
+    # would be filtering a list nobody had read yet.
+    # 1250 -> 1316 (2026-08-25): the ask-the-chairbot conversations
+    # join the controller state, so what settles a container's live
+    # council state settles its conversations too — the release
+    # drain, the delete disposal and the shutdown settle each grew
+    # the chat half beside the runtime half they already had.
+    # +21 (2026-08-26): fsComposePlanMarkdown watermarks an unaccepted
+    # draft in the document's own text and takes the route-computed
+    # staleness sentence — the composer stays the ONE renderer, so the
+    # honesty additions land in it rather than in a second one.
+    # +256 (2026-08-26): explicit resume (continuation plan section 4)
+    # — the launch-time identity pins, the five admission refusals, the
+    # non-destructive runtime rebuild the respond path shares, and the
+    # resume command itself. The refusals live beside the launch whose
+    # transactionality they deliberately invert; a separate module
+    # would put the two failure disciplines a hop apart and invite the
+    # wrong one being reused (which is exactly the 4.3 hazard).
+    # +144 (2026-08-27, review fix R2): the retry command — the
+    # same admission ladder as resume (which is the point: "Reconcile,
+    # then Retry" IS the unsettled-work refusal), the whitelist
+    # consultation, and the evidence marking that precedes the
+    # engine's retirement checkpoint.
+    # +16 (2026-08-27, review round 2): retry surfaces the
+    # standing-stop choice exactly as resume does — a kept flag would
+    # archive the retried campaign the moment its drive starts.
+    # 1753 -> 1787 (2026-08-27): campaign work rests the chairbot
+    # conversation before the unsettled gate — an open chat's runner
+    # reservation turned every "Record decision" into a reconcile
+    # instruction over a healthy conversation.
+    # 1787 -> 1798 (2026-08-27): an egress-provisioning fault on a
+    # runtime rebuild carries its reason back as the route's refusal —
+    # a retry died as an unhandled 500 and the click looked like
+    # nothing.
+    # +implementation councils (2026-08-28, researcher direction):
+    # the kind-aware walk, the patch schema, the seeded convene and
+    # the patch artifact. One cohesive protocol addition across the
+    # modules that already own each seam — no module gained a
+    # second responsibility.
+    # 1810 -> 1841 (2026-08-28): a spent runtime record no longer
+    # blocks the retry it exists for; the refusal that survives names
+    # the startup sweep.
+    # 1841 -> 1895 (2026-08-28): a stale quarantine is RE-PROVED
+    # against the daemon before it can refuse a retry, and the refusal
+    # that survives names the hub restart rather than a reconcile
+    # command that has never touched council reservations.
+    # 1895 -> 1931 (2026-08-28): a participant retired by a TRANSIENT
+    # failure rejoins when the researcher continues the council — one
+    # rate limit used to retire a model for the campaign's life, and
+    # with two participants the next blip was a quorum shortfall
+    # nothing could leave.
+    # 1931 -> 1952 (2026-08-28): an unproven egress teardown is
+    # RE-ATTEMPTED before it may refuse a continuation — one unlucky
+    # cleanup used to cost a hub restart on every later attempt.
+    # 1952 -> 2066 (2026-08-29), MEASURED on the merged file, not
+    # summed from the branch numbers (2021 pause, 1997 charter): the
+    # pause command beside the plan document's new notes section and
+    # the deliberation summary. The document changes are both inside
+    # fsComposePlanMarkdown, this module's existing single authority on
+    # what that artifact says.
+    # 2066 -> 2091 (2026-08-30): the output cap and the stall
+    # window threaded to the connection, beside the wall clock
+    # that was already there. Same responsibility — this is where
+    # a campaign's budgets become a runner's budgets.
+    "agentCouncilController.py": 2091,
+    # NEW at 857 (2026-08-27): the conversation now outlives its
+    # runner (researcher ruling — it must survive a meeting or a
+    # class). Resting, waking, and the campaign-work drain predicate
+    # are the same lifecycle the module already owned; the clocks
+    # changed from bounding the conversation to bounding only the
+    # runner's credential residency.
+    "agentCouncilChat.py": 867,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -5499,6 +6146,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # module's own busy-refusal, name validator, and self-skipping
     # duplicate check rather than duplicating them, so a separate module
     # would only scatter the registry surface it belongs with.
+    # +15 (2026-08-20, remediation R1): a successful release drains the
+    # council controller's live drives for the released resource — no
+    # deliberation may keep running against a project whose lease is
+    # gone. Cohesive with the release route it extends.
     # +51 (2026-08-20): _fnReleaseCallerOwnedSessionForConversion — the
     # convert/promote routes now release the CALLER'S OWN open session
     # through the lifecycle authority instead of refusing it, so a
@@ -5535,7 +6186,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # project-scoped registry operations because it resolves a project
     # exactly as they do; the analysis itself is a separate module
     # (dependencyScan.py) precisely so this one only routes.
-    "registryRoutes.py": 2148,
+    # 2026-08-21 (on merge): as with pipelineServer above, this is the
+    # merged file's real size. The council entry had carried ten lines
+    # of slack since it was written; the merge is where that gets
+    # returned rather than added to main's.
+    "registryRoutes.py": 2153,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -5591,6 +6246,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the figure is the merged file's real size. Taking either side's
     # number alone would have re-armed the ratchet below the module it
     # governs, which fails closed but for a reason nobody could read.
+    # +14 (2026-08-19): the Agent Council's five human-only mutating
+    # routes joined SET_INTENTIONALLY_EXCLUDED_PATHS with their
+    # rationale — registering a new route module inherently touches the
+    # exclusion set, and the alternative (splitting the catalog) is the
+    # premature-abstraction failure the ratchet exists to prevent.
+    # +9 (2026-08-20, remediation R6): the three exhausted-round exit
+    # routes (grant-resolution-round / resolve-objections /
+    # reject-candidate) joined the same human-only exclusion block.
     # +6 (2026-08-21): the seed's journal-kind rationale — it is
     # journalled as a file-write rather than a bespoke kind, because
     # the journal's allowlist is the set of kinds `vaibify reconcile`
@@ -5610,6 +6273,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # be an import oracle over the researcher's own files. The comment
     # carries that reasoning because the exclusion set is where a
     # future reader will ask why this route is not offered.
+    # 1044 -> 1056 (2026-08-25): the three ask-the-chairbot mutating
+    # routes join the human-only exclusion set.
     # +13 (2026-08-24): report-l1-blockers. A second action name on the
     # level2/readiness path -- the established pattern there, which
     # report-l2-gaps already uses -- because the agent had no way to
@@ -5622,6 +6287,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # so it stays user-only, which had left an inversion where an agent
     # hand-writing assertions was permitted and vaibify deriving them
     # from the researcher's own data was not.
+    # +1 (2026-08-26): the resume route joins the human-only
+    # exclusion set beside its sibling council actions.
+    # +1 (2026-08-27): the retry route joins the human-only
+    # exclusion set beside resume.
+    # 2026-08-27 (on merge): the merged file's REAL line count again.
+    # 1115 (2026-08-29, on merge): MEASURED across four changes that
+    # all landed — the council pause action, main's two Zenodo record
+    # actions, and the session-cap preference, which joins the idle
+    # timeout in the intentionally-excluded set because an agent that
+    # could set the cap to "never" would remove the bound on a
+    # credential it shares a container with. Three branches each
+    # recorded a different number (1110, 1092, 1087->1092) and none
+    # describes the merged file.
     # +18 (2026-08-26): declare-zenodo-record /
     # remove-zenodo-record. Both agent-safe: declaring a record
     # cannot fake agreement (files still hash-match or not), and
@@ -5646,7 +6324,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # separately-answered questions and their pinned-value
     # coupling, because an agent relaying "declare determinism"
     # to a researcher has to know what is being asked.
-    "actionCatalog.py": 1125,
+    # 1172 (2026-09-02, on merge): MEASURED on the merged file. The
+    # shadow branch recorded 1125 and main 1115 for changes that both
+    # landed; neither number describes the file that now exists.
+    "actionCatalog.py": 1172,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -5899,6 +6580,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # grew the module and only the module-size ratchet noticed. It is one
     # more row in DICT_CONTROL_PLANE_SCOPES, which is the table's whole
     # job, so the seam has not moved.
+    # +4 (2026-08-19): the Agent Council's four container-read GET routes
+    # joined SET_CONTAINER_READ_ROUTES — the frozen ratchet REQUIRES every
+    # owned-container GET to be listed there, so a new read module cannot
+    # avoid the four rows; the table is the module's job, not a new seam.
     # +7 (2026-08-21): the git-remote route's authorization-scope entry
     # and the reason it is browser-hub rather than container-scoped —
     # it writes the researcher's own repository and opens no container.
@@ -5908,12 +6593,26 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-21): the dependency scan's scope entry and the note
     # that it writes nothing — a POST only because its input is a
     # list, still gated because it reads the researcher's own files.
+    # +1 (2026-08-22): the council's per-directory snapshot pre-flight
+    # joins the container-read allowlist. One line of table data.
+    # 974 -> 980 (2026-08-25): the ask-the-chairbot transcript read
+    # joins the frozen container-read allowlist, with the reason it
+    # counts as an owned-container read beside it.
+    # +1 (2026-08-26): the plan.md read joins the frozen
+    # container-read allowlist.
+    # 985 (2026-08-29, on merge): MEASURED. The council's plan.md
+    # container-read entry, main's declared-Zenodo-records listing, and
+    # the session-cap preference route's scope row are all in the
+    # merged allowlist.
     # +3 (2026-08-26): the declared-Zenodo-records listing GET
     # acknowledged in SET_CONTAINER_READ_ROUTES.
     # +3 (2026-08-28): the determinism scan joins the container-read
     # allowlist, which is a frozen ratchet that must be edited
     # explicitly to acknowledge a new owned-container read.
-    "routeScope.py": 975,
+    # 988 (2026-09-02, on merge): MEASURED on the merged file. The
+    # shadow branch recorded 975 and main 985 for changes that both
+    # landed; neither number describes the file that now exists.
+    "routeScope.py": 988,
 }
 
 
@@ -6258,4 +6957,43 @@ def testFixedTemporaryNamesDoNotSpread():
         "pipelineUtils.fsBuildUniqueTemporaryPath, or lower "
         "I_FIXED_TEMPORARY_NAME_BUDGET if you removed one:\n  "
         + "\n  ".join(listSites)
+    )
+
+
+_REGEX_PROVIDER_CLIENT_CONSTRUCTION = re.compile(
+    r"\b(?:AsyncAnthropic|Anthropic|AsyncOpenAI|OpenAI)\s*\("
+)
+
+
+def testProviderClientConstructionOnlyInProviderApiTransport():
+    """Provider API clients are constructed only in the transport authority.
+
+    Agent-council design 8.3: one narrow low-level provider transport
+    (``vaibify/gui/providerApiTransport.py``) owns lazy SDK loading,
+    fixed official-endpoint client construction, and credential-safe
+    error wrapping. A second construction site would be a second
+    independent broker whose endpoint and error text nobody audits —
+    the exact defect the council design forbids. High-level callers
+    (``llmInvoker`` today, council adapters later) keep their own
+    prompt/response contracts and delegate the client to the transport.
+    """
+    listOffenders = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        if pathFile.name == "providerApiTransport.py":
+            continue
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        for iLine, sLine in enumerate(
+            fsReadSource(pathFile).splitlines(), 1
+        ):
+            if _REGEX_PROVIDER_CLIENT_CONSTRUCTION.search(sLine):
+                listOffenders.append(
+                    f"{pathFile.relative_to(REPO_ROOT)}:{iLine}"
+                    f"  {sLine.strip()}"
+                )
+    assert listOffenders == [], (
+        "Provider API client construction outside "
+        "vaibify/gui/providerApiTransport.py. Delegate to the "
+        "transport authority instead of constructing a second "
+        "client:\n  " + "\n  ".join(listOffenders)
     )

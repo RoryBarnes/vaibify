@@ -130,3 +130,46 @@ def test_unix_socket_adapter_preserved_after_pool_tune():
     assert isinstance(adapterUnix, UnixHTTPAdapter)
     iMaxPool = getattr(adapterUnix, "max_pool_size", 0)
     assert iMaxPool == I_DOCKER_POOL_MAX_SIZE
+
+
+def test_running_exec_evidence_survives_the_death_of_its_client():
+    """The sleep-prevention evidence signal, against a real daemon.
+
+    This is the property the 2026-08-29 experiment established and the
+    only one a unit stub cannot carry: an exec started against a
+    container is reported as running by a DIFFERENT client object than
+    the one that started it, which is what lets a restarted hub see
+    work its predecessor launched.
+
+    A second connection is used deliberately — sharing the first would
+    prove only that an object remembers what it did.
+    """
+    fnRequireDaemonReachable()
+    import docker
+    from vaibify.docker.dockerConnection import DockerConnection
+
+    clientDocker = docker.from_env()
+    container = clientDocker.containers.run(
+        "alpine:3.20", ["sleep", "120"], detach=True, remove=False,
+    )
+    try:
+        connectionStarting = DockerConnection()
+        assert connectionStarting.flistRunningExecIdentifiers(
+            container.id,
+        ) == [], "a fresh container is running no execs"
+
+        sExecId = clientDocker.api.exec_create(
+            container.id, cmd=["sleep", "60"],
+        )["Id"]
+        clientDocker.api.exec_start(sExecId, detach=True)
+
+        connectionObserving = DockerConnection()
+        listRunning = connectionObserving.flistRunningExecIdentifiers(
+            container.id,
+        )
+        assert sExecId in listRunning, (
+            "a running exec must be visible to a connection that did "
+            "not start it"
+        )
+    finally:
+        container.remove(force=True)

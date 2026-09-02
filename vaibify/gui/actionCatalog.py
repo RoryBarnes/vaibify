@@ -940,6 +940,48 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Agent Council actions are HUMAN-ONLY (design section 10.2):
+    # starting paid provider work, answering a council's question,
+    # stopping a running council, accepting a plan and deleting a
+    # retained campaign are researcher decisions the in-container agent
+    # must never make on its own. Each handler also rejects the agent
+    # token lane explicitly, so the fail-closed catalog exclusion and
+    # the per-handler refusal agree.
+    ("POST", "/api/agent-councils/{sContainerId}/start"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/respond"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/resume"),
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/retry"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/request-stop"),
+    # Pausing is human-only on the same terms, and one more: it is the
+    # researcher saying "I am leaving". An agent that could pause could
+    # stall a council indefinitely without ending it, which reads as a
+    # hang rather than as an act.
+    ("POST", "/api/agent-councils/{sContainerId}/{sCampaignId}/pause"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/accept-plan"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/grant-resolution-round"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/resolve-objections"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}"
+     "/reject-candidate"),
+    ("DELETE", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
+    # Ask-the-chairbot is human-only on the same terms and one more:
+    # every message spends the researcher's own provider subscription
+    # through a runner carrying a copy of their login, so an agent that
+    # could open a conversation could spend it in a loop. The
+    # conversation is also the researcher's private reading of the
+    # council's work, which the in-container agent has no standing in.
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/open"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/ask"),
+    ("POST",
+     "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/close"),
     # The dependency scan READS the researcher's own Python files on
     # the host and reports what they import. It writes nothing -- it
     # is a POST only because its input is a list -- but agent-invokable
@@ -1067,6 +1109,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Host-global idle-shutdown timeout. A compromised in-container agent
     # must never disable the hub's idle reaper — researcher-only.
     ("PUT", "/api/preferences/idle-timeout"),
+    # Host-global browser-session cap. An agent that could set this to
+    # "never" would remove the bound on how long a credential it shares
+    # a container with stays valid — researcher-only, for the same
+    # reason as the idle timeout above.
+    ("PUT", "/api/preferences/session-cap"),
 })
 
 
