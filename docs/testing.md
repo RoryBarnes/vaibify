@@ -239,6 +239,9 @@ window.
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union |
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
 | `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
+| `security.yml` | the security-boundary suite, in its own named lane so a green architectural badge can never launder a red security one | Ubuntu 24 + macOS 26 × Python 3.9 & 3.14 |
+| `styleContract.yml` | `tests/testStyleInvariants.py`, then `tools/generateStyleInventory.py --check` for inventory drift | one Linux cell |
+| `remoteSsh.yml` | the remote transport against a real `sshd`, with `VAIBIFY_REQUIRE_REMOTE_SSH` turning the no-daemon skip into a failure | one Linux cell |
 
 **After a merge — these publish what `main` now is:**
 
@@ -292,6 +295,9 @@ varies across the matrix, and a bare noun for anything that does not:
 | `invariants` | `tests-linux` |
 | `docker-smoke` | `tests-linux` |
 | `agent-docs` | `agentDocsPathCheck` |
+| `security:<os>:python-<version>` | `security` |
+| `style-contract` | `styleContract` |
+| `remote-ssh` | `remoteSsh` |
 
 Two failures forced this, both invisible in the workflow file. `browser`'s
 job was called `frontend (chromium)`, so searching "browser" returned

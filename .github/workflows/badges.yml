@@ -171,6 +171,8 @@ jobs:
               "browser": "statusBrowser.json",
               "security": "statusSecurity.json",
               "agent-docs-path-check": "statusAgentDocs.json",
+              "style-contract": "statusStyleContract.json",
+              "remote-ssh": "statusRemoteSsh.json",
           }
 
           # A lane with no run against the merged pull request did not
@@ -246,7 +248,8 @@ jobs:
                         browser.json statusTestsLinux.json \
                         statusTestsMacos.json statusFalsification.json \
                         statusBrowser.json statusSecurity.json \
-                        statusAgentDocs.json; do
+                        statusAgentDocs.json statusStyleContract.json \
+                        statusRemoteSsh.json; do
             if [ -f "badgeOutput/$sBadge" ]; then
               cp "badgeOutput/$sBadge" .
               git add "$sBadge"
