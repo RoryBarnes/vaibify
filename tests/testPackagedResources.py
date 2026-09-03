@@ -442,3 +442,42 @@ def testInitRefusedByAnExistingProjectWritesNothing():
                 f"{sorted(set(listAfter) - set(listBefore))}"
             )
             assert pathExisting.read_text() == '{"sMine": true}'
+
+
+def testTheInstallCheckIsolatesTheProjectRegistry():
+    """The release check must not share a registry between its two runs.
+
+    `pip-install.yml` tests the sdist and the wheel as two steps of ONE
+    job, so both inherit the same HOME. `vaibify init` registers what it
+    scaffolds in ~/.vaibify/registry.json under a name defaulting to the
+    template's, so the second run scaffolds `sandbox` at a new path and
+    the duplicate-name guard correctly refuses it. All 24 test cells
+    failed on v0.0.1 and the wheel was never at fault; reversing the
+    steps would simply have moved the failure to the sdist.
+
+    This is pinned at source level ON PURPOSE. The lane runs only on a
+    release, so no pre-merge check can execute it -- the defect sat
+    undetected for five weeks between the guard landing and the next
+    release, and a source-level pin is the only guard available before
+    a tag is cut.
+
+    The ordering is the contract: isolation must happen BEFORE the first
+    check that shells out to `vaibify`.
+    """
+    sSource = (_PATH_REPO / "tools" / "checkInstalledDistribution.py").read_text()
+    assert "def fnIsolateRegistryHome" in sSource, (
+        "checkInstalledDistribution.py no longer isolates HOME; running "
+        "it twice in one job fails the second run, and running it "
+        "locally writes a throwaway project into the developer's own "
+        "registry."
+    )
+    iIsolate = sSource.find("        fnIsolateRegistryHome(pathScratch)")
+    assert iIsolate != -1, "main() never calls fnIsolateRegistryHome"
+    iFirstSubprocessCheck = sSource.find(
+        "        fnCheckInitScaffoldsAProject(pathScratch)"
+    )
+    assert iFirstSubprocessCheck != -1, "main() lost its init check"
+    assert iIsolate < iFirstSubprocessCheck, (
+        "fnIsolateRegistryHome runs after the first check that shells "
+        "out to `vaibify`, so that check still uses the ambient HOME."
+    )

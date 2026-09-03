@@ -455,6 +455,41 @@ def testEveryCountBadgeSharesTheOneColour():
     )
 
 
+def testReadmeHtmlCommentsContainNoBlankLine():
+    """A blank line in a README comment silently deletes the badges below it.
+
+    The badge block lives inside ``<p align="center">``. A blank line
+    ends that HTML block, and every ``<img>`` after it stops rendering --
+    while the markdown still looks correct in an editor, the badge json
+    is still published and correct on the badges branch, and no check
+    anywhere reports a thing. It shipped exactly once: all seven count
+    badges vanished from the front page and were noticed by a human
+    reading the page, which is the only detector there was.
+
+    A WHITESPACE-ONLY line counts as blank. That matters: the first
+    attempted fix substituted spaces for the empty line, changed nothing,
+    and made the blank line look innocent when it was the cause.
+    """
+    listLines = (_PATH_REPO / "README.md").read_text().splitlines()
+    bInComment = False
+    listOffenders = []
+    for iIndex, sLine in enumerate(listLines, start=1):
+        if not bInComment and "<!--" in sLine:
+            bInComment = "-->" not in sLine[sLine.index("<!--"):]
+            continue
+        if bInComment:
+            if not sLine.strip():
+                listOffenders.append(iIndex)
+            if "-->" in sLine:
+                bInComment = False
+    assert listOffenders == [], (
+        f"README.md has a blank (or whitespace-only) line inside an HTML "
+        f"comment at line(s) {listOffenders}. That ends the enclosing "
+        f"<p align=\"center\"> block and every badge below it stops "
+        f"rendering. Use a line containing '.' as a paragraph separator."
+    )
+
+
 def testTheMergeStatusDumpIsWrittenOutsideTheCheckout():
     """The resolved API response must not sit in the worktree.
 

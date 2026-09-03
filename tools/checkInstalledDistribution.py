@@ -20,6 +20,7 @@ that is not a vaibify checkout, so the repository cannot stand in for
 the installed package.
 """
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -330,6 +331,30 @@ def fnCheckNoBytecodeLeaksIntoNewProjects(pathScratch):
     print("  no bytecode copied into scaffolded projects")
 
 
+def fnIsolateRegistryHome(pathScratch):
+    """Point HOME at the scratch tree so the checks cannot share state.
+
+    ``vaibify init`` registers the project it scaffolds in
+    ``~/.vaibify/registry.json``. The release lane installs the sdist and
+    the wheel as two steps of ONE job, so both ran against the same real
+    registry: the first registered a project named `sandbox`, the second
+    scaffolded that same name somewhere else, and the duplicate-name
+    guard correctly refused it. Every one of the 24 test cells failed and
+    the wheel was never at fault -- the check was contaminating itself,
+    and reversing the two steps would have moved the failure to the sdist.
+
+    Nothing caught it for five weeks: the guard landed the day after the
+    last release, and this lane runs only on a release.
+
+    Isolating here rather than in the workflow also stops a developer who
+    runs this locally from registering a `sandbox` project into their own
+    registry, pointing at a temporary directory deleted moments later.
+    """
+    pathHome = pathScratch / "isolatedHome"
+    pathHome.mkdir(parents=True, exist_ok=True)
+    os.environ["HOME"] = str(pathHome)
+
+
 def main():
     """Run every check, or exit non-zero at the first failure."""
     import tempfile
@@ -342,6 +367,7 @@ def main():
     fnCheckConsoleScriptRuns()
     with tempfile.TemporaryDirectory() as sScratch:
         pathScratch = pathlib.Path(sScratch)
+        fnIsolateRegistryHome(pathScratch)
         fnCheckInitScaffoldsAProject(pathScratch)
         fnCheckNoBytecodeLeaksIntoNewProjects(pathScratch)
         fnCheckWorkflowTemplateRuns(pathScratch)
