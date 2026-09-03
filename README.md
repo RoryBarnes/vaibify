@@ -14,69 +14,27 @@
   </a>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/pip-install.yml/badge.svg">
   <br>
-  <!-- Endpoint badges read counts from json on the orphan `badges` branch,
-       refreshed by .github/workflows/badges.yml on every push to main. They
-       display "no data" until badges.yml runs on main for the first time.
-       .
-       NO BLANK LINE ANYWHERE IN THIS COMMENT. A blank line ends the
-       enclosing <p align="center"> HTML block, and every badge below it
-       silently stops rendering -- the markdown still looks correct in an
-       editor and the json is still published, so nothing anywhere reports
-       it. That shipped once: all seven count badges vanished from the
-       front page while the badges branch held them, correct, the whole
-       time. A whitespace-only line counts as blank, so the separator
-       above is a dot. testReadmeHtmlCommentsContainNoBlankLine pins it.
-       .
-       All count badges share ONE colour, deliberately. A count is not a
-       verdict: `falsification tests` shipped in brightgreen and read as
-       "falsification: passing" beside the status badges that really do
-       mean that. Never paint one in a pass/fail colour --
-       testCountBadgesAreNotPaintedLikeVerdicts fails the build if you do. -->
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/tests.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/falsification.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/browser.json">
-  <br>
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/security.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/style.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/ssh.json">
-  <br>
-  <!-- Merge-gate status. These report the checks that gated the LAST MERGE
-       into main, resolved by badges.yml from the merge commit's pull
-       request. GitHub's own workflow badges are deliberately not used
-       here: they show the newest run on ANY branch, so a contributor's
-       failing pull request would redden the README while main is fine. -->
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsLinux.json">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
-  <br>
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsMacos.json">
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
   <br>
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusFalsification.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/tests.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsLinux.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsMacos.json">
   <br>
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/falsification.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusFalsification.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/browser.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
+  <br>
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/security.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSecurity.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/style.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusStyle.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/ssh.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSsh.json">
   <br>
-  <!-- The security lane carried a hand-typed "scope: regression subset"
-       label until 2026-09-02. It was computed by nothing and asserted by
-       nothing, and it had already gone stale in the direction that
-       matters: it said the boundary-hardening invariants were absent
-       from the lane, which they had not been since cca86404. A caveat
-       that does not change when the lane changes is not a caveat. The
-       badge now means what it says -- the security lane passed -- and
-       what that lane actually runs is a row in docs/testing.md, beside
-       the workflow it describes. -->
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSecurity.json">
-  <br>
-  <!-- The scheduled lanes keep GitHub's own badges, but MUST pin
-       ?branch=main. Unqualified, that badge reports the newest run on
-       any branch: fresh-image-build also triggers on pull requests
-       touching the image, so every one of its recent runs was a
-       contributor branch and the badge stopped describing main at all.
-       Nobody watches a nightly or weekly run, so these are the badges
-       most likely to be the only sign of a failure. -->
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg?branch=main">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg?branch=main">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
