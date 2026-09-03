@@ -1104,6 +1104,87 @@ var VaibifyPipelineRunner = (function () {
         );
     }
 
+    async function fnCleanOutputs() {
+        /* Clean WITHOUT running. Force Run All bundles the two, which
+           is efficient and pedagogically worse: the state between them
+           -- every output gone, every badge back to never-run -- is
+           the thing a researcher checking a published project needs to
+           see before deciding the rerun proved anything. */
+        VaibifyApp.fnShowConfirmModal(
+            "Clean Outputs",
+            "This deletes every automatic step's declared output " +
+            "files, figures included, and resets all verification " +
+            "states to untested. Interactive step outputs are " +
+            "preserved.\n\n" +
+            "Nothing is re-run. Files that are committed to git can " +
+            "be restored from there.",
+            async function () {
+                await _fnExecuteCleanOutputs();
+            }
+        );
+    }
+
+    async function _fnExecuteCleanOutputs() {
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/pipeline/" + sContainerId + "/clean"
+            );
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        }
+        /* The route resets each step's verification block and saves
+           the workflow, so the client's copy is now stale in exactly
+           the fields the badges read. Force Run All gets away without
+           this because the run it starts ships fresh state; a clean
+           that stopped here would leave green badges over deleted
+           files -- the dashboard stating the opposite of the truth.
+
+           Mirrored locally rather than refetched. fnRefreshWorkflow
+           would be the obvious call and is the wrong one here: it also
+           fetches the project's git remote and raises its own "Project
+           refreshed" toast, so deleting a file would reach across the
+           network for a reason a researcher cannot connect to the
+           click. The mirror only ever moves a badge from verified
+           toward untested -- never the direction that would claim
+           something unproven -- and it runs after the route has
+           already confirmed the reset. */
+        _fnMirrorTheClearedVerification();
+        VaibifyApp.fnClearFileExistenceCache();
+        VaibifyApp.fnRenderStepList();
+        VaibifyPolling.fnStartFilePolling(sContainerId);
+        VaibifyApp.fnShowToast(
+            "Outputs cleaned \u2014 every step is back to never-run",
+            "success");
+    }
+
+    function _fnMirrorTheClearedVerification() {
+        /* Clear each automatic step's verification marks and run
+           stats, matching what the route just wrote.
+
+           Every key present is set to "untested" rather than a
+           hard-coded list of the five axis names: a list here would be
+           a second statement of what a verification block CONTAINS,
+           and it would fall out of date silently the day an axis is
+           added. Which steps are exempt is not restated either --
+           fbStepIsInteractive is the shared mirror of the backend
+           predicate the route itself skips on. */
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        var listSteps = (dictWorkflow || {}).listSteps || [];
+        listSteps.forEach(function (dictStep) {
+            if (fbStepIsInteractive(dictStep)) return;
+            var dictVerify = dictStep.dictVerification || {};
+            Object.keys(dictVerify).forEach(function (sAxis) {
+                dictVerify[sAxis] = "untested";
+            });
+            dictStep.dictVerification = dictVerify;
+            dictStep.dictRunStats = {};
+        });
+    }
+
     function _fsKillConfirmationBody() {
         /* A host project has no container, and telling a researcher
            their processes will be stopped "in the container" while
@@ -1380,6 +1461,7 @@ var VaibifyPipelineRunner = (function () {
         fsEstimateRunTimeSeconds: fsEstimateRunTimeSeconds,
         fnRunAll: fnRunAll,
         fnForceRunAll: fnForceRunAll,
+        fnCleanOutputs: fnCleanOutputs,
         fnKillPipeline: fnKillPipeline,
         fsEstimateRunTime: fsEstimateRunTime,
         fsFormatDurationLong: fsFormatDurationLong,

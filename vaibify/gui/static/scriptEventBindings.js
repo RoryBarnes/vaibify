@@ -764,6 +764,9 @@ var VaibifyEventBindings = (function () {
             btnRunAll: function () {
                 VaibifyPipelineRunner.fnRunAll();
             },
+            btnCleanOutputs: function () {
+                VaibifyPipelineRunner.fnCleanOutputs();
+            },
             btnForceRunAll: function () {
                 VaibifyPipelineRunner.fnForceRunAll();
             },
@@ -778,6 +781,16 @@ var VaibifyEventBindings = (function () {
             },
             btnVerifyDependencies: function () {
                 VaibifyPipelineRunner.fnVerifyDependencies();
+            },
+            btnVerifyManifest: function () {
+                /* The manifest verdict has ONE author -- the
+                   "verify-manifest" project action, whose
+                   fdictAfterResponse phrases both outcomes. This is a
+                   second entry point to it, never a second copy of
+                   it, for the same reason the L3 warning has one
+                   opener: a comparison worded twice is worded
+                   differently within a release. */
+                VaibifyApp.fnRunProjectAction("verify-manifest");
             },
             btnStandardizeAllPlots: function () {
                 VaibifyPlotStandards
