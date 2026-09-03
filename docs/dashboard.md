@@ -178,14 +178,41 @@ right:
   that level's section.
 
 Steps run from the toolbar's **Run** menu: **Run Selected Steps**,
-**Run All Steps**, **Force Run All (Clean)**, **Stop All Running
-Tasks**, plus the verification sweeps **Verify Outputs**, **Run All
-Unit Tests**, and **Verify Dependencies**. Steps can be reordered by
+**Run All Steps**, **Clean Outputs**, **Force Run All (Clean)**, and
+**Stop All Running Tasks**, plus the verification sweeps **Verify
+Outputs**, **Run All Unit Tests**, **Verify Dependencies**, and
+**Check Files Against Manifest**. Steps can be reordered by
 dragging, and an individual step's right-click menu offers **Run
 Step**, **Edit Step**, **Rename…** (which previews and then cascades
 the rename through the step's directory, verification marker,
 manifest paths, and declared paths), **Set Runtime Limit…**, **Run
 From Here**, insertion, and deletion.
+
+Two of those deserve a note, because together they are how you check
+whether a pipeline still produces the results it recorded.
+
+**Clean Outputs** deletes every automatic step's declared output
+files — data files *and* figures — and resets each step's
+verification marks to untested. It runs nothing afterwards. That is
+the difference from **Force Run All (Clean)**, which does the same
+delete and then immediately re-runs everything: the rerun overwrites
+what was cleared, so you never see the project in its emptied state.
+Seeing it is the point when you are checking somebody else's work —
+an all-grey dashboard is the evidence that what appears next was
+produced on your machine and not shipped with the repository.
+Interactive steps keep their outputs (a person made those; nothing
+here can reproduce them), and anything committed to git can be
+restored from git.
+
+**Check Files Against Manifest** re-hashes every file pinned in
+`MANIFEST.sha256` and reports how many still match. It answers one
+question — are these the bytes this project recorded? — and it needs
+no container, no network, and no particular PROOF level, so it is
+available in host mode at all times. Run it on a fresh clone and it
+tells you the published archive is internally consistent. Run it
+after cleaning and re-running, and it tells you whether your machine
+reproduced those bytes exactly. Both are useful; they are not the
+same statement.
 
 #### Step names and directories
 

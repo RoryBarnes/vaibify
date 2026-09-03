@@ -221,7 +221,15 @@ class TestFlistBuildCleanCommands:
         ]}
         assert _flistBuildCleanCommands(dictWorkflow) == []
 
-    def test_skips_template_variables(self):
+    def test_skips_unresolvable_template_variables(self):
+        """A token the workflow cannot fill names no file.
+
+        The workflow below declares no ``sPlotDirectory``, so the
+        declaration resolves to nothing a step could have written and
+        must produce no ``rm``. Turning a literal placeholder into a
+        delete target would be a command composed from a path that
+        exists in no filesystem.
+        """
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
              "saOutputDataFiles": ["{sPlotDirectory}/fig.pdf"],
@@ -230,6 +238,43 @@ class TestFlistBuildCleanCommands:
         ]}
         listCmds = _flistBuildCleanCommands(dictWorkflow)
         assert listCmds == []
+
+    def test_resolves_templated_figures_against_workflow_values(self):
+        """A RESOLVABLE token is cleaned, not skipped.
+
+        This is the shape every vaibify-built workflow uses for its
+        figures -- ``{sPlotDirectory}/name.{sFigureType}`` -- and the
+        builder used to drop it on sight, so a clean deleted the data
+        and left every figure standing. The next run overwrote them,
+        which hid it: the end state looked right while the state in
+        between was a lie, and a plot step that FAILED left the
+        previous run's figure on screen as a current result.
+
+        Asserted on the resolved path rather than on a count, because
+        a builder that emitted the unresolved literal would satisfy a
+        count and delete nothing.
+        """
+        dictWorkflow = {
+            "sPlotDirectory": "Plot",
+            "sFigureType": "png",
+            "sProjectRepoPath": "/workspace/repo",
+            "listSteps": [
+                {"sDirectory": "StepOne",
+                 "saOutputDataFiles": ["fits.json"],
+                 "saPlotFiles": [
+                     "{sPlotDirectory}/figure.{sFigureType}"],
+                 "dictRunStats": {}, "dictVerification": {}},
+            ],
+        }
+        listCmds = _flistBuildCleanCommands(dictWorkflow)
+        assert any(
+            "'/workspace/repo/Plot/figure.png'" in sCommand
+            for sCommand in listCmds
+        )
+        assert any(
+            "'/workspace/repo/StepOne/fits.json'" in sCommand
+            for sCommand in listCmds
+        )
 
     def test_absolute_path_preserved(self):
         dictWorkflow = {"listSteps": [

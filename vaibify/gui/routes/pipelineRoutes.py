@@ -14,6 +14,10 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
 from ...reproducibility import remoteCheckState
+from ...reproducibility.manifestPaths import (
+    fdictWorkflowTemplateValues,
+    flistStepOutputRepoPaths,
+)
 
 from .. import containerOwnership
 from .. import verificationProgress
@@ -207,28 +211,39 @@ async def _fiMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
 def _flistBuildCleanCommands(dictWorkflow):
     """Build rm commands for all output files and reset step stats.
 
-    Step directory and output paths are repo-relative; join them
-    with ``sProjectRepoPath`` so the rm targets land in the project
-    repo rather than the container's default CWD.
+    Declared output paths are resolved through the SAME
+    ``fdictWorkflowTemplateValues`` + ``flistStepOutputRepoPaths``
+    helpers the manifest writer uses, then joined with
+    ``sProjectRepoPath`` so the rm targets land in the project repo
+    rather than the container's default CWD.
+
+    Resolving rather than skipping is load-bearing. This builder used
+    to drop any declaration beginning with ``{``, so a workflow that
+    declares its figures the ordinary way
+    (``{sPlotDirectory}/figure.{sFigureType}``) had every figure
+    survive a clean — and the next run overwrote them, which made the
+    end state look right and the intermediate state a lie: the badges
+    said nothing was there while the figure viewer still showed the
+    previous run's plot, and a plot step that then FAILED left a stale
+    figure standing as a current result. The manifest layer carried
+    the identical bug and fixed it the same way
+    (``manifestPaths.flistStepOutputRepoPaths``); a second resolver
+    here would be a second authority on what a step writes.
     """
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
     listCleanCommands = []
     for dictStep in dictWorkflow.get("listSteps", []):
         if fbStepIsInteractive(dictStep):
             continue
-        sDir = dictStep.get("sDirectory", "")
-        for sKey in ("saOutputDataFiles", "saPlotFiles"):
-            for sFile in dictStep.get(sKey, []):
-                if sFile.startswith("{"):
-                    continue
-                sRepoRel = sFile if sFile.startswith("/") else (
-                    posixpath.join(sDir, sFile) if sDir
-                    else sFile)
-                sPath = sRepoRel if (
-                    sRepoRel.startswith("/") or not sRepoRoot
-                ) else posixpath.join(sRepoRoot, sRepoRel)
-                listCleanCommands.append(
-                    f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
+        for sRepoRel in flistStepOutputRepoPaths(
+            dictStep, dictTemplateValues,
+        ):
+            sPath = sRepoRel if (
+                sRepoRel.startswith("/") or not sRepoRoot
+            ) else posixpath.join(sRepoRoot, sRepoRel)
+            listCleanCommands.append(
+                f"rm -f {fsShellQuote(sPath)} 2>/dev/null")
         dictStep["dictRunStats"] = {}
         dictStep["dictVerification"] = {
             "sUnitTest": "untested",

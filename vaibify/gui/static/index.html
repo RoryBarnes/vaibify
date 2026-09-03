@@ -361,6 +361,9 @@
                     Run Selected Steps</div>
                 <div class="toolbar-menu-item" id="btnRunAll">
                     Run All Steps</div>
+                <div class="toolbar-menu-item danger" id="btnCleanOutputs"
+                    title="Delete every automatic step's output files and figures and reset verification, without re-running anything">
+                    Clean Outputs</div>
                 <div class="toolbar-menu-item danger" id="btnForceRunAll">
                     Force Run All (Clean)</div>
                 <div class="toolbar-menu-separator"></div>
@@ -376,6 +379,9 @@
                 <div class="toolbar-menu-item" id="btnVerifyDependencies"
                     title="Check that cross-step references like {Step01.foo} point to real outputs">
                     Verify Dependencies</div>
+                <div class="toolbar-menu-item" id="btnVerifyManifest"
+                    title="Re-hash every file pinned in MANIFEST.sha256 and report which ones differ from the recorded bytes">
+                    Check Files Against Manifest</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnStandardizeAllPlots">
                     Standardize All Plots</div>

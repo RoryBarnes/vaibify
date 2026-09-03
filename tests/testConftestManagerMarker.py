@@ -65,8 +65,86 @@ def test_template_uses_project_repo_placeholder():
 
 def test_buildConftestSource_substitutes_project_repo():
     sSource = conftestManager.fsBuildConftestSource("/workspace/DemoRepo")
-    assert "_PROJECT_REPO = Path('/workspace/DemoRepo')" in sSource
+    assert (
+        "_STAMPED_PROJECT_REPO = Path('/workspace/DemoRepo')" in sSource
+    )
     ast.parse(sSource)
+
+
+def _ftImportProjectRootsFromDisk(pathConftest):
+    """Return (_PROJECT_REPO, _MARKER_BASE) from a conftest on disk.
+
+    The prologue locates the project repo by walking up from its own
+    file, so a namespace built by ``exec`` -- which has no ``__file__``
+    -- cannot exercise it. These tests import from disk instead.
+    """
+    import importlib.util
+
+    configSpec = importlib.util.spec_from_file_location(
+        "vaibify_conftest_from_disk", str(pathConftest),
+    )
+    contextModule = importlib.util.module_from_spec(configSpec)
+    configSpec.loader.exec_module(contextModule)
+    return contextModule._PROJECT_REPO, contextModule._MARKER_BASE
+
+
+def test_the_project_repo_is_located_from_the_conftest_not_the_stamp(
+    tmp_path,
+):
+    """A clone at a new path finds its own repo, not the stamped one.
+
+    The stamped path is where the repo lived when the conftest was
+    GENERATED -- inside a container, typically ``/workspace/<repo>``.
+    Every clone of a published project carries that literal, so before
+    the walk existed, running a project's own tests anywhere else died
+    trying to create the stamped directory (measured against a
+    published project: ``OSError: Read-only file system: '/workspace'``
+    from both step directories).
+
+    The stamped path here names a directory that does not exist, so a
+    derivation that quietly kept using it cannot pass.
+    """
+    pathRepo = tmp_path / "clonedRepo"
+    (pathRepo / ".vaibify" / "projects").mkdir(parents=True)
+    pathTests = pathRepo / "StepOne" / "tests"
+    pathTests.mkdir(parents=True)
+    pathConftest = pathTests / "conftest.py"
+    pathConftest.write_text(
+        conftestManager.fsBuildConftestSource(
+            "/workspace/aNameThatIsNotOnThisMachine",
+        )
+    )
+
+    pathLocated, pathMarkerBase = _ftImportProjectRootsFromDisk(
+        pathConftest,
+    )
+
+    assert pathLocated == pathRepo.resolve()
+    assert pathMarkerBase == (
+        pathRepo.resolve() / ".vaibify" / "test_markers"
+    )
+
+
+def test_the_stamp_is_used_when_no_vaibify_directory_is_above(tmp_path):
+    """With nothing to find, the generated stamp still answers.
+
+    The walk is an improvement on the stamp, never a replacement for
+    it: a conftest sitting outside any project repo has no better
+    answer available, and returning ``None`` there would turn a
+    missing-marker case into an AttributeError inside the researcher's
+    own pytest run.
+    """
+    pathLoose = tmp_path / "notARepo" / "tests"
+    pathLoose.mkdir(parents=True)
+    pathConftest = pathLoose / "conftest.py"
+    pathStamped = tmp_path / "stampedRepo"
+    pathConftest.write_text(
+        conftestManager.fsBuildConftestSource(str(pathStamped))
+    )
+
+    pathLocated, _ = _ftImportProjectRootsFromDisk(pathConftest)
+
+    assert pathLocated == pathStamped
 
 
 def _fnExecTemplateWithRoot(tmp_path):

@@ -40,7 +40,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "5"
+S_CONFTEST_VERSION = "6"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -513,7 +513,15 @@ def _fnLogMigrationOutcome(iExit, sOutput, sWorkflowSlug):
 
 _S_CONFTEST_PROLOGUE_FORMAT = (
     "from pathlib import Path\n"
-    "_PROJECT_REPO = Path({sProjectRepoPath!r})\n"
+    "_STAMPED_PROJECT_REPO = Path({sProjectRepoPath!r})\n"
+    "def _fpathLocateProjectRepo():\n"
+    "    sSelf = globals().get('__file__') or ''\n"
+    "    if sSelf:\n"
+    "        for pathAncestor in Path(sSelf).resolve().parents:\n"
+    "            if (pathAncestor / '.vaibify').is_dir():\n"
+    "                return pathAncestor\n"
+    "    return _STAMPED_PROJECT_REPO\n"
+    "_PROJECT_REPO = _fpathLocateProjectRepo()\n"
     "_MARKER_BASE = _PROJECT_REPO / '.vaibify' / 'test_markers'\n"
     "_PROJECTS_DIR = _PROJECT_REPO / '.vaibify' / 'projects'\n"
     "_WORKFLOWS_DIR = _PROJECT_REPO / '.vaibify' / 'workflows'\n"
