@@ -51,18 +51,35 @@ that adds an existing directory, point it at your clone, and choose to
 run it **on this machine** rather than in a container. There is no image
 to build; the dashboard opens in seconds.
 
-You are looking at somebody else's finished work. Every step is green,
-because the author ran and verified all of it before publishing.
+You are looking at somebody else's finished work — and the header says
+**Level 0**, with most requirements unmet. That is correct, and it is
+the first thing worth understanding about vaibify.
+
+A PROOF level is not a badge the author publishes. It is a verdict your
+copy computes, on your machine, from evidence available to *you*. Open
+the **PROOF** tab and the two computational steps both say
+`user-not-approved`: nobody on this machine has run them or looked at
+what they produced. The author's approvals live in `.vaibify/state.json`,
+which vaibify deliberately keeps out of git — "I examined this figure and
+I stand behind it" is a statement by a person, and it would be worth
+nothing if it copied itself to strangers. The same is true of the
+records of their GitHub and Zenodo checks, and of their rebuild
+attestation.
+
+So a published project does not arrive pre-trusted. It arrives with
+everything you need to decide for yourself, which is the entire point.
 
 ## 3. Check the archive before touching it
 
 From the **Run** menu, choose **Check Files Against Manifest**.
 
 It re-hashes every file pinned in `MANIFEST.sha256` and reports that all
-of them match. Nothing has been recomputed — you have confirmed that the
-files in your clone are byte-for-byte the files the author committed,
-which is a statement about the archive's integrity and not yet about its
-science.
+of them match. This is the one claim that *does* travel, because a hash
+is a property of the bytes rather than of anyone's judgement: you have
+confirmed that the files in your clone are byte-for-byte the files the
+author committed. Note what it is not — a statement about whether the
+science is right, or whether those files can be produced again. It is
+the archive's integrity, and nothing more.
 
 The same check is available from the command line, and there it will
 also tell you the reproducibility envelope is coherent:
@@ -89,7 +106,8 @@ a person wrote that and no amount of re-running would produce it again.
 Nothing is lost: `git status` now lists the deleted files, and `git
 checkout .` would bring them straight back. The point of stopping here
 is that an empty dashboard is *evidence*. Whatever appears next was
-produced by your machine, not shipped in the repository.
+produced by your machine, not shipped in the repository — and unlike
+the level, which was never the author's to give you, the files were.
 
 ## 5. Run the pipeline
 
@@ -106,11 +124,14 @@ steps pass all three tiers — the integrity tests confirm the output
 files have the expected structure, and the quantitative tests confirm
 the numbers land inside the author's recorded tolerances.
 
-Your dashboard is green again, and you have reached **Level 1**: every
-step ran, every output was inspected, every test passed, and you
-approved the result. That is as far as a host project goes — Levels 2
-and 3 certify properties only a container can carry, and vaibify will
-tell you so rather than pretending otherwise.
+Now approve each step, and the header moves from Level 0 to **Level 1**
+— every step ran, every output was inspected, every test passed, and you
+signed off. You did not inherit that level; you earned it, on this
+machine, in about two minutes. That is as far as a host project goes:
+Level 2 asks whether the outputs are published and verified against
+GitHub and Zenodo, and Level 3 is *defined* by a pinned container image,
+so a project running directly on your machine reports a single honest
+blocker saying so rather than offering you work that cannot help.
 
 ### Doing the same thing with an agent
 
