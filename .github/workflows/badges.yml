@@ -70,12 +70,30 @@ jobs:
           # is absent, so they still COLLECT here without the browser
           # extra installed — the count is the lane's real size.
           iBrowser=$(python -m pytest tests/browser -m browser --collect-only -q -p no:cacheprovider | grep -c "::")
+          # The per-lane counts read each lane's OWN pytest invocation out
+          # of its workflow, so a badge cannot claim a selection the lane
+          # stopped running. A copy of the file list here would drift the
+          # first time security.yml gained a suite, and the badge would
+          # keep reporting the old number as fact.
+          fnCountLane() {
+            # mapfile, not $(...): a marker expression has spaces in it
+            # and command substitution would split it into words pytest
+            # reads as separate arguments, selecting nothing.
+            local -a saArguments
+            mapfile -t saArguments < <(python tools/deriveLaneSelection.py "$1")
+            python -m pytest "${saArguments[@]}" \
+              --collect-only -q -p no:cacheprovider | grep -c "::"
+          }
+          iStyle=$(fnCountLane .github/workflows/styleContract.yml)
+          iSsh=$(fnCountLane .github/workflows/remoteSsh.yml)
+          iSecurity=$(fnCountLane .github/workflows/security.yml)
           # A count of zero is never a true answer for this repo: it
           # means the selection stopped matching (a renamed marker, a
           # moved directory) and the badge would publish "0 tests" as
           # fact. Fail loudly instead of shipping a confident lie.
           for sPair in "total:$iTotal" "falsification:$iFalsification" \
-                       "invariants:$iInvariants" "browser:$iBrowser"; do
+                       "invariants:$iInvariants" "browser:$iBrowser" \
+                       "style:$iStyle" "ssh:$iSsh" "security:$iSecurity"; do
             if [ "${sPair#*:}" -eq 0 ]; then
               echo "::error::${sPair%%:*} collected 0 tests; refusing to publish a badge that would misstate it"
               exit 1
@@ -85,7 +103,10 @@ jobs:
           echo "iFalsification=$iFalsification" >> "$GITHUB_OUTPUT"
           echo "iInvariants=$iInvariants" >> "$GITHUB_OUTPUT"
           echo "iBrowser=$iBrowser" >> "$GITHUB_OUTPUT"
-          echo "collected total=$iTotal falsification=$iFalsification invariants=$iInvariants browser=$iBrowser"
+          echo "iStyle=$iStyle" >> "$GITHUB_OUTPUT"
+          echo "iSsh=$iSsh" >> "$GITHUB_OUTPUT"
+          echo "iSecurity=$iSecurity" >> "$GITHUB_OUTPUT"
+          echo "collected total=$iTotal falsification=$iFalsification invariants=$iInvariants browser=$iBrowser style=$iStyle ssh=$iSsh security=$iSecurity"
 
       - name: Write shields.io endpoint json
         run: |
@@ -93,13 +114,28 @@ jobs:
           python - "${{ steps.counts.outputs.iTotal }}" \
                    "${{ steps.counts.outputs.iFalsification }}" \
                    "${{ steps.counts.outputs.iInvariants }}" \
-                   "${{ steps.counts.outputs.iBrowser }}" <<'PY'
+                   "${{ steps.counts.outputs.iBrowser }}" \
+                   "${{ steps.counts.outputs.iStyle }}" \
+                   "${{ steps.counts.outputs.iSsh }}" \
+                   "${{ steps.counts.outputs.iSecurity }}" <<'PY'
           import json
           import sys
 
-          iTotal, iFalsification, iInvariants, iBrowser = (
-              int(sValue) for sValue in sys.argv[1:5]
+          (iTotal, iFalsification, iInvariants, iBrowser,
+           iStyle, iSsh, iSecurity) = (
+              int(sValue) for sValue in sys.argv[1:8]
           )
+
+          # A COUNT is not a verdict, and must never be painted like one.
+          # `falsification tests` shipped in brightgreen and read as
+          # "falsification: passing" beside the status badges that really
+          # do mean that; `browser tests` in teal was the same mistake at
+          # lower contrast. Every count badge therefore shares ONE colour
+          # from outside the pass/fail palette -- the label already says
+          # which count it is, so distinguishing them by hue buys nothing
+          # and costs the reader a false signal.
+          # testCountBadgesAreNotPaintedLikeVerdicts pins this.
+          S_COUNT_BADGE_COLOUR = "darkblue"
 
           def fnWriteEndpoint(sFileName, sLabel, iCount, sColor):
               dictEndpoint = {
@@ -112,10 +148,13 @@ jobs:
                   json.dump(dictEndpoint, fileHandle)
                   fileHandle.write("\n")
 
-          fnWriteEndpoint("tests.json", "unit tests", iTotal, "darkblue")
-          fnWriteEndpoint("falsification.json", "falsification tests", iFalsification, "brightgreen")
-          fnWriteEndpoint("invariants.json", "architectural invariants", iInvariants, "blueviolet")
-          fnWriteEndpoint("browser.json", "browser tests", iBrowser, "teal")
+          fnWriteEndpoint("tests.json", "unit tests", iTotal, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("falsification.json", "falsification tests", iFalsification, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("invariants.json", "architectural invariants", iInvariants, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("browser.json", "browser tests", iBrowser, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("style.json", "style tests", iStyle, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("ssh.json", "ssh tests", iSsh, S_COUNT_BADGE_COLOUR)
+          fnWriteEndpoint("security.json", "security tests", iSecurity, S_COUNT_BADGE_COLOUR)
           PY
           cat badgeOutput/*.json
 
@@ -171,8 +210,8 @@ jobs:
               "browser": "statusBrowser.json",
               "security": "statusSecurity.json",
               "agent-docs-path-check": "statusAgentDocs.json",
-              "style-contract": "statusStyleContract.json",
-              "remote-ssh": "statusRemoteSsh.json",
+              "style": "statusStyle.json",
+              "ssh": "statusSsh.json",
           }
 
           # A lane with no run against the merged pull request did not
@@ -244,20 +283,30 @@ jobs:
           # publish a badge. Status files are absent on a direct push
           # (see the gate step), so each is copied only if it exists and
           # the previous one is left in place.
-          for sBadge in tests.json falsification.json invariants.json \
-                        browser.json statusTestsLinux.json \
-                        statusTestsMacos.json statusFalsification.json \
-                        statusBrowser.json statusSecurity.json \
-                        statusAgentDocs.json statusStyleContract.json \
-                        statusRemoteSsh.json; do
+          listBadges="tests.json falsification.json invariants.json
+                      browser.json style.json ssh.json security.json
+                      statusTestsLinux.json statusTestsMacos.json
+                      statusFalsification.json statusBrowser.json
+                      statusSecurity.json statusAgentDocs.json
+                      statusStyle.json statusSsh.json"
+          for sBadge in $listBadges; do
             if [ -f "badgeOutput/$sBadge" ]; then
               cp "badgeOutput/$sBadge" .
               git add "$sBadge"
             fi
           done
-          # Self-heal the branch: remove anything a previous run stranded
-          # here that is not a badge.
-          git rm -q --ignore-unmatch gateRuns.json
+          # Self-heal the branch: remove anything that is not one of the
+          # badges above. A previous run stranded a raw API dump here,
+          # and renaming a lane (style-contract -> style) orphans its old
+          # json, which shields keeps serving to anyone whose README
+          # still points at it. Sweeping by difference means neither can
+          # outlive the list that defines what a badge IS.
+          for sTracked in $(git ls-files); do
+            case " $(echo $listBadges) " in
+              *" $sTracked "*) ;;
+              *) git rm -q --ignore-unmatch "$sTracked" ;;
+            esac
+          done
           if git diff --cached --quiet; then
             echo "badge json unchanged - nothing to publish"
             exit 0

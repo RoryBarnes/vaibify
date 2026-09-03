@@ -214,8 +214,11 @@ T_PUBLISHED_BADGES = (
     "statusBrowser.json",
     "statusSecurity.json",
     "statusAgentDocs.json",
-    "statusStyleContract.json",
-    "statusRemoteSsh.json",
+    "statusStyle.json",
+    "statusSsh.json",
+    "style.json",
+    "ssh.json",
+    "security.json",
 )
 
 
@@ -378,6 +381,78 @@ def testTheReadmeMatrixLabelMatchesTheRealMatrix(sWorkflow, sPlatform):
             f"label does not mention it, so the front page advertises a "
             f"support matrix CI does not run: {sLabel.strip()}"
         )
+
+
+# shields.io's pass/fail palette. A COUNT badge painted from it makes a
+# claim about health that a count cannot support: `falsification tests`
+# shipped in brightgreen and sat beside `falsification: passing`, so the
+# row read as two verdicts where only one was.
+T_VERDICT_COLOURS = (
+    "brightgreen", "green", "yellowgreen", "yellow", "orange", "red",
+    "success", "critical", "important", "teal",
+)
+
+
+def _flistCountBadgeColours():
+    """Return (badge file, colour) for every count badge badges.yml writes."""
+    sBadges = (_PATH_WORKFLOWS / "badges.yml").read_text()
+    listCalls = re.findall(
+        r'fnWriteEndpoint\(\s*"([^"]+\.json)"\s*,\s*"[^"]*"\s*,'
+        r'\s*\w+\s*,\s*([A-Za-z_"][\w"]*)\s*\)',
+        sBadges,
+    )
+    assert listCalls, "no fnWriteEndpoint calls found in badges.yml"
+    return listCalls
+
+
+def testCountBadgesAreNotPaintedLikeVerdicts():
+    """A count badge must not borrow the pass/fail palette.
+
+    The README puts counts and merge-status badges in the same block. A
+    green count is then indistinguishable at a glance from a green
+    status, and the reader credits the repository with a verdict nobody
+    computed -- `falsification tests: 1,173` in brightgreen next to
+    `falsification: passing` is the same colour making two different
+    claims, only one of which is true.
+
+    The rule is enforced on the literal colour AND on the shared
+    constant, so it cannot be reintroduced by editing either one.
+    """
+    for sBadgeFile, sColour in _flistCountBadgeColours():
+        sLiteral = sColour.strip('"')
+        assert sLiteral not in T_VERDICT_COLOURS, (
+            f"{sBadgeFile} is a count badge painted {sLiteral!r}, which "
+            f"is a pass/fail colour. Counts share "
+            f"S_COUNT_BADGE_COLOUR; verdicts belong to the status "
+            f"badges."
+        )
+    sBadges = (_PATH_WORKFLOWS / "badges.yml").read_text()
+    matchConstant = re.search(
+        r'S_COUNT_BADGE_COLOUR\s*=\s*"([^"]+)"', sBadges,
+    )
+    assert matchConstant, (
+        "badges.yml no longer defines S_COUNT_BADGE_COLOUR; the count "
+        "badges have been given individual colours again."
+    )
+    assert matchConstant.group(1) not in T_VERDICT_COLOURS, (
+        f"S_COUNT_BADGE_COLOUR is {matchConstant.group(1)!r}, a "
+        f"pass/fail colour, so EVERY count badge now reads as a verdict."
+    )
+
+
+def testEveryCountBadgeSharesTheOneColour():
+    """One colour for counts, so none of them can drift into a palette.
+
+    Enforcing only "not green" would let the badges diverge into seven
+    hues again, and the next editor picking a hue has no rule to consult
+    -- which is how brightgreen and teal were chosen in the first place.
+    """
+    setColours = {sColour for _, sColour in _flistCountBadgeColours()}
+    assert setColours == {"S_COUNT_BADGE_COLOUR"}, (
+        f"count badges use more than the shared constant: "
+        f"{sorted(setColours)}. Add the colour to S_COUNT_BADGE_COLOUR "
+        f"rather than passing a literal."
+    )
 
 
 def testTheMergeStatusDumpIsWrittenOutsideTheCheckout():

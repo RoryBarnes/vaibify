@@ -9,7 +9,7 @@
 # protection cannot require "style" by name, and a future marker filter
 # on the suite lanes would silently remove per-merge enforcement with
 # nothing standing guard. This lane is that named guard: mark
-# `style-contract` as a required status check and every merge must pass
+# `style` as a required status check and every merge must pass
 # the naming contract explicitly.
 #
 # One leg only, deliberately: the scanner is pure-AST plus a JSON
@@ -21,7 +21,7 @@
 # success for having run nothing is the failure class AGENTS.md
 # records (`docker info || exit 0`).
 
-name: style-contract
+name: style
 
 on:
   # NO base-branch filter, deliberately. These gates were declared
@@ -36,8 +36,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  style-contract:
-    name: style-contract
+  style:
+    name: style
     runs-on: ubuntu-24.04
 
     steps:

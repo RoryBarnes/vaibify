@@ -1,4 +1,4 @@
-name: remote-ssh
+name: ssh
 
 # The remote-access transport, over a real OpenSSH connection.
 #
@@ -37,10 +37,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  remote-ssh:
+  ssh:
     # The job name IS the status-check name — what you type when adding
-    # a required check. Keep it searchable as "remote".
-    name: 'remote-ssh'
+    # a required check. Keep it searchable as "ssh".
+    name: 'ssh'
     runs-on: ubuntu-24.04
 
     steps:
