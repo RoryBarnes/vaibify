@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.2.dev5 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.3.dev3 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=576eb774"></script>
+      <script src="_static/documentation_options.js?v=a7dd373a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -299,14 +299,38 @@ shows the muted dash. Clicking a cell opens the step’s detail onto
 that level’s section.</p></li>
 </ul>
 <p>Steps run from the toolbar’s <strong>Run</strong> menu: <strong>Run Selected Steps</strong>,
-<strong>Run All Steps</strong>, <strong>Force Run All (Clean)</strong>, <strong>Stop All Running
-Tasks</strong>, plus the verification sweeps <strong>Verify Outputs</strong>, <strong>Run All
-Unit Tests</strong>, and <strong>Verify Dependencies</strong>. Steps can be reordered by
+<strong>Run All Steps</strong>, <strong>Clean Outputs</strong>, <strong>Force Run All (Clean)</strong>, and
+<strong>Stop All Running Tasks</strong>, plus the verification sweeps <strong>Verify
+Outputs</strong>, <strong>Run All Unit Tests</strong>, <strong>Verify Dependencies</strong>, and
+<strong>Check Files Against Manifest</strong>. Steps can be reordered by
 dragging, and an individual step’s right-click menu offers <strong>Run
 Step</strong>, <strong>Edit Step</strong>, <strong>Rename…</strong> (which previews and then cascades
 the rename through the step’s directory, verification marker,
 manifest paths, and declared paths), <strong>Set Runtime Limit…</strong>, <strong>Run
 From Here</strong>, insertion, and deletion.</p>
+<p>Two of those deserve a note, because together they are how you check
+whether a pipeline still produces the results it recorded.</p>
+<p><strong>Clean Outputs</strong> deletes every automatic step’s declared output
+files — data files <em>and</em> figures — and resets each step’s
+verification marks to untested. It runs nothing afterwards. That is
+the difference from <strong>Force Run All (Clean)</strong>, which does the same
+delete and then immediately re-runs everything: the rerun overwrites
+what was cleared, so you never see the project in its emptied state.
+Seeing it is the point when you are checking somebody else’s work —
+an all-grey dashboard is the evidence that what appears next was
+produced on your machine and not shipped with the repository.
+Interactive steps keep their outputs (a person made those; nothing
+here can reproduce them), and anything committed to git can be
+restored from git.</p>
+<p><strong>Check Files Against Manifest</strong> re-hashes every file pinned in
+<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and reports how many still match. It answers one
+question — are these the bytes this project recorded? — and it needs
+no container, no network, and no particular PROOF level, so it is
+available in host mode at all times. Run it on a fresh clone and it
+tells you the published archive is internally consistent. Run it
+after cleaning and re-running, and it tells you whether your machine
+reproduced those bytes exactly. Both are useful; they are not the
+same statement.</p>
 <section id="step-names-and-directories">
 <h4>Step names and directories<a class="headerlink" href="#step-names-and-directories" title="Link to this heading"></a></h4>
 <p>A step’s directory is not a free choice: its final component is

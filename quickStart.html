@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.2.dev5 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.3.dev3 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=576eb774"></script>
+      <script src="_static/documentation_options.js?v=a7dd373a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -48,9 +48,15 @@
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">QuickStart</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#install">1. Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#create-your-first-container">2. Create your first container</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#b-in-a-hurry-try-host-mode-first">2b. In a hurry? Try host mode first</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#where-to-next">3. Where to next</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#get-the-example-project">2. Get the example project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#check-the-archive-before-touching-it">3. Check the archive before touching it</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#delete-the-results">4. Delete the results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-the-pipeline">5. Run the pipeline</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#doing-the-same-thing-with-an-agent">Doing the same thing with an agent</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#now-check-the-bytes">6. Now check the bytes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-next">7. Where to next</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -101,164 +107,173 @@
              
   <section id="quickstart">
 <h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>Welcome to Vaibify. If you already have Docker/Colima installed, then it will only take five minutes to install it, open
-the dashboard, and have a Docker container ready for your first
-analysis.</p>
+<p>In about fifteen minutes, with no Docker and nothing to build, you will
+take a published scientific project, delete its results, regenerate them
+on your own machine, and check the new bytes against the ones its author
+recorded.</p>
+<p>That last step is the interesting one, and not because it will succeed.</p>
 <section id="install">
 <h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
-<p>You need Python 3.9 or later and Docker (or Colima on macOS) running on
-your machine. If Docker is not installed, see the <a class="reference internal" href="install.html"><span class="std std-doc">longer install
-guide</span></a> for platform-specific instructions; otherwise:</p>
+<p>You need Python 3.9 or later.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify
 vaibify
 </pre></div>
 </div>
-<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start the
-<strong>hub</strong> — a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> — in your web browser.</p>
-<p>You should see the Vaibify logo, the tagline, and an empty
-<strong>Containers</strong> list. No projects yet — let’s create one.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start the <strong>hub</strong> —
+a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> — in your browser. You
+should see the Vaibify logo, the tagline, and an empty <strong>Containers</strong>
+list.</p>
+<p>Vaibify’s full purpose is running scientific work inside containers, and
+for that you will want Docker (or Colima on macOS) eventually — the
+<a class="reference internal" href="install.html"><span class="std std-doc">install guide</span></a> covers it. You do not need it for this
+walkthrough, and installing it is not a quick start. Everything below
+runs directly on your machine in <strong>host mode</strong>, which trades containment
+for immediacy: commands run with your user’s authority on your real
+files, exactly as if you had typed them in a terminal, because that is
+what is happening. Vaibify says so when you enter a host project and
+again at the top of every host terminal session.</p>
 </section>
-<section id="create-your-first-container">
-<h2>2. Create your first container<a class="headerlink" href="#create-your-first-container" title="Link to this heading"></a></h2>
-<p>Click the <strong>+</strong> icon next to <em>Containers</em>. Two choices appear:</p>
-<ul class="simple">
-<li><p><strong>Add Existing</strong> — point at a folder that already has a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
-(someone else’s project, or one of yours from another machine).</p></li>
-<li><p><strong>Create New</strong> — start a new project from a template.</p></li>
-</ul>
-<p>Click <strong>Create New</strong>. The setup wizard opens.</p>
-<p>The wizard walks you through eight steps. None of them require anything
-beyond clicks and short text answers; every step has a <code class="docutils literal notranslate"><span class="pre">?</span></code> button that
-explains what the field controls.</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Step</p></th>
-<th class="head"><p>What you do</p></th>
-<th class="head"><p>Default</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>1. Project Directory</p></td>
-<td><p>Choose a folder on your host (e.g. <code class="docutils literal notranslate"><span class="pre">~/src/my-analysis</span></code>). Vaibify writes <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> here.</p></td>
-<td><p>—</p></td>
-</tr>
-<tr class="row-odd"><td><p>2. Template</p></td>
-<td><p>Pick <strong>sandbox</strong> for a clean room, <strong>toolkit</strong> for developing several libraries side-by-side, or <strong>workflow</strong> for a reproducible analysis with predefined steps.</p></td>
-<td><p>sandbox</p></td>
-</tr>
-<tr class="row-even"><td><p>3. Project Name</p></td>
-<td><p>The container name. Lowercase letters, digits, and hyphens.</p></td>
-<td><p>folder name</p></td>
-</tr>
-<tr class="row-odd"><td><p>4. Python Version</p></td>
-<td><p>Vaibify supports 3.9 through 3.14.</p></td>
-<td><p>3.12</p></td>
-</tr>
-<tr class="row-even"><td><p>5. Repositories</p></td>
-<td><p>Git URLs to clone into the container at startup. Skip if you have none yet.</p></td>
-<td><p>—</p></td>
-</tr>
-<tr class="row-odd"><td><p>6. Features &amp; Authentication</p></td>
-<td><p>Toggle Jupyter, R, Julia, LaTeX, Claude Code, Codex, Gemini, and GitHub authentication.</p></td>
-<td><p>LaTeX on</p></td>
-</tr>
-<tr class="row-even"><td><p>7. Packages</p></td>
-<td><p>Extra apt or pip packages on top of the template.</p></td>
-<td><p>—</p></td>
-</tr>
-<tr class="row-odd"><td><p>8. Summary</p></td>
-<td><p>Review the choices and create!</p></td>
-<td><p>—</p></td>
-</tr>
-</tbody>
-</table>
-<p>Click <strong>Create</strong> on the summary step. Vaibify writes the project’s
-configuration files, registers the project, closes the wizard, and
-shows a “Project created successfully” toast. A new tile for the
-project appears in the <strong>Containers</strong> list — nothing has been built
-yet.</p>
-<p>Click the new tile to build the Docker image. First builds take five
-to fifteen minutes (or more) depending on which features you enabled
-and your network speed; subsequent rebuilds are much faster because
-Docker caches the layers. Once the image exists, clicking the tile
-starts the container and opens its dashboard.</p>
-<p>You are now inside the container’s dashboard. The toolbar shows the
-container name, the active project (for workflow projects) with its
-PROOF level badges, and the <strong>?</strong> Help button. The left panel is
-tabbed: workflow projects get <strong>Main</strong> (the project’s steps and
-project-wide requirements), <strong>PROOF</strong> (the reproducibility-ladder
-requirements ledger), <strong>Files</strong>, and <strong>Logs</strong>; sandbox and toolkit
-projects get <strong>Files</strong>, <strong>Repos</strong>, and <strong>Logs</strong>. Above the terminal,
-two Viewing Windows display figures and files.</p>
-<p>Click in the terminal section to activate it and access a shell session inside the container.
-Whatever you do here — installing a package, running a script, launching
-Claude Code with <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code> — is sealed
-inside the container. Your home directory, your SSH keys, and the rest
-of your filesystem are not visible to anything in there. (The Help
-panel’s <strong>Using AI</strong> section explains why skipping permission prompts
-is the intended mode inside the sandbox.)</p>
-<p>You have your first Vaibify container.</p>
+<section id="get-the-example-project">
+<h2>2. Get the example project<a class="headerlink" href="#get-the-example-project" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git
+<span class="nb">cd</span><span class="w"> </span>aigreenhouse
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt
+</pre></div>
+</div>
+<p>This is a real, finished analysis: how long until the waste heat from AI
+data centres becomes large enough to matter for a planet’s climate. Two
+computational steps, a figure from each, three tiers of tests, and a
+declaration of which AI models helped write it. It is published at PROOF
+Level 3, which means its author committed a manifest of every artefact’s
+SHA-256 hash along with the pinned environment that produced them.</p>
+<p>Back in the hub, click the <strong>+</strong> next to <em>Containers</em>, choose the option
+that adds an existing directory, point it at your clone, and choose to
+run it <strong>on this machine</strong> rather than in a container. There is no image
+to build; the dashboard opens in seconds.</p>
+<p>You are looking at somebody else’s finished work. Every step is green,
+because the author ran and verified all of it before publishing.</p>
 </section>
-<section id="b-in-a-hurry-try-host-mode-first">
-<h2>2b. In a hurry? Try host mode first<a class="headerlink" href="#b-in-a-hurry-try-host-mode-first" title="Link to this heading"></a></h2>
-<p>If you want to see vaibify working <strong>before</strong> committing to a
-container build, you can point it at a directory on your own machine
-instead: in the add dialog, choose the option that runs <strong>on this
-machine</strong> rather than in a container. There is no image to build —
-the dashboard opens in seconds, and the pipeline steps, git badges,
-test markers, and terminal all work against your real files with your
-own installed tools.</p>
-<p>Two things to understand before you use it:</p>
+<section id="check-the-archive-before-touching-it">
+<h2>3. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
+<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>.</p>
+<p>It re-hashes every file pinned in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and reports that all
+of them match. Nothing has been recomputed — you have confirmed that the
+files in your clone are byte-for-byte the files the author committed,
+which is a statement about the archive’s integrity and not yet about its
+science.</p>
+<p>The same check is available from the command line, and there it will
+also tell you the reproducibility envelope is coherent:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">2</span><span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">3</span>
+</pre></div>
+</div>
+<p>Tiers 2 and 3 are skipped because they install a pinned dependency set
+and pull a container image; neither is needed to answer the question in
+front of you. (If you do run tier 2 later, do it inside a virtual
+environment — it installs an exact, hash-pinned dependency set into
+whatever Python is active.)</p>
+</section>
+<section id="delete-the-results">
+<h2>4. Delete the results<a class="headerlink" href="#delete-the-results" title="Link to this heading"></a></h2>
+<p>From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong>, and confirm.</p>
+<p>Every automatic step’s data files and figures are deleted and every
+verification mark resets to untested. The dashboard goes grey. The
+figure viewers empty. The AI Declaration step keeps its content, because
+a person wrote that and no amount of re-running would produce it again.</p>
+<p>Nothing is lost: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> now lists the deleted files, and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">.</span></code> would bring them straight back. The point of stopping here
+is that an empty dashboard is <em>evidence</em>. Whatever appears next was
+produced by your machine, not shipped in the repository.</p>
+</section>
+<section id="run-the-pipeline">
+<h2>5. Run the pipeline<a class="headerlink" href="#run-the-pipeline" title="Link to this heading"></a></h2>
+<p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>.</p>
+<p>Each step turns amber as it runs and green as it finishes. Click a
+step’s figure in the viewing window above the terminal to display it —
+the two plots are regenerated from scratch, in order, with the second
+step consuming the first step’s output through a declared dependency
+rather than a hardcoded path.</p>
+<p>Then run the tests: <strong>Run All Unit Tests</strong> from the same menu. Both
+steps pass all three tiers — the integrity tests confirm the output
+files have the expected structure, and the quantitative tests confirm
+the numbers land inside the author’s recorded tolerances.</p>
+<p>Your dashboard is green again, and you have reached <strong>Level 1</strong>: every
+step ran, every output was inspected, every test passed, and you
+approved the result. That is as far as a host project goes — Levels 2
+and 3 certify properties only a container can carry, and vaibify will
+tell you so rather than pretending otherwise.</p>
+<section id="doing-the-same-thing-with-an-agent">
+<h3>Doing the same thing with an agent<a class="headerlink" href="#doing-the-same-thing-with-an-agent" title="Link to this heading"></a></h3>
+<p>If you have an AI coding agent available, the terminal at the bottom of
+the dashboard is a real shell in the project directory, and vaibify
+exposes its own actions to an agent running there through the
+<code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> command. Asking the agent to “clean the outputs and re-run
+every step” performs the same operations as the menu items above, and
+the dashboard follows along — the agent is not typing shell commands
+behind vaibify’s back, it is calling the same endpoints your clicks
+call. The <a class="reference internal" href="dashboard.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> lists what
+it can and cannot do; destructive operations like cleaning are
+researcher-only by design.</p>
+</section>
+</section>
+<section id="now-check-the-bytes">
+<h2>6. Now check the bytes<a class="headerlink" href="#now-check-the-bytes" title="Link to this heading"></a></h2>
+<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong> again.</p>
+<p>It will fail.</p>
+<p>Not all of it — but the numbers you just regenerated are not identical
+to the numbers the author published, and neither are the figures. This
+is the most useful thing in the walkthrough, so it is worth being
+precise about what went wrong, because <em>nothing</em> did:</p>
 <ul class="simple">
-<li><p><strong>Nothing is contained.</strong> Commands run with your user’s full
-authority on your real filesystem, which is why vaibify shows a
-warning when you enter a host project and a reminder at the top of
-every host terminal session. Treat it the way you treat your own
-shell, because it is one.</p></li>
-<li><p><strong>It tops out early on the reproducibility ladder.</strong> The higher
-PROOF levels certify properties only a container can carry
-(a pinned environment, supervised attribution), so host projects
-cannot reach them. Host mode is for experimentation and first
-contact; when the work becomes real, create a container project
-and bring your repository with you — the workflow file is the
-same in both modes.</p></li>
+<li><p><strong>The fitted values differ in their last digits.</strong> A least-squares fit
+is a sequence of floating-point operations, and different BLAS/LAPACK
+builds order and vectorize them differently. The science is identical
+to twelve significant figures. The bytes are not.</p></li>
+<li><p><strong>The figures differ by more.</strong> Matplotlib stamps its own version into
+every PNG it writes, so a different matplotlib version guarantees
+different bytes before you even reach font rendering, which also
+differs by platform.</p></li>
 </ul>
+<p>Your run passed every scientific test the project defines and still did
+not reproduce it byte-for-byte. Those are different claims, and vaibify
+keeps them apart on purpose. “The tests pass” says the result is
+consistent with what the author asserted. “The hashes match” says a
+stranger re-executing this work would obtain the identical artefact —
+which is what a reader must be able to check if the published numbers
+are to mean anything on their own.</p>
+<p>Getting the second claim requires pinning the environment, not just the
+code: a specific image, specific library versions, a recorded thread
+count. That is what PROOF Level 3 is, it is why it needs a container,
+and it is why this project ships a <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code>, a <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>
+with hash pins, and an <code class="docutils literal notranslate"><span class="pre">environment.json</span></code> naming an image digest.</p>
+<p>If you want to see it actually reproduce, install Docker and run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span>--rerun
+</pre></div>
+</div>
+<p>which rebuilds the pinned environment, re-runs the workflow inside a
+disposable copy of it, and re-hashes every artefact against the
+manifest — leaving your own files untouched.</p>
 </section>
 <section id="where-to-next">
-<h2>3. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
-<p>The dashboard is the everyday workspace; the rest of the docs go
-deeper.</p>
+<h2>7. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><strong><a class="reference internal" href="templates.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
-which one to pick and how they differ. <em>Sandbox</em> is a clean room.
-<em>Toolkit</em> is for developing several peer libraries together. <em>Workflow</em>
-is for reproducible multi-step analyses where each step’s output gets
-inspected and signed off.</p></li>
-<li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel in the running
-container’s UI: the Main tab’s Steps and Project blocks, the PROOF
-requirements ledger, the status lights and warning colours, the
-embedded terminal, the figure viewer, and the verification state
-machine that records which step outputs you have looked at.</p></li>
-<li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what Vaibify protects against
-(escaped code, leaked credentials, host filesystem access) and what
-it does not. Worth reading before you let any agent write code in
-your container.</p></li>
-<li><p><strong><a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration reference</span></a></strong> — every field in
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code>. You almost
-never need to hand-edit these; the wizard writes them for you.</p></li>
-<li><p><strong><a class="reference internal" href="externalServices.html"><span class="std std-doc">External services</span></a></strong> — how vaibify pushes to
-GitHub, syncs with Overleaf, and archives a result on Zenodo from
-inside a container. Credentials are resolved from your host’s
-keychain at request time and never persisted in the container.</p></li>
-<li><p><strong><a class="reference internal" href="dashboard.html#agent-actions"><span class="std std-ref">Agent action catalog</span></a></strong> — the named
-operations an AI coding agent inside the container can ask the
-dashboard to perform on its behalf, and the verification each one
-triggers.</p></li>
-<li><p><strong><a class="reference internal" href="cli.html"><span class="std std-doc">Command line interface</span></a></strong> - Vaibify comes with an full command line interface to access your container from a shell running on your host. Push and pull files from the container, access the container terminal from a host terminal (i.e., outside of the vaibify web application), and scripting are all available.</p></li>
+starting your own project rather than driving someone else’s.</p></li>
+<li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel, the status
+colours, and the verification state machine.</p></li>
+<li><p><strong><a class="reference internal" href="reproducibility.html"><span class="std std-doc">The reproducibility ladder</span></a></strong> — what Levels 1
+through 3 each certify, and what none of them do.</p></li>
+<li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what a container protects against
+and what host mode does not. Worth reading before you let an agent
+write code anywhere.</p></li>
+<li><p><strong><a class="reference internal" href="install.html"><span class="std std-doc">Install guide</span></a></strong> — Docker and Colima, plus
+platform-specific troubleshooting.</p></li>
+<li><p><strong><a class="reference internal" href="cli.html"><span class="std std-doc">Command line interface</span></a></strong> — everything above, scriptable.</p></li>
 </ul>
-<p>If something goes wrong — Docker not running, port collision, a build
-that hangs — the <a class="reference internal" href="install.html"><span class="std std-doc">long-form install guide</span></a> has the
-platform-specific troubleshooting.</p>
+<p>A note on what you will see in <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> afterwards: opening a
+project can refresh the small <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> that vaibify installs in
+each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory, because it records where the project
+repository sits on the machine reading it. That file is vaibify’s test
+harness, not part of the analysis, and it is not pinned in the
+manifest.</p>
 </section>
 </section>
 

@@ -1,139 +1,192 @@
 # QuickStart
 
-Welcome to Vaibify. If you already have Docker/Colima installed, then it will only take five minutes to install it, open
-the dashboard, and have a Docker container ready for your first
-analysis.
+In about fifteen minutes, with no Docker and nothing to build, you will
+take a published scientific project, delete its results, regenerate them
+on your own machine, and check the new bytes against the ones its author
+recorded.
+
+That last step is the interesting one, and not because it will succeed.
 
 ## 1. Install
 
-You need Python 3.9 or later and Docker (or Colima on macOS) running on
-your machine. If Docker is not installed, see the [longer install
-guide](install.md) for platform-specific instructions; otherwise:
+You need Python 3.9 or later.
 
 ```bash
 pip install vaibify
 vaibify
 ```
 
-Run `vaibify` with no arguments in any directory to start the
-**hub** — a local web server on `http://127.0.0.1:8050` — in your web browser.
+Run `vaibify` with no arguments in any directory to start the **hub** —
+a local web server on `http://127.0.0.1:8050` — in your browser. You
+should see the Vaibify logo, the tagline, and an empty **Containers**
+list.
 
-You should see the Vaibify logo, the tagline, and an empty
-**Containers** list. No projects yet — let's create one.
+Vaibify's full purpose is running scientific work inside containers, and
+for that you will want Docker (or Colima on macOS) eventually — the
+[install guide](install.md) covers it. You do not need it for this
+walkthrough, and installing it is not a quick start. Everything below
+runs directly on your machine in **host mode**, which trades containment
+for immediacy: commands run with your user's authority on your real
+files, exactly as if you had typed them in a terminal, because that is
+what is happening. Vaibify says so when you enter a host project and
+again at the top of every host terminal session.
 
-## 2. Create your first container
+## 2. Get the example project
 
-Click the **+** icon next to *Containers*. Two choices appear:
+```bash
+git clone https://github.com/RoryBarnes/aigreenhouse.git
+cd aigreenhouse
+pip install -r .vaibify/requirements.txt
+```
 
-- **Add Existing** — point at a folder that already has a `vaibify.yml`
-  (someone else's project, or one of yours from another machine).
-- **Create New** — start a new project from a template.
+This is a real, finished analysis: how long until the waste heat from AI
+data centres becomes large enough to matter for a planet's climate. Two
+computational steps, a figure from each, three tiers of tests, and a
+declaration of which AI models helped write it. It is published at PROOF
+Level 3, which means its author committed a manifest of every artefact's
+SHA-256 hash along with the pinned environment that produced them.
 
-Click **Create New**. The setup wizard opens.
+Back in the hub, click the **+** next to *Containers*, choose the option
+that adds an existing directory, point it at your clone, and choose to
+run it **on this machine** rather than in a container. There is no image
+to build; the dashboard opens in seconds.
 
-The wizard walks you through eight steps. None of them require anything
-beyond clicks and short text answers; every step has a `?` button that
-explains what the field controls.
+You are looking at somebody else's finished work. Every step is green,
+because the author ran and verified all of it before publishing.
 
-| Step | What you do | Default |
-|---|---|---|
-| 1. Project Directory | Choose a folder on your host (e.g. `~/src/my-analysis`). Vaibify writes `vaibify.yml` here. | — |
-| 2. Template | Pick **sandbox** for a clean room, **toolkit** for developing several libraries side-by-side, or **workflow** for a reproducible analysis with predefined steps. | sandbox |
-| 3. Project Name | The container name. Lowercase letters, digits, and hyphens. | folder name |
-| 4. Python Version | Vaibify supports 3.9 through 3.14. | 3.12 |
-| 5. Repositories | Git URLs to clone into the container at startup. Skip if you have none yet. | — |
-| 6. Features & Authentication | Toggle Jupyter, R, Julia, LaTeX, Claude Code, Codex, Gemini, and GitHub authentication. | LaTeX on |
-| 7. Packages | Extra apt or pip packages on top of the template. | — |
-| 8. Summary | Review the choices and create! | — |
+## 3. Check the archive before touching it
 
-Click **Create** on the summary step. Vaibify writes the project's
-configuration files, registers the project, closes the wizard, and
-shows a "Project created successfully" toast. A new tile for the
-project appears in the **Containers** list — nothing has been built
-yet.
+From the **Run** menu, choose **Check Files Against Manifest**.
 
-Click the new tile to build the Docker image. First builds take five
-to fifteen minutes (or more) depending on which features you enabled
-and your network speed; subsequent rebuilds are much faster because
-Docker caches the layers. Once the image exists, clicking the tile
-starts the container and opens its dashboard.
+It re-hashes every file pinned in `MANIFEST.sha256` and reports that all
+of them match. Nothing has been recomputed — you have confirmed that the
+files in your clone are byte-for-byte the files the author committed,
+which is a statement about the archive's integrity and not yet about its
+science.
 
-You are now inside the container's dashboard. The toolbar shows the
-container name, the active project (for workflow projects) with its
-PROOF level badges, and the **?** Help button. The left panel is
-tabbed: workflow projects get **Main** (the project's steps and
-project-wide requirements), **PROOF** (the reproducibility-ladder
-requirements ledger), **Files**, and **Logs**; sandbox and toolkit
-projects get **Files**, **Repos**, and **Logs**. Above the terminal,
-two Viewing Windows display figures and files.
+The same check is available from the command line, and there it will
+also tell you the reproducibility envelope is coherent:
 
-Click in the terminal section to activate it and access a shell session inside the container.
-Whatever you do here — installing a package, running a script, launching
-Claude Code with `claude --dangerously-skip-permissions` — is sealed
-inside the container. Your home directory, your SSH keys, and the rest
-of your filesystem are not visible to anything in there. (The Help
-panel's **Using AI** section explains why skipping permission prompts
-is the intended mode inside the sandbox.)
+```bash
+vaibify reproduce --repo . --skip-tier 2 --skip-tier 3
+```
 
-You have your first Vaibify container.
+Tiers 2 and 3 are skipped because they install a pinned dependency set
+and pull a container image; neither is needed to answer the question in
+front of you. (If you do run tier 2 later, do it inside a virtual
+environment — it installs an exact, hash-pinned dependency set into
+whatever Python is active.)
 
-## 2b. In a hurry? Try host mode first
+## 4. Delete the results
 
-If you want to see vaibify working **before** committing to a
-container build, you can point it at a directory on your own machine
-instead: in the add dialog, choose the option that runs **on this
-machine** rather than in a container. There is no image to build —
-the dashboard opens in seconds, and the pipeline steps, git badges,
-test markers, and terminal all work against your real files with your
-own installed tools.
+From the **Run** menu, choose **Clean Outputs**, and confirm.
 
-Two things to understand before you use it:
+Every automatic step's data files and figures are deleted and every
+verification mark resets to untested. The dashboard goes grey. The
+figure viewers empty. The AI Declaration step keeps its content, because
+a person wrote that and no amount of re-running would produce it again.
 
-- **Nothing is contained.** Commands run with your user's full
-  authority on your real filesystem, which is why vaibify shows a
-  warning when you enter a host project and a reminder at the top of
-  every host terminal session. Treat it the way you treat your own
-  shell, because it is one.
-- **It tops out early on the reproducibility ladder.** The higher
-  PROOF levels certify properties only a container can carry
-  (a pinned environment, supervised attribution), so host projects
-  cannot reach them. Host mode is for experimentation and first
-  contact; when the work becomes real, create a container project
-  and bring your repository with you — the workflow file is the
-  same in both modes.
+Nothing is lost: `git status` now lists the deleted files, and `git
+checkout .` would bring them straight back. The point of stopping here
+is that an empty dashboard is *evidence*. Whatever appears next was
+produced by your machine, not shipped in the repository.
 
-## 3. Where to next
+## 5. Run the pipeline
 
-The dashboard is the everyday workspace; the rest of the docs go
-deeper.
+From the **Run** menu, choose **Run All Steps**.
+
+Each step turns amber as it runs and green as it finishes. Click a
+step's figure in the viewing window above the terminal to display it —
+the two plots are regenerated from scratch, in order, with the second
+step consuming the first step's output through a declared dependency
+rather than a hardcoded path.
+
+Then run the tests: **Run All Unit Tests** from the same menu. Both
+steps pass all three tiers — the integrity tests confirm the output
+files have the expected structure, and the quantitative tests confirm
+the numbers land inside the author's recorded tolerances.
+
+Your dashboard is green again, and you have reached **Level 1**: every
+step ran, every output was inspected, every test passed, and you
+approved the result. That is as far as a host project goes — Levels 2
+and 3 certify properties only a container can carry, and vaibify will
+tell you so rather than pretending otherwise.
+
+### Doing the same thing with an agent
+
+If you have an AI coding agent available, the terminal at the bottom of
+the dashboard is a real shell in the project directory, and vaibify
+exposes its own actions to an agent running there through the
+`vaibify-do` command. Asking the agent to "clean the outputs and re-run
+every step" performs the same operations as the menu items above, and
+the dashboard follows along — the agent is not typing shell commands
+behind vaibify's back, it is calling the same endpoints your clicks
+call. The [agent action catalog](dashboard.md#agent-actions) lists what
+it can and cannot do; destructive operations like cleaning are
+researcher-only by design.
+
+## 6. Now check the bytes
+
+From the **Run** menu, choose **Check Files Against Manifest** again.
+
+It will fail.
+
+Not all of it — but the numbers you just regenerated are not identical
+to the numbers the author published, and neither are the figures. This
+is the most useful thing in the walkthrough, so it is worth being
+precise about what went wrong, because *nothing* did:
+
+- **The fitted values differ in their last digits.** A least-squares fit
+  is a sequence of floating-point operations, and different BLAS/LAPACK
+  builds order and vectorize them differently. The science is identical
+  to twelve significant figures. The bytes are not.
+- **The figures differ by more.** Matplotlib stamps its own version into
+  every PNG it writes, so a different matplotlib version guarantees
+  different bytes before you even reach font rendering, which also
+  differs by platform.
+
+Your run passed every scientific test the project defines and still did
+not reproduce it byte-for-byte. Those are different claims, and vaibify
+keeps them apart on purpose. "The tests pass" says the result is
+consistent with what the author asserted. "The hashes match" says a
+stranger re-executing this work would obtain the identical artefact —
+which is what a reader must be able to check if the published numbers
+are to mean anything on their own.
+
+Getting the second claim requires pinning the environment, not just the
+code: a specific image, specific library versions, a recorded thread
+count. That is what PROOF Level 3 is, it is why it needs a container,
+and it is why this project ships a `Dockerfile`, a `requirements.lock`
+with hash pins, and an `environment.json` naming an image digest.
+
+If you want to see it actually reproduce, install Docker and run:
+
+```bash
+vaibify reproduce --repo . --rerun
+```
+
+which rebuilds the pinned environment, re-runs the workflow inside a
+disposable copy of it, and re-hashes every artefact against the
+manifest — leaving your own files untouched.
+
+## 7. Where to next
 
 - **[The three templates: sandbox, toolkit, workflow](templates.md)** —
-  which one to pick and how they differ. *Sandbox* is a clean room.
-  *Toolkit* is for developing several peer libraries together. *Workflow*
-  is for reproducible multi-step analyses where each step's output gets
-  inspected and signed off.
-- **[The dashboard tour](dashboard.md)** — every panel in the running
-  container's UI: the Main tab's Steps and Project blocks, the PROOF
-  requirements ledger, the status lights and warning colours, the
-  embedded terminal, the figure viewer, and the verification state
-  machine that records which step outputs you have looked at.
-- **[Security model](security.md)** — what Vaibify protects against
-  (escaped code, leaked credentials, host filesystem access) and what
-  it does not. Worth reading before you let any agent write code in
-  your container.
-- **[Configuration reference](configuration.md)** — every field in
-  `vaibify.yml`, `container.conf`, and `project.json`. You almost
-  never need to hand-edit these; the wizard writes them for you. 
-- **[External services](externalServices.md)** — how vaibify pushes to
-  GitHub, syncs with Overleaf, and archives a result on Zenodo from
-  inside a container. Credentials are resolved from your host's
-  keychain at request time and never persisted in the container.
-- **[Agent action catalog](dashboard.md#agent-actions)** — the named
-  operations an AI coding agent inside the container can ask the
-  dashboard to perform on its behalf, and the verification each one
-  triggers.
-- **[Command line interface](cli.md)** - Vaibify comes with an full command line interface to access your container from a shell running on your host. Push and pull files from the container, access the container terminal from a host terminal (i.e., outside of the vaibify web application), and scripting are all available.
+  starting your own project rather than driving someone else's.
+- **[The dashboard tour](dashboard.md)** — every panel, the status
+  colours, and the verification state machine.
+- **[The reproducibility ladder](reproducibility.md)** — what Levels 1
+  through 3 each certify, and what none of them do.
+- **[Security model](security.md)** — what a container protects against
+  and what host mode does not. Worth reading before you let an agent
+  write code anywhere.
+- **[Install guide](install.md)** — Docker and Colima, plus
+  platform-specific troubleshooting.
+- **[Command line interface](cli.md)** — everything above, scriptable.
 
-If something goes wrong — Docker not running, port collision, a build
-that hangs — the [long-form install guide](install.md) has the
-platform-specific troubleshooting.
+A note on what you will see in `git status` afterwards: opening a
+project can refresh the small `conftest.py` that vaibify installs in
+each step's `tests/` directory, because it records where the project
+repository sits on the machine reading it. That file is vaibify's test
+harness, not part of the analysis, and it is not pinned in the
+manifest.

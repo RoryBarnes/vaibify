@@ -4153,6 +4153,18 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
+    # cap and crossed it when the generated conftest gained the walk
+    # that locates the project repo from its own file. The stamped
+    # path is where the repo lived when the file was GENERATED --
+    # inside a container -- so every clone of a published project
+    # carried a literal naming a directory that exists nowhere on the
+    # reader's machine, and running the project's own tests died
+    # creating it. Five of the eight lines are the walk itself; it
+    # belongs in the prologue because the container has no vaibify to
+    # import from. Not a second responsibility: this module's one job
+    # is composing that file.
+    "conftestManager.py": 808,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -4848,7 +4860,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # had just reported a failing step to go and run it.
     # +18 (2026-09-01): the poll threads the image-currency verdict
     # to the envelope detail, keyword-only like bVerificationRunning.
-    "routes/pipelineRoutes.py": 3465,
+    # 3465 -> 3480 (2026-09-03): MEASURED. The clean builder resolves
+    # templated figure declarations through the manifest layer's own
+    # resolvers instead of skipping them, and records why: it dropped
+    # every `{sPlotDirectory}/...` figure, so a clean deleted the data
+    # and left the plots standing. Two lines are the import of the
+    # shared resolvers; the rest is the account of the bug, kept beside
+    # the builder because the same defect already shipped once in
+    # manifestPaths.py and a reader who finds no reason here will
+    # reintroduce the skip as a simplification.
+    "routes/pipelineRoutes.py": 3480,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
