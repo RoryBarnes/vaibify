@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.3.dev3 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.4.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a7dd373a"></script>
+      <script src="_static/documentation_options.js?v=698a5067"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -150,17 +150,32 @@ SHA-256 hash along with the pinned environment that produced them.</p>
 that adds an existing directory, point it at your clone, and choose to
 run it <strong>on this machine</strong> rather than in a container. There is no image
 to build; the dashboard opens in seconds.</p>
-<p>You are looking at somebody else’s finished work. Every step is green,
-because the author ran and verified all of it before publishing.</p>
+<p>You are looking at somebody else’s finished work — and the header says
+<strong>Level 0</strong>, with most requirements unmet. That is correct, and it is
+the first thing worth understanding about vaibify.</p>
+<p>A PROOF level is not a badge the author publishes. It is a verdict your
+copy computes, on your machine, from evidence available to <em>you</em>. Open
+the <strong>PROOF</strong> tab and the two computational steps both say
+<code class="docutils literal notranslate"><span class="pre">user-not-approved</span></code>: nobody on this machine has run them or looked at
+what they produced. The author’s approvals live in <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code>,
+which vaibify deliberately keeps out of git — “I examined this figure and
+I stand behind it” is a statement by a person, and it would be worth
+nothing if it copied itself to strangers. The same is true of the
+records of their GitHub and Zenodo checks, and of their rebuild
+attestation.</p>
+<p>So a published project does not arrive pre-trusted. It arrives with
+everything you need to decide for yourself, which is the entire point.</p>
 </section>
 <section id="check-the-archive-before-touching-it">
 <h2>3. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
 <p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>.</p>
 <p>It re-hashes every file pinned in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and reports that all
-of them match. Nothing has been recomputed — you have confirmed that the
-files in your clone are byte-for-byte the files the author committed,
-which is a statement about the archive’s integrity and not yet about its
-science.</p>
+of them match. This is the one claim that <em>does</em> travel, because a hash
+is a property of the bytes rather than of anyone’s judgement: you have
+confirmed that the files in your clone are byte-for-byte the files the
+author committed. Note what it is not — a statement about whether the
+science is right, or whether those files can be produced again. It is
+the archive’s integrity, and nothing more.</p>
 <p>The same check is available from the command line, and there it will
 also tell you the reproducibility envelope is coherent:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">2</span><span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">3</span>
@@ -181,7 +196,8 @@ figure viewers empty. The AI Declaration step keeps its content, because
 a person wrote that and no amount of re-running would produce it again.</p>
 <p>Nothing is lost: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> now lists the deleted files, and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">.</span></code> would bring them straight back. The point of stopping here
 is that an empty dashboard is <em>evidence</em>. Whatever appears next was
-produced by your machine, not shipped in the repository.</p>
+produced by your machine, not shipped in the repository — and unlike
+the level, which was never the author’s to give you, the files were.</p>
 </section>
 <section id="run-the-pipeline">
 <h2>5. Run the pipeline<a class="headerlink" href="#run-the-pipeline" title="Link to this heading"></a></h2>
@@ -195,11 +211,14 @@ rather than a hardcoded path.</p>
 steps pass all three tiers — the integrity tests confirm the output
 files have the expected structure, and the quantitative tests confirm
 the numbers land inside the author’s recorded tolerances.</p>
-<p>Your dashboard is green again, and you have reached <strong>Level 1</strong>: every
-step ran, every output was inspected, every test passed, and you
-approved the result. That is as far as a host project goes — Levels 2
-and 3 certify properties only a container can carry, and vaibify will
-tell you so rather than pretending otherwise.</p>
+<p>Now approve each step, and the header moves from Level 0 to <strong>Level 1</strong>
+— every step ran, every output was inspected, every test passed, and you
+signed off. You did not inherit that level; you earned it, on this
+machine, in about two minutes. That is as far as a host project goes:
+Level 2 asks whether the outputs are published and verified against
+GitHub and Zenodo, and Level 3 is <em>defined</em> by a pinned container image,
+so a project running directly on your machine reports a single honest
+blocker saying so rather than offering you work that cannot help.</p>
 <section id="doing-the-same-thing-with-an-agent">
 <h3>Doing the same thing with an agent<a class="headerlink" href="#doing-the-same-thing-with-an-agent" title="Link to this heading"></a></h3>
 <p>If you have an AI coding agent available, the terminal at the bottom of
