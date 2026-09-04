@@ -2851,6 +2851,25 @@ const VaibifyApp = (function () {
                 "Verify now",
             sClass: "step-blocker-glyph-l3-workflow-envelope-zenodo",
         },
+        /* The archive must carry the attestation itself, not just
+           the envelope (2026-09-03). Level 3 claims a stranger can
+           re-fetch and re-execute; until this criterion existed, the
+           evidence that the author's OWN rebuild passed lived only on
+           the author's disk, so the strongest rung on the ladder
+           rested on a record nobody else could read. The GitHub copy
+           is encouraged on the PROOF tab and gates nothing -- a repo
+           can be renamed, made private or deleted, so it cannot carry
+           a permanence claim. */
+        "attestation-not-in-zenodo-archive": {
+            sIcon: "⚠",
+            sLabel: "The Zenodo archive carries no rebuild " +
+                "attestation covering its own manifest, so a reader " +
+                "cannot see this project was demonstrated to " +
+                "rebuild — run the Level 3 verification, commit the " +
+                "attestation, and publish a deposit version " +
+                "containing it, then Verify now",
+            sClass: "step-blocker-glyph-l3-workflow-attestation-archive",
+        },
         "l3-attestation-stale": {
             sIcon: "⚠",
             sLabel: "Files changed since the last successful " +

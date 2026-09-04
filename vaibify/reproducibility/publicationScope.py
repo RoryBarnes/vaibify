@@ -82,6 +82,7 @@ from .repoFiles import ffilesEnsureRepoFiles
 
 __all__ = [
     "TUPLE_LEVEL3_ENVELOPE_PATHS",
+    "TUPLE_COMPARED_NOT_REQUIRED_PATHS",
     "TUPLE_UNCOMPARED_PREFIXES",
     "TUPLE_UNCOMPARED_PATHS",
     "I_PUBLICATION_SCOPE_VERSION",
@@ -142,7 +143,17 @@ S_PROJECTS_DIRECTORY = ".vaibify/projects"
 #      version-3 verdict about it -- match or divergence -- is a
 #      statement about bytes the definition no longer contains, so
 #      it cannot answer whether the CURRENT definition is published.
-I_PUBLICATION_SCOPE_VERSION = 4
+#   5  the Zenodo verify additionally reads the ARCHIVED
+#      l3_attestation.json and records whether it covers the
+#      archived manifest, and the attestation joins the COMPARED
+#      set so its published copies can be badged (2026-09-03). A
+#      version-4 cache carries no answer to the new Level 3
+#      criterion at all -- and absence there is indistinguishable
+#      from a recorded 'does not cover', which is the one reading
+#      that would let an unproven archive pass -- and it never
+#      compared the attestation, so its badge would read matched
+#      by omission.
+I_PUBLICATION_SCOPE_VERSION = 5
 
 # The reproducibility envelope: what a third party needs in order to
 # re-fetch and re-execute. Their presence is already checked by the L3
@@ -157,6 +168,20 @@ TUPLE_LEVEL3_ENVELOPE_PATHS = (
     "requirements.txt",
     "environment.yml",
     "pyproject.toml",
+)
+
+# Compared against every remote, and required by NO criterion. The
+# rebuild attestation belongs on GitHub as well as in the archive --
+# a reader who clones the repo should be able to see that the author's
+# rebuild passed -- but only the ARCHIVE copy carries a Level 3
+# criterion, because GitHub is not an archive and a repository can be
+# renamed, made private or deleted. Comparing it here is what gives
+# the dashboard a truthful GitHub badge to show; keeping it out of
+# TUPLE_LEVEL3_ENVELOPE_PATHS is what stops that badge from gating a
+# level. Adding a path here is deliberately cheap; moving one into
+# the envelope tuple is a ladder change.
+TUPLE_COMPARED_NOT_REQUIRED_PATHS = (
+    ".vaibify/l3_attestation.json",
 )
 
 # Tracked, published, and deliberately never compared. Test markers
@@ -177,6 +202,7 @@ def flistCollectComparisonPaths(dictWorkflow, filesRepo):
     listPaths = list(flistCollectCanonicalRepoPaths(dictWorkflow))
     listPaths.extend(_flistProjectDefinitionPaths(filesRepo))
     listPaths.extend(TUPLE_LEVEL3_ENVELOPE_PATHS)
+    listPaths.extend(TUPLE_COMPARED_NOT_REQUIRED_PATHS)
     listSeen = []
     for sPath in listPaths:
         if sPath and sPath not in listSeen and fbPathIsCompared(sPath):

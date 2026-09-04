@@ -334,8 +334,8 @@ LIST_FALSIFICATIONS = [
             'test_a_version_two_cache_is_no_longer_scope_current'
         ),
         source='vaibify/reproducibility/publicationScope.py',
-        old='I_PUBLICATION_SCOPE_VERSION = 4',
-        new='I_PUBLICATION_SCOPE_VERSION = 3',
+        old='I_PUBLICATION_SCOPE_VERSION = 5',
+        new='I_PUBLICATION_SCOPE_VERSION = 4',
     ),
     # --- 2026-08-26: guards added with the publication-scope work ---
     Falsification(

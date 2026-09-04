@@ -45,6 +45,7 @@ from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.reproducibility import (
     arxivClient,
     githubMirror,
+    l3Attestation,
     manifestWriter,
     overleafMirror,
     overleafSync,
@@ -625,7 +626,62 @@ def fdictVerifyRemoteService(
         "dictComparedHashes": dict(dictExpected),
     }
     _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
+    if sService == "zenodo":
+        dictStatus["dictArchivedAttestation"] = (
+            _fdictJudgeArchivedAttestation(dictConfig, dictActual)
+        )
     return dictStatus
+
+
+def _fdictJudgeArchivedAttestation(dictConfig, dictActual):
+    """Return the archive's own attestation verdict for this verify.
+
+    Level 3 asserts a stranger can re-fetch and re-execute, so the
+    evidence that the AUTHOR's re-execution passed has to be readable
+    by that stranger. This asks the archive whether it carries one.
+
+    Both halves come from the ARCHIVE and neither from local disk:
+    the manifest digest is the hash this verify just computed over the
+    archive's own ``MANIFEST.sha256``, and the attestation is fetched
+    from the same records. A local file cannot make an archived pair
+    true or false, and reading one here would let an ordinary edit
+    knock out a sound archive.
+
+    A record that serves no attestation returns the ABSENT verdict
+    rather than raising -- an archive published before any rerun is an
+    ordinary state with a clear remediation, not a broken verify.
+    """
+    sArchivedManifestSha = (dictActual or {}).get(
+        l3Attestation._S_MANIFEST_FILENAME) or ""
+    jsonArchived = _fjsonFetchArchivedAttestation(dictConfig)
+    bCovers, sReason = l3Attestation.ftJudgeArchivedAttestation(
+        jsonArchived, sArchivedManifestSha,
+    )
+    return {"bCoversArchivedManifest": bCovers, "sReason": sReason}
+
+
+def _fjsonFetchArchivedAttestation(dictConfig):
+    """Return the first declared record's attestation, or ``None``.
+
+    Declared records are consulted in order and the FIRST readable
+    attestation wins, matching how the hash comparison treats the
+    archive as the set of declared records rather than one deposit.
+    The deposit key is the bare filename because a Zenodo deposit is
+    flat -- the bucket API refuses path-containing keys -- so the
+    repo's ``.vaibify/l3_attestation.json`` is archived as
+    ``l3_attestation.json``.
+    """
+    sService = dictConfig.get("sService") or "sandbox"
+    for dictRecord in flistZenodoDeclaredRecords(dictConfig):
+        jsonFound = zenodoClient.ZenodoClient(
+            sService=sService,
+        ).fjsonFetchRecordFile(
+            dictRecord["sRecordId"],
+            l3Attestation.S_ATTESTATION_FILENAME,
+        )
+        if jsonFound is not None:
+            return jsonFound
+    return None
 
 
 def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
@@ -674,6 +730,11 @@ def _fnBackfillServiceIdentityFields(dictEntry, sService):
     elif sService == "zenodo":
         dictEntry.setdefault("sZenodoDoi", None)
         dictEntry.setdefault("sEndpointVerified", None)
+        # None, not a False verdict: a cache written before this
+        # check existed established nothing about the archived
+        # attestation, and recording that as "does not cover" would
+        # report an unasked question as a failed one.
+        dictEntry.setdefault("dictArchivedAttestation", None)
 
 
 def _fdictEmptyServiceStatus(sService):

@@ -4869,7 +4869,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the builder because the same defect already shipped once in
     # manifestPaths.py and a reader who finds no reason here will
     # reintroduce the skip as a simplification.
-    "routes/pipelineRoutes.py": 3480,
+    # 3480 -> 3490 (2026-09-03): MEASURED. The poll ships the
+    # attestation's per-remote publication state, tri-state, so the
+    # Rebuild-attestation row can encourage the GitHub copy without a
+    # second authority re-deriving it from divergence lists. Ten
+    # lines, nine of which are the note explaining that no criterion
+    # reads it -- an encouragement wired through the same channel as
+    # the gates is one edit away from becoming one.
+    "routes/pipelineRoutes.py": 3490,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

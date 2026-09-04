@@ -2389,6 +2389,16 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "bRebuildAttestationCurrent": (
             fbL3AttestationCurrent(filesRepo) if bHasRepo else False
         ),
+        # Per-remote publication state for the attestation itself,
+        # tri-state (see levelGates.fdictAttestationPublicationState).
+        # No criterion reads it: the GitHub copy is encouraged, never
+        # required, because GitHub is not an archive. Shipped as the
+        # VERDICT rather than as divergence lists the row would have
+        # to re-derive.
+        "dictAttestationPublication": (
+            levelGates.fdictAttestationPublicationState(filesRepo)
+            if bHasRepo else {}
+        ),
         # Whether a rerun is running RIGHT NOW -- transient hub state,
         # not a verdict, and deliberately a separate key from the one
         # above. The row renders the gate's answer for its colour and

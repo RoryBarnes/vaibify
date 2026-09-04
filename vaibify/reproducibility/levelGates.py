@@ -2625,7 +2625,84 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
             fbEnvelopeMatchesGithubMirror(filesRepo),
         "envelope-not-in-zenodo-archive":
             fbEnvelopeMatchesZenodoArchive(filesRepo),
+        "attestation-not-in-zenodo-archive":
+            fbAttestationIsPubliclyArchived(filesRepo),
     }
+
+
+def fbAttestationIsPubliclyArchived(filesRepo):
+    """Return True iff the archive carries an attestation covering it.
+
+    Level 3 asserts that a stranger can re-fetch and re-execute this
+    work. Until this criterion existed, the evidence that the author's
+    OWN re-execution passed lived only in
+    ``.vaibify/l3_attestation.json`` on the author's disk -- so the
+    strongest claim on the ladder rested on a record nobody else could
+    read, and a reader had no way to distinguish a project whose
+    rebuild had been demonstrated from one where it never had.
+
+    The check is SEMANTIC, and that is the whole design. It asks
+    whether the attestation IN THE ARCHIVE truthfully describes the
+    manifest IN THE ARCHIVE -- not whether its bytes equal the local
+    file's. Byte equality would mean that re-running an unchanged
+    project, which rewrites the local attestation's timestamp and
+    duration while changing no verdict, dropped Level 3 until a new
+    immutable Zenodo version was minted. Re-checking that a years-old
+    result still reproduces is the behaviour this ladder exists to
+    encourage; it must not cost a DOI.
+
+    ``None`` (a cache predating the check) reads as NOT satisfied,
+    like every other criterion here: unproven is not passed. It
+    becomes satisfied on the next Zenodo verify.
+    """
+    dictCached = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "zenodo",
+    )
+    dictArchived = (dictCached or {}).get("dictArchivedAttestation")
+    if not isinstance(dictArchived, dict):
+        return False
+    return dictArchived.get("bCoversArchivedManifest") is True
+
+
+def fdictAttestationPublicationState(filesRepo):
+    """Return ``{sService: True | False | None}`` for the attestation copy.
+
+    Answers a question no criterion asks: is the rebuild attestation
+    published, per remote. The Level 3 criterion covers the ARCHIVE
+    copy only, because GitHub is not an archive -- a repository can be
+    renamed, made private, force-pushed or deleted -- so a GitHub copy
+    cannot support a permanence claim. It is still the copy a reader
+    who clones the repo will look for, which is why the dashboard
+    nudges toward it without gating on it.
+
+    THREE states, and the third is the one that must not collapse.
+    ``True`` is compared and matching; ``False`` is compared and
+    absent-or-diverged; ``None`` is NOT COMPARED -- no verify has run,
+    or the cached one predates this path joining the compared set.
+    Reading ``None`` as ``False`` would nag a researcher about a file
+    the hub has never looked for, and reading it as ``True`` would
+    claim a publication nobody checked. The caller renders each
+    differently or renders nothing.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    return {
+        sService: _fbAttestationPublishedTo(filesRepo, sService)
+        for sService in ("github", "zenodo")
+    }
+
+
+def _fbAttestationPublishedTo(filesRepo, sService):
+    """Return the tri-state publication verdict for one remote."""
+    from . import publicationScope
+    sPath = publicationScope.TUPLE_COMPARED_NOT_REQUIRED_PATHS[0]
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, sService,
+    )
+    if not dictStatus or not dictStatus.get("sLastVerified"):
+        return None
+    if sPath not in set(dictStatus.get("listComparedPaths") or []):
+        return None
+    return sPath not in _fsetDivergedPathsOf(dictStatus)
 
 
 def fbEnvelopeMatchesGithubMirror(filesRepo):
@@ -2755,6 +2832,13 @@ _DICT_L3_REMEDIATION_HINTS = {
         "snapshot or Dockerfile differs from the copy on GitHub, or "
         "has not been compared against it. Push the current envelope, "
         "then click Verify now on the GitHub mirror row.",
+    "attestation-not-in-zenodo-archive":
+        "The Zenodo archive carries no rebuild attestation covering "
+        "its own manifest, so a reader cannot see that this project "
+        "was demonstrated to rebuild. Run the Level 3 verification, "
+        "commit .vaibify/l3_attestation.json, and publish a Zenodo "
+        "version containing it; then click Verify now on the Zenodo "
+        "row.",
     "envelope-not-in-zenodo-archive":
         "The reproduce script, manifest, dependency lock, environment "
         "snapshot or Dockerfile is not in the Zenodo archive, differs "
@@ -3369,6 +3453,7 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
     "environment-snapshot-missing", "reproduce-script-missing",
     "l3-attestation-stale", "binaries-not-declared-or-waived",
     "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
+    "attestation-not-in-zenodo-archive",
 )
 
 

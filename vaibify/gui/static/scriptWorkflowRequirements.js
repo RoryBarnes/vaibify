@@ -1424,9 +1424,62 @@ var VaibifyWorkflowRequirements = (function () {
                          ? ' <button type="button" class="btn ' +
                            'wf-view-attestation">View attestation' +
                            '</button>'
-                         : "") + '</div>';
+                         : "") +
+                     _fsRenderAttestationGithubNudge(dictDetail) +
+                     '</div>';
              }},
         ];
+    }
+
+    /* GitHub's mark, inline so the nudge needs no network and no
+       asset: an artifact page that could not load it would show a
+       broken image beside a sentence about publishing. */
+    var _S_OCTOCAT_SVG =
+        '<svg class="attestation-nudge-mark" viewBox="0 0 16 16" ' +
+        'width="16" height="16" aria-hidden="true" fill="currentColor">' +
+        '<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 ' +
+        '7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53' +
+        '-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01' +
+        '-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52' +
+        '.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82' +
+        '-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32' +
+        '-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16' +
+        ' 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 ' +
+        '3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46' +
+        '.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>';
+
+    function _fsRenderAttestationGithubNudge(dictDetail) {
+        /* An ENCOURAGEMENT, never a requirement, and the wording has
+           to carry that or the row grows a criterion the gates do not
+           have. The archive copy is what Level 3 asks for, because a
+           repository can be renamed, made private or deleted and so
+           cannot support a permanence claim; the GitHub copy is
+           simply the one a reader who clones the repo will look for.
+
+           Rendered only beside a CURRENT attestation: nudging someone
+           to publish a stale or failed record would be asking them to
+           publish a claim about bytes they no longer have.
+
+           The three states of dictAttestationPublication are kept
+           apart. `false` is "we compared and it is not there";
+           `null` is "no verify has looked" -- pressing someone about
+           a file the hub has never searched for is the same overreach
+           as claiming it is published. */
+        if (dictDetail.bRebuildAttestationCurrent !== true) return "";
+        var dictWhere = dictDetail.dictAttestationPublication || {};
+        if (dictWhere.github === true) return "";
+        var sBody = (dictWhere.github === false)
+            ? "Your rebuild attestation is not on GitHub. Pushing it " +
+              "lets anyone who clones this repository see that the " +
+              "rebuild passed."
+            : "No verification has checked whether your rebuild " +
+              "attestation is on GitHub. Pushing it lets anyone who " +
+              "clones this repository see that the rebuild passed.";
+        return '<div class="attestation-nudge">' + _S_OCTOCAT_SVG +
+            '<span>' + fnEscapeHtml(sBody) + ' ' +
+            'This does not affect your PROOF level \u2014 Level 3 ' +
+            'asks for the copy in the archive, not on GitHub.' +
+            '</span></div>';
     }
 
     function _fsDescribeAttestation(dictDetail, bRunning) {
