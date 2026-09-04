@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release Notes &mdash; Vaibify 0.0.5.dev7 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.6.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=aec15a43"></script>
+      <script src="_static/documentation_options.js?v=8c7e7f12"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,6 +65,7 @@
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure">A passing test suite is no longer reported as a failure</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#host-mode">Host mode</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-terminal-serves-host-projects">The terminal serves host projects</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#doctor-knows-about-host-projects">Doctor knows about host projects</a></li>
@@ -107,6 +108,32 @@ observes, not internal mechanics; the architecture document carries
 the reasoning.</p>
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="a-passing-test-suite-is-no-longer-reported-as-a-failure">
+<h3>A passing test suite is no longer reported as a failure<a class="headerlink" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure" title="Link to this heading"></a></h3>
+<p>A step whose tests all passed could still be reported as failing, with
+<code class="docutils literal notranslate"><span class="pre">exit</span> <span class="pre">1</span></code> and no explanation, on a project running outside a container.
+The tests were fine; vaibify’s own bookkeeping was not.</p>
+<p>Each step’s <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> writes a small marker file after every
+pytest run, so the dashboard can show test status however the tests
+were invoked. Older generated copies of that file had the container’s
+project path written into them as a fixed value, so on a project
+running directly on your machine the marker write failed – and a
+failure there ended the pytest session non-zero, on top of a run that
+had just printed <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">passed</span></code>. Every test tier of every step failed the
+same way, which made it look like the science had broken.</p>
+<p>Three things changed. The marker write can no longer fail a test
+session at all: if the marker cannot be written, the tests keep their
+own verdict and the reason is printed. The file itself now finds the
+project it lives in rather than being stamped with one path, so a
+single copy is correct both inside a container and on your machine.
+And these files are now re-checked when you press Run, not only when
+you open the project – previously, pulling a repository after opening
+it left the old copy in place with nothing said, and reopening the
+project did not help. If vaibify cannot bring one up to date it now
+says so before the run instead of failing quietly.</p>
+<p>If you have an existing project, no action is needed: the files are
+replaced on your next run.</p>
+</section>
 <section id="host-mode">
 <h3>Host mode<a class="headerlink" href="#host-mode" title="Link to this heading"></a></h3>
 <p>Vaibify can now run a project <strong>directly on your own machine</strong>, with
