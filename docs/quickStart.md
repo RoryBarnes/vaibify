@@ -81,6 +81,16 @@ author committed. Note what it is not — a statement about whether the
 science is right, or whether those files can be produced again. It is
 the archive's integrity, and nothing more.
 
+That "all match" holds for a *fresh* clone. Once you have run the
+pipeline yourself — which you are about to — the five generated
+artefacts among those files are your machine's, not the author's, and
+the check will say so. That is the check working, not breaking: your
+numpy and matplotlib are not the author's, and PNG metadata and float
+formatting differ across versions even when every number agrees. It is
+also the difference between *reproduced* and *bit-identical*, which is
+what the higher PROOF levels are about. `git checkout .` restores the
+author's bytes whenever you want to compare against them again.
+
 The same check is available from the command line, and there it will
 also tell you the reproducibility envelope is coherent:
 
