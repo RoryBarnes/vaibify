@@ -6678,21 +6678,42 @@ DICT_GRANDFATHERED_MODULE_LINES = {
 # whatever program the shell could not find, in any language.
 _T_NONPORTABLE_COMMAND_HEADS = ("python", "pytest", "pip")
 
-_T_STEP_COMMAND_KEYS = (
-    "saDataCommands", "saPlotCommands", "saTestCommands",
-)
-
-
 def _flistShippedTemplateCommands():
-    """Return (path, command) for every command in a shipped template."""
+    """Return (path, command) for everything a template step would RUN.
+
+    Test commands are resolved through
+    ``workflowManager.fdictResolveTestCommandGroups`` -- the single
+    answer to "what would running this step's tests execute" -- rather
+    than by listing keys here. A step's tests come from TWO places,
+    ``dictTests[category].saCommands`` and whatever is left in the
+    legacy ``saTestCommands``, and an earlier version of this scan
+    read only the second. That is the narrowed-projection failure: the
+    scan would have passed a template whose structured commands were
+    all non-portable, because it never looked at them.
+
+    It is not hypothetical. Applying the same one-sided fix to the
+    example project changed the legacy list only, which ALSO broke the
+    de-duplication between the two sources -- they are matched by exact
+    string -- so every test ran twice, once in each form
+    (researcher-observed, 2026-09-04). Asking the resolver is what
+    keeps this scan and the runner talking about the same commands.
+    """
+    from vaibify.gui import workflowManager
+
     listFound = []
     pathTemplates = REPO_ROOT / "vaibify" / "templates"
     for pathProject in sorted(pathTemplates.rglob("project.json")):
         dictWorkflow = json.loads(
             pathProject.read_text(encoding="utf-8"))
         for dictStep in dictWorkflow.get("listSteps", []) or []:
-            for sKey in _T_STEP_COMMAND_KEYS:
+            for sKey in ("saDataCommands", "saPlotCommands",
+                         "saSetupCommands"):
                 for sCommand in dictStep.get(sKey) or []:
+                    listFound.append((pathProject.name, sCommand))
+            dictGroups = workflowManager.fdictResolveTestCommandGroups(
+                dictStep)
+            for listGroup in dictGroups.values():
+                for sCommand in listGroup:
                     listFound.append((pathProject.name, sCommand))
     return listFound
 
