@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.6.dev2 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.7.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=8c7e7f12"></script>
+      <script src="_static/documentation_options.js?v=133ceb88"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -55,7 +55,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installing-for-remote-access">Installing for remote access</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#browser-compatibility">Browser Compatibility</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#docker-on-macos">Docker on macOS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installing-docker">Installing Docker</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#docker-on-linux">Docker on Linux</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#docker-on-macos">Docker on macOS</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
@@ -136,6 +140,11 @@ manage containers.</p>
 </tr>
 </tbody>
 </table>
+<p>Python and Git you likely have. For the other two see
+<a class="reference internal" href="#installing-docker">Installing Docker</a> below — and note that
+neither is needed to start: a <strong>host project</strong> runs on your own
+machine with no container at all, which is how the
+<a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a> begins.</p>
 </section>
 <section id="users">
 <h2>Users<a class="headerlink" href="#users" title="Link to this heading"></a></h2>
@@ -295,8 +304,57 @@ misaligned modals. CI exercises the dashboard in Chromium only, so
 Firefox and Safari are covered by these version floors rather than by
 an automated check.</p>
 </section>
+<section id="installing-docker">
+<h2>Installing Docker<a class="headerlink" href="#installing-docker" title="Link to this heading"></a></h2>
+<p>Vaibify does not install a container runtime for you, and it does not
+need one until you build or run a container project: host mode works
+with no Docker at all. Install it when you want the isolation that
+Level 3 reproducibility is defined by.</p>
+<p>Whichever platform you are on, confirm the result before going
+further. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> runs the full pre-flight – Docker context,
+daemon reachability, Colima health – and prints a status report:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>info<span class="w">          </span><span class="c1"># must succeed WITHOUT sudo</span>
+docker<span class="w"> </span>buildx<span class="w"> </span>version
+vaibify<span class="w"> </span>doctor
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span></code> line is the one that catches most problems, and it
+must work as your own user: vaibify talks to the daemon as the user
+who runs it, never through <code class="docutils literal notranslate"><span class="pre">sudo</span></code>.</p>
+<section id="docker-on-linux">
+<h3>Docker on Linux<a class="headerlink" href="#docker-on-linux" title="Link to this heading"></a></h3>
+<p>Distribution packages are often older than the Buildx floor above, so
+install Docker Engine from Docker’s own repository, following the
+current instructions for your distribution:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://docs.docker.com/engine/install/ubuntu/">Ubuntu</a></p></li>
+<li><p><a class="reference external" href="https://docs.docker.com/engine/install/debian/">Debian</a></p></li>
+<li><p><a class="reference external" href="https://docs.docker.com/engine/install/fedora/">Fedora</a></p></li>
+<li><p><a class="reference external" href="https://docs.docker.com/engine/install/rhel/">RHEL</a></p></li>
+</ul>
+<p>Those pages are linked rather than transcribed because the repository
+setup changes; a copy here would go stale silently and leave you
+debugging a signing key. Install the <code class="docutils literal notranslate"><span class="pre">docker-buildx-plugin</span></code> package
+along with the engine – vaibify builds with BuildKit, and an engine
+without Buildx fails at the build rather than at the check.</p>
+<p>Then grant your own user access to the daemon, which is what makes the
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span></code> check above pass without <code class="docutils literal notranslate"><span class="pre">sudo</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="s2">"</span><span class="nv">$USER</span><span class="s2">"</span>
+newgrp<span class="w"> </span>docker<span class="w">          </span><span class="c1"># or log out and back in</span>
+</pre></div>
+</div>
+<p>Be aware of what that grants: membership of the <code class="docutils literal notranslate"><span class="pre">docker</span></code> group is
+equivalent to root on the host, because a container can mount the host
+filesystem. On a shared or sensitive machine, prefer
+<a class="reference external" href="https://docs.docker.com/engine/security/rootless/">rootless mode</a>,
+which vaibify works with unchanged.</p>
+<p>Finally, make sure the daemon starts with the machine:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>docker
+</pre></div>
+</div>
+</section>
 <section id="docker-on-macos">
-<h2>Docker on macOS<a class="headerlink" href="#docker-on-macos" title="Link to this heading"></a></h2>
+<h3>Docker on macOS<a class="headerlink" href="#docker-on-macos" title="Link to this heading"></a></h3>
 <p>On macOS, <a class="reference external" href="https://github.com/abiosoft/colima">Colima</a> is the recommended
 Docker runtime. Install with Homebrew or MacPorts:</p>
 <p><strong>Homebrew:</strong></p>
@@ -315,6 +373,7 @@ Colima VM and corrupt the build. Prefix any long-running command with
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>caffeinate<span class="w"> </span>-s<span class="w"> </span>vaibify<span class="w"> </span>build
 </pre></div>
 </div>
+</section>
 </section>
 </section>
 
