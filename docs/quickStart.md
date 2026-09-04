@@ -46,10 +46,20 @@ declaration of which AI models helped write it. It is published at PROOF
 Level 3, which means its author committed a manifest of every artefact's
 SHA-256 hash along with the pinned environment that produced them.
 
-Back in the hub, click the **+** next to *Containers*, choose the option
-that adds an existing directory, point it at your clone, and choose to
-run it **on this machine** rather than in a container. There is no image
-to build; the dashboard opens in seconds.
+Back in the hub, click the **+** next to *Environments*. The wizard asks
+two things: where it runs — choose **This machine** rather than
+*Container* — and whether the project already exists — choose **Add
+Existing** and point it at your clone. There is no image to build; the
+environment opens in seconds.
+
+One more click, and it is the one everything below depends on. An
+environment is a *place* projects run, and it can hold more than one, so
+the dashboard asks which project you want. Open the project dropdown at
+the top and choose **AI Greenhouse** — the repository ships a
+`project.json` describing it, which is how vaibify knows the steps, the
+tests, and the figures. **Blank Project**, the other entry, is an empty
+workspace: pick it by mistake and the dashboard is bare, with nothing to
+run and nothing to check.
 
 You are looking at somebody else's finished work — and the header says
 **Level 0**, with most requirements unmet. That is correct, and it is
@@ -208,8 +218,11 @@ The blocker at the bottom of the PROOF tab is the honest one: Level 3
 is *defined* by a pinned container image, and there isn't one. You can
 lift that without starting over, and without moving a single file.
 
-Go back to the Environments hub, open the menu on this project's tile,
-and choose **Containerize…**. Confirm with **Convert and build**.
+Go back to the Environments hub, open the kebab menu (**⋮**) on this
+environment's tile, and choose **Containerize Project**. The wizard
+asks where the project should run: choose **Containerized Project** —
+the other card, *Host Project*, keeps it on this machine, which is
+where it already is. Then confirm the build.
 
 This does not create a second project. Your clone stays exactly where
 it is — the same directory, the same git history, the same outputs you
