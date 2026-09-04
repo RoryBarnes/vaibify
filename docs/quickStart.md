@@ -82,14 +82,12 @@ science is right, or whether those files can be produced again. It is
 the archive's integrity, and nothing more.
 
 That "all match" holds for a *fresh* clone. Once you have run the
-pipeline yourself — which you are about to — the five generated
-artefacts among those files are your machine's, not the author's, and
-the check will say so. That is the check working, not breaking: your
-numpy and matplotlib are not the author's, and PNG metadata and float
-formatting differ across versions even when every number agrees. It is
-also the difference between *reproduced* and *bit-identical*, which is
-what the higher PROOF levels are about. `git checkout .` restores the
-author's bytes whenever you want to compare against them again.
+pipeline yourself, five of those twenty-four files are ones your
+machine produced, and the check will start reporting them as different.
+That is the check working, and [section 6](#6-now-check-the-bytes) is
+about why. If you are returning to a clone you have already run —
+re-testing, or picking this up a second time — `git checkout .`
+restores the author's bytes and the check passes again.
 
 The same check is available from the command line, and there it will
 also tell you the reproducibility envelope is coherent:
@@ -192,7 +190,9 @@ count. That is what PROOF Level 3 is, it is why it needs a container,
 and it is why this project ships a `Dockerfile`, a `requirements.lock`
 with hash pins, and an `environment.json` naming an image digest.
 
-If you want to see it actually reproduce, install Docker and run:
+So the next step is to give this project the environment it is
+missing, which is what the rest of this walkthrough does. If you would
+rather do it from the command line, the equivalent is:
 
 ```bash
 vaibify reproduce --repo . --rerun
@@ -202,7 +202,63 @@ which rebuilds the pinned environment, re-runs the workflow inside a
 disposable copy of it, and re-hashes every artefact against the
 manifest — leaving your own files untouched.
 
-## 7. Where to next
+## 7. Containerize the same project
+
+The blocker at the bottom of the PROOF tab is the honest one: Level 3
+is *defined* by a pinned container image, and there isn't one. You can
+lift that without starting over, and without moving a single file.
+
+Go back to the Environments hub, open the menu on this project's tile,
+and choose **Containerize…**. Confirm with **Convert and build**.
+
+This does not create a second project. Your clone stays exactly where
+it is — the same directory, the same git history, the same outputs you
+just produced. What changes is how vaibify runs the steps: the project
+is re-registered under a Docker-safe name, an image is built from the
+`Dockerfile` and the hash-pinned `requirements.lock` this repository
+ships, and from then on every command runs inside a container built
+from that image rather than against whatever Python happens to be on
+your PATH.
+
+That difference is the entire point of the level you are reaching for.
+Until now "it ran on my machine" has been doing real work in your
+favour — your numpy, your matplotlib, your interpreter. A stranger has
+none of those. Pinning the environment is what converts *your* result
+into one somebody else can obtain.
+
+A few things to know before you click:
+
+- **The project must not be open anywhere else.** If it is open in the
+  tab you are clicking from, vaibify closes it for you. A session in
+  another browser or on another machine refuses the conversion instead,
+  because the conversion renames the key that the project's lock,
+  lease, and journal all hang from.
+- **The build takes minutes, not seconds.** It installs the pinned
+  dependency set. On macOS, prefix long commands with `caffeinate -s`
+  (see the [install guide](install.md#docker-on-macos)) — a sleeping
+  Colima VM corrupts a build in progress.
+- **A failed build does not put you back where you started.** It leaves
+  a registered container that has not been built yet, which is the
+  normal state of any newly created container project. Fix the cause
+  and build again; you have not lost the host project's work, because
+  there was never a copy to lose.
+
+When the build finishes, run the pipeline again. The steps do the same
+things and produce the same figures, but now they do it in the pinned
+environment — and the PROOF tab's Level 3 row stops saying the project
+has no image and starts asking the questions it is really about:
+whether the environment is recorded, whether the reproducibility rules
+have been answered, and whether a rebuild from that image reproduces
+the outputs you just made.
+
+That last one is worth doing at least once. **Verify** on the Level 3
+row creates a *shadow* container from the image digest your project
+pins, copies the repository into it, runs the whole pipeline there, and
+compares the results against your files — then destroys the shadow. It
+does not touch your outputs. It is the difference between believing
+your work reproduces and having watched it happen.
+
+## 8. Where to next
 
 - **[The three templates: sandbox, toolkit, workflow](templates.md)** —
   starting your own project rather than driving someone else's.
