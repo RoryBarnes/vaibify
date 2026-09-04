@@ -39,6 +39,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 
 from .workflowMigrations import S_DIGEST_TIMESTAMP_KEY
 from .pipelineUtils import (  # noqa: F401
+    fsExplainExitCode,
     fdictMapOutputTokenStems,
     fsShellQuote,
     fsBuildUniqueTemporaryPath,
@@ -307,6 +308,15 @@ async def _ftRunSingleCommand(
             "sCommand": sResolved,
             "sDirectory": sWorkdir,
             "iExitCode": tExecResult.iExitCode,
+            # Stamped here rather than rendered by each surface: the
+            # dashboard, the run log and the CLI all report this
+            # failure, and a diagnosis written three times is three
+            # diagnoses. Empty for codes carrying no standard
+            # meaning, where the program's own output is the answer.
+            "sExitExplanation": fsExplainExitCode(
+                tExecResult.iExitCode, sResolved,
+                fbIsHostProject(sContainerId),
+            ),
         })
     if fbIsHostProject(sContainerId):
         return (tExecResult.iExitCode, tExecResult.fCpuSeconds)

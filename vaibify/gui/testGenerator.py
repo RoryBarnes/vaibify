@@ -338,7 +338,7 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
     return {
         "sFilePath": sFilePath,
         "sContent": sCode,
-        "saCommands": [f"pytest tests/{sFilename}"],
+        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
     }
 
 
@@ -863,7 +863,7 @@ def _fdictWriteQuantitativeFiles(
         "sStochasticityClassification": dictMerged.get(
             "sStochasticityClassification", "deterministic",
         ),
-        "saCommands": [f"pytest tests/{sFilename}"],
+        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
     }
 
 
@@ -924,7 +924,7 @@ def _fdictWriteIntegrityFiles(
         "sContent": sTestCode,
         "sStandardsPath": sStandardsPath,
         "sStandardsContent": sJsonContent,
-        "saCommands": [f"pytest tests/{sFilename}"],
+        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
     }
 
 
@@ -966,7 +966,7 @@ def _fdictWriteQualitativeFiles(
         "sContent": sTestCode,
         "sStandardsPath": sStandardsPath,
         "sStandardsContent": sJsonContent,
-        "saCommands": [f"pytest tests/{sFilename}"],
+        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
     }
 
 

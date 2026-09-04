@@ -56,14 +56,24 @@ var VaibifyPipelineRunner = (function () {
                 "Verification timed out on a step — it's reported "
                 + "unverified. See the run log.", "warning");
         } else if (dictEvent.sType === "commandFailed") {
+            /* The server stamps a plain-English cause for the exit
+               codes that have one (127 command-not-found, 126 not
+               executable, 128+N killed by signal). A bare number is
+               precise and useless to a researcher who did not grow up
+               on POSIX -- and 127 is what a container-authored command
+               produces the first time it runs on a host. Absent for
+               ordinary failures, where the program's own output is
+               the diagnosis and a guess would talk over it. */
+            var sExplain = dictEvent.sExitExplanation || "";
             var sMessage =
                 "FAILED: " + dictEvent.sCommand +
                 "\n  Directory: " + dictEvent.sDirectory +
-                "\n  Exit code: " + dictEvent.iExitCode;
+                "\n  Exit code: " + dictEvent.iExitCode +
+                (sExplain ? "\n  " + sExplain : "");
             fnAppendPipelineOutput(sMessage);
             VaibifyApp.fnShowToast(
-                "Command failed (exit "
-                + dictEvent.iExitCode + ")", "error");
+                sExplain || ("Command failed (exit "
+                + dictEvent.iExitCode + ")"), "error");
         } else if (dictEvent.sType === "preflightFailed") {
             var sErrors = dictEvent.listErrors.join("\n");
             VaibifyApp.fnShowErrorModal(
