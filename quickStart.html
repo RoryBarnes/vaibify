@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.5.dev5 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.5.dev7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3d415430"></script>
+      <script src="_static/documentation_options.js?v=aec15a43"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -202,15 +202,17 @@ the level, which was never the author’s to give you, the files were.</p>
 <section id="run-the-pipeline">
 <h2>5. Run the pipeline<a class="headerlink" href="#run-the-pipeline" title="Link to this heading"></a></h2>
 <p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>.</p>
-<p>Each step turns amber as it runs and green as it finishes. Click a
-step’s figure in the viewing window above the terminal to display it —
-the two plots are regenerated from scratch, in order, with the second
-step consuming the first step’s output through a declared dependency
-rather than a hardcoded path.</p>
-<p>Then run the tests: <strong>Run All Unit Tests</strong> from the same menu. Both
-steps pass all three tiers — the integrity tests confirm the output
+<p>Each step runs its data commands, then its tests, then its plots, and
+turns amber as it runs and green as it finishes. So the three test
+tiers run as part of the step — the integrity tests confirm the output
 files have the expected structure, and the quantitative tests confirm
-the numbers land inside the author’s recorded tolerances.</p>
+the numbers land inside the author’s recorded tolerances. (The Run
+menu’s <strong>Run All Unit Tests</strong> re-runs only the tests, when you want
+them without redoing the data and the plots.)</p>
+<p>Click a step’s figure in the viewing window above the terminal to
+display it. The two plots are regenerated from scratch, in order, with
+the second step consuming the first step’s output through a declared
+dependency rather than a hardcoded path.</p>
 <p>Now approve each step, and the header moves from Level 0 to <strong>Level 1</strong>
 — every step ran, every output was inspected, every test passed, and you
 signed off. You did not inherit that level; you earned it, on this

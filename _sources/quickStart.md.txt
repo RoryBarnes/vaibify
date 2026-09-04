@@ -113,16 +113,18 @@ the level, which was never the author's to give you, the files were.
 
 From the **Run** menu, choose **Run All Steps**.
 
-Each step turns amber as it runs and green as it finishes. Click a
-step's figure in the viewing window above the terminal to display it —
-the two plots are regenerated from scratch, in order, with the second
-step consuming the first step's output through a declared dependency
-rather than a hardcoded path.
-
-Then run the tests: **Run All Unit Tests** from the same menu. Both
-steps pass all three tiers — the integrity tests confirm the output
+Each step runs its data commands, then its tests, then its plots, and
+turns amber as it runs and green as it finishes. So the three test
+tiers run as part of the step — the integrity tests confirm the output
 files have the expected structure, and the quantitative tests confirm
-the numbers land inside the author's recorded tolerances.
+the numbers land inside the author's recorded tolerances. (The Run
+menu's **Run All Unit Tests** re-runs only the tests, when you want
+them without redoing the data and the plots.)
+
+Click a step's figure in the viewing window above the terminal to
+display it. The two plots are regenerated from scratch, in order, with
+the second step consuming the first step's output through a declared
+dependency rather than a hardcoded path.
 
 Now approve each step, and the header moves from Level 0 to **Level 1**
 — every step ran, every output was inspected, every test passed, and you
