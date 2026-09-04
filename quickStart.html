@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.7.dev2 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.7.dev4 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=133ceb88"></script>
+      <script src="_static/documentation_options.js?v=7ccdff5c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -56,7 +56,8 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#now-check-the-bytes">6. Now check the bytes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#where-to-next">7. Where to next</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#containerize-the-same-project">7. Containerize the same project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-next">8. Where to next</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -177,14 +178,12 @@ author committed. Note what it is not — a statement about whether the
 science is right, or whether those files can be produced again. It is
 the archive’s integrity, and nothing more.</p>
 <p>That “all match” holds for a <em>fresh</em> clone. Once you have run the
-pipeline yourself — which you are about to — the five generated
-artefacts among those files are your machine’s, not the author’s, and
-the check will say so. That is the check working, not breaking: your
-numpy and matplotlib are not the author’s, and PNG metadata and float
-formatting differ across versions even when every number agrees. It is
-also the difference between <em>reproduced</em> and <em>bit-identical</em>, which is
-what the higher PROOF levels are about. <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">.</span></code> restores the
-author’s bytes whenever you want to compare against them again.</p>
+pipeline yourself, five of those twenty-four files are ones your
+machine produced, and the check will start reporting them as different.
+That is the check working, and <a class="reference internal" href="#now-check-the-bytes">section 6</a> is
+about why. If you are returning to a clone you have already run —
+re-testing, or picking this up a second time — <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">.</span></code>
+restores the author’s bytes and the check passes again.</p>
 <p>The same check is available from the command line, and there it will
 also tell you the reproducibility envelope is coherent:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">2</span><span class="w"> </span>--skip-tier<span class="w"> </span><span class="m">3</span>
@@ -274,7 +273,9 @@ code: a specific image, specific library versions, a recorded thread
 count. That is what PROOF Level 3 is, it is why it needs a container,
 and it is why this project ships a <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code>, a <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>
 with hash pins, and an <code class="docutils literal notranslate"><span class="pre">environment.json</span></code> naming an image digest.</p>
-<p>If you want to see it actually reproduce, install Docker and run:</p>
+<p>So the next step is to give this project the environment it is
+missing, which is what the rest of this walkthrough does. If you would
+rather do it from the command line, the equivalent is:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span>--rerun
 </pre></div>
 </div>
@@ -282,8 +283,59 @@ with hash pins, and an <code class="docutils literal notranslate"><span class="p
 disposable copy of it, and re-hashes every artefact against the
 manifest — leaving your own files untouched.</p>
 </section>
+<section id="containerize-the-same-project">
+<h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
+<p>The blocker at the bottom of the PROOF tab is the honest one: Level 3
+is <em>defined</em> by a pinned container image, and there isn’t one. You can
+lift that without starting over, and without moving a single file.</p>
+<p>Go back to the Environments hub, open the menu on this project’s tile,
+and choose <strong>Containerize…</strong>. Confirm with <strong>Convert and build</strong>.</p>
+<p>This does not create a second project. Your clone stays exactly where
+it is — the same directory, the same git history, the same outputs you
+just produced. What changes is how vaibify runs the steps: the project
+is re-registered under a Docker-safe name, an image is built from the
+<code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code> and the hash-pinned <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> this repository
+ships, and from then on every command runs inside a container built
+from that image rather than against whatever Python happens to be on
+your PATH.</p>
+<p>That difference is the entire point of the level you are reaching for.
+Until now “it ran on my machine” has been doing real work in your
+favour — your numpy, your matplotlib, your interpreter. A stranger has
+none of those. Pinning the environment is what converts <em>your</em> result
+into one somebody else can obtain.</p>
+<p>A few things to know before you click:</p>
+<ul class="simple">
+<li><p><strong>The project must not be open anywhere else.</strong> If it is open in the
+tab you are clicking from, vaibify closes it for you. A session in
+another browser or on another machine refuses the conversion instead,
+because the conversion renames the key that the project’s lock,
+lease, and journal all hang from.</p></li>
+<li><p><strong>The build takes minutes, not seconds.</strong> It installs the pinned
+dependency set. On macOS, prefix long commands with <code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span></code>
+(see the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a>) — a sleeping
+Colima VM corrupts a build in progress.</p></li>
+<li><p><strong>A failed build does not put you back where you started.</strong> It leaves
+a registered container that has not been built yet, which is the
+normal state of any newly created container project. Fix the cause
+and build again; you have not lost the host project’s work, because
+there was never a copy to lose.</p></li>
+</ul>
+<p>When the build finishes, run the pipeline again. The steps do the same
+things and produce the same figures, but now they do it in the pinned
+environment — and the PROOF tab’s Level 3 row stops saying the project
+has no image and starts asking the questions it is really about:
+whether the environment is recorded, whether the reproducibility rules
+have been answered, and whether a rebuild from that image reproduces
+the outputs you just made.</p>
+<p>That last one is worth doing at least once. <strong>Verify</strong> on the Level 3
+row creates a <em>shadow</em> container from the image digest your project
+pins, copies the repository into it, runs the whole pipeline there, and
+compares the results against your files — then destroys the shadow. It
+does not touch your outputs. It is the difference between believing
+your work reproduces and having watched it happen.</p>
+</section>
 <section id="where-to-next">
-<h2>7. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
+<h2>8. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><strong><a class="reference internal" href="templates.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
 starting your own project rather than driving someone else’s.</p></li>
