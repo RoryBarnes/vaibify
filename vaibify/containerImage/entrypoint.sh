@@ -799,7 +799,10 @@ fnPersistAgentConfig() {
 fnPersistInstalledAgentConfigs() {
     command -v claude > /dev/null 2>&1 && fnPersistAgentConfig claude
     command -v codex > /dev/null 2>&1 && fnPersistAgentConfig codex
-    command -v gemini > /dev/null 2>&1 && fnPersistAgentConfig gemini
+    if command -v gemini > /dev/null 2>&1 \
+            || command -v agy > /dev/null 2>&1; then
+        fnPersistAgentConfig gemini
+    fi
     command -v opencode > /dev/null 2>&1 && fnPersistAgentConfig \
         opencode "/home/${CONTAINER_USER}/.config/opencode"
     command -v cline > /dev/null 2>&1 && fnPersistAgentConfig cline
@@ -879,6 +882,9 @@ fnPrintSummary() {
     fi
     if command -v gemini > /dev/null 2>&1; then
         echo "  Gemini:    $(gemini --version 2>&1)"
+    fi
+    if command -v agy > /dev/null 2>&1; then
+        echo "  Antigravity: $(agy --version 2>&1)"
     fi
     if command -v opencode > /dev/null 2>&1; then
         echo "  OpenCode:  $(opencode --version 2>&1)"
@@ -1523,6 +1529,10 @@ fnRunWorkspacePhase() {
     fi
     if command -v gemini > /dev/null 2>&1; then
         fnConfigureGeminiAutoUpdate
+    fi
+    if command -v agy > /dev/null 2>&1; then
+        fnRunAgentAutoUpdate "Antigravity" \
+            "${VAIBIFY_ANTIGRAVITY_AUTO_UPDATE:-true}" agy update
     fi
     if command -v opencode > /dev/null 2>&1; then
         fnRunAgentAutoUpdate "OpenCode" \

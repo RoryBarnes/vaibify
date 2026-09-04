@@ -178,6 +178,7 @@ class TestContainerSettings:
         mockConfig.features.bClaude = False
         mockConfig.features.bCodex = False
         mockConfig.features.bGemini = False
+        mockConfig.features.bAntigravity = False
         mockConfig.iCpuLimit = 1
         mockConfig.fMemoryLimitGigabytes = 1.5
         with patch(
@@ -193,6 +194,7 @@ class TestContainerSettings:
         assert dictBody["bClaudeInstalled"] is False
         assert dictBody["bCodexInstalled"] is False
         assert dictBody["bGeminiInstalled"] is False
+        assert dictBody["bAntigravityInstalled"] is False
         assert "bClaudeAutoUpdate" not in dictBody
         assert dictBody["iCpuLimit"] == 1
         assert dictBody["fMemoryLimitGigabytes"] == 1.5
@@ -479,6 +481,7 @@ class TestClaudeAutoUpdateSettings:
     [
         ("codex", "bCodexAutoUpdate"),
         ("gemini", "bGeminiAutoUpdate"),
+        ("antigravity", "bAntigravityAutoUpdate"),
         ("opencode", "bOpenCodeAutoUpdate"),
         ("cline", "bClineAutoUpdate"),
         ("openhands", "bOpenHandsAutoUpdate"),

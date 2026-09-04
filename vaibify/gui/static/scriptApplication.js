@@ -1484,6 +1484,8 @@ const VaibifyApp = (function () {
             {sKey: "claude", sLabel: "Claude Code", sField: "bClaude"},
             {sKey: "codex", sLabel: "Codex", sField: "bCodex"},
             {sKey: "gemini", sLabel: "Gemini CLI", sField: "bGemini"},
+            {sKey: "antigravity", sLabel: "Antigravity CLI",
+             sField: "bAntigravity"},
             {sKey: "opencode", sLabel: "OpenCode", sField: "bOpenCode"},
             {sKey: "cline", sLabel: "Cline", sField: "bCline"},
             {sKey: "openhands", sLabel: "OpenHands", sField: "bOpenHands"},
@@ -1623,6 +1625,7 @@ const VaibifyApp = (function () {
     function _fsAgentSettingsField(sAgent) {
         var dictFields = {
             claude: "bClaude", codex: "bCodex", gemini: "bGemini",
+            antigravity: "bAntigravity",
             opencode: "bOpenCode", cline: "bCline",
             openhands: "bOpenHands", pi: "bPi",
         };

@@ -729,6 +729,40 @@ def testSettledTurnsAppearInThePanelWithoutAReload(pageDashboard, serverHub):
         f"proposal from a veto: {sAfter!r}")
 
 
+def testSettledTurnHistorySurvivesAnEmptyLiveEventWindow(
+        pageDashboard, serverHub):
+    """Durable turn output remains readable after console-event eviction."""
+    _fnOpenCouncilWorkspace(pageDashboard, serverHub)
+    sPanel = pageDashboard.evaluate(
+        """() => {
+            VaibifyAgentCouncil.fnSetEventsForTest([]);
+            VaibifyAgentCouncil.fnSetCampaignForTest({
+                sCampaignId: 'campaign-history', sState: 'planning',
+                sQuestion: 'Keep the completed result readable?',
+                sChairbotParticipantId: 'p-codex',
+                listParticipants: [
+                    {sParticipantId: 'p-codex', sProvider: 'codex',
+                     sRequestedModel: 'gpt-model'},
+                    {sParticipantId: 'p-gemini', sProvider: 'gemini',
+                     sRequestedModel: 'gemini-model'}],
+                listRounds: [{iRoundNumber: 1, dictTurnsByPhase: {
+                    independentProposals: [{
+                        sParticipantId: 'p-codex', sStatus: 'completed',
+                        dictModelIdentity: {sResolvedModel: 'gpt-model'},
+                        dictResult: {sSummary:
+                            'durable result after console eviction'}}]}}],
+            });
+            VaibifyAgentCouncil.fnSelectTabForTest('participant:p-codex');
+            return document.getElementById(
+                'agentCouncilWorkspaceBody').innerText;
+        }"""
+    )
+    assert "Settled turn history" in sPanel
+    assert "durable result after console eviction" in sPanel
+    assert pageDashboard.listPageErrors == []
+    assert pageDashboard.listConsoleErrors == []
+
+
 def testTheStaleBannerRendersWhenPollFailuresAreRecorded(
     pageDashboard, serverHub,
 ):

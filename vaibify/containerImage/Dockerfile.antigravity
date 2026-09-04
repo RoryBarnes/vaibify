@@ -1,0 +1,37 @@
+# Vaibify — Google Antigravity CLI overlay
+#
+# Installs Antigravity with Google's native installer as the unprivileged
+# container user. Configuration remains under ~/.gemini and is persisted by
+# the Vaibify entrypoint before an interactive login is attempted.
+
+ARG BASE_IMAGE=vaibify:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+            --connect-timeout 30 \
+            https://antigravity.google/cli/install.sh \
+            -o /tmp/antigravity-install.sh; then \
+        echo "" >&2; \
+        printf '%s\n' "vaibify build (antigravity overlay): cannot download the Antigravity CLI installer." >&2; \
+        printf '%s\n' "  - The installer lives at antigravity.google/cli/install.sh." >&2; \
+        printf '%s\n' "  - Resolve this build host's network path to antigravity.google" >&2; \
+        printf '%s\n' "    or disable the overlay (features: { antigravity: false })." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && if ! bash /tmp/antigravity-install.sh \
+            --dir "/home/${CONTAINER_USER}/.local/bin"; then \
+        echo "" >&2; \
+        printf '%s\n' "vaibify build (antigravity overlay): Antigravity CLI installer failed." >&2; \
+        printf '%s\n' "  - The installer downloaded successfully but exited non-zero." >&2; \
+        printf '%s\n' "  - Check the build platform and installer output above." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi \
+    && rm -f /tmp/antigravity-install.sh
+
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"

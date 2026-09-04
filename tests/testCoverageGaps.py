@@ -57,6 +57,7 @@ def _fConfigFull():
         bClaude=False, bClaudeAutoUpdate=True,
         bCodex=False, bCodexAutoUpdate=True,
         bGemini=False, bGeminiAutoUpdate=True, bGpu=False,
+        bAntigravity=False, bAntigravityAutoUpdate=True,
     )
     reproducibility = SimpleNamespace(
         overleaf=SimpleNamespace(sProjectId="abc123"),
@@ -1214,6 +1215,8 @@ def test_build_route(tmp_path):
     dictPayload = {
         "sProjectName": "buildtest",
         "sPackageManager": "pip",
+        "listFeatures": ["antigravity"],
+        "bAntigravityAutoUpdate": False,
     }
     responseHttp = clientHttp.post(
         "/api/setup/build", json=dictPayload
@@ -1222,6 +1225,10 @@ def test_build_route(tmp_path):
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
     assert (tmp_path / "vaibify.yml").exists()
+    with open(tmp_path / "vaibify.yml") as fileConfig:
+        dictConfig = yaml.safe_load(fileConfig)
+    assert dictConfig["features"]["antigravity"] is True
+    assert dictConfig["features"]["antigravityAutoUpdate"] is False
 
 
 def test_build_route_rejects_invalid(tmp_path):
@@ -1320,13 +1327,15 @@ def test_flistEnabledFeatures():
     features = SimpleNamespace(
         bJupyter=True, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bCodex=True, bGemini=False, bGpu=False,
+        bClaude=False, bCodex=True, bGemini=False,
+        bAntigravity=True, bGpu=False,
     )
     listResult = _flistEnabledFeatures(features)
     assert "jupyter" in listResult
     assert "latex" in listResult
     assert "codex" in listResult
     assert "gemini" not in listResult
+    assert "antigravity" in listResult
     assert "gpu" not in listResult
 
 

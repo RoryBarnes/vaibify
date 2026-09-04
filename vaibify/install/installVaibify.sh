@@ -7,9 +7,10 @@
 # Vaibify bin directory to the user's shell configuration.
 #
 # Usage:
-#   sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi]
+#   sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|antigravity|opencode|cline|openhands|pi]
 #                         [--install-claude] [--install-codex]
-#                         [--install-gemini] [--install-opencode]
+#                         [--install-gemini] [--install-antigravity]
+#                         [--install-opencode]
 #                         [--install-cline] [--install-openhands] [--install-pi]
 
 set -e
@@ -18,6 +19,7 @@ VC_REPO="https://github.com/RoryBarnes/Vaibify.git"
 bInstallClaude=false
 bInstallCodex=false
 bInstallGemini=false
+bInstallAntigravity=false
 bInstallOpenCode=false
 bInstallCline=false
 bInstallOpenHands=false
@@ -45,6 +47,9 @@ fnamespaceParseArguments() {
             --install-gemini)
                 bInstallGemini=true
                 ;;
+            --install-antigravity)
+                bInstallAntigravity=true
+                ;;
             --install-opencode)
                 bInstallOpenCode=true
                 ;;
@@ -70,7 +75,7 @@ fnamespaceParseArguments() {
                 ;;
             *)
                 fnPrintError "Unknown option: $1"
-                echo "Usage: sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi] [--install-claude] [--install-codex] [--install-gemini] [--install-opencode] [--install-cline] [--install-openhands] [--install-pi]" >&2
+                echo "Usage: sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|antigravity|opencode|cline|openhands|pi] [--install-claude] [--install-codex] [--install-gemini] [--install-antigravity] [--install-opencode] [--install-cline] [--install-openhands] [--install-pi]" >&2
                 exit 1
                 ;;
         esac
@@ -87,12 +92,13 @@ fnSelectAgent() {
         claude) bInstallClaude=true ;;
         codex) bInstallCodex=true ;;
         gemini) bInstallGemini=true ;;
+        antigravity) bInstallAntigravity=true ;;
         opencode) bInstallOpenCode=true ;;
         cline) bInstallCline=true ;;
         openhands) bInstallOpenHands=true ;;
         pi) bInstallPi=true ;;
         *)
-            fnPrintError "Unknown agent: $1 (choose claude, codex, gemini, opencode, cline, openhands, or pi)"
+            fnPrintError "Unknown agent: $1 (choose claude, codex, gemini, antigravity, opencode, cline, openhands, or pi)"
             exit 1
             ;;
     esac
@@ -384,6 +390,9 @@ fnEnableAgentDefaults() {
     fi
     if [ "${bInstallGemini}" = true ]; then
         printf '%s\n' "gemini" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallAntigravity}" = true ]; then
+        printf '%s\n' "antigravity" >> "${sDefaultsFile}"
     fi
     if [ "${bInstallOpenCode}" = true ]; then
         printf '%s\n' "opencode" >> "${sDefaultsFile}"

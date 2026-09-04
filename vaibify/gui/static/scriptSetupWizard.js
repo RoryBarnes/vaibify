@@ -86,7 +86,7 @@ var VaibifySetup = (function () {
     }
 
     function fnToggleAgentAutoUpdateVisibility() {
-        ["Claude", "Codex", "Gemini", "OpenCode", "Cline",
+        ["Claude", "Codex", "Antigravity", "OpenCode", "Cline",
             "OpenHands", "Pi"].forEach(function (sAgent) {
             var elFeature = document.getElementById("feature" + sAgent);
             var elRow = document.getElementById(
@@ -105,7 +105,7 @@ var VaibifySetup = (function () {
                 fnSyncFeatureCardCheckedClass(elCheckbox);
             });
         });
-        ["Claude", "Codex", "Gemini", "OpenCode", "Cline",
+        ["Claude", "Codex", "Antigravity", "OpenCode", "Cline",
             "OpenHands", "Pi"].forEach(function (sAgent) {
             var elFeature = document.getElementById("feature" + sAgent);
             if (elFeature) {
@@ -203,7 +203,8 @@ var VaibifySetup = (function () {
 
         fnSetAgentAutoUpdate("claude", dictConfig.bClaudeAutoUpdate);
         fnSetAgentAutoUpdate("codex", dictConfig.bCodexAutoUpdate);
-        fnSetAgentAutoUpdate("gemini", dictConfig.bGeminiAutoUpdate);
+        fnSetAgentAutoUpdate(
+            "antigravity", dictConfig.bAntigravityAutoUpdate);
         fnSetAgentAutoUpdate("opencode", dictConfig.bOpenCodeAutoUpdate);
         fnSetAgentAutoUpdate("cline", dictConfig.bClineAutoUpdate);
         fnSetAgentAutoUpdate("openhands", dictConfig.bOpenHandsAutoUpdate);
@@ -244,7 +245,7 @@ var VaibifySetup = (function () {
             latex: "featureLatex",
             claude: "featureClaude",
             codex: "featureCodex",
-            gemini: "featureGemini",
+            antigravity: "featureAntigravity",
             opencode: "featureOpenCode",
             cline: "featureCline",
             openhands: "featureOpenHands",
@@ -297,7 +298,8 @@ var VaibifySetup = (function () {
             ).checked,
             bClaudeAutoUpdate: fbReadAgentAutoUpdate("claude"),
             bCodexAutoUpdate: fbReadAgentAutoUpdate("codex"),
-            bGeminiAutoUpdate: fbReadAgentAutoUpdate("gemini"),
+            bAntigravityAutoUpdate:
+                fbReadAgentAutoUpdate("antigravity"),
             bOpenCodeAutoUpdate: fbReadAgentAutoUpdate("opencode"),
             bClineAutoUpdate: fbReadAgentAutoUpdate("cline"),
             bOpenHandsAutoUpdate: fbReadAgentAutoUpdate("openhands"),

@@ -307,6 +307,7 @@ class RoundResolutionMixin:
         """Distinct (provider, model) pairs among SURVIVING participants
         that completed a proposal and a review or veto this campaign."""
         dictPhasesByParticipant = {}
+        dictResolvedModelsByParticipant = {}
         for dictRound in self.dictCampaign["listRounds"]:
             for sPhase, listTurnRecords in (
                     dictRound["dictTurnsByPhase"].items()):
@@ -315,6 +316,14 @@ class RoundResolutionMixin:
                         dictPhasesByParticipant.setdefault(
                             dictTurnRecord["sParticipantId"],
                             set()).add(sPhase)
+                        dictIdentity = dictTurnRecord.get(
+                            "dictModelIdentity") or {}
+                        sResolvedModel = dictIdentity.get(
+                            "sResolvedModel", "")
+                        if sResolvedModel:
+                            dictResolvedModelsByParticipant.setdefault(
+                                dictTurnRecord["sParticipantId"],
+                                set()).add(sResolvedModel)
         setQualifyingModels = set()
         bImplementationWalk = fbIsImplementationCampaign(self.dictCampaign)
         for dictParticipant in self._flistActiveParticipants():
@@ -334,8 +343,15 @@ class RoundResolutionMixin:
                     S_PHASE_CROSS_REVIEW in setPhases
                     or S_PHASE_VETO in setPhases)
             if bQualifies:
-                setQualifyingModels.add((dictParticipant["sProvider"],
-                                         dictParticipant["sRequestedModel"]))
+                setResolvedModels = dictResolvedModelsByParticipant.get(
+                    dictParticipant["sParticipantId"], set())
+                # Missing identity proves no independent model. More
+                # than one identity is ambiguous rather than a license
+                # to count whichever makes quorum pass.
+                if len(setResolvedModels) == 1:
+                    setQualifyingModels.add((
+                        dictParticipant["sProvider"],
+                        next(iter(setResolvedModels))))
         return len(setQualifyingModels)
 
     def _fbAnyCompletedTurnExists(self):

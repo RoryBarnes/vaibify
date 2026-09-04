@@ -31,6 +31,7 @@ __all__ = [
     "fiReadProjectLoginExpiry",
     "ffnBuildImageResolver",
     "ffnBuildCredentialStager",
+    "fdictBuildCredentialStagers",
 ]
 
 import asyncio
@@ -314,7 +315,7 @@ async def fgenericSubmitMapped(dictControllerState, sCampaignId,
         raise HTTPException(409, str(error))
 
 
-def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
+def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity, setProviders=None):
     """Refuse paid runner work unless the credential gate enables it.
 
     The gate defaults OFF (remediation R10): starting a council is paid
@@ -328,14 +329,17 @@ def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity):
     bare 409.
     """
     from . import agentCouncilCredentialGate
-    dictEnablement = (
-        agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
-            "claude", sImageIdentity))
-    if not dictEnablement["bEnabled"]:
-        raise HTTPException(409, dictEnablement["sReason"])
+    for sProvider in sorted(setProviders or {"claude"}):
+        dictEnablement = (
+            agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+                sProvider, sImageIdentity))
+        if not dictEnablement["bEnabled"]:
+            raise HTTPException(
+                409, f"{sProvider}: {dictEnablement['sReason']}")
 
 
-def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
+def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
+                                      setProviders=None):
     """Refuse a launch when the project holds no copyable provider token.
 
     R10's live PRESENCE probe, at the cheapest correct point: the
@@ -358,16 +362,21 @@ def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId):
     the login has actually lapsed (2026-08-30). What still refuses is
     a login too near its end for any turn at all.
     """
-    from . import agentCouncilProviders
+    from . import agentCouncilProviderRegistry
     from . import projectRoots
     sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
         sContainerId, WORKSPACE_ROOT)
-    sUnusable = agentCouncilProviders.fsExplainUnusableRunnerCredential(
-        dictCtx["docker"], sContainerId,
-        agentCouncilProviders.fsComposeCredentialContainerPath(
-            sWorkspaceRoot))
-    if sUnusable:
-        raise HTTPException(409, sUnusable)
+    for sProvider in sorted(setProviders or {"claude"}):
+        sCredentialPath = (
+            agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
+                sProvider, sWorkspaceRoot))
+        sUnusable = (
+            agentCouncilProviderRegistry.
+            fsExplainUnusableProviderCredential(
+                sProvider, dictCtx["docker"], sContainerId,
+                sCredentialPath))
+        if sUnusable:
+            raise HTTPException(409, f"{sProvider}: {sUnusable}")
 
 
 def ffnBuildImageResolver(dictCtx, sContainerId):
@@ -397,7 +406,7 @@ def ffnBuildImageResolver(dictCtx, sContainerId):
     return _fsResolveRunnerImage
 
 
-def fiReadProjectLoginExpiry(dictCtx, sContainerId):
+def fiReadProjectLoginExpiry(dictCtx, sContainerId, sProvider="claude"):
     """Return when this project's Claude login expires, or 0 if unknown.
 
     The ABSOLUTE timestamp, never a remaining duration, so the convene
@@ -413,21 +422,23 @@ def fiReadProjectLoginExpiry(dictCtx, sContainerId):
     login imposes is a courtesy; letting a capabilities poll decide a
     council would put two authorities on one question.
     """
+    from . import agentCouncilProviderRegistry
     from . import agentCouncilProviders
     from . import projectRoots
     try:
-        return agentCouncilProviders.fdictExtractRunnerCredential(
-            dictCtx["docker"], sContainerId,
-            agentCouncilProviders.fsComposeCredentialContainerPath(
-                projectRoots.fsResolveProjectRoot(
-                    sContainerId, WORKSPACE_ROOT)),
+        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT)
+        return agentCouncilProviderRegistry.fdictExtractProviderCredential(
+            sProvider, dictCtx["docker"], sContainerId,
+            agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
+                sProvider, sWorkspaceRoot),
         )["iExpiresAtEpochMilliseconds"]
     except (agentCouncilProviders.RunnerCredentialError,
             OSError, ValueError, KeyError):
         return 0
 
 
-def ffnBuildCredentialStager(dictCtx, sContainerId):
+def ffnBuildCredentialStager(dictCtx, sContainerId, sProvider="claude"):
     """Build the closure that stages the runner's host credential copy.
 
     Invoked in the launch worker thread by the controller's PRODUCTION
@@ -444,21 +455,30 @@ def ffnBuildCredentialStager(dictCtx, sContainerId):
     the same timestamp would be a second chance for the two answers to
     disagree. The connection clamps the turn's wall clock with it.
     """
-    from . import agentCouncilProviders
+    from . import agentCouncilProviderRegistry
     from . import projectRoots
 
     def _ftStageRunnerCredential():
         sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
             sContainerId, WORKSPACE_ROOT)
-        dictCredential = agentCouncilProviders.fdictExtractRunnerCredential(
-            dictCtx["docker"], sContainerId,
-            agentCouncilProviders.fsComposeCredentialContainerPath(
-                sWorkspaceRoot))
+        dictCredential = (
+            agentCouncilProviderRegistry.fdictExtractProviderCredential(
+                sProvider, dictCtx["docker"], sContainerId,
+                agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
+                    sProvider, sWorkspaceRoot)))
         return (
-            agentCouncilProviders.fsStageRunnerCredentialFile(
-                dictCredential["sAccessToken"],
-                dictCredential["listScopes"]),
+            agentCouncilProviderRegistry.fsStageProviderCredential(
+                sProvider, dictCredential),
             dictCredential["iExpiresAtEpochMilliseconds"],
         )
 
     return _ftStageRunnerCredential
+
+
+def fdictBuildCredentialStagers(dictCtx, sContainerId, setProviders):
+    """Build one independent per-turn credential stager per provider."""
+    return {
+        sProvider: ffnBuildCredentialStager(
+            dictCtx, sContainerId, sProvider)
+        for sProvider in sorted(setProviders)
+    }

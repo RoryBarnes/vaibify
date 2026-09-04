@@ -113,10 +113,21 @@ class FakeCouncilConnection:
     ``NotImplementedError`` the engine swallows.
     """
 
-    def __init__(self, sHandle, ffnDecide, recorder):
+    def __init__(self, sHandle, ffnDecide, recorder, sRequestedModel=None,
+                 sResolvedModel=None):
         self.sHandle = sHandle
         self.ffnDecide = ffnDecide
         self.recorder = recorder
+        sEffectiveRequestedModel = sRequestedModel or sHandle
+        sEffectiveResolvedModel = (
+            sEffectiveRequestedModel
+            if sResolvedModel is None else sResolvedModel)
+        self.dictModelIdentity = {
+            "sRequestedModel": sEffectiveRequestedModel,
+            "sResolvedModel": sEffectiveResolvedModel,
+            "dictUsage": {},
+            "dictModelUsage": {},
+        }
         self._dictPending = None
 
     async def fdictPrepareImmutableContext(self, dictTurnRequest):
@@ -234,11 +245,18 @@ def fixtureBuildCouncil(listSpecs, ffnDecide, dictSettings=None,
         sCampaignKind=sCampaignKind,
         sSeedPlanDocument=sSeedPlanDocument)
     recorder = CouncilRecorder()
-    dictConnections = {
-        dictParticipant["sParticipantId"]: FakeCouncilConnection(
-            dictIdToHandle[dictParticipant["sParticipantId"]], ffnDecide,
-            recorder)
-        for dictParticipant in listParticipants}
+    dictSpecByHandle = {
+        dictSpec["sHandle"]: dictSpec for dictSpec in listSpecs}
+    dictConnections = {}
+    for dictParticipant in listParticipants:
+        sHandle = dictIdToHandle[dictParticipant["sParticipantId"]]
+        dictSpec = dictSpecByHandle[sHandle]
+        dictConnections[dictParticipant["sParticipantId"]] = (
+            FakeCouncilConnection(
+                sHandle, ffnDecide, recorder,
+                dictParticipant["sRequestedModel"],
+                dictSpec.get("sResolvedModel",
+                             dictParticipant["sRequestedModel"])))
     listEvents = []
     if listEventRing is None:
         def fnAppendEvent(dictEvent):

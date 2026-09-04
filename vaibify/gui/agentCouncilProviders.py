@@ -976,6 +976,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
     and opens no commit-carrier admission.
     """
 
+    sProvider = S_PROVIDER_CLAUDE
+
     def __init__(self, dictGateway, sCampaignId, sImageReference,
                  baSnapshotTar, sRequestedModel, dictEgress=None,
                  sHostCredentialPath="", dictLimits=None, saCliProgram=None,
@@ -1027,7 +1029,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                 S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
         return dictEnvironment
 
-    def _fbaBuildTurnCredentialTarball(self):
+    def _fbaBuildTurnCredentialTarball(self, dictTurnRequest):
         """Stage, tarball, and immediately delete this turn's login copy.
 
         Returns the tarball bytes or ``None`` when no credential lane is
@@ -1102,7 +1104,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         listDnsServers, listDnsOptions = ftBuildDnsWiring(self.dictEgress)
         dictCreated = await asyncio.to_thread(
             agentCouncilDockerGateway.fdictReserveAndCreateRunner,
-            self.dictGateway, self.sCampaignId, S_PROVIDER_CLAUDE,
+            self.dictGateway, self.sCampaignId, self.sProvider,
             self._fdictComposeRunnerCost(), self.sImageReference,
             self.dictLimits, sNetworkName, False,
             dictEnvironment or None, listDnsServers, listDnsOptions)
@@ -1116,7 +1118,7 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
                 agentCouncilDockerGateway.fnCopySnapshotIntoRunner,
                 self.dictGateway, self._sHandle, self.baSnapshotTar)
             baCredentialTar = await asyncio.to_thread(
-                self._fbaBuildTurnCredentialTarball)
+                self._fbaBuildTurnCredentialTarball, dictTurnRequest)
             if baCredentialTar is not None:
                 await asyncio.to_thread(
                     fnDeliverCredentialIntoRunner, self.dictGateway,

@@ -467,10 +467,10 @@ def testCreateProjectPersistsAdditionalAgentSettings(
             "sDirectory": sProjectDir,
             "sProjectName": "multi-agent",
             "sTemplateName": "sandbox",
-            "listFeatures": ["codex", "gemini", "opencode", "cline",
+            "listFeatures": ["codex", "antigravity", "opencode", "cline",
                              "openhands", "pi"],
             "bCodexAutoUpdate": False,
-            "bGeminiAutoUpdate": True,
+            "bAntigravityAutoUpdate": True,
             "bOpenCodeAutoUpdate": False,
             "bClineAutoUpdate": True,
             "bOpenHandsAutoUpdate": False,
@@ -481,8 +481,8 @@ def testCreateProjectPersistsAdditionalAgentSettings(
     config = fconfigLoadFromFile(os.path.join(sProjectDir, "vaibify.yml"))
     assert config.features.bCodex is True
     assert config.features.bCodexAutoUpdate is False
-    assert config.features.bGemini is True
-    assert config.features.bGeminiAutoUpdate is True
+    assert config.features.bAntigravity is True
+    assert config.features.bAntigravityAutoUpdate is True
     assert config.features.bOpenCode is True
     assert config.features.bOpenCodeAutoUpdate is False
     assert config.features.bCline is True

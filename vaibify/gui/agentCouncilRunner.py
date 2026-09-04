@@ -73,6 +73,7 @@ __all__ = [
     "fnSendAllBounded",
     "fdictPumpBoundedExecStream",
     "fbaBuildStampedFileTarball",
+    "fbaBuildStampedFilesTarball",
 ]
 
 # Every council container carries this label; the value is the council
@@ -457,4 +458,50 @@ def fbaBuildStampedFileTarball(
         infoFile.mode = iFileMode
         fileTar.addfile(
             _finfoStampCouncilOwnership(infoFile), io.BytesIO(baContent))
+    return bufferTar.getvalue()
+
+
+def fbaBuildStampedFilesTarball(dictRelativeFiles,
+                                iFileMode=0o600, iDirectoryMode=0o700):
+    """Build an ownership-stamped tarball from bounded relative files.
+
+    Provider CLIs beyond Claude need a small configuration tree rather
+    than one file.  The caller supplies only relative POSIX paths; this
+    builder rejects absolute and escaping members, creates each parent
+    directory once, and stamps every entry for the unprivileged council
+    user.  It is deliberately a file-tree builder, not a general archive
+    copier: links and special members have no representation here.
+    """
+    dictFiles = {}
+    setDirectories = set()
+    for sRelativePath, baContent in dictRelativeFiles.items():
+        sNormalized = posixpath.normpath(sRelativePath)
+        if (not sRelativePath or posixpath.isabs(sRelativePath)
+                or sNormalized in (".", "..")
+                or sNormalized.startswith("../")):
+            raise ValueError(
+                f"council config path must stay relative: {sRelativePath!r}")
+        if not isinstance(baContent, bytes):
+            raise TypeError(
+                f"council config member {sRelativePath!r} must be bytes")
+        dictFiles[sNormalized] = baContent
+        sParent = posixpath.dirname(sNormalized)
+        while sParent and sParent != ".":
+            setDirectories.add(sParent)
+            sParent = posixpath.dirname(sParent)
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        for sDirectory in sorted(
+                setDirectories, key=lambda sPath: (sPath.count("/"), sPath)):
+            infoDirectory = tarfile.TarInfo(name=sDirectory)
+            infoDirectory.type = tarfile.DIRTYPE
+            infoDirectory.mode = iDirectoryMode
+            fileTar.addfile(_finfoStampCouncilOwnership(infoDirectory))
+        for sRelativePath in sorted(dictFiles):
+            baContent = dictFiles[sRelativePath]
+            infoFile = tarfile.TarInfo(name=sRelativePath)
+            infoFile.size = len(baContent)
+            infoFile.mode = iFileMode
+            fileTar.addfile(
+                _finfoStampCouncilOwnership(infoFile), io.BytesIO(baContent))
     return bufferTar.getvalue()

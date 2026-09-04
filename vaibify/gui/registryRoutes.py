@@ -55,6 +55,8 @@ _T_AGENT_SETTINGS = (
     ("claude", "bClaude", "bClaudeAutoUpdate", "Claude Code"),
     ("codex", "bCodex", "bCodexAutoUpdate", "Codex"),
     ("gemini", "bGemini", "bGeminiAutoUpdate", "Gemini CLI"),
+    ("antigravity", "bAntigravity", "bAntigravityAutoUpdate",
+     "Antigravity CLI"),
     ("opencode", "bOpenCode", "bOpenCodeAutoUpdate", "OpenCode"),
     ("cline", "bCline", "bClineAutoUpdate", "Cline"),
     ("openhands", "bOpenHands", "bOpenHandsAutoUpdate", "OpenHands"),
@@ -94,6 +96,7 @@ class CreateProjectRequest(BaseModel):
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
+    bAntigravityAutoUpdate: bool = True
     bOpenCodeAutoUpdate: bool = True
     bClineAutoUpdate: bool = True
     bOpenHandsAutoUpdate: bool = True
@@ -133,6 +136,7 @@ class ConvertToContainerRequest(BaseModel):
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
+    bAntigravityAutoUpdate: bool = True
     bOpenCodeAutoUpdate: bool = True
     bClineAutoUpdate: bool = True
     bOpenHandsAutoUpdate: bool = True
@@ -179,6 +183,7 @@ class ContainerSettingsRequest(BaseModel):
     bClaudeAutoUpdate: Optional[bool] = None
     bCodexAutoUpdate: Optional[bool] = None
     bGeminiAutoUpdate: Optional[bool] = None
+    bAntigravityAutoUpdate: Optional[bool] = None
     bOpenCodeAutoUpdate: Optional[bool] = None
     bClineAutoUpdate: Optional[bool] = None
     bOpenHandsAutoUpdate: Optional[bool] = None
@@ -2104,8 +2109,8 @@ def _fdictOverlayContainerFieldsOntoHostConfig(sConfigPath, request):
 
 _LIST_FEATURE_NAMES = [
     "jupyter", "rLanguage", "julia", "database",
-    "dvc", "latex", "claude", "codex", "gemini", "opencode",
-    "cline", "openhands", "pi", "gpu",
+    "dvc", "latex", "claude", "codex", "gemini", "antigravity",
+    "opencode", "cline", "openhands", "pi", "gpu",
 ]
 
 

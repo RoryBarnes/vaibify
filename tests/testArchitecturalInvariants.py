@@ -4350,7 +4350,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # budget and applies it to the campaign, so retry can change
     # the condition that caused the failure rather than repeat
     # it.
-    "routes/councilRoutes.py": 1494,
+    "routes/councilRoutes.py": 1525,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4504,13 +4504,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the deliberation-summary phase instruction plus its schema
     # extension. This module IS the instruction contract and the turn
     # schema; growing the contract is what growing it looks like.
-    "agentCouncilCharter.py": 1154,
+    "agentCouncilCharter.py": 1213,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
     # is entitled to be shown at a gate — so it lands beside them
     # rather than in a fourth module nobody would look in.
-    "agentCouncilResolution.py": 810,
+    "agentCouncilResolution.py": 826,
     # NEW at 849 (2026-08-20, second-review fixes): the gateway crossed
     # the default cap when the egress backstop joined it —
     # fdictSweepCouncilEgressLeftovers (which deliberately enumerates
@@ -4627,7 +4627,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1185 -> 1199 (2026-08-30): the stall failure class, its
     # sentence, and the two execution facts it reports. The module
     # already owns "what happened to a turn".
-    "agentCouncilProviders.py": 1300,
+    "agentCouncilProviders.py": 1302,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5882,14 +5882,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # window threaded to the connection, beside the wall clock
     # that was already there. Same responsibility — this is where
     # a campaign's budgets become a runner's budgets.
-    "agentCouncilController.py": 2091,
+    "agentCouncilController.py": 2142,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
     # are the same lifecycle the module already owned; the clocks
     # changed from bounding the conversation to bounding only the
     # runner's credential residency.
-    "agentCouncilChat.py": 867,
+    "agentCouncilChat.py": 868,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -6256,7 +6256,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # merged file's real size. The council entry had carried ten lines
     # of slack since it was written; the merge is where that gets
     # returned rather than added to main's.
-    "registryRoutes.py": 2153,
+    # +5 (2026-09-04): Antigravity joins the existing agent-feature
+    # request, settings, and wizard serialization tables. These are
+    # rows in the registry surface's existing closed mapping, not a new
+    # responsibility or a useful module seam.
+    "registryRoutes.py": 2158,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

@@ -230,6 +230,38 @@ def testTwoParticipantChairbotFailureCannotReachPlanReady():
     assert dictOut["listRounds"][0]["listFrozenVoterIds"] == []
 
 
+def testRequestedAliasesResolvingToOneModelDoNotSatisfyQuorum():
+    """Two labels are not two independent models when streams say one."""
+    listSpecs = [
+        {"sHandle": "A", "sProvider": "claude",
+         "sRequestedModel": "alias-a", "sResolvedModel": "model-one"},
+        {"sHandle": "B", "sProvider": "claude",
+         "sRequestedModel": "alias-b", "sResolvedModel": "model-one"},
+    ]
+    fixture = fixtureBuildCouncil(
+        listSpecs, ffnDecideAllAccept, sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    assert dictOut["sState"] == "needsHuman"
+    assert dictOut["dictPendingHumanGate"]["sGateKind"] == (
+        "quorumShortfall")
+
+
+def testMissingResolvedIdentityCannotBeLaunderedFromRequest():
+    """A requested model name is never treated as observed identity."""
+    listSpecs = [
+        {"sHandle": "A", "sProvider": "claude",
+         "sRequestedModel": "model-a", "sResolvedModel": ""},
+        {"sHandle": "B", "sProvider": "claude",
+         "sRequestedModel": "model-b", "sResolvedModel": "model-b"},
+    ]
+    fixture = fixtureBuildCouncil(
+        listSpecs, ffnDecideAllAccept, sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    assert dictOut["sState"] == "needsHuman"
+    assert dictOut["dictPendingHumanGate"]["sGateKind"] == (
+        "quorumShortfall")
+
+
 def testNoSubstantiveWorkSurvivingFailsRatherThanReady():
     """If every participant fails before any turn completes, the campaign
     fails, never reaches a ready plan (section 5.1)."""

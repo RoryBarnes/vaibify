@@ -57,6 +57,7 @@ from ..councilRouteGuards import (
     fsResolveDominantRepositoryPath,
     fdictControllerState,
     fdictCouncilRegistry,
+    fdictBuildCredentialStagers,
     ffnBuildCredentialStager,
     ffnBuildImageResolver,
     fgenericSubmitMapped,
@@ -90,7 +91,9 @@ from ..routeScope import (
 # work is a separate follow-up — and advertising an adapter-less
 # provider convenes a campaign that can never run. An unrecognised
 # provider is refused at validation.
-SET_ALLOWED_PROVIDERS = frozenset({"claude"})
+from .. import agentCouncilProviderRegistry
+
+SET_ALLOWED_PROVIDERS = agentCouncilProviderRegistry.SET_COUNCIL_PROVIDERS
 
 I_MAX_QUESTION_LENGTH = 20000
 I_MAX_MODEL_LENGTH = 200
@@ -390,6 +393,14 @@ def _fsResolveChairbotId(listParticipants, iChairbotIndex):
     return listParticipants[iChairbotIndex]["sParticipantId"]
 
 
+def _fsetCampaignProviders(dictCampaign):
+    """Return the reviewed providers selected by one campaign."""
+    return {
+        dictParticipant["sProvider"]
+        for dictParticipant in dictCampaign.get("listParticipants", [])
+    }
+
+
 def _fdictCreateCampaignFromRequest(request, dictProjectIdentity,
                                     saExistingNames=None,
                                     sSeedPlanDocument=""):
@@ -585,44 +596,52 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
     try:
         sImageIdentity = await ffnBuildImageResolver(
             dictCtx, sContainerId)()
-        dictEnablement = (
-            agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
-                "claude", sImageIdentity))
+        sImageFailure = ""
     except HTTPException as error:
-        dictEnablement = {
-            "bEnabled": False,
-            "sReason": str(error.detail),
-            "dictRecord": None,
-        }
-    # The adapter's own capability contract carries the model
-    # discovery the picker reads (design section 8.2). For the
-    # SUBSCRIPTION runner backend there is no API key to enumerate
-    # with and enumeration would otherwise cost a paid turn, so the
-    # payload is the CLI-accepted alias set, carried with
-    # ``bVerified`` False and its source named — a labelled
-    # un-verified list, never a discovered one. The design amendment
-    # recording that is in section 8.2.
-    from .. import agentCouncilProviders
-    dictContract = agentCouncilProviders.fdictClaudeCapabilityContract(
-        bRunnerBackendEnabled=dictEnablement["bEnabled"])
+        sImageIdentity = ""
+        sImageFailure = str(error.detail)
+    listProviders = []
+    dictLoginExpiries = {}
+    for sProvider in sorted(SET_ALLOWED_PROVIDERS):
+        dictEnablement = (
+            {"bEnabled": False, "sReason": sImageFailure,
+             "dictRecord": None}
+            if sImageFailure else
+            agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
+                sProvider, sImageIdentity))
+        dictContract = (
+            agentCouncilProviderRegistry.fdictBuildProviderCapability(
+                sProvider, dictEnablement.get("dictRecord"),
+                dictEnablement["bEnabled"]))
+        listProviders.append({
+            "sProvider": sProvider,
+            "sBackend": dictContract["sBackend"],
+            "bAvailable": dictEnablement["bEnabled"],
+            "sReason": dictEnablement["sReason"],
+            "dictModelDiscovery": dictContract["dictModelDiscovery"],
+        })
+        dictLoginExpiries[sProvider] = (
+            await asyncio.to_thread(
+                fiReadProjectLoginExpiry, dictCtx, sContainerId, sProvider))
+    listEnabled = [dictProvider for dictProvider in listProviders
+                   if dictProvider["bAvailable"]]
+    sReason = "" if listEnabled else "; ".join(
+        f"{dictProvider['sProvider']}: {dictProvider['sReason']}"
+        for dictProvider in listProviders)
     return {
-        "bAvailable": dictEnablement["bEnabled"],
+        "bAvailable": bool(listEnabled),
         # A shut gate the researcher can OPEN, marked as such. The two
         # mode markers mean "never here"; this one means "here is the
         # thing to go and do", and only that third case earns
         # instructions in the toolbar's explanation.
         "sUnavailableIn": (
-            "" if dictEnablement["bEnabled"]
+            "" if listEnabled
             else S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE),
-        "sReason": dictEnablement["sReason"],
-        "listProviders": [
-            {"sProvider": "claude", "sBackend": "runner",
-             "bAvailable": dictEnablement["bEnabled"],
-             "sReason": dictEnablement["sReason"],
-             "dictModelDiscovery": dictContract["dictModelDiscovery"]},
-        ],
-        "iLoginExpiresAtEpochMilliseconds": await asyncio.to_thread(
-            fiReadProjectLoginExpiry, dictCtx, sContainerId),
+        "sReason": sReason,
+        "listProviders": listProviders,
+        "dictLoginExpiresAtEpochMilliseconds": dictLoginExpiries,
+        "iLoginExpiresAtEpochMilliseconds": dictLoginExpiries.get(
+            "claude", 0),
     }
 
 
@@ -914,9 +933,12 @@ def _fnRegisterStartCouncil(app, dictCtx):
             # about the record it registers below).
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
-            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            setProviders = _fsetCampaignProviders(dictCampaign)
+            fnRefuseRunnerBackendUnlessEnabled(
+                sImageReference, setProviders)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                setProviders)
             _fnRefuseLaunchWhileCampaignBusy(
                 dictControllerState, dictRegistry, sCampaignId)
             agentCouncilCampaign.fnTransitionCampaignState(
@@ -933,8 +955,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
                         sProjectRepoPath, sCampaignId, sName,
                         request.listExcludedPaths),
                     sImageReference,
-                    ftStageRunnerCredential=ffnBuildCredentialStager(
-                        dictCtx, sContainerId)))
+                    ftStageRunnerCredential=fdictBuildCredentialStagers(
+                        dictCtx, sContainerId, setProviders)))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("campaignStarted", dictLaunched["sTurnId"]))
@@ -967,13 +989,17 @@ async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
     if dictControllerState["dictCampaignRuntime"].get(
             sCampaignId) is not None:
         return None
+    jsonCampaign = agentCouncilStore.fjsonGetCampaignRecord(
+        dictStore, sCampaignId) if dictStore is not None else None
+    setProviders = _fsetCampaignProviders(jsonCampaign or {})
     sImageReference = await ffnBuildImageResolver(dictCtx, sContainerId)()
-    fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+    fnRefuseRunnerBackendUnlessEnabled(sImageReference, setProviders)
     await asyncio.to_thread(
-        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+        fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+        setProviders)
     return {"sImageReference": sImageReference,
-            "ftStageRunnerCredential": ffnBuildCredentialStager(
-                dictCtx, sContainerId)}
+            "ftStageRunnerCredential": fdictBuildCredentialStagers(
+                dictCtx, sContainerId, setProviders)}
 
 
 def _fnRegisterResume(app, dictCtx):
@@ -1013,19 +1039,22 @@ def _fnRegisterResume(app, dictCtx):
             # (2026-08-29). The budget argument is gone; the guard is
             # not, and dropping the call with it would hand the
             # NameError's blast radius to authorization instead.
-            fjsonRequireCampaign(
+            jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
+            setProviders = _fsetCampaignProviders(jsonCampaign)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
-            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            fnRefuseRunnerBackendUnlessEnabled(
+                sImageReference, setProviders)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                setProviders)
             dictResumed = (
                 await agentCouncilController.fdictResumeCampaignDeliberation(
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
-                    ftStageRunnerCredential=ffnBuildCredentialStager(
-                        dictCtx, sContainerId),
+                    ftStageRunnerCredential=fdictBuildCredentialStagers(
+                        dictCtx, sContainerId, setProviders),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
@@ -1090,20 +1119,23 @@ def _fnRegisterRetry(app, dictCtx):
             # login pre-flight compares against is this campaign's.
             jsonCampaign = fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
+            setProviders = _fsetCampaignProviders(jsonCampaign)
             _fnRaiseOutputBudgetForRetry(
                 dictStore, sCampaignId, jsonCampaign,
                 request.iMaximumOutputBytesPerTurn)
             sImageReference = await ffnBuildImageResolver(
                 dictCtx, sContainerId)()
-            fnRefuseRunnerBackendUnlessEnabled(sImageReference)
+            fnRefuseRunnerBackendUnlessEnabled(
+                sImageReference, setProviders)
             await asyncio.to_thread(
-                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId)
+                fnRefuseStartWithoutAProjectLogin, dictCtx, sContainerId,
+                setProviders)
             dictRetried = (
                 await agentCouncilController.fdictRetryCampaignFailedPhase(
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
-                    ftStageRunnerCredential=ffnBuildCredentialStager(
-                        dictCtx, sContainerId),
+                    ftStageRunnerCredential=fdictBuildCredentialStagers(
+                        dictCtx, sContainerId, setProviders),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,

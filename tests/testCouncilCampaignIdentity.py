@@ -103,7 +103,8 @@ def fixtureFakeDeliberation(monkeypatch):
     eventGate = threading.Event()
     monkeypatch.setattr(
         agentCouncilController, "fconnectionBuildParticipantConnection",
-        lambda dictRuntime, dictParticipant: _GatedFakeConnection(eventGate))
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(
+            eventGate, dictParticipant["sRequestedModel"]))
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteFixtureSnapshot)

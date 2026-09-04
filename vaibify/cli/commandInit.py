@@ -170,6 +170,7 @@ def _fnApplyInstallerAgentDefaults(config):
         "claude": "bClaude",
         "codex": "bCodex",
         "gemini": "bGemini",
+        "antigravity": "bAntigravity",
         "opencode": "bOpenCode",
         "cline": "bCline",
         "openhands": "bOpenHands",

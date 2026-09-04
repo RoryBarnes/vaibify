@@ -15126,13 +15126,15 @@ def _fdictEntry(sRel):
         # The researcher's question is appended to the instruction that
         # rides argv, where `ps` on the host can read it.
         old=(
+            '    sInstructionChannel = '
             'agentCouncilCharter.fsComposeChatInstruction(\n'
-            '            dictCampaign, dictSession["dictParticipant"]))'
+            '        dictCampaign, dictSession["dictParticipant"])'
         ),
         new=(
+            '    sInstructionChannel = '
             'agentCouncilCharter.fsComposeChatInstruction(\n'
-            '            dictCampaign, dictSession["dictParticipant"])\n'
-            '        + dictSession["listMessages"][-1]["sText"])'
+            '        dictCampaign, dictSession["dictParticipant"]) '
+            '+ dictSession["listMessages"][-1]["sText"]'
         ),
     ),
     Falsification(
@@ -15168,8 +15170,13 @@ def _fdictEntry(sRel):
         old=(
             '    sStagedPath, _ = dictSession["ftStageRunnerCredential"]()\n'
             '    try:\n'
-            '        baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
-            '            sStagedPath)\n'
+            '        baCredentialTar = (\n'
+            '            agentCouncilProviderRegistry.'
+            'fbaBuildProviderConfigTarball(\n'
+            '                dictSession["sProvider"], sStagedPath,\n'
+            '                agentCouncilCharter.fsComposeChatInstruction(\n'
+            '                    _fjsonReadCampaignNow(dictSession),\n'
+            '                    dictSession["dictParticipant"])))\n'
             '    finally:\n'
             '        secretManager.fnCleanupSecretFiles([sStagedPath])\n'
             '    agentCouncilProviders.fnDeliverCredentialIntoRunner(\n'
@@ -15177,8 +15184,13 @@ def _fdictEntry(sRel):
         ),
         new=(
             '    sStagedPath, _ = dictSession["ftStageRunnerCredential"]()\n'
-            '    baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(\n'
-            '        sStagedPath)\n'
+            '    baCredentialTar = (\n'
+            '        agentCouncilProviderRegistry.'
+            'fbaBuildProviderConfigTarball(\n'
+            '            dictSession["sProvider"], sStagedPath,\n'
+            '            agentCouncilCharter.fsComposeChatInstruction(\n'
+            '                _fjsonReadCampaignNow(dictSession),\n'
+            '                dictSession["dictParticipant"])))\n'
             '    agentCouncilProviders.fnDeliverCredentialIntoRunner(\n'
             '        dictSession["dictGateway"], dictSession["sHandle"], baCredentialTar)\n'
             '    secretManager.fnCleanupSecretFiles([sStagedPath])'
@@ -15428,7 +15440,7 @@ def _fdictEntry(sRel):
         old=(
             '            await asyncio.to_thread(\n'
             '                councilRouteGuards.fnRefuseStartWithoutAProjectLogin,\n'
-            '                dictCtx, sContainerId)\n'
+            '                dictCtx, sContainerId, setProviders)\n'
             '            return await _fdictOpenChatMapped('
         ),
         new='            return await _fdictOpenChatMapped(',
@@ -16567,11 +16579,13 @@ def _fdictEntry(sRel):
         # test drives.
         old=(
             '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId)'
+            'sContainerId,\n'
+            '                setProviders)'
         ),
         new=(
             '                fnRefuseStartWithoutAProjectLogin, '
-            'dictCampaign, sContainerId)'
+            'dictCampaign, sContainerId,\n'
+            '                setProviders)'
         ),
         iExpectedOccurrences=3,
     ),
@@ -16729,7 +16743,8 @@ def _fdictEntry(sRel):
         old=(
             '            await asyncio.to_thread(\n'
             '                fnRefuseStartWithoutAProjectLogin, dictCtx, '
-            'sContainerId)\n'
+            'sContainerId,\n'
+            '                setProviders)\n'
             '            dictResumed = ('
         ),
         new='            dictResumed = (',

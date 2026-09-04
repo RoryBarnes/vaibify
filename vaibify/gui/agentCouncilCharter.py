@@ -60,6 +60,7 @@ __all__ = [
     "S_QUOTED_MATERIAL_LABEL",
     "fdictBuildQuotedEntry",
     "fdictComposeTurnRequest",
+    "fdictComposeTurnResultJsonSchema",
     "fdictValidateTurnResult",
     "flistBlindQuotedMaterial",
     "flistBuildChatQuotedMaterial",
@@ -942,7 +943,65 @@ def fdictComposeTurnRequest(dictCampaign, dictParticipant, sPhase,
         "listQuotedMaterial": copy.deepcopy(listQuotedMaterial),
         "bRepairRequest": bRepairRequest,
         "listSchemaProblems": list(listSchemaProblems or []),
+        "dictOutputSchema": fdictComposeTurnResultJsonSchema(
+            dictCampaign, sPhase),
     }
+
+
+def fdictComposeTurnResultJsonSchema(dictCampaign, sPhase):
+    """Build the machine schema from the same keys validation enforces."""
+    listStringKeys = list(LIST_TURN_RESULT_STRING_KEYS)
+    listArrayKeys = list(LIST_TURN_RESULT_ARRAY_KEYS)
+    if fbTurnRequiresPatchSchema(dictCampaign, sPhase):
+        listStringKeys.extend(LIST_PATCH_RESULT_STRING_KEYS)
+        listArrayKeys.extend(LIST_PATCH_RESULT_ARRAY_KEYS)
+    if fbTurnRequiresSummarySchema(sPhase):
+        listArrayKeys.extend(LIST_SUMMARY_RESULT_ARRAY_KEYS)
+    if fbCharterAsksForNotedFindings(dictCampaign):
+        listArrayKeys.extend(LIST_NOTE_RESULT_ARRAY_KEYS)
+    dictProperties = {
+        sKeyName: {"type": "string", "minLength": 1}
+        for sKeyName in listStringKeys
+    }
+    dictProperties["sVerdict"] = {
+        "type": "string", "enum": list(TUPLE_TURN_VERDICTS)}
+    for sKeyName in listArrayKeys:
+        dictProperties[sKeyName] = {
+            "type": "array",
+            "items": (_fdictComposeEvidenceOutputSchema()
+                      if sKeyName == S_EVIDENCE_KEY else
+                      {"type": "string", "minLength": 1}),
+        }
+    return {
+        "type": "object",
+        "properties": dictProperties,
+        "required": list(dictProperties),
+        "additionalProperties": False,
+    }
+
+
+def _fdictComposeEvidenceOutputSchema():
+    """Constrain evidence to strict-schema forms the engine can verify."""
+    dictUnconfirmed = {
+        "type": "object",
+        "properties": {"sStatus": {
+            "type": "string",
+            "enum": list(TUPLE_EVIDENCE_CLAIM_STATUSES[1:]),
+        }},
+        "required": ["sStatus"],
+        "additionalProperties": False,
+    }
+    dictBaseline = {
+        "type": "object",
+        "properties": {
+            "sStatus": {"type": "string", "enum": ["confirmed"]},
+            "sStateForm": {"type": "string", "enum": ["baseline"]},
+            "sCommandText": {"type": "string", "minLength": 1},
+        },
+        "required": ["sStatus", "sStateForm", "sCommandText"],
+        "additionalProperties": False,
+    }
+    return {"anyOf": [dictUnconfirmed, dictBaseline]}
 
 
 def flistBuildQuotedMaterial(dictCampaign, dictRound, sPhase, sParticipantId):

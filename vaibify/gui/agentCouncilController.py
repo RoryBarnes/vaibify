@@ -241,7 +241,7 @@ async def fgenericSubmitCampaignCommand(dictControllerState, sCampaignId,
 
 
 def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
-    """Build one participant's provider connection (Claude runner backend).
+    """Build one participant's reviewed runner-backend connection.
 
     The controller's provider seam: the integration tests substitute a
     deterministic fake here (module-level, so one patch covers every
@@ -255,16 +255,32 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
     the provisioner, so the fake-provider lanes need no daemon and no
     persisted login.
     """
-    from . import agentCouncilProviders
-    dictAccess = _fdictProvisionRunnerAccessOnce(dictRuntime)
-    return agentCouncilProviders.ClaudeRunnerConnection(
+    from . import agentCouncilProviderRegistry
+    sProvider = dictParticipant.get("sProvider", "claude")
+    dictAccess = (
+        _fdictProvisionRunnerAccessOnce(dictRuntime)
+        if sProvider == "claude" else
+        _fdictProvisionRunnerAccessOnce(dictRuntime, sProvider))
+    dictStagers = dictRuntime.get("dictStageRunnerCredentials") or {}
+    if not dictStagers and dictRuntime.get(
+            "ftStageRunnerCredential") is not None:
+        dictStagers = {
+            "claude": dictRuntime["ftStageRunnerCredential"]}
+    elif not dictStagers and "ftStageRunnerCredential" in dictRuntime:
+        dictStagers = {"claude": None}
+    if sProvider not in dictStagers:
+        raise CouncilCommandError(
+            f"no credential stager was supplied for provider {sProvider!r}")
+    ftStager = dictStagers[sProvider]
+    return agentCouncilProviderRegistry.fconnectionBuildProviderConnection(
+        sProvider,
         _fdictEnsureRuntimeGateway(dictRuntime),
         dictRuntime["sCampaignId"],
         dictRuntime["sImageReference"],
         dictRuntime["baSnapshotTar"],
         dictParticipant["sRequestedModel"],
         dictEgress=dictAccess["dictEgress"],
-        ftStageRunnerCredential=dictRuntime["ftStageRunnerCredential"],
+        ftStageRunnerCredential=ftStager,
         # The campaign's own budget, not the module default. Without
         # this the setting is a number in a record that governs nothing
         # — the shape of bAgentSafe before it was enforced.
@@ -291,7 +307,7 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
     )
 
 
-def _fdictProvisionRunnerAccessOnce(dictRuntime):
+def _fdictProvisionRunnerAccessOnce(dictRuntime, sProvider="claude"):
     """Provision (once) the campaign's egress boundary.
 
     A production runner is useless without its two halves: the
@@ -307,15 +323,22 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
     the egress resources back down before propagating, so a
     half-provisioned boundary never outlives its failed launch.
     """
-    if dictRuntime.get("dictRunnerAccess") is not None:
-        return dictRuntime["dictRunnerAccess"]
-    if dictRuntime.get("ftStageRunnerCredential") is None:
+    dictAccessByProvider = dictRuntime.setdefault(
+        "dictRunnerAccessByProvider", {})
+    if sProvider in dictAccessByProvider:
+        return dictAccessByProvider[sProvider]
+    dictStagers = dictRuntime.get("dictStageRunnerCredentials") or {}
+    if not dictStagers and dictRuntime.get(
+            "ftStageRunnerCredential") is not None:
+        dictStagers = {
+            "claude": dictRuntime["ftStageRunnerCredential"]}
+    if not dictStagers:
         raise CouncilCommandError(
             "no credential stager was supplied at launch; a production "
             "runner connection cannot be built without one")
     from . import agentCouncilDockerGateway
     from . import agentCouncilEgress
-    from . import agentCouncilProviders
+    from . import agentCouncilProviderRegistry
     dictGateway = _fdictEnsureRuntimeGateway(dictRuntime)
     sCampaignId = dictRuntime["sCampaignId"]
     # The tombstone is recorded BEFORE anything is created: a fault
@@ -330,28 +353,37 @@ def _fdictProvisionRunnerAccessOnce(dictRuntime):
         "sProxyInternalAddress": "",
         "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT,
     }
-    dictRuntime["dictRunnerAccess"] = {"dictEgress": dictEgress}
+    dictAccess = {"dictEgress": dictEgress}
+    dictAccessByProvider[sProvider] = dictAccess
+    dictRuntime["dictRunnerAccess"] = dictAccess
+    sEgressScope = (
+        agentCouncilProviderRegistry.fsComposeProviderEgressScope(
+            sCampaignId, sProvider))
     try:
         dictEgress["sNetworkName"] = (
             agentCouncilDockerGateway.fsCreateCampaignInternalNetwork(
-                dictGateway, sCampaignId))
+                dictGateway, sEgressScope))
+        listHostnames = (
+            agentCouncilProviderRegistry.flistCollectProviderEgressHostnames(
+                {sProvider}))
         dictEgress["sProxyInternalAddress"] = (
             agentCouncilDockerGateway.fsLaunchAllowlistProxy(
-                dictGateway, sCampaignId,
-                [agentCouncilProviders.S_ANTHROPIC_API_HOSTNAME]))
+                dictGateway, sEgressScope, listHostnames))
     except BaseException:
         dictRemoved = (
             agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
-                dictGateway, sCampaignId))
+                dictGateway, sEgressScope))
         if not dictRemoved["saIndeterminateResources"]:
-            dictRuntime["dictRunnerAccess"] = None
+            dictAccessByProvider.pop(sProvider, None)
+            if not dictAccessByProvider:
+                dictRuntime["dictRunnerAccess"] = None
         else:
             logger.warning(
                 "council campaign %s half-provisioned egress teardown "
                 "left indeterminate resources (tombstone kept): %s",
                 sCampaignId, dictRemoved["saIndeterminateResources"])
         raise
-    return dictRuntime["dictRunnerAccess"]
+    return dictAccess
 
 
 def _fbReleaseRunnerAccessResources(dictRuntime):
@@ -369,21 +401,33 @@ def _fbReleaseRunnerAccessResources(dictRuntime):
     credential file is handled here: the login copy is staged per turn
     and deleted the moment its delivery tarball is built.
     """
+    dictAccessByProvider = dictRuntime.get(
+        "dictRunnerAccessByProvider") or {}
     dictAccess = dictRuntime.get("dictRunnerAccess")
-    if dictAccess is None:
+    if not dictAccessByProvider and dictAccess is None:
         return True
     from . import agentCouncilDockerGateway
-    dictRemoved = (
-        agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
-            _fdictEnsureRuntimeGateway(dictRuntime),
-            dictRuntime["sCampaignId"]))
-    if dictRemoved["saIndeterminateResources"]:
+    from . import agentCouncilProviderRegistry
+    listScopes = [
+        agentCouncilProviderRegistry.fsComposeProviderEgressScope(
+            dictRuntime["sCampaignId"], sProvider)
+        for sProvider in sorted(dictAccessByProvider)
+    ] or [dictRuntime["sCampaignId"]]
+    listIndeterminate = []
+    for sEgressScope in listScopes:
+        dictRemoved = (
+            agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
+                _fdictEnsureRuntimeGateway(dictRuntime), sEgressScope))
+        listIndeterminate.extend(
+            dictRemoved["saIndeterminateResources"])
+    if listIndeterminate:
         logger.warning(
             "council campaign %s egress teardown left indeterminate "
             "resources (kept for retry; the startup egress sweep is "
             "the durable backstop): %s", dictRuntime["sCampaignId"],
-            dictRemoved["saIndeterminateResources"])
+            listIndeterminate)
         return False
+    dictAccessByProvider.clear()
     dictRuntime["dictRunnerAccess"] = None
     return True
 
@@ -463,6 +507,11 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
     answer, never a torn intermediate one.
     """
     from .agentCouncil import CouncilEngine
+    dictStageRunnerCredentials = (
+        dict(ftStageRunnerCredential)
+        if isinstance(ftStageRunnerCredential, dict)
+        else ({"claude": ftStageRunnerCredential}
+              if ftStageRunnerCredential is not None else {}))
     dictRuntime = {
         "sCampaignId": sCampaignId,
         "dictCampaign": dictCampaign,
@@ -475,7 +524,9 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
         "dictGateway": None,
         "fdictExecuteBaselineEvidence": None,
         "ftStageRunnerCredential": ftStageRunnerCredential,
+        "dictStageRunnerCredentials": dictStageRunnerCredentials,
         "dictRunnerAccess": None,
+        "dictRunnerAccessByProvider": {},
         # True from registration until the first drive task is spawned:
         # the provisioning window is live work the busy predicates must
         # see, or a lease release could pass while the proxy is being

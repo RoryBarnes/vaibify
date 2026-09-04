@@ -979,17 +979,17 @@ var VaibifyAgentCouncil = (function () {
         }
         var listProviders = _flistSupportedProviders();
         var sFirst = listProviders.length ? listProviders[0] : "";
-        var sSecond = listProviders.length > 1 ? listProviders[1] : sFirst;
         _dictState.listDraftParticipants = [
             {sProvider: sFirst, sRequestedModel: "", sRole: ""},
-            {sProvider: sSecond, sRequestedModel: "", sRole: ""},
+            {sProvider: sFirst, sRequestedModel: "", sRole: ""},
         ];
         _dictState.iChairbotIndex = 0;
     }
 
     function _flistSupportedProviders() {
         var dictCapabilities = _dictState.dictCapabilities || {};
-        return (dictCapabilities.listProviders || []).map(
+        return (dictCapabilities.listProviders || []).filter(
+            function (dictProvider) { return dictProvider.bAvailable; }).map(
             function (dictProvider) { return dictProvider.sProvider; });
     }
 
@@ -1241,8 +1241,8 @@ var VaibifyAgentCouncil = (function () {
             "<p><strong>Provider content and billing.</strong> Every " +
             "provider you configure a participant for receives your " +
             "project's content. The runner backend bills your existing " +
-            "subscription; the API fallback bills per token against a " +
-            "configured API key.</p>" +
+            "subscription or account allowance. No API-key fallback is " +
+            "used by this council.</p>" +
             "<p><strong>Records.</strong> The campaign — proposals, " +
             "critiques, candidate plans, decisions — is saved to " +
             "this hub's local application data, outside your repository " +
@@ -1368,8 +1368,8 @@ var VaibifyAgentCouncil = (function () {
            would read as a discovered list, which is the claim the
            design amendment exists to avoid making. */
         if (dictDiscovery.bVerified) {
-            return "<span class=\"council-model-source\">live from the " +
-                "provider API</span>";
+            return "<span class=\"council-model-source\">verified model " +
+                "catalog for this runner image</span>";
         }
         return "<span class=\"council-model-source council-unverified\">" +
             "un-verified aliases — the subscription backend cannot " +
@@ -1385,6 +1385,11 @@ var VaibifyAgentCouncil = (function () {
         if (!dictMatch) {
             return "<span class=\"council-unavailable\">No reviewed " +
                 "adapter — unavailable</span>";
+        }
+        if (!dictMatch.bAvailable) {
+            return "<span class=\"council-unavailable\">Unavailable: " +
+                _fsEscape(dictMatch.sReason || "credential gate closed") +
+                "</span>";
         }
         return "<span class=\"council-available\">Backend: " +
             _fsEscape(dictMatch.sBackend || "runner") + "</span>";
@@ -1566,7 +1571,7 @@ var VaibifyAgentCouncil = (function () {
             : DICT_DEFAULT_SETTINGS.iTurnWallClockSeconds;
     }
 
-    function _fiLoginSecondsRemaining() {
+    function _fdictSoonestLoginExpiry() {
         /* Computed HERE, not on the server: capabilities are fetched
            once when the project is activated and this form may open
            hours later, so the server sends the absolute expiry and the
@@ -1574,11 +1579,25 @@ var VaibifyAgentCouncil = (function () {
            login's expiry could not be read, which is not the same as
            an expired login — the launch pre-flight is the authority on
            that and refuses on its own. */
-        var iExpiresAt = (_dictState.dictCapabilities || {})
-            .iLoginExpiresAtEpochMilliseconds || 0;
-        if (!iExpiresAt) return 0;
-        return Math.max(
-            0, Math.round((iExpiresAt - Date.now()) / 1000));
+        var dictExpiries = (_dictState.dictCapabilities || {})
+            .dictLoginExpiresAtEpochMilliseconds || {};
+        var dictSoonest = {sProvider: "", iSecondsRemaining: 0};
+        var dictSelected = {};
+        _dictState.listDraftParticipants.forEach(function (dictParticipant) {
+            dictSelected[dictParticipant.sProvider] = true;
+        });
+        Object.keys(dictSelected).forEach(function (sProvider) {
+            var iExpiresAt = dictExpiries[sProvider] || 0;
+            if (!iExpiresAt) return;
+            var iRemaining = Math.max(
+                0, Math.round((iExpiresAt - Date.now()) / 1000));
+            if (!dictSoonest.sProvider
+                    || iRemaining < dictSoonest.iSecondsRemaining) {
+                dictSoonest = {sProvider: sProvider,
+                               iSecondsRemaining: iRemaining};
+            }
+        });
+        return dictSoonest;
     }
 
     function _fsLoginCapHint() {
@@ -1586,16 +1605,23 @@ var VaibifyAgentCouncil = (function () {
            council whose login outlives its turn budget has nothing to
            be told, and a notice that appears every time is one nobody
            reads by the time it matters. */
-        var iRemaining = _fiLoginSecondsRemaining();
+        var dictExpiry = _fdictSoonestLoginExpiry();
+        var iRemaining = dictExpiry.iSecondsRemaining;
         var iBudget = _fiPreferredTurnWallClockSeconds();
         if (!iRemaining || iRemaining >= iBudget) return "";
-        return "<p class=\"council-hint\">This project's Claude login " +
+        var dictCommands = {claude: "claude", codex: "codex login",
+                            gemini: "agy"};
+        var sProvider = dictExpiry.sProvider;
+        return "<p class=\"council-hint\">This project's " +
+            _fsEscape(sProvider) + " login " +
             "expires in " + Math.round(iRemaining / 60) + " minutes, " +
             "less than this council's per-turn budget of " +
             Math.round(iBudget / 60) + " minutes. A runner is given " +
             "the access token without the refresh token, so it cannot " +
             "renew mid-turn: turns will be capped at the time the " +
-            "login has left. Run <code>claude</code> in this project's " +
+            "login has left. Run <code>" +
+            _fsEscape(dictCommands[sProvider] || sProvider) +
+            "</code> in this project's " +
             "container once the login has lapsed to refresh it.</p>";
     }
 
@@ -2977,7 +3003,50 @@ var VaibifyAgentCouncil = (function () {
             "inspected, scripts run and their exit codes, usage and " +
             "errors. This is not the model's private reasoning.</p>" +
             _fsParticipantStatusChip(dictParticipant, dictCampaign) +
+            _fsParticipantSettledHistory(dictCampaign, sParticipantId) +
             _fsEventLog(sParticipantId) + "</div>";
+    }
+
+    function _fsParticipantSettledHistory(dictCampaign, sParticipantId) {
+        /* The live console is a bounded event window. Completed turn
+           records are durable campaign state, so render their settled
+           summaries separately: a long implementation turn may evict
+           every one of its stream events, but its tab must not collapse
+           back to a header as though it never ran. */
+        var listTurns = [];
+        (dictCampaign.listRounds || []).forEach(function (dictRound) {
+            var dictPhases = dictRound.dictTurnsByPhase || {};
+            Object.keys(dictPhases).forEach(function (sPhase) {
+                (dictPhases[sPhase] || []).forEach(function (dictTurn) {
+                    if (dictTurn.sParticipantId === sParticipantId
+                            && dictTurn.sStatus !== "notStarted") {
+                        listTurns.push({dictTurn: dictTurn,
+                                        sPhase: sPhase,
+                                        iRoundNumber:
+                                            dictRound.iRoundNumber});
+                    }
+                });
+            });
+        });
+        if (!listTurns.length) return "";
+        var sRows = listTurns.map(function (dictEntry) {
+            var dictTurn = dictEntry.dictTurn;
+            var dictResult = dictTurn.dictResult || {};
+            var dictIdentity = dictTurn.dictModelIdentity || {};
+            var sDetail = dictResult.sSummary
+                || dictTurn.sFailureReason || "no summary recorded";
+            var sModel = dictIdentity.sResolvedModel
+                || dictIdentity.sRequestedModel || "model unreported";
+            return "<li><strong>Round " + dictEntry.iRoundNumber +
+                " · " + _fsEscape(dictEntry.sPhase) + " · " +
+                _fsEscape(dictTurn.sStatus || "unknown") + "</strong> " +
+                "<span class=\"council-model-source\">" +
+                _fsEscape(sModel) + "</span><br>" +
+                _fsEscape(String(sDetail).slice(0, 1000)) + "</li>";
+        }).join("");
+        return "<details class=\"council-settled-history\" open>" +
+            "<summary>Settled turn history</summary><ul>" + sRows +
+            "</ul></details>";
     }
 
     function _fsEventLog(sParticipantId) {

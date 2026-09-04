@@ -177,10 +177,13 @@ def _fdictEvaluateOneRecord(jsonRecord, sProvider, sImageIdentity):
             return _fdictDisable(
                 "the credential-verification evidence record is missing "
                 f"'{sRequiredKey}'; the runner backend stays disabled.")
+    from . import agentCouncilProviderRegistry
     for sKey, sExpected, sWhat in (
             ("sProvider", sProvider, "provider"),
             ("sBackend", "runner", "backend"),
-            ("sCredentialSchema", S_EXPECTED_CREDENTIAL_SCHEMA,
+            ("sCredentialSchema",
+             agentCouncilProviderRegistry.fsGetProviderCredentialSchema(
+                 sProvider),
              "credential schema"),
             ("sHostPlatform", sys.platform, "host platform")):
         if jsonRecord[sKey] != sExpected:

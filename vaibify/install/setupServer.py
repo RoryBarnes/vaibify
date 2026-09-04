@@ -46,6 +46,7 @@ class WizardConfigRequest(BaseModel):
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
+    bAntigravityAutoUpdate: bool = True
     bOpenCodeAutoUpdate: bool = True
     bClineAutoUpdate: bool = True
     bOpenHandsAutoUpdate: bool = True
@@ -214,6 +215,7 @@ def _fdictConfigToWizardFormat(config):
         "bClaudeAutoUpdate": config.features.bClaudeAutoUpdate,
         "bCodexAutoUpdate": config.features.bCodexAutoUpdate,
         "bGeminiAutoUpdate": config.features.bGeminiAutoUpdate,
+        "bAntigravityAutoUpdate": config.features.bAntigravityAutoUpdate,
         "bOpenCodeAutoUpdate": getattr(
             config.features, "bOpenCodeAutoUpdate", True,
         ),
@@ -239,6 +241,7 @@ def _flistEnabledFeatures(features):
         "claude": features.bClaude,
         "codex": features.bCodex,
         "gemini": features.bGemini,
+        "antigravity": features.bAntigravity,
         "opencode": getattr(features, "bOpenCode", False),
         "cline": getattr(features, "bCline", False),
         "openhands": getattr(features, "bOpenHands", False),
@@ -254,6 +257,7 @@ def _fdictWizardToYaml(request):
     dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
     dictFeatures["codexAutoUpdate"] = request.bCodexAutoUpdate
     dictFeatures["geminiAutoUpdate"] = request.bGeminiAutoUpdate
+    dictFeatures["antigravityAutoUpdate"] = request.bAntigravityAutoUpdate
     dictFeatures["opencodeAutoUpdate"] = request.bOpenCodeAutoUpdate
     dictFeatures["clineAutoUpdate"] = request.bClineAutoUpdate
     dictFeatures["openhandsAutoUpdate"] = request.bOpenHandsAutoUpdate
@@ -285,8 +289,8 @@ def _fdictFeaturesFromList(listFeatures):
     """Convert a list of feature name strings to a bool dict."""
     listAllFeatures = [
         "jupyter", "rLanguage", "julia", "database",
-        "dvc", "latex", "claude", "codex", "gemini", "opencode",
-        "cline", "openhands", "pi", "gpu",
+        "dvc", "latex", "claude", "codex", "gemini", "antigravity",
+        "opencode", "cline", "openhands", "pi", "gpu",
     ]
     return {s: s in listFeatures for s in listAllFeatures}
 
