@@ -1814,6 +1814,41 @@ correct approach.
   because both were found the same way: a rebuild landed, nothing on
   the screen moved.
 
+- **Generated bookkeeping must never be able to overturn a
+  scientific verdict.** The conftest vaibify generates writes its test
+  marker in `pytest_sessionfinish`, unguarded, so a marker directory
+  it could not create ended the session non-zero — over a run that had
+  just printed `1 passed`. Every test tier of every step reported
+  `exit 1` and the researcher read it as their science failing
+  (2026-09-04). Two separate causes had to line up and each is its own
+  lesson. The generated file had a container path written into it as a
+  literal, which is the `/workspace`-as-constant trap arriving in
+  GENERATED output where no source scan looks for it — a generated
+  artefact needs the same review as source, and it must locate its
+  root rather than be stamped with one. And the refresh that would
+  have replaced it is memoised per hub PROCESS and runs only at
+  connect, so a `git pull` reinstated the stale copy and reopening the
+  project re-probed nothing: **a cache keyed on identity, over a file
+  something outside the process can rewrite, is a correctness bug
+  wearing a performance optimisation's clothes.** Re-probe at the
+  moment the content matters. Guarded by
+  `tests/testConftestRefreshBeforeRun.py`.
+- **A `monkeypatch` guarantee stops at the process boundary, and the
+  docstring will not say so.** `tests/conftest.py` promised that "no
+  test can read, overwrite, or delete the researcher's real stored
+  credentials" while patching only this process; over a hundred test
+  files spawn subprocesses, each of which imported the real `keyring`
+  and reached the real keychain. It surfaced as four macOS approval
+  dialogs during one suite run (researcher-reported, 2026-09-04) —
+  the reads being the visible half, while a child reaching
+  `_fnDeleteKeyringEntry` would have destroyed a working credential
+  silently. When an isolation fixture protects host state, ask what a
+  CHILD process sees, and enforce it through the environment children
+  inherit. Guarded by
+  `tests/testKeychainIsolationCrossesProcesses.py`, which asserts the
+  backend the child itself reports rather than the variable the
+  parent exported.
+
 ## Pointers
 
 - [docs/architecture.md](docs/architecture.md) — the "why" behind the

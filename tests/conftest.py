@@ -5,7 +5,8 @@ real host state: any file handlers already attached to the ``vaibify``
 logger are detached and the CLI's logging configurator is redirected
 to a session-scoped temporary directory (so tests that invoke the CLI
 still exercise the real handler-attachment code path), and the OS
-keyring is replaced with an in-memory fake (so no test can read,
+keyring is replaced with an in-memory fake IN THIS PROCESS and with
+the null backend in every child process (so no test can read,
 overwrite, or delete the researcher's real stored credentials).
 """
 
@@ -13,6 +14,30 @@ import logging
 import os
 
 import pytest
+
+
+# Point every CHILD process at the null keyring backend, at import, so
+# it is in place before collection can spawn anything.
+#
+# ``fixtureHermeticKeyring`` below patches ``_fmoduleLoadKeyring`` with
+# ``monkeypatch``, which reaches this process and no other. Over a
+# hundred test files spawn subprocesses -- CLI invocations, hubs,
+# reconcile runs -- and each child imports the real ``keyring`` and
+# talks to the researcher's real keychain. On macOS that is an
+# approval dialog per read (four in one interrupted run,
+# researcher-reported 2026-09-04), and a child reaching
+# ``_fnDeleteKeyringEntry`` would remove a working credential with the
+# suite reporting nothing -- the same hazard the in-process fake
+# exists to prevent, one process boundary away.
+#
+# Set unconditionally rather than with ``setdefault``: a developer
+# whose environment already names a real backend is exactly the case
+# this must override. ``keyring`` honours the variable when it selects
+# a backend, and the null backend answers every read with ``None``
+# while accepting writes and deletes as no-ops, so a child neither
+# prompts, reads, nor destroys. No test needs a real stored
+# credential; the live lanes carry their own fake tokens.
+os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
 
 
 def _fnRemoveFileHandlersFromVaibifyLogger():

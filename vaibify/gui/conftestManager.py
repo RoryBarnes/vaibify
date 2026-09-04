@@ -11,6 +11,7 @@ __all__ = [
     "fbWriteConftestMarkersBatch",
     "fnEnsureTestsDirectory",
     "fnEnsureConftestsCurrent",
+    "flistRefreshConftestsForRun",
     "fnMigrateFlatMarkers",
 ]
 
@@ -40,7 +41,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "6"
+S_CONFTEST_VERSION = "7"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -366,6 +367,80 @@ def fnEnsureConftestsCurrent(
     _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
     if bWritten:
         _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
+
+
+def flistRefreshConftestsForRun(
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+):
+    """Re-probe and refresh conftests for a run; return warning lines.
+
+    Deliberately does NOT consult ``_SET_REFRESHED_KEYS``.  That cache
+    is keyed by ``(container, repo, version)`` and lives for the hub's
+    whole process, so once a sweep has run, anything that rewrites the
+    files underneath it -- a ``git pull``, a checkout, a branch switch
+    -- is never noticed again, and reopening the project re-probes
+    nothing.  That is not hypothetical: a researcher pulled a repo
+    carrying committed generation-5 conftests, every one of which
+    stamps a container path, and every test tier of every step then
+    reported ``exit 1`` while pytest printed ``1 passed`` directly
+    above it (2026-09-04).  A run is the moment the file's CONTENT
+    starts to matter, and one batched version probe is negligible
+    beside the run it precedes.
+
+    Returns researcher-facing warnings rather than raising: a
+    bookkeeping file that cannot be rewritten must not block a
+    scientific run, but silence about it has already cost an
+    afternoon of diagnosis.
+    """
+    if not listStepDirs or not sProjectRepoPath:
+        return []
+    listConftestPaths = _flistConftestPathsForSteps(
+        listStepDirs, sProjectRepoPath,
+    )
+    dictInstalled = fdictReadInstalledConftestVersions(
+        connectionDocker, sContainerId, listConftestPaths,
+    )
+    listStale = _flistStalePaths(listConftestPaths, dictInstalled)
+    if not listStale:
+        return []
+    bWritten = fbWriteConftestMarkersBatch(
+        connectionDocker, sContainerId, listStale,
+        fsBuildConftestSource(sProjectRepoPath),
+    )
+    _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
+    if bWritten:
+        _fnRememberRefreshKey(
+            _SET_REFRESHED_KEYS,
+            (sContainerId, sProjectRepoPath, S_CONFTEST_VERSION),
+        )
+        return []
+    return [_fsDescribeRefreshFailure(listStale, dictInstalled)]
+
+
+def _fsDescribeRefreshFailure(listStale, dictInstalled):
+    """Return one warning line naming the stale conftests and the risk."""
+    listDescribed = [
+        posixpath.relpath(sPath) if not posixpath.isabs(sPath) else sPath
+        for sPath in listStale
+    ]
+    return (
+        "Could not update "
+        + str(len(listStale))
+        + " test-support file(s) to conftest generation "
+        + S_CONFTEST_VERSION
+        + " ("
+        + ", ".join(listDescribed)
+        + "). An out-of-date conftest can fail a step whose tests "
+        "all passed, because it writes vaibify's test marker after "
+        "the tests finish. Installed generations: "
+        + ", ".join(
+            sorted({
+                dictInstalled.get(sPath) or "absent"
+                for sPath in listStale
+            })
+        )
+        + "."
+    )
 
 
 def _flistConftestPathsForSteps(listStepDirs, sProjectRepoPath):
@@ -771,8 +846,8 @@ def _fsActiveWorkflowSlug():
     return "default"
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """Write a JSON marker after every pytest run."""
+def _fnWriteSessionMarker(session, exitstatus):
+    """Compose this session's marker and write it under _MARKER_BASE."""
     sStepDir = str(Path(__file__).resolve().parent.parent)
     sStepDirRel = _fsStepDirRepoRel(sStepDir)
     fNow = time.time()
@@ -795,6 +870,31 @@ def pytest_sessionfinish(session, exitstatus):
     (sMarkerDir / sFilename).write_text(
         json.dumps(dictMarker, indent=2)
     )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write a JSON marker after every pytest run, or say why not.
+
+    Writing the marker can NEVER fail the session. The marker is
+    vaibify's bookkeeping, not a scientific result, and an
+    unwritable marker directory once turned a fully passing suite
+    into ``exit 1`` -- which reads on screen as the researcher's
+    own tests failing, because pytest had already printed
+    "1 passed" above it. The cause is printed instead, so a step
+    whose test status goes unknown says why.
+    """
+    try:
+        _fnWriteSessionMarker(session, exitstatus)
+    except Exception as error:
+        print(
+            "vaibify: could not write the test-result marker under "
+            + str(_MARKER_BASE) + ": " + repr(error)
+        )
+        print(
+            "vaibify: the test results above stand; this step's "
+            "test status will show as unknown until the marker "
+            "directory is writable."
+        )
 
 
 import pytest
