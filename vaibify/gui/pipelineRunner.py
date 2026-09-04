@@ -188,7 +188,41 @@ def _flistCollectPreflightWarnings(
     )
     if dictWarning is not None:
         listWarnings.append(dictWarning["sMessage"])
+    listWarnings.extend(
+        _flistRefreshConftestsBeforeRun(
+            connectionDocker, sContainerId, dictWorkflow,
+        )
+    )
     return listWarnings
+
+
+def _flistRefreshConftestsBeforeRun(
+    connectionDocker, sContainerId, dictWorkflow,
+):
+    """Bring each step's conftest current, returning warnings on failure.
+
+    The connect-time sweep caches its result for the hub's whole
+    process, so it cannot see a conftest that a ``git pull`` or a
+    checkout replaced afterwards. A run is when the file's content
+    starts to matter, so the probe is repeated here unconditionally.
+    Any failure becomes a warning: a bookkeeping file must never
+    block a scientific run, and this path already runs inside a
+    warnings collector that cannot raise.
+    """
+    from . import conftestManager
+    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    listStepDirs = [
+        dictStep.get("sDirectory", "")
+        for dictStep in dictWorkflow.get("listSteps", [])
+        if dictStep.get("sDirectory", "")
+    ]
+    try:
+        return conftestManager.flistRefreshConftestsForRun(
+            connectionDocker, sContainerId,
+            listStepDirs, sProjectRepoPath,
+        )
+    except Exception as error:
+        return [f"Could not check the test-support files: {error}"]
 
 
 # ---------------------------------------------------------------------------

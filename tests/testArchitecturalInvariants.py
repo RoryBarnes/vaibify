@@ -4165,7 +4165,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # belongs in the prologue because the container has no vaibify to
     # import from. Not a second responsibility: this module's one job
     # is composing that file.
-    "conftestManager.py": 808,
+    # RAISED to 908 (2026-09-04): the walk added the day before was
+    # correct and unreachable. A researcher's clone carried conftests
+    # generated at the PREVIOUS version, the refresh that replaces
+    # them is memoised per hub process and runs only at connect, so a
+    # pull reinstated the old copy and reopening the project re-probed
+    # nothing -- every test tier of every step reported exit 1 over a
+    # run that had printed "1 passed". Three additions, all one
+    # responsibility: the marker write is split out and its hook
+    # guarded so bookkeeping can never fail a session,
+    # flistRefreshConftestsForRun re-probes at the moment the file's
+    # content matters, and _fsDescribeRefreshFailure gives a refresh
+    # the hub could not perform a sentence on screen instead of a
+    # swallowed log line.
+    "conftestManager.py": 908,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -6036,7 +6049,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # written three times is three diagnoses. Found by a researcher
     # driving the shipped example on Ubuntu, where every step returned
     # a bare "exit code 127".
-    "pipelineRunner.py": 1735,
+    # RAISED to 1769 (2026-09-04): _flistRefreshConftestsBeforeRun
+    # joins the preflight warnings collector, so each run re-probes
+    # the conftests the connect-time sweep caches for the hub's whole
+    # process. It sits here because a run is the moment a stale copy
+    # starts to matter, and the collector is already the path that
+    # reports to the researcher without blocking the run.
+    "pipelineRunner.py": 1769,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6073,7 +6092,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +47 (2026-08-27): generated test and standards filenames are
     # step-suffixed (fsStepTestSuffix), so two steps can never mint
     # the same basename into a flat Zenodo deposit.
-    "testGenerator.py": 1140,
+    # +1 (2026-09-04): one line, re-exporting
+    # conftestManager.flistRefreshConftestsForRun. The orchestrator
+    # re-export invariant requires every public conftestManager symbol
+    # to appear here, so this shim grows whenever that module gains
+    # one.
+    "testGenerator.py": 1141,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).

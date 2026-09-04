@@ -116,6 +116,7 @@ from .conftestManager import (  # noqa: F401
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
     fnEnsureConftestsCurrent,
+    flistRefreshConftestsForRun,
     fnMigrateFlatMarkers,
 )
 

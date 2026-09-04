@@ -17146,4 +17146,59 @@ def _fdictEntry(sRel):
             '        dockerCouncil, dictHandle["sContainerId"], None)'
         ),
     ),
+    # --- 2026-09-04: a marker the hook cannot write must not fail a
+    # session whose tests all passed ---
+    Falsification(
+        nodeid=(
+            'tests/testConftestRefreshBeforeRun.py::'
+            'test_an_unwritable_marker_directory_does_not_fail_'
+            'a_passing_suite'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '    try:\n'
+            '        _fnWriteSessionMarker(session, exitstatus)\n'
+            '    except Exception as error:\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        _fnWriteSessionMarker(session, exitstatus)\n'
+            '    if False:\n'
+        ),
+    ),
+    # --- 2026-09-04: the run-time refresh must not consult the
+    # connect sweep's per-process cache ---
+    Falsification(
+        nodeid=(
+            'tests/testConftestRefreshBeforeRun.py::'
+            'test_the_run_refresh_replaces_a_conftest_'
+            'the_cache_calls_current'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '    if not listStepDirs or not sProjectRepoPath:\n'
+            '        return []\n'
+        ),
+        new=(
+            '    if not listStepDirs or not sProjectRepoPath:\n'
+            '        return []\n'
+            '    if (sContainerId, sProjectRepoPath, '
+            'S_CONFTEST_VERSION) in _SET_REFRESHED_KEYS:\n'
+            '        return []\n'
+        ),
+    ),
+    # --- 2026-09-04: the hermetic keyring must survive a process
+    # boundary, not only a monkeypatch ---
+    Falsification(
+        nodeid=(
+            'tests/testKeychainIsolationCrossesProcesses.py::'
+            'test_a_child_process_cannot_reach_the_real_keyring'
+        ),
+        source='tests/conftest.py',
+        old=(
+            'os.environ["PYTHON_KEYRING_BACKEND"] = '
+            '"keyring.backends.null.Keyring"\n'
+        ),
+        new='',
+    ),
 ]
