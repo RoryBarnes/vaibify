@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 
 __all__ = [
+    "fsExplainExitCode",
     "fdictMapOutputTokenStems",
     "fsShellQuote",
     "fsBuildUniqueTemporaryPath",
@@ -47,6 +48,119 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 _S_STEP_NAME_ALLOWED_PATTERN = r"^[A-Za-z0-9 \-]+$"
+
+
+# Shell exit conventions worth translating for a researcher. A number
+# is not a diagnosis: "exit 127" is precise, and means nothing to
+# someone who did not grow up on POSIX.
+_I_EXIT_COMMAND_NOT_FOUND = 127
+_I_EXIT_NOT_EXECUTABLE = 126
+_I_EXIT_SIGNAL_BASE = 128
+_DICT_SIGNAL_NAMES = {9: "SIGKILL", 15: "SIGTERM", 2: "SIGINT"}
+
+
+def fsExplainExitCode(iExitCode, sCommand="", bHostProject=False):
+    """Return a plain-English cause for an exit code, or "".
+
+    The empty string means "this code carries no standard meaning" --
+    an ordinary failure inside the researcher's own program, where the
+    program's own output is the diagnosis and a guess from vaibify
+    would talk over it.
+
+    127 is the one that motivated this. A step whose command works in
+    the container fails on a host with a bare number, because the
+    image put a program on PATH that the researcher's machine does not
+    have. They see "exit code 127", which is precise and useless.
+
+    The message names WHATEVER program the command invoked and nothing
+    else. An earlier draft appended a hint about Debian shipping
+    ``python3`` and no ``python`` -- true, and the most common single
+    cause, and still wrong to put here: vaibify is for containerized
+    scientific workflows in general, and a researcher whose missing
+    command is ``Rscript``, ``julia``, ``gfortran`` or their own
+    compiled model would have been handed advice about a language they
+    are not using (researcher-reported, 2026-09-04). The remedy for
+    one ecosystem's packaging quirk belongs in that project's own
+    documentation, never in the message every project shares.
+
+    ``bHostProject`` changes both WHERE the message says the program
+    was looked for and WHAT the researcher can do about it -- the two
+    modes have genuinely different remedies, install-locally versus
+    add-to-the-image. Telling someone their container lacks a program
+    when the search happened on their laptop sends them into the wrong
+    filesystem, which is the mode being invisible at the moment it
+    decides what the error means.
+    """
+    sProgram = _fsFirstWordOf(sCommand) or "the program"
+    if iExitCode == _I_EXIT_COMMAND_NOT_FOUND:
+        if "/" in sProgram:
+            # A path-form program (`./model`, `bin/solver`) was never
+            # a PATH lookup, so "check PATH" and `which` are both
+            # wrong advice -- `which` searches PATH and reports
+            # nothing useful about a relative path. The real question
+            # is whether the file is where the step's working
+            # directory implies. Scientific workflows invoke compiled
+            # models this way constantly, so the distinction earns
+            # its branch.
+            return (
+                f"Exit 127 means the shell found no file at "
+                f"{sProgram}. That path is relative to the step's "
+                f"own directory, not the repository root -- check "
+                f"the file exists there and is built."
+            )
+        if bHostProject:
+            return (
+                f"Exit 127 means the shell could not find "
+                f"{sProgram} on this machine. Run `which "
+                f"{sProgram}` to check, then install it or put it on "
+                f"PATH. A command written for a container can fail "
+                f"here, because the image provides programs your "
+                f"machine may not."
+            )
+        return (
+            f"Exit 127 means the shell could not find {sProgram} in "
+            f"the container. Run `which {sProgram}` in the terminal "
+            f"to check; if it is missing, add it to the project's "
+            f"packages and rebuild the image."
+        )
+    if iExitCode == _I_EXIT_NOT_EXECUTABLE:
+        sWhere = ("on this machine" if bHostProject
+                  else "in the container")
+        return (
+            f"Exit 126 means {sProgram} was found {sWhere} but could "
+            f"not be run -- usually a missing execute bit, or a "
+            f"script whose interpreter line names something absent."
+        )
+    iSignal = _fiSignalFromExitCode(iExitCode)
+    if iSignal:
+        sName = _DICT_SIGNAL_NAMES.get(iSignal, f"signal {iSignal}")
+        return (
+            f"Exit {iExitCode} means the command was killed by "
+            f"{sName}. For SIGKILL this is most often the memory "
+            f"limit; vaibify does not distinguish an out-of-memory "
+            f"kill from any other, so this names the signal and not "
+            f"a cause."
+        )
+    return ""
+
+
+def _fsFirstWordOf(sCommand):
+    """Return the program a command names, or "" when it names none."""
+    listWords = (sCommand or "").strip().split()
+    return listWords[0] if listWords else ""
+
+
+def _fiSignalFromExitCode(iExitCode):
+    """Return the signal a 128+N exit encodes, or 0.
+
+    Bounded at 128+64: above that the number is not a signal encoding
+    at all, and naming a "signal 200" would invent a cause.
+    """
+    if not isinstance(iExitCode, int):
+        return 0
+    if _I_EXIT_SIGNAL_BASE < iExitCode <= _I_EXIT_SIGNAL_BASE + 64:
+        return iExitCode - _I_EXIT_SIGNAL_BASE
+    return 0
 
 
 def fsValidateStepName(sNameRaw):

@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import json
 import re
 from pathlib import Path
 
@@ -6021,7 +6022,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # <script>", so an absent directory made every command in the step
     # report "command not found" -- twelve lines for two faults, with
     # the two that mattered buried among them.
-    "pipelineRunner.py": 1725,
+    # 1725 -> 1735 (2026-09-04): MEASURED. A failed command carries a
+    # plain-English cause for the exit codes that have one, stamped on
+    # the event rather than rendered by each surface -- the dashboard,
+    # the run log and the CLI all report this failure, and a diagnosis
+    # written three times is three diagnoses. Found by a researcher
+    # driving the shipped example on Ubuntu, where every step returned
+    # a bare "exit code 127".
+    "pipelineRunner.py": 1735,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6641,6 +6649,113 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # landed; neither number describes the file that now exists.
     "routeScope.py": 988,
 }
+
+
+# Command heads vaibify must never GENERATE. Each is absent on a
+# platform a researcher plausibly runs on, and each was verified
+# absent on one: a stock Ubuntu ships `python3` and no `python` at
+# all (there is no /usr/bin/python without python-is-python3), and a
+# console script like `pytest` is on PATH only if its install
+# location is -- `pip install --user` puts it in ~/.local/bin, which
+# frequently is not.
+#
+# The trap is specifically that vaibify AUTHORS these commands from
+# inside an image where both exist, so nothing is wrong until the
+# workflow runs somewhere else. A researcher drove the shipped
+# example on Ubuntu and every step returned exit 127 before any of
+# their code ran (2026-09-04).
+#
+# `python3 -m pytest` is the portable form and is better in the
+# container too: it guarantees pytest runs under the interpreter that
+# imports the project's dependencies, rather than whichever pytest
+# PATH finds first.
+#
+# SCOPE, and it is narrow on purpose. This governs commands vaibify
+# WRITES -- shipped templates and generated test commands. A
+# researcher who types `python foo.py` into a step by hand is outside
+# it, and deliberately: vaibify does not rewrite a person's commands.
+# That case is served by pipelineUtils.fsExplainExitCode, which names
+# whatever program the shell could not find, in any language.
+_T_NONPORTABLE_COMMAND_HEADS = ("python", "pytest", "pip")
+
+_T_STEP_COMMAND_KEYS = (
+    "saDataCommands", "saPlotCommands", "saTestCommands",
+)
+
+
+def _flistShippedTemplateCommands():
+    """Return (path, command) for every command in a shipped template."""
+    listFound = []
+    pathTemplates = REPO_ROOT / "vaibify" / "templates"
+    for pathProject in sorted(pathTemplates.rglob("project.json")):
+        dictWorkflow = json.loads(
+            pathProject.read_text(encoding="utf-8"))
+        for dictStep in dictWorkflow.get("listSteps", []) or []:
+            for sKey in _T_STEP_COMMAND_KEYS:
+                for sCommand in dictStep.get(sKey) or []:
+                    listFound.append((pathProject.name, sCommand))
+    return listFound
+
+
+def _fsHeadOfCommand(sCommand):
+    """Return the program a command invokes, or ""."""
+    listWords = (sCommand or "").strip().split()
+    return listWords[0] if listWords else ""
+
+
+def testShippedTemplateCommandsUsePortableInterpreters():
+    """A shipped template must run on a researcher's machine, not only ours.
+
+    Every project vaibify creates from a template inherits these
+    commands verbatim, so a bare `python` here becomes a bare `python`
+    in every workflow anyone builds.
+    """
+    listOffenders = [
+        (sName, sCommand)
+        for sName, sCommand in _flistShippedTemplateCommands()
+        if _fsHeadOfCommand(sCommand) in _T_NONPORTABLE_COMMAND_HEADS
+    ]
+    assert not listOffenders, (
+        "Shipped template commands invoke a program that is absent on "
+        "common platforms (use python3, or python3 -m <module> for a "
+        "console script):\n"
+        + "\n".join(f"  {sName}: {sCommand}"
+                     for sName, sCommand in listOffenders)
+    )
+
+
+def testGeneratedTestCommandsUsePortableInterpreters():
+    """testGenerator writes the test command into every step it touches.
+
+    Scanned as string LITERALS rather than by calling the generator,
+    because the generator's entry points need an LLM round trip. The
+    literals are the thing that ships either way, and a new emission
+    site added by copy-paste is exactly what this must catch.
+    """
+    pathGenerator = REPO_ROOT / "vaibify" / "gui" / "testGenerator.py"
+    treeModule = ast.parse(pathGenerator.read_text(encoding="utf-8"))
+    listOffenders = []
+    for nodeAny in ast.walk(treeModule):
+        listParts = []
+        if isinstance(nodeAny, ast.Constant) and isinstance(
+            nodeAny.value, str,
+        ):
+            listParts = [nodeAny.value]
+        elif isinstance(nodeAny, ast.JoinedStr):
+            listParts = [
+                nodeValue.value
+                for nodeValue in nodeAny.values
+                if isinstance(nodeValue, ast.Constant)
+                and isinstance(nodeValue.value, str)
+            ]
+        for sPart in listParts:
+            if _fsHeadOfCommand(sPart) in _T_NONPORTABLE_COMMAND_HEADS:
+                listOffenders.append(sPart)
+    assert not listOffenders, (
+        "testGenerator.py emits a command invoking a program absent "
+        "on common platforms (use python3 -m pytest):\n"
+        + "\n".join(f"  {sPart!r}" for sPart in listOffenders)
+    )
 
 
 def _fiCountFileLines(pathFile):

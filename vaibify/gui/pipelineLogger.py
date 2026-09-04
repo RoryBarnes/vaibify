@@ -102,8 +102,10 @@ def _fsExtractLogLine(dictEvent):
     if dictEvent.get("sType") == "output":
         return dictEvent.get("sLine", "")
     if dictEvent.get("sType") == "commandFailed":
+        sExplanation = dictEvent.get("sExitExplanation") or ""
         return (f"FAILED: {dictEvent.get('sCommand', '')} "
-                f"(exit {dictEvent.get('iExitCode', '?')})")
+                f"(exit {dictEvent.get('iExitCode', '?')})"
+                + (f"\n  {sExplanation}" if sExplanation else ""))
     if dictEvent.get("sType") == "started":
         # The header exists so the log FILE exists. Flushing an empty
         # buffer writes nothing, so without a line to carry there is

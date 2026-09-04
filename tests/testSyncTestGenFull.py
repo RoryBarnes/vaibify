@@ -991,7 +991,7 @@ def test_fdictWriteTestFile_writes():
     )
     assert dictResult["sFilePath"] == "/workspace/tests/test_integrity.py"
     assert "pytest" in dictResult["sContent"]
-    assert "pytest tests/test_integrity.py" in dictResult["saCommands"]
+    assert "python3 -m pytest tests/test_integrity.py" in dictResult["saCommands"]
     mockDocker.fnWriteFile.assert_called_once()
 
 
