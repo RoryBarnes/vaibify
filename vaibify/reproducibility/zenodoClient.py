@@ -26,6 +26,7 @@ implementing every HTTP path. That deployment has two consequences:
 """
 
 import hashlib
+import json
 from pathlib import Path
 
 import requests
@@ -65,6 +66,11 @@ _SERVICES = {
 
 _CHUNK_SIZE = 1024 * 1024
 _HASH_CHUNK_SIZE = 64 * 1024
+# A ceiling for reading a deposit file INTO MEMORY. The hashing
+# path streams and needs no cap; the JSON path materializes, and
+# a deposit key is caller-supplied, so an unbounded read would
+# let one pull a dataset into the hub's address space.
+_I_JSON_FETCH_BYTE_CAP = 4 * 1024 * 1024
 _TUPLE_REQUEST_TIMEOUT_SECONDS = (10, 60)
 _TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
 
@@ -128,6 +134,39 @@ class ZenodoClient:
         dictRecord = self._fdictRequest("GET", sUrl)
         sFileUrl = _fsFindFileUrl(dictRecord, sFileName)
         _fnStreamDownload(self, sFileUrl, sDestination, sFileName)
+
+    def fjsonFetchRecordFile(self, sRecordId, sFileName):
+        """Return one deposit file decoded as JSON, or ``None``.
+
+        ``None`` means "this record does not serve a readable JSON
+        file by that name", and covers all three ways that happens:
+        the deposit has no such key, the download fails, or the bytes
+        do not parse. A caller cannot act differently on those, and
+        raising here would turn a routine absence -- an archive
+        published before any rerun existed -- into a failed verify.
+
+        A record-scoped error (auth, 404, rate limit) still propagates
+        from :func:`_fdictGetRecordSafely`: a researcher who cannot
+        read their own declared record needs to be told that, rather
+        than have it reported as an absent file.
+
+        A method rather than a module function because the client is
+        then ``self``, and because :meth:`fnDownloadFile` beside it
+        already owns the by-name file lookup this parallels.
+        """
+        dictRecord = _fdictGetRecordSafely(self, sRecordId)
+        sFileUrl = _fsFindFileUrlOrNone(dictRecord, sFileName)
+        if not sFileUrl:
+            return None
+        baContent = _fbaFetchBoundedContent(
+            _fdictBuildAuthHeader(self._fsGetToken()), sFileUrl,
+        )
+        if baContent is None:
+            return None
+        try:
+            return json.loads(baContent.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return None
 
     def fdictCreateDraft(self, dictMetadata=None):
         """Create a new deposit draft and return its metadata.
@@ -509,6 +548,37 @@ def _fnReraiseRecordError(excOriginal, sRecordId):
                 sTemplate.format(id=sRecordId, detail=sDetail)
             ) from None
     raise excOriginal
+
+
+def _fsFindFileUrlOrNone(dictRecord, sFileName):
+    """Return the download URL for a deposit key, or "" when absent."""
+    for dictFile in dictRecord.get("files", []) or []:
+        if dictFile.get("key") == sFileName:
+            dictLinks = dictFile.get("links") or {}
+            return dictLinks.get("self") or dictLinks.get("download") or ""
+    return ""
+
+
+def _fbaFetchBoundedContent(dictHeaders, sFileUrl):
+    """Stream up to the byte cap; ``None`` on any transport failure.
+
+    Takes the auth headers rather than the client because it needs
+    nothing else from it, and because a bounded read is the one
+    download path where the caller must be able to see the ceiling.
+    """
+    try:
+        responseHttp = requests.get(
+            sFileUrl, headers=dictHeaders, stream=True, timeout=(10, 60),
+        )
+        _fnCheckResponse(responseHttp)
+    except (requests.RequestException, ZenodoError):
+        return None
+    baBuffer = bytearray()
+    for baChunk in responseHttp.iter_content(_HASH_CHUNK_SIZE):
+        baBuffer.extend(baChunk)
+        if len(baBuffer) > _I_JSON_FETCH_BYTE_CAP:
+            return None
+    return bytes(baBuffer)
 
 
 def _fdictHashSelectedFiles(clientZenodo, listFiles, listRelPaths):

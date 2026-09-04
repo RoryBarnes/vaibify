@@ -6112,6 +6112,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l3-workflow-image,
 .step-blocker-glyph-l3-workflow-reproduce,
 .step-blocker-glyph-l3-workflow-attestation,
+.step-blocker-glyph-l3-workflow-attestation-archive,
 .step-blocker-glyph-l3-workflow-envelope,
 .step-blocker-glyph-l3-workflow-envelope-zenodo,
 .step-blocker-glyph-l3-workflow-binaries {
@@ -8005,4 +8006,27 @@ body.council-workspace-open #mainLayout {
 
 .council-past-row .council-open-row {
     flex: 1;
+}
+
+/* The rebuild attestation's GitHub nudge. Deliberately styled as an
+   advisory rather than a warning: it is an encouragement, and no
+   criterion reads it. Orange would be wrong twice over -- it already
+   means "not checked yet" on every remote badge and level cell, and
+   this is not a problem with the project. */
+.attestation-nudge {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-left: 2px solid var(--border-subtle, #3a3a58);
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.attestation-nudge-mark {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    opacity: 0.8;
 }

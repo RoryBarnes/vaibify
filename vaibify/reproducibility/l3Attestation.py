@@ -57,6 +57,12 @@ __all__ = [
     "fbInvalidateAttestation",
     "fnWriteAttestation",
     "fsCurrentManifestDigest",
+    "ftJudgeArchivedAttestation",
+    "S_ARCHIVED_ATTESTATION_ABSENT",
+    "S_ARCHIVED_ATTESTATION_UNREADABLE",
+    "S_ARCHIVED_ATTESTATION_NOT_PASSED",
+    "S_ARCHIVED_ATTESTATION_OTHER_MANIFEST",
+    "S_ARCHIVED_ATTESTATION_COVERS",
 ]
 
 
@@ -66,6 +72,60 @@ S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
 S_STATUS_FAILED = "failed"
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
+
+
+# Reasons the archived attestation does or does not cover the archive.
+# They are distinct strings rather than one falsehood because the
+# remediation differs at every one: nothing was archived, something was
+# archived that cannot be read, a recorded FAILURE was archived, or a
+# real attestation was archived that describes a different manifest.
+S_ARCHIVED_ATTESTATION_ABSENT = "no-attestation-in-archive"
+S_ARCHIVED_ATTESTATION_UNREADABLE = "attestation-unreadable"
+S_ARCHIVED_ATTESTATION_NOT_PASSED = "attestation-did-not-pass"
+S_ARCHIVED_ATTESTATION_OTHER_MANIFEST = "attestation-describes-other-manifest"
+S_ARCHIVED_ATTESTATION_COVERS = "covers"
+
+
+def ftJudgeArchivedAttestation(jsonArchived, sArchivedManifestSha256):
+    """Return ``(bCovers, sReason)`` for an attestation found in an archive.
+
+    The Level 3 claim is that a stranger can re-fetch and re-execute,
+    so the evidence that the AUTHOR's own re-execution passed has to be
+    readable by that stranger. This is the predicate that decides it,
+    and it is deliberately SEMANTIC rather than a byte comparison
+    against the local file.
+
+    The difference matters. Byte-comparing the archived attestation
+    against the local one would answer "are these the same bytes",
+    when the question is "does this document make a true claim about
+    THAT manifest". A researcher who re-runs an unchanged project gets
+    a new local attestation -- new timestamp, new duration, identical
+    verdict -- and under a byte comparison their Level 3 would drop
+    until they minted a new immutable Zenodo version. That taxes
+    exactly the behaviour the ladder exists to encourage: checking
+    whether a years-old paper still reproduces. The archived
+    attestation goes on being true about the archived manifest, so
+    this asks only that.
+
+    ``sArchivedManifestSha256`` is the hex digest of the
+    ``MANIFEST.sha256`` **as served by the archive**, never the local
+    one. Comparing against the local manifest would let an ordinary
+    local edit invalidate a perfectly sound archived pair -- the
+    archive is internally consistent or it is not, and nothing on the
+    researcher's disk can change that.
+    """
+    if jsonArchived is None:
+        return False, S_ARCHIVED_ATTESTATION_ABSENT
+    if not isinstance(jsonArchived, dict):
+        return False, S_ARCHIVED_ATTESTATION_UNREADABLE
+    if jsonArchived.get("sStatus") != S_STATUS_PASSED:
+        return False, S_ARCHIVED_ATTESTATION_NOT_PASSED
+    sRecorded = str(
+        jsonArchived.get("sManifestDigestAtAttestation") or "")
+    sExpected = "sha256:" + str(sArchivedManifestSha256 or "")
+    if not sArchivedManifestSha256 or sRecorded != sExpected:
+        return False, S_ARCHIVED_ATTESTATION_OTHER_MANIFEST
+    return True, S_ARCHIVED_ATTESTATION_COVERS
 
 
 def _fdictMigrateAttestationV1ToV2(dictPayload):

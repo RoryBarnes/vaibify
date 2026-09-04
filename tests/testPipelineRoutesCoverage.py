@@ -1671,7 +1671,7 @@ _DICT_ALL_ATTAINED_SCOPE_CELLS = {
     # Six, not four, since 2026-08-30: each remote's published-copy
     # check contributes a STALENESS criterion and a DIVERGENCE one.
     "s2": _fdictAttainedCell(6, 6),
-    "s3": _fdictAttainedCell(8, 8),
+    "s3": _fdictAttainedCell(9, 9),
 }
 
 _DICT_NO_WARNING = {
@@ -1865,6 +1865,11 @@ class TestPollLevelStatePayload:
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bRebuildAttestationRunning", "dictRebuildAttestation",
+            # Added 2026-09-03. Per-remote publication state for the
+            # attestation itself, tri-state, read by nothing that
+            # gates: the PROOF tab encourages the GitHub copy and the
+            # Level 3 criterion asks only for the archived one.
+            "dictAttestationPublication",
             # Added 2026-08-27. The Software row could not tell "no
             # binaries declared yet" from "the researcher answered:
             # there are none", so it showed an unanswered "?" forever

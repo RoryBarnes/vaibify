@@ -520,15 +520,24 @@ def test_a_version_two_cache_is_no_longer_scope_current():
 
     A v2 cache compared one deposit where v3 asks about the declared
     SET; a v3 cache compared a project.json that still carried the
-    sync bookkeeping the sidecar migration removed. The literal
-    versions are deliberate — these are the assertions that fail if a
-    bump is ever reverted.
+    sync bookkeeping the sidecar migration removed; a v4 cache carries
+    no answer at all to the archived-attestation criterion, and an
+    absent answer is indistinguishable from a recorded "does not
+    cover". The literal versions are deliberate — these are the
+    assertions that fail if a bump is ever reverted.
 
-    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 3 (or any
-    earlier value), which makes every pre-sidecar cache claim to
-    answer a question it never asked.
+    EVERY BUMP MUST EXTEND THIS LIST. The guard is only live for the
+    versions named here: retargeting the registry entry from 4 to 5
+    without adding 4 below left the mutation SURVIVING, because
+    nothing asserted anything about 4 (measured, 2026-09-03). A
+    superseded version that no test names is a version the gate may
+    silently start accepting again.
+
+    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 4 (or any
+    earlier value), which makes every cache predating the criterion
+    claim to answer a question it never asked.
     """
-    for iStaleVersion in (2, 3):
+    for iStaleVersion in (2, 3, 4):
         assert publicationScope.fbCachedScopeIsCurrent(
             {"iScopeVersion": iStaleVersion},
         ) is False

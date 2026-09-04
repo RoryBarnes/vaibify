@@ -780,7 +780,7 @@ def testWorkflowScopeAllAttainedWhenCleanWithRepo():
     assert dictStates == {
         "s1": _fdictCell("attained", 1, 1),
         "s2": _fdictCell("attained", 6, 6),
-        "s3": _fdictCell("attained", 8, 8),
+        "s3": _fdictCell("attained", 9, 9),
     }
 
 
@@ -792,7 +792,7 @@ def testWorkflowScopeRepoMissingZeroesEveryLevel():
     )
     assert dictStates["s1"] == _fdictCell("none", 0, 1)
     assert dictStates["s2"] == _fdictCell("none", 0, 6)
-    assert dictStates["s3"] == _fdictCell("none", 0, 8)
+    assert dictStates["s3"] == _fdictCell("none", 0, 9)
 
 
 def testWorkflowScopeExcludesMissingAiDeclarationStep():
@@ -900,7 +900,7 @@ def testWorkflowScopeLevel3BlockerOnlyDentsLevelThree():
         _fdictWorkflowWithCleanSteps(1), [], listLevel3,
     )
     assert dictStates["s2"]["sState"] == "attained"
-    assert dictStates["s3"] == _fdictCell("partial", 7, 8)
+    assert dictStates["s3"] == _fdictCell("partial", 8, 9)
 
 
 def testWorkflowScopeRegressionFlagFromWorkflowHighWater():
