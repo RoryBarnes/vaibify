@@ -13,6 +13,12 @@ manage containers.
 | Docker Buildx   | 0.10+      | BuildKit-based image builder         |
 | Git             | 2.0+       | For cloning repositories into images |
 
+Python and Git you likely have. For the other two see
+[Installing Docker](#installing-docker) below — and note that
+neither is needed to start: a **host project** runs on your own
+machine with no container at all, which is how the
+[QuickStart](quickStart.md) begins.
+
 ## Users
 
 Install the latest release from PyPI:
@@ -164,7 +170,65 @@ misaligned modals. CI exercises the dashboard in Chromium only, so
 Firefox and Safari are covered by these version floors rather than by
 an automated check.
 
-## Docker on macOS
+## Installing Docker
+
+Vaibify does not install a container runtime for you, and it does not
+need one until you build or run a container project: host mode works
+with no Docker at all. Install it when you want the isolation that
+Level 3 reproducibility is defined by.
+
+Whichever platform you are on, confirm the result before going
+further. `vaibify doctor` runs the full pre-flight -- Docker context,
+daemon reachability, Colima health -- and prints a status report:
+
+```bash
+docker info          # must succeed WITHOUT sudo
+docker buildx version
+vaibify doctor
+```
+
+The `docker info` line is the one that catches most problems, and it
+must work as your own user: vaibify talks to the daemon as the user
+who runs it, never through `sudo`.
+
+### Docker on Linux
+
+Distribution packages are often older than the Buildx floor above, so
+install Docker Engine from Docker's own repository, following the
+current instructions for your distribution:
+
+- [Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
+- [Debian](https://docs.docker.com/engine/install/debian/)
+- [Fedora](https://docs.docker.com/engine/install/fedora/)
+- [RHEL](https://docs.docker.com/engine/install/rhel/)
+
+Those pages are linked rather than transcribed because the repository
+setup changes; a copy here would go stale silently and leave you
+debugging a signing key. Install the `docker-buildx-plugin` package
+along with the engine -- vaibify builds with BuildKit, and an engine
+without Buildx fails at the build rather than at the check.
+
+Then grant your own user access to the daemon, which is what makes the
+`docker info` check above pass without `sudo`:
+
+```bash
+sudo usermod -aG docker "$USER"
+newgrp docker          # or log out and back in
+```
+
+Be aware of what that grants: membership of the `docker` group is
+equivalent to root on the host, because a container can mount the host
+filesystem. On a shared or sensitive machine, prefer
+[rootless mode](https://docs.docker.com/engine/security/rootless/),
+which vaibify works with unchanged.
+
+Finally, make sure the daemon starts with the machine:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+### Docker on macOS
 
 On macOS, [Colima](https://github.com/abiosoft/colima) is the recommended
 Docker runtime. Install with Homebrew or MacPorts:
