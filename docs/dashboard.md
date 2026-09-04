@@ -269,7 +269,8 @@ Click **+** in the panel header to open the step editor. Fill in the
 step name, working directory, and the commands to run. The editor
 separates *data commands* (heavy computation) from *plot commands*
 (figure generation), so you can re-run just the plotting after
-tweaking a script without re-running the simulation.
+tweaking a script without re-running the simulation. Running a step
+executes its data commands, then its tests, then its plots.
 
 #### Interactive steps
 
