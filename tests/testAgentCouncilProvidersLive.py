@@ -272,6 +272,8 @@ class _TrackingConnection:
 
     async def fnStartTurn(self, dictTurnRequest):
         await self._connection.fnStartTurn(dictTurnRequest)
+        self.dictModelIdentity = dict(
+            self._connection.dictModelIdentity)
 
     def fiterStreamNormalizedEvents(self):
         return self._connection.fiterStreamNormalizedEvents()

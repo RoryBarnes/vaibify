@@ -621,6 +621,7 @@ def test_claude_auto_update_missing_key_defaults_true():
     [
         ("codex", "bCodex", "bCodexAutoUpdate"),
         ("gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("antigravity", "bAntigravity", "bAntigravityAutoUpdate"),
         ("opencode", "bOpenCode", "bOpenCodeAutoUpdate"),
         ("cline", "bCline", "bClineAutoUpdate"),
         ("openhands", "bOpenHands", "bOpenHandsAutoUpdate"),

@@ -312,6 +312,7 @@ def _fdictCreateSessionRecord(dictOpenRequest):
         "sImageReference": dictOpenRequest["sImageReference"],
         "ftStageRunnerCredential": dictOpenRequest["ftStageRunnerCredential"],
         "sParticipantId": dictParticipant["sParticipantId"],
+        "sProvider": dictParticipant["sProvider"],
         "sRequestedModel": dictParticipant["sRequestedModel"],
         "dictParticipant": dictParticipant,
         "sState": S_CHAT_STATE_READY,
@@ -376,6 +377,7 @@ def _fnBuildChatRunner(dictSession):
     it goes, so a fault at any point leaves the teardown something to
     find.
     """
+    from . import agentCouncilProviderRegistry
     from . import agentCouncilProviders
     dictGateway = agentCouncilDockerGateway.fdictCreateCouncilDockerGateway(
         agentCouncilDockerGateway.fdockerCreateCouncilClient(),
@@ -384,10 +386,12 @@ def _fnBuildChatRunner(dictSession):
     dictEgress = _fdictProvisionChatEgress(dictSession, dictGateway)
     dictCreated = agentCouncilDockerGateway.fdictReserveAndCreateRunner(
         dictGateway, dictSession["sCampaignId"],
-        agentCouncilProviders.S_PROVIDER_CLAUDE,
+        dictSession["sProvider"],
         _fdictComposeChatRunnerCost(), dictSession["sImageReference"],
         None, dictEgress["sNetworkName"], False,
-        _fdictComposeChatRunnerEnvironment(dictEgress),
+        agentCouncilProviderRegistry.
+        fdictComposeProviderRunnerEnvironment(
+            dictSession["sProvider"], dictEgress),
         *agentCouncilProviders.ftBuildDnsWiring(dictEgress))
     if not dictCreated["bCreated"]:
         raise CouncilChatError(
@@ -404,7 +408,7 @@ def _fnBuildChatRunner(dictSession):
 
 def _fdictProvisionChatEgress(dictSession, dictGateway):
     """Create the conversation's own internal network and CONNECT proxy."""
-    from . import agentCouncilProviders
+    from . import agentCouncilProviderRegistry
     sScope = fsComposeChatEgressScope(dictSession["sCampaignId"])
     dictSession["bEgressProvisioned"] = True
     sNetworkName = agentCouncilDockerGateway.fsCreateCampaignInternalNetwork(
@@ -412,21 +416,12 @@ def _fdictProvisionChatEgress(dictSession, dictGateway):
     sProxyInternalAddress = (
         agentCouncilDockerGateway.fsLaunchAllowlistProxy(
             dictGateway, sScope,
-            [agentCouncilProviders.S_ANTHROPIC_API_HOSTNAME]))
+            agentCouncilProviderRegistry.
+            flistCollectProviderEgressHostnames({
+                dictSession["sProvider"]})))
     return {"sNetworkName": sNetworkName,
             "sProxyInternalAddress": sProxyInternalAddress,
             "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT}
-
-
-def _fdictComposeChatRunnerEnvironment(dictEgress):
-    """Compose the runner's proxy and config-directory environment."""
-    from . import agentCouncilProviders
-    dictEnvironment = agentCouncilEgress.fdictBuildRunnerProxyEnvironment(
-        dictEgress["sProxyInternalAddress"], dictEgress["iProxyPort"])
-    dictEnvironment[
-        agentCouncilProviders.S_CLAUDE_CONFIG_DIRECTORY_ENV] = (
-        agentCouncilProviders.S_RUNNER_CLAUDE_CONFIG_DIRECTORY)
-    return dictEnvironment
 
 
 def _fdictComposeChatRunnerCost():
@@ -456,12 +451,17 @@ def _fnDeliverChatCredential(dictSession):
     refreshed login's measured life, so there is no budget for it to
     clamp. A turn is the lane that needs it.
     """
+    from . import agentCouncilProviderRegistry
     from . import agentCouncilProviders
     from ..config import secretManager
     sStagedPath, _ = dictSession["ftStageRunnerCredential"]()
     try:
-        baCredentialTar = agentCouncilProviders.fbaBuildCredentialTarball(
-            sStagedPath)
+        baCredentialTar = (
+            agentCouncilProviderRegistry.fbaBuildProviderConfigTarball(
+                dictSession["sProvider"], sStagedPath,
+                agentCouncilCharter.fsComposeChatInstruction(
+                    _fjsonReadCampaignNow(dictSession),
+                    dictSession["dictParticipant"])))
     finally:
         secretManager.fnCleanupSecretFiles([sStagedPath])
     agentCouncilProviders.fnDeliverCredentialIntoRunner(
@@ -612,29 +612,30 @@ def _fsRunChatMessageInRunner(dictSession):
     exactly as peer material does in a turn. A crafted question cannot
     become a flag, a model id or a tool name.
     """
-    from . import agentCouncilProviders
+    from . import agentCouncilProviderRegistry
     dictCampaign = _fjsonReadCampaignNow(dictSession)
-    saArgv = agentCouncilProviders.flistComposeClaudeArgv(
-        dictSession["sRequestedModel"],
-        agentCouncilCharter.fsComposeChatInstruction(
-            dictCampaign, dictSession["dictParticipant"]))
-    baStdin = agentCouncilProviders.fsComposeUntrustedPromptText(
+    sInstructionChannel = agentCouncilCharter.fsComposeChatInstruction(
+        dictCampaign, dictSession["dictParticipant"])
+    saArgv = agentCouncilProviderRegistry.flistComposeProviderChatArgv(
+        dictSession["sProvider"], dictSession["sRequestedModel"],
+        sInstructionChannel)
+    baStdin = agentCouncilProviderRegistry.fbaComposeProviderChatStdin(
+        dictSession["sProvider"],
         agentCouncilCharter.flistBuildChatQuotedMaterial(
-            dictCampaign, dictSession["listMessages"])).encode("utf-8")
+            dictCampaign, dictSession["listMessages"]))
     dictExecuted = agentCouncilDockerGateway.fdictExecuteBoundedTurn(
         dictSession["dictGateway"], dictSession["sHandle"], saArgv,
         I_CHAT_OUTPUT_CAP_BYTES, F_CHAT_TURN_WALL_CLOCK_SECONDS,
         agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin)
-    listEvents = agentCouncilProviders.flistParseStreamJsonEvents(
-        dictExecuted["sOutput"])
-    dictSession["dictModelIdentity"] = (
-        agentCouncilProviders.fdictExtractModelIdentity(
-            listEvents, dictSession["sRequestedModel"]))
-    sAnswerText = agentCouncilProviders.fsExtractResultText(listEvents)
+    listEvents, dictIdentity, sAnswerText, sFailure = (
+        agentCouncilProviderRegistry.ftParseProviderChatResult(
+            dictSession["sProvider"], dictExecuted["sOutput"],
+            dictExecuted["iExitCode"], dictSession["sRequestedModel"],
+            dictExecuted))
+    dictSession["dictModelIdentity"] = dictIdentity
     if sAnswerText:
         return sAnswerText
-    raise CouncilChatError(agentCouncilProviders.fsExplainEmptyResult(
-        listEvents, dictExecuted))
+    raise CouncilChatError(sFailure)
 
 
 # ----- closing ----------------------------------------------------------

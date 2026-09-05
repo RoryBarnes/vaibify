@@ -480,6 +480,7 @@ def _flistSelectSweepableCampaigns(dictStore):
     name is the only handle the store can compose.
     """
     from . import agentCouncilChat
+    from . import agentCouncilProviderRegistry
     listSweepable = []
     for sCampaignId in list(dictStore["listInsertionOrder"]):
         dictCampaign = agentCouncilStore.fjsonGetCampaignRecord(
@@ -488,7 +489,18 @@ def _flistSelectSweepableCampaigns(dictStore):
                 agentCouncilRegistry.fbCampaignBelongsToALivePeerHub(
                     dictCampaign)):
             continue
+        # The bare scope removes resources created by older versions.
         listSweepable.append(sCampaignId)
+        for sProvider in sorted({
+                dictParticipant.get("sProvider", "")
+                for dictParticipant in dictCampaign.get(
+                    "listParticipants", [])
+                if dictParticipant.get("sProvider")}):
+            sProviderScope = (
+                agentCouncilProviderRegistry.fsComposeProviderEgressScope(
+                    sCampaignId, sProvider))
+            if sProviderScope != sCampaignId:
+                listSweepable.append(sProviderScope)
         listSweepable.append(
             agentCouncilChat.fsComposeChatEgressScope(sCampaignId))
     return listSweepable

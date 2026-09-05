@@ -130,6 +130,8 @@ def testGeminiNodeAndNpmInstallsAreHardened():
 @pytest.mark.parametrize(
     "sDockerfile,sNeedle,sRetryFlag",
     [
+        ("Dockerfile.antigravity", "antigravity.google/cli/install.sh",
+         "--retry"),
         ("Dockerfile.opencode", "opencode.ai/install", "--retry"),
         ("Dockerfile.cline", "npm install", "--fetch-retries=3"),
         ("Dockerfile.openhands", "uv tool install", "UV_HTTP_RETRIES=3"),
@@ -199,6 +201,7 @@ def testDiagnosticBlocksUsePrintfNotEcho():
         "Dockerfile.claude",
         "Dockerfile.codex",
         "Dockerfile.gemini",
+        "Dockerfile.antigravity",
         "Dockerfile.rlang",
         "Dockerfile.julia",
     ]

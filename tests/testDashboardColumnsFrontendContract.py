@@ -1523,7 +1523,7 @@ def test_every_settings_row_carries_a_tooltip():
         "Plot Dir", "Figure Type", "Cores", "Tolerance",
         "Poll Interval", "Show timestamps", "Terminal lines",
         "Auto Archive", "Runtime limit", "Claude Code", "Codex",
-        "Gemini CLI", " auto-update",
+        "Gemini CLI", "Antigravity CLI", " auto-update",
     ):
         assert sRow in sApplication, (
             "settings row disappeared: " + sRow

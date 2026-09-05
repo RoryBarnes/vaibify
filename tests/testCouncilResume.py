@@ -626,6 +626,14 @@ class _NeedsHumanOnSynthesisConnection:
     which is the smallest real path to needsHuman.
     """
 
+    def __init__(self, sRequestedModel):
+        self.dictModelIdentity = {
+            "sRequestedModel": sRequestedModel,
+            "sResolvedModel": sRequestedModel,
+            "dictUsage": {},
+            "dictModelUsage": {},
+        }
+
     async def fdictPrepareImmutableContext(self, dictTurnRequest):
         return {"sContextIdentity": "restart-context"}
 
@@ -668,7 +676,8 @@ def testAGateAnswerSurvivesTheHubRestart(tmp_path, eventTurnGate,
     monkeypatch.setattr(
         agentCouncilController, "fconnectionBuildParticipantConnection",
         lambda dictRuntime, dictParticipant:
-            _NeedsHumanOnSynthesisConnection())
+            _NeedsHumanOnSynthesisConnection(
+                dictParticipant["sRequestedModel"]))
     appFirst = _fnBuildAppWithTmpStore(tmp_path)
     sCredential, sLease = _tEstablishOwnership(
         appFirst, S_CONTAINER_NAME, S_CONTAINER_ID)

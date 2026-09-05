@@ -499,7 +499,8 @@ def test_commands_during_a_live_turn_keep_state_consistent(
     from tests.testCouncilRoutes import _GatedFakeConnection
     monkeypatch.setattr(
         agentCouncilController, "fconnectionBuildParticipantConnection",
-        lambda dictRuntime, dictParticipant: _GatedFakeConnection(eventGate))
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(
+            eventGate, dictParticipant["sRequestedModel"]))
     app, dictHeaders = _tBuildOwnedApp(tmp_path)
     with TestClient(app, headers=dictHeaders) as client:
         sCampaignId = client.post(

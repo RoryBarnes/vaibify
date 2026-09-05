@@ -30,6 +30,8 @@ class FeaturesConfig:
     bCodexAutoUpdate: bool = True
     bGemini: bool = False
     bGeminiAutoUpdate: bool = True
+    bAntigravity: bool = False
+    bAntigravityAutoUpdate: bool = True
     bOpenCode: bool = False
     bOpenCodeAutoUpdate: bool = True
     bCline: bool = False
@@ -145,6 +147,8 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "codexAutoUpdate": "bCodexAutoUpdate",
     "gemini": "bGemini",
     "geminiAutoUpdate": "bGeminiAutoUpdate",
+    "antigravity": "bAntigravity",
+    "antigravityAutoUpdate": "bAntigravityAutoUpdate",
     "opencode": "bOpenCode",
     "opencodeAutoUpdate": "bOpenCodeAutoUpdate",
     "cline": "bCline",
@@ -831,6 +835,8 @@ def _fdictFeaturesToYaml(features):
         "codexAutoUpdate": features.bCodexAutoUpdate,
         "gemini": features.bGemini,
         "geminiAutoUpdate": features.bGeminiAutoUpdate,
+        "antigravity": features.bAntigravity,
+        "antigravityAutoUpdate": features.bAntigravityAutoUpdate,
         "opencode": features.bOpenCode,
         "opencodeAutoUpdate": features.bOpenCodeAutoUpdate,
         "cline": features.bCline,

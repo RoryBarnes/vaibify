@@ -75,11 +75,21 @@ def test_wizard_has_features_step():
     assert '"Features & Authentication"' in sSource
     assert "_fnRenderStepFeatures" in sSource
     assert "wizardFeatureList" in sSource
-    for sFeature in ("claude", "jupyter", "gpu", "latex",
+    for sFeature in ("claude", "antigravity", "jupyter", "gpu", "latex",
                      "rLanguage", "julia", "database", "dvc"):
         assert "\"" + sFeature + "\"" in sSource, (
             "feature " + sFeature + " missing from wizard"
         )
+    assert 'sKey: "gemini"' not in sSource[
+        sSource.index("var _LIST_FEATURE_DEFINITIONS"):sSource.index(
+            "var _LIST_DEFAULT_FEATURES")]
+
+
+def test_setup_wizard_offers_antigravity_instead_of_gemini():
+    sHtml = _fsReadStaticFile("setupWizard.html")
+    assert 'value="antigravity"' in sHtml
+    assert 'id="antigravityAutoUpdate"' in sHtml
+    assert 'value="gemini"' not in sHtml
 
 
 def test_wizard_has_packages_step():

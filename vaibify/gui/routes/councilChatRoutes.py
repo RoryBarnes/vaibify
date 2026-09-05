@@ -79,6 +79,16 @@ def _fnRegisterChairbotChat(app, dictCtx):
         async def _fdictExecuteOpenChat():
             jsonCampaign = councilRouteGuards.fjsonRequireCampaign(
                 dictStore, sCampaignId, sName, sProjectRepoPath)
+            sChairbotId = jsonCampaign.get("sChairbotParticipantId", "")
+            dictChairbot = next((
+                dictParticipant for dictParticipant in
+                jsonCampaign.get("listParticipants", [])
+                if dictParticipant.get("sParticipantId") == sChairbotId), {})
+            sProvider = dictChairbot.get("sProvider", "")
+            if not sProvider:
+                raise HTTPException(
+                    409, "this campaign has no valid chairbot provider")
+            setProviders = {sProvider}
             _fnRefuseChatWhenAdmissionClosed(dictControllerState, sName)
             # The same two gates start passes, in the same order and for
             # the same reasons: the image resolves first so the evidence
@@ -88,10 +98,10 @@ def _fnRegisterChairbotChat(app, dictCtx):
             sImageReference = await councilRouteGuards.ffnBuildImageResolver(
                 dictCtx, sContainerId)()
             councilRouteGuards.fnRefuseRunnerBackendUnlessEnabled(
-                sImageReference)
+                sImageReference, setProviders)
             await asyncio.to_thread(
                 councilRouteGuards.fnRefuseStartWithoutAProjectLogin,
-                dictCtx, sContainerId)
+                dictCtx, sContainerId, setProviders)
             return await _fdictOpenChatMapped(dictControllerState, {
                 "sCampaignId": sCampaignId,
                 "sResourceName": sName,
@@ -102,7 +112,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
                 "sImageReference": sImageReference,
                 "ftStageRunnerCredential":
                     councilRouteGuards.ffnBuildCredentialStager(
-                        dictCtx, sContainerId),
+                        dictCtx, sContainerId, sProvider),
             })
 
         return await councilRouteGuards.fgenericSubmitMapped(

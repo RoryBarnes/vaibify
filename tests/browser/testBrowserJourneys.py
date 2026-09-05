@@ -241,7 +241,8 @@ def testTheDockerFakeRefusesUnmodelledCalls(serverHub):
     "sAgent,sProjectName,sFeatureField,sAutoUpdateField",
     [
         ("codex", "browser-codex", "bCodex", "bCodexAutoUpdate"),
-        ("gemini", "browser-gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("antigravity", "browser-antigravity", "bAntigravity",
+         "bAntigravityAutoUpdate"),
         ("opencode", "browser-opencode", "bOpenCode", "bOpenCodeAutoUpdate"),
         ("cline", "browser-cline", "bCline", "bClineAutoUpdate"),
         ("openhands", "browser-openhands", "bOpenHands", "bOpenHandsAutoUpdate"),

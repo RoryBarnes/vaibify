@@ -188,9 +188,10 @@ def test_capabilities_report_disabled_by_default_with_the_reason(
     assert "evidence record" in dictCapabilities["sReason"]
     listProviders = dictCapabilities["listProviders"]
     assert [dictProvider["sProvider"]
-            for dictProvider in listProviders] == ["claude"], (
-        "no adapter-less provider may be advertised (R7)")
-    assert listProviders[0]["bAvailable"] is False
+            for dictProvider in listProviders] == [
+                "claude", "codex", "gemini"]
+    assert all(not dictProvider["bAvailable"]
+               for dictProvider in listProviders)
 
 
 def test_start_refuses_409_while_the_gate_is_off(
@@ -209,20 +210,13 @@ def test_start_refuses_409_while_the_gate_is_off(
     assert "evidence record" in response.json()["detail"]
 
 
-def test_codex_is_not_advertised_and_refused_at_validation(
-        tmp_path, monkeypatch, pathEvidence):
-    """R7/R9: the deferred provider neither appears nor convenes."""
-    client = _tBuildOwnedClient(tmp_path, monkeypatch)
-    response = client.post(
-        f"/api/agent-councils/{S_CONTAINER_ID}/start",
-        json={
-            "sQuestion": "anything",
-            "listParticipants": [
-                {"sProvider": "codex", "sRequestedModel": "modelOne"},
-                {"sProvider": "claude", "sRequestedModel": "modelTwo"},
-            ],
-        })
-    assert response.status_code == 422, response.text
+def test_codex_and_gemini_are_in_the_reviewed_provider_vocabulary():
+    """The two implemented adapters pass request validation."""
+    from vaibify.gui.routes.councilRoutes import CouncilParticipantRequest
+    for sProvider in ("codex", "gemini"):
+        requestParticipant = CouncilParticipantRequest(
+            sProvider=sProvider, sRequestedModel="modelOne")
+        assert requestParticipant.sProvider == sProvider
 
 
 def test_capability_contract_defaults_unavailable():

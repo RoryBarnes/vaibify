@@ -20,6 +20,7 @@ the individual request.
 """
 
 import asyncio
+import base64
 import io
 import json
 import os
@@ -125,6 +126,33 @@ class MockDockerCouncil:
             return json.dumps({
                 "claudeAiOauth": {"accessToken": "fixture-access-token"},
             }).encode("utf-8")
+        if sPath.endswith("/.codex/auth.json"):
+            def _fsJwt(dictClaims):
+                sPayload = base64.urlsafe_b64encode(json.dumps(
+                    dictClaims).encode("utf-8")).rstrip(b"=").decode("ascii")
+                return "e30." + sPayload + ".x"
+            sAccountId = "fixture-account"
+            return json.dumps({
+                "auth_mode": "chatgpt", "OPENAI_API_KEY": None,
+                "tokens": {
+                    "access_token": _fsJwt({"exp": int(time.time()) + 7200}),
+                    "refresh_token": "must-not-be-copied",
+                    "account_id": sAccountId,
+                    "id_token": _fsJwt({
+                        "https://api.openai.com/auth": {
+                            "chatgpt_account_id": sAccountId,
+                            "chatgpt_plan_type": "fixture"}}),
+                },
+            }).encode("utf-8")
+        if sPath.endswith(
+                "/.gemini/antigravity-cli/antigravity-oauth-token"):
+            return json.dumps({
+                "token": {"access_token": "fixture-access-token",
+                          "token_type": "Bearer",
+                          "refresh_token": "must-not-be-copied",
+                          "expiry": int(time.time()) + 7200},
+                "auth_method": "oauth",
+            }).encode("utf-8")
         raise AssertionError(f"unmodelled container read: {sPath!r}")
 
     # Mutable on purpose, like dictDaemonCapacity above: a test that
@@ -162,8 +190,13 @@ class _GatedFakeConnection:
     different-loop trap.
     """
 
-    def __init__(self, eventGate):
+    def __init__(self, eventGate, sRequestedModel):
         self._eventGate = eventGate
+        self.dictModelIdentity = {
+            "sRequestedModel": sRequestedModel,
+            "sResolvedModel": sRequestedModel,
+            "dictUsage": {}, "dictModelUsage": {},
+        }
 
     async def fdictPrepareImmutableContext(self, dictTurnRequest):
         return {"sContextIdentity": "gated-fake"}
@@ -219,7 +252,8 @@ def eventTurnGate(monkeypatch):
     eventGate = threading.Event()
     monkeypatch.setattr(
         agentCouncilController, "fconnectionBuildParticipantConnection",
-        lambda dictRuntime, dictParticipant: _GatedFakeConnection(eventGate))
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(
+            eventGate, dictParticipant["sRequestedModel"]))
     monkeypatch.setattr(
         agentCouncilContext, "fdictCaptureProjectContextSnapshot",
         _fdictWriteFixtureSnapshot)
@@ -760,7 +794,29 @@ def test_capabilities_reports_container_providers(tOwnerClient):
     assert response.status_code == 200, response.text
     dictCapabilities = response.json()
     assert dictCapabilities["bAvailable"] is True
-    assert dictCapabilities["listProviders"]
+    assert {dictProvider["sProvider"] for dictProvider in
+            dictCapabilities["listProviders"]} == {
+                "claude", "codex", "gemini"}
+
+
+def test_mixed_codex_and_gemini_council_reaches_plan_ready(
+        tOwnerClient, eventTurnGate):
+    """The HTTP/controller/engine path accepts both new adapters."""
+    client, app, _ = tOwnerClient
+    eventTurnGate.set()
+    response = client.post(
+        f"/api/agent-councils/{S_CONTAINER_ID}/start",
+        json={
+            "sQuestion": "compare two implementation approaches",
+            "listParticipants": [
+                {"sProvider": "codex", "sRequestedModel": "codex-model"},
+                {"sProvider": "gemini", "sRequestedModel": "gemini-model"},
+            ],
+        })
+    assert response.status_code == 200, response.text
+    _fnWaitForCampaignState(
+        app, response.json()["sCampaignId"],
+        agentCouncilCampaign.S_STATE_PLAN_READY)
 
 
 def test_capabilities_publish_the_logins_expiry_for_the_convene_form(
@@ -1034,7 +1090,7 @@ def test_start_refuses_an_unreviewed_provider(tOwnerClient):
             "sQuestion": "anything",
             "listParticipants": [
                 {"sProvider": "gemini", "sRequestedModel": "modelOne"},
-                {"sProvider": "claude", "sRequestedModel": "modelTwo"},
+                {"sProvider": "unreviewed", "sRequestedModel": "modelTwo"},
             ],
         })
     assert response.status_code == 422, response.text
@@ -1177,7 +1233,7 @@ def test_capabilities_compare_the_resolved_image_like_start_does(
         f"/api/agent-councils/{S_CONTAINER_ID}/capabilities")
     assert response.status_code == 200, response.text
     assert response.json()["bAvailable"] is True
-    assert listSeenImageIdentities == [S_IMAGE_IDENTITY], (
+    assert listSeenImageIdentities == [S_IMAGE_IDENTITY] * 3, (
         "the capabilities read must compare the same immutable image "
         "identity start compares — image-blind optimism advertises a "
         "council start will refuse")

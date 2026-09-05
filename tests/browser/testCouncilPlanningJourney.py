@@ -458,6 +458,18 @@ def testMissingProviderSdkDoesNotBlockTheDashboard(pageDashboard, serverHub):
     )
     assert dictCapabilities["bAvailable"] is True
     assert dictCapabilities["listProviders"], "no providers were offered"
+    assert {dictProvider["sProvider"]
+            for dictProvider in dictCapabilities["listProviders"]} == {
+                "claude", "codex", "gemini"}
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=5000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector(
+        '.council-provider[data-index="0"]', timeout=5000)
+    listProviderOptions = pageDashboard.eval_on_selector(
+        '.council-provider[data-index="0"]',
+        "el => Array.from(el.options).map(o => o.value)")
+    assert set(listProviderOptions) == {"claude", "codex", "gemini"}
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []
     _fnReleaseBrowserLaneOwnership(serverHub.app.state)

@@ -176,6 +176,7 @@ def _fConfigMinimal():
         bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
         bCodex=False, bCodexAutoUpdate=True,
         bGemini=False, bGeminiAutoUpdate=True,
+        bAntigravity=False, bAntigravityAutoUpdate=True,
         bOpenCode=False, bOpenCodeAutoUpdate=True,
         bCline=False, bClineAutoUpdate=True,
         bOpenHands=False, bOpenHandsAutoUpdate=True,
@@ -286,6 +287,7 @@ def test_flistBuildRunArgs_claude_auto_update_false(mockX11):
     [
         ("Codex", "bCodex", "bCodexAutoUpdate"),
         ("Gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("Antigravity", "bAntigravity", "bAntigravityAutoUpdate"),
         ("OpenCode", "bOpenCode", "bOpenCodeAutoUpdate"),
         ("Cline", "bCline", "bClineAutoUpdate"),
         ("OpenHands", "bOpenHands", "bOpenHandsAutoUpdate"),
