@@ -271,20 +271,70 @@ A few things to know before you click:
   and build again; you have not lost the host project's work, because
   there was never a copy to lose.
 
-When the build finishes, run the pipeline again. The steps do the same
-things and produce the same figures, but now they do it in the pinned
-environment — and the PROOF tab's Level 3 row stops saying the project
-has no image and starts asking the questions it is really about:
-whether the environment is recorded, whether the reproducibility rules
-have been answered, and whether a rebuild from that image reproduces
-the outputs you just made.
+When the build finishes, open the project again. The steps still do the
+same things, but now they do them in the pinned environment, and the
+PROOF tab's Level 3 row stops saying the project has no image and
+starts asking the questions it is really about: whether the environment
+is recorded, whether the reproducibility rules have been answered, and
+whether a rebuild from that image reproduces the outputs.
 
-That last one is worth doing at least once. **Verify** on the Level 3
-row creates a *shadow* container from the image digest your project
-pins, copies the repository into it, runs the whole pipeline there, and
+### Two claims, checked two different ways
+
+The obvious next move is to run the pipeline again and re-check the
+manifest. **Don't** — that is not a byte test, and it cannot come out
+clean.
+
+Every figure vaibify renders is dated and salted from the project
+repository's HEAD commit. That is what makes two runs of the same
+source produce identical bytes: without it, a PDF carries the wall
+clock in its `CreationDate` and an SVG gets fresh element ids from a
+new `uuid4` on every process. The manifest pins figures dated from
+HEAD *as it was when the manifest was written*. Any commit since —
+and this walkthrough makes several — changes the epoch, so a hand
+rerun re-renders every PDF, EPS, PS and SVG against a different one.
+The manifest check then reports them as differing whether or not
+anything real changed, which tells you nothing at all.
+
+So the two claims get checked separately, and neither substitutes for
+the other:
+
+**The science — checked on your own machine.** That is what section 5
+did. The quantitative tests confirm each recomputed number lands inside
+the author's recorded tolerance, so they answer "is this the same
+result?" without asking anything about your libraries. They passed, and
+they passed before you had a container at all — which is the point of
+section 6: the science agreed while the bytes did not.
+
+**The bytes — checked in the pinned environment.** The artefact that
+does it is the one the project publishes for a stranger:
+
+```bash
+./reproduce.sh
+```
+
+It reads the image digest and the recorded epoch out of
+`.vaibify/environment.json`, pulls that exact image, runs every step
+inside it, and finishes with
+
+```
+sha256sum -c MANIFEST.sha256
+```
+
+**Zero mismatches is the payoff.** Not "a small delta" — zero. It is
+what lets a reader who has never met you re-derive your figures byte
+for byte, and it is the whole reason the environment is pinned.
+
+The dashboard equivalent is **Verify Level 3 Reproducibility**, in the
+**Run** menu (it also has a button on the PROOF tab's Level 3 row). It
+creates a *shadow* container from the image digest your project pins,
+copies the repository into it, runs the whole pipeline there, and
 compares the results against your files — then destroys the shadow. It
-does not touch your outputs. It is the difference between believing
-your work reproduces and having watched it happen.
+does not touch your outputs. Like `reproduce.sh`, it re-runs against
+the epoch the envelope recorded rather than against today's HEAD,
+which is exactly why it can come out at zero and a hand rerun cannot.
+
+It is the difference between believing your work reproduces and having
+watched it happen.
 
 ## 8. Where to next
 

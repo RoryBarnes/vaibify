@@ -318,6 +318,81 @@ to the gate's constants. Researcher-facing wording lives in
 `LIST_DETERMINISM_QUESTIONS` beside the gate and must never carry a
 schema key.
 
+**`reproduce.sh` carries the SAME determinism guarantees the runner
+does, and it reads the epoch from the ENVELOPE.** The runner prefixes
+every step with `SOURCE_DATE_EPOCH` and a matplotlib `svg.hashsalt`
+derived from it; the generated script exported neither until
+2026-09-05, so the artefact vaibify hands the world rendered every PDF,
+EPS, PS and SVG with the reproducer's wall clock and a fresh per-process
+salt, and its own closing `sha256sum -c MANIFEST.sha256` could not pass
+for any workflow with a vector figure. The shadow rerun was
+determinism-correct throughout, which is why nothing internal noticed:
+the lane vaibify runs for itself passed and the one a stranger runs
+could not. Four things not to undo:
+
+- **The epoch is the RECORDED one** — the envelope's
+  `iSourceDateEpoch` — never re-derived from HEAD. The commit that
+  publishes the manifest moves HEAD, so a re-derivation is
+  guaranteed to salt the figures differently from the pinned ones. It is
+  read on the reproducing host and passed as a `docker run -e`, because
+  a *quoted* heredoc — the thing that keeps workflow-controlled step
+  text off the host shell — cannot carry a host value into its body.
+- **The salt comes from the runner's own builder**
+  (`determinismEnvironment.fsBuildMatplotlibSaltShell`), which takes a
+  shell WORD so both lanes can call it. A private copy in the generator
+  would drift, and the two lanes disagreeing is the defect being fixed.
+- **`--entrypoint bash` is load-bearing.** A vaibify image declares
+  `USER researcher`, and its entrypoint's first phase needs root:
+  measured, `docker run <image> bash -s` exits 255 on
+  `git config --system`. The Dockerfile says as much — invocations that
+  must run the entrypoint pass `--user 0`. A reproduction wants none of
+  that phase anyway; it clones repos and configures credentials.
+- **An absent epoch is announced, never quietly degraded**, and `0` reads
+  as unrecorded (agreeing with `fiCaptureSourceDateEpoch` and
+  `fiRecordedSourceDateEpoch`, the other two readers of that field).
+
+`tests/testReproduceScriptDeterminism.py` drives the host half through
+real `bash` with the envelope epoch and the repo HEAD epoch made
+DISTINCT, so a re-derivation cannot pass; its `docker_live` leg reads
+the guarantees back out of a real container. A string assertion that
+the preamble mentions `SOURCE_DATE_EPOCH` is necessary and nowhere near
+sufficient — it passes against a script exporting the wrong value.
+
+**Publishing the image is an L3 REQUIREMENT (ruled 2026-09-05).**
+`reproduce.sh`'s first act is a `docker pull`, and a locally built image
+records its bare image ID — an honest content pin that exists in no
+registry. `image-not-published` was emitted as a blocker row and
+consulted by neither `fbAtLeastLevel3` nor
+`_T_WORKFLOW_LEVEL3_CRITERIA`, so a project could attain the rung that
+claims a stranger can re-execute it with an image only its author could
+obtain. It is now in both. It stays OUT of `fbL3ReadinessOK`, beside the
+GitHub and Zenodo conjuncts and for their reason: readiness asks whether
+the LOCAL envelope is coherent enough to attempt a rerun, and folding
+publication into it would stop a researcher attesting before they
+publish. The shadow lane translates the SDK's bare
+`404 ... No such image` into a refusal naming which kind of reference it
+is and what to do — recognised by the SDK's exception CLASS, never by
+matching "404" in a message, because an unreachable daemon carries 404s
+from other causes. `tests/testPublishedImageIsAnL3Requirement.py`.
+
+**A configured secret this host cannot resolve DEGRADES, and the
+telling is the load-bearing half.** `flistMountSecrets` skips it and
+the container starts (ruled 2026-09-05, making the Features page's
+"the container will still work but git push will fail" true). All three
+methods used to RAISE, before `docker run` was ever composed, so no
+container existed to inspect — a researcher met that hours after a
+wizard toggle with a `RuntimeError` naming neither the secret nor the
+remedy. A silent degrade would be strictly worse than that refusal, so
+three surfaces report it from one authority
+(`vaibify/config/secretAvailability.py`): the CLI preflight, the hub
+log at start, and the dashboard's readiness banner. The dashboard's copy is
+RECOMPUTED per settled readiness answer, never remembered — a
+researcher who runs `gh auth login` afterwards has fixed the thing it
+complains about — and only on the SETTLED answer, because the frontend
+polls readiness sixty times while a container boots and `gh auth token`
+is a subprocess. Never materialize a secret to discover that it exists;
+`fbSecretExists` is written not to.
+
 **A requirement row renders the gate's VERDICT, never re-derives it.**
 The Reproducibility-rules row computed "declared" in JavaScript as
 "the `dictDeterminism` block is non-empty", while
