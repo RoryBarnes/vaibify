@@ -36,16 +36,51 @@ def _fnWaitForPicker(page, serverHub):
     )
 
 
-def _fnOpenPromoteWizardAndChooseHost(page):
-    """Open the sandbox's wizard and pick the Host Project destination."""
-    page.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-tile-actions',
+def _fnSeedAPromotableSandbox(serverHub, sSandboxName):
+    """Register a fresh host sandbox for one promotion test.
+
+    Promotion is reached from INSIDE the project (the Files panel's
+    "Convert to Project" bar) since the 2026-09-04 ruling, and entering
+    a project claims its lease. The lease outlives the test, so a
+    second test reusing the shared sandbox meets a tile locked "In use
+    in another browser session" and fails on click interception -- a
+    failure that says nothing about promotion. Seeding per test is the
+    pattern the convert journey already established for the same
+    hazard.
+    """
+    import os
+    import subprocess
+    from vaibify.config import registryManager
+    sDirectory = os.path.join(serverHub.sHome, sSandboxName)
+    os.makedirs(sDirectory, exist_ok=True)
+    with open(os.path.join(sDirectory, "analysis.py"), "w") as fileEntry:
+        fileEntry.write("import json\n")
+    with open(
+        os.path.join(sDirectory, "vaibify.yml"), "w",
+    ) as fileConfig:
+        fileConfig.write(f"projectName: {sSandboxName}\n")
+    subprocess.run(
+        ["git", "init", "-q"], cwd=sDirectory, check=True,
+        capture_output=True,
     )
-    page.click(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
-        '.container-menu-item[data-action="convert"]',
+    registryManager.fnAddProject(sDirectory, sMode="host")
+    return sDirectory
+
+
+def _fnOpenPromoteWizardAndChooseHost(page, sSandboxName):
+    """Open the promote wizard from the Files panel and choose Host Project.
+
+    Driven through the Files panel's "Convert to Project" bar, which is
+    the promotion door as of the 2026-09-04 ruling. The tile's kebab
+    containerizes outright and no longer reaches this choice, so a test
+    that still drove it there would be asserting a path a researcher
+    cannot take.
+    """
+    _fnEnterHostFilesPanel(page, sSandboxName)
+    page.wait_for_selector(
+        "#fileConvertToProjectBar", state="visible", timeout=10000,
     )
+    page.click("#btnConvertToProject")
     page.wait_for_selector("#modalCreateWizard", timeout=5000)
     assert page.text_content(
         "#wizardStepTitle",
@@ -78,15 +113,21 @@ def _fnEnterHostFilesPanel(page, sName):
     )
 
 
-def testTheSandboxTileOffersMakeAProject(pageDashboard, serverHub):
-    """A host sandbox reads as a sandbox: its action is "Make a Project…"."""
+def testTheSandboxTileOffersContainerizeProject(pageDashboard, serverHub):
+    """A host sandbox's action reads "Containerize Project".
+
+    One label serves both host states since 2026-09-04; the
+    sandbox/Project difference survives in ``data-is-project``,
+    asserted below, because it still decides whether the wizard
+    shows a destination step.
+    """
     _fnWaitForPicker(pageDashboard, serverHub)
     elAction = pageDashboard.query_selector(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
         '.container-menu-item[data-action="convert"]',
     )
     assert elAction is not None
-    assert "Make a Project" in elAction.text_content()
+    assert "Containerize Project" in elAction.text_content()
     # It is not yet a Project.
     elTile = pageDashboard.query_selector(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
@@ -96,8 +137,13 @@ def testTheSandboxTileOffersMakeAProject(pageDashboard, serverHub):
 
 def testHostBranchCollectsOnlyANameAndASummary(pageDashboard, serverHub):
     """The host branch skips every container page: Name then Summary."""
+    sSandbox = "promoteSummarySandbox"
+    _fnSeedAPromotableSandbox(serverHub, sSandbox)
     _fnWaitForPicker(pageDashboard, serverHub)
-    _fnOpenPromoteWizardAndChooseHost(pageDashboard)
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{sSandbox}"]', timeout=10000,
+    )
+    _fnOpenPromoteWizardAndChooseHost(pageDashboard, sSandbox)
     assert pageDashboard.text_content(
         "#wizardStepTitle",
     ).strip() == "Project Name"
@@ -119,19 +165,28 @@ def testHostBranchCollectsOnlyANameAndASummary(pageDashboard, serverHub):
 
 
 @pytest.mark.falsification
-def testPromotingFlipsTheTileToAHostProjectWithNoBuild(
+def testPromotingFlipsTheRegistryWithNoBuild(
     pageDashboard, serverHub,
 ):
-    """The whole journey: choose host -> name -> Promote -> registry + tile.
+    """The whole journey: choose host -> name -> Promote -> registry.
 
-    Kills: a promote submit that never re-registers the project (the tile
-    would stay a sandbox), or one that flips the mode to container (a
-    build the host branch must never trigger). The uncontained badge must
-    survive -- a host Project is still host mode.
+    Renamed from ...FlipsTheTile... on 2026-09-04: the tile assertions
+    moved to their own test, because promotion's re-entry carries this
+    tab through the hub it would have to observe.
+
+    Kills: a promote submit that never re-registers the project (the
+    entry would stay a sandbox, bIsProject False), or one that flips
+    the mode to container -- a build the host branch must never
+    trigger.
     """
     from vaibify.config import registryManager
+    sSandbox = "promoteFlipSandbox"
+    _fnSeedAPromotableSandbox(serverHub, sSandbox)
     _fnWaitForPicker(pageDashboard, serverHub)
-    _fnOpenPromoteWizardAndChooseHost(pageDashboard)
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{sSandbox}"]', timeout=10000,
+    )
+    _fnOpenPromoteWizardAndChooseHost(pageDashboard, sSandbox)
     pageDashboard.fill("#inputWizardProjectName", S_NEW_PROJECT_NAME)
     pageDashboard.click("#btnWizardNext")
     pageDashboard.wait_for_timeout(200)
@@ -141,7 +196,7 @@ def testPromotingFlipsTheTileToAHostProjectWithNoBuild(
     # the new name is a host Project.
     fDeadline = time.monotonic() + 15.0
     while time.monotonic() < fDeadline:
-        if (registryManager.fdictGetProject(S_HOST_PROJECT_READY) is None
+        if (registryManager.fdictGetProject(sSandbox) is None
                 and registryManager.fdictGetProject(
                     S_NEW_PROJECT_NAME) is not None):
             break
@@ -154,39 +209,79 @@ def testPromotingFlipsTheTileToAHostProjectWithNoBuild(
         "promotion must NOT flip the mode to container"
     )
     assert dictPromoted["bIsProject"] is True
-    assert registryManager.fdictGetProject(S_HOST_PROJECT_READY) is None
+    assert registryManager.fdictGetProject(sSandbox) is None
     # No build modal was ever shown -- promotion builds nothing.
     elBuild = pageDashboard.query_selector("#modalBuildProgress")
     assert elBuild is None or not elBuild.is_visible(), (
         "a build progress modal appeared for a host promotion"
     )
-    # The tile flip is the frontend truth: still host, now a Project, and
-    # still uncontained.
+    # Promotion from inside RE-ENTERS the renamed project, so the tab
+    # ends in the dashboard. Check the in-project claim while it is on
+    # screen: the Files panel of a freshly-promoted host Project must
+    # NOT offer "Convert to Project" -- it already is one. The bar's
+    # own id, hidden rather than merely absent.
+    pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    pageDashboard.click('.left-tab[data-panel="files"]')
+    pageDashboard.wait_for_selector(
+        "#panelFiles.active", state="visible", timeout=10000,
+    )
+    assert pageDashboard.is_hidden("#fileConvertToProjectBar"), (
+        "a host Project's Files panel still offered 'Convert to Project'"
+    )
+    # The promoted TILE is asserted by
+    # testAPromotedProjectRendersAsAProjectInTheHub below, not here.
+    # Re-entry tears down to the Environment hub, reloads the tiles and
+    # passes the Project hub behind the promotion curtain on its way to
+    # the step viewer (fnShowPromotionCurtain), so a tile assertion
+    # made from this tab would be racing a transition rather than
+    # observing a state.
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAPromotedProjectRendersAsAProjectInTheHub(
+    pageDashboard, serverHub,
+):
+    """A promoted entry's TILE reads host, Project, and uncontained.
+
+    Split from the journey above (2026-09-04). That test drives the
+    promotion, and the promotion's own hand-off carries the tab through
+    the hub and out to the step viewer, so it cannot then observe the
+    hub it passed through. Rendering is a separate question from the
+    flow that produces it, so the registry is moved directly here and
+    only the DISPLAY is driven -- which is also what lets this assert
+    the failure mode that matters, a promoted project still rendering
+    as a sandbox.
+
+    Kills: dropping bIsProject from the tile's dataset (the tile would
+    read as a sandbox and offer the wrong affordances), or rendering a
+    promoted host Project as contained.
+    """
+    from vaibify.config import registryManager
+    sSandbox = "promotedTileSandbox"
+    sPromoted = "Promoted Tile Project"
+    _fnSeedAPromotableSandbox(serverHub, sSandbox)
+    registryManager.fnPromoteHostProject(sSandbox, sPromoted)
+    _fnWaitForPicker(pageDashboard, serverHub)
     sTile = (
-        f'.container-tile[data-name="{S_NEW_PROJECT_NAME}"]'
+        f'.container-tile[data-name="{sPromoted}"]'
         '[data-mode="host"][data-is-project="true"]'
     )
     pageDashboard.wait_for_selector(sTile, timeout=15000)
     assert pageDashboard.query_selector(
-        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
+        f'.container-tile[data-name="{sSandbox}"]',
     ) is None, "the old sandbox tile survived the promotion"
     elChip = pageDashboard.query_selector(
         sTile + ' .containment-chip--direct',
     )
     assert elChip is not None, "the uncontained badge was removed"
     assert "uncontained" in elChip.text_content()
-    # A host Project is not offered promotion again -- it offers
-    # containerization instead.
+    # A promoted host Project carries the same label as a sandbox; what
+    # changed for it is that the wizard skips the destination step, not
+    # the wording of the menu item.
     elAction = pageDashboard.query_selector(
         sTile + ' .container-menu-item[data-action="convert"]',
     )
     assert elAction is not None
-    assert "Containerize" in elAction.text_content()
-    # The Files panel of the freshly-promoted host Project must NOT
-    # offer "Convert to Project" -- it already is one. Enter it and
-    # check the bar's own id, hidden rather than merely absent.
-    _fnEnterHostFilesPanel(pageDashboard, S_NEW_PROJECT_NAME)
-    assert pageDashboard.is_hidden("#fileConvertToProjectBar"), (
-        "a host Project's Files panel still offered 'Convert to Project'"
-    )
+    assert "Containerize Project" in elAction.text_content()
     assert pageDashboard.listPageErrors == []

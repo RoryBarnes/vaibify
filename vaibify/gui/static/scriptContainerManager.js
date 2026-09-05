@@ -232,7 +232,7 @@ var VaibifyContainerManager = (function () {
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
             _fsRenderContainerOnlyMenuItems(bHost) +
-            _fsRenderHostConvertMenuItem(bHost, bIsProject) +
+            _fsRenderHostConvertMenuItem(bHost) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
@@ -319,15 +319,27 @@ var VaibifyContainerManager = (function () {
         );
     }
 
-    function _fsRenderHostConvertMenuItem(bHost, bIsProject) {
-        /* Only a host tile carries this action. A host SANDBOX is
-           offered "Make a Project…", which opens the destination choice
-           (host Project or container). A host PROJECT has already
-           graduated, so it is never offered promotion again -- it is
-           offered "Containerize…" instead, which goes straight to the
-           container flow. A container tile has nothing here. */
+    function _fsRenderHostConvertMenuItem(bHost) {
+        /* Only a host tile carries this action; a container tile has
+           nothing here.
+
+           ONE label for both host states (2026-09-04). It used to read
+           "Make a Project…" for a sandbox and "Containerize…" for a
+           promoted host Project, which asked a researcher to create
+           the thing they had spent the whole walkthrough working
+           inside: the dashboard says Project everywhere, the file is
+           named project.json, and the PROOF tab grades it -- so an
+           action offering to MAKE one reads as though the project
+           does not exist (researcher-reported). The sandbox/Project
+           distinction is a registry flag, not something the reader can
+           see, and containerizing is what either state is here to do.
+
+           The two flows still differ underneath: a sandbox reaches the
+           destination step (host Project or container), a promoted
+           Project skips it because there is no destination left to
+           choose. */
         if (!bHost) return "";
-        var sLabel = bIsProject ? "Containerize…" : "Make a Project…";
+        var sLabel = "Containerize Project";
         return (
             '<div class="container-menu-item" data-action="convert">' +
             sLabel + "</div>" +
@@ -884,15 +896,22 @@ var VaibifyContainerManager = (function () {
         /* The convert wizard needs the project's directory too. It is
            read from the tile by name-equality rather than an attribute
            selector, so a host name carrying a space cannot break the
-           lookup. A sandbox is offered the destination choice (host
-           Project vs container); a host Project, already graduated, is
-           offered only containerization. */
+           lookup.
+
+           This door containerizes, in BOTH host states (2026-09-04
+           ruling). It used to hand a sandbox the destination choice --
+           host Project or container -- so a researcher who had just
+           clicked "Containerize Project" was asked whether they meant
+           it, with one card offering to keep the project exactly where
+           it already was. Promotion to a host Project did not go away:
+           it lives on the Files panel's own "Convert to Project" bar,
+           which is shown for a sandbox and calls this same wizard
+           WITHOUT this argument, so it still opens the choice. One
+           door, one outcome. */
         var elTile = _felTileByName(sName);
         var sDirectory = elTile ? (elTile.dataset.directory || "") : "";
-        var bIsProject = elTile
-            ? elTile.dataset.isProject === "true" : false;
         VaibifyWorkflowManager.fnOpenConvertWizard(
-            sName, sDirectory, !bIsProject);
+            sName, sDirectory, false);
     }
 
     function _felTileByName(sName) {

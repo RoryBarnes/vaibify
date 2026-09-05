@@ -12853,7 +12853,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testPromoteToHostProjectJourney.py::'
-            'testPromotingFlipsTheTileToAHostProjectWithNoBuild'
+            'testPromotingFlipsTheRegistryWithNoBuild'
         ),
         source='vaibify/config/registryManager.py',
         # Never set the graduated flag: the promoted entry stays a
@@ -17200,5 +17200,22 @@ def _fdictEntry(sRel):
             '"keyring.backends.null.Keyring"\n'
         ),
         new='',
+    ),
+    # --- 2026-09-04: a promoted project must RENDER as a Project ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testPromoteToHostProjectJourney.py::'
+            'testAPromotedProjectRendersAsAProjectInTheHub'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Never publish the graduated flag to the tile: the registry is
+        # right and the SCREEN is wrong, which is the half a
+        # server-side assertion cannot see.
+        old=(
+            '\'" data-is-project="\' + (bIsProject ? "true" : "false") +\n'
+        ),
+        new=(
+            '\'" data-is-project="\' + "false" +\n'
+        ),
     ),
 ]

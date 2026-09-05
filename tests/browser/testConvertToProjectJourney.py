@@ -96,7 +96,7 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
 
     Asserted on both tiles in the one list, so a menu item rendered
     unconditionally would fail here rather than mislead a researcher. A
-    host sandbox that has not graduated offers "Make a Project…".
+    Both host states offer the same "Containerize Project" label.
     """
     _fnWaitForPicker(pageDashboard, serverHub)
     elHostAction = pageDashboard.query_selector(
@@ -104,7 +104,7 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
         '.container-menu-item[data-action="convert"]',
     )
     assert elHostAction is not None, "the host tile offers no Convert action"
-    assert "Make a Project" in elHostAction.text_content()
+    assert "Containerize Project" in elHostAction.text_content()
     assert pageDashboard.query_selector(
         f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
         '.container-menu-item[data-action="convert"]',
@@ -112,11 +112,15 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
 
 
 def _fnOpenConvertMenuAndChooseContainer(page):
-    """Open the sandbox's wizard and pick the Containerized destination.
+    """Open the sandbox's wizard, which lands on Name, not a choice.
 
-    A host sandbox now opens on the destination choice, so the container
-    flow the rest of this file exercises is reached by choosing
-    "Containerized Project" and advancing to the Name page.
+    The tile action containerizes in both host states (2026-09-04
+    ruling): a sandbox is no longer asked whether it meant it, with one
+    card offering to keep the project where it already is. The
+    destination step still exists and is still reached -- from the
+    Files panel's "Convert to Project" bar, which is the promotion
+    door. Asserting the title here is what fails if this door ever
+    starts asking again.
     """
     _fnOpenHostTileMenu(page, S_HOST_PROJECT_READY)
     page.click(
@@ -126,10 +130,9 @@ def _fnOpenConvertMenuAndChooseContainer(page):
     page.wait_for_selector("#modalCreateWizard", timeout=5000)
     assert page.text_content(
         "#wizardStepTitle",
-    ).strip() == "How to become a Project"
-    page.click('.add-choice-card[data-destination="container"]')
-    page.wait_for_timeout(150)
-    page.click("#btnWizardNext")
+    ).strip() != "How to become a Project", (
+        "the kebab's Containerize Project asked for a destination"
+    )
     page.wait_for_timeout(200)
 
 
@@ -263,7 +266,7 @@ def _fnSeedAConvertibleHostProject(serverHub, sSandboxName=None):
     """Register a SECOND host project, with real files, for this journey.
 
     The shared one is consumed by the conversion journey above -- it is
-    a container by then and no longer offers "Make a Project" -- so a
+    a container by then and offers no convert action at all -- so a
     test that reused it would pass alone and fail in file order, which
     is the least useful way for a test to fail.
     """
@@ -342,9 +345,8 @@ def testOnlyTheTickedFilesAreCopiedIntoTheContainer(
         '.container-menu-item[data-action="convert"]',
     )
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
-    pageDashboard.click('.add-choice-card[data-destination="container"]')
-    pageDashboard.wait_for_timeout(150)
-    pageDashboard.click("#btnWizardNext")
+    # No destination step: the tile action containerizes outright,
+    # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill(
         "#inputWizardProjectName", S_SEED_CONTAINER_NAME)
@@ -428,9 +430,8 @@ def testASpacedNameIsRefusedAtTheNamingStepNotAtTheEnd(
         '.container-menu-item[data-action="convert"]',
     )
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
-    pageDashboard.click('.add-choice-card[data-destination="container"]')
-    pageDashboard.wait_for_timeout(150)
-    pageDashboard.click("#btnWizardNext")
+    # No destination step: the tile action containerizes outright,
+    # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardWorkflowName", "AI Greenhouse")
     # The container name follows the Project name, made Docker-safe.
@@ -499,9 +500,8 @@ def testThePackagesPageIsPrefilledFromTheChosenScripts(
         '.container-menu-item[data-action="convert"]',
     )
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
-    pageDashboard.click('.add-choice-card[data-destination="container"]')
-    pageDashboard.wait_for_timeout(150)
-    pageDashboard.click("#btnWizardNext")
+    # No destination step: the tile action containerizes outright,
+    # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "scan-lane-box")
     # Name -> Python -> Repositories -> Features -> Files
@@ -567,9 +567,8 @@ def testLeavingEveryAgentUntickedAsksBeforeContinuing(
         '.container-menu-item[data-action="convert"]',
     )
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
-    pageDashboard.click('.add-choice-card[data-destination="container"]')
-    pageDashboard.wait_for_timeout(150)
-    pageDashboard.click("#btnWizardNext")
+    # No destination step: the tile action containerizes outright,
+    # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "agent-lane-box")
     # Name -> Python -> Repositories -> Features.
@@ -615,9 +614,8 @@ def testTickingAnAgentAsksNothing(pageDashboard, serverHub):
         '.container-menu-item[data-action="convert"]',
     )
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
-    pageDashboard.click('.add-choice-card[data-destination="container"]')
-    pageDashboard.wait_for_timeout(150)
-    pageDashboard.click("#btnWizardNext")
+    # No destination step: the tile action containerizes outright,
+    # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "ticked-lane-box")
     for _iStep in range(3):
