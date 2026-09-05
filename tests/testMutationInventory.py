@@ -1802,7 +1802,11 @@ def _flistPublicCallables(pathModule):
 _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # Pure argument/flag assembly for a later launch; no daemon call.
     "flistBuildRunArgs",
-    "fnMountSecrets",
+    "flistMountSecrets",
+    # Writes the start-time notice naming each secret this host could
+    # not resolve. Reads a probe that materializes nothing and calls
+    # the hub logger; no daemon call.
+    "fnAnnounceUnresolvableSecrets",
     # A tarfile entry filter, closed over two integers. It is called by
     # tarfile once per archive member to stamp the container user onto
     # the entry, touches no container and makes no call; it is a nested

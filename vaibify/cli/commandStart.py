@@ -441,12 +441,45 @@ def _fpreflightColimaShareMissing(sHostPath):
     )
 
 
+def flistPreflightSecrets(config):
+    """Return one warn-level result per secret this host cannot resolve.
+
+    WARN rather than FAIL, deliberately: an unresolvable secret no
+    longer stops the start (ruled 2026-09-05), so failing here would
+    contradict the behaviour a few lines later. What it must do is
+    arrive BEFORE the start rather than as a puzzle hours after a
+    wizard toggle, naming the secret, the cost and the remedy -- three
+    methods have three remedies, and "a secret is unavailable" names
+    none of them.
+    """
+    from vaibify.config.secretAvailability import (
+        flistFindUnresolvableSecrets,
+    )
+    return [
+        PreflightResult(
+            sName="secret:" + (dictRecord["sName"] or "?"),
+            sLevel="warn",
+            sMessage=(
+                f"secret '{dictRecord['sName']}' "
+                f"({dictRecord['sMethod']}) cannot be resolved on this "
+                f"host: {dictRecord['sReason']}; "
+                f"{dictRecord['sCost']}"
+            ),
+            sRemediation=dictRecord["sRemedy"],
+        )
+        for dictRecord in flistFindUnresolvableSecrets(
+            getattr(config, "listSecrets", []),
+        )
+    ]
+
+
 def flistRunStartPreflight(config):
     """Run all pre-flight checks for `vaibify start`; return all results."""
     listResults = [fpreflightDaemon("start")]
     if listResults[0].sLevel == "fail":
         return listResults
     listResults.append(_fpreflightImage(config))
+    listResults.extend(flistPreflightSecrets(config))
     listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
     listResults.extend(_flistPreflightBindMounts(config))

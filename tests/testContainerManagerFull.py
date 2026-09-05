@@ -18,7 +18,7 @@ from vaibify.docker.containerManager import (
     _fnAddPortForwarding,
     _fnAddBindMounts,
     _fnMountSingleSecret,
-    fnMountSecrets,
+    flistMountSecrets,
     _fsInspectContainerState,
 )
 
@@ -268,21 +268,31 @@ def test_fnMountSingleSecret_adds_mount():
 
 
 # -----------------------------------------------------------------------
-# fnMountSecrets
+# flistMountSecrets
 # -----------------------------------------------------------------------
 
 
+@patch("vaibify.config.secretAvailability.flistFindUnresolvableSecrets",
+       return_value=[])
 @patch("vaibify.config.secretManager.fsMountSecret",
        return_value="/tmp/sec")
-def test_fnMountSecrets_iterates(mockMount):
+def test_flistMountSecrets_iterates(mockMount, mockUnresolvable):
+    """A resolvable secret is mounted and queued for cleanup.
+
+    The availability probe is stubbed to "everything resolves" rather
+    than left live: this test is about the mount loop, and a developer
+    machine without the named keyring entry would otherwise make it
+    assert the skip path while reading like it asserts the mount.
+    """
     config = _fConfigMinimal()
     config.listSecrets = [
         {"name": "token", "method": "keyring"},
     ]
     saRunArgs = []
     listCleanup = []
-    fnMountSecrets(config, saRunArgs, listCleanup)
+    listUnresolvable = flistMountSecrets(config, saRunArgs, listCleanup)
     assert len(listCleanup) == 1
+    assert listUnresolvable == []
 
 
 # -----------------------------------------------------------------------
@@ -292,7 +302,8 @@ def test_fnMountSecrets_iterates(mockMount):
 
 @patch("vaibify.docker.containerManager._fnCleanupTempFiles")
 @patch("vaibify.docker.containerManager._fnRunDockerCommand")
-@patch("vaibify.docker.containerManager.fnMountSecrets")
+@patch("vaibify.docker.containerManager.flistMountSecrets",
+       return_value=[])
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--rm"])
 def test_fnStartContainer_success(
@@ -305,7 +316,8 @@ def test_fnStartContainer_success(
 
 @patch("vaibify.docker.containerManager._fnRunDockerCommand",
        side_effect=RuntimeError("fail"))
-@patch("vaibify.docker.containerManager.fnMountSecrets")
+@patch("vaibify.docker.containerManager.flistMountSecrets",
+       return_value=[])
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--rm"])
 def test_fnStartContainer_propagates_docker_error(
@@ -348,7 +360,8 @@ def test_fsInspectContainerState_failure(mockRun):
 
 @patch("vaibify.docker.containerManager._fsRunDetachedCommand",
        return_value="container-abc-123")
-@patch("vaibify.docker.containerManager.fnMountSecrets")
+@patch("vaibify.docker.containerManager.flistMountSecrets",
+       return_value=[])
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--name", "testproj"])
 def test_fsStartContainerDetached_returns_container_id(
@@ -368,7 +381,8 @@ def test_fsStartContainerDetached_appends_sleep_infinity(mockRun):
     from vaibify.docker.containerManager import fsStartContainerDetached
     config = _fConfigMinimal()
     with patch(
-        "vaibify.docker.containerManager.fnMountSecrets"
+        "vaibify.docker.containerManager.flistMountSecrets",
+        return_value=[],
     ), patch(
         "vaibify.docker.containerManager.flistBuildRunArgs",
         return_value=[],
@@ -397,7 +411,7 @@ def test_fsStartContainerDetached_does_not_delete_secret_files(tmp_path):
     config = _fConfigMinimal()
     import os
     with patch(
-        "vaibify.docker.containerManager.fnMountSecrets",
+        "vaibify.docker.containerManager.flistMountSecrets",
         side_effect=_fnRecordMount,
     ), patch(
         "vaibify.docker.containerManager._fsRunDetachedCommand",

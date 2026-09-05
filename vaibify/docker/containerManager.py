@@ -54,7 +54,10 @@ def fnStartContainer(config, sDockerDir, saCommand=None):
     """
     listCleanupFiles = []
     saRunArgs = flistBuildRunArgs(config)
-    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    listUnresolvable = flistMountSecrets(
+        config, saRunArgs, listCleanupFiles,
+    )
+    fnAnnounceUnresolvableSecrets(config, listUnresolvable)
     saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
     _fnRunDockerCommand(saFullCommand)
 
@@ -87,7 +90,10 @@ def fsStartContainerDetached(config, sDockerDir):
     """
     listCleanupFiles = []
     saRunArgs = flistBuildRunArgs(config, bDetached=True)
-    fnMountSecrets(config, saRunArgs, listCleanupFiles)
+    listUnresolvable = flistMountSecrets(
+        config, saRunArgs, listCleanupFiles,
+    )
+    fnAnnounceUnresolvableSecrets(config, listUnresolvable)
     saFullCommand = _flistAssembleRunCommand(
         config, saRunArgs, ["sleep", "infinity"],
     )
@@ -107,7 +113,9 @@ def fsCreateContainerForReservation(
     """
     fnValidateReservationIdOrRaise(sReservationId)
     saRunArgs = flistBuildRunArgs(config, bCreateOnly=True)
-    fnMountSecrets(config, saRunArgs, [])
+    fnAnnounceUnresolvableSecrets(
+        config, flistMountSecrets(config, saRunArgs, []),
+    )
     saRunArgs.extend([
         "--label", f"{S_RESERVATION_LABEL_KEY}={sReservationId}",
     ])
@@ -567,12 +575,65 @@ def _fbAgentBridgeRequired(config):
     )
 
 
-def fnMountSecrets(config, saRunArgs, listCleanupFiles):
-    """Mount each secret as a read-only temp file with mode 600."""
+def flistMountSecrets(config, saRunArgs, listCleanupFiles):
+    """Mount every RESOLVABLE secret; return records for the rest.
+
+    A secret this host cannot answer for no longer stops the container
+    (ruled 2026-09-05). The Features page has always promised that a
+    project with GitHub auth configured but unavailable still runs --
+    "the container will still work but git push will fail" -- and the
+    code refused the start instead, for all three methods. That refusal
+    was the surprise: it arrived hours after a wizard toggle, naming
+    neither the secret nor the remedy.
+
+    Degrading is only defensible because the caller TELLS the
+    researcher. The returned records name each secret, its method, its
+    remedy and what proceeding costs; a caller that drops them has
+    traded an early clear refusal for a late obscure one, which is
+    strictly worse than the behaviour this replaced.
+
+    The probe materializes nothing, so a secret is never written to
+    disk merely to discover that it exists.
+    """
+    from vaibify.config.secretAvailability import (
+        flistFindUnresolvableSecrets,
+    )
     from vaibify.config.secretManager import fsMountSecret
+    listUnresolvable = flistFindUnresolvableSecrets(config.listSecrets)
+    setUnresolvableNames = {
+        dictRecord["sName"] for dictRecord in listUnresolvable
+    }
     for dictSecret in config.listSecrets:
+        if dictSecret.get("name") in setUnresolvableNames:
+            continue
         _fnMountSingleSecret(
             dictSecret, saRunArgs, listCleanupFiles, fsMountSecret,
+        )
+    return listUnresolvable
+
+
+def fnAnnounceUnresolvableSecrets(config, listUnresolvable):
+    """Say which configured secrets this host could not resolve.
+
+    The start proceeds without them, so this notice is the whole
+    difference between a documented degrade and a silent one. It names
+    the secret, its method, what proceeding costs and what fixes it --
+    never a value, and never a hint about where a value is stored.
+
+    Written through the hub logger rather than printed, so the GUI lane
+    records it too; the dashboard raises the same facts from the
+    readiness payload, recomputed rather than remembered.
+    """
+    import logging
+    from vaibify.config.secretAvailability import (
+        fsDescribeUnresolvableSecret,
+    )
+    loggerVaibify = logging.getLogger("vaibify")
+    for dictRecord in listUnresolvable or []:
+        loggerVaibify.warning(
+            "container '%s' starting without %s",
+            getattr(config, "sProjectName", "") or "?",
+            fsDescribeUnresolvableSecret(dictRecord),
         )
 
 
