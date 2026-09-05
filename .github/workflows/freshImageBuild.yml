@@ -48,6 +48,21 @@ on:
       - 'docs/testFormats.md'
       - 'docs/vision.md'
       - 'vaibify/docs/**'
+      # This lane's own definition, and the tool it runs. Without these
+      # a change to the build lane triggers NOTHING and merges
+      # unexercised -- the check list simply omits it, which reads
+      # exactly like a pass. Found the hard way: the pin-drift step and
+      # the auto-commit below were written, pushed, and reviewed green
+      # without ever having executed once.
+      - '.github/workflows/freshImageBuild.yml'
+      - 'tools/checkToolchainPinDrift.py'
+
+permissions:
+  # `contents: write` is for ONE thing: committing a toolchain pin whose
+  # replacement package was proved byte-identical to the version it
+  # replaces (see "Accept inert toolchain rotations" below). An explicit
+  # block REPLACES the defaults, so `contents` must still cover checkout.
+  contents: write
 
 jobs:
   freshbuild:
@@ -56,7 +71,15 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      # Checks out the PR's HEAD branch rather than the default
+      # merge-with-main commit, because the pin bump below is pushed
+      # back to that branch and a merge commit cannot be. The lane
+      # therefore builds the head of the branch; for "does the image
+      # still build" that is the same question, and it is the only
+      # ref an auto-commit can honestly target.
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -81,6 +104,65 @@ jobs:
           mkdir -p /tmp/freshBuildProject
           cd /tmp/freshBuildProject
           python -m vaibify init --name fresh-build-project --minimal
+
+      # Ubuntu drops superseded package versions from its pool within
+      # weeks, so the Dockerfile's pinned toolchain eventually stops
+      # resolving and the build refuses. That refusal is the feature --
+      # a rebuild must never swap a compiler silently -- but most
+      # rotations change no installed byte (`linux-libc-dev` rolls
+      # forward on the kernel SRU cadence, roughly monthly), and
+      # stopping a maintainer for one of those teaches them to bump
+      # pins without reading, which is exactly what the pin exists to
+      # prevent.
+      #
+      # So the judge decides it with evidence: it fetches the
+      # superseded package and its replacement and compares their
+      # payloads file by file, and bumps ONLY those that are provably
+      # identical. The verdict is asymmetric on purpose -- it can prove
+      # "nothing changed" and never "this change is harmless" -- so a
+      # real difference, a package it cannot fetch, and a missing
+      # decompressor all exit non-zero here and the build is never
+      # attempted. Unknown routes to a maintainer, never to green.
+      - name: Accept inert toolchain rotations
+        id: pindrift
+        run: |
+          python -m pip install zstandard
+          python tools/checkToolchainPinDrift.py --write
+          if git diff --quiet -- vaibify/containerImage/Dockerfile; then
+            echo "bBumped=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "bBumped=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Best-effort by design. A fork's token cannot push, and a
+      # protected branch may refuse a direct push; neither is a reason
+      # to fail a build whose Dockerfile is already correct in the
+      # working tree. The bump is idempotent, so an unpushed one is
+      # simply recomputed next run -- and it is ANNOUNCED, because a
+      # push that silently did nothing is how a lane comes to look
+      # green for work it never landed.
+      - name: Commit the inert bumps
+        if: steps.pindrift.outputs.bBumped == '1'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email \
+            '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vaibify/containerImage/Dockerfile
+          git commit -m 'chore(image): bump toolchain pins proved byte-identical
+
+          The replacement packages were compared against the versions
+          they supersede, file by file, and differ in nothing that
+          reaches a build. No result needs re-verifying.
+
+          Committed by tools/checkToolchainPinDrift.py.'
+          if git push origin \
+              "HEAD:${{ github.head_ref || github.ref_name }}"; then
+            echo "Pushed the pin bump."
+          else
+            echo "::warning::Could not push the pin bump (fork or " \
+              "protected branch). The build below uses the corrected " \
+              "Dockerfile, but the repository still carries the stale pin."
+          fi
 
       - name: Build the image from scratch
         run: |
