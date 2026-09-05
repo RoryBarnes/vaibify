@@ -8151,22 +8151,18 @@ def _fdictEntry(sRel):
         # the re-read merely being absent.
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return {\n'
-            '        "dictTierResults": dictTierResults,\n'
             '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
             '            dictWorkflow, filesRepo,\n'
             '        ),\n'
             '    }\n'
         ),
         new=(
-            '    import concurrent.futures\n'
-            '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
-            '        return {\n'
-            '            "dictTierResults": dictTierResults,\n'
-            '            "dictL3ReadinessGaps": pool.submit(\n'
-            '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
-            '            ).result(),\n'
-            '        }\n'
+            '        "dictL3ReadinessGaps": __import__(\n'
+            '            "concurrent.futures", fromlist=["futures"],\n'
+            '        ).ThreadPoolExecutor(1).submit(\n'
+            '            fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
+            '        ).result(),\n'
+            '    }\n'
         ),
     ),
 
