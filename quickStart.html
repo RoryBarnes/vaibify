@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.7.dev4 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.7.dev6 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7ccdff5c"></script>
+      <script src="_static/documentation_options.js?v=ef4df12f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -147,10 +147,19 @@ computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at PROOF
 Level 3, which means its author committed a manifest of every artefact’s
 SHA-256 hash along with the pinned environment that produced them.</p>
-<p>Back in the hub, click the <strong>+</strong> next to <em>Containers</em>, choose the option
-that adds an existing directory, point it at your clone, and choose to
-run it <strong>on this machine</strong> rather than in a container. There is no image
-to build; the dashboard opens in seconds.</p>
+<p>Back in the hub, click the <strong>+</strong> next to <em>Environments</em>. The wizard asks
+two things: where it runs — choose <strong>This machine</strong> rather than
+<em>Container</em> — and whether the project already exists — choose <strong>Add
+Existing</strong> and point it at your clone. There is no image to build; the
+environment opens in seconds.</p>
+<p>One more click, and it is the one everything below depends on. An
+environment is a <em>place</em> projects run, and it can hold more than one, so
+the dashboard asks which project you want. Open the project dropdown at
+the top and choose <strong>AI Greenhouse</strong> — the repository ships a
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code> describing it, which is how vaibify knows the steps, the
+tests, and the figures. <strong>Blank Project</strong>, the other entry, is an empty
+workspace: pick it by mistake and the dashboard is bare, with nothing to
+run and nothing to check.</p>
 <p>You are looking at somebody else’s finished work — and the header says
 <strong>Level 0</strong>, with most requirements unmet. That is correct, and it is
 the first thing worth understanding about vaibify.</p>
@@ -288,8 +297,11 @@ manifest — leaving your own files untouched.</p>
 <p>The blocker at the bottom of the PROOF tab is the honest one: Level 3
 is <em>defined</em> by a pinned container image, and there isn’t one. You can
 lift that without starting over, and without moving a single file.</p>
-<p>Go back to the Environments hub, open the menu on this project’s tile,
-and choose <strong>Containerize…</strong>. Confirm with <strong>Convert and build</strong>.</p>
+<p>Go back to the Environments hub, open the kebab menu (<strong>⋮</strong>) on this
+environment’s tile, and choose <strong>Containerize Project</strong>. The wizard
+asks where the project should run: choose <strong>Containerized Project</strong> —
+the other card, <em>Host Project</em>, keeps it on this machine, which is
+where it already is. Then confirm the build.</p>
 <p>This does not create a second project. Your clone stays exactly where
 it is — the same directory, the same git history, the same outputs you
 just produced. What changes is how vaibify runs the steps: the project
