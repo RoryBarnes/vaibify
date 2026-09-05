@@ -1102,6 +1102,13 @@ var VaibifyContainerManager = (function () {
         elTail.style.display = "none";
     }
 
+    var _S_BUILD_ALREADY_RUNNING =
+        "A build for this project is already running; " +
+        "attaching to its progress.";
+    var _S_BUILD_LOST_THE_REQUEST =
+        "The connection to the build dropped, but the build is " +
+        "still running; attaching to its progress.";
+
     async function fnBuildContainer(sName, bNoCache) {
         /* Returns whether the container is now BUILT AND RUNNING. It
            reports its own failures, so a caller has nothing to add --
@@ -1126,8 +1133,23 @@ var VaibifyContainerManager = (function () {
             await fnStartContainer(sName);
             bBuiltAndRunning = true;
         } catch (error) {
+            /* A DROPPED CONNECTION IS NOT A FAILED BUILD. The POST is
+               held open for the whole build -- minutes -- and a
+               browser abandons a request that long on its own (live
+               report, 2026-09-05: the researcher was shown
+               "NetworkError" while the build was still printing to
+               the hub's terminal and the server was healthy). The
+               build outlives the request that started it, which is
+               why the progress endpoint exists; so a network drop
+               attaches to it exactly as a 409 does. A truly dead
+               server still reports honestly -- the first progress
+               poll fails and says contact was lost. */
             if (error.iStatus === 409) {
-                bBuiltAndRunning = await _fnWatchRunningBuild(sName);
+                bBuiltAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_BUILD_ALREADY_RUNNING);
+            } else if (error.sKind === "network") {
+                bBuiltAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_BUILD_LOST_THE_REQUEST);
             } else {
                 _fnReportBuildFailure(error);
             }
@@ -1139,14 +1161,14 @@ var VaibifyContainerManager = (function () {
         return bBuiltAndRunning;
     }
 
-    async function _fnWatchRunningBuild(sName) {
-        // The 409 means a build for this project is already running —
-        // typically started by a tab that has since closed. The docker
-        // build outlives the request that started it, so watch that
-        // build to completion instead of reporting a failure.
-        VaibifyApp.fnShowToast(
-            "A build for this project is already running; " +
-            "attaching to its progress.", "info");
+    async function _fnWatchRunningBuild(sName, sReason) {
+        // Two ways to arrive, one behaviour: the build is running and
+        // this tab is no longer the request that owns it. A 409 means
+        // another tab started it; a network error means this tab's own
+        // request was abandoned in flight. Either way the docker build
+        // outlives the request, so watch it to completion instead of
+        // reporting a failure that did not happen.
+        VaibifyApp.fnShowToast(sReason, "info");
         var dictProgress;
         while (true) {
             try {
