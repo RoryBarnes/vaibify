@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.8.dev4 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.8.dev8 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=37d0ad4e"></script>
+      <script src="_static/documentation_options.js?v=e83284e6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -298,10 +298,51 @@ manifest — leaving your own files untouched.</p>
 is <em>defined</em> by a pinned container image, and there isn’t one. You can
 lift that without starting over, and without moving a single file.</p>
 <p>Go back to the Environments hub, open the kebab menu (<strong>⋮</strong>) on this
-environment’s tile, and choose <strong>Containerize Project</strong>. The wizard
-asks where the project should run: choose <strong>Containerized Project</strong> —
-the other card, <em>Host Project</em>, keeps it on this machine, which is
-where it already is. Then confirm the build.</p>
+environment’s tile, and choose <strong>Containerize Environment</strong>.</p>
+<p>A seven-page wizard opens. It asks about the <em>environment</em> — nothing
+it collects moves, renames, or rewrites your files. Every page has a
+<strong>?</strong> that explains the choice in more detail; what follows is what to
+enter to finish this walkthrough. Where a page says “leave it”, the
+default is the right answer and you can press <strong>Next</strong>.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>#</p></th>
+<th class="head"><p>Page</p></th>
+<th class="head"><p>What to enter here</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p><strong>Name</strong></p></td>
+<td><p>The container, image, and registry name. It is pre-filled with a Docker-safe version of your directory name — lowercase, hyphens, no spaces. Accept it unless it collides with another environment on this machine.</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p><strong>Python version</strong></p></td>
+<td><p>Leave it at <strong>3.12</strong> unless your code is tested against a specific release.</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p><strong>Repositories</strong></p></td>
+<td><p>Leave it <strong>empty</strong>. This clones <em>additional</em> git repositories into the container; the project you are converting is already accounted for.</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p><strong>Features</strong></p></td>
+<td><p>Tick <strong>at least one coding agent</strong> — several are offered and none is ticked for you; leaving the page with none selected raises a confirmation, because a container with no agent is usually a slip. LaTeX is on by default. Leave GitHub authentication on. Under <em>Resource limits</em>, blank means “all cores − 1” and unlimited memory; <strong>1</strong> CPU and <strong>1</strong> GB are enough for a small pipeline and keep the build off the rest of your machine.</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p><strong>Copy into the container</strong></p></td>
+<td><p>A container does not share your folder, so tick what should be copied in. For this walkthrough tick <strong>everything</strong>; your originals stay where they are.</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p><strong>Packages</strong></p></td>
+<td><p>Leave both boxes <strong>empty</strong>. The dependencies come from the repository’s own <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>7</p></td>
+<td><p><strong>Summary</strong></p></td>
+<td><p>Read it back, then press <strong>Convert</strong>.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Then the build runs.</p>
 <p>This does not create a second project. Your clone stays exactly where
 it is — the same directory, the same git history, the same outputs you
 just produced. What changes is how vaibify runs the steps: the project
