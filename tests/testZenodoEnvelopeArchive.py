@@ -254,6 +254,12 @@ def _fnMakeEveryOtherConjunctPass(monkeypatch):
     monkeypatch.setattr(
         levelGates, "fbL3AttestationCurrent", lambda filesRepo: True,
     )
+    # The environment-archive conjunct joined `fbAtLeastLevel3` with
+    # the image-archive feature; it has its own falsification tests,
+    # so here it is one more "every OTHER conjunct" to satisfy.
+    monkeypatch.setattr(
+        levelGates, "fbImageArchiveDeposited", lambda filesRepo: True,
+    )
 
 
 @pytest.mark.falsification

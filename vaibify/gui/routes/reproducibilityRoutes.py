@@ -38,7 +38,9 @@ from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import verificationProgress
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import (
+    fbPinnedImageIsInLocalStore,
     fdictAssessEnvelopeImageCurrency,
+    fdictBuildImageArchiveDetail,
     fdictRequireWorkflow,
     fsContainerNameForId,
 )
@@ -86,6 +88,7 @@ from ...reproducibility.determinismGate import (
 from ...reproducibility.declaredPackages import (
     fdictComparePackageDeclarations,
 )
+from ...reproducibility import imageDeposit
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
     fdictL3ReadinessGaps,
@@ -280,6 +283,16 @@ def _fnRegisterReadiness(app, dictCtx):
                 dictCtx, sContainerId, filesRepo,
             ),
             "dictDockerfileProvenance": dictProvenance,
+            # The environment archive as a STATE, not a boolean. The
+            # gaps dict beside it carries `bImageArchived`, which is
+            # the Level 3 criterion; this is what the row RENDERS, and
+            # the two are different questions -- "unreachable" and
+            # "the deposit covers another platform" are both `False`
+            # in the gap and must not paint the same cell.
+            "dictImageArchive": fdictBuildImageArchiveDetail(
+                dictWorkflow, filesRepo, sContainerId,
+                fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
+            ),
         }
 
 
@@ -818,6 +831,10 @@ def _fnPersistAttestation(
         dictAiProvenance=dictAiProvenance,
         listCarriedPaths=list(dictResult.get("listCarriedPaths") or []),
         dictRerunFailure=dict(dictResult.get("dictRerunFailure") or {}),
+        dictImageArchiveCheck=imageDeposit.
+        fdictRecheckArchiveAgainstLocalImage(
+            filesRepo, fdictReadEnvironmentJson(filesRepo),
+        ),
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)

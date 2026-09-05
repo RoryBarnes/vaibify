@@ -149,6 +149,12 @@ DICT_TIER_TWO_REGISTRY = {
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
     "token": {"Token"},
     "connection": {"DockerConnection"},
+    # Approved 2026-09-05, on the `node` precedent: `clientZenodo` was
+    # already the codebase's live spelling in zenodoClient.py -- it
+    # sits in the frozen seed -- so registering it makes existing
+    # practice official rather than introducing a spelling. The
+    # environment-archive deposit binds one in three places.
+    "client": {"ZenodoClient"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
     # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by

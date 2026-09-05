@@ -311,6 +311,13 @@ _TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
 )
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
+# The environment-archive deposit reads the researcher's Zenodo token
+# out of the CONTAINER keyring, because that is the only place vaibify
+# stores it, while `docker save` can only run on the host. The value
+# is held in the hub process for the length of one upload and is
+# written to no file and no log.
+S_TYPED_READ_KEYRING_SECRET = "keyringSecretValue"
+
 # A provider login document is kilobytes. The council's credential read
 # bounds itself IN the container at this ceiling rather than inheriting
 # the 64 MB general-file cap, which can only reject after the bytes
@@ -340,6 +347,17 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    baHead=fileIn.read(" + str(I_MAX_CREDENTIAL_FILE_BYTES + 1)
         + ")\n"
         "sys.stdout.buffer.write(base64.b64encode(baHead))\n"
+    ),
+    # The slot NAME occupies the literal slot, exactly as a path does
+    # everywhere else here: the program is server-owned text and the
+    # caller chooses only which stored value to ask for. Callers
+    # validate the slot against the closed set of vaibify credential
+    # slots before asking, the same discipline every path caller
+    # applies to its path.
+    S_TYPED_READ_KEYRING_SECRET: (
+        "import keyring,sys\n"
+        "sys.stdout.write(keyring.get_password('vaibify', "
+        + _S_TYPED_READ_PATH_SLOT + ") or '')\n"
     ),
     S_TYPED_READ_DIRECTORY: (
         "import os,sys; "
@@ -1272,6 +1290,31 @@ class DockerConnection:
                 f"byte ceiling: {sFilePath}"
             )
         return baContent
+
+    def fsFetchKeyringSecret(self, sContainerId, sSlotName):
+        """Read one stored credential out of the container's keyring.
+
+        Vaibify keeps the Zenodo token in the CONTAINER keyring, and
+        the environment-archive deposit runs on the host because
+        ``docker save`` talks to the daemon. So the value has to
+        cross once. Nothing about the value reaches a log, a file, or
+        an exception message here: an unreadable slot raises with the
+        SLOT name only, and an empty slot returns ``""`` rather than
+        an error, because "no token stored" is an answer the caller
+        turns into a researcher-facing instruction.
+
+        The caller is responsible for holding the value no longer
+        than the operation that needs it.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_KEYRING_SECRET, sSlotName,
+        )
+        if tExecResult.iExitCode != 0:
+            raise LookupError(
+                "Could not read the credential slot "
+                f"{sSlotName!r} from this container's keyring."
+            )
+        return tExecResult.sStdout.strip()
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,

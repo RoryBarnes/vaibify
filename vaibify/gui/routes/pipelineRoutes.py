@@ -19,6 +19,7 @@ from ...reproducibility.manifestPaths import (
     flistStepOutputRepoPaths,
 )
 
+from .. import archiveProgress
 from .. import containerOwnership
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
@@ -26,6 +27,8 @@ from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
     WORKSPACE_ROOT,
+    fbPinnedImageIsInLocalStore,
+    fdictBuildImageArchiveDetail,
     fdictAssessEnvelopeImageCurrency,
     fdictRequireWorkflow,
     fiGetSyncEpoch,
@@ -1128,6 +1131,10 @@ async def _fdictFetchOutputStatus(
         dictImageCurrency=fdictAssessEnvelopeImageCurrency(
             dictCtx, sContainerId, filesPoll,
         ),
+        dictImageArchive=fdictBuildImageArchiveDetail(
+            dictWorkflow, filesPoll, sContainerId,
+            fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
+        ),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1932,6 +1939,7 @@ def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
     bHostProject=False, *, bVerificationRunning, dictImageCurrency,
+    dictImageArchive,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1949,6 +1957,8 @@ def _fdictBuildPollResponseRest(
     one that arrived False -- the attestation row silently never
     pulses, and every function in the chain still reads correctly.
     Requiring it makes a dropped hop a TypeError instead.
+    ``dictImageCurrency`` and ``dictImageArchive`` travel the same way
+    and for the same reason.
     """
     if filesPoll is None:
         filesPoll = sRepoRoot
@@ -1965,6 +1975,7 @@ def _fdictBuildPollResponseRest(
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
         bVerificationRunning=bVerificationRunning,
         dictImageCurrency=dictImageCurrency,
+        dictImageArchive=dictImageArchive,
     )
 
 
@@ -2016,7 +2027,7 @@ def _fdictComputePollLevelGates(
 def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
-    *, bVerificationRunning, dictImageCurrency,
+    *, bVerificationRunning, dictImageCurrency, dictImageArchive,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
@@ -2041,6 +2052,7 @@ def _fdictAssemblePollResponse(
             dictWorkflow, filesPoll,
             bVerificationRunning=bVerificationRunning,
             dictImageCurrency=dictImageCurrency,
+            dictImageArchive=dictImageArchive,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
@@ -2246,7 +2258,7 @@ def _fdictSummarizeAttestation(filesRepo):
 
 def _fdictBuildWorkflowEnvelopeDetail(
     dictWorkflow, filesPoll, bVerificationRunning=False,
-    dictImageCurrency=None,
+    dictImageCurrency=None, *, dictImageArchive,
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
@@ -2319,6 +2331,15 @@ def _fdictBuildWorkflowEnvelopeDetail(
             "sPinnedImageDigest": "",
             "sLiveImageDigest": "",
         },
+        # The environment archive, as a STATE rather than a boolean.
+        # Seven of them, because "not deposited", "the deposit covers
+        # another platform", "Zenodo could not be reached" and
+        # "declined, and the image is gone" are different situations a
+        # researcher acts on differently -- and two of them must never
+        # render as the same colour as a divergence. Computed here so
+        # the row renders the backend's verdict rather than deriving a
+        # second one in JavaScript.
+        "dictImageArchive": dictImageArchive,
         "dictDeterminism":
             (dictWorkflow or {}).get("dictDeterminism") or None,
         # The VERDICT, not the raw block, because the row must not

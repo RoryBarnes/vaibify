@@ -168,6 +168,20 @@ class ZenodoClient:
         except (UnicodeDecodeError, ValueError):
             return None
 
+    def fdictFetchPublishedRecord(self, sRecordId):
+        """Return one PUBLISHED record's metadata dict.
+
+        Published records are public, so this works without a token —
+        which is what lets a researcher point at an existing
+        environment archive from the host, where no Zenodo credential
+        lives. A record-scoped failure (404, auth, rate limit) is
+        re-raised with the id named rather than swallowed: a
+        researcher who mistyped a DOI needs to be told that, not shown
+        an empty answer that reads as "the deposit does not describe
+        its image".
+        """
+        return _fdictGetRecordSafely(self, sRecordId)
+
     def fdictCreateDraft(self, dictMetadata=None):
         """Create a new deposit draft and return its metadata.
 

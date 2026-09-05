@@ -6333,6 +6333,25 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     line-height: 1;
 }
 
+/* Diverged and closed both render red and are told apart by SHAPE.
+   Diverged is a claim that failed a comparison — the deposit on
+   record does not cover this envelope, and the researcher fixes it.
+   Closed is the opposite: the archiving opportunity is gone, so there
+   is nothing to fix, and telling the two apart by tint alone would
+   fail every colour-blind reader. */
+.level-cell-diverged .level-cell-circle,
+.level-cell-closed .level-cell-circle {
+    display: none;
+}
+
+.level-cell-warning,
+.level-cell-closed {
+    color: var(--color-red);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
 /* Declaration git actions (researcher ruling 2026-07-02): commit is
    the routine action and wears pale blue; removal withdraws the
    declaration from the published record and wears orange as the
@@ -6583,6 +6602,16 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .requirement-row-status {
     color: var(--text-secondary);
     padding: 2px 0;
+}
+
+/* Why a requirement is unmet, one reason per line. A refusal that
+   names its cause is the difference between a researcher fixing a
+   deposit and a researcher opening a tab. */
+.requirement-row-issues {
+    margin: 2px 0 2px 16px;
+    padding: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
 }
 
 /* A remote check is in flight: the badge PULSES until that service

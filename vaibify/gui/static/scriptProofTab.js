@@ -167,6 +167,23 @@ var VaibifyProofTab = (function () {
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "personalLayer"},
+            {sStateKey: "bImageArchiveAnswered",
+             sLabel: "Environment archive",
+             sWhat: "Your results were produced inside a container " +
+                 "image. Its digest is recorded, but a digest only " +
+                 "names bytes a registry is storing for you — when " +
+                 "the registry forgets them, nobody can rebuild the " +
+                 "environment and the result stops being checkable. " +
+                 "This asks whether you want the image deposited in " +
+                 "a permanent archive. Answering is the requirement: " +
+                 "declining meets it. But the image is a local " +
+                 "resource a prune, a rebuild or a new laptop can " +
+                 "remove, so the opportunity may not come back.",
+             sHow: "Answer it in the Artifacts section of the " +
+                 "Project block: deposit the image, point at a " +
+                 "deposit that already holds it, or decline.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
             {sStateKey: "bSupervisionClean",
              sLabel: "Supervised mode (optional)",
              bOptional: true,
@@ -297,6 +314,21 @@ var VaibifyProofTab = (function () {
                  "on the Zenodo row in the Project block.",
              sFixTabPanel: "repos",
              sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bImageArchived",
+             sStateSource: "dictImageArchive",
+             sLabel: "Environment archived",
+             sWhat: "The container image these results were produced " +
+                 "in is in a permanent archive under its own DOI, " +
+                 "and the deposit on record covers the image and " +
+                 "platform this project's envelope pins. This is " +
+                 "what lets reproduce.sh keep working after the " +
+                 "registry that served the image stops serving it.",
+             sHow: "Deposit the image from the Artifacts section of " +
+                 "the Project block, or point at the deposit that " +
+                 "already holds it. Declining the question above " +
+                 "does not block this — deposit later and it opens.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
             {sStateKey: "bL3AttestationCurrent",
              sLabel: "Rebuild attestation",
              sWhat: "A full rebuild reran the project and " +
@@ -567,11 +599,30 @@ var VaibifyProofTab = (function () {
         return sHtml + '</div>';
     }
 
+    function _fsRequirementStateOrEmpty(dictReq) {
+        // A row may name a backend STATE instead of settling for the
+        // met/not-met pair. The environment archive needs it: "not
+        // deposited", "the deposit covers another platform",
+        // "vaibify could not reach Zenodo" and "declined, and the
+        // image is gone" are all not-met, and painting them the same
+        // makes a check nobody performed look like a failed one. The
+        // state is the BACKEND's verdict — this renders it and never
+        // re-derives it, which is the mistake the determinism row
+        // shipped.
+        if (!dictReq.sStateSource) return "";
+        var dictState = (_dictLastL3Readiness || {})[dictReq.sStateSource];
+        return (dictState && dictState.sState) || "";
+    }
+
     function _fsRenderRequirementEntry(dictReq) {
         var bMet = _fbRequirementMet(dictReq);
+        var sBackendState = _fsRequirementStateOrEmpty(dictReq);
         // An unmet optional row shows the neutral dash, never a red
         // light — it is recommended, not a blocker.
-        var sLight = (!bMet && dictReq.bOptional === true)
+        var sLight = sBackendState
+            ? _fsBuildLevelLight(sBackendState,
+                dictReq.sLabel + ": " + sBackendState)
+            : (!bMet && dictReq.bOptional === true)
             ? _fsBuildLevelLight("not-applicable",
                 dictReq.sLabel + ": optional, not tracked")
             : _fsBuildLevelLight(

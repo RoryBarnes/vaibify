@@ -31,6 +31,8 @@ __all__ = [
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
     "fdictCaptureLiveImageIdentity",
+    "fbImageExistsLocally",
+    "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
@@ -55,7 +57,7 @@ _DOCKER_INSTALL_HINT = (
 
 
 def fdictCaptureContainerImageDigest(sContainerName):
-    """Return the image digest for a running container.
+    """Return the image digest and architecture for a running container.
 
     A container has no ``RepoDigests`` field of its own, so the
     capture resolves the container's image ID first (``{{.Image}}``)
@@ -64,6 +66,12 @@ def fdictCaptureContainerImageDigest(sContainerName):
     content digest — is recorded instead, with ``bLocalImageOnly``
     marking the local-only provenance honestly. Nothing is ever
     fabricated: when neither form is available the digest is None.
+
+    ``sArchitecture`` is read from the image rather than derived from
+    the digest, because a **manifest list** digest spans several
+    platforms and pins none of them — so a matching digest does not
+    imply a matching platform, and the environment archive's gate
+    compares both.
     """
     _fnEnsureDockerAvailable()
     sImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
@@ -72,9 +80,57 @@ def fdictCaptureContainerImageDigest(sContainerName):
         sRepoDigest = _fsParseRepoDigests(
             _fsInspectFormatValue(sImageId, "{{.RepoDigests}}"),
         )
-    return _fdictBuildImageDigestEntry(
+    dictEntry = _fdictBuildImageDigestEntry(
         sContainerName, sImageId, sRepoDigest,
     )
+    dictEntry["sArchitecture"] = fsReadImageArchitecture(sImageId)
+    return dictEntry
+
+
+def fsReadImageArchitecture(sImageReference):
+    """Return the platform an IMAGE was built for, or ``''``.
+
+    Empty means the image is not in the local store or the daemon is
+    unreachable — "nothing determined", which downstream reads as
+    UNCHECKED and never as a mismatch.
+    """
+    if not sImageReference:
+        return ""
+    try:
+        _fnEnsureDockerAvailable()
+        return _fsRunCheckedCommand([
+            "docker", "image", "inspect", "--format",
+            "{{.Architecture}}", sImageReference,
+        ]).strip()
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return ""
+
+
+def fbImageExistsLocally(sImageReference):
+    """Return True/False/None for "the daemon still holds this image".
+
+    ``None`` means nobody could look — no reference, no docker, or an
+    unreachable daemon. The caller must not read that as absence: the
+    row state it feeds says the archiving opportunity is GONE, which
+    needs positive evidence, and an unreachable daemon is evidence of
+    nothing.
+    """
+    if not sImageReference:
+        return None
+    try:
+        _fnEnsureDockerAvailable()
+    except FileNotFoundError:
+        return None
+    try:
+        _fsRunCheckedCommand(
+            ["docker", "image", "inspect", "--format", "{{.Id}}",
+             sImageReference],
+        )
+    except subprocess.CalledProcessError:
+        return False
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return True
 
 
 def _fsInspectFormatValue(sTarget, sFormat):
@@ -112,6 +168,7 @@ def fdictCaptureLiveImageIdentity(sContainerName):
     return {
         "sImageDigest": dictEntry.get("sImageDigest") or "",
         "sImageId": sImageId or "",
+        "sArchitecture": fsReadImageArchitecture(sImageId),
     }
 
 
@@ -171,6 +228,37 @@ def _fbIsImageIdDigest(sImageId):
     return len(sHexPart) == 64 and all(
         sCharacter in "0123456789abcdef" for sCharacter in sHexPart
     )
+
+
+def fdictCarryImageArchiveForward(dictPrevious, dictFresh):
+    """Return ``dictFresh`` carrying the previous deposit record, or not.
+
+    The envelope is regenerated automatically whenever a workflow
+    crosses Level 1, and that rebuilds ``dictContainer`` from a fresh
+    capture. Without this the deposit record -- written once, at the
+    one moment vaibify held the bytes -- would be destroyed by the
+    next ordinary regeneration.
+
+    The record is carried only when the fresh capture agrees with the
+    previous one on BOTH the digest and the architecture. Digest alone
+    is not enough: a manifest-list digest spans several platforms, so
+    the same digest can name a different build, and carrying the
+    record across that boundary would claim a deposit covers an image
+    nobody deposited. When they disagree the record is dropped, which
+    is correct -- the archive still exists on Zenodo and still covers
+    the image it names, but it no longer covers THIS envelope, and the
+    Level 3 row says so.
+    """
+    dictRecord = (dictPrevious or {}).get("dictImageArchive")
+    if not isinstance(dictRecord, dict):
+        return dictFresh
+    for sField in ("sImageDigest", "sArchitecture"):
+        sPrevious = str((dictPrevious or {}).get(sField) or "")
+        if not sPrevious or sPrevious != str(dictFresh.get(sField) or ""):
+            return dictFresh
+    dictCarried = dict(dictFresh)
+    dictCarried["dictImageArchive"] = dictRecord
+    return dictCarried
 
 
 def _fnEnsureDockerAvailable():

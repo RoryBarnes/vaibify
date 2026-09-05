@@ -238,9 +238,37 @@ from three orthogonal capture helpers:
   salted the pinned figures, so every timestamped artefact would
   diverge on exactly the workflows the envelope exists to certify.
 
+- `fsReadImageArchitecture(sImageReference)` — the platform the image
+  was built for, recorded as `sArchitecture`. Read from the image
+  rather than derived from the digest, because a **manifest list**
+  digest spans several platforms and pins none of them.
+
 This tier records what the container layer cannot pin by digest alone,
 without claiming to bit-pin floating-point arithmetic across CPU
 architectures.
+
+#### The image digest names bytes somebody else is storing
+
+A digest is a pin, not a copy. `reproduce.sh` begins with `docker
+pull`, and that is the moment the pin stops being enough: when the
+registry no longer serves the digest, the compiler, the exact numeric
+library, the interpreter and every installed package are gone with it.
+
+`dictContainer.dictImageArchive` records a deposit of the image itself
+— a `docker save`, compressed, published to Zenodo under its own
+version DOI. `reproduce.sh` falls back to it when the pull fails,
+verifying the download against `sTarballSha256` before loading it. The
+record carries the digest and the platform it covers, so an envelope
+regenerated for a different image drops it rather than claiming an
+archive nobody made, and two hashes: `sTarballSha256` binds the bytes
+uploaded, and `sImageStreamSha256` binds the image content
+independently of which compressor produced the tarball.
+
+Depositing is the researcher's choice, asked once at Level 2 and
+answerable with `archived`, `referenced` or `declined`. Declining
+satisfies Level 2 and blocks only the Level 3 criterion, which never
+reads the answer — so a project that declined and later deposits
+reaches Level 3 with nothing to undo.
 
 ### The Dockerfile is provenance; the digest is reproduction
 
@@ -536,6 +564,15 @@ variance. This is a science-of-reproducibility limitation, not a
 vaibify defect, and we document it rather than try to engineer around
 it. Tier 5 (project re-run via `vaibify reproduce --rerun`) is
 therefore advisory.
+
+**An archived environment is runnable, not rebuildable.** The deposit
+preserves the image as it was built: binaries, not sources. It does not
+let a reader reconstruct that image from first principles the way a
+Guix or Nix derivation would, and it inherits `docker load`'s own
+platform constraints — an arm64 deposit runs under emulation on an
+amd64 host, or not at all. Preserving a runnable environment is the
+claim; preserving a rebuildable one is out of scope and deliberately
+so.
 
 **The unfixable failure mode.** If `vaibify reproduce` itself is
 replaced by a tampered binary on the verifier's machine, vaibify

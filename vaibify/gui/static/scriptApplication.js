@@ -3590,6 +3590,27 @@ const VaibifyApp = (function () {
             },
             sToast: "Reproducibility rules deleted.",
         },
+        "answer-environment-archive": {
+            sPath: "/environment-archive/answer",
+            fdictBodyFromElement: _fdictReadEnvironmentArchiveForm,
+            sToast: "Environment-archive answer recorded.",
+        },
+        "deposit-environment-archive": {
+            sPath: "/environment-archive/deposit",
+            dictConfirm: {
+                sTitle: "Deposit the container image",
+                sMessage: "Vaibify will save this project's " +
+                    "container image, compress it, and publish it to " +
+                    "Zenodo under a new DOI. Zenodo deposits are " +
+                    "PERMANENT and cannot be deleted. The image is " +
+                    "usually several gigabytes, so this takes " +
+                    "minutes and needs that much free disk space " +
+                    "while it runs.",
+            },
+            sToast: "Depositing the container image. Progress " +
+                "appears on the Environment archive row; the DOI is " +
+                "recorded when it finishes.",
+        },
         "remove-ai-model": {
             sPath: "/ai-models/remove",
             fdictBody: function (sArg) {
@@ -3682,6 +3703,34 @@ const VaibifyApp = (function () {
         }
         dictBody[sValueKey] = (sValueKey === "dOmpNumThreads")
             ? parseInt(sRaw, 10) : sRaw;
+        return dictBody;
+    }
+
+    function _fdictReadEnvironmentArchiveForm(elButton) {
+        // Two of the three answers come from here; the third
+        // ("archived") is never sent, because it is not a claim a
+        // caller may assert — it is what the backend writes once a
+        // deposit has actually been published. The route refuses it.
+        var elForm = elButton.closest(".environment-archive-form");
+        if (!elForm) return null;
+        var elChecked = elForm.querySelector(
+            ".environment-archive-answer:checked");
+        if (!elChecked) {
+            fnShowToast(
+                "Choose one of the answers before saving.", "error");
+            return null;
+        }
+        var dictBody = {sAnswer: elChecked.value};
+        if (elChecked.value !== "referenced") return dictBody;
+        var elDoi = elForm.querySelector(".environment-archive-doi");
+        dictBody.sVersionDoi = elDoi
+            ? String(elDoi.value).trim() : "";
+        if (!dictBody.sVersionDoi) {
+            fnShowToast(
+                "Enter the version DOI of the deposit that holds " +
+                "this image.", "error");
+            return null;
+        }
         return dictBody;
     }
 

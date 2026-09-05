@@ -77,6 +77,14 @@ dev = [
     # under a fully green suite -- a defect no fixture reached, and one
     # a static sweep catches for every route at once.
     "pyflakes>=2.3",
+    # The environment-archive deposit compresses with zstd where a
+    # zstd codec exists and falls back to gzip where none does
+    # (`compression.zstd` arrived in 3.14; the wheel is not a runtime
+    # dependency because a compressor a researcher cannot install
+    # must not be the difference between depositing and not). Pinned
+    # into the dev extra so CI exercises the zstd branch rather than
+    # only the fallback.
+    "zstandard>=0.21",
 ]
 browser = [
     # Lane 1: real Chromium against a real uvicorn hub. Playwright's

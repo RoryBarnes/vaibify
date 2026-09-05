@@ -560,6 +560,58 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
 
+**The environment archive is one question with two blocks, and the L3
+half must never read the L2 answer.** Level 2 asks whether the
+researcher ANSWERED — `archived`, `referenced` and `declined` all pass,
+and only silence fails. Level 3 asks whether a matching archive
+EXISTS. Keeping them apart is what makes declining a decision rather
+than a lock: a decline is an absent archive, so changing the answer and
+depositing opens L3 with nothing to undo. The one sound direction is
+the other one — `fbImageArchiveQuestionSettled` reads the deposit
+record, because having deposited is having decided, and the deposit
+finishes in a durable task holding no commit lane to persist an answer
+through. Five things not to "simplify", each already pinned by a
+kill-confirmed test in `tests/testEnvironmentArchive.py`:
+
+- **The version DOI, never the concept DOI.** Zenodo's concept DOI
+  always resolves to the NEWEST version, so recording it repoints every
+  earlier paper at whatever image was deposited last — the link
+  resolves, nothing errors, and the archived environment is simply not
+  the one that produced those numbers.
+- **Architecture is recorded, never inferred from the digest.** A
+  manifest-list digest spans several platforms and pins none of them,
+  so matching digests do not imply a matching build. This is also why
+  the envelope's regeneration carries a deposit record forward only
+  when BOTH the digest and the architecture still agree.
+- **Unchecked is never red.** Red means diverged, a claim about the
+  deposit; an envelope one side of which is missing was compared with
+  nothing. `flistDescribeArchiveMismatch` RAISES `LookupError` for that
+  case rather than returning a reason, so a caller cannot accidentally
+  render it as a difference.
+- **CLOSED needs positive evidence.** "Declined, and the image is gone,
+  so L3 is unreachable for this result" is the strongest statement the
+  row makes. The presence probe is three-state and captured at connect
+  (the poll makes no daemon call); `None` means nobody looked, and the
+  row falls back to the weaker reading.
+- **The attestation re-check can be VACUOUS.** An image obtained by
+  loading the deposit hashes to the deposit's own bytes every time.
+  `reproduce.sh`'s fallback writes
+  `.vaibify/image_loaded_from_archive` — a file beside the envelope,
+  never a field inside it, because the envelope is pinned in
+  `MANIFEST.sha256` and that script ends by verifying it — and the
+  check reports vacuous rather than passed.
+
+Two hashes ride in the record and neither substitutes for the other:
+`sTarballSha256` binds the bytes UPLOADED (what a downloader verifies)
+and `sImageStreamSha256` binds `docker save`'s uncompressed output
+(what the re-check compares, because zstd and gzip — and two builds of
+one codec — give different bytes for one image). The deposit runs
+host-side and reads the Zenodo token out of the CONTAINER keyring
+through the typed-read seam, because `docker save` can only run on the
+host and the token lives nowhere else; it is held in a local for one
+upload and written to no file and no log.
+`docs/architecture.md` — "The environment archive" — carries the model.
+
 ## A human step's outputs are GIVEN, not reproduced
 
 **The rerun carries an interactive step's outputs instead of refusing

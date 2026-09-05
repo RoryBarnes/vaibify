@@ -714,6 +714,36 @@ LIST_AGENT_ACTIONS = [
                      "value. User-only: these are claims about the "
                      "researcher's own science and an agent must not "
                      "make them on their behalf."},
+    {"sName": "answer-environment-archive", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/environment-archive/answer",
+     "bAgentSafe": False,
+     "sDescription": "Record the researcher's answer to the "
+                     "environment-archive question. Args: {sAnswer: "
+                     "archived|referenced|declined}, plus sVersionDoi "
+                     "when the answer is 'referenced'. Answering is "
+                     "the Level 2 criterion and 'declined' passes; "
+                     "whether an archive EXISTS is a separate Level 3 "
+                     "criterion that never reads this answer. "
+                     "User-only: declining forfeits a preservation "
+                     "opportunity that a prune or a rebuild can close "
+                     "for good, and only the researcher may make that "
+                     "trade."},
+    {"sName": "deposit-environment-archive", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/environment-archive/deposit",
+     "bAgentSafe": False,
+     "sDescription": "Save the container image the envelope pins, "
+                     "upload it to Zenodo and publish it, then record "
+                     "the version DOI and tarball hash in "
+                     ".vaibify/environment.json. Runs as durable "
+                     "background work and reports progress; poll "
+                     "check-l3-readiness for the outcome. User-only, "
+                     "and this one is a security decision rather than "
+                     "a preference: publishing to Zenodo under the "
+                     "researcher's credentials is outward-facing and "
+                     "irreversible, so a compromised container agent "
+                     "must not be able to trigger it."},
     {"sName": "declare-ai-model", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/ai-models/declare",
