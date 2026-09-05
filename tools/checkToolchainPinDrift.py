@@ -48,6 +48,8 @@ __all__ = [
     "fdictHashPayloadMembers",
     "ftComparePackagePayloads",
     "flistDetectDrift",
+    "flistDetectClosureMembershipChanges",
+    "fsSupersededPoolBasename",
     "fsApplyPinBumps",
     "S_VERDICT_IDENTICAL",
     "S_VERDICT_CHANGED",
@@ -90,6 +92,7 @@ T_DOCUMENTATION_PREFIXES = (
 )
 
 REGEX_PIN = re.compile(r"^\s+([A-Za-z0-9][A-Za-z0-9+.-]*)=(\S+?)(?: \\)?$", re.M)
+REGEX_PIN_SHAPED = re.compile(r"^\s+[A-Za-z0-9][A-Za-z0-9+.-]*=\S+")
 REGEX_BASE_IMAGE = re.compile(r"^ARG BASE_IMAGE=(\S+)", re.M)
 REGEX_SIMULATED_INSTALL = re.compile(
     r"^Inst (\S+)(?: \[[^\]]*\])? \((\S+) ", re.M
@@ -127,9 +130,29 @@ def fdictParsePinnedVersions(sDockerfileText):
     Parsed from the shipped Dockerfile rather than a second list, so
     the tool can never grade a pin set the image does not use.
     """
-    dictPinned = dict(REGEX_PIN.findall(fsExtractToolchainBlock(sDockerfileText)))
+    sBlock = fsExtractToolchainBlock(sDockerfileText)
+    dictPinned = dict(REGEX_PIN.findall(sBlock))
+    # A PARTIAL parse is the dangerous outcome, not an empty one. One
+    # extra space on a pin line drops that package from the checked set
+    # and the tool then reports "no drift" about it forever -- silently,
+    # because the remaining 44 parse perfectly. Measured: a single
+    # trailing space took the count from 45 to 44 with no other signal.
+    # So count the pin-shaped lines independently and demand agreement.
+    iPinShapedLines = len(
+        [
+            sLine
+            for sLine in sBlock.splitlines()
+            if REGEX_PIN_SHAPED.match(sLine)
+        ]
+    )
     if not dictPinned:
         raise ValueError("parsed zero pins; the block's shape has changed")
+    if len(dictPinned) != iPinShapedLines:
+        raise ValueError(
+            f"parsed {len(dictPinned)} pins but the block holds "
+            f"{iPinShapedLines} pin-shaped lines; the unparsed ones would "
+            "be silently exempt from every comparison"
+        )
     return dictPinned
 
 
@@ -188,46 +211,109 @@ def flistReadArchiveMembers(baDeb):
     return listMembers
 
 
-def fdictHashPayloadMembers(baDeb):
-    """Return {payload path: sha256} for every non-documentation file.
+def fsMemberIdentity(tarArchive, infoMember):
+    """Return a string identifying everything about one archive member.
 
-    Directories and symlink targets are included by identity so a
-    changed link or a new file cannot hide behind a file-content-only
-    comparison.
+    Content alone is not the member. A header whose permission bits
+    changed, a binary that gained setuid, a file that changed owner, or
+    a symlink retargeted at a different architecture's headers are all
+    real changes that a content-only hash reports as IDENTICAL --
+    measured, not supposed. So the identity carries the type, the mode,
+    the ownership, the link target and the PAX records (which is where
+    file capabilities ride) alongside the content digest.
     """
-    baPayload = None
+    listFacets = [
+        f"type:{infoMember.type.decode('ascii')}",
+        f"mode:{infoMember.mode:o}",
+        f"owner:{infoMember.uid}:{infoMember.gid}",
+    ]
+    if infoMember.pax_headers:
+        listFacets.append(f"pax:{sorted(infoMember.pax_headers.items())}")
+    if infoMember.issym() or infoMember.islnk():
+        listFacets.append(f"link:{infoMember.linkname}")
+    elif infoMember.isfile():
+        fileHandle = tarArchive.extractfile(infoMember)
+        baContent = b"" if fileHandle is None else fileHandle.read()
+        listFacets.append(f"sha256:{hashlib.sha256(baContent).hexdigest()}")
+    return "|".join(listFacets)
+
+
+def fbaExtractArchiveMember(baDeb, sPrefix):
+    """Return the decompressed bytes of the named .deb sub-archive."""
     for sName, baMember in flistReadArchiveMembers(baDeb):
-        if sName.startswith("data.tar"):
-            baPayload = fbaDecompressPayload(baMember, sName)
-            break
-    if baPayload is None:
-        raise ValueError("the package contains no data.tar member")
-    dictHashes = {}
+        if sName.startswith(sPrefix):
+            return fbaDecompressPayload(baMember, sName)
+    raise ValueError(f"the package contains no {sPrefix} member")
+
+
+def fbaNormaliseControlStanza(baContent):
+    """Drop the two control fields that MUST differ between versions.
+
+    `Version` and `Installed-Size` differ by definition when a package
+    is superseded, so comparing them would make every rotation CHANGED
+    and the tool useless. Every other field -- `Depends` above all, but
+    also `Provides`, `Conflicts` and `Replaces` -- is compared, because
+    a dependency change alters what gets installed alongside this
+    package and is exactly the kind of drift a payload diff misses.
+    """
+    listKept = [
+        baLine
+        for baLine in baContent.split(b"\n")
+        if not baLine.startswith((b"Version:", b"Installed-Size:"))
+    ]
+    return b"\n".join(listKept)
+
+
+def fdictHashPayloadMembers(baDeb):
+    """Return {namespaced path: identity} for everything that can reach a build.
+
+    Covers BOTH sub-archives. `data.tar` is the installed files;
+    `control.tar` carries the maintainer scripts and the dependency
+    fields, and a changed `postinst` or `Depends` is a real change that
+    comparing installed files alone cannot see.
+    """
+    dictIdentities = {}
+    baPayload = fbaExtractArchiveMember(baDeb, "data.tar")
     with tarfile.open(fileobj=io.BytesIO(baPayload)) as tarPayload:
         for infoMember in tarPayload.getmembers():
             sPath = infoMember.name.lstrip("./")
             if not sPath or fbIsDocumentationMember(sPath):
                 continue
-            if infoMember.issym() or infoMember.islnk():
-                dictHashes[sPath] = f"link:{infoMember.linkname}"
+            dictIdentities[f"data/{sPath}"] = fsMemberIdentity(
+                tarPayload, infoMember
+            )
+    baControl = fbaExtractArchiveMember(baDeb, "control.tar")
+    with tarfile.open(fileobj=io.BytesIO(baControl)) as tarControl:
+        for infoMember in tarControl.getmembers():
+            sPath = infoMember.name.lstrip("./")
+            # md5sums restates data.tar, which is compared above, and it
+            # necessarily changes whenever that does.
+            if not sPath or sPath == "md5sums":
                 continue
-            if not infoMember.isfile():
-                dictHashes[sPath] = f"type:{infoMember.type.decode('ascii')}"
+            if sPath == "control" and infoMember.isfile():
+                fileHandle = tarControl.extractfile(infoMember)
+                baStanza = b"" if fileHandle is None else fileHandle.read()
+                dictIdentities["control/control"] = hashlib.sha256(
+                    fbaNormaliseControlStanza(baStanza)
+                ).hexdigest()
                 continue
-            fileHandle = tarPayload.extractfile(infoMember)
-            baContent = b"" if fileHandle is None else fileHandle.read()
-            dictHashes[sPath] = hashlib.sha256(baContent).hexdigest()
-    return dictHashes
+            dictIdentities[f"control/{sPath}"] = fsMemberIdentity(
+                tarControl, infoMember
+            )
+    return dictIdentities
 
 
 def ftComparePackagePayloads(baOld, baNew):
     """Return (verdict, sorted list of differing payload paths)."""
     dictOld = fdictHashPayloadMembers(baOld)
     dictNew = fdictHashPayloadMembers(baNew)
-    if not dictOld or not dictNew:
-        # A package whose payload reads as empty has not been compared,
-        # whatever the dictionaries agree about.
-        return S_VERDICT_UNCOMPARABLE, ["payload read as empty"]
+    # A package whose INSTALLED files read as empty has not been
+    # compared, whatever the dictionaries agree about. The test is on
+    # the data members specifically: control members are always
+    # present, so a whole-map emptiness check would stop firing.
+    for dictSide in (dictOld, dictNew):
+        if not any(sPath.startswith("data/") for sPath in dictSide):
+            return S_VERDICT_UNCOMPARABLE, ["payload read as empty"]
     listDiffering = sorted(
         sPath
         for sPath in set(dictOld) | set(dictNew)
@@ -298,6 +384,19 @@ def fbaFetchUrl(sUrl):
         return responseHandle.read()
 
 
+def fsSupersededPoolBasename(sPoolPath, sPackage, sOldVersion):
+    """Return the pool FILENAME the superseded version is stored under.
+
+    A pool filename carries no EPOCH: gcc at version 4:13.2.0-7ubuntu1
+    is stored as gcc_13.2.0-7ubuntu1_amd64.deb. Percent-encoding the
+    colon instead produced a URL that 404s, so the seven epoch-bearing
+    pins -- which include gcc, g++ and cpp themselves -- could only ever
+    be escalated, never compared. Confirmed against the live archive.
+    """
+    sArchitecture = sPoolPath.rsplit("/", 1)[-1].rsplit("_", 1)[-1]
+    return f"{sPackage}_{sOldVersion.split(':', 1)[-1]}_{sArchitecture}"
+
+
 def fbaFetchSupersededPackage(sPoolPath, sPackage, sOldVersion):
     """Return the superseded .deb's bytes from a dated snapshot mirror.
 
@@ -306,9 +405,8 @@ def fbaFetchSupersededPackage(sPoolPath, sPackage, sOldVersion):
     """
     import datetime
 
-    sDirectory, sBasename = sPoolPath.rsplit("/", 1)
-    sArchitecture = sBasename.rsplit("_", 1)[-1]
-    sOldBasename = f"{sPackage}_{sOldVersion.replace(':', '%3a')}_{sArchitecture}"
+    sDirectory = sPoolPath.rsplit("/", 1)[0]
+    sOldBasename = fsSupersededPoolBasename(sPoolPath, sPackage, sOldVersion)
     dateToday = datetime.datetime.now(datetime.timezone.utc)
     for iDaysBack in T_SNAPSHOT_PROBE_DAYS:
         sStamp = (
@@ -332,6 +430,36 @@ def flistDetectDrift(dictPinned, dictResolved):
         for sPackage, sPinned in sorted(dictPinned.items())
         if sPackage in dictResolved and dictResolved[sPackage] != sPinned
     ]
+
+
+def flistDetectClosureMembershipChanges(dictPinned, dictResolved):
+    """Return human-readable reasons the pin SET no longer matches the closure.
+
+    Drift detection compares versions of packages present on both
+    sides, so it is blind in both directions to the set itself
+    changing. Both directions are real and neither is a version bump:
+
+      * a package that ENTERED the closure is installed by the
+        Dockerfile's apt line as an unpinned dependency, so the very
+        thing the block exists to prevent happens to it silently; and
+      * a package that LEFT is a pin the comparison would skip, and a
+        stale pin can make apt unsatisfiable rather than merely
+        redundant.
+
+    Neither is auto-acceptable, because the fix is to regenerate the
+    pin list -- a maintainer's decision, not a version substitution.
+    """
+    listReasons = []
+    for sPackage in sorted(set(dictResolved) - set(dictPinned)):
+        listReasons.append(
+            f"{sPackage} entered the toolchain closure and is NOT pinned "
+            f"(apt would install {dictResolved[sPackage]} unpinned)"
+        )
+    for sPackage in sorted(set(dictPinned) - set(dictResolved)):
+        listReasons.append(
+            f"{sPackage} is pinned but is no longer part of the closure"
+        )
+    return listReasons
 
 
 def ftJudgeOnePin(sBaseImage, sPackage, sOldVersion, sNewVersion, dictPoolPaths):
@@ -399,6 +527,14 @@ def fnMain(listArgv=None):
         dictResolved = fdictResolveCurrentClosure(sBaseImage)
     except RuntimeError as errorResolve:
         print(f"Could not resolve the current closure: {errorResolve}")
+        return 1
+
+    listMembership = flistDetectClosureMembershipChanges(dictPinned, dictResolved)
+    if listMembership:
+        print("The pin SET no longer matches the resolved closure:")
+        for sReason in listMembership:
+            print(f"  {sReason}")
+        print("\nRegenerate the pin list; this is not a version bump.")
         return 1
 
     listDrift = flistDetectDrift(dictPinned, dictResolved)
