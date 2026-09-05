@@ -57,9 +57,16 @@ var VaibifyContainerManager = (function () {
             dictStatus.sCommand || ""
         );
         var sError = VaibifyUtilities.fnEscapeHtml(dictStatus.sError || "");
+        var sEndpoint = VaibifyUtilities.fnEscapeHtml(
+            dictStatus.sEndpoint || ""
+        );
         elBanner.innerHTML =
             '<div class="docker-status-banner-message">' +
             '<strong>Docker is unavailable.</strong> ' + sHint +
+            (sEndpoint
+                ? ' Endpoint vaibify used: <code>' + sEndpoint
+                  + '</code>.'
+                : '') +
             (sCommand
                 ? ' <code>' + sCommand + '</code>'
                 : '') +

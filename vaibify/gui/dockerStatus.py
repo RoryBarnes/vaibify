@@ -105,9 +105,12 @@ def _fsBuildDockerUnavailableDetail():
     sError = _dictDockerStatus.get("sError", "")
     sHint = _dictDockerStatus.get("sHint", "")
     sCommand = _dictDockerStatus.get("sCommand", "")
+    sEndpoint = _dictDockerStatus.get("sEndpoint", "")
     sDetail = "Docker support is not available."
     if sHint:
         sDetail += " " + sHint
+    if sEndpoint:
+        sDetail += " Endpoint vaibify used: " + sEndpoint + "."
     if sCommand:
         sDetail += " Try: " + sCommand
     if sError:
@@ -115,7 +118,32 @@ def _fsBuildDockerUnavailableDetail():
     return sDetail
 
 
-_dictDockerStatus = {"sError": "", "sHint": "", "sCommand": ""}
+def _fsResolvedDockerEndpoint():
+    """Return the endpoint the failed attempt used, as a sentence.
+
+    ``DockerConnection.__init__`` resolves the active context into
+    ``DOCKER_HOST`` before docker-py opens anything, so after a
+    failure the variable holds the endpoint that was actually tried.
+    Reporting it is what separates the two causes the socket-absent
+    hint names, and a researcher whose CLI works cannot otherwise
+    tell them apart: docker-py's own error names no path at all
+    (researcher-reported on Ubuntu, 2026-09-05, where the engine was
+    running at the default socket and the resolved context pointed
+    somewhere else).
+
+    The unset case says DOCKER_HOST was unset rather than naming
+    docker-py's built-in default, which is docker-py's to define and
+    would be a second authority on it here.
+    """
+    sHost = os.environ.get("DOCKER_HOST")
+    if sHost:
+        return sHost
+    return "DOCKER_HOST unset (docker-py default socket)"
+
+
+_dictDockerStatus = {
+    "sError": "", "sHint": "", "sCommand": "", "sEndpoint": "",
+}
 
 
 def _fconnectionCreateDocker():
@@ -149,6 +177,7 @@ def _fnRecordDockerError(sError):
     _dictDockerStatus["sError"] = sError
     _dictDockerStatus["sHint"] = dictDiagnosis["sHint"]
     _dictDockerStatus["sCommand"] = dictDiagnosis["sCommand"]
+    _dictDockerStatus["sEndpoint"] = _fsResolvedDockerEndpoint()
 
 
 def _fnClearDockerError():
@@ -156,6 +185,7 @@ def _fnClearDockerError():
     _dictDockerStatus["sError"] = ""
     _dictDockerStatus["sHint"] = ""
     _dictDockerStatus["sCommand"] = ""
+    _dictDockerStatus["sEndpoint"] = ""
 
 
 def fdictGetDockerStatus():
@@ -165,6 +195,7 @@ def fdictGetDockerStatus():
         "sError": _dictDockerStatus["sError"],
         "sHint": _dictDockerStatus["sHint"],
         "sCommand": _dictDockerStatus["sCommand"],
+        "sEndpoint": _dictDockerStatus["sEndpoint"],
     }
 
 

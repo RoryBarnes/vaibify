@@ -102,8 +102,9 @@ def _fdictSocketAbsentDiagnosis():
                  "resolved. Either the daemon is not running, or it "
                  "listens on a socket your shell reaches and vaibify "
                  "did not (a rootless or Docker Desktop context). "
-                 "Compare the endpoint below with the one vaibify "
-                 "used; if they agree, start the daemon.",
+                 "Compare the endpoint vaibify used, named below, "
+                 "with your shell's; if they agree, the daemon is "
+                 "not running.",
         "sCommand": "docker context ls",
     }
 
