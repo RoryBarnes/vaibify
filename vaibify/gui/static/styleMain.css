@@ -6090,6 +6090,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l2-ai-declaration,
 .step-blocker-glyph-l2-ai-models,
 .step-blocker-glyph-l2-personal-layer,
+.step-blocker-glyph-l2-image-archive,
 .step-blocker-glyph-l2-figure,
 .step-blocker-glyph-l2-arxiv-submit,
 .step-blocker-glyph-l2-arxiv-mismatch,
@@ -6113,6 +6114,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l3-workflow-reproduce,
 .step-blocker-glyph-l3-workflow-attestation,
 .step-blocker-glyph-l3-workflow-attestation-archive,
+.step-blocker-glyph-l3-workflow-image-archive,
 .step-blocker-glyph-l3-workflow-envelope,
 .step-blocker-glyph-l3-workflow-envelope-zenodo,
 .step-blocker-glyph-l3-workflow-binaries {

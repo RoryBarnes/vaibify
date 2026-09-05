@@ -168,7 +168,6 @@ def fdictCaptureLiveImageIdentity(sContainerName):
     return {
         "sImageDigest": dictEntry.get("sImageDigest") or "",
         "sImageId": sImageId or "",
-        "sArchitecture": fsReadImageArchitecture(sImageId),
     }
 
 

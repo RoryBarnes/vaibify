@@ -2723,6 +2723,14 @@ const VaibifyApp = (function () {
                 "in the AI section of the Project block",
             sClass: "step-blocker-glyph-l2-personal-layer",
         },
+        "image-archive-unanswered": {
+            sIcon: "⚠",
+            sLabel: "Environment archive unanswered — deposit the " +
+                "container image, point at a deposit that holds it, " +
+                "or decline, in the Artifacts section of the " +
+                "Project block",
+            sClass: "step-blocker-glyph-l2-image-archive",
+        },
         "figure-not-frozen": {
             sIcon: "⚠",
             sLabel: "Plot not pushed to Overleaf at recorded commit — " +
@@ -2863,6 +2871,15 @@ const VaibifyApp = (function () {
            is encouraged on the PROOF tab and gates nothing -- a repo
            can be renamed, made private or deleted, so it cannot carry
            a permanence claim. */
+        "image-not-archived": {
+            sIcon: "⚠",
+            sLabel: "The container image these results were produced " +
+                "in is not in a permanent archive, or the deposit on " +
+                "record covers a different image or platform — " +
+                "deposit it from the Artifacts section of the " +
+                "Project block",
+            sClass: "step-blocker-glyph-l3-workflow-image-archive",
+        },
         "attestation-not-in-zenodo-archive": {
             sIcon: "⚠",
             sLabel: "The Zenodo archive carries no rebuild " +

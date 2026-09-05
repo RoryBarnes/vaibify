@@ -501,10 +501,20 @@ S_LOADED_FROM_ARCHIVE_MARKER = ".vaibify/image_loaded_from_archive"
 
 
 def fbImageWasLoadedFromArchive(filesRepo):
-    """Return True iff this clone obtained its image from the deposit."""
+    """Return True iff this clone obtained its image from the deposit.
+
+    Takes whatever the reproducibility layer's callers take -- an
+    adapter or a repo path -- through the same normalizer every other
+    gate here uses. A snapshot adapter that never sampled this path
+    raises ``KeyError``, which reads as "no marker": the marker's
+    absence is the ordinary case, and a poll must never fail over it.
+    """
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
     try:
-        return bool(filesRepo.fbIsFile(S_LOADED_FROM_ARCHIVE_MARKER))
-    except (OSError, ValueError, KeyError):
+        return bool(ffilesEnsureRepoFiles(filesRepo).fbIsFile(
+            S_LOADED_FROM_ARCHIVE_MARKER,
+        ))
+    except (OSError, ValueError, KeyError, AttributeError):
         return False
 
 

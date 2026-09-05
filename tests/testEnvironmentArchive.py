@@ -509,3 +509,118 @@ def test_a_live_deposit_reaches_the_row(sProjectRepo):
         assert dictDetail["dictDeposit"]["iBytesRead"] == 1024
     finally:
         archiveProgress.fnForgetDeposit("cid-live")
+
+
+# ----------------------------------------------------------------------
+# The poll's own adapter, which refuses most of what it is asked.
+# ----------------------------------------------------------------------
+
+
+def test_the_gate_survives_the_polls_fail_closed_adapter():
+    """The poll passes `SnapshotRepoFiles`, which raises on the rest.
+
+    A permissive hand-written double answers any path; the adapter the
+    poll actually passes answers only the paths one container exec
+    sampled and raises ``KeyError`` for everything else. That
+    difference has already shipped a defect once — a Level 3 gate
+    raised on a path no fixture used, the poll answered 500, and every
+    badge and level cell on the dashboard blanked. So this drives the
+    real one.
+
+    Both halves matter. The gate must READ the envelope through it
+    (`.vaibify/environment.json` is sampled WITH its body, so the
+    answer is the same one the readiness route computes), and it must
+    not reach for anything else.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        SnapshotRepoFiles, TUPLE_SNAPSHOT_CONTENT_PATHS,
+        TUPLE_SNAPSHOT_SKIP_TEXT_PATHS,
+    )
+    assert ".vaibify/environment.json" in TUPLE_SNAPSHOT_CONTENT_PATHS
+    assert ".vaibify/environment.json" not in TUPLE_SNAPSHOT_SKIP_TEXT_PATHS
+
+    dictRecord = _fdictBuildRecord()
+    filesSnapshot = SnapshotRepoFiles(
+        "/workspace/project",
+        {".vaibify/environment.json": {
+            "bIsFile": True,
+            "sText": json.dumps(_fdictBuildEnvelope(dictRecord)),
+        }},
+        {},
+    )
+    assert levelGates.fbImageArchiveQuestionSettled(
+        {}, filesSnapshot,
+    ) is True
+    assert levelGates.fbImageArchiveDeposited(filesSnapshot) is True
+    assert levelGates.flistDescribeImageArchiveIssues(filesSnapshot) == []
+
+
+def test_an_unarchived_project_also_survives_that_adapter():
+    """The refusing branch reads the same file and nothing else."""
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+    filesSnapshot = SnapshotRepoFiles(
+        "/workspace/project",
+        {".vaibify/environment.json": {
+            "bIsFile": True,
+            "sText": json.dumps(_fdictBuildEnvelope()),
+        }},
+        {},
+    )
+    assert levelGates.fbImageArchiveQuestionSettled(
+        {}, filesSnapshot,
+    ) is False
+    assert levelGates.fbImageArchiveDeposited(filesSnapshot) is False
+
+
+def test_both_blocker_lists_emit_their_criterion_through_that_adapter():
+    """The criteria reach the dashboard, not just the unit gate.
+
+    Driven through `SnapshotRepoFiles` populated the way one poll's
+    exec populates it, because that is the object the poll passes and
+    a permissive double cannot exercise its refusals. A gate that
+    raised here would 500 the poll and blank every badge, which is how
+    this class of defect has shipped before.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        SnapshotRepoFiles, TUPLE_SNAPSHOT_CONTENT_PATHS,
+    )
+    dictFiles = {
+        sPath: {"bIsFile": False, "sText": None}
+        for sPath in TUPLE_SNAPSHOT_CONTENT_PATHS
+    }
+    dictFiles[".vaibify/environment.json"] = {
+        "bIsFile": True, "sText": json.dumps(_fdictBuildEnvelope()),
+    }
+    filesSnapshot = SnapshotRepoFiles(
+        "/workspace/project", dictFiles, {},
+    )
+    setLevel2 = {
+        dictEntry["sCriterion"]
+        for dictEntry in levelGates.flistLevel2Blockers(
+            {"listSteps": []}, filesSnapshot,
+        )
+    }
+    setLevel3 = {
+        dictEntry["sCriterion"]
+        for dictEntry in levelGates.flistLevel3Blockers(
+            {"listSteps": []}, filesSnapshot, False,
+        )
+    }
+    assert "image-archive-unanswered" in setLevel2
+    assert "image-not-archived" in setLevel3
+
+
+def test_the_header_cell_counts_the_criteria_the_rows_emit():
+    """A criterion the tuple omits is invisible to the header.
+
+    The Project header intersects the live blocker list against a
+    fixed tuple, so a criterion the gates emit but the tuple does not
+    carry is silently dropped and the cell over-reports — a check
+    painted above the orange rows that disagree with it.
+    """
+    assert "image-archive-unanswered" in (
+        levelGates._T_WORKFLOW_LEVEL2_BASE_CRITERIA
+    )
+    assert "image-not-archived" in (
+        levelGates._T_WORKFLOW_LEVEL3_CRITERIA
+    )
