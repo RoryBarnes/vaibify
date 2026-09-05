@@ -64,6 +64,10 @@ import tempfile
 from datetime import datetime, timezone
 
 from vaibify.reproducibility import _hashing, imageArchive
+from vaibify.reproducibility.environmentSnapshot import (
+    fdictReadEnvironmentJson,
+)
+from vaibify.reproducibility.l3Attestation import S_STATUS_PASSED
 
 
 logger = logging.getLogger(__name__)
@@ -312,14 +316,20 @@ def fsJudgeDepositProvenance(sImageReference, dictAttestation):
     reran, and is depositing the rebuild.
 
     The distinction is drawn from a recorded fact rather than asked
-    about: a passing attestation names the image its rerun ran under,
+    about: a PASSING attestation names the image its rerun ran under,
     so a deposit of a DIFFERENT image than that one is by definition
     covering something that reproduced the manifest rather than
-    something that produced it. With no attestation the envelope's pin
-    is simply the image the container ran, and ``original`` is the
-    accurate claim.
+    something that produced it. Only a passing rerun proves
+    equivalence: a failed or unfinished one naming another image
+    proves nothing, and promoting the claim on it would record an
+    equivalence nobody demonstrated. With no attestation -- or none
+    that passed -- the envelope's pin is simply the image the
+    container ran, and ``original`` is the accurate claim.
     """
-    sAttested = str((dictAttestation or {}).get("sImageDigest") or "")
+    dictAttestation = dictAttestation or {}
+    if dictAttestation.get("sStatus") != S_STATUS_PASSED:
+        return imageArchive.S_PROVENANCE_ORIGINAL
+    sAttested = str(dictAttestation.get("sImageDigest") or "")
     if not sAttested or sAttested == sImageReference:
         return imageArchive.S_PROVENANCE_ORIGINAL
     return imageArchive.S_PROVENANCE_VERIFIED_EQUIVALENT
@@ -328,18 +338,24 @@ def fsJudgeDepositProvenance(sImageReference, dictAttestation):
 def fdictDepositImageArchive(
     clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
     dictMetadata, fnReportProgress=None, dictAttestation=None,
+    fnReportUploadStarted=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
-    The order matters. The tarball is hashed while it streams, so the
-    recorded sha256 is of the bytes that went up rather than of a file
-    read again afterwards. The draft is published only after every
+    The order matters. The tarball is hashed once it is written and
+    nothing touches the file before it is uploaded, so the recorded
+    sha256 is of the bytes that went up. The draft is published only after every
     byte is uploaded, because an unpublished draft can be discarded
     and a published version cannot. And the VERSION doi is taken from
     the publish response, never the concept doi beside it: the concept
     doi always resolves to the newest version, so recording it would
     quietly repoint this result at whatever environment is deposited
     last.
+
+    ``fnReportUploadStarted`` is called once with the tarball's size
+    as the upload begins, because the save's byte counter stops
+    moving at that moment and the upload of those bytes is the longer
+    half from a laptop.
     """
     sTarballPath, sSha256, iBytes, sStreamSha256 = ftSaveAndCompressImage(
         sImageReference, sScratchDirectory, fnReportProgress,
@@ -362,6 +378,8 @@ def fdictDepositImageArchive(
     )
     iDepositId = dictDraft["id"]
     try:
+        if fnReportUploadStarted is not None:
+            fnReportUploadStarted(iBytes)
         clientZenodo.fnUploadToBucket(
             dictDraft["links"]["bucket"], sTarballPath,
         )
@@ -393,9 +411,10 @@ def _fnDiscardDraft(clientZenodo, iDepositId):
         )
 
 
-def fdictRecheckArchiveAgainstLocalImage(filesRepo, dictEnvironment):
+def fdictRecheckArchiveAgainstLocalImage(filesRepo, dictEnvironment=None):
     """Return the attestation-time verdict on the deposited environment.
 
+    ``dictEnvironment`` is read from ``filesRepo`` when not supplied.
     Costs one full ``docker save`` of the pinned image and no network,
     and only when there is something to compare: an absent record and
     an image known to have been LOADED from the deposit are both
@@ -404,6 +423,8 @@ def fdictRecheckArchiveAgainstLocalImage(filesRepo, dictEnvironment):
     and reporting that as a pass would put a comparison nobody made
     into a scientific record.
     """
+    if dictEnvironment is None:
+        dictEnvironment = fdictReadEnvironmentJson(filesRepo)
     dictRecord = imageArchive.fdictReadArchiveRecord(dictEnvironment)
     dictContainer = (dictEnvironment or {}).get("dictContainer") or {}
     bLoaded = imageArchive.fbImageWasLoadedFromArchive(filesRepo)

@@ -2247,17 +2247,20 @@ def _fnCapturePinnedImagePresence(dictCtx, sContainerId, dictWorkflow):
     after it closed, rather than announcing a loss that has not
     happened.
     """
+    from .routeContext import ffilesForWorkflow
     from vaibify.reproducibility.environmentSnapshot import (
         _fsExtractImageDigest, fbImageExistsLocally,
         fdictReadEnvironmentJson,
     )
-    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
-    sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
-    if not sProjectRepo:
+    if not (dictWorkflow or {}).get("sProjectRepoPath"):
         return
+    # ``sProjectRepoPath`` is a CONTAINER path. Read as a host path it
+    # names nothing, the pin comes back empty, the probe records None
+    # and CLOSED is unreachable in production -- while every test
+    # that hands the same string to a host adapter passes.
     sPinned = _fsExtractImageDigest(
         fdictReadEnvironmentJson(
-            ffilesEnsureRepoFiles(sProjectRepo),
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         ) or {},
     )
     dictCtx.setdefault("dictPinnedImagePresence", {})[sContainerId] = (
@@ -2315,7 +2318,16 @@ def fdictBuildImageArchiveDetail(
 
 
 def _fsArchiveCheckState(dictDeposit):
-    """Map a live deposit onto the row's check state, or ``""``."""
+    """Map a deposit IN FLIGHT onto the row's check state, or ``""``.
+
+    Only a live deposit moves the row. One that failed established
+    nothing -- no DOI, no record -- so the row keeps the state the
+    envelope earns on its own (not archived, or mismatched against
+    an older record) and the failure reason travels beside it in
+    ``dictDeposit``. Painting a failed attempt UNCHECKED would turn a
+    red row grey, which reads as an improvement over the attempt that
+    failed.
+    """
     sPhase = (dictDeposit or {}).get("sPhase") or ""
     from vaibify.gui import archiveProgress
     if sPhase in (
@@ -2324,8 +2336,6 @@ def _fsArchiveCheckState(dictDeposit):
         archiveProgress.S_PHASE_UPLOADING,
     ):
         return "checking"
-    if sPhase == archiveProgress.S_PHASE_FAILED:
-        return "uncheckable"
     return ""
 
 

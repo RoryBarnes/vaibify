@@ -17208,6 +17208,107 @@ def _fdictEntry(sRel):
             '\'" data-is-project="\' + "false" +\n'
         ),
     ),
+    # --- 2026-09-05: the environment archive, review fixes ---
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_the_fallback_runs_the_image_docker_load_reports'
+        ),
+        # Run the registry reference again after the fallback loaded
+        # the image by ID: the pull that just failed is attempted a
+        # second time and the fallback becomes a slower way of failing.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old='    [ -n "$sImageRef" ] || return 1\n',
+        new=(
+            '    sImageRef=$(jq -r .dictContainer.sImageDigest '
+            '.vaibify/environment.json)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_archive_recheck_runs_off_the_event_loop'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await asyncio.to_thread(\n'
+            '        imageDeposit.fdictRecheckArchiveAgainstLocalImage, '
+            'filesRepo,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return imageDeposit.fdictRecheckArchiveAgainstLocalImage('
+            'filesRepo)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_presence_probe_reads_the_envelope_through_the_'
+            'container_adapter'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+        ),
+        new=(
+            '            (dictWorkflow or {}).get("sProjectRepoPath") '
+            'or "",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_verified_reference_lands_in_the_envelope'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '        sImageStreamSha256=str(\n'
+            '            dictFingerprint.get("sImageStreamSha256") or "",\n'
+            '        ),\n'
+        ),
+        new='        sImageStreamSha256="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_failed_deposit_leaves_the_row_the_state_the_envelope_'
+            'earns'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='        return "checking"\n    return ""\n',
+        new=(
+            '        return "checking"\n'
+            '    if sPhase == archiveProgress.S_PHASE_FAILED:\n'
+            '        return "uncheckable"\n'
+            '    return ""\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_upload_phase_is_reported_before_the_bytes_go_up'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old=(
+            '        if fnReportUploadStarted is not None:\n'
+            '            fnReportUploadStarted(iBytes)\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_late_archive_path_claims_equivalence_not_identity'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old=(
+            '    if dictAttestation.get("sStatus") != S_STATUS_PASSED:\n'
+            '        return imageArchive.S_PROVENANCE_ORIGINAL\n'
+        ),
+        new='    pass\n',
+    ),
     # --- 2026-09-05: the environment archive ---
     Falsification(
         nodeid=(

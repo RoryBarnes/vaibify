@@ -129,6 +129,11 @@ def _fdictRecordArchiveAnswer(
     dictCtx, sContainerId, dictWorkflow, sAnswer, requestHttp,
 ):
     """Persist one answer to the environment-archive question."""
+    if not archiveProgress.fbDepositIsLive(sContainerId):
+        # A failed attempt's reason stops being news once the
+        # researcher has answered; a live attempt is still theirs to
+        # watch and is left alone.
+        archiveProgress.fnForgetDeposit(sContainerId)
     dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {
         "sAnswer": sAnswer,
         "sAnsweredIso": datetime.now(timezone.utc).isoformat(),
@@ -244,6 +249,11 @@ def _fdictBuildReferencedArchiveRecord(
         sImageDigest=str(dictContainer.get("sImageDigest") or ""),
         sArchitecture=str(dictContainer.get("sArchitecture") or ""),
         sTarballName=str(dictFingerprint.get("sTarballName") or ""),
+        # Without this the re-check on a paper 2..N clone answers
+        # UNAVAILABLE forever, for a deposit that carries the hash.
+        sImageStreamSha256=str(
+            dictFingerprint.get("sImageStreamSha256") or "",
+        ),
     )
 
 
@@ -495,6 +505,12 @@ def _fdictDepositSynchronously(
             iBytesRead, iBytesTotal,
         )
 
+    def fnReportUploadStarted(iTarballBytes):
+        archiveProgress.fnRecordProgress(
+            sContainerId, archiveProgress.S_PHASE_UPLOADING,
+            0, iTarballBytes,
+        )
+
     try:
         return imageDeposit.fdictDepositImageArchive(
             ZenodoClient(
@@ -507,6 +523,7 @@ def _fdictDepositSynchronously(
             _fdictBuildArchiveDepositMetadata(dictWorkflow),
             fnReportSaveProgress,
             dictAttestation,
+            fnReportUploadStarted=fnReportUploadStarted,
         )
     finally:
         # 800 MB must not survive the operation that made it, whether

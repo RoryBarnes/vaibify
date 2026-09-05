@@ -1252,3 +1252,94 @@ def test_one_refusal_names_every_unmet_precondition(
         "the readiness gaps are missing — the refusal reverted to "
         "one problem per POST"
     )
+
+
+# ============================================================================
+# The environment-archive re-check the worker records
+# ============================================================================
+
+
+def _fdictPassingReproductionOutcome():
+    """Return the outcome of a rerun whose every hash matched."""
+    return {
+        "bPassed": True,
+        "iOutputHashesMatched": 1,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": [],
+        "sImageDigest": "",
+        "sRunLogPath": "",
+    }
+
+
+@pytest.mark.falsification
+def test_the_archive_recheck_runs_off_the_event_loop(fixtureProjectRepo):
+    """The re-check re-saves a multi-gigabyte image; that is minutes.
+
+    On the event loop it would freeze every poll and every socket the
+    hub serves for the length of the save, and a frozen dashboard reads
+    as a hung hub. The verdict still lands in the attestation.
+
+    Kills: awaiting the re-check inline instead of in a worker thread.
+    """
+    import threading
+    from vaibify.reproducibility import imageDeposit
+
+    listThreads = []
+
+    def fdictRecordTheThread(filesRepo, dictEnvironment=None):
+        del filesRepo, dictEnvironment
+        listThreads.append(threading.current_thread())
+        return {"sVerdict": "matched", "sReason": "stub"}
+
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+    with patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fdictRunReproductionSync",
+        return_value=_fdictPassingReproductionOutcome(),
+    ), patch.object(
+        imageDeposit, "fdictRecheckArchiveAgainstLocalImage",
+        fdictRecordTheThread,
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+    assert listThreads, "the re-check never ran, so this asserts nothing"
+    assert all(
+        threadSeen is not threading.main_thread() for threadSeen in listThreads
+    ), "the re-check ran on the event loop's thread"
+    with open(
+        os.path.join(fixtureProjectRepo, ".vaibify", "l3_attestation.json"),
+        encoding="utf-8",
+    ) as fileIn:
+        dictAttestation = json.load(fileIn)
+    assert dictAttestation["dictImageArchiveCheck"]["sVerdict"] == "matched"
+
+
+def test_a_rerun_that_reached_no_verdict_spends_no_save_on_the_recheck(
+    fixtureProjectRepo,
+):
+    """No attestation is written for a no-verdict, so nothing is re-saved."""
+    from vaibify.reproducibility import imageDeposit
+
+    listCalls = []
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+    with patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fdictRunReproductionSync",
+        side_effect=RuntimeError("boom"),
+    ), patch.object(
+        imageDeposit, "fdictRecheckArchiveAgainstLocalImage",
+        lambda filesRepo, dictEnvironment=None: listCalls.append(filesRepo),
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+    assert listCalls == []

@@ -444,23 +444,33 @@ def test_referencing_a_concept_doi_is_refused_by_the_record_it_resolves_to():
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.falsification
 def test_the_late_archive_path_claims_equivalence_not_identity():
     """``original`` and ``verified-equivalent`` are different claims.
 
-    A deposit of the image a passing attestation ran under IS the
+    A deposit of the image a PASSING attestation ran under IS the
     environment that produced the results. A deposit of a DIFFERENT
     image than that one covers something that reproduced the manifest
-    — good evidence, and a weaker claim.
+    — good evidence, and a weaker claim. And only a passing rerun
+    proves equivalence: a failed attestation naming another image has
+    demonstrated nothing, so the deposit keeps the envelope's own
+    claim rather than gaining one nobody earned.
+
+    Kills: promoting the claim on any attestation, passing or not.
     """
+    sRebuilt = "rebuilt@sha256:" + "f" * 64
     assert imageDeposit.fsJudgeDepositProvenance(
-        _S_DIGEST, {"sImageDigest": _S_DIGEST},
+        _S_DIGEST, {"sStatus": "passed", "sImageDigest": _S_DIGEST},
     ) == imageArchive.S_PROVENANCE_ORIGINAL
     assert imageDeposit.fsJudgeDepositProvenance(
         _S_DIGEST, None,
     ) == imageArchive.S_PROVENANCE_ORIGINAL
     assert imageDeposit.fsJudgeDepositProvenance(
-        _S_DIGEST, {"sImageDigest": "rebuilt@sha256:" + "f" * 64},
+        _S_DIGEST, {"sStatus": "passed", "sImageDigest": sRebuilt},
     ) == imageArchive.S_PROVENANCE_VERIFIED_EQUIVALENT
+    assert imageDeposit.fsJudgeDepositProvenance(
+        _S_DIGEST, {"sStatus": "failed", "sImageDigest": sRebuilt},
+    ) == imageArchive.S_PROVENANCE_ORIGINAL
 
 
 def test_a_deposit_that_says_neither_covers_nothing():
@@ -624,3 +634,120 @@ def test_the_header_cell_counts_the_criteria_the_rows_emit():
     assert "image-not-archived" in (
         levelGates._T_WORKFLOW_LEVEL3_CRITERIA
     )
+
+
+@pytest.mark.falsification
+def test_the_upload_phase_is_reported_before_the_bytes_go_up(
+    monkeypatch, tmp_path,
+):
+    """The save's byte counter stops moving the moment the upload starts.
+
+    From a laptop the upload is the longer half, and a row that keeps
+    saying "saving" through it is the silent multi-minute stretch this
+    progress record exists to prevent.
+
+    Kills: dropping the upload-started callback from the deposit.
+    """
+    listEvents = []
+
+    class _ClientRecordingOrder:
+        def fdictCreateDraft(self, dictMetadata):
+            del dictMetadata
+            return {"id": 7, "links": {"bucket": "https://zenodo.example/b"}}
+
+        def fnUploadToBucket(self, sBucketUrl, sTarballPath):
+            del sBucketUrl
+            listEvents.append(("upload", sTarballPath))
+
+        def fdictPublishDraft(self, iDepositId):
+            del iDepositId
+            return {
+                "doi": "10.5281/zenodo.7000001",
+                "conceptdoi": "10.5281/zenodo.7000000",
+            }
+
+    sTarballPath = str(tmp_path / "environment-image.tar.zst")
+
+    def ftSaveWithoutADaemon(sReference, sScratch, fnReportProgress=None):
+        del sReference, sScratch, fnReportProgress
+        return (sTarballPath, "sha256:" + "b" * 64, 4096, "sha256:" + "c" * 64)
+
+    monkeypatch.setattr(
+        imageDeposit, "ftSaveAndCompressImage", ftSaveWithoutADaemon,
+    )
+    dictRecord = imageDeposit.fdictDepositImageArchive(
+        _ClientRecordingOrder(), _S_DIGEST, _S_ARCHITECTURE, str(tmp_path),
+        {"sTitle": "image"},
+        fnReportUploadStarted=lambda iBytes: listEvents.append(
+            ("upload-started", iBytes),
+        ),
+    )
+    assert listEvents == [("upload-started", 4096), ("upload", sTarballPath)]
+    assert dictRecord["sVersionDoi"] == "10.5281/zenodo.7000001"
+
+
+@pytest.mark.falsification
+def test_a_failed_deposit_leaves_the_row_the_state_the_envelope_earns(
+    sProjectRepo,
+):
+    """Nothing was deposited, so the row is still NOT ARCHIVED.
+
+    Red, with the reason beside it. Painting a failed attempt UNCHECKED
+    turns a red row grey, which reads as an improvement over the
+    attempt that failed -- and UNCHECKED means "nothing could be
+    compared", which is false here: the envelope is comparable and
+    simply has no deposit.
+
+    Kills: mapping a FAILED deposit onto the uncheckable state.
+    """
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    archiveProgress.fnRecordFailure("cid-failed", "the upload was refused")
+    try:
+        dictDetail = fdictBuildImageArchiveDetail(
+            {}, sProjectRepo, "cid-failed",
+        )
+        assert dictDetail["sState"] == imageArchive.S_STATE_NOT_ARCHIVED
+        assert dictDetail["dictDeposit"]["sPhase"] == (
+            archiveProgress.S_PHASE_FAILED
+        )
+        assert "refused" in dictDetail["dictDeposit"]["sReason"]
+    finally:
+        archiveProgress.fnForgetDeposit("cid-failed")
+
+
+@pytest.mark.falsification
+def test_the_presence_probe_reads_the_envelope_through_the_container_adapter(
+    sProjectRepo, monkeypatch,
+):
+    """``sProjectRepoPath`` is a CONTAINER path; a host adapter over it finds nothing.
+
+    The probe feeds CLOSED, the strongest statement the row makes. Read
+    through a host adapter the pin comes back empty, the probe records
+    None, and CLOSED is unreachable for every container project --
+    while a test handing the same string to a host adapter passes.
+
+    Kills: reading the envelope from the raw path rather than through
+    the context's repo-files adapter.
+    """
+    from vaibify.gui import pipelineServer
+    from vaibify.reproducibility import environmentSnapshot
+    from vaibify.reproducibility.repoFiles import HostRepoFiles
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    listAsked = []
+
+    def fbRecordTheProbe(sReference):
+        listAsked.append(sReference)
+        return False
+
+    monkeypatch.setattr(
+        environmentSnapshot, "fbImageExistsLocally", fbRecordTheProbe,
+    )
+    dictCtx = {"files": lambda sContainerId: HostRepoFiles(sProjectRepo)}
+    pipelineServer._fnCapturePinnedImagePresence(
+        dictCtx, "cid-probe",
+        {"sProjectRepoPath": "/workspace/a-path-that-exists-in-no-host"},
+    )
+    assert listAsked == [_S_DIGEST]
+    assert pipelineServer.fbPinnedImageIsInLocalStore(
+        dictCtx, "cid-probe",
+    ) is False

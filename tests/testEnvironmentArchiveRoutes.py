@@ -26,6 +26,9 @@ from fastapi.testclient import TestClient
 from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import environmentArchiveRoutes
 from vaibify.reproducibility import imageArchive
+from vaibify.reproducibility.environmentSnapshot import (
+    fdictReadEnvironmentJson,
+)
 
 
 S_CONTAINER_ID = "archive_cid"
@@ -175,10 +178,18 @@ def test_a_reference_vaibify_cannot_read_is_refused(
     )
 
 
+@pytest.mark.falsification
 def test_a_verified_reference_lands_in_the_envelope(
     sProjectRepo, fixtureCarrierStoodDown,
 ):
-    """The record on disk is what the Level 3 criterion grades."""
+    """The record on disk is what the Level 3 criterion grades.
+
+    It carries the image-content hash the fingerprint published, too:
+    without it the attestation re-check on a paper 2..N clone answers
+    UNAVAILABLE forever, for a deposit that carries the hash.
+
+    Kills: building the referenced record without its stream hash.
+    """
     dictRecord = imageArchive.fdictBuildArchiveRecord(
         sVersionDoi="10.5281/zenodo.7000001",
         sConceptDoi="10.5281/zenodo.7000000",
@@ -210,6 +221,10 @@ def test_a_verified_reference_lands_in_the_envelope(
     assert responseHttp.status_code == 200
     from vaibify.reproducibility import levelGates
     assert levelGates.fbImageArchiveDeposited(sProjectRepo) is True
+    dictOnDisk = imageArchive.fdictReadArchiveRecord(
+        fdictReadEnvironmentJson(sProjectRepo),
+    )
+    assert dictOnDisk["sImageStreamSha256"] == "sha256:" + "c" * 64
 
 
 def test_a_deposit_without_a_stored_token_is_a_409_not_a_500(

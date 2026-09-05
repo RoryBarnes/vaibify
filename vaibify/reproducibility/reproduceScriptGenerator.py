@@ -25,6 +25,9 @@ connection and routes the bytes through ``fnWriteFile`` /
 import posixpath
 import re
 
+from vaibify.reproducibility.imageArchive import (
+    S_LOADED_FROM_ARCHIVE_MARKER,
+)
 from vaibify.reproducibility.repoFiles import fsShellQuotePosix
 
 
@@ -85,6 +88,13 @@ _RE_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 #    always. The marker is a file rather than a field in
 #    environment.json because this script ends by verifying
 #    MANIFEST.sha256, which pins that file.
+#  * the image that RUNS is the one `docker load` reports, never the
+#    registry reference the pull just failed on. A tarball saved by
+#    digest carries no tag (measured: `docker save repo@sha256:...`
+#    writes RepoTags null and `docker load` answers "Loaded image
+#    ID: sha256:..."), so the loaded image answers to its ID alone;
+#    a `docker run` by the registry reference would attempt the pull
+#    again and die on the line after the fallback rescued it.
 _S_ARCHIVE_FALLBACK = """\
 fnLoadImageFromArchive() {
     local sDoi sName sSha sRecordUrl sTarball iOutcome
@@ -103,10 +113,16 @@ fnLoadImageFromArchive() {
     sRecordUrl=$(curl -sL -o /dev/null -w '%{url_effective}' \\
         "https://doi.org/$sDoi")
     sTarball=$(mktemp -t vaibifyImage.XXXXXXXX)
-    curl -fsSL -o "$sTarball" "$sRecordUrl/files/$sName?download=1" \\
+    # An `if` rather than a bare list: under `set -e` a failing LAST
+    # element of an and-list exits the script on the spot, skipping
+    # the cleanup and the message below and leaving the tarball.
+    if curl -fsSL -o "$sTarball" "$sRecordUrl/files/$sName?download=1" \\
         && echo "${sSha#sha256:}  $sTarball" | sha256sum -c - >/dev/null \\
-        && fnLoadCheckedTarball "$sTarball" "$sName"
-    iOutcome=$?
+        && fnLoadCheckedTarball "$sTarball" "$sName"; then
+        iOutcome=0
+    else
+        iOutcome=1
+    fi
     rm -f "$sTarball"
     if [ "$iOutcome" -ne 0 ]; then
         echo "error: the archived image could not be fetched, did not" >&2
@@ -117,15 +133,19 @@ fnLoadImageFromArchive() {
 }
 
 fnLoadCheckedTarball() {
+    local sLoaded
     case "$2" in
-        *.zst) zstd -dc "$1" | docker load ;;
-        *.gz)  gzip -dc "$1" | docker load ;;
-        *)     docker load -i "$1" ;;
+        *.zst) sLoaded=$(zstd -dc "$1" | docker load) ;;
+        *.gz)  sLoaded=$(gzip -dc "$1" | docker load) ;;
+        *)     sLoaded=$(docker load -i "$1") ;;
     esac || return 1
-    : > .vaibify/image_loaded_from_archive
+    sImageRef=$(printf '%s\\n' "$sLoaded" \\
+        | sed -n 's/^Loaded image\\( ID\\)\\{0,1\\}: //p' | head -n 1)
+    [ -n "$sImageRef" ] || return 1
+    : > __LOADED_FROM_ARCHIVE_MARKER__
 }
 
-"""
+""".replace("__LOADED_FROM_ARCHIVE_MARKER__", S_LOADED_FROM_ARCHIVE_MARKER)
 
 _S_SCRIPT_PREAMBLE = """\
 #!/usr/bin/env bash

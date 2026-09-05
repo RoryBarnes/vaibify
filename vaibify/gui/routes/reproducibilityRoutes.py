@@ -659,6 +659,9 @@ async def _fnRunVerificationWorker(
     dictAiProvenance = await _fdictCaptureProvenanceOrNone(
         dictWorkflow, filesRepo, sContainerId, connectionDocker,
     )
+    dictResult["dictImageArchiveCheck"] = (
+        await _fdictRecheckImageArchiveOrNone(filesRepo, dictResult)
+    )
     _fnRecordOutcome(
         sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
         dictAiProvenance,
@@ -671,6 +674,24 @@ async def _fnRunVerificationWorker(
         dictResult.get("listCarriedPaths") or []
     )
     _fnRecordTeardownOutcome(sContainerId, dictResult)
+
+
+async def _fdictRecheckImageArchiveOrNone(filesRepo, dictResult):
+    """Re-hash the deposited environment against the local image, or ``None``.
+
+    The re-check costs one full ``docker save`` of the pinned image
+    whenever a deposit is on record -- minutes for a multi-gigabyte
+    image -- so it runs in a worker thread. On the event loop it would
+    freeze every poll and every socket the hub serves for the length
+    of the save, and a frozen dashboard reads as a hung hub. An
+    outcome that reached no verdict is never written as an
+    attestation, so no save is spent on it.
+    """
+    if not dictResult.get("bRerunAttempted", True):
+        return None
+    return await asyncio.to_thread(
+        imageDeposit.fdictRecheckArchiveAgainstLocalImage, filesRepo,
+    )
 
 
 def _fnRecordTeardownOutcome(sContainerId, dictResult):
@@ -831,10 +852,10 @@ def _fnPersistAttestation(
         dictAiProvenance=dictAiProvenance,
         listCarriedPaths=list(dictResult.get("listCarriedPaths") or []),
         dictRerunFailure=dict(dictResult.get("dictRerunFailure") or {}),
-        dictImageArchiveCheck=imageDeposit.
-        fdictRecheckArchiveAgainstLocalImage(
-            filesRepo, fdictReadEnvironmentJson(filesRepo),
-        ),
+        # Computed by the worker OFF the event loop and carried here
+        # in the outcome like the other rerun facts; ``None`` means
+        # no check ran, which the record's readers treat as such.
+        dictImageArchiveCheck=dictResult.get("dictImageArchiveCheck"),
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)

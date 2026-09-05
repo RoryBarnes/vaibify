@@ -5556,7 +5556,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # poll path: that path makes no daemon call, and the row it
     # feeds says an archiving opportunity is permanently gone,
     # which needs positive evidence rather than a guess.
-    "pipelineServer.py": 3175,
+    # +10 (2026-09-05, review): the presence probe reads the
+    # envelope through the context's container adapter (a host
+    # adapter over a container path finds nothing, so CLOSED was
+    # unreachable), and a FAILED deposit no longer repaints the
+    # row UNCHECKED. Both are the reasons, written where the
+    # next reader will look for them.
+    "pipelineServer.py": 3185,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6657,7 +6663,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # deposit lane with a credential crossing, a durable task
     # and a progress record changes for different reasons than
     # the readiness verifiers.
-    "routes/reproducibilityRoutes.py": 1568,
+    # +20 (2026-09-05, review): the re-check re-saves the pinned
+    # image, minutes for a multi-gigabyte one, and it ran ON the
+    # event loop at the end of every verify. It now runs in the
+    # worker's thread, which is one helper and its reason.
+    "routes/reproducibilityRoutes.py": 1588,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
