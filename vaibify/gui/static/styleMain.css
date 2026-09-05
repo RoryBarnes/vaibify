@@ -3356,8 +3356,11 @@ body.proof-level-3 .toolbar-label {
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    max-height: 120px;
-    overflow: hidden;
+    /* Bounded and SCROLLABLE, never clipped: `overflow: hidden` at
+       120px silently ate the end of every long error, which is where
+       the remedy lives. */
+    max-height: 240px;
+    overflow-y: auto;
 }
 
 .toast-close {

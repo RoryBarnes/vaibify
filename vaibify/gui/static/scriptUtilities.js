@@ -163,9 +163,15 @@ var VaibifyUtilities = (function () {
         if (sRawError.indexOf("permission denied") >= 0) {
             return "Permission denied. Check Docker access.";
         }
-        if (sRawError.length > 200) {
-            return sRawError.substring(0, 200) + "...";
-        }
+        /* No length cut. The cap used to be 200 characters, which
+           is long enough to hold a diagnosis and too short to hold
+           its remedy: a researcher whose Docker socket was missing
+           read the symptom and lost "Try: docker context ls" and the
+           verbatim cause to an ellipsis (researcher-reported,
+           2026-09-05). The cap existed so a backend traceback could
+           not become the whole screen; .toast.error bounds the BOX
+           and scrolls instead, which bounds the display without
+           destroying the text. */
         return sRawError;
     }
 
