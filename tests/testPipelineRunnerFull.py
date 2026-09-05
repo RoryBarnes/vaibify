@@ -877,6 +877,13 @@ def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
     The exact string is asserted so a silent change to what the run
     guarantees cannot slip through. Salt coverage itself is asserted
     in ``testDeterminismEnvHonesty.py``.
+
+    The salt value sits in a DOUBLE-quoted word because the builder is
+    now shared with ``reproduce.sh``, which passes a shell expansion
+    rather than a literal integer -- it reads the epoch out of the
+    envelope on the reproducing host and cannot know it when the script
+    is written. The bytes the matplotlibrc ends up holding are the same
+    either way.
     """
     mockDocker = _fMockDocker(0, "1745798400\n")
     sPrefix = _fnRunAsync(_fsBuildDeterminismEnvPrefix(
@@ -886,7 +893,7 @@ def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
         "export SOURCE_DATE_EPOCH=1745798400 && "
         "export MPLCONFIGDIR='/tmp/vaibifyMatplotlib' && "
         "{ mkdir -p '/tmp/vaibifyMatplotlib' && "
-        "printf '%s\\n' 'svg.hashsalt: 1745798400' "
+        "printf '%s\\n' \"svg.hashsalt: 1745798400\" "
         "> '/tmp/vaibifyMatplotlib/matplotlibrc' || "
         "echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; } && "
     )

@@ -205,7 +205,13 @@ def test_body_is_delivered_via_quoted_heredoc_not_host_bash_c():
     assert "<<'" + _S_HEREDOC_DELIMITER + "'" in sScript, (
         "the body must be delivered through a quoted heredoc"
     )
-    assert "bash -s" in sScript
+    assert "--entrypoint bash" in sScript, (
+        "the container's shell is named as the entrypoint, so the "
+        "image's own development entrypoint cannot intercept the body"
+    )
+    assert "\n    -s <<'" in sScript, (
+        "bash must be told to read the program from stdin"
+    )
     assert "docker run --rm -i " in sScript, (
         "stdin must be attached (-i) so bash -s reads the heredoc"
     )
@@ -422,7 +428,8 @@ def test_reproduction_root_matches_the_mount_in_the_preamble():
     else in the suite noticing.
     """
     from vaibify.reproducibility.reproduceScriptGenerator import (
-        S_REPRODUCTION_REPO_ROOT, _S_SCRIPT_PREAMBLE,
+        S_REPRODUCTION_REPO_ROOT,
     )
-    assert f'-w {S_REPRODUCTION_REPO_ROOT} ' in _S_SCRIPT_PREAMBLE
-    assert f'-v "$PWD":{S_REPRODUCTION_REPO_ROOT} ' in _S_SCRIPT_PREAMBLE
+    sScript = fsRenderReproduceScript(_fdictBuildWorkflow([]))
+    assert f'-w {S_REPRODUCTION_REPO_ROOT} ' in sScript
+    assert f'-v "$PWD":{S_REPRODUCTION_REPO_ROOT} ' in sScript
