@@ -219,10 +219,25 @@ is *defined* by a pinned container image, and there isn't one. You can
 lift that without starting over, and without moving a single file.
 
 Go back to the Environments hub, open the kebab menu (**⋮**) on this
-environment's tile, and choose **Containerize Project**. The wizard
-asks where the project should run: choose **Containerized Project** —
-the other card, *Host Project*, keeps it on this machine, which is
-where it already is. Then confirm the build.
+environment's tile, and choose **Containerize Environment**.
+
+A seven-page wizard opens. It asks about the *environment* — nothing
+it collects moves, renames, or rewrites your files. Every page has a
+**?** that explains the choice in more detail; what follows is what to
+enter to finish this walkthrough. Where a page says "leave it", the
+default is the right answer and you can press **Next**.
+
+| # | Page | What to enter here |
+|---|------|--------------------|
+| 1 | **Name** | The container, image, and registry name. It is pre-filled with a Docker-safe version of your directory name — lowercase, hyphens, no spaces. Accept it unless it collides with another environment on this machine. |
+| 2 | **Python version** | Leave it at **3.12** unless your code is tested against a specific release. |
+| 3 | **Repositories** | Leave it **empty**. This clones *additional* git repositories into the container; the project you are converting is already accounted for. |
+| 4 | **Features** | Tick **at least one coding agent** — several are offered and none is ticked for you; leaving the page with none selected raises a confirmation, because a container with no agent is usually a slip. LaTeX is on by default. Leave GitHub authentication on. Under *Resource limits*, blank means "all cores − 1" and unlimited memory; **1** CPU and **1** GB are enough for a small pipeline and keep the build off the rest of your machine. |
+| 5 | **Copy into the container** | A container does not share your folder, so tick what should be copied in. For this walkthrough tick **everything**; your originals stay where they are. |
+| 6 | **Packages** | Leave both boxes **empty**. The dependencies come from the repository's own `requirements.lock`. |
+| 7 | **Summary** | Read it back, then press **Convert**. |
+
+Then the build runs.
 
 This does not create a second project. Your clone stays exactly where
 it is — the same directory, the same git history, the same outputs you
