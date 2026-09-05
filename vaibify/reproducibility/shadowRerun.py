@@ -240,6 +240,68 @@ def fdictRerunInShadowContainer(
     return dictOutcome
 
 
+def _fdictCreateShadowOrExplainTheMissingImage(
+    dictGateway, sImageReference, dictCapacity,
+):
+    """Create the shadow, naming the remedy when the image is absent.
+
+    The SDK answers an image the daemon does not hold with a bare
+    ``404 ... No such image``, and that is what a researcher actually
+    got on 2026-09-05 after rebuilding: an error about a digest, raised
+    inside a background task, saying nothing about what to do. The
+    remedy differs by which kind of reference it is, and only this
+    module knows -- the disposable lifecycle is shared with the Agent
+    Council and has no envelope to consult, so the translation belongs
+    here rather than there.
+
+    Recognised by the SDK's own exception class, never by matching
+    "404" in a message: an unreachable daemon can carry a 404 from an
+    entirely different cause, and telling a researcher to publish an
+    image that is sitting right there would be worse than the bare
+    error.
+    """
+    try:
+        return disposableContainer.fdictReserveAndCreateContainer(
+            dictGateway, S_SHADOW_ROLE, sImageReference,
+            disposableSpecification.fdictBuildDefaultLimits(dictCapacity),
+        )
+    except Exception as errorCreate:  # noqa: BLE001 -- re-raised below
+        if not _fbNamesAnAbsentImage(errorCreate):
+            raise
+        raise ShadowRerunRefusedError(
+            _fsExplainTheMissingImage(sImageReference),
+        ) from errorCreate
+
+
+def _fbNamesAnAbsentImage(errorCreate):
+    """Return True iff the SDK named this error as an absent image."""
+    return type(errorCreate).__name__ in ("ImageNotFound", "NotFound")
+
+
+def _fsExplainTheMissingImage(sImageReference):
+    """Return the refusal text for an image the daemon cannot resolve."""
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fbIsImageIdDigest,
+    )
+    if _fbIsImageIdDigest(sImageReference):
+        return (
+            f"the image this envelope pins ({sImageReference}) is a "
+            "local-only image ID and is no longer on this machine, so "
+            "no shadow container can be built from it. It exists in no "
+            "registry either, so nobody else could reproduce this "
+            "project from it. Push the image to a registry (or "
+            "'docker save' it and archive the tarball with the "
+            "deposit), then re-capture the environment snapshot."
+        )
+    return (
+        f"the image this envelope pins ({sImageReference}) is not on "
+        "this machine and could not be resolved. Pull it "
+        f"('docker pull {sImageReference}') and try again; if the pull "
+        "fails, the registry no longer holds the bytes this project "
+        "was pinned to."
+    )
+
+
 def _fdictDriveShadowLifecycle(
     connectionDocker, dictWorkflow, sImageReference, tShadowPaths,
     baRepositoryArchive, dictCapacity, sResourceName,
@@ -258,9 +320,8 @@ def _fdictDriveShadowLifecycle(
         dockerDisposable, sResourceName)
     with _fcontextHoldShadowLaneLock(sResourceName):
         _fnSweepShadowsLeftByACrash(dockerDisposable, sResourceName)
-        dictCreated = disposableContainer.fdictReserveAndCreateContainer(
-            dictGateway, S_SHADOW_ROLE, sImageReference,
-            disposableSpecification.fdictBuildDefaultLimits(dictCapacity),
+        dictCreated = _fdictCreateShadowOrExplainTheMissingImage(
+            dictGateway, sImageReference, dictCapacity,
         )
         try:
             disposableContainer.fnCopyArchiveIntoContainer(

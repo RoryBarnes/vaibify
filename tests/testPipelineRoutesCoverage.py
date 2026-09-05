@@ -1671,7 +1671,10 @@ _DICT_ALL_ATTAINED_SCOPE_CELLS = {
     # Six, not four, since 2026-08-30: each remote's published-copy
     # check contributes a STALENESS criterion and a DIVERGENCE one.
     "s2": _fdictAttainedCell(6, 6),
-    "s3": _fdictAttainedCell(9, 9),
+    # Ten, not nine, since 2026-09-05: publishing the container image
+    # became an L3 requirement, so `image-not-published` -- already
+    # emitted by the gates -- joined the tuple the header cell counts.
+    "s3": _fdictAttainedCell(10, 10),
 }
 
 _DICT_NO_WARNING = {

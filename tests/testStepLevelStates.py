@@ -770,6 +770,11 @@ def testNonAttainedWithoutRegressionOrTimingEmitsNoWarning():
 
 # ------------------------------------------------------------------------
 # fdictComputeWorkflowScopeLevelStates
+#
+# The L3 totals below count _T_WORKFLOW_LEVEL3_CRITERIA. It grew to ten
+# on 2026-09-05, when publishing the container image became an L3
+# requirement and ``image-not-published`` -- already emitted by the
+# gates -- was added to the tuple the header cell intersects against.
 # ------------------------------------------------------------------------
 
 
@@ -780,7 +785,7 @@ def testWorkflowScopeAllAttainedWhenCleanWithRepo():
     assert dictStates == {
         "s1": _fdictCell("attained", 1, 1),
         "s2": _fdictCell("attained", 6, 6),
-        "s3": _fdictCell("attained", 9, 9),
+        "s3": _fdictCell("attained", 10, 10),
     }
 
 
@@ -792,7 +797,7 @@ def testWorkflowScopeRepoMissingZeroesEveryLevel():
     )
     assert dictStates["s1"] == _fdictCell("none", 0, 1)
     assert dictStates["s2"] == _fdictCell("none", 0, 6)
-    assert dictStates["s3"] == _fdictCell("none", 0, 9)
+    assert dictStates["s3"] == _fdictCell("none", 0, 10)
 
 
 def testWorkflowScopeExcludesMissingAiDeclarationStep():
@@ -900,7 +905,7 @@ def testWorkflowScopeLevel3BlockerOnlyDentsLevelThree():
         _fdictWorkflowWithCleanSteps(1), [], listLevel3,
     )
     assert dictStates["s2"]["sState"] == "attained"
-    assert dictStates["s3"] == _fdictCell("partial", 8, 9)
+    assert dictStates["s3"] == _fdictCell("partial", 9, 10)
 
 
 def testWorkflowScopeRegressionFlagFromWorkflowHighWater():
