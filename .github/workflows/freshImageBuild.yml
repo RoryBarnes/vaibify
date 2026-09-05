@@ -48,6 +48,14 @@ on:
       - 'docs/testFormats.md'
       - 'docs/vision.md'
       - 'vaibify/docs/**'
+      # This lane's own definition, and the tool it runs. Without these
+      # a change to the build lane triggers NOTHING and merges
+      # unexercised -- the check list simply omits it, which reads
+      # exactly like a pass. Found the hard way: the pin-drift step and
+      # the auto-commit below were written, pushed, and reviewed green
+      # without ever having executed once.
+      - '.github/workflows/freshImageBuild.yml'
+      - 'tools/checkToolchainPinDrift.py'
 
 permissions:
   # `contents: write` is for ONE thing: committing a toolchain pin whose
