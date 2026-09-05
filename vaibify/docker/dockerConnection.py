@@ -238,22 +238,22 @@ def _fmoduleGetDocker():
 
 
 def _fnEnsureDockerHost():
-    """Set DOCKER_HOST from active Docker context if not already set."""
+    """Set DOCKER_HOST from active Docker context if not already set.
+
+    The read itself lives in ``dockerContext``, which is also what
+    ``vaibify doctor`` asks before any connection is attempted. Two
+    copies of that command would let the report and the connection
+    disagree about where vaibify is pointing -- and the report exists
+    precisely because the two disagreeing is what a researcher cannot
+    otherwise see.
+    """
     import os
-    import subprocess
+    from .dockerContext import fsReadActiveContextEndpoint
     if os.environ.get("DOCKER_HOST"):
         return
-    try:
-        processResult = subprocess.run(
-            ["docker", "context", "inspect", "--format",
-             "{{.Endpoints.docker.Host}}"],
-            capture_output=True, text=True,
-        )
-        sHost = processResult.stdout.strip()
-        if sHost:
-            os.environ["DOCKER_HOST"] = sHost
-    except Exception:
-        pass
+    sHost = fsReadActiveContextEndpoint()
+    if sHost:
+        os.environ["DOCKER_HOST"] = sHost
 
 
 # The complete set of programs the audited-read exemption will run,

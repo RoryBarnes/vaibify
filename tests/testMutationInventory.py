@@ -269,7 +269,12 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 # change (named in testCapabilityAuthorities under the exception-type
 # class). Net: five exception-type acquisitions became one, and it
 # lives in the module that owns the docker capability.
-I_UNDISPOSED_ACQUISITION_BUDGET = 60
+# 60 -> 59: _fnEnsureDockerHost's `import subprocess` went with the
+# `docker context inspect` read it wrapped, which moved into
+# dockerContext -- a module that already holds the docker-CLI
+# capability and its disposition. One authority on where vaibify
+# is pointing, and one fewer acquisition to review.
+I_UNDISPOSED_ACQUISITION_BUDGET = 59
 
 
 def _fmoduleGenerator():
