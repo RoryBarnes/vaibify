@@ -238,14 +238,6 @@ DICT_NAMED_AUTHORITIES = {
             "session so the connection pool can be tuned. Inside the "
             "gateway, on the client the gateway constructed.",
         ),
-    "docker/dockerConnection.py|_fnEnsureDockerHost|process-launch|"
-    "subprocess|import|0":
-        _fdictAuthority(
-            ["host-cli", "http", "websocket", "background"],
-            "Resolves DOCKER_HOST from `docker context inspect` when the "
-            "environment does not carry one, so a Colima or Rancher "
-            "socket is found before the client is built.",
-        ),
     "docker/dockerConnection.py|fbErrorMeansContainerUnreachable|"
     "docker-client|docker.errors.APIError|import-from|0":
         _fdictAuthority(
@@ -258,9 +250,16 @@ DICT_NAMED_AUTHORITIES = {
         ),
     "docker/dockerContext.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
-            ["host-cli", "http"],
-            "Reads the active `docker context` to report which runtime "
-            "the host is on. Read-only daemon query.",
+            ["host-cli", "http", "websocket", "background"],
+            "Reads the active `docker context` -- which runtime the host "
+            "is on, and which endpoint that context resolves to. "
+            "Read-only daemon queries. The endpoint read moved here from "
+            "dockerConnection._fnEnsureDockerHost on 2026-09-05, which "
+            "is why the lane list carries that function's lanes: the "
+            "gateway's constructor calls it, so every lane that builds a "
+            "client reaches it. One authority on where vaibify is "
+            "pointing, so `vaibify doctor` reports the endpoint the "
+            "connection will actually use.",
         ),
     "docker/imageBuilder.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(

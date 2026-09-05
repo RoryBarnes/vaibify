@@ -149,10 +149,17 @@ def test_fnEnsureDockerHost_already_set(monkeypatch):
 
 
 def test_fnEnsureDockerHost_sets_from_context(monkeypatch):
-    """When DOCKER_HOST is unset, read from docker context inspect."""
+    """When DOCKER_HOST is unset, read from docker context inspect.
+
+    ``returncode`` is set because the read now honours it: a failed
+    ``docker context inspect`` that still printed something to stdout
+    used to be adopted as the endpoint, which is a silent way to point
+    the client at nonsense.
+    """
     from vaibify.docker.dockerConnection import _fnEnsureDockerHost
     monkeypatch.delenv("DOCKER_HOST", raising=False)
     mockResult = MagicMock()
+    mockResult.returncode = 0
     mockResult.stdout = "unix:///var/run/docker.sock\n"
     with patch("subprocess.run", return_value=mockResult):
         _fnEnsureDockerHost()
