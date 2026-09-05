@@ -334,12 +334,21 @@ var VaibifyContainerManager = (function () {
            distinction is a registry flag, not something the reader can
            see, and containerizing is what either state is here to do.
 
+           The noun is ENVIRONMENT, not Project (researcher-reported
+           2026-09-04, second pass). Nothing here happens to the
+           project: the directory, the git history and the outputs are
+           untouched, and the tile sits in the Environments hub. What
+           the action replaces is the interpreter, the libraries and
+           the OS the steps run against -- which is also the only
+           thing PROOF Level 3 is asking for. "Containerize Project"
+           named the one part that does not change.
+
            The two flows still differ underneath: a sandbox reaches the
            destination step (host Project or container), a promoted
            Project skips it because there is no destination left to
            choose. */
         if (!bHost) return "";
-        var sLabel = "Containerize Project";
+        var sLabel = "Containerize Environment";
         return (
             '<div class="container-menu-item" data-action="convert">' +
             sLabel + "</div>" +
@@ -901,7 +910,7 @@ var VaibifyContainerManager = (function () {
            This door containerizes, in BOTH host states (2026-09-04
            ruling). It used to hand a sandbox the destination choice --
            host Project or container -- so a researcher who had just
-           clicked "Containerize Project" was asked whether they meant
+           clicked "Containerize Environment" was asked whether they meant
            it, with one card offering to keep the project exactly where
            it already was. Promotion to a host Project did not go away:
            it lives on the Files panel's own "Convert to Project" bar,

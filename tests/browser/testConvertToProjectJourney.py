@@ -96,7 +96,8 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
 
     Asserted on both tiles in the one list, so a menu item rendered
     unconditionally would fail here rather than mislead a researcher. A
-    Both host states offer the same "Containerize Project" label.
+    Both host states offer the same "Containerize Environment"
+    label.
     """
     _fnWaitForPicker(pageDashboard, serverHub)
     elHostAction = pageDashboard.query_selector(
@@ -104,7 +105,7 @@ def testOnlyAHostTileOffersConvertToProject(pageDashboard, serverHub):
         '.container-menu-item[data-action="convert"]',
     )
     assert elHostAction is not None, "the host tile offers no Convert action"
-    assert "Containerize Project" in elHostAction.text_content()
+    assert "Containerize Environment" in elHostAction.text_content()
     assert pageDashboard.query_selector(
         f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
         '.container-menu-item[data-action="convert"]',
@@ -131,7 +132,7 @@ def _fnOpenConvertMenuAndChooseContainer(page):
     assert page.text_content(
         "#wizardStepTitle",
     ).strip() != "How to become a Project", (
-        "the kebab's Containerize Project asked for a destination"
+        "the kebab's Containerize Environment asked for a destination"
     )
     page.wait_for_timeout(200)
 

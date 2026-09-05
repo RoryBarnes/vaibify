@@ -113,8 +113,10 @@ def _fnEnterHostFilesPanel(page, sName):
     )
 
 
-def testTheSandboxTileOffersContainerizeProject(pageDashboard, serverHub):
-    """A host sandbox's action reads "Containerize Project".
+def testTheSandboxTileOffersContainerizeEnvironment(
+    pageDashboard, serverHub,
+):
+    """A host sandbox's action reads "Containerize Environment".
 
     One label serves both host states since 2026-09-04; the
     sandbox/Project difference survives in ``data-is-project``,
@@ -127,7 +129,7 @@ def testTheSandboxTileOffersContainerizeProject(pageDashboard, serverHub):
         '.container-menu-item[data-action="convert"]',
     )
     assert elAction is not None
-    assert "Containerize Project" in elAction.text_content()
+    assert "Containerize Environment" in elAction.text_content()
     # It is not yet a Project.
     elTile = pageDashboard.query_selector(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
@@ -283,5 +285,5 @@ def testAPromotedProjectRendersAsAProjectInTheHub(
         sTile + ' .container-menu-item[data-action="convert"]',
     )
     assert elAction is not None
-    assert "Containerize Project" in elAction.text_content()
+    assert "Containerize Environment" in elAction.text_content()
     assert pageDashboard.listPageErrors == []
