@@ -237,11 +237,31 @@ def _fmoduleGetDocker():
         )
 
 
+_sDockerHostWrittenByVaibify = None
+
+
 def _fnEnsureDockerHost():
-    """Set DOCKER_HOST from active Docker context if not already set."""
+    """Set DOCKER_HOST from the active Docker context.
+
+    A researcher's own exported DOCKER_HOST always wins and is never
+    overwritten. What is re-read on every call is a value THIS
+    function wrote, because the guard used to be "is DOCKER_HOST
+    set?" and this function is what set it -- so the first
+    resolution won for the life of the hub process and the Docker
+    banner's Retry could never recover from a context change.
+
+    That is not hypothetical: a researcher whose current context
+    pointed at a stopped Rancher Desktop, with Docker Engine running
+    at the default socket, would fix it with `docker context use
+    default`, click Retry, and be handed the identical failure naming
+    the identical dead socket (researcher-reported, 2026-09-05).
+    Restarting vaibify was the only way out, and nothing said so.
+    """
+    global _sDockerHostWrittenByVaibify
     import os
     import subprocess
-    if os.environ.get("DOCKER_HOST"):
+    sExisting = os.environ.get("DOCKER_HOST")
+    if sExisting and sExisting != _sDockerHostWrittenByVaibify:
         return
     try:
         processResult = subprocess.run(
@@ -252,6 +272,7 @@ def _fnEnsureDockerHost():
         sHost = processResult.stdout.strip()
         if sHost:
             os.environ["DOCKER_HOST"] = sHost
+            _sDockerHostWrittenByVaibify = sHost
     except Exception:
         pass
 
