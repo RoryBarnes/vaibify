@@ -77,6 +77,8 @@ Nested under the `features` key:
 | `codexAutoUpdate` | boolean | `true` | Update Codex when the container starts |
 | `gemini`     | boolean | `false` | Install Google Gemini CLI        |
 | `geminiAutoUpdate` | boolean | `true` | Allow Gemini CLI to update itself |
+| `antigravity` | boolean | `false` | Install Google Antigravity CLI (`agy`) |
+| `antigravityAutoUpdate` | boolean | `true` | Update Antigravity when the container starts |
 | `opencode`   | boolean | `false` | Install OpenCode CLI             |
 | `opencodeAutoUpdate` | boolean | `true` | Update OpenCode when the container starts |
 | `cline`      | boolean | `false` | Install Cline CLI                |

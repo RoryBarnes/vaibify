@@ -194,7 +194,7 @@ RUN apt-get update \
             libstdc++-13-dev=13.3.0-6ubuntu2~24.04.1 \
             libtsan2=14.2.0-4ubuntu2~24.04.1 \
             libubsan1=14.2.0-4ubuntu2~24.04.1 \
-            linux-libc-dev=6.8.0-138.138 \
+            linux-libc-dev=6.8.0-139.139 \
             make=4.3-4.1build2 \
             rpcsvc-proto=1.4.2-0ubuntu7; then \
         printf '\n%s\n' \

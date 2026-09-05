@@ -34,6 +34,22 @@ says so before the run instead of failing quietly.
 
 If you have an existing project, no action is needed: the files are
 replaced on your next run.
+### Agent Council
+
+Two or more model participants can now deliberate about a proposed
+change to your project. They read and run your code against a
+disposable copy of the container, challenge one another's proposals,
+ask you when a choice cannot be settled from evidence, and produce a
+written deliverable. A **planning** council produces an
+implementation plan; an **implementation** council, convened from a
+completed planning council, produces a reviewed patch. In neither
+case does a participant hold a writable path to the live project —
+a patch is text you apply by hand, or not at all.
+
+Councils are container-only: every claim a council makes about
+containment rests on creating a disposable container and proving it
+gone afterwards, and a host project has none to create. See
+[agentCouncil.md](agentCouncil.md).
 
 ### Host mode
 

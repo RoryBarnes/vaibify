@@ -513,6 +513,7 @@ def _fnAddAgentUpdateEnvs(config, saRunArgs):
         ("CLAUDE", "bClaude", "bClaudeAutoUpdate"),
         ("CODEX", "bCodex", "bCodexAutoUpdate"),
         ("GEMINI", "bGemini", "bGeminiAutoUpdate"),
+        ("ANTIGRAVITY", "bAntigravity", "bAntigravityAutoUpdate"),
         ("OPENCODE", "bOpenCode", "bOpenCodeAutoUpdate"),
         ("CLINE", "bCline", "bClineAutoUpdate"),
         ("OPENHANDS", "bOpenHands", "bOpenHandsAutoUpdate"),

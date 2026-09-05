@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release Notes &mdash; Vaibify 0.0.7.dev6 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.7.dev9 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ef4df12f"></script>
+      <script src="_static/documentation_options.js?v=075752ed"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -66,6 +66,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure">A passing test suite is no longer reported as a failure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#agent-council">Agent Council</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#host-mode">Host mode</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-terminal-serves-host-projects">The terminal serves host projects</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#doctor-knows-about-host-projects">Doctor knows about host projects</a></li>
@@ -133,6 +134,22 @@ project did not help. If vaibify cannot bring one up to date it now
 says so before the run instead of failing quietly.</p>
 <p>If you have an existing project, no action is needed: the files are
 replaced on your next run.</p>
+</section>
+<section id="agent-council">
+<h3>Agent Council<a class="headerlink" href="#agent-council" title="Link to this heading"></a></h3>
+<p>Two or more model participants can now deliberate about a proposed
+change to your project. They read and run your code against a
+disposable copy of the container, challenge one another’s proposals,
+ask you when a choice cannot be settled from evidence, and produce a
+written deliverable. A <strong>planning</strong> council produces an
+implementation plan; an <strong>implementation</strong> council, convened from a
+completed planning council, produces a reviewed patch. In neither
+case does a participant hold a writable path to the live project —
+a patch is text you apply by hand, or not at all.</p>
+<p>Councils are container-only: every claim a council makes about
+containment rests on creating a disposable container and proving it
+gone afterwards, and a host project has none to create. See
+<a class="reference internal" href="agentCouncil.html"><span class="std std-doc">agentCouncil.md</span></a>.</p>
 </section>
 <section id="host-mode">
 <h3>Host mode<a class="headerlink" href="#host-mode" title="Link to this heading"></a></h3>
