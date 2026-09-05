@@ -382,6 +382,18 @@
                 <div class="toolbar-menu-item" id="btnVerifyManifest"
                     title="Re-hash every file pinned in MANIFEST.sha256 and report which ones differ from the recorded bytes">
                     Check Files Against Manifest</div>
+                <!-- The L3 verify is an ACT, and PROOF is a status tab.
+                     It lives here because a deliberate, multi-hour job a
+                     researcher chooses to start belongs beside the other
+                     things they start; it was reported as buried. It is
+                     NOT greyed when the project is not ready: the shared
+                     opener fetches readiness first and answers with the
+                     checklist naming every gap, and a grey entry that
+                     names no cause would recreate the burial one layer
+                     down. -->
+                <div class="toolbar-menu-item" id="btnVerifyLevel3"
+                    title="Re-run the whole workflow in a throwaway copy built from the image the envelope pins, and compare every pinned file. Checks readiness first and says what is missing. Can take hours.">
+                    Verify Level 3 Reproducibility</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnStandardizeAllPlots">
                     Standardize All Plots</div>

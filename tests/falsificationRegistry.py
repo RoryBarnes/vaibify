@@ -3638,8 +3638,8 @@ def _fdictEntry(sRel):
         # environment variables (readable via /proc, docker inspect).
         nodeid='tests/testProvenanceContractMutationCoverage.py::testCredentialsAreNeverWrittenIntoEnvironmentVariables',
         source='vaibify/docker/dockerConnection.py',
-        old='            os.environ["DOCKER_HOST"] = sHost',
-        new='            os.environ["GITHUB_TOKEN"] = sHost',
+        old='        os.environ["DOCKER_HOST"] = sHost',
+        new='        os.environ["GITHUB_TOKEN"] = sHost',
     ),
     Falsification(
         # The guard had zero coverage before this entry: dropping the

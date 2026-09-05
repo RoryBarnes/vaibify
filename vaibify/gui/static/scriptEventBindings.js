@@ -792,6 +792,24 @@ var VaibifyEventBindings = (function () {
                    differently within a release. */
                 VaibifyApp.fnRunProjectAction("verify-manifest");
             },
+            btnVerifyLevel3: function () {
+                /* Same shape as btnVerifyManifest above: a second
+                   entry point to the ONE project action, never a
+                   second copy of it. The action carries fnConfirm =
+                   fnConfirmLevel3Verification, which fetches
+                   readiness before any modal opens and answers an
+                   unready project with the checklist that names its
+                   gaps -- so this entry never has to decide whether it
+                   should be enabled, and can never be a grey control
+                   that explains nothing.
+
+                   It stays bAgentSafe: False in the catalog. This is
+                   the only L3 promotion path, so an agent that could
+                   invoke it could manufacture a scientific claim; the
+                   agent's useful role is the adjacent read-only
+                   check-l3-readiness. */
+                VaibifyApp.fnRunProjectAction("verify-l3");
+            },
             btnStandardizeAllPlots: function () {
                 VaibifyPlotStandards
                     .fnStandardizeAllWorkflowPlots();
