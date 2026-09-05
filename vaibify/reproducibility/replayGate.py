@@ -15,7 +15,10 @@ never centrally. Opt-in sub-features follow the arXiv rule: an
 unconfigured opt-in is trivially passing, never a gap.
 """
 
+from vaibify.reproducibility import answeredQuestion
+
 __all__ = [
+    "DICT_PERSONAL_LAYER_QUESTION",
     "S_AI_PROVENANCE_KEY",
     "S_DECLARED_MODELS_KEY",
     "S_PERSONAL_LAYER_KEY",
@@ -38,9 +41,27 @@ S_PERSONAL_LAYER_KEY = "dictPersonalLayer"
 S_PROMPT_RECORD_KEY = "dictPromptRecord"
 S_SUPERVISION_KEY = "dictSupervision"
 
-SET_PERSONAL_LAYER_STATUSES = frozenset({
-    "none", "declared-private", "included",
-})
+# The personal layer as a question in the shared representation
+# (:mod:`vaibify.reproducibility.answeredQuestion`). Its answer needs
+# no value: `declared-private` with zero hash commitments is a
+# complete answer, because disclosure is never required.
+DICT_PERSONAL_LAYER_QUESTION = {
+    "sKey": "personalLayer",
+    "sAnswerKey": "sStatus",
+    "tAnswers": ("none", "declared-private", "included"),
+    "sValueKey": "",
+    "tAnswersNeedingValue": (),
+    "sLabel": "Personal AI Configuration",
+    "sPlainQuestion": (
+        "Did your own private, host-side agent setup — global "
+        "instruction file, personal skills, memory, hooks — govern "
+        "this work, and are you disclosing it?"
+    ),
+}
+
+SET_PERSONAL_LAYER_STATUSES = frozenset(
+    DICT_PERSONAL_LAYER_QUESTION["tAnswers"],
+)
 
 _LIST_REQUIRED_MODEL_FIELDS = [
     "sVendor",
@@ -106,10 +127,10 @@ def fbWorkflowDeclaresPersonalLayer(dictWorkflow):
     with zero hash commitments is a fully valid answer; unanswered is
     the only failing state.
     """
-    dictLayer = _fdictAiProvenance(dictWorkflow).get(S_PERSONAL_LAYER_KEY)
-    if not isinstance(dictLayer, dict):
-        return False
-    return dictLayer.get("sStatus") in SET_PERSONAL_LAYER_STATUSES
+    return answeredQuestion.fbQuestionIsAnswered(
+        _fdictAiProvenance(dictWorkflow).get(S_PERSONAL_LAYER_KEY),
+        DICT_PERSONAL_LAYER_QUESTION,
+    )
 
 
 def fbPromptRecordCurrent(dictWorkflow):
