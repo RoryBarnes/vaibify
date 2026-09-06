@@ -563,8 +563,9 @@ changes nothing about what would run.
 Every `git` the stage runs carries vaibify's shared hardening flags
 (`protocol.file.allow=never`, `core.symlinks=false`, no submodule
 recursion), the credential-helper reset, `GIT_TERMINAL_PROMPT=0`, and
-ssh in batch mode (`-o BatchMode=yes` appended to your
-`GIT_SSH_COMMAND`, or to `ssh`), so no ambient credential can answer
+ssh in batch mode (`-o BatchMode=yes` placed FIRST in your
+`GIT_SSH_COMMAND`, or in `ssh`, because OpenSSH keeps the first value
+it sees for an option), so no ambient credential can answer
 for a stranger's remote and neither git nor ssh can hang an unattended
 run on a question -- an unknown host key or a locked key fails the
 clone, and the refusal says so. One deliberate exception: the clone

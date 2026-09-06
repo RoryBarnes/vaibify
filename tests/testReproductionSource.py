@@ -11,6 +11,8 @@ proven to fail against on a ``Kills:`` line.
 import io
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import tarfile
 import time
@@ -502,16 +504,37 @@ def test_no_git_call_can_prompt_for_a_credential(sPublishedRepo, monkeypatch):
 
 @pytest.mark.falsification
 def test_ssh_cannot_prompt_either(sPublishedRepo, monkeypatch):
-    """Kills: dropping ``BatchMode=yes`` from the ssh command."""
-    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /somewhere/key")
+    """Batch mode wins even over an inherited ``BatchMode=no``.
+
+    OpenSSH keeps the FIRST value of an option, so the enforced one
+    must precede the researcher's. The effective setting is read back
+    through ``ssh -G`` when ssh is on PATH; the ordering is asserted
+    structurally either way, so no host makes this test vacuous.
+
+    Kills: appending ``BatchMode=yes`` after the inherited options.
+    """
+    monkeypatch.setenv(
+        "GIT_SSH_COMMAND", "ssh -o BatchMode=no -i /somewhere/key",
+    )
     listLaunches = _flistRecordGitLaunches(monkeypatch)
     fdictStageSource(sPublishedRepo)
     assert listLaunches
-    for _listArguments, dictEnvironment in listLaunches:
-        assert dictEnvironment["GIT_SSH_COMMAND"].startswith(
-            "ssh -i /somewhere/key",
+    # A snapshot: the ``ssh -G`` probe below is itself a recorded launch.
+    for _listArguments, dictEnvironment in list(listLaunches):
+        listWords = shlex.split(dictEnvironment["GIT_SSH_COMMAND"])
+        assert listWords[0] == "ssh"
+        assert "-i" in listWords and "/somewhere/key" in listWords
+        assert listWords.index("BatchMode=yes") < listWords.index(
+            "BatchMode=no",
         )
-        assert "-o BatchMode=yes" in dictEnvironment["GIT_SSH_COMMAND"]
+        if shutil.which("ssh"):
+            processSsh = subprocess.run(
+                listWords + ["-G", "host.invalid"],
+                capture_output=True, text=True,
+            )
+            assert "batchmode yes" in processSsh.stdout.lower(), (
+                processSsh.stdout + processSsh.stderr
+            )
 
 
 # ---------------------------------------------------------------------

@@ -17584,7 +17584,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_ssh_cannot_prompt_either',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand + " -o BatchMode=yes"\n',
-        new='    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand\n',
+        old='    return shlex.join([listWords[0], "-o", "BatchMode=yes", *listWords[1:]])\n',
+        new='    return shlex.join([*listWords, "-o", "BatchMode=yes"])\n',
     ),
 ]

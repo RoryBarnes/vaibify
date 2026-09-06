@@ -58,6 +58,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -419,16 +420,37 @@ def _fdictGitEnvironment():
     ``GIT_TERMINAL_PROMPT=0`` silences git's own credential prompt and
     nothing else: ssh asks for a passphrase or a host-key confirmation
     through ``/dev/tty`` on its own, so the ssh transport is put in
-    batch mode too. An unknown host or a locked key then fails the
+    batch mode too, as the FIRST option so nothing inherited outranks it. An unknown host or a locked key then fails the
     clone, which the caller reports, instead of hanging an unattended
     run on a question nobody will answer. A researcher's own
     ``GIT_SSH_COMMAND`` is kept and the option appended to it.
     """
     dictEnvironment = os.environ.copy()
     dictEnvironment["GIT_TERMINAL_PROMPT"] = "0"
-    sSshCommand = (dictEnvironment.get("GIT_SSH_COMMAND") or "ssh").strip()
-    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand + " -o BatchMode=yes"
+    dictEnvironment["GIT_SSH_COMMAND"] = _fsBatchModeSshCommand(
+        dictEnvironment.get("GIT_SSH_COMMAND"),
+    )
     return dictEnvironment
+
+
+def _fsBatchModeSshCommand(sInherited):
+    """Return the ssh command with batch mode as its FIRST option.
+
+    OpenSSH keeps the first value it sees for an option, so an inherited
+    ``-o BatchMode=no`` would beat one appended after it (measured with
+    ``ssh -G``: ``-o BatchMode=no -o BatchMode=yes`` resolves to no). The
+    enforced option therefore goes immediately after the program word,
+    ahead of anything the researcher's own command carries. A command
+    that cannot be parsed as shell words is replaced outright rather
+    than trusted.
+    """
+    try:
+        listWords = shlex.split(sInherited or "")
+    except ValueError:
+        listWords = []
+    if not listWords:
+        listWords = ["ssh"]
+    return shlex.join([listWords[0], "-o", "BatchMode=yes", *listWords[1:]])
 
 
 def _fprocessRunGit(listArguments, sCwd=None):
