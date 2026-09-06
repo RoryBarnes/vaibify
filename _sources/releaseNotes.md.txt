@@ -6,6 +6,40 @@ the reasoning.
 
 ## Unreleased
 
+### Your container image can be archived, so a reproduction survives the registry
+
+`reproduce.sh` opens by pulling the container image your results were
+produced in. A digest names bytes somebody else is storing for you, and
+the day that registry stops serving them -- a deleted tag, a retired
+service, an account that lapsed -- the reproduction dies at the first
+line and the environment is gone. The compiler, the exact numeric
+library, the interpreter and every installed package go with it.
+
+Vaibify can now deposit the image itself into Zenodo, under its own
+DOI, and `reproduce.sh` falls back to it when the pull fails: it
+follows the DOI, checks the download against the hash your project
+recorded, and loads it. A measured example: a 3.5 GB image becomes a
+821 MB deposit.
+
+You are asked once, at Level 2, in the Artifacts section of the Project
+block: deposit the image, point at a deposit that already holds it, or
+decline. **Answering is the requirement -- declining passes it.** The
+question is asked at Level 2 rather than offered as a button because
+that is the last moment the image is certainly still on your machine; a
+prune, a rebuild or a new laptop can take the opportunity away even
+though you can change your answer at any time. Whether an archive
+actually exists is a separate Level 3 criterion which never reads your
+answer, so declining is a decision and not a lock: deposit later and
+Level 3 opens.
+
+One image used for several papers is one large upload plus a small
+record per paper, not one upload per paper. The row says which platform
+and which DOI it covers, never a bare tick, and it distinguishes "not
+deposited" from "the deposit covers a different image" from "vaibify
+could not reach Zenodo" -- the last of those is never shown as a
+problem with your deposit, because nothing was compared.
+
+
 ### A passing test suite is no longer reported as a failure
 
 A step whose tests all passed could still be reported as failing, with

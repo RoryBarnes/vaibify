@@ -4890,7 +4890,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lines, nine of which are the note explaining that no criterion
     # reads it -- an encouragement wired through the same channel as
     # the gates is one edit away from becoming one.
-    "routes/pipelineRoutes.py": 3490,
+    # RAISED to 3511 (2026-09-05): the poll now carries the
+    # environment-archive row payload. Twenty-one lines, and
+    # they are threading rather than logic — the payload is
+    # BUILT in pipelineServer, beside the image-currency
+    # assessment it sits next to on the wire, because both are
+    # read by two route modules and a route module may not
+    # import a sibling.
+    "routes/pipelineRoutes.py": 3511,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5539,7 +5546,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3071 (2026-09-02, on merge): MEASURED on the merged file. The
     # shadow branch recorded 3068 and main 2996 for changes that both
     # landed; neither number describes the file that now exists.
-    "pipelineServer.py": 3071,
+    # RAISED to 3175 (2026-09-05): two poll-payload builders for
+    # the environment archive, homed here for the reason
+    # fdictAssessEnvelopeImageCurrency beside them is —
+    # both the pipeline poll and the L3 readiness route read
+    # them, and a route module may not import a sibling. The
+    # second is the connect-time probe of whether the daemon
+    # still holds the pinned image, which cannot live on the
+    # poll path: that path makes no daemon call, and the row it
+    # feeds says an archiving opportunity is permanently gone,
+    # which needs positive evidence rather than a guess.
+    # +10 (2026-09-05, review): the presence probe reads the
+    # envelope through the context's container adapter (a host
+    # adapter over a container path finds nothing, so CLOSED was
+    # unreachable), and a FAILED deposit no longer repaints the
+    # row UNCHECKED. Both are the reasons, written where the
+    # next reader will look for them.
+    "pipelineServer.py": 3185,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6397,7 +6420,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1172 (2026-09-02, on merge): MEASURED on the merged file. The
     # shadow branch recorded 1125 and main 1115 for changes that both
     # landed; neither number describes the file that now exists.
-    "actionCatalog.py": 1172,
+    # RAISED to 1202 (2026-09-05): two entries for the
+    # environment archive, both bAgentSafe False. This module
+    # is a catalog — it grows by one record per action by
+    # construction, and a record carries its own rationale.
+    "actionCatalog.py": 1202,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6629,7 +6656,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # joins the package check as a verify precondition, computed here
     # because it reads host docker state the levelGates verifiers
     # (repo-only) cannot.
-    "routes/reproducibilityRoutes.py": 1550,
+    # RAISED to 1568 (2026-09-05): the attestation now records
+    # the environment-archive re-check beside its other
+    # verdicts. The archive's own routes are NOT here — they
+    # were split into environmentArchiveRoutes.py, because a
+    # deposit lane with a credential crossing, a durable task
+    # and a progress record changes for different reasons than
+    # the readiness verifiers.
+    # +20 (2026-09-05, review): the re-check re-saves the pinned
+    # image, minutes for a multi-gigabyte one, and it ran ON the
+    # event loop at the end of every verify. It now runs in the
+    # worker's thread, which is one helper and its reason.
+    "routes/reproducibilityRoutes.py": 1588,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

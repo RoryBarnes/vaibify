@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.8.dev8 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.9.dev7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e83284e6"></script>
+      <script src="_static/documentation_options.js?v=9f6ab3be"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,7 +68,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-envelope">The Reproducibility Envelope</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#tier-1-artifacts-manifest-sha256">Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#tier-2-python-dependencies-requirements-lock">Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#tier-3-container-system-layer-vaibify-environment-json">Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tier-3-container-system-layer-vaibify-environment-json">Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#the-image-digest-names-bytes-somebody-else-is-storing">The image digest names bytes somebody else is storing</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#the-dockerfile-is-provenance-the-digest-is-reproduction">The Dockerfile is provenance; the digest is reproduction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-is-pinned-in-the-image-and-what-floats">What is pinned in the image, and what floats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#regenerating-the-pin-list-after-a-base-image-bump">Regenerating the pin list after a base-image bump</a></li>
@@ -345,10 +348,34 @@ the commit that publishes the manifest moves HEAD — an epoch
 re-derived on the reproducing side would differ from the one that
 salted the pinned figures, so every timestamped artefact would
 diverge on exactly the workflows the envelope exists to certify.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fsReadImageArchitecture(sImageReference)</span></code> — the platform the image
+was built for, recorded as <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>. Read from the image
+rather than derived from the digest, because a <strong>manifest list</strong>
+digest spans several platforms and pins none of them.</p></li>
 </ul>
 <p>This tier records what the container layer cannot pin by digest alone,
 without claiming to bit-pin floating-point arithmetic across CPU
 architectures.</p>
+<section id="the-image-digest-names-bytes-somebody-else-is-storing">
+<h4>The image digest names bytes somebody else is storing<a class="headerlink" href="#the-image-digest-names-bytes-somebody-else-is-storing" title="Link to this heading"></a></h4>
+<p>A digest is a pin, not a copy. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> begins with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code>, and that is the moment the pin stops being enough: when the
+registry no longer serves the digest, the compiler, the exact numeric
+library, the interpreter and every installed package are gone with it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">dictContainer.dictImageArchive</span></code> records a deposit of the image itself
+— a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code>, compressed, published to Zenodo under its own
+version DOI. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> falls back to it when the pull fails,
+verifying the download against <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> before loading it. The
+record carries the digest and the platform it covers, so an envelope
+regenerated for a different image drops it rather than claiming an
+archive nobody made, and two hashes: <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> binds the bytes
+uploaded, and <code class="docutils literal notranslate"><span class="pre">sImageStreamSha256</span></code> binds the image content
+independently of which compressor produced the tarball.</p>
+<p>Depositing is the researcher’s choice, asked once at Level 2 and
+answerable with <code class="docutils literal notranslate"><span class="pre">archived</span></code>, <code class="docutils literal notranslate"><span class="pre">referenced</span></code> or <code class="docutils literal notranslate"><span class="pre">declined</span></code>. Declining
+satisfies Level 2 and blocks only the Level 3 criterion, which never
+reads the answer — so a project that declined and later deposits
+reaches Level 3 with nothing to undo.</p>
+</section>
 </section>
 <section id="the-dockerfile-is-provenance-the-digest-is-reproduction">
 <h3>The Dockerfile is provenance; the digest is reproduction<a class="headerlink" href="#the-dockerfile-is-provenance-the-digest-is-reproduction" title="Link to this heading"></a></h3>
@@ -652,6 +679,14 @@ variance. This is a science-of-reproducibility limitation, not a
 vaibify defect, and we document it rather than try to engineer around
 it. Tier 5 (project re-run via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>) is
 therefore advisory.</p>
+<p><strong>An archived environment is runnable, not rebuildable.</strong> The deposit
+preserves the image as it was built: binaries, not sources. It does not
+let a reader reconstruct that image from first principles the way a
+Guix or Nix derivation would, and it inherits <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">load</span></code>’s own
+platform constraints — an arm64 deposit runs under emulation on an
+amd64 host, or not at all. Preserving a runnable environment is the
+claim; preserving a rebuildable one is out of scope and deliberately
+so.</p>
 <p><strong>The unfixable failure mode.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> itself is
 replaced by a tampered binary on the verifier’s machine, vaibify
 cannot detect that — the same problem every verification tool has,

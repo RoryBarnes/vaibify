@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release Notes &mdash; Vaibify 0.0.8.dev8 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.9.dev7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e83284e6"></script>
+      <script src="_static/documentation_options.js?v=9f6ab3be"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,6 +65,7 @@
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#your-container-image-can-be-archived-so-a-reproduction-survives-the-registry">Your container image can be archived, so a reproduction survives the registry</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure">A passing test suite is no longer reported as a failure</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#agent-council">Agent Council</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#host-mode">Host mode</a></li>
@@ -109,6 +110,36 @@ observes, not internal mechanics; the architecture document carries
 the reasoning.</p>
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="your-container-image-can-be-archived-so-a-reproduction-survives-the-registry">
+<h3>Your container image can be archived, so a reproduction survives the registry<a class="headerlink" href="#your-container-image-can-be-archived-so-a-reproduction-survives-the-registry" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> opens by pulling the container image your results were
+produced in. A digest names bytes somebody else is storing for you, and
+the day that registry stops serving them – a deleted tag, a retired
+service, an account that lapsed – the reproduction dies at the first
+line and the environment is gone. The compiler, the exact numeric
+library, the interpreter and every installed package go with it.</p>
+<p>Vaibify can now deposit the image itself into Zenodo, under its own
+DOI, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> falls back to it when the pull fails: it
+follows the DOI, checks the download against the hash your project
+recorded, and loads it. A measured example: a 3.5 GB image becomes a
+821 MB deposit.</p>
+<p>You are asked once, at Level 2, in the Artifacts section of the Project
+block: deposit the image, point at a deposit that already holds it, or
+decline. <strong>Answering is the requirement – declining passes it.</strong> The
+question is asked at Level 2 rather than offered as a button because
+that is the last moment the image is certainly still on your machine; a
+prune, a rebuild or a new laptop can take the opportunity away even
+though you can change your answer at any time. Whether an archive
+actually exists is a separate Level 3 criterion which never reads your
+answer, so declining is a decision and not a lock: deposit later and
+Level 3 opens.</p>
+<p>One image used for several papers is one large upload plus a small
+record per paper, not one upload per paper. The row says which platform
+and which DOI it covers, never a bare tick, and it distinguishes “not
+deposited” from “the deposit covers a different image” from “vaibify
+could not reach Zenodo” – the last of those is never shown as a
+problem with your deposit, because nothing was compared.</p>
+</section>
 <section id="a-passing-test-suite-is-no-longer-reported-as-a-failure">
 <h3>A passing test suite is no longer reported as a failure<a class="headerlink" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure" title="Link to this heading"></a></h3>
 <p>A step whose tests all passed could still be reported as failing, with
