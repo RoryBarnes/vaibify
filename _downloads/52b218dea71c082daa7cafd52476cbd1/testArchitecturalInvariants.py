@@ -717,6 +717,37 @@ def testNoScienceSpecificIdentifiersInSource():
     )
 
 
+# A published project lives wherever its authors put it, so the
+# "Reproduce a published project" lane classifies a source by SHAPE
+# (scheme, userinfo, path) and never by the forge that hosts it. A
+# hostname in the classifier would be a vendor pinned into a rung's
+# input, the same shape as a registry pinned into a rung's proof.
+_TUPLE_REPRODUCTION_SOURCE_FILES = (
+    "vaibify/reproducibility/reproductionSource.py",
+    "tests/testReproductionSource.py",
+    "tests/testReproduceFromSource.py",
+    "tests/reproductionSourceFixtures.py",
+)
+_TUPLE_FORGE_HOSTNAMES = (
+    "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "sr.ht",
+)
+
+
+def testReproductionSourceNamesNoForgeHostname():
+    """The source classifier and its tests name no code-hosting service."""
+    listViolations = []
+    for sRelative in _TUPLE_REPRODUCTION_SOURCE_FILES:
+        sSource = (REPO_ROOT / sRelative).read_text(encoding="utf-8")
+        for iLineNumber, sLine in enumerate(sSource.splitlines(), start=1):
+            for sHost in _TUPLE_FORGE_HOSTNAMES:
+                if sHost in sLine.lower():
+                    listViolations.append(f"{sRelative}:{iLineNumber}: {sHost}")
+    assert listViolations == [], (
+        "forge hostnames in the reproduction-source lane:\n  "
+        + "\n  ".join(listViolations)
+    )
+
+
 # The ONE shipped example workflow may carry science overlap by
 # explicit ruling (2026-07-27): it is an allow-path, never a weakened
 # pattern. Every other shipped template stays strict.

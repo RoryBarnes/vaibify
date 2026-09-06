@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.10.dev7 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.10.dev11 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0d1b3794"></script>
+      <script src="_static/documentation_options.js?v=a9f867f7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -79,6 +79,13 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-verification-ceremony-vaibify-reproduce">The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reproducing-somebody-else-s-project-vaibify-reproduce-from">Reproducing somebody else’s project: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-source-can-be">What a source can be</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-reproduction-is-of-a-commit">A reproduction is of a commit</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">Validation is strict, not advisory – and it is not the Level 3 gate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-report-may-carry">What a report may carry</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#trust-anchor-architecture">Trust-anchor architecture</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#remote-mirror-verification">Remote-mirror verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#known-limitations">Known limitations</a></li>
@@ -635,6 +642,132 @@ above the final summary.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">2</span></code> — usage error (a required input file is missing, or a malformed
 <code class="docutils literal notranslate"><span class="pre">environment.json</span></code>).</p></li>
 </ul>
+</section>
+<section id="reproducing-somebody-else-s-project-vaibify-reproduce-from">
+<h2>Reproducing somebody else’s project: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span></code><a class="headerlink" href="#reproducing-somebody-else-s-project-vaibify-reproduce-from" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> grades a repository you already have checked out.
+<strong>Reproduce a published project</strong> starts one step earlier, from the
+thing a stranger has – a clone URL, or a clone already on your
+machine – and stages an exact snapshot of it before anything is
+graded:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ vaibify reproduce --from https://host.example/group/project.git
+Staged git-url as an exact snapshot.
+  repository:      project
+  commit:          3f1c...e9
+  remote:          https://host.example/group/project.git
+  workflow:        Demo (.vaibify/projects/project.json, 4 steps)
+  manifest:        47 entries, every one matching, digest 9a2b...
+A rerun would use:
+  pinned image:    registry.example/project@sha256:1a2b...
+  platform:        linux/amd64
+  image archive:   deposited, version DOI 10.5281/zenodo.1234567
+Snapshot validated as reproduction-ready (the six staging rules,
+not the author's Level 3 gate) and discarded; nothing was
+pulled, installed or run.
+</pre></div>
+</div>
+<p>This release stages, validates and describes. Acquiring the pinned
+image and re-running the snapshot in a shadow container arrive with
+later releases; <code class="docutils literal notranslate"><span class="pre">--from</span></code> combined with <code class="docutils literal notranslate"><span class="pre">--rerun</span></code> says so rather than
+pretending.</p>
+<section id="what-a-source-can-be">
+<h3>What a source can be<a class="headerlink" href="#what-a-source-can-be" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Source</p></th>
+<th class="head"><p>Accepted as</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>An <code class="docutils literal notranslate"><span class="pre">https://</span></code> or <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> clone URL, or <code class="docutils literal notranslate"><span class="pre">user&#64;host:path</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">git-url</span></code></p></td>
+<td><p>Matched by shape, never by which forge hosts it. A URL carrying a username or password is refused: credentials in a URL end up in shell history and in reports.</p></td>
+</tr>
+<tr class="row-odd"><td><p>The path of a clone under your home directory</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">local-clone</span></code></p></td>
+<td><p>Only when <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> reports nothing at all – tracked, untracked <em>and</em> ignored. A dirty clone is not a published project.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">file://</span></code>, <code class="docutils literal notranslate"><span class="pre">git://</span></code>, <code class="docutils literal notranslate"><span class="pre">ext::</span></code> and plain <code class="docutils literal notranslate"><span class="pre">http://</span></code> are refused, each
+being a way to make git read or run something on this host. A Zenodo
+software record as a source, and comparing a reproduction against a
+published <em>data</em> deposit, are recorded design decisions not yet built.</p>
+</section>
+<section id="a-reproduction-is-of-a-commit">
+<h3>A reproduction is of a commit<a class="headerlink" href="#a-reproduction-is-of-a-commit" title="Link to this heading"></a></h3>
+<p>A URL is cloned in full – no <code class="docutils literal notranslate"><span class="pre">--depth</span></code>, because the history and the
+source-date epoch matter – and the commit it resolved to is recorded.
+A local clone is materialized by <strong>cloning the local repository</strong>,
+never by copying its working tree, and checked out at the commit you
+had checked out, so the staged bytes are that commit’s bytes and
+nothing else. Everything downstream consumes the staged snapshot: a
+branch that advances after staging, or a working tree edited since,
+changes nothing about what would run.</p>
+<p>Every <code class="docutils literal notranslate"><span class="pre">git</span></code> the stage runs carries vaibify’s shared hardening flags
+(<code class="docutils literal notranslate"><span class="pre">protocol.file.allow=never</span></code>, <code class="docutils literal notranslate"><span class="pre">core.symlinks=false</span></code>, no submodule
+recursion), the credential-helper reset, <code class="docutils literal notranslate"><span class="pre">GIT_TERMINAL_PROMPT=0</span></code>, and
+ssh in batch mode (<code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">BatchMode=yes</span></code> placed FIRST in your
+<code class="docutils literal notranslate"><span class="pre">GIT_SSH_COMMAND</span></code>, or in <code class="docutils literal notranslate"><span class="pre">ssh</span></code>, because OpenSSH keeps the first value
+it sees for an option), so no ambient credential can answer
+for a stranger’s remote and neither git nor ssh can hang an unattended
+run on a question – an unknown host key or a locked key fails the
+clone, and the refusal says so. One deliberate exception: the clone
+of a <em>local</em> repository is itself the file transport git’s hardening
+refuses, so that one clone – and only that one, only after the path
+was admitted under your home – reopens the file transport. It asks
+for no submodule, so the hostile <code class="docutils literal notranslate"><span class="pre">.gitmodules</span></code> the setting defends
+against is never read.</p>
+<p>A clone is refused while it grows past a size ceiling, not after it
+has filled the disk, and an abandoned staging directory is swept after
+a day – never one a live job still holds.</p>
+</section>
+<section id="validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">
+<h3>Validation is strict, not advisory – and it is not the Level 3 gate<a class="headerlink" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> warns about a manifest that omits a declared file;
+<code class="docutils literal notranslate"><span class="pre">--from</span></code> refuses. It grades somebody else’s project, and the six rules
+it applies are the ones a rerun <em>depends on</em>: a loadable workflow, a
+pinned image on a named platform, and a manifest that parses, matches
+the staged bytes and covers the selected workflow’s declarations. They
+are deliberately <strong>not</strong> the author’s Level 3 readiness gate. A
+dependency lock, a pinned Dockerfile, determinism answers, a published
+mirror, an environment archive and a current attestation are the
+author’s own claims; requiring them before a stranger may reproduce
+the work would put the claim ahead of the check. The verdict is
+therefore “reproduction-ready”, never “Level 3”. The rules, applied in
+order, the first to fail named with the file that failed it:</p>
+<ol class="arabic simple">
+<li><p>The selected <code class="docutils literal notranslate"><span class="pre">project.json</span></code> loads through the ordinary migrations
+and validates. A file written by a newer vaibify is refused here by
+name, never as a bare traceback.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> is present, pins a content digest (a
+tag is refused: it can be repointed without anything changing), and
+records the image’s architecture. A legacy envelope with no
+architecture is refused rather than defaulted to this host’s: the
+source names its environment, and there is no architecture picker.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> parses, every line.</p></li>
+<li><p>Every manifest entry matches the staged bytes.</p></li>
+<li><p>No file the <strong>selected</strong> workflow declares is missing from the
+manifest. A repository hosting several workflows is validated for
+the one that will run.</p></li>
+<li><p>If an image deposit is on record, it covers the pinned image <em>and</em>
+its architecture. No deposit on record is not a refusal – the
+registry may still serve the image – and is reported as such.</p></li>
+</ol>
+</section>
+<section id="what-a-report-may-carry">
+<h3>What a report may carry<a class="headerlink" href="#what-a-report-may-carry" title="Link to this heading"></a></h3>
+<p>Only what <code class="docutils literal notranslate"><span class="pre">fdictDescribeStagedSource</span></code> returns: the source kind, the
+resolved commit, the remote URL with any <code class="docutils literal notranslate"><span class="pre">user:password&#64;</span></code> stripped,
+the workflow name and its repo-relative path, and the validated facts
+above. Never a path on the reproducer’s machine. A reproduction report
+is the reproducer’s own artefact – never an attestation, never
+written into any repository, and never read by the Level 3 gate – and
+it may one day be deposited publicly, which is why the redaction is
+applied when the snapshot is staged rather than when a report is
+written.</p>
+</section>
 </section>
 <section id="trust-anchor-architecture">
 <h2>Trust-anchor architecture<a class="headerlink" href="#trust-anchor-architecture" title="Link to this heading"></a></h2>

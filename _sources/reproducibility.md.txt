@@ -519,6 +519,122 @@ Exit codes:
 - `2` — usage error (a required input file is missing, or a malformed
   `environment.json`).
 
+## Reproducing somebody else's project: `vaibify reproduce --from`
+
+`vaibify reproduce` grades a repository you already have checked out.
+**Reproduce a published project** starts one step earlier, from the
+thing a stranger has -- a clone URL, or a clone already on your
+machine -- and stages an exact snapshot of it before anything is
+graded:
+
+```
+$ vaibify reproduce --from https://host.example/group/project.git
+Staged git-url as an exact snapshot.
+  repository:      project
+  commit:          3f1c...e9
+  remote:          https://host.example/group/project.git
+  workflow:        Demo (.vaibify/projects/project.json, 4 steps)
+  manifest:        47 entries, every one matching, digest 9a2b...
+A rerun would use:
+  pinned image:    registry.example/project@sha256:1a2b...
+  platform:        linux/amd64
+  image archive:   deposited, version DOI 10.5281/zenodo.1234567
+Snapshot validated as reproduction-ready (the six staging rules,
+not the author's Level 3 gate) and discarded; nothing was
+pulled, installed or run.
+```
+
+This release stages, validates and describes. Acquiring the pinned
+image and re-running the snapshot in a shadow container arrive with
+later releases; `--from` combined with `--rerun` says so rather than
+pretending.
+
+### What a source can be
+
+| Source | Accepted as | Notes |
+|---|---|---|
+| An `https://` or `ssh://` clone URL, or `user@host:path` | `git-url` | Matched by shape, never by which forge hosts it. A URL carrying a username or password is refused: credentials in a URL end up in shell history and in reports. |
+| The path of a clone under your home directory | `local-clone` | Only when `git status` reports nothing at all -- tracked, untracked *and* ignored. A dirty clone is not a published project. |
+
+`file://`, `git://`, `ext::` and plain `http://` are refused, each
+being a way to make git read or run something on this host. A Zenodo
+software record as a source, and comparing a reproduction against a
+published *data* deposit, are recorded design decisions not yet built.
+
+### A reproduction is of a commit
+
+A URL is cloned in full -- no `--depth`, because the history and the
+source-date epoch matter -- and the commit it resolved to is recorded.
+A local clone is materialized by **cloning the local repository**,
+never by copying its working tree, and checked out at the commit you
+had checked out, so the staged bytes are that commit's bytes and
+nothing else. Everything downstream consumes the staged snapshot: a
+branch that advances after staging, or a working tree edited since,
+changes nothing about what would run.
+
+Every `git` the stage runs carries vaibify's shared hardening flags
+(`protocol.file.allow=never`, `core.symlinks=false`, no submodule
+recursion), the credential-helper reset, `GIT_TERMINAL_PROMPT=0`, and
+ssh in batch mode (`-o BatchMode=yes` placed FIRST in your
+`GIT_SSH_COMMAND`, or in `ssh`, because OpenSSH keeps the first value
+it sees for an option), so no ambient credential can answer
+for a stranger's remote and neither git nor ssh can hang an unattended
+run on a question -- an unknown host key or a locked key fails the
+clone, and the refusal says so. One deliberate exception: the clone
+of a *local* repository is itself the file transport git's hardening
+refuses, so that one clone -- and only that one, only after the path
+was admitted under your home -- reopens the file transport. It asks
+for no submodule, so the hostile `.gitmodules` the setting defends
+against is never read.
+
+A clone is refused while it grows past a size ceiling, not after it
+has filled the disk, and an abandoned staging directory is swept after
+a day -- never one a live job still holds.
+
+### Validation is strict, not advisory -- and it is not the Level 3 gate
+
+`vaibify reproduce` warns about a manifest that omits a declared file;
+`--from` refuses. It grades somebody else's project, and the six rules
+it applies are the ones a rerun *depends on*: a loadable workflow, a
+pinned image on a named platform, and a manifest that parses, matches
+the staged bytes and covers the selected workflow's declarations. They
+are deliberately **not** the author's Level 3 readiness gate. A
+dependency lock, a pinned Dockerfile, determinism answers, a published
+mirror, an environment archive and a current attestation are the
+author's own claims; requiring them before a stranger may reproduce
+the work would put the claim ahead of the check. The verdict is
+therefore "reproduction-ready", never "Level 3". The rules, applied in
+order, the first to fail named with the file that failed it:
+
+1. The selected `project.json` loads through the ordinary migrations
+   and validates. A file written by a newer vaibify is refused here by
+   name, never as a bare traceback.
+2. `.vaibify/environment.json` is present, pins a content digest (a
+   tag is refused: it can be repointed without anything changing), and
+   records the image's architecture. A legacy envelope with no
+   architecture is refused rather than defaulted to this host's: the
+   source names its environment, and there is no architecture picker.
+3. `MANIFEST.sha256` parses, every line.
+4. Every manifest entry matches the staged bytes.
+5. No file the **selected** workflow declares is missing from the
+   manifest. A repository hosting several workflows is validated for
+   the one that will run.
+6. If an image deposit is on record, it covers the pinned image *and*
+   its architecture. No deposit on record is not a refusal -- the
+   registry may still serve the image -- and is reported as such.
+
+### What a report may carry
+
+Only what `fdictDescribeStagedSource` returns: the source kind, the
+resolved commit, the remote URL with any `user:password@` stripped,
+the workflow name and its repo-relative path, and the validated facts
+above. Never a path on the reproducer's machine. A reproduction report
+is the reproducer's own artefact -- never an attestation, never
+written into any repository, and never read by the Level 3 gate -- and
+it may one day be deposited publicly, which is why the redaction is
+applied when the snapshot is staged rather than when a report is
+written.
+
 ## Trust-anchor architecture
 
 `vaibify reproduce` is a convenience orchestrator, **not** the trust

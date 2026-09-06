@@ -23,6 +23,13 @@ inside a project repository. Walks five tiers in sequence:
   and archives a copy to ``.vaibify/l3_attestations/``. Tiers 1-4 read
   the host repo named by ``--repo``.
 
+``--from <source>`` is a different entry altogether: it stages a
+PUBLISHED project (a clone URL or a clean local clone) as an exact
+snapshot of one commit, validates it strictly as reproduction-ready
+(the six staging rules a rerun depends on -- deliberately not the
+author's Level 3 gate), describes it and discards it. It never enters
+the tier sequence; see ``reproducibility.reproductionSource``.
+
 Tiers 1-4 are read-only over the project repo. Tier 5 no longer writes
 to the researcher's own working tree at all — the rerun's output lands
 in the shadow, which is destroyed with proof afterwards — but the
@@ -76,6 +83,12 @@ from vaibify.reproducibility.repoFiles import ContainerRepoFiles
 from vaibify.reproducibility.rerunVerification import (
     S_DIVERGENCE_PIPELINE_FAILED,
     fdictUnrunOutcome,
+)
+from vaibify.reproducibility.reproductionSource import (
+    ReproductionSourceRefusedError,
+    fdictSelectWorkflowEntry,
+    fdictStageSource,
+    fnDiscardStagedSource,
 )
 from vaibify.reproducibility.shadowRerun import (
     fdictRerunAndVerifyThroughShadow,
@@ -671,9 +684,9 @@ def _ftResolveRerunTarget(sProjectRepo, sWorkflowName):
     )
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
-    dictEntry = _fdictSelectWorkflowEntry(
+    dictEntry = fdictSelectWorkflowEntry(
         flistFindWorkflowsInContainer(connectionDocker, sContainerName),
-        sWorkflowName,
+        sWorkflowName, "the running container",
     )
     dictWorkflow = fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerName, dictEntry["sPath"],
@@ -685,57 +698,6 @@ def _ftResolveRerunTarget(sProjectRepo, sWorkflowName):
     return (
         connectionDocker, sContainerName, dictWorkflow, dictEntry["sPath"],
     )
-
-
-def _fdictSelectWorkflowEntry(listWorkflows, sWorkflowName):
-    """Return the one discovered workflow to re-run, or raise ValueError.
-
-    Ambiguity is refused rather than resolved by sort order: picking a
-    workflow here would attest an envelope the rerun did not produce.
-    """
-    if not listWorkflows:
-        raise ValueError(
-            "no vaibify workflow found in the running container"
-        )
-    if sWorkflowName:
-        return _fdictMatchWorkflowByName(listWorkflows, sWorkflowName)
-    if len(listWorkflows) > 1:
-        raise ValueError(
-            f"the running container hosts {len(listWorkflows)} "
-            "workflows ("
-            + ", ".join(sorted(
-                dictEntry.get("sName", "") for dictEntry in listWorkflows
-            ))
-            + "); name the one to re-run with --workflow, because "
-            "attesting a workflow other than the one that ran would "
-            "certify a run that never happened"
-        )
-    return listWorkflows[0]
-
-
-def _fdictMatchWorkflowByName(listWorkflows, sWorkflowName):
-    """Return the single discovered workflow matching a researcher's name."""
-    listMatches = [
-        dictEntry for dictEntry in listWorkflows
-        if sWorkflowName in (
-            dictEntry.get("sName", ""), dictEntry.get("sPath", ""),
-        )
-    ]
-    if not listMatches:
-        raise ValueError(
-            f"no workflow named '{sWorkflowName}' in the running "
-            "container; --workflow accepts "
-            + ", ".join(sorted(
-                dictEntry.get("sName", "") for dictEntry in listWorkflows
-            ))
-        )
-    if len(listMatches) > 1:
-        raise ValueError(
-            f"'{sWorkflowName}' matches more than one workflow in the "
-            "running container; pass the full container path to "
-            "--workflow instead"
-        )
-    return listMatches[0]
 
 
 def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
@@ -958,7 +920,83 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     return dictOutcome["bPassed"], bAttestationWritten
 
 
+def _fnReportStagedSource(dictStaged):
+    """Print what was staged and what a rerun of it would use.
+
+    Every line comes from the redacted description a report may carry
+    -- the staging directory is not among them, and the researcher's
+    console is the one place the token is ever printed.
+    """
+    click.echo(f"Staged {dictStaged['sKind']} as an exact snapshot.")
+    click.echo(f"  repository:      {dictStaged['sRepositoryName']}")
+    click.echo(f"  commit:          {dictStaged['sResolvedCommit']}")
+    click.echo(f"  remote:          {dictStaged['sRemoteUrl'] or '(none)'}")
+    click.echo(
+        f"  workflow:        {dictStaged['sWorkflowName']} "
+        f"({dictStaged['sWorkflowPath']}, {dictStaged['iStepCount']} steps)"
+    )
+    click.echo(
+        f"  manifest:        {dictStaged['iManifestEntries']} entries, "
+        f"every one matching, digest {dictStaged['sManifestDigest'][:12]}..."
+    )
+    click.echo("A rerun would use:")
+    click.echo(f"  pinned image:    {dictStaged['sPinnedImageReference']}")
+    click.echo(f"  platform:        {dictStaged['sRequiredPlatform']}")
+    if dictStaged["bDepositOnRecord"]:
+        click.echo(
+            "  image archive:   deposited, version DOI "
+            + dictStaged["sDepositVersionDoi"]
+        )
+    else:
+        click.echo(
+            "  image archive:   no deposit on record; only the registry "
+            "and a local copy can serve the image"
+        )
+
+
+def _fnStageFromSource(sSource, sWorkflowName, bRerun):
+    """Stage and validate a published project, then discard the staging.
+
+    Nothing consumes the snapshot in this release, so keeping a
+    checked-out repository under the researcher's home after a dry run
+    would be waste dressed as caching; it is removed as soon as it has
+    been described. No image is acquired here: acquisition mutates the
+    daemon and can take minutes, and this lane is the part that costs
+    nothing but a clone.
+    """
+    if bRerun:
+        click.echo(
+            "Error: --from stages and validates a published project; "
+            "re-running the staged snapshot arrives with the image "
+            "acquisition step in a later release."
+        )
+        sys.exit(2)
+    try:
+        dictStaged = fdictStageSource(sSource, sWorkflowName)
+    except ReproductionSourceRefusedError as error:
+        click.echo(f"Refused: {error}")
+        sys.exit(1)
+    try:
+        _fnReportStagedSource(dictStaged)
+    finally:
+        fnDiscardStagedSource(dictStaged["sToken"])
+    click.echo(
+        "Snapshot validated as reproduction-ready (the six staging rules, "
+        "not the author's Level 3 gate) and discarded; nothing was "
+        "pulled, installed or run."
+    )
+
+
 @click.command("reproduce")
+@click.option(
+    "--from", "sSource", default=None,
+    help="Reproduce a PUBLISHED project: an https:// or ssh:// clone "
+         "URL, a user@host:path address, or the path of a clean local "
+         "clone under your home directory. Stages an exact snapshot of "
+         "one commit and validates it as reproduction-ready without "
+         "pulling, installing or running anything. Cannot be "
+         "combined with --repo or --skip-tier.",
+)
 @click.option(
     "--repo", "sRepo", default=None,
     type=click.Path(file_okay=False, dir_okay=True),
@@ -981,8 +1019,16 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     type=click.Choice(_T_TIER_CHOICES),
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
-def fnReproduceCommand(sRepo, bRerun, sWorkflowName, saSkipTier):
+def fnReproduceCommand(sSource, sRepo, bRerun, sWorkflowName, saSkipTier):
     """Verify a project's PROOF L3 reproducibility envelope."""
+    if sSource is not None:
+        if sRepo is not None or saSkipTier:
+            raise click.UsageError(
+                "--from names a published project and takes neither "
+                "--repo nor --skip-tier; it never enters the tier sequence."
+            )
+        _fnStageFromSource(sSource, sWorkflowName, bRerun)
+        return
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)
     bAllPassed = True

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release Notes &mdash; Vaibify 0.0.10.dev7 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.10.dev11 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0d1b3794"></script>
+      <script src="_static/documentation_options.js?v=a9f867f7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,6 +65,7 @@
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone">Reproduce a published project: stage and validate from a URL or a clone</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-container-registry-is-optional-not-a-level-3-requirement">A container registry is optional, not a Level 3 requirement</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#your-container-image-can-be-archived-so-a-reproduction-survives-the-registry">Your container image can be archived, so a reproduction survives the registry</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-passing-test-suite-is-no-longer-reported-as-a-failure">A passing test suite is no longer reported as a failure</a></li>
@@ -112,6 +113,26 @@ observes, not internal mechanics; the architecture document carries
 the reasoning.</p>
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone">
+<h3>Reproduce a published project: stage and validate from a URL or a clone<a class="headerlink" href="#reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span> <span class="pre">&lt;source&gt;</span></code> starts from what a stranger has: an
+<code class="docutils literal notranslate"><span class="pre">https://</span></code> or <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> clone URL, or a clean clone under your home
+directory. It clones the project in full, records the exact commit,
+and validates the snapshot as reproduction-ready – the project file
+loads, the envelope pins a content digest and names its architecture,
+every manifest entry matches the cloned bytes, nothing the selected
+workflow declares is unpinned, and any image deposit on record covers
+the pinned image and its architecture. That is deliberately not the
+author’s Level 3 gate: an attestation or a published mirror is the
+author’s claim, and a stranger reproducing the work is the check.
+It then prints what a rerun would use (the pinned image, the required
+platform, whether an archived copy exists) and discards the snapshot.
+Nothing is pulled, installed or run; a refusal names the first rule
+that failed and the file that failed it. A dirty local clone is
+refused, naming the paths, because a working tree with uncommitted
+changes is not a published project. Acquiring the image and re-running
+the snapshot in a shadow container follow in later releases.</p>
+</section>
 <section id="a-container-registry-is-optional-not-a-level-3-requirement">
 <h3>A container registry is optional, not a Level 3 requirement<a class="headerlink" href="#a-container-registry-is-optional-not-a-level-3-requirement" title="Link to this heading"></a></h3>
 <p>For part of one day, Level 3 required the container image to be
