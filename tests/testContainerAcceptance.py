@@ -454,7 +454,9 @@ def testRealContainerRefusesToGuessAmongTwoWorkflows():
     record that reads as complete and describes something that did not
     happen, so ambiguity is refused and ``--workflow`` decides.
     """
-    from vaibify.cli.commandReproduce import _fdictSelectWorkflowEntry
+    from vaibify.reproducibility.reproductionSource import (
+        fdictSelectWorkflowEntry,
+    )
     from vaibify.gui.workflowManager import flistFindWorkflowsInContainer
     sContainer = _fsRequireAcceptanceContainer()
     connection = _fconnectionOpen()
@@ -473,9 +475,11 @@ def testRealContainerRefusesToGuessAmongTwoWorkflows():
         "this test exists to exercise was never set up"
     )
     with pytest.raises(ValueError) as excInfo:
-        _fdictSelectWorkflowEntry(listWorkflows, None)
+        fdictSelectWorkflowEntry(listWorkflows, None, "the running container")
     assert "--workflow" in str(excInfo.value)
-    dictChosen = _fdictSelectWorkflowEntry(listWorkflows, "Beta")
+    dictChosen = fdictSelectWorkflowEntry(
+        listWorkflows, "Beta", "the running container",
+    )
     assert dictChosen["sName"] == "Beta"
     assert dictChosen["sPath"].startswith(
         f"{S_RERUN_ACCEPTANCE_ROOT}/Beta/",

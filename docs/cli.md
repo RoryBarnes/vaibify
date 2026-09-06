@@ -449,6 +449,7 @@ attestation written to `.vaibify/l3_attestation.json`.
 
 ```bash
 vaibify reproduce [--repo PATH] [--rerun] [--workflow NAME] [--skip-tier N]
+vaibify reproduce --from SOURCE [--workflow NAME]
 ```
 
 | Option             | Description                              |
@@ -457,6 +458,7 @@ vaibify reproduce [--repo PATH] [--rerun] [--workflow NAME] [--skip-tier N]
 | `--rerun` / `--no-rerun` | Also re-run the workflow (tier 5), re-hash its outputs, and write an attestation (default: off) |
 | `--workflow NAME`  | Name (or container path) of the workflow to re-run; required when the container hosts more than one |
 | `--skip-tier N`    | Skip tier 1, 2, 3, or 4; may be repeated |
+| `--from SOURCE`    | Reproduce a **published** project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author's Level 3 gate), pulling, installing and running nothing. Takes `--workflow`; refuses `--repo` and `--skip-tier`. Exit `1` names the first rule the snapshot failed. See [Reproducing somebody else's project](reproducibility.md#reproducing-somebody-elses-project-vaibify-reproduce---from) |
 
 Exit codes: `0` when every selected tier passed, `1` when any tier
 failed, `2` on a usage error (missing required file, malformed
