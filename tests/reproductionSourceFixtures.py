@@ -104,7 +104,7 @@ def fnCommitEverything(sRepoPath, sMessage="commit"):
 
 
 def fsBuildPublishedProject(sRepoPath, dictWorkflow=None, dictEnvelope=None):
-    """Build a committed, complete Level 3 project; return its HEAD commit.
+    """Build a committed, reproduction-ready project; return its HEAD commit.
 
     The default branch is pinned to ``main`` by symbolic-ref, because a
     fixture that inherits the machine's ``init.defaultBranch`` passes

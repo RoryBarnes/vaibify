@@ -64,7 +64,7 @@ def sAdmittedRoot(tmp_path, monkeypatch):
 
 @pytest.fixture
 def sPublishedRepo(sAdmittedRoot):
-    """A committed, complete Level 3 project under the admitted root."""
+    """A committed, reproduction-ready project under the admitted root."""
     sRepoPath = os.path.join(sAdmittedRoot, "publishedProject")
     fsBuildPublishedProject(sRepoPath)
     return sRepoPath
@@ -280,6 +280,34 @@ def test_rule_2_a_tag_instead_of_a_digest_refuses(sPublishedRepo):
 
 
 @pytest.mark.falsification
+def test_rule_2_a_missing_architecture_refuses(sPublishedRepo):
+    """Kills: dropping the architecture refusal from the envelope reader."""
+    dictEnvelope = fdictBuildEnvelope()
+    del dictEnvelope["dictContainer"]["sArchitecture"]
+    fnWriteJson(sPublishedRepo, ".vaibify/environment.json", dictEnvelope)
+    fnCommitEverything(sPublishedRepo, "no architecture recorded")
+    with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+        fdictStageSource(sPublishedRepo)
+    _fnAssertOnlyRuleFired(excinfo, 2)
+    assert "no image architecture" in str(excinfo.value)
+
+
+@pytest.mark.falsification
+def test_rule_1_a_project_from_a_newer_vaibify_refuses_by_name(
+    sPublishedRepo,
+):
+    """Kills: letting the migration's ValueError escape untranslated."""
+    dictWorkflow = fdictBuildWorkflow()
+    dictWorkflow["iWorkflowSchemaVersion"] = 10 ** 6
+    fnWriteJson(sPublishedRepo, S_FIXTURE_WORKFLOW_PATH, dictWorkflow)
+    fnCommitEverything(sPublishedRepo, "from the future")
+    with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+        fdictStageSource(sPublishedRepo)
+    _fnAssertOnlyRuleFired(excinfo, 1)
+    assert "newer" in str(excinfo.value)
+
+
+@pytest.mark.falsification
 def test_rule_3_a_malformed_manifest_refuses(sPublishedRepo):
     """Kills: answering an empty entry list for a manifest that fails to parse."""
     fnWriteText(sPublishedRepo, "MANIFEST.sha256", "this is not a manifest line\n")
@@ -470,6 +498,20 @@ def test_no_git_call_can_prompt_for_a_credential(sPublishedRepo, monkeypatch):
     for _listArguments, dictEnvironment in listLaunches:
         assert dictEnvironment is not None
         assert dictEnvironment.get("GIT_TERMINAL_PROMPT") == "0"
+
+
+@pytest.mark.falsification
+def test_ssh_cannot_prompt_either(sPublishedRepo, monkeypatch):
+    """Kills: dropping ``BatchMode=yes`` from the ssh command."""
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /somewhere/key")
+    listLaunches = _flistRecordGitLaunches(monkeypatch)
+    fdictStageSource(sPublishedRepo)
+    assert listLaunches
+    for _listArguments, dictEnvironment in listLaunches:
+        assert dictEnvironment["GIT_SSH_COMMAND"].startswith(
+            "ssh -i /somewhere/key",
+        )
+        assert "-o BatchMode=yes" in dictEnvironment["GIT_SSH_COMMAND"]
 
 
 # ---------------------------------------------------------------------

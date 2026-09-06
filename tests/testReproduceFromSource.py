@@ -15,6 +15,10 @@ from click.testing import CliRunner
 
 from tests.reproductionSourceFixtures import (
     S_FIXTURE_IMAGE_DIGEST,
+    S_FIXTURE_WORKFLOW_PATH,
+    fdictBuildWorkflow,
+    fnCommitEverything,
+    fnWriteJson,
     fnWriteText,
     fsBuildPublishedProject,
 )
@@ -24,7 +28,7 @@ from vaibify.reproducibility import reproductionSource
 
 @pytest.fixture
 def sPublishedRepo(tmp_path, monkeypatch):
-    """A complete Level 3 project under the one admitted local root."""
+    """A reproduction-ready project under the one admitted local root."""
     sRoot = os.path.realpath(str(tmp_path))
     monkeypatch.setattr(
         reproductionSource, "flistAdmittedLocalCloneRoots", lambda: [sRoot],
@@ -61,6 +65,9 @@ def test_from_stages_describes_and_discards_without_a_tier(sPublishedRepo):
         )
     assert result.exit_code == 0, result.output
     assert "Staged local-clone" in result.output
+    assert "Level 3" not in result.output.replace(
+        "not the author's Level 3 gate", "",
+    )
     assert S_FIXTURE_IMAGE_DIGEST in result.output
     assert "linux/amd64" in result.output
     assert "no deposit on record" in result.output
@@ -79,6 +86,26 @@ def test_from_prints_the_refusal_and_exits_one(sPublishedRepo):
     assert result.output.startswith("Refused:")
     assert "uncommitted.txt" in result.output
     assert _flistStagingTokens() == []
+
+
+def test_from_names_the_rule_for_a_project_from_a_newer_vaibify(
+    sPublishedRepo,
+):
+    """A future-schema project is refused by name, never a bare traceback."""
+    dictWorkflow = fdictBuildWorkflow()
+    dictWorkflow["iWorkflowSchemaVersion"] = 10 ** 6
+    fnWriteJson(sPublishedRepo, S_FIXTURE_WORKFLOW_PATH, dictWorkflow)
+    fnCommitEverything(sPublishedRepo, "from the future")
+    with _fnRefuseEveryTier():
+        result = CliRunner().invoke(
+            fnReproduceCommand, ["--from", sPublishedRepo],
+        )
+    assert result.exit_code == 1, result.output
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit,
+    )
+    assert "Refused: rule 1" in result.output
+    assert "newer" in result.output
 
 
 def test_from_refuses_the_tier_flags(sPublishedRepo):

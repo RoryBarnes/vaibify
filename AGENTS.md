@@ -387,15 +387,24 @@ publish. `tests/testRegistryIsNotAnL3Requirement.py`.
 lane, and its honest boundary is the source table.** `vaibify
 reproduce --from <source>` stages a git URL or a clean local clone as
 an exact snapshot of ONE commit (`reproductionSource`), validates it
-STRICTLY as a complete Level 3 project — six rules, the first failure
-named with its file, never advisory the way tiers 1-4 are — and
-exports it in the tar shape `fbufferRepackArchiveStamped` accepts, so
-every later step consumes the staged archive and never a re-clone.
-Five things not to undo. The accepted source shapes are matched by
+STRICTLY as reproduction-ready — six rules, the first failure named
+with its file, never advisory the way tiers 1-4 are — and exports it
+in the tar shape `fbufferRepackArchiveStamped` accepts, so every later
+step consumes the staged archive and never a re-clone. The verdict is
+"reproduction-ready", NEVER "Level 3": the six rules are what a rerun
+depends on (a loadable selected workflow, a content-pinned image WITH
+a recorded architecture, a manifest that parses, matches and covers
+the selected workflow), deliberately not `fbL3ReadinessOK` — an
+attestation, a mirror or a lock file are the AUTHOR's claims, and the
+reproduction is the check. A first review read "complete Level 3
+project" in the CLI output, ran the fixture through the real gate, got
+`False`, and was right. Six things not to undo. The accepted source shapes are matched by
 SHAPE, never by forge hostname (`testReproductionSourceNamesNoForgeHostname`
 is the tripwire); a dirty clone is refused, naming the paths, because
 a working tree is not a published project. Every `git` it runs carries
-BOTH `gitHardening` lists and `GIT_TERMINAL_PROMPT=0`; the one
+BOTH `gitHardening` lists, `GIT_TERMINAL_PROMPT=0` AND ssh in batch
+mode (`GIT_TERMINAL_PROMPT` silences git's own prompt only; ssh asks
+for a passphrase or a host key through `/dev/tty` on its own); the one
 exception is the clone of a LOCAL repository, which is itself the file
 transport `protocol.file.allow=never` refuses (measured: a plain path,
 a `file://` URL and a bundle are all refused), so that clone alone

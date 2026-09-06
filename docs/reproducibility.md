@@ -527,8 +527,9 @@ A rerun would use:
   pinned image:    registry.example/project@sha256:1a2b...
   platform:        linux/amd64
   image archive:   deposited, version DOI 10.5281/zenodo.1234567
-Snapshot validated as a complete Level 3 project and discarded;
-nothing was pulled, installed or run.
+Snapshot validated as reproduction-ready (the six staging rules,
+not the author's Level 3 gate) and discarded; nothing was
+pulled, installed or run.
 ```
 
 This release stages, validates and describes. Acquiring the pinned
@@ -561,9 +562,12 @@ changes nothing about what would run.
 
 Every `git` the stage runs carries vaibify's shared hardening flags
 (`protocol.file.allow=never`, `core.symlinks=false`, no submodule
-recursion), the credential-helper reset, and `GIT_TERMINAL_PROMPT=0`,
-so no ambient credential can answer for a stranger's remote and no
-prompt can hang an unattended run. One deliberate exception: the clone
+recursion), the credential-helper reset, `GIT_TERMINAL_PROMPT=0`, and
+ssh in batch mode (`-o BatchMode=yes` appended to your
+`GIT_SSH_COMMAND`, or to `ssh`), so no ambient credential can answer
+for a stranger's remote and neither git nor ssh can hang an unattended
+run on a question -- an unknown host key or a locked key fails the
+clone, and the refusal says so. One deliberate exception: the clone
 of a *local* repository is itself the file transport git's hardening
 refuses, so that one clone -- and only that one, only after the path
 was admitted under your home -- reopens the file transport. It asks
@@ -574,20 +578,34 @@ A clone is refused while it grows past a size ceiling, not after it
 has filled the disk, and an abandoned staging directory is swept after
 a day -- never one a live job still holds.
 
-### Validation is strict, not advisory
+### Validation is strict, not advisory -- and it is not the Level 3 gate
 
 `vaibify reproduce` warns about a manifest that omits a declared file;
-`--from` refuses. It grades somebody else's project, and a snapshot
-that cannot pass every Level 3 check is not something a rerun can
-honestly compare against. Six rules, applied in order, and the first
-to fail is named with the file that failed it:
+`--from` refuses. It grades somebody else's project, and the six rules
+it applies are the ones a rerun *depends on*: a loadable workflow, a
+pinned image on a named platform, and a manifest that parses, matches
+the staged bytes and covers the selected workflow's declarations. They
+are deliberately **not** the author's Level 3 readiness gate. A
+dependency lock, a pinned Dockerfile, determinism answers, a published
+mirror, an environment archive and a current attestation are the
+author's own claims; requiring them before a stranger may reproduce
+the work would put the claim ahead of the check. The verdict is
+therefore "reproduction-ready", never "Level 3". The rules, applied in
+order, the first to fail named with the file that failed it:
 
-1. `project.json` loads through the ordinary migrations and validates.
-2. `.vaibify/environment.json` is present and pins a content digest
-   (a tag is refused: it can be repointed without anything changing).
+1. The selected `project.json` loads through the ordinary migrations
+   and validates. A file written by a newer vaibify is refused here by
+   name, never as a bare traceback.
+2. `.vaibify/environment.json` is present, pins a content digest (a
+   tag is refused: it can be repointed without anything changing), and
+   records the image's architecture. A legacy envelope with no
+   architecture is refused rather than defaulted to this host's: the
+   source names its environment, and there is no architecture picker.
 3. `MANIFEST.sha256` parses, every line.
 4. Every manifest entry matches the staged bytes.
-5. No workflow-declared file is missing from the manifest.
+5. No file the **selected** workflow declares is missing from the
+   manifest. A repository hosting several workflows is validated for
+   the one that will run.
 6. If an image deposit is on record, it covers the pinned image *and*
    its architecture. No deposit on record is not a refusal -- the
    registry may still serve the image -- and is reported as such.

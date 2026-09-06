@@ -17488,8 +17488,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_rule_1_an_invalid_project_file_refuses',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='    sFailure = fsDescribeValidationFailure(dictWorkflow)\n    if sFailure:\n        raise ReproductionSourceRefusedError(\n            f"rule 1 (project file validates): {sWorkflowRelativePath}: "\n            f"{sFailure}"\n        )\n',
-        new='    sFailure = fsDescribeValidationFailure(dictWorkflow)\n',
+        old='    if sFailure:\n        raise ReproductionSourceRefusedError(\n            f"rule 1 (project file validates)',
+        new='    if False:\n        raise ReproductionSourceRefusedError(\n            f"rule 1 (project file validates)',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_rule_2_a_tag_instead_of_a_digest_refuses',
@@ -17568,5 +17568,23 @@ def _fdictEntry(sRel):
         source='vaibify/cli/commandReproduce.py',
         old='        _fnStageFromSource(sSource, sWorkflowName, bRerun)\n        return\n',
         new='        _fnStageFromSource(sSource, sWorkflowName, bRerun)\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_rule_2_a_missing_architecture_refuses',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    if not _REGEX_ARCHITECTURE.match(sArchitecture):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_rule_1_a_project_from_a_newer_vaibify_refuses_by_name',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    except (ValueError, KeyError, TypeError) as error:\n',
+        new='    except (KeyError, TypeError) as error:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_ssh_cannot_prompt_either',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand + " -o BatchMode=yes"\n',
+        new='    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand\n',
     ),
 ]

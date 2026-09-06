@@ -1917,7 +1917,7 @@ container. "Reproduce a published project" adds a second, and it is
 an input adapter to the same lane rather than a new kind of container.
 `reproductionSource` stages the source -- a clone URL or a clean local
 clone -- as an exact snapshot of ONE commit, validates it strictly as
-a complete Level 3 project, and exports it as the tar shape
+reproduction-ready, and exports it as the tar shape
 `fbufferRepackArchiveStamped` already accepts. Everything after the
 seed is the existing lane.
 
@@ -1927,8 +1927,9 @@ is cloned in full, a local clone is refused unless `git status` is
 empty and is then materialized by cloning the repository, never by
 copying its tree. **Validation refuses rather than warns**, naming the
 first of six rules that failed, because the lane grades somebody
-else's project and a snapshot that fails a Level 3 check is not
-something a rerun can honestly compare against. **A report reads
+else's project -- and the six rules are the ones a rerun depends on,
+deliberately not the author's Level 3 gate, whose attestation and
+published copies are claims the reproduction exists to check. **A report reads
 source facts from exactly one function**, `fdictDescribeStagedSource`,
 whose record is written redacted at staging time -- kind, commit,
 remote URL with userinfo stripped, workflow name, never a host path --
@@ -1943,7 +1944,8 @@ three facts kept apart by name -- the envelope's required platform,
 the platform of the image the chain actually obtained, and the
 daemon's own architecture. Those land with the acquisition step; the
 staging phase records the required platform from the envelope's
-architecture and announces its absence rather than defaulting it.
+architecture and REFUSES its absence rather than defaulting it to the
+host's -- the source names its environment, and there is no picker.
 
 ## The environment archive
 

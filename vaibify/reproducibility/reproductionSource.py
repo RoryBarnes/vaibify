@@ -22,8 +22,15 @@ Three decisions shape this module, each recorded with its reason:
 * **Validation is strict, not advisory.** ``vaibify reproduce`` grades
   a researcher's own repository and warns; this lane grades somebody
   else's and refuses, naming the first rule that failed and the file
-  that failed it. A snapshot that cannot pass every Level 3 check is
-  not something a rerun can honestly compare against.
+  that failed it. The six rules are the ones a rerun DEPENDS on -- a
+  loadable workflow, a pinned image and platform, a manifest that
+  parses, matches the staged bytes and covers the selected workflow's
+  declarations, and a deposit that covers the pin if one is recorded.
+  They are deliberately not the author's Level 3 gate: an attestation,
+  a published mirror or a dependency lock are the AUTHOR's claims, and
+  requiring them before a stranger may reproduce the work would put the
+  claim ahead of the check. The verdict is "reproduction-ready", never
+  "Level 3".
 
 * **A report may only carry what :func:`fdictDescribeStagedSource`
   returns.** Kind, resolved commit, remote URL with any userinfo
@@ -114,7 +121,7 @@ __all__ = [
 
 
 class ReproductionSourceRefusedError(Exception):
-    """A source could not be staged as a complete Level 3 project.
+    """A source could not be staged as a reproduction-ready snapshot.
 
     Derives from ``Exception``, never ``OSError``: a refusal swallowed
     by an ``except OSError`` is how a control decision silently
@@ -169,6 +176,8 @@ _REGEX_SCP_LIKE = re.compile(
 )
 _REGEX_BARE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-]*$")
 _REGEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+# Docker's bare ``.Architecture`` (``amd64``, ``arm64``, ``arm/v7``, ...).
+_REGEX_ARCHITECTURE = re.compile(r"^[a-z0-9]+(?:/v[0-9]+)?$")
 
 
 # ---------------------------------------------------------------------
@@ -405,9 +414,20 @@ def flistSweepAbandonedStaging(fMaxAgeSeconds=F_STAGING_TTL_SECONDS):
 
 
 def _fdictGitEnvironment():
-    """Return the environment every git call runs under: no prompts."""
+    """Return the environment every git call runs under: no prompts.
+
+    ``GIT_TERMINAL_PROMPT=0`` silences git's own credential prompt and
+    nothing else: ssh asks for a passphrase or a host-key confirmation
+    through ``/dev/tty`` on its own, so the ssh transport is put in
+    batch mode too. An unknown host or a locked key then fails the
+    clone, which the caller reports, instead of hanging an unattended
+    run on a question nobody will answer. A researcher's own
+    ``GIT_SSH_COMMAND`` is kept and the option appended to it.
+    """
     dictEnvironment = os.environ.copy()
     dictEnvironment["GIT_TERMINAL_PROMPT"] = "0"
+    sSshCommand = (dictEnvironment.get("GIT_SSH_COMMAND") or "ssh").strip()
+    dictEnvironment["GIT_SSH_COMMAND"] = sSshCommand + " -o BatchMode=yes"
     return dictEnvironment
 
 
@@ -767,7 +787,7 @@ def _fdictMatchWorkflowByName(listWorkflows, sWorkflowName, sWhere):
 
 
 # ---------------------------------------------------------------------
-# 1d. Validate as a complete Level 3 project
+# 1d. Validate the selected workflow as reproduction-ready
 # ---------------------------------------------------------------------
 
 
@@ -793,9 +813,17 @@ def _fdictLoadWorkflowStrictly(sClonePath, sWorkflowRelativePath):
             f"rule 1 (project file loads): {sWorkflowRelativePath} is "
             "not a JSON object"
         )
-    workflowMigrations.fiApplyMigrations(dictWorkflow)
-    fnMigrateLegacyRemotes(dictWorkflow)
-    sFailure = fsDescribeValidationFailure(dictWorkflow)
+    try:
+        workflowMigrations.fiApplyMigrations(dictWorkflow)
+        fnMigrateLegacyRemotes(dictWorkflow)
+        sFailure = fsDescribeValidationFailure(dictWorkflow)
+    except (ValueError, KeyError, TypeError) as error:
+        # A file written by a newer vaibify refuses its own migration
+        # with a ValueError; that is a rule-1 refusal with a reason, not
+        # a traceback the CLI cannot name.
+        raise ReproductionSourceRefusedError(
+            f"rule 1 (project file loads): {sWorkflowRelativePath}: {error}"
+        ) from error
     if sFailure:
         raise ReproductionSourceRefusedError(
             f"rule 1 (project file validates): {sWorkflowRelativePath}: "
@@ -820,6 +848,19 @@ def _fdictReadEnvelopeOrRefuse(filesRepo):
             f"rule 2 (environment envelope): {error}"
         ) from error
     dictEnvironment["_sPinnedImageReference"] = sPinned
+    dictContainer = dictEnvironment.get("dictContainer") or {}
+    sArchitecture = str(dictContainer.get("sArchitecture") or "").strip()
+    if not _REGEX_ARCHITECTURE.match(sArchitecture):
+        raise ReproductionSourceRefusedError(
+            "rule 2 (environment envelope): .vaibify/environment.json "
+            + ("records no image architecture" if not sArchitecture
+               else f"records {sArchitecture!r} as the image architecture, "
+               "which is not one Docker names")
+            + ", so the pinned platform cannot be requested. The source "
+            "names its environment: there is no architecture picker and "
+            "no host-derived default. Regenerate the envelope while the "
+            "container is running."
+        )
     return dictEnvironment
 
 
@@ -937,7 +978,7 @@ def fdictStageSource(sInput, sWorkflowName=None):
     """Stage ``sInput`` as a validated snapshot; return its description.
 
     Runs the whole of phase 1 -- classify, materialize one commit,
-    select the workflow, validate as a complete Level 3 project -- and
+    select the workflow, validate it as reproduction-ready -- and
     writes the redacted source record the later phases read. On any
     refusal the staging directory is removed and the refusal
     re-raised, so a failed stage leaves nothing behind. The returned

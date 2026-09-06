@@ -25,9 +25,10 @@ inside a project repository. Walks five tiers in sequence:
 
 ``--from <source>`` is a different entry altogether: it stages a
 PUBLISHED project (a clone URL or a clean local clone) as an exact
-snapshot of one commit, validates it strictly as a complete Level 3
-project, describes it and discards it. It never enters the tier
-sequence; see ``reproducibility.reproductionSource``.
+snapshot of one commit, validates it strictly as reproduction-ready
+(the six staging rules a rerun depends on -- deliberately not the
+author's Level 3 gate), describes it and discards it. It never enters
+the tier sequence; see ``reproducibility.reproductionSource``.
 
 Tiers 1-4 are read-only over the project repo. Tier 5 no longer writes
 to the researcher's own working tree at all — the rerun's output lands
@@ -940,11 +941,7 @@ def _fnReportStagedSource(dictStaged):
     )
     click.echo("A rerun would use:")
     click.echo(f"  pinned image:    {dictStaged['sPinnedImageReference']}")
-    click.echo(
-        "  platform:        "
-        + (dictStaged["sRequiredPlatform"] or "NOT RECORDED in the "
-           "envelope; the image's architecture cannot be requested")
-    )
+    click.echo(f"  platform:        {dictStaged['sRequiredPlatform']}")
     if dictStaged["bDepositOnRecord"]:
         click.echo(
             "  image archive:   deposited, version DOI "
@@ -984,8 +981,9 @@ def _fnStageFromSource(sSource, sWorkflowName, bRerun):
     finally:
         fnDiscardStagedSource(dictStaged["sToken"])
     click.echo(
-        "Snapshot validated as a complete Level 3 project and discarded; "
-        "nothing was pulled, installed or run."
+        "Snapshot validated as reproduction-ready (the six staging rules, "
+        "not the author's Level 3 gate) and discarded; nothing was "
+        "pulled, installed or run."
     )
 
 
@@ -995,8 +993,8 @@ def _fnStageFromSource(sSource, sWorkflowName, bRerun):
     help="Reproduce a PUBLISHED project: an https:// or ssh:// clone "
          "URL, a user@host:path address, or the path of a clean local "
          "clone under your home directory. Stages an exact snapshot of "
-         "one commit and validates it as a complete Level 3 project "
-         "without pulling, installing or running anything. Cannot be "
+         "one commit and validates it as reproduction-ready without "
+         "pulling, installing or running anything. Cannot be "
          "combined with --repo or --skip-tier.",
 )
 @click.option(
