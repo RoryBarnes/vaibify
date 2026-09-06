@@ -6,6 +6,23 @@ the reasoning.
 
 ## Unreleased
 
+### Reproduce a published project: stage and validate from a URL or a clone
+
+`vaibify reproduce --from <source>` starts from what a stranger has: an
+`https://` or `ssh://` clone URL, or a clean clone under your home
+directory. It clones the project in full, records the exact commit,
+and validates the snapshot as a complete Level 3 project -- the
+project file loads, the envelope pins a content digest, every manifest
+entry matches the cloned bytes, nothing declared is unpinned, and any
+image deposit on record covers the pinned image and its architecture.
+It then prints what a rerun would use (the pinned image, the required
+platform, whether an archived copy exists) and discards the snapshot.
+Nothing is pulled, installed or run; a refusal names the first rule
+that failed and the file that failed it. A dirty local clone is
+refused, naming the paths, because a working tree with uncommitted
+changes is not a published project. Acquiring the image and re-running
+the snapshot in a shadow container follow in later releases.
+
 ### A container registry is optional, not a Level 3 requirement
 
 For part of one day, Level 3 required the container image to be

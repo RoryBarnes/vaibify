@@ -383,6 +383,38 @@ daemon carries 404s from other causes — and the remedy it names for a
 vanished local-only image is rebuild-or-load-the-deposit, never
 publish. `tests/testRegistryIsNotAnL3Requirement.py`.
 
+**"Reproduce a published project" is an input adapter to the shadow
+lane, and its honest boundary is the source table.** `vaibify
+reproduce --from <source>` stages a git URL or a clean local clone as
+an exact snapshot of ONE commit (`reproductionSource`), validates it
+STRICTLY as a complete Level 3 project — six rules, the first failure
+named with its file, never advisory the way tiers 1-4 are — and
+exports it in the tar shape `fbufferRepackArchiveStamped` accepts, so
+every later step consumes the staged archive and never a re-clone.
+Five things not to undo. The accepted source shapes are matched by
+SHAPE, never by forge hostname (`testReproductionSourceNamesNoForgeHostname`
+is the tripwire); a dirty clone is refused, naming the paths, because
+a working tree is not a published project. Every `git` it runs carries
+BOTH `gitHardening` lists and `GIT_TERMINAL_PROMPT=0`; the one
+exception is the clone of a LOCAL repository, which is itself the file
+transport `protocol.file.allow=never` refuses (measured: a plain path,
+a `file://` URL and a bundle are all refused), so that clone alone
+appends `protocol.file.allow=always` AFTER the list, only after the
+path was admitted under the researcher's home, and asks for no
+submodule. `--from` never enters the tier sequence and never runs
+tier 2's host `pip install`. A report reads source facts from
+`fdictDescribeStagedSource` ONLY — kind, commit, remote with userinfo
+stripped, workflow name, never a host path — because a reproduction
+report is the reproducer's own artefact, never an attestation, never
+written into a repository, and never read by `levelGates`. And the
+platform is THREE facts kept apart by name (the envelope's required
+platform, the obtained image's platform, the daemon's architecture);
+staging records the first from the envelope and announces its absence
+rather than defaulting it. `tests/testReproductionSource.py` drives
+real `git` and a real loopback HTTP remote, and every rule has a
+kill-confirmed entry. The staging sweep skips any directory whose live
+lock is held, whatever its age — the `~/.vaibify/tmp` lesson.
+
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and
 the container starts (ruled 2026-09-05, making the Features page's

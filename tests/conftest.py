@@ -137,6 +137,7 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
         operationJournal, sessionRegistry,
     )
     from vaibify.gui import hostControlChannel, stateWriteLock
+    from vaibify.reproducibility import reproductionSource
     # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
     # their whole tmp_path to model a missing directory, and a home
     # created inside it would make that rmdir fail on a non-empty tree.
@@ -159,6 +160,9 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(hostControlChannel, "_S_CONTROL_DIRECTORY", "control")
     fnRedirectDirectory(commandBuild, "_S_BUILD_STAGING_DIRECTORY", "build")
     fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
+    fnRedirectDirectory(
+        reproductionSource, "_S_REPRODUCTIONS_DIRECTORY", "reproductions",
+    )
     # registryManager and preferencesStore are deliberately NOT
     # redirected here. Each precomputes full-path constants that the
     # long-lived hub reads at REQUEST time, and the lanes that boot a hub
