@@ -26,6 +26,8 @@ catch fails the last-map assertion; restoring ``none`` in
 ``_fdictPlaceholderBadges`` fails the no-prior-map assertion.
 """
 
+import json
+
 import pytest
 
 from tests.browser.conftest import (
@@ -57,20 +59,43 @@ def test_a_failed_refresh_claims_nothing_and_says_so(
         "which is a claim about a file nothing has examined"
     )
 
-    # Let the dashboard's own first refresh land before failing the
-    # next one. That request was issued when the workflow opened, so a
-    # 503 route installed now cannot intercept it; read the "before"
-    # count while it is in flight and it lands between the two
-    # readings, and the test reports a failed refresh that populated
-    # the map (observed in CI: 0 entries before, 3 after). Waiting for
-    # a non-empty map is also what makes this the researcher's second
-    # case -- a prior map EXISTS and must survive -- rather than a
-    # repeat of half 1. Reaching in through fnRefresh keeps this
-    # driving the real code path rather than a hand-built state object.
-    pageDashboard.wait_for_function(
-        """() => VaibifyGitBadges.flistFilesForRemote('sGitState')
-            .length > 0""",
-        timeout=30000,
+    # Seed the prior map THROUGH the real refresh path, from a canned
+    # success. Waiting for the dashboard's own first refresh to fill
+    # it is not deterministic: a busy hub answers that refresh with
+    # bRefreshPaused and no map (observed in CI -- the map stayed
+    # empty for 30 seconds, and on another run a request issued
+    # before the 503 route existed landed between the two readings).
+    # The success route stays registered underneath the 503 one, so a
+    # natural refresh that resolves late carries the same three
+    # entries and cannot move the count. Reaching in through
+    # fnRefresh keeps this driving the real code path rather than a
+    # hand-built state object.
+    sSeededBadges = json.dumps({"dictBadges": {
+        "Analysis/result.json": {
+            "sGitState": "clean", "sGithub": "synced",
+            "sOverleaf": "none", "sZenodo": "none", "sArxiv": "none",
+        },
+        "Analysis/figure.pdf": {
+            "sGitState": "modified", "sGithub": "stale",
+            "sOverleaf": "synced", "sZenodo": "none", "sArxiv": "none",
+        },
+        "Analysis/notes.md": {
+            "sGitState": "untracked", "sGithub": "none",
+            "sOverleaf": "none", "sZenodo": "none", "sArxiv": "none",
+        },
+    }})
+    pageDashboard.route(
+        "**/api/git/**/badges",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=sSeededBadges,
+        ),
+    )
+    pageDashboard.evaluate(
+        """async (sContainerId) => {
+            await VaibifyGitBadges.fnRefresh(sContainerId);
+        }""",
+        S_HOST_PROJECT_READY,
     )
     pageDashboard.route(
         "**/api/git/**/badges",
@@ -79,6 +104,11 @@ def test_a_failed_refresh_claims_nothing_and_says_so(
     iBeforeCount = pageDashboard.evaluate(
         """() => VaibifyGitBadges.flistFilesForRemote('sGitState')
             .length""",
+    )
+    assert iBeforeCount == 3, (
+        f"the seeded map holds {iBeforeCount} entries, not 3: the "
+        "refresh path did not apply the canned success, so the "
+        "assertion below would compare nothing against nothing"
     )
     pageDashboard.evaluate(
         """async (sContainerId) => {
