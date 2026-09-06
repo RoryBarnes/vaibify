@@ -116,6 +116,25 @@ def _fnWriteL3EnvelopeFiles(tmp_path):
     (pathEnv / "environment.json").write_text(json.dumps({
         "dictContainer": {
             "sImageDigest": "img@sha256:" + "c" * 64,
+            # The platform, recorded rather than inferred: a
+            # manifest-list digest spans several and pins none, so
+            # the archive gate compares both.
+            "sArchitecture": "arm64",
+            # A deposit of that image, which is the Level 3
+            # criterion. This fixture means "every L3 criterion
+            # satisfied", so it has to satisfy this one too.
+            "dictImageArchive": {
+                "sVersionDoi": "10.5281/zenodo.7000001",
+                "sConceptDoi": "10.5281/zenodo.7000000",
+                "sTarballName": "environment-image.tar.zst",
+                "sTarballSha256": "sha256:" + "d" * 64,
+                "sImageStreamSha256": "sha256:" + "e" * 64,
+                "iTarballBytes": 861079552,
+                "sDepositedIso": "2026-09-05T00:00:00+00:00",
+                "sProvenance": "original",
+                "sImageDigest": "img@sha256:" + "c" * 64,
+                "sArchitecture": "arm64",
+            },
         },
         "sSchemaVersion": "1",
     }))
@@ -185,6 +204,11 @@ def _fdictBuildLevel3Workflow():
             }],
             "dictPersonalLayer": {"sStatus": "none"},
         },
+        # The environment-archive question. Answering is the Level 2
+        # criterion and declining would pass it; this fixture says
+        # `archived` because it also seeds the deposit record the
+        # separate Level 3 criterion grades.
+        "dictImageArchive": {"sAnswer": "archived"},
     }
 
 

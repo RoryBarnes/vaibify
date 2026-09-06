@@ -152,6 +152,12 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
     "token": {"Token"},
     "connection": {"DockerConnection"},
+    # Approved 2026-09-05, on the `node` precedent: `clientZenodo` was
+    # already the codebase's live spelling in zenodoClient.py -- it
+    # sits in the frozen seed -- so registering it makes existing
+    # practice official rather than introducing a spelling. The
+    # environment-archive deposit binds one in three places.
+    "client": {"ZenodoClient"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
     # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by
@@ -194,7 +200,12 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # 376 -> 374 (2026-08-21): the Agent Council branch retired two more
 # seeded bindings by name; the two burn-downs are disjoint, so the
 # merge composes them.
-I_LEGACY_VARIABLE_BUDGET = 374
+# 374 -> 362 (2026-09-05): registering `client` retired twelve seeded
+# bindings at a stroke, the same shape as the `node` burn-down above --
+# `clientZenodo` and its neighbours were debt only because the
+# vocabulary had no word for a service client, not because they were
+# badly named. The burn-down is the registry entry, not a rename.
+I_LEGACY_VARIABLE_BUDGET = 362
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

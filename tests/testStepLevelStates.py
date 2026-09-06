@@ -778,14 +778,42 @@ def testNonAttainedWithoutRegressionOrTimingEmitsNoWarning():
 # ------------------------------------------------------------------------
 
 
+def _fiCountLevelTwoCriteria(bWithArxiv=False):
+    """How many criteria the workflow-scope L2 cell counts.
+
+    Read from the gate's own tuples. A number written here by hand is
+    wrong the day a criterion joins them, and a stale total reads
+    exactly like the header-over-reports defect this cell exists to
+    prevent.
+    """
+    from vaibify.reproducibility import levelGates
+    iCount = len(levelGates._T_WORKFLOW_LEVEL2_BASE_CRITERIA)
+    if bWithArxiv:
+        iCount += len(levelGates._T_WORKFLOW_LEVEL2_ARXIV_CRITERIA)
+    return iCount
+
+
+def _fiCountLevelThreeCriteria():
+    """How many criteria the workflow-scope L3 cell counts."""
+    from vaibify.reproducibility import levelGates
+    return len(levelGates._T_WORKFLOW_LEVEL3_CRITERIA)
+
+
+
 def testWorkflowScopeAllAttainedWhenCleanWithRepo():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), [], [],
     )
     assert dictStates == {
         "s1": _fdictCell("attained", 1, 1),
-        "s2": _fdictCell("attained", 6, 6),
-        "s3": _fdictCell("attained", 10, 10),
+        "s2": _fdictCell(
+            "attained", _fiCountLevelTwoCriteria(),
+            _fiCountLevelTwoCriteria(),
+        ),
+        "s3": _fdictCell(
+            "attained", _fiCountLevelThreeCriteria(),
+            _fiCountLevelThreeCriteria(),
+        ),
     }
 
 
@@ -796,8 +824,12 @@ def testWorkflowScopeRepoMissingZeroesEveryLevel():
         _fdictWorkflowWithCleanSteps(1, sProjectRepoPath=""), [], [],
     )
     assert dictStates["s1"] == _fdictCell("none", 0, 1)
-    assert dictStates["s2"] == _fdictCell("none", 0, 6)
-    assert dictStates["s3"] == _fdictCell("none", 0, 10)
+    assert dictStates["s2"] == _fdictCell(
+        "none", 0, _fiCountLevelTwoCriteria(),
+    )
+    assert dictStates["s3"] == _fdictCell(
+        "none", 0, _fiCountLevelThreeCriteria(),
+    )
 
 
 def testWorkflowScopeExcludesMissingAiDeclarationStep():
@@ -809,7 +841,9 @@ def testWorkflowScopeExcludesMissingAiDeclarationStep():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 6, 6)
+    assert dictStates["s2"] == _fdictCell(
+        "attained", _fiCountLevelTwoCriteria(), _fiCountLevelTwoCriteria(),
+    )
 
 
 def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
@@ -817,7 +851,10 @@ def testWorkflowScopeVerifyStaleIsAnUnsatisfiedRequirement():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 5, 6)
+    assert dictStates["s2"] == _fdictCell(
+        "partial", _fiCountLevelTwoCriteria() - 1,
+        _fiCountLevelTwoCriteria(),
+    )
 
 
 @pytest.mark.falsification
@@ -833,8 +870,13 @@ def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
 
     Kills: dropping ``ai-models-undeclared`` /
     ``personal-layer-unanswered`` from
-    ``_T_WORKFLOW_LEVEL2_BASE_CRITERIA``, which collapses the counted
-    set back to the two verifies and turns this state red again.
+    ``_T_WORKFLOW_LEVEL2_BASE_CRITERIA``. The cell intersects the live
+    blockers against that tuple, so a criterion dropped from it is
+    invisible: blocking the two AI declarations would then move the
+    satisfied count by nothing. The expected total is read from the
+    same tuple, so the count alone cannot see that mutation (it did,
+    while the total was hand-typed); the CREDIT the declarations earn
+    is what the assertion below pins.
     """
     listLevel2 = [
         _fdictWorkflowBlocker(2, "github-verify-stale"),
@@ -843,7 +885,22 @@ def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 4, 6)
+    assert dictStates["s2"] == _fdictCell(
+        "partial", _fiCountLevelTwoCriteria() - 2,
+        _fiCountLevelTwoCriteria(),
+    )
+    dictStatesWithAiBlocked = fdictComputeWorkflowScopeLevelStates(
+        _fdictWorkflowWithCleanSteps(1),
+        listLevel2 + [
+            _fdictWorkflowBlocker(2, "ai-models-undeclared"),
+            _fdictWorkflowBlocker(2, "personal-layer-unanswered"),
+        ],
+        [],
+    )
+    assert (
+        dictStates["s2"]["iSatisfied"]
+        - dictStatesWithAiBlocked["s2"]["iSatisfied"]
+    ) == 2, "the two AI declarations earned the header no credit"
 
 
 def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
@@ -859,11 +916,19 @@ def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
         # a partial-credit test under its old name.
         _fdictWorkflowBlocker(2, "not-in-github-mirror"),
         _fdictWorkflowBlocker(2, "not-in-zenodo-deposit"),
+        # The environment-archive question, on the same terms: this
+        # test means "every project criterion blocked", so leaving it
+        # out would silently turn it into a partial-credit test under
+        # its old name — which is exactly what happened when the
+        # divergence pair joined.
+        _fdictWorkflowBlocker(2, "image-archive-unanswered"),
     ]
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("none", 0, 6)
+    assert dictStates["s2"] == _fdictCell(
+        "none", 0, _fiCountLevelTwoCriteria(),
+    )
 
 
 def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
@@ -879,7 +944,10 @@ def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 7, 8)
+    assert dictStates["s2"] == _fdictCell(
+        "partial", _fiCountLevelTwoCriteria(bWithArxiv=True) - 1,
+        _fiCountLevelTwoCriteria(bWithArxiv=True),
+    )
 
 
 def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
@@ -888,7 +956,9 @@ def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, [], [],
     )
-    assert dictStates["s2"] == _fdictCell("attained", 6, 6)
+    assert dictStates["s2"] == _fdictCell(
+        "attained", _fiCountLevelTwoCriteria(), _fiCountLevelTwoCriteria(),
+    )
 
 
 def testWorkflowScopeIgnoresPerStepBlockerEntries():
@@ -905,7 +975,10 @@ def testWorkflowScopeLevel3BlockerOnlyDentsLevelThree():
         _fdictWorkflowWithCleanSteps(1), [], listLevel3,
     )
     assert dictStates["s2"]["sState"] == "attained"
-    assert dictStates["s3"] == _fdictCell("partial", 9, 10)
+    assert dictStates["s3"] == _fdictCell(
+        "partial", _fiCountLevelThreeCriteria() - 1,
+        _fiCountLevelThreeCriteria(),
+    )
 
 
 def testWorkflowScopeRegressionFlagFromWorkflowHighWater():

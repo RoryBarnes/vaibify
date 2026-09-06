@@ -378,6 +378,7 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bAiDeclarationAttested",
         "bAiModelsDeclared",
         "bPersonalLayerDeclared",
+        "bImageArchiveAnswered",
         "bPromptRecordCurrent",
         "bSupervisionClean",
         "bProjectContextFileExists",

@@ -263,6 +263,7 @@ def fdictBuildAttestation(
     fDurationSeconds, iOutputHashesMatched, iOutputHashesTotal,
     listDivergedHashes=None, sRunLogPath="", dictAiProvenance=None,
     listCarriedPaths=None, dictRerunFailure=None,
+    dictImageArchiveCheck=None,
 ):
     """Return a fully-populated attestation dict (no file IO).
 
@@ -290,6 +291,14 @@ def fdictBuildAttestation(
     researcher is told "exited non-zero" about a container that no
     longer exists. It is bounded because this file is committed and
     published; see :mod:`vaibify.reproducibility.rerunDiagnostics`.
+
+    ``dictImageArchiveCheck`` is the re-hash of the deposited
+    environment against the image on this machine. It is recorded
+    rather than folded into ``sStatus`` because it can be VACUOUS --
+    an image obtained by loading the deposit would be compared against
+    itself, which matches always and proves nothing -- and a vacuous
+    check written as a pass is a claim nobody earned. ``None`` means
+    the record predates the check.
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
@@ -305,6 +314,10 @@ def fdictBuildAttestation(
         ),
         "dictRerunFailure": (
             None if dictRerunFailure is None else dict(dictRerunFailure)
+        ),
+        "dictImageArchiveCheck": (
+            None if dictImageArchiveCheck is None
+            else dict(dictImageArchiveCheck)
         ),
         "listDivergedHashes": list(listDivergedHashes or []),
         "sRunLogPath": sRunLogPath,

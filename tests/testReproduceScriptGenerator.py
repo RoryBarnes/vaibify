@@ -7,12 +7,16 @@ host filesystem must NEVER receive ``reproduce.sh`` even when a path
 collision exists.
 """
 
+import gzip
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 
 import pytest
 
+from vaibify.reproducibility.imageArchive import S_LOADED_FROM_ARCHIVE_MARKER
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     _S_HEREDOC_DELIMITER,
@@ -433,3 +437,156 @@ def test_reproduction_root_matches_the_mount_in_the_preamble():
     sScript = fsRenderReproduceScript(_fdictBuildWorkflow([]))
     assert f'-w {S_REPRODUCTION_REPO_ROOT} ' in sScript
     assert f'-v "$PWD":{S_REPRODUCTION_REPO_ROOT} ' in sScript
+
+
+# ============================================================================
+# The archived-environment fallback, driven as a stranger's machine would
+# ============================================================================
+
+_skipWithoutJq = pytest.mark.skipif(
+    shutil.which("jq") is None,
+    reason="jq required to drive the rendered script",
+)
+
+_S_ARCHIVED_IMAGE_DIGEST = "registry.example/project@sha256:" + "a" * 64
+_S_LOADED_IMAGE_ID = "sha256:" + "e" * 64
+
+_S_DOCKER_STUB = """\
+case "$1" in
+    pull) echo "Error response from daemon: manifest unknown" >&2; exit 1 ;;
+    load) cat > "$VAIBIFY_TEST_RECORD_DIR/loaded.bin"
+          echo "Loaded image ID: $VAIBIFY_TEST_LOADED_ID"; exit 0 ;;
+    # A stranger's host holds no copy of the image, so the last
+    # resort in the pull chain must find nothing here.
+    image) exit 1 ;;
+    run)  printf '%s\\n' "$@" > "$VAIBIFY_TEST_RECORD_DIR/run.argv"
+          cat > /dev/null; exit 0 ;;
+esac
+echo "unexpected docker invocation: $*" >&2
+exit 97
+"""
+
+_S_CURL_STUB = """\
+sOutput=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o) sOutput="$2"; shift ;;
+        -w) shift ;;
+    esac
+    shift
+done
+if [ "$sOutput" = "/dev/null" ]; then
+    printf 'https://zenodo.example/records/7000001'
+    exit 0
+fi
+cp "$VAIBIFY_TEST_TARBALL" "$sOutput"
+"""
+
+
+def _fnWriteStub(pathDirectory, sName, sBody):
+    """Write one executable bash stub onto the harness PATH."""
+    pathStub = pathDirectory / sName
+    pathStub.write_text("#!/usr/bin/env bash\n" + sBody, encoding="utf-8")
+    pathStub.chmod(0o755)
+
+
+def _fdictDriveFallback(tmp_path, baServedTarball, sRecordedSha256):
+    """Run the rendered script against a registry that no longer serves.
+
+    ``docker`` and ``curl`` are stubbed on PATH: the pull fails, the
+    load answers the way a real daemon does for a tarball saved by
+    digest (measured: RepoTags null, "Loaded image ID: sha256:..."),
+    and the run records its argv. Everything else -- jq, gzip,
+    sha256sum, the shell -- is real, because the point is to drive the
+    script the way a stranger's machine would.
+    """
+    pathRepo = tmp_path / "clone"
+    (pathRepo / ".vaibify").mkdir(parents=True)
+    (pathRepo / ".vaibify" / "environment.json").write_text(json.dumps({
+        "dictContainer": {
+            "sImageDigest": _S_ARCHIVED_IMAGE_DIGEST,
+            "dictImageArchive": {
+                "sVersionDoi": "10.5281/zenodo.7000001",
+                "sTarballName": "environment-image.tar.gz",
+                "sTarballSha256": sRecordedSha256,
+            },
+        },
+    }), encoding="utf-8")
+    pathStubs = tmp_path / "stubs"
+    pathStubs.mkdir()
+    pathRecord = tmp_path / "record"
+    pathRecord.mkdir()
+    pathServed = tmp_path / "served.tar.gz"
+    pathServed.write_bytes(baServedTarball)
+    _fnWriteStub(pathStubs, "docker", _S_DOCKER_STUB)
+    _fnWriteStub(pathStubs, "curl", _S_CURL_STUB)
+    if shutil.which("sha256sum") is None:
+        _fnWriteStub(pathStubs, "sha256sum", 'exec shasum -a 256 "$@"\n')
+    pathScript = tmp_path / "reproduce.sh"
+    pathScript.write_text(
+        fsRenderReproduceScript({"listSteps": []}), encoding="utf-8",
+    )
+    dictEnvironment = dict(os.environ)
+    dictEnvironment["PATH"] = (
+        str(pathStubs) + os.pathsep + dictEnvironment.get("PATH", "")
+    )
+    dictEnvironment["VAIBIFY_TEST_RECORD_DIR"] = str(pathRecord)
+    dictEnvironment["VAIBIFY_TEST_TARBALL"] = str(pathServed)
+    dictEnvironment["VAIBIFY_TEST_LOADED_ID"] = _S_LOADED_IMAGE_ID
+    tResult = subprocess.run(
+        ["bash", str(pathScript)], cwd=str(pathRepo), env=dictEnvironment,
+        capture_output=True, text=True, timeout=120,
+    )
+    return {
+        "iExit": tResult.returncode,
+        "sStderr": tResult.stderr,
+        "pathRecord": pathRecord,
+        "pathRepo": pathRepo,
+    }
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+@pytest.mark.falsification
+def test_the_fallback_runs_the_image_docker_load_reports(tmp_path):
+    """After the fallback, the run line must name the LOADED image.
+
+    A tarball saved by digest carries no tag, so the loaded image
+    answers to its ID alone -- never to the registry reference the pull
+    just failed on. Running by that reference attempts the pull again
+    and dies on the line after the fallback rescued it, which turns the
+    whole fallback into a slower way of failing.
+
+    Kills: re-reading the envelope's digest into ``sImageRef`` after
+    the load, i.e. running the registry reference again.
+    """
+    baTarball = gzip.compress(b"not an image, but bytes with a hash")
+    dictRun = _fdictDriveFallback(
+        tmp_path, baTarball,
+        "sha256:" + hashlib.sha256(baTarball).hexdigest(),
+    )
+    assert dictRun["iExit"] == 0, dictRun["sStderr"]
+    listRunArgv = (
+        dictRun["pathRecord"] / "run.argv"
+    ).read_text(encoding="utf-8").splitlines()
+    assert _S_LOADED_IMAGE_ID in listRunArgv, listRunArgv
+    assert _S_ARCHIVED_IMAGE_DIGEST not in listRunArgv, listRunArgv
+    assert (dictRun["pathRepo"] / S_LOADED_FROM_ARCHIVE_MARKER).is_file()
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+def test_a_tampered_archive_never_reaches_docker_load(tmp_path):
+    """Bytes that do not hash to the record are refused before any load.
+
+    The fallback trusts the envelope's hash, not the URL: a download
+    that differs is neither loaded nor run, no marker is written, and
+    the script exits non-zero with the reason on stderr.
+    """
+    baTarball = gzip.compress(b"bytes the record does not name")
+    dictRun = _fdictDriveFallback(tmp_path, baTarball, "sha256:" + "0" * 64)
+    assert dictRun["iExit"] != 0
+    assert "did not" in dictRun["sStderr"], dictRun["sStderr"]
+    assert not (dictRun["pathRecord"] / "loaded.bin").exists()
+    assert not (dictRun["pathRecord"] / "run.argv").exists()
+    assert not (dictRun["pathRepo"] / S_LOADED_FROM_ARCHIVE_MARKER).exists()

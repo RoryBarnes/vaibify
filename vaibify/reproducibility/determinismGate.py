@@ -16,6 +16,8 @@ import ast
 import re
 from pathlib import Path
 
+from vaibify.reproducibility import answeredQuestion
+
 
 __all__ = [
     "LIST_DETERMINISM_QUESTIONS",
@@ -72,7 +74,7 @@ LIST_DETERMINISM_QUESTIONS = (
         "sKey": "blasVariance",
         "sAnswerKey": S_BLAS_ANSWER_KEY,
         "sValueKey": "",
-        "sAnswerNeedingValue": "",
+        "tAnswersNeedingValue": (),
         "tAnswers": (S_BLAS_ACCEPTED, S_BLAS_REJECTED),
         "sLabel": "Last-digit numeric differences",
         "sPlainQuestion": (
@@ -89,7 +91,7 @@ LIST_DETERMINISM_QUESTIONS = (
         "sKey": "ompThreads",
         "sAnswerKey": S_OMP_ANSWER_KEY,
         "sValueKey": S_OMP_NUM_THREADS_KEY,
-        "sAnswerNeedingValue": S_OMP_PINNED,
+        "tAnswersNeedingValue": (S_OMP_PINNED,),
         "tAnswers": (S_OMP_PINNED, S_OMP_UNPINNED),
         "sLabel": "Thread count",
         "sPlainQuestion": (
@@ -104,7 +106,7 @@ LIST_DETERMINISM_QUESTIONS = (
         "sKey": "mklMode",
         "sAnswerKey": S_MKL_ANSWER_KEY,
         "sValueKey": S_MKL_CBWR_KEY,
-        "sAnswerNeedingValue": S_MKL_PINNED,
+        "tAnswersNeedingValue": (S_MKL_PINNED,),
         "tAnswers": (S_MKL_PINNED, S_MKL_NOT_USED),
         "sLabel": "Intel maths library (MKL)",
         "sPlainQuestion": (
@@ -352,36 +354,14 @@ def flistUnansweredDeterminismQuestions(dictWorkflow):
     chosen — and reading it as a deliberate "no" would attest a claim
     the researcher never made.
     """
-    dictDeterminism = (dictWorkflow or {}).get("dictDeterminism") or {}
-    return [
-        dictQuestion["sKey"]
-        for dictQuestion in LIST_DETERMINISM_QUESTIONS
-        if not _fbQuestionIsAnswered(dictDeterminism, dictQuestion)
-    ]
+    return answeredQuestion.flistSelectUnansweredKeys(
+        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,
+    )
 
 
-def _fbQuestionIsAnswered(dictDeterminism, dictQuestion):
-    """Return True iff one question carries a recorded, valid answer.
-
-    An answer that names a pinned value must CARRY that value:
-    "threads are pinned" with no count is not an answer, it is half of
-    one, and a rerun could not act on it.
-    """
-    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])
-    if sAnswer not in dictQuestion["tAnswers"]:
-        return False
-    if sAnswer != dictQuestion["sAnswerNeedingValue"]:
-        return True
-    return _fbValueIsPresent(dictDeterminism.get(dictQuestion["sValueKey"]))
-
-
-def _fbValueIsPresent(jsonValue):
-    """Return True iff a pinned value was actually supplied."""
-    if jsonValue is None:
-        return False
-    if isinstance(jsonValue, str):
-        return jsonValue.strip() != ""
-    return True
+def _fdictDeterminismAnswers(dictWorkflow):
+    """Return the workflow's ``dictDeterminism`` block, empty if absent."""
+    return (dictWorkflow or {}).get("dictDeterminism") or {}
 
 
 def fbWorkflowDeclaresDeterminism(dictWorkflow):
@@ -397,18 +377,9 @@ def _flistDescribeUnansweredQuestions(dictWorkflow):
     cannot tell a researcher which of the three is still open, and the
     row that reports it now carries a marker each.
     """
-    dictByKey = {
-        dictQuestion["sKey"]: dictQuestion
-        for dictQuestion in LIST_DETERMINISM_QUESTIONS
-    }
-    listIssues = []
-    for sKey in flistUnansweredDeterminismQuestions(dictWorkflow):
-        dictQuestion = dictByKey[sKey]
-        listIssues.append(
-            dictQuestion["sLabel"] + " — not answered yet. "
-            + dictQuestion["sPlainQuestion"]
-        )
-    return listIssues
+    return answeredQuestion.flistDescribeUnansweredQuestions(
+        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,
+    )
 
 
 # Distribution names that mean "this environment has Intel MKL in it".

@@ -219,9 +219,19 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
     if fbIsHostProject(sContainerName):
         dictPayload["sMode"] = "host"
     else:
+        # The image-archive deposit record is written once, at deposit
+        # time, and this rebuild would otherwise destroy it on the
+        # next automatic regeneration. It survives only while the
+        # fresh capture still names the image it covers.
+        dictPrevious = (
+            environmentSnapshot.fdictReadEnvironmentJson(filesRepo) or {}
+        ).get("dictContainer")
         dictPayload["dictContainer"] = (
-            environmentSnapshot.fdictCaptureContainerImageDigest(
-                sContainerName,
+            environmentSnapshot.fdictCarryImageArchiveForward(
+                dictPrevious,
+                environmentSnapshot.fdictCaptureContainerImageDigest(
+                    sContainerName,
+                ),
             )
         )
     if listHostBinaries:

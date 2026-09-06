@@ -74,6 +74,7 @@ def test_a_local_only_image_cannot_attain_level_three(monkeypatch):
     for sName in (
         "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
         "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
+        "fbImageArchiveDeposited",
     ):
         monkeypatch.setattr(
             levelGates, sName, lambda *args, **kwargs: True,

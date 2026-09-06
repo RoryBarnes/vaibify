@@ -798,6 +798,178 @@ var VaibifyWorkflowRequirements = (function () {
             });
     }
 
+    var _DICT_ARCHIVE_STATE_TITLES = {
+        attained: "Environment archive",
+        none: "Environment archive",
+        running: "Environment archive (depositing)",
+        unknown: "Environment archive",
+        diverged: "Environment archive (does not match)",
+        closed: "Environment archive (no longer possible)",
+        "not-applicable": "Environment archive",
+    };
+
+    /* Backend row state -> this list's mark vocabulary. Four of the
+       six already have a word here; the other two are why this map
+       exists. The list's vocabulary has ONE red, and this row needs
+       two that differ in SHAPE: `diverged` says the deposit on record
+       failed a comparison and the researcher can fix it, `closed`
+       says the image is gone and nothing can be. Folding both into
+       "red" is what the browser lane caught — every Python test
+       passed while the screen showed one mark for two opposite
+       remedies. */
+    var _DICT_ARCHIVE_STATE_MARKS = {
+        attained: "green",
+        none: "red",
+        running: "running",
+        unknown: "unknown",
+        diverged: "diverged",
+        closed: "closed",
+    };
+
+    function _flistEnvironmentArchiveRows(dictDetail) {
+        /* One row for a question with two blocks: Level 2 asks
+           whether it was ANSWERED (declining passes) and Level 3 asks
+           whether a matching archive EXISTS. The row is filed at
+           level 3 because that is the stronger of the two claims it
+           reports; the Level 2 half shows in the PROOF tab's own
+           list. */
+        var dictArchive = dictDetail.dictImageArchive;
+        if (!dictArchive) return [];
+        var sState = dictArchive.sState || "unknown";
+        if (sState === "not-applicable") return [];
+        return [{
+            sKey: "environmentArchive",
+            iLevel: 3,
+            sTitle: _DICT_ARCHIVE_STATE_TITLES[sState] ||
+                "Environment archive",
+            sState: _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown",
+            fsDetail: function () {
+                return _fsRenderEnvironmentArchiveDetail(dictArchive);
+            }}];
+    }
+
+    function _fsRenderEnvironmentArchiveDetail(dictArchive) {
+        var sHtml = '<div class="requirement-row-detail">' +
+            '<div class="requirement-row-status">' +
+            fnEscapeHtml(_fsDescribeArchiveState(dictArchive)) +
+            '</div>';
+        sHtml += _fsRenderArchiveIssues(dictArchive);
+        sHtml += _fsRenderArchiveDepositProgress(dictArchive);
+        sHtml += _fsRenderArchiveRecord(dictArchive);
+        return sHtml + _fsRenderArchiveForm(dictArchive) + '</div>';
+    }
+
+    function _fsDescribeArchiveState(dictArchive) {
+        var sState = dictArchive.sState || "unknown";
+        if (sState === "attained") {
+            return "The container image these results were produced " +
+                "in is deposited in a permanent archive, and the " +
+                "deposit covers the image and platform this " +
+                "project's envelope pins.";
+        }
+        if (sState === "running") {
+            return "Vaibify is depositing the container image now.";
+        }
+        if (sState === "diverged") {
+            return "A deposit is on record, but it does not cover " +
+                "the image this project's envelope pins.";
+        }
+        if (sState === "closed") {
+            return "You declined to archive this image, and the " +
+                "image is no longer on this machine. Level 3 cannot " +
+                "be reached for this result.";
+        }
+        if (sState === "unknown") {
+            return "Vaibify could not check the environment " +
+                "archive. Nothing was compared, so this is not a " +
+                "report that anything is wrong.";
+        }
+        return "The container image these results were produced in " +
+            "is not in a permanent archive. A registry digest names " +
+            "bytes somebody else is storing; when the registry " +
+            "forgets them, reproduce.sh fails and the result stops " +
+            "being checkable.";
+    }
+
+    function _fsRenderArchiveIssues(dictArchive) {
+        var listIssues = dictArchive.listIssues || [];
+        if (!listIssues.length) return "";
+        return '<ul class="requirement-row-issues">' +
+            listIssues.map(function (sIssue) {
+                return '<li>' + fnEscapeHtml(sIssue) + '</li>';
+            }).join("") + '</ul>';
+    }
+
+    function _fsRenderArchiveDepositProgress(dictArchive) {
+        /* A silent multi-minute upload reads as a hang from the
+           chair. The bytes are the only thing that distinguishes a
+           deposit that is working from one that stopped. */
+        var dictDeposit = dictArchive.dictDeposit;
+        if (!dictDeposit) return "";
+        if (dictDeposit.sPhase === "failed") {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml("The deposit failed: " +
+                    (dictDeposit.sReason || "no reason recorded")) +
+                '</div>';
+        }
+        if (dictDeposit.sPhase === "saving" ||
+            dictDeposit.sPhase === "uploading") {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml(dictDeposit.sPhase === "saving"
+                    ? "Saving the image: " +
+                        _fsFormatGigabytes(dictDeposit.iBytesRead) +
+                        " of " +
+                        _fsFormatGigabytes(dictDeposit.iBytesTotal)
+                    : "Uploading to Zenodo") + '</div>';
+        }
+        return "";
+    }
+
+    function _fsFormatGigabytes(iBytes) {
+        if (!iBytes) return "?";
+        return (iBytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    }
+
+    function _fsRenderArchiveRecord(dictArchive) {
+        var dictRecord = dictArchive.dictRecord;
+        if (!dictRecord) return "";
+        /* The DOI and the platform, never a bare check: a deposit
+           that names neither is indistinguishable from a claim. */
+        return '<div class="requirement-row-status">' +
+            fnEscapeHtml(
+                "Deposited " + (dictRecord.sArchitecture || "?") +
+                " build under " + (dictRecord.sVersionDoi || "?") +
+                (dictRecord.sProvenance === "verified-equivalent"
+                    ? " — this environment reproduces these results " +
+                      "rather than being the one that produced them"
+                    : "")) + '</div>';
+    }
+
+    function _fsRenderArchiveForm(dictArchive) {
+        if (dictArchive.sState === "running") return "";
+        return '<div class="environment-archive-form">' +
+            '<label class="determinism-form-row">' +
+            '<input type="radio" name="environment-archive-answer" ' +
+            'class="environment-archive-answer" value="referenced">' +
+            '<span>Use a deposit that already holds this image</span>' +
+            '</label>' +
+            '<label class="determinism-form-row">' +
+            '<input type="text" class="environment-archive-doi" ' +
+            'placeholder="10.5281/zenodo.NNNNNNN (version DOI)">' +
+            '</label>' +
+            '<label class="determinism-form-row">' +
+            '<input type="radio" name="environment-archive-answer" ' +
+            'class="environment-archive-answer" value="declined">' +
+            '<span>Decline — do not archive this image</span>' +
+            '</label>' +
+            _fsRenderActionButton(
+                "answer-environment-archive", "", "Save this answer") +
+            '</div>' +
+            _fsRenderActionButton(
+                "deposit-environment-archive", "",
+                "Deposit this image in Zenodo");
+    }
+
     function _flistEnvelopeMirrorRows(dictDetail, dictChecks) {
         /* The Level 3 published-copy rows, in their own section so
            they read as the parallel of the Level 2 sync rows rather
@@ -1762,6 +1934,14 @@ var VaibifyWorkflowRequirements = (function () {
         // met yet -- the pulse would read honestly and the hover
         // would not.
         running: "running",
+        // Two states this list did not previously have a word for.
+        // They map to THEMSELVES because their whole point is that
+        // fsBuildLevelCell draws them differently: a warning triangle
+        // for a deposit that failed a comparison, a cross for an
+        // archiving opportunity that has closed. Folding either into
+        // "none" puts one mark in front of two opposite remedies.
+        diverged: "diverged",
+        closed: "closed",
         "not-applicable": "not-applicable",
     };
 
@@ -1769,6 +1949,8 @@ var VaibifyWorkflowRequirements = (function () {
         attained: "met", none: "not met",
         partial: "partially met", running: "being verified now",
         unknown: "not checked yet",
+        diverged: "does not match what is recorded",
+        closed: "no longer possible",
         "not-started": "nothing to check yet",
         unassessed: "present but not yet checked",
         "not-applicable": "no requirement at this level",
@@ -1941,6 +2123,15 @@ var VaibifyWorkflowRequirements = (function () {
                 // progress -- and it paints the same orange circle the
                 // row itself shows.
                 if (dictRow.sState === "running") return "partial";
+                // fsSummarizeLevelStates is shared with the Steps
+                // banner and knows nothing about these two either, so
+                // it would count them as nothing assessed and paint a
+                // grey "?" over a requirement that plainly failed.
+                // Both are assessments, and both are failures.
+                if (dictRow.sState === "diverged" ||
+                        dictRow.sState === "closed") {
+                    return "none";
+                }
                 return _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] ||
                     "unknown";
             });
@@ -2037,7 +2228,8 @@ var VaibifyWorkflowRequirements = (function () {
             ["software", _flistSoftwareRows(dictDetail),
              _fsRenderBinaryAddForm(
                  dictContext.bBinaryAddFormOpen === true)],
-            ["artifacts", _flistArtifactRows(dictDetail), ""],
+            ["artifacts", _flistArtifactRows(dictDetail).concat(
+                _flistEnvironmentArchiveRows(dictDetail)), ""],
             ["determinism", _flistDeterminismRows(dictDetail),
              _fsRenderDeterminismFooter(dictDetail)],
             // Two parallel published-copy sections, one per level.

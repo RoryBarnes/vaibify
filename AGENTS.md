@@ -358,18 +358,26 @@ the guarantees back out of a real container. A string assertion that
 the preamble mentions `SOURCE_DATE_EPOCH` is necessary and nowhere near
 sufficient — it passes against a script exporting the wrong value.
 
-**Publishing the image is an L3 REQUIREMENT (ruled 2026-09-05).**
-`reproduce.sh`'s first act is a `docker pull`, and a locally built image
-records its bare image ID — an honest content pin that exists in no
-registry. `image-not-published` was emitted as a blocker row and
-consulted by neither `fbAtLeastLevel3` nor
-`_T_WORKFLOW_LEVEL3_CRITERIA`, so a project could attain the rung that
-claims a stranger can re-execute it with an image only its author could
-obtain. It is now in both. It stays OUT of `fbL3ReadinessOK`, beside the
-GitHub and Zenodo conjuncts and for their reason: readiness asks whether
-the LOCAL envelope is coherent enough to attempt a rerun, and folding
-publication into it would stop a researcher attesting before they
-publish. The shadow lane translates the SDK's bare
+**Publishing the image is an L3 REQUIREMENT (ruled 2026-09-05), and
+so is archiving it — they are two rows, not one.** `reproduce.sh`'s
+first act is a `docker pull`, and a locally built image records its
+bare image ID — an honest content pin that exists in no registry.
+`image-not-published` was emitted as a blocker row and consulted by
+neither `fbAtLeastLevel3` nor `_T_WORKFLOW_LEVEL3_CRITERIA`, so a
+project could attain the rung that claims a stranger can re-execute it
+with an image only its author could obtain. It is now in both, beside
+`image-not-archived` (the environment archive, below): publication is
+what makes the pull succeed today, the archive is what survives the
+registry, and the script's pull chain tries them in that order — pull,
+then the archived copy, then a copy already on this host, the last
+with a warning that only the author can take that path. Neither row
+offers the other's remedy, because a criterion whose fix is "or do the
+other thing" cannot be read off the screen. Both stay OUT of
+`fbL3ReadinessOK`, beside the GitHub and Zenodo conjuncts and for their
+reason: readiness asks whether the LOCAL envelope is coherent enough to
+attempt a rerun, and folding publication into it would stop a
+researcher attesting before they publish. The shadow lane translates
+the SDK's bare
 `404 ... No such image` into a refusal naming which kind of reference it
 is and what to do — recognised by the SDK's exception CLASS, never by
 matching "404" in a message, because an unreachable daemon carries 404s
@@ -634,6 +642,58 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testWebSocketGatesUseSharedAuthorizationGuard`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
+
+**The environment archive is one question with two blocks, and the L3
+half must never read the L2 answer.** Level 2 asks whether the
+researcher ANSWERED — `archived`, `referenced` and `declined` all pass,
+and only silence fails. Level 3 asks whether a matching archive
+EXISTS. Keeping them apart is what makes declining a decision rather
+than a lock: a decline is an absent archive, so changing the answer and
+depositing opens L3 with nothing to undo. The one sound direction is
+the other one — `fbImageArchiveQuestionSettled` reads the deposit
+record, because having deposited is having decided, and the deposit
+finishes in a durable task holding no commit lane to persist an answer
+through. Five things not to "simplify", each already pinned by a
+kill-confirmed test in `tests/testEnvironmentArchive.py`:
+
+- **The version DOI, never the concept DOI.** Zenodo's concept DOI
+  always resolves to the NEWEST version, so recording it repoints every
+  earlier paper at whatever image was deposited last — the link
+  resolves, nothing errors, and the archived environment is simply not
+  the one that produced those numbers.
+- **Architecture is recorded, never inferred from the digest.** A
+  manifest-list digest spans several platforms and pins none of them,
+  so matching digests do not imply a matching build. This is also why
+  the envelope's regeneration carries a deposit record forward only
+  when BOTH the digest and the architecture still agree.
+- **Unchecked is never red.** Red means diverged, a claim about the
+  deposit; an envelope one side of which is missing was compared with
+  nothing. `flistDescribeArchiveMismatch` RAISES `LookupError` for that
+  case rather than returning a reason, so a caller cannot accidentally
+  render it as a difference.
+- **CLOSED needs positive evidence.** "Declined, and the image is gone,
+  so L3 is unreachable for this result" is the strongest statement the
+  row makes. The presence probe is three-state and captured at connect
+  (the poll makes no daemon call); `None` means nobody looked, and the
+  row falls back to the weaker reading.
+- **The attestation re-check can be VACUOUS.** An image obtained by
+  loading the deposit hashes to the deposit's own bytes every time.
+  `reproduce.sh`'s fallback writes
+  `.vaibify/image_loaded_from_archive` — a file beside the envelope,
+  never a field inside it, because the envelope is pinned in
+  `MANIFEST.sha256` and that script ends by verifying it — and the
+  check reports vacuous rather than passed.
+
+Two hashes ride in the record and neither substitutes for the other:
+`sTarballSha256` binds the bytes UPLOADED (what a downloader verifies)
+and `sImageStreamSha256` binds `docker save`'s uncompressed output
+(what the re-check compares, because zstd and gzip — and two builds of
+one codec — give different bytes for one image). The deposit runs
+host-side and reads the Zenodo token out of the CONTAINER keyring
+through the typed-read seam, because `docker save` can only run on the
+host and the token lives nowhere else; it is held in a local for one
+upload and written to no file and no log.
+`docs/architecture.md` — "The environment archive" — carries the model.
 
 ## A human step's outputs are GIVEN, not reproduced
 

@@ -122,6 +122,29 @@ def _fdictAuthority(listLanes, sRationale):
 # unauthorised, and a line here the scan no longer finds is a review
 # aimed at code that moved.
 DICT_NAMED_AUTHORITIES = {
+    # -- the environment archive -----------------------------------------
+    "reproducibility/imageDeposit.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["background", "host-cli"],
+            "`docker save` for the environment-archive deposit and for "
+            "the attestation-time re-hash. Hub-reachable through the "
+            "deposit route's durable task and through `vaibify "
+            "reproduce`, which records the same re-check. It runs on "
+            "the HOST because it talks to the daemon, and it mutates "
+            "nothing: the daemon serializes an image out of the local "
+            "store and writes nothing back, so no container is "
+            "touched. Two launch sites, both a fixed argv list with no "
+            "shell -- _fnStreamSaveIntoTarball and "
+            "fsRecomputeImageStreamSha256 -- and their one value is "
+            "the image reference the project's own environment.json "
+            "pins, read back from disk rather than taken from a "
+            "request. It is its own argv element, so a hand-edited "
+            "envelope cannot turn it into an option or a second "
+            "command; the worst a forged reference achieves is a "
+            "non-zero exit, raised as CalledProcessError or reported "
+            "as UNAVAILABLE.",
+        ),
     # -- the host-mode gateway -------------------------------------------
     "host/hostConnection.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
