@@ -1,30 +1,29 @@
-"""Publishing the container image is part of Level 3 (ruled 2026-09-05).
+"""A container registry is a convenience, never a PROOF rung (ruled 2026-09-05).
 
-``reproduce.sh``'s first act is ``docker pull`` of the reference the
-envelope pins. A locally built image records its bare image ID
-(``sha256:<hex>``) — an honest content pin that exists in no registry,
-so a stranger's reproduction dies at step one. Until this ruling that
-was reported as a blocker ROW and consulted by neither the scalar L3
-gate nor the header cell, so a project could attain Level 3 — the rung
-that claims a third party can re-execute the work — with an image only
-its author could obtain.
+Earlier the same day, publishing the image to a registry had been made a
+Level 3 requirement, on the reasoning that ``reproduce.sh``'s first act
+is ``docker pull``. The ruling was reversed once the question "what is
+the mission of Docker Hub and GHCR?" was asked: they are commercial
+services with no retention policy, no DOI and no succession plan, and
+grant reviewers have declined to accept even GitHub as a long-term
+repository. A rung resting on one would be a claim vaibify could not
+defend. So registries are treated like Overleaf and arXiv: integrated
+because they are useful, gating nothing. The image's only rung is the
+environment archive on Zenodo, which has a preservation commitment.
 
-Two halves, and each fails differently, which is why both are asserted
-here:
+Three halves are asserted, because each could regress on its own:
 
-- ``fbAtLeastLevel3`` now refuses. That is the claim itself.
-- ``_T_WORKFLOW_LEVEL3_CRITERIA`` now carries the criterion. A criterion
-  the gates EMIT but that tuple OMITS is silently dropped from the
-  header count rather than merely uncounted, so the cell paints a check
-  above an orange row — the exact shape this repository already shipped
-  once with the L2 tuple.
+- ``fbAtLeastLevel3`` does not consult the registry verdict.
+- ``_fdictL3WorkflowChecks`` emits no ``image-not-published`` blocker
+  and ``_T_WORKFLOW_LEVEL3_CRITERIA`` counts none -- the two must
+  agree, since a criterion one side carries and the other omits is
+  silently dropped from the header count.
+- The readiness payload still REPORTS ``bImagePublished``, because the
+  PROOF tab shows the registry copy as an optional row. Optional means
+  visible and uncounted, not absent.
 
-It stays OUT of the readiness composition, beside the GitHub and Zenodo
-conjuncts and for their reason: readiness asks whether the local
-envelope is coherent enough to attempt a rerun, and the rerun builds
-its shadow from whatever the daemon already holds. Blocking readiness
-would stop a researcher attesting locally before they publish, which
-the gate's own docstring exists to protect.
+The shadow-lane translation of the SDK's bare ``404 ... No such image``
+survives the reversal; only the remedy it names changed.
 """
 
 import pytest
@@ -54,22 +53,24 @@ def test_the_header_tuple_carries_every_criterion_the_gates_emit():
     )
 
 
-def test_image_not_published_is_one_of_them():
-    """The instance the ruling was about, pinned by name.
+def test_no_registry_criterion_is_emitted_or_counted():
+    """The instance the ruling was about, pinned by name on BOTH sides.
 
-    The subset test above would also pass if BOTH sides dropped the
-    criterion, which is the tidy-looking way to make it green.
+    The subset test above is satisfied when both sides carry the
+    criterion and when neither does; this is what says which.
     """
-    assert "image-not-published" in _T_WORKFLOW_LEVEL3_CRITERIA
+    assert "image-not-published" not in _T_WORKFLOW_LEVEL3_CRITERIA
+    assert "image-not-published" not in _fdictL3WorkflowChecks(
+        {}, "/nonexistent-for-shape",
+    )
 
 
-def test_a_local_only_image_cannot_attain_level_three(monkeypatch):
-    """Every other conjunct green, and the level still refuses.
+def test_a_local_only_image_can_still_attain_level_three(monkeypatch):
+    """Every conjunct green and the registry verdict false: attained.
 
     Driven with the rest of the gate stubbed to True so the assertion
-    can only be about this one conjunct. Without that, a gate that
-    ignored the image would still fail for an unrelated reason and the
-    test would pass while proving nothing.
+    can only be about the registry. A gate that still consulted
+    ``fbVerifyImagePublished`` would refuse here.
     """
     for sName in (
         "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
@@ -83,12 +84,29 @@ def test_a_local_only_image_cannot_attain_level_three(monkeypatch):
         levelGates, "fbVerifyImagePublished",
         lambda *args, **kwargs: False,
     )
-    assert levelGates.fbAtLeastLevel3({}, _ffilesStubRepo()) is False
-    monkeypatch.setattr(
-        levelGates, "fbVerifyImagePublished",
-        lambda *args, **kwargs: True,
-    )
     assert levelGates.fbAtLeastLevel3({}, _ffilesStubRepo()) is True
+
+
+def test_the_archive_is_the_image_criterion_that_gates(monkeypatch):
+    """The reversal removed the registry, not the image, from Level 3.
+
+    Without this, the test above would also pass against a gate that
+    had dropped BOTH image conjuncts, which is the tidy-looking way to
+    make it green.
+    """
+    for sName in (
+        "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
+        "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
+    ):
+        monkeypatch.setattr(
+            levelGates, sName, lambda *args, **kwargs: True,
+        )
+    monkeypatch.setattr(
+        levelGates, "fbImageArchiveDeposited",
+        lambda *args, **kwargs: False,
+    )
+    assert levelGates.fbAtLeastLevel3({}, _ffilesStubRepo()) is False
+    assert "image-not-archived" in _T_WORKFLOW_LEVEL3_CRITERIA
 
 
 def _ffilesStubRepo():
@@ -97,37 +115,12 @@ def _ffilesStubRepo():
     return HostRepoFiles("/nonexistent-for-shape")
 
 
-def test_readiness_still_passes_for_a_local_only_image(monkeypatch):
-    """A researcher may attest locally before they publish.
+def test_the_readiness_payload_reports_the_registry_anyway():
+    """Reported without being counted: the PROOF tab's optional row.
 
-    The readiness composition answers "is the envelope coherent enough
-    to attempt a rebuild?", and the rebuild builds its shadow from the
-    image already on this daemon. Folding the publication question into
-    readiness would refuse the local verification a researcher runs
-    BEFORE deciding the work is ready to publish.
-    """
-    for sName in (
-        "fbWorkflowHasProjectRepo", "fbVerifyManifestComplete",
-        "fbVerifyDependencyLock", "fbVerifyEnvironmentSnapshot",
-        "fbVerifyDockerfilePinned", "fbVerifyReproduceScript",
-        "fbVerifyDeterminismDeclared", "fbWorkflowDeclaresBinaries",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda *args, **kwargs: True,
-        )
-    monkeypatch.setattr(
-        levelGates, "fbVerifyImagePublished",
-        lambda *args, **kwargs: False,
-    )
-    assert levelGates.fbL3ReadinessOK({}, _ffilesStubRepo()) is True
-
-
-def test_the_readiness_payload_reports_the_image_anyway():
-    """Reported without being counted, like the published-envelope pair.
-
-    A blocker with no row is one a researcher meets as an unexplained
-    dash, so the flag rides the same payload the PROOF tab binds
-    against even though it is outside the readiness ``all()``.
+    Optional means the researcher can SEE whether the fast path works,
+    not that the question vanished. A payload without the flag would
+    leave that row permanently blank.
     """
     dictGaps = levelGates.fdictL3ReadinessGaps(
         {}, "/nonexistent-for-shape",
@@ -150,18 +143,20 @@ class ImageNotFound(Exception):
 
     Recognised by CLASS NAME rather than by matching "404" in a
     message, because an unreachable daemon can carry a 404 from an
-    entirely different cause -- and telling a researcher to publish an
+    entirely different cause -- and telling a researcher to rebuild an
     image that is sitting right there would be worse than the bare
     error the translation replaces.
     """
 
 
-def test_a_missing_local_only_image_names_the_publish_remedy(monkeypatch):
+def test_a_missing_local_only_image_names_the_rebuild_remedy(monkeypatch):
     """The researcher got "404 ... No such image" and nothing else.
 
     It arrived from inside a background task, about a digest, after a
     rebuild had moved the image out from under the envelope. The
-    refusal now says which kind of reference it is and what to do.
+    refusal now says which kind of reference it is and what to do --
+    and what to do is rebuild or load the deposit, never "publish",
+    because a registry is not a remedy for anything on the ladder.
     """
     from vaibify.reproducibility import shadowRerun
 
@@ -178,7 +173,8 @@ def test_a_missing_local_only_image_names_the_publish_remedy(monkeypatch):
         )
     sMessage = str(errorInfo.value)
     assert "local-only" in sMessage
-    assert "registry" in sMessage
+    assert "deposit" in sMessage
+    assert "registry" not in sMessage
 
 
 def test_a_missing_registry_image_names_the_pull_instead(monkeypatch):
@@ -211,7 +207,7 @@ def test_any_other_creation_failure_is_left_alone(monkeypatch):
     """Only an absent image is translated.
 
     A disk-full create, a refused reservation, a daemon that died
-    mid-call: dressing those up as "publish your image" would send the
+    mid-call: dressing those up as "rebuild your image" would send the
     researcher to fix something that is not broken, which is the defect
     being repaired, pointed the other way.
     """
@@ -246,11 +242,12 @@ def _ffilesWriteEnvelope(pathRepo, dictContainer):
 def test_the_verifier_reads_the_local_only_stamp(tmp_path):
     """The stamp is authoritative; the shape is the fallback.
 
-    Both halves matter, and they are driven against each other here: an
-    envelope written before the flag existed is judged by its digest
-    shape alone, and one that carries the flag is judged by the flag
-    even though its digest is the registry form. Asserting only the
-    shape case would pass against a verifier that ignored the stamp
+    The verdict feeds an optional row rather than a gate now, but a row
+    that lies is still a lie. Both halves are driven against each
+    other: an envelope written before the flag existed is judged by its
+    digest shape alone, and one that carries the flag is judged by the
+    flag even though its digest is the registry form. Asserting only
+    the shape case would pass against a verifier that ignored the stamp
     entirely.
     """
     sRegistryDigest = "example.invalid/probe@sha256:" + "d" * 64

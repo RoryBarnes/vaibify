@@ -358,30 +358,30 @@ the guarantees back out of a real container. A string assertion that
 the preamble mentions `SOURCE_DATE_EPOCH` is necessary and nowhere near
 sufficient — it passes against a script exporting the wrong value.
 
-**Publishing the image is an L3 REQUIREMENT (ruled 2026-09-05), and
-so is archiving it — they are two rows, not one.** `reproduce.sh`'s
-first act is a `docker pull`, and a locally built image records its
-bare image ID — an honest content pin that exists in no registry.
-`image-not-published` was emitted as a blocker row and consulted by
-neither `fbAtLeastLevel3` nor `_T_WORKFLOW_LEVEL3_CRITERIA`, so a
-project could attain the rung that claims a stranger can re-execute it
-with an image only its author could obtain. It is now in both, beside
-`image-not-archived` (the environment archive, below): publication is
-what makes the pull succeed today, the archive is what survives the
-registry, and the script's pull chain tries them in that order — pull,
-then the archived copy, then a copy already on this host, the last
-with a warning that only the author can take that path. Neither row
-offers the other's remedy, because a criterion whose fix is "or do the
-other thing" cannot be read off the screen. Both stay OUT of
-`fbL3ReadinessOK`, beside the GitHub and Zenodo conjuncts and for their
-reason: readiness asks whether the LOCAL envelope is coherent enough to
-attempt a rerun, and folding publication into it would stop a
-researcher attesting before they publish. The shadow lane translates
-the SDK's bare
-`404 ... No such image` into a refusal naming which kind of reference it
-is and what to do — recognised by the SDK's exception CLASS, never by
-matching "404" in a message, because an unreachable daemon carries 404s
-from other causes. `tests/testPublishedImageIsAnL3Requirement.py`.
+**A container registry is a convenience, never a PROOF rung (ruled
+2026-09-05, superseding that morning's ruling that publishing the image
+was an L3 requirement).** Docker Hub and GHCR are commercial services
+with no retention policy, no DOI and no succession plan; grant
+reviewers have declined to accept even GitHub as a long-term
+repository, and a rung resting on one would be a claim vaibify could
+not defend. So they are treated like Overleaf and arXiv: vaibify
+integrates with them because they are useful, and they gate nothing.
+`image-not-published` is emitted by no gate, counted by no tuple and a
+conjunct of nothing. The readiness payload still carries
+`bImagePublished`, because the PROOF tab shows the registry copy as an
+OPTIONAL row (`bOptional: true`, excluded from the met count like the
+project context file), and `reproduce.sh` still tries the registry
+first because it is the fast path — pull, then the archived copy, then
+a copy already on this host, the last with a warning that only the
+author can take that path. The image's only rung is the environment
+archive (`image-not-archived`, below), because Zenodo is the one of
+these with a preservation commitment. The shadow lane still translates
+the SDK's bare `404 ... No such image` into a refusal naming which kind
+of reference it is and what to do — recognised by the SDK's exception
+CLASS, never by matching "404" in a message, because an unreachable
+daemon carries 404s from other causes — and the remedy it names for a
+vanished local-only image is rebuild-or-load-the-deposit, never
+publish. `tests/testRegistryIsNotAnL3Requirement.py`.
 
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and

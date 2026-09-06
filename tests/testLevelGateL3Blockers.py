@@ -5,9 +5,10 @@ The L3 blocker list pins both the per-step criteria
 ``nondeterminism-undeclared``, ``binary-not-declared``,
 ``binary-not-captured``) and the workflow-scope criteria
 (``dockerfile-not-pinned``, ``dependency-lock-missing``,
-``environment-snapshot-missing``, ``image-not-published``,
-``reproduce-script-missing``, ``l3-attestation-stale``,
-``binaries-not-declared-or-waived``).
+``environment-snapshot-missing``, ``reproduce-script-missing``,
+``l3-attestation-stale``, ``binaries-not-declared-or-waived``).
+A registry criterion is deliberately not among them: a container
+registry is a convenience, not a rung (ruled 2026-09-05).
 """
 
 import hashlib
@@ -335,62 +336,33 @@ def testDockerfileNotPinnedFiresAsWorkflowScope(fixtureL3Repo):
     assert listPinned[0]["sRemediationHint"]
 
 
-def testImageNotPublishedFiresForLocalOnlyEnvelope(fixtureL3Repo):
-    """A capture stamped ``bLocalImageOnly`` blocks the reproduction claim.
+def testLocalOnlyEnvelopeEmitsNoRegistryBlocker(fixtureL3Repo):
+    """A bare image ID is an honest pin and raises no L3 blocker.
 
-    The digest is an honest content pin, so ``environment-snapshot-
-    missing`` stays quiet — but ``reproduce.sh``'s ``docker pull``
-    would fail on any fresh host, and the dashboard must say so
-    instead of presenting a green L3 story.
+    Stamped ``bLocalImageOnly`` or judged by the digest's shape alone,
+    the envelope is complete: ``environment-snapshot-missing`` stays
+    quiet, and no ``image-not-published`` blocker exists to fire (ruled
+    2026-09-05 -- a registry is a convenience, not a rung). Whether the
+    image can be OBTAINED is the archive criterion's question.
     """
-    _fnWriteEnvironment(
-        fixtureL3Repo, sDigest="sha256:" + "c" * 64, bLocalImageOnly=True,
-    )
-    listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
-    )
-    listImage = _flistFindByCriterion(listBlockers, "image-not-published")
-    assert len(listImage) == 1
-    assert listImage[0]["sScope"] == "workflow"
-    assert "docker pull" in listImage[0]["sRemediationHint"]
-    assert _flistFindByCriterion(
-        listBlockers, "environment-snapshot-missing",
-    ) == []
-
-
-def testImageNotPublishedFiresOnBareImageIdWithoutFlag(fixtureL3Repo):
-    """A legacy envelope is judged by its digest's shape.
-
-    Envelopes captured before ``bLocalImageOnly`` existed carry only
-    the digest; a bare image ID (``sha256:<hex>`` with no repository
-    prefix) is pullable from nowhere, so the blocker must fire on the
-    evidence itself, not only on the newer stamp.
-    """
-    _fnWriteEnvironment(fixtureL3Repo, sDigest="sha256:" + "c" * 64)
-    listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
-    )
-    assert len(_flistFindByCriterion(
-        listBlockers, "image-not-published",
-    )) == 1
-
-
-def testRegistryDigestDoesNotFireImageNotPublished(fixtureL3Repo):
-    """The fixture's ``repo@sha256:`` digest is pullable: no blocker."""
-    listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
-    )
-    assert _flistFindByCriterion(
-        listBlockers, "image-not-published",
-    ) == []
+    for dictCapture in (
+        {"sDigest": "sha256:" + "c" * 64, "bLocalImageOnly": True},
+        {"sDigest": "sha256:" + "c" * 64},
+    ):
+        _fnWriteEnvironment(fixtureL3Repo, **dictCapture)
+        listBlockers = flistLevel3Blockers(
+            _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
+        )
+        assert _flistFindByCriterion(
+            listBlockers, "image-not-published",
+        ) == [], dictCapture
+        assert _flistFindByCriterion(
+            listBlockers, "environment-snapshot-missing",
+        ) == [], dictCapture
 
 
 def testMissingEnvelopeIsOwnedBySnapshotCriterionAlone(fixtureL3Repo):
-    """No envelope at all is the snapshot criterion's gap, not this one.
-
-    Firing both blockers for one missing file would tell the
-    researcher to publish an image that was never even captured.
-    """
+    """No envelope at all is the snapshot criterion's gap, once."""
     (fixtureL3Repo / ".vaibify" / "environment.json").unlink()
     listBlockers = flistLevel3Blockers(
         _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
@@ -398,9 +370,6 @@ def testMissingEnvelopeIsOwnedBySnapshotCriterionAlone(fixtureL3Repo):
     assert len(_flistFindByCriterion(
         listBlockers, "environment-snapshot-missing",
     )) == 1
-    assert _flistFindByCriterion(
-        listBlockers, "image-not-published",
-    ) == []
 
 
 def testDependencyLockMissingHintNamesInstallableTools(fixtureL3Repo):

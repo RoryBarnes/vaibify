@@ -771,10 +771,10 @@ def testNonAttainedWithoutRegressionOrTimingEmitsNoWarning():
 # ------------------------------------------------------------------------
 # fdictComputeWorkflowScopeLevelStates
 #
-# The L3 totals below count _T_WORKFLOW_LEVEL3_CRITERIA. It grew to ten
-# on 2026-09-05, when publishing the container image became an L3
-# requirement and ``image-not-published`` -- already emitted by the
-# gates -- was added to the tuple the header cell intersects against.
+# The L3 totals below count _T_WORKFLOW_LEVEL3_CRITERIA, read from the
+# tuple rather than hand-typed. A registry criterion joined it and left
+# it again on 2026-09-05: a container registry is a convenience, not a
+# rung, so ``image-not-published`` is neither emitted nor counted.
 # ------------------------------------------------------------------------
 
 

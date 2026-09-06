@@ -6,6 +6,19 @@ the reasoning.
 
 ## Unreleased
 
+### A container registry is optional, not a Level 3 requirement
+
+For part of one day, Level 3 required the container image to be
+pullable from a registry such as Docker Hub or GHCR. It no longer
+does. Those are commercial services with no retention policy and no
+preservation commitment, so a reproducibility claim cannot rest on
+them, for the same reason a GitHub repository is not a long-term
+archive. The PROOF tab now shows the registry copy as an optional row
+that gates nothing, and the environment archive on Zenodo is the
+image's only Level 3 criterion. `reproduce.sh` still pulls from the
+registry first when one holds the image, because that is the fast
+path, and falls back to the archived copy when it does not.
+
 ### Your container image can be archived, so a reproduction survives the registry
 
 `reproduce.sh` opens by pulling the container image your results were
