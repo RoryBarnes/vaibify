@@ -21,6 +21,8 @@ __all__ = [
     "fpreflightDaemon",
     "fpreflightColimaVersion",
     "fpreflightDockerContextActive",
+    "fpreflightDockerEndpoint",
+    "fpreflightCouncilCredentialEvidence",
     "fpreflightColimaHostagentLog",
     "fpreflightLinuxDockerService",
 ]
@@ -181,6 +183,95 @@ def fpreflightDockerContextActive():
     return PreflightResult(
         sName="docker-context", sLevel="ok",
         sMessage=f"Active Docker context: {sContext}.",
+    )
+
+
+def fpreflightDockerEndpoint():
+    """Report the endpoint vaibify would talk to, before it tries.
+
+    The context NAME and the endpoint it resolves to are different
+    facts, and only the second one identifies the failure a researcher
+    actually hit: Docker Engine running at the default socket while
+    the current context pointed at a stopped Rancher Desktop
+    (2026-09-05). The daemon check next to this one answers reachable
+    or not; this answers *where*, which is the half that says what to
+    do about it.
+
+    Always informational. A context pointing somewhere unusual is a
+    legitimate configuration, not a fault, and grading it would put a
+    warning in front of everyone running rootless Docker.
+    """
+    from vaibify.docker.dockerContext import fsResolveDockerEndpoint
+    return PreflightResult(
+        sName="docker-endpoint", sLevel="info",
+        sMessage=(
+            "vaibify will use the Docker endpoint "
+            f"{fsResolveDockerEndpoint()}."
+        ),
+    )
+
+
+def _fdictEvaluateCouncilProvider(sProvider):
+    """Return the gate's verdict for one council provider, never raising.
+
+    The gate refuses an unknown provider with ``ValueError``, and the
+    set of council providers is not the set of API-key providers -- a
+    readiness report is the wrong place to learn that by traceback.
+    """
+    from vaibify.gui.agentCouncilCredentialGate import (
+        fdictEvaluateCredentialEnablement,
+    )
+    try:
+        return fdictEvaluateCredentialEnablement(sProvider)
+    except Exception as errorGate:
+        return {
+            "bEnabled": False,
+            "sReason": f"the gate could not be asked ({errorGate})",
+        }
+
+
+def fpreflightCouncilCredentialEvidence():
+    """Report whether the Agent Council's runner backend is enabled.
+
+    A host-side prerequisite like the other two in this family: it is
+    satisfied on the MACHINE, it does not travel with the repository,
+    and until it is satisfied the researcher meets a greyed button with
+    a paragraph attached to it. The gate already returns a
+    display-ready reason, so this reports that reason rather than
+    composing a second one.
+
+    It REPORTS; it must never offer to satisfy the prerequisite. The
+    evidence record is deliberately not writable by any agent or CI --
+    that is the whole gate -- so a doctor that offered to write one
+    would defeat it rather than describe it.
+    """
+    from vaibify.gui.agentCouncilProviderRegistry import (
+        SET_COUNCIL_PROVIDERS,
+    )
+    listProviders = sorted(SET_COUNCIL_PROVIDERS)
+    dictVerdicts = {
+        sProvider: _fdictEvaluateCouncilProvider(sProvider)
+        for sProvider in listProviders
+    }
+    listEnabled = [
+        sProvider for sProvider in listProviders
+        if dictVerdicts[sProvider].get("bEnabled")
+    ]
+    if listEnabled:
+        return PreflightResult(
+            sName="council-credentials", sLevel="ok",
+            sMessage=(
+                "the Agent Council runner backend is enabled for: "
+                + ", ".join(listEnabled)
+            ),
+        )
+    sReason = str(
+        dictVerdicts[listProviders[0]].get("sReason", "")
+    ) if listProviders else "no council providers are registered"
+    return PreflightResult(
+        sName="council-credentials", sLevel="info",
+        sMessage="the Agent Council is unavailable on this machine: "
+                 + sReason,
     )
 
 

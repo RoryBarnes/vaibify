@@ -313,6 +313,84 @@ def _fdictHostReadyResponse():
     }
 
 
+def _fbReadinessHasSettled(dictReadiness):
+    """Return True once the readiness poll has an answer to act on.
+
+    The frontend polls this endpoint up to sixty times while a
+    container boots. Anything expensive must therefore run on the
+    TERMINAL answer only, or a probe that shells out once becomes a
+    probe that shells out sixty times.
+    """
+    sStatus = (dictReadiness or {}).get("sStatus", "")
+    return (
+        bool((dictReadiness or {}).get("bReady"))
+        or sStatus in ("failed", "stalled", "error")
+    )
+
+
+def _flistDescribeUnresolvableSecrets(connectionDocker, sContainerId):
+    """Return one warning line per secret this HOST cannot resolve.
+
+    Recomputed on each settled readiness answer rather than remembered
+    from the start: a researcher who runs ``gh auth login`` after
+    seeing this banner has fixed the thing it complains about, and a
+    remembered answer would go on complaining. The probe materializes
+    no secret and the lines carry no value -- only the name, the
+    method, the cost and the remedy.
+
+    Silent on anything it cannot establish. This is a supplementary
+    notice on a readiness answer, and taking the readiness answer down
+    with it would trade a warning for an outage.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.config.secretAvailability import (
+        flistFindUnresolvableSecrets,
+        fsDescribeUnresolvableSecret,
+    )
+    from ..pipelineServer import fsContainerNameForId
+    try:
+        sName = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(sName) if sName else None
+        if not dictProject:
+            return []
+        from vaibify.cli.configLoader import fconfigLoadFromPath
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+        return [
+            fsDescribeUnresolvableSecret(dictRecord)
+            for dictRecord in flistFindUnresolvableSecrets(
+                getattr(configProject, "listSecrets", []),
+            )
+        ]
+    except Exception:
+        return []
+
+
+def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
+    """Probe readiness, then append the host-side secret warnings.
+
+    They ride ``saWarnings`` because the dashboard already renders that
+    list as a persistent banner "from the most recent container start"
+    -- which is exactly what an unresolvable secret is. A toast would
+    disappear; the whole point of degrading rather than refusing is
+    that the researcher keeps being told what the container is missing.
+    """
+    dictReadiness = _fdictProbeContainerReadiness(
+        connectionDocker, sContainerId,
+    )
+    if not _fbReadinessHasSettled(dictReadiness):
+        return dictReadiness
+    listSecretWarnings = _flistDescribeUnresolvableSecrets(
+        connectionDocker, sContainerId,
+    )
+    if not listSecretWarnings:
+        return dictReadiness
+    listWarnings = list(dictReadiness.get("saWarnings") or [])
+    listWarnings.extend(listSecretWarnings)
+    dictReadiness["saWarnings"] = listWarnings
+    dictReadiness["iWarningCount"] = len(listWarnings)
+    return dictReadiness
+
+
 def _fnRegisterContainerReady(app, dictCtx):
     """Register GET /api/containers/{id}/ready readiness probe."""
 
@@ -323,7 +401,7 @@ def _fnRegisterContainerReady(app, dictCtx):
         if fbIsHostProject(sContainerId):
             return _fdictHostReadyResponse()
         return await asyncio.to_thread(
-            _fdictProbeContainerReadiness,
+            _fdictReadinessWithSecretWarnings,
             dictCtx["docker"], sContainerId,
         )
 

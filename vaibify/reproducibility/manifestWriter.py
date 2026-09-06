@@ -85,6 +85,7 @@ __all__ = [
     "flistVerifyManifest",
     "flistVerifyManifestEntries",
     "flistParseManifestLines",
+    "fdictCompareManifestEntries",
     "flistDeclaredButMissingFromManifest",
     "fiCountManifestEntries",
     "fbWorkflowArchivesTests",
@@ -300,6 +301,42 @@ def flistDeclaredButMissingFromManifest(filesRepo, dictWorkflow):
     setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     listDeclared = _flistCollectManifestPaths(dictWorkflow)
     return [sPath for sPath in listDeclared if sPath not in setManifestPaths]
+
+
+def fdictCompareManifestEntries(listBefore, listAfter):
+    """Return what changed between two parsed manifests.
+
+    ``{"listAdded", "listRemoved", "listChanged"}``, each a sorted list
+    of repo-relative paths. ``listChanged`` names the paths present in
+    both whose recorded hash differs -- the entries whose SCIENTIFIC
+    claim moved, as opposed to files merely joining or leaving the
+    pinned set.
+
+    Regenerating the envelope rewrites ``MANIFEST.sha256`` in place.
+    The file is tracked, so the history is not lost, but silently
+    replacing the record of a result is the wrong default for a product
+    whose premise is that a researcher always knows what happened: the
+    change was discoverable in a ``git diff`` or not at all.
+    """
+    dictBefore = _fdictHashByPath(listBefore)
+    dictAfter = _fdictHashByPath(listAfter)
+    return {
+        "listAdded": sorted(set(dictAfter) - set(dictBefore)),
+        "listRemoved": sorted(set(dictBefore) - set(dictAfter)),
+        "listChanged": sorted(
+            sPath for sPath in set(dictBefore) & set(dictAfter)
+            if dictBefore[sPath] != dictAfter[sPath]
+        ),
+    }
+
+
+def _fdictHashByPath(listEntries):
+    """Return ``{sPath: sExpected}`` for parsed manifest entries."""
+    return {
+        dictEntry["sPath"]: dictEntry["sExpected"]
+        for dictEntry in listEntries or []
+        if isinstance(dictEntry, dict) and "sPath" in dictEntry
+    }
 
 
 def flistParseManifestLines(filesRepo):

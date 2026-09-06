@@ -2820,9 +2820,9 @@ const VaibifyApp = (function () {
             sIcon: "⚠",
             sLabel: "Container image exists only on this machine — " +
                 "reproduce.sh cannot docker-pull it on a fresh " +
-                "host. Push the image to a registry (or docker save " +
-                "+ archive it), then re-capture the environment " +
-                "snapshot",
+                "host, so every reproducer falls through to the " +
+                "archived copy, if one exists. Push the image to a " +
+                "registry, then re-capture the environment snapshot",
             sClass: "step-blocker-glyph-l3-workflow-image",
         },
         "reproduce-script-missing": {
@@ -3417,6 +3417,30 @@ const VaibifyApp = (function () {
             sType: "info"};
     }
 
+    function _fsDescribeManifestDelta(dictDelta) {
+        /* Regenerating rewrites MANIFEST.sha256 in place. The file is
+           tracked, so the history is not lost — but a researcher who
+           wanted to know which pinned hashes MOVED found out in a git
+           diff or not at all, and silently replacing the record of a
+           result is the wrong default for this product. Counts rather
+           than paths: a manifest can hold hundreds of entries, and the
+           git diff is right there for the detail. Empty string when
+           nothing changed, so the ordinary regeneration says nothing
+           extra. */
+        var dictSafe = dictDelta || {};
+        var listParts = [
+            [(dictSafe.listChanged || []).length, "changed"],
+            [(dictSafe.listAdded || []).length, "added"],
+            [(dictSafe.listRemoved || []).length, "removed"],
+        ].filter(function (tPart) {
+            return tPart[0] > 0;
+        }).map(function (tPart) {
+            return tPart[0] + " " + tPart[1];
+        });
+        if (listParts.length === 0) return "";
+        return " Manifest entries " + listParts.join(", ") + ".";
+    }
+
     var _DICT_PROJECT_ACTIONS = {
         "capture-binary": {
             sPath: "/binaries/capture",
@@ -3514,14 +3538,17 @@ const VaibifyApp = (function () {
                 ].filter(function (t) {
                     return dictGaps[t[0]] === false;
                 }).map(function (t) { return t[1]; });
+                var sDelta = _fsDescribeManifestDelta(
+                    (dictResult || {}).dictManifestDelta);
                 if (listStillFailing.length === 0) {
                     return {sMessage: "Envelope regenerated — " +
                         "manifest, dependency lock, and environment " +
-                        "snapshot are all current.", sType: "info"};
+                        "snapshot are all current." + sDelta,
+                        sType: "info"};
                 }
                 return {sMessage: "Envelope regenerated, but still " +
                     "failing: " + listStillFailing.join(", ") +
-                    ". Check the hub log for the tier error.",
+                    ". Check the hub log for the tier error." + sDelta,
                     sType: "warning"};
             },
         },

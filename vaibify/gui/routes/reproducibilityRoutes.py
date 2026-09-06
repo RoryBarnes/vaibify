@@ -33,6 +33,10 @@ import time
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from ...reproducibility.manifestWriter import (
+    fdictCompareManifestEntries,
+    flistParseManifestLines,
+)
 from ..actionCatalog import ffnAgentAction
 from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import verificationProgress
@@ -1491,18 +1495,44 @@ def _fdictGenerateEnvelopeThenReadGaps(
 
     Synchronous because a mode-(b) worker runs in a thread and cannot
     await the ``to_thread`` hop the generation used to make.
+
+    The manifest is read on BOTH sides so the response can say what
+    changed. Regenerating rewrites ``MANIFEST.sha256`` in place, and
+    the readiness gaps describe only the state it left behind -- a
+    researcher who wanted to know which pinned hashes moved found out
+    in a ``git diff`` or not at all. Silently replacing the record of a
+    result is the wrong default for this product.
     """
     from ...reproducibility import dataArchiver
+    listBefore = _flistReadManifestOrEmpty(filesRepo)
     dictTierResults = dataArchiver.fdictGenerateReproducibilityEnvelope(
         filesRepo, dictWorkflow,
         sContainerId, dictWorkflow.get("saHostBinaries"),
     )
     return {
         "dictTierResults": dictTierResults,
+        "dictManifestDelta": fdictCompareManifestEntries(
+            listBefore, _flistReadManifestOrEmpty(filesRepo),
+        ),
         "dictL3ReadinessGaps": fdictL3ReadinessGaps(
             dictWorkflow, filesRepo,
         ),
     }
+
+
+def _flistReadManifestOrEmpty(filesRepo):
+    """Return the parsed manifest, or [] when there is nothing to read.
+
+    An absent manifest is the ordinary before-state of a first
+    regeneration, and a malformed one is what the regeneration is about
+    to replace. Neither is a reason to fail the route -- the delta is a
+    report about the write, not a precondition for it.
+    """
+    try:
+        return flistParseManifestLines(filesRepo)
+    except (FileNotFoundError, OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return []
 
 
 def _fnRegisterDeleteDeterminism(app, dictCtx):

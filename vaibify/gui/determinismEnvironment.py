@@ -30,6 +30,7 @@ __all__ = [
     "S_ENV_OVERLAY_KEY",
     "S_DETERMINISM_APPLIED_KEY",
     "S_MATPLOTLIB_CONFIG_DIR",
+    "fsBuildMatplotlibSaltShell",
 ]
 
 S_ENV_PREFIX_KEY = "__sEnvPrefix"
@@ -66,22 +67,35 @@ async def _fiQueryHeadCommitEpoch(
         return 0
 
 
-def _fsBuildMatplotlibSaltPrefix(iEpoch):
-    """Return shell that pins matplotlib's ``svg.hashsalt`` to iEpoch.
+def fsBuildMatplotlibSaltShell(sEpochShellWord):
+    """Return shell that pins matplotlib's ``svg.hashsalt`` to an epoch.
 
     There is no environment variable for that rcParam, so the salt is
     written into a ``matplotlibrc`` inside ``MPLCONFIGDIR``. Failing to
     write the file reports on stderr and does not break the ``&&``
     chain: a step must still run when its determinism cannot be
     guaranteed.
+
+    ``sEpochShellWord`` is interpolated inside a DOUBLE-quoted shell
+    word, so a caller may pass either a literal integer (the live
+    runner, which knows the epoch) or a shell expansion such as
+    ``$SOURCE_DATE_EPOCH`` (``reproduce.sh``, which reads the epoch out
+    of the envelope on the reproducing host and cannot know it at
+    generation time). Both lanes must pin the same rcParam to the same
+    value in the same directory, so they share this one builder rather
+    than each spelling the file out.
+
+    Returned as a bare statement with no trailing separator: the runner
+    chains it into a command prefix, the reproduction emits it as a
+    line of its own.
     """
     sDirectory = fsShellQuote(S_MATPLOTLIB_CONFIG_DIR)
     sFile = fsShellQuote(S_MATPLOTLIB_CONFIG_DIR + "/matplotlibrc")
     return (
         f"export MPLCONFIGDIR={sDirectory} && "
         f"{{ mkdir -p {sDirectory} && "
-        f"printf '%s\\n' 'svg.hashsalt: {iEpoch}' > {sFile} || "
-        f"echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; }} && "
+        f"printf '%s\\n' \"svg.hashsalt: {sEpochShellWord}\" > {sFile} || "
+        f"echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; }}"
     )
 
 
@@ -110,7 +124,8 @@ async def _fsBuildDeterminismEnvPrefix(
         return ""
     return (
         f"export SOURCE_DATE_EPOCH={iEpoch} && "
-        + _fsBuildMatplotlibSaltPrefix(iEpoch)
+        + fsBuildMatplotlibSaltShell(str(iEpoch))
+        + " && "
     )
 
 
@@ -164,7 +179,7 @@ async def _fdictBuildHostDeterminismOverlay(
 async def _fsWriteHostMatplotlibSalt(connectionDocker, sContainerId, iEpoch):
     """Write a matplotlibrc pinning ``svg.hashsalt``; return its directory.
 
-    The host twin of :func:`_fsBuildMatplotlibSaltPrefix`: the rcParam
+    The host twin of :func:`fsBuildMatplotlibSaltShell`: the rcParam
     has no environment variable, so the salt needs a file, and on the
     host that file belongs in the project's guarded scratch subtree —
     never a world-shared ``/tmp`` directory on the researcher's own

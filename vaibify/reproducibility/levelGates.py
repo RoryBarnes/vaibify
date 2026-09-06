@@ -1252,12 +1252,20 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
 
     L3 requires L2 plus a green readiness check (the seven orthogonal
     verifiers composed by ``fbL3ReadinessOK``) plus a non-stale,
-    ``passed`` L3 attestation on file, plus the published-envelope
-    pair: the envelope matches the GitHub mirror AND is present in the
-    Zenodo archive. The pair sits here rather than in readiness so a
-    researcher can attest a complete LOCAL envelope before publishing
-    it — but the LEVEL is not attained until the copies a third party
-    would fetch agree. Because Zenodo deposits are immutable, the
+    ``passed`` L3 attestation on file, plus the published-artefact
+    set: the envelope matches the GitHub mirror, is present in the
+    Zenodo archive, the image the envelope pins is one a stranger
+    can pull (ruled 2026-09-05 -- reproduce.sh's first act is a
+    ``docker pull``, so an image that exists only on the author's
+    machine makes the whole recipe unusable by anyone else), AND a
+    deposit of that image is on record (the archive is what
+    reproduce.sh falls back to when the registry no longer serves the
+    digest, so the two image conjuncts are distinct: one makes today's
+    pull succeed, the other outlives the registry). They sit
+    here rather than in readiness so a researcher can attest a complete
+    LOCAL envelope before publishing it — but the LEVEL is not
+    attained until the copies a third party would fetch agree. Because
+    Zenodo deposits are immutable, the
     Zenodo conjunct makes Level 3 a release-time property: any
     envelope change drops it until the researcher publishes a new
     deposit version. The expensive rebuild that produces the
@@ -1275,6 +1283,8 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
     if not fbEnvelopeMatchesGithubMirror(filesRepo):
         return False
     if not fbEnvelopeMatchesZenodoArchive(filesRepo):
+        return False
+    if not fbVerifyImagePublished(filesRepo):
         return False
     if not fbImageArchiveDeposited(filesRepo):
         return False
@@ -1493,6 +1503,13 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     )
     dictResult["bEnvelopeInZenodoArchive"] = (
         fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
+    )
+    # Same category, same reason it is outside the readiness all():
+    # publishing the image is an L3 REQUIREMENT (ruled 2026-09-05) and
+    # not a precondition for attempting the local rerun, which builds
+    # its shadow from whatever the daemon already holds.
+    dictResult["bImagePublished"] = (
+        fbVerifyImagePublished(filesRepo) if bRepo else False
     )
     # The environment archive rides beside the published-envelope
     # pair for the same reason: it is a publication question, so it
@@ -2983,10 +3000,11 @@ _DICT_L3_REMEDIATION_HINTS = {
         ".vaibify/environment.json.",
     "image-not-published":
         "The container image exists only on this machine, so "
-        "reproduce.sh's 'docker pull' would fail on a fresh host. "
-        "Push the image to a registry (or 'docker save' it and "
-        "archive the tarball with the deposit), then re-capture the "
-        "environment snapshot.",
+        "reproduce.sh's 'docker pull' fails on every other host and "
+        "each reproducer falls through to the archived copy, if one "
+        "exists. Push the image to a registry, then re-capture the "
+        "environment snapshot. Archiving the image is the separate "
+        "'Environment archived' requirement.",
     "reproduce-script-missing":
         "Generate reproduce.sh and pin it in MANIFEST.sha256. A "
         "script already present fails this too when its commands "
@@ -3574,9 +3592,16 @@ _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
     "arxiv-mismatch", "arxiv-version-stale",
 )
 
+# ``image-not-published`` joined on 2026-09-05 with the ruling that
+# publishing the image is part of Level 3. It was emitted by
+# _fdictL3WorkflowChecks and absent here, which is the shape the
+# repository already learned the hard way: a criterion the gates emit
+# but this tuple omits is silently dropped, so the header cell could
+# paint a check above an orange row.
 _T_WORKFLOW_LEVEL3_CRITERIA = (
     "dockerfile-not-pinned", "dependency-lock-missing",
-    "environment-snapshot-missing", "reproduce-script-missing",
+    "environment-snapshot-missing", "image-not-published",
+    "reproduce-script-missing",
     "l3-attestation-stale", "binaries-not-declared-or-waived",
     "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
     "attestation-not-in-zenodo-archive", "image-not-archived",

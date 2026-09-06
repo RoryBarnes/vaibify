@@ -5,6 +5,15 @@ report, modelled after ``brew doctor`` / ``flutter doctor``. The
 command runs the build-relevant subset, the start-relevant subset,
 or both, and exits non-zero whenever any check fails.
 
+Three host-side prerequisites reached a researcher one crash at a time
+on 2026-09-05 -- a Docker context aimed at a stopped runtime, an absent
+host ``gh``, and a missing council credential record. They share no
+mechanism and one shape: something the MACHINE must provide, that the
+repository cannot carry, that nothing checks until the moment it is
+needed. This command is where that shape gets asked about in advance.
+It REPORTS and never gates, and it must never offer to satisfy a
+prerequisite whose whole purpose is that only the maintainer can.
+
 A HOST project gets its own check set (host-mode plan, Phase D): the
 things that matter are the registered directory still existing and
 ``git``/``python3`` being present — and the thing that must NOT run
@@ -26,8 +35,10 @@ from .configLoader import fconfigResolveProject
 from .preflightChecks import (
     fpreflightColimaHostagentLog,
     fpreflightColimaVersion,
+    fpreflightCouncilCredentialEvidence,
     fpreflightDaemon,
     fpreflightDockerContextActive,
+    fpreflightDockerEndpoint,
     fpreflightLinuxDockerService,
 )
 from .preflightResult import PreflightResult, fnPrintPreflightReport
@@ -54,8 +65,10 @@ def _flistStartOnlyChecks(config):
         _flistPreflightBindMountFormats, _flistPreflightBindMounts,
         _flistPreflightColimaSharedRoots, _flistPreflightPorts,
         _fpreflightContainerName, _fpreflightImage,
+        flistPreflightSecrets,
     )
     listResults = [_fpreflightImage(config)]
+    listResults.extend(flistPreflightSecrets(config))
     listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
     listResults.extend(_flistPreflightBindMounts(config))
@@ -75,12 +88,23 @@ def _flistOptionalSharedChecks():
 
 
 def _flistSharedChecks():
-    """Run pre-flight helpers shared across every doctor scope."""
+    """Run pre-flight helpers shared across every doctor scope.
+
+    The endpoint sits beside the context because they are different
+    facts and only the pair identifies a context aimed at a runtime
+    that is not running. The council's credential evidence sits here
+    because it is the third member of a family the 2026-09-05
+    walkthrough surfaced one crash at a time: a prerequisite the HOST
+    must provide, that the repository cannot carry, that nothing
+    checked until the moment it was needed.
+    """
     listResults = [
         fpreflightDockerContextActive(),
+        fpreflightDockerEndpoint(),
         fpreflightDaemon(),
     ]
     listResults.extend(_flistOptionalSharedChecks())
+    listResults.append(fpreflightCouncilCredentialEvidence())
     return listResults
 
 

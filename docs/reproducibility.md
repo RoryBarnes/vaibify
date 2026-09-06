@@ -258,6 +258,13 @@ library, the interpreter and every installed package are gone with it.
 — a `docker save`, compressed, published to Zenodo under its own
 version DOI. `reproduce.sh` falls back to it when the pull fails,
 verifying the download against `sTarballSha256` before loading it. The
+archive is the second link of a three-link chain — the registry pull,
+then the archived copy, then a copy already present on the reproducing
+host — and only the first two are open to anyone but the author, which
+is why the last prints a warning naming that. Publishing the image to
+a registry is therefore still its own Level 3 criterion
+(`image-not-published`): the archive is what survives the registry,
+not a substitute for having one. The
 record carries the digest and the platform it covers, so an envelope
 regenerated for a different image drops it rather than claiming an
 archive nobody made, and two hashes: `sTarballSha256` binds the bytes

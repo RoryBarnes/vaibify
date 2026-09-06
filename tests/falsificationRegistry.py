@@ -3623,8 +3623,8 @@ def _fdictEntry(sRel):
         # environment variables (readable via /proc, docker inspect).
         nodeid='tests/testProvenanceContractMutationCoverage.py::testCredentialsAreNeverWrittenIntoEnvironmentVariables',
         source='vaibify/docker/dockerConnection.py',
-        old='            os.environ["DOCKER_HOST"] = sHost',
-        new='            os.environ["GITHUB_TOKEN"] = sHost',
+        old='        os.environ["DOCKER_HOST"] = sHost',
+        new='        os.environ["GITHUB_TOKEN"] = sHost',
     ),
     Falsification(
         # The guard had zero coverage before this entry: dropping the
@@ -8136,22 +8136,18 @@ def _fdictEntry(sRel):
         # the re-read merely being absent.
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return {\n'
-            '        "dictTierResults": dictTierResults,\n'
             '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
             '            dictWorkflow, filesRepo,\n'
             '        ),\n'
             '    }\n'
         ),
         new=(
-            '    import concurrent.futures\n'
-            '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
-            '        return {\n'
-            '            "dictTierResults": dictTierResults,\n'
-            '            "dictL3ReadinessGaps": pool.submit(\n'
-            '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
-            '            ).result(),\n'
-            '        }\n'
+            '        "dictL3ReadinessGaps": __import__(\n'
+            '            "concurrent.futures", fromlist=["futures"],\n'
+            '        ).ThreadPoolExecutor(1).submit(\n'
+            '            fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
+            '        ).result(),\n'
+            '    }\n'
         ),
     ),
 
