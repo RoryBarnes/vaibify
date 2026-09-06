@@ -57,9 +57,21 @@ def test_a_failed_refresh_claims_nothing_and_says_so(
         "which is a claim about a file nothing has examined"
     )
 
-    # Seed a known map, then fail the next refresh and prove the map
-    # survived. Reaching in through fnRefresh keeps this driving the
-    # real code path rather than a hand-built state object.
+    # Let the dashboard's own first refresh land before failing the
+    # next one. That request was issued when the workflow opened, so a
+    # 503 route installed now cannot intercept it; read the "before"
+    # count while it is in flight and it lands between the two
+    # readings, and the test reports a failed refresh that populated
+    # the map (observed in CI: 0 entries before, 3 after). Waiting for
+    # a non-empty map is also what makes this the researcher's second
+    # case -- a prior map EXISTS and must survive -- rather than a
+    # repeat of half 1. Reaching in through fnRefresh keeps this
+    # driving the real code path rather than a hand-built state object.
+    pageDashboard.wait_for_function(
+        """() => VaibifyGitBadges.flistFilesForRemote('sGitState')
+            .length > 0""",
+        timeout=30000,
+    )
     pageDashboard.route(
         "**/api/git/**/badges",
         lambda route: route.fulfill(status=503, body="upstream down"),
