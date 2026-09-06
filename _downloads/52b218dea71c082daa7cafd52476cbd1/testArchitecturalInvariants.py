@@ -6667,7 +6667,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # image, minutes for a multi-gigabyte one, and it ran ON the
     # event loop at the end of every verify. It now runs in the
     # worker's thread, which is one helper and its reason.
-    "routes/reproducibilityRoutes.py": 1588,
+    # +30 (2026-09-05): the envelope regeneration reads the manifest on
+    # BOTH sides of the write so it can say what it changed. It rewrites
+    # MANIFEST.sha256 in place -- the record of a scientific result --
+    # and reported only the readiness gaps left behind, so a researcher
+    # learned which pinned hashes moved from a git diff or not at all.
+    # The comparison itself lives in manifestWriter beside the parser;
+    # what is here is the before/after reading, which belongs to the
+    # handler that performs the write between them.
+    "routes/reproducibilityRoutes.py": 1618,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

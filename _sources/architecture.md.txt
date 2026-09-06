@@ -1918,7 +1918,13 @@ that digest — a deleted tag, a retired registry, an account that
 lapsed — the reproduction dies at step one with the environment
 irrecoverable. Depositing a `docker save` of the pinned image into
 Zenodo puts it under an actual preservation commitment, and the
-reproduce script falls back to it.
+reproduce script falls back to it. The fallback is the second link of
+the script's pull chain, after the registry pull and before the copy
+already on the reproducing host; that last link is survivable for the
+author alone and says so. Publication and archive are therefore two
+Level 3 criteria — `image-not-published` and `image-not-archived` —
+because one makes today's pull succeed and the other outlives the
+registry, and neither row offers the other's remedy.
 
 The scope is deliberately bounded: preserve a **runnable** environment,
 not a **rebuildable** one. Guix/Nix-style full-source reconstruction

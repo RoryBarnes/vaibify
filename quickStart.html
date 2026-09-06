@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.9.dev7 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.9.dev18 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9f6ab3be"></script>
+      <script src="_static/documentation_options.js?v=f53a68b3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -56,7 +56,10 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#now-check-the-bytes">6. Now check the bytes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#containerize-the-same-project">7. Containerize the same project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#containerize-the-same-project">7. Containerize the same project</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#two-claims-checked-two-different-ways">Two claims, checked two different ways</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#where-to-next">8. Where to next</a></li>
 </ul>
 </li>
@@ -373,19 +376,60 @@ normal state of any newly created container project. Fix the cause
 and build again; you have not lost the host project’s work, because
 there was never a copy to lose.</p></li>
 </ul>
-<p>When the build finishes, run the pipeline again. The steps do the same
-things and produce the same figures, but now they do it in the pinned
-environment — and the PROOF tab’s Level 3 row stops saying the project
-has no image and starts asking the questions it is really about:
-whether the environment is recorded, whether the reproducibility rules
-have been answered, and whether a rebuild from that image reproduces
-the outputs you just made.</p>
-<p>That last one is worth doing at least once. <strong>Verify</strong> on the Level 3
-row creates a <em>shadow</em> container from the image digest your project
-pins, copies the repository into it, runs the whole pipeline there, and
+<p>When the build finishes, open the project again. The steps still do the
+same things, but now they do them in the pinned environment, and the
+PROOF tab’s Level 3 row stops saying the project has no image and
+starts asking the questions it is really about: whether the environment
+is recorded, whether the reproducibility rules have been answered, and
+whether a rebuild from that image reproduces the outputs.</p>
+<section id="two-claims-checked-two-different-ways">
+<h3>Two claims, checked two different ways<a class="headerlink" href="#two-claims-checked-two-different-ways" title="Link to this heading"></a></h3>
+<p>The obvious next move is to run the pipeline again and re-check the
+manifest. <strong>Don’t</strong> — that is not a byte test, and it cannot come out
+clean.</p>
+<p>Every figure vaibify renders is dated and salted from the project
+repository’s HEAD commit. That is what makes two runs of the same
+source produce identical bytes: without it, a PDF carries the wall
+clock in its <code class="docutils literal notranslate"><span class="pre">CreationDate</span></code> and an SVG gets fresh element ids from a
+new <code class="docutils literal notranslate"><span class="pre">uuid4</span></code> on every process. The manifest pins figures dated from
+HEAD <em>as it was when the manifest was written</em>. Any commit since —
+and this walkthrough makes several — changes the epoch, so a hand
+rerun re-renders every PDF, EPS, PS and SVG against a different one.
+The manifest check then reports them as differing whether or not
+anything real changed, which tells you nothing at all.</p>
+<p>So the two claims get checked separately, and neither substitutes for
+the other:</p>
+<p><strong>The science — checked on your own machine.</strong> That is what section 5
+did. The quantitative tests confirm each recomputed number lands inside
+the author’s recorded tolerance, so they answer “is this the same
+result?” without asking anything about your libraries. They passed, and
+they passed before you had a container at all — which is the point of
+section 6: the science agreed while the bytes did not.</p>
+<p><strong>The bytes — checked in the pinned environment.</strong> The artefact that
+does it is the one the project publishes for a stranger:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./reproduce.sh
+</pre></div>
+</div>
+<p>It reads the image digest and the recorded epoch out of
+<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>, pulls that exact image, runs every step
+inside it, and finishes with</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sha256sum</span> <span class="o">-</span><span class="n">c</span> <span class="n">MANIFEST</span><span class="o">.</span><span class="n">sha256</span>
+</pre></div>
+</div>
+<p><strong>Zero mismatches is the payoff.</strong> Not “a small delta” — zero. It is
+what lets a reader who has never met you re-derive your figures byte
+for byte, and it is the whole reason the environment is pinned.</p>
+<p>The dashboard equivalent is <strong>Verify Level 3 Reproducibility</strong>, in the
+<strong>Run</strong> menu (it also has a button on the PROOF tab’s Level 3 row). It
+creates a <em>shadow</em> container from the image digest your project pins,
+copies the repository into it, runs the whole pipeline there, and
 compares the results against your files — then destroys the shadow. It
-does not touch your outputs. It is the difference between believing
-your work reproduces and having watched it happen.</p>
+does not touch your outputs. Like <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>, it re-runs against
+the epoch the envelope recorded rather than against today’s HEAD,
+which is exactly why it can come out at zero and a hand rerun cannot.</p>
+<p>It is the difference between believing your work reproduces and having
+watched it happen.</p>
+</section>
 </section>
 <section id="where-to-next">
 <h2>8. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>

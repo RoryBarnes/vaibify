@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.9.dev7 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.9.dev18 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9f6ab3be"></script>
+      <script src="_static/documentation_options.js?v=f53a68b3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -365,6 +365,13 @@ library, the interpreter and every installed package are gone with it.</p>
 — a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code>, compressed, published to Zenodo under its own
 version DOI. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> falls back to it when the pull fails,
 verifying the download against <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> before loading it. The
+archive is the second link of a three-link chain — the registry pull,
+then the archived copy, then a copy already present on the reproducing
+host — and only the first two are open to anyone but the author, which
+is why the last prints a warning naming that. Publishing the image to
+a registry is therefore still its own Level 3 criterion
+(<code class="docutils literal notranslate"><span class="pre">image-not-published</span></code>): the archive is what survives the registry,
+not a substitute for having one. The
 record carries the digest and the platform it covers, so an envelope
 regenerated for a different image drops it rather than claiming an
 archive nobody made, and two hashes: <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> binds the bytes
