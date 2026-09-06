@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.9.dev18 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.10.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f53a68b3"></script>
+      <script src="_static/documentation_options.js?v=9e9b39e7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2064,10 +2064,11 @@ Zenodo puts it under an actual preservation commitment, and the
 reproduce script falls back to it. The fallback is the second link of
 the script’s pull chain, after the registry pull and before the copy
 already on the reproducing host; that last link is survivable for the
-author alone and says so. Publication and archive are therefore two
-Level 3 criteria — <code class="docutils literal notranslate"><span class="pre">image-not-published</span></code> and <code class="docutils literal notranslate"><span class="pre">image-not-archived</span></code> —
-because one makes today’s pull succeed and the other outlives the
-registry, and neither row offers the other’s remedy.</p>
+author alone and says so. Only the archive is a Level 3 criterion
+(<code class="docutils literal notranslate"><span class="pre">image-not-archived</span></code>). A registry copy is reported on the PROOF tab as
+an optional row and gates nothing: Docker Hub and GHCR are commercial
+services with no preservation commitment, so — like Overleaf and arXiv
+— they are integrations of convenience rather than rungs.</p>
 <p>The scope is deliberately bounded: preserve a <strong>runnable</strong> environment,
 not a <strong>rebuildable</strong> one. Guix/Nix-style full-source reconstruction
 was considered and declined as out of scope. What the deposit contains
