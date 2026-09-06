@@ -329,6 +329,22 @@ var VaibifyProofTab = (function () {
                  "does not block this — deposit later and it opens.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bImagePublished",
+             sLabel: "Image on a registry (optional)",
+             bOptional: true,
+             sWhat: "The pinned image is pullable from a container " +
+                 "registry such as Docker Hub or GHCR, so the first " +
+                 "line of reproduce.sh succeeds at once instead of " +
+                 "falling through to the archived copy. Optional — a " +
+                 "registry is a commercial service with no " +
+                 "preservation commitment, so it never gates a " +
+                 "level; the Environment archived row above is the " +
+                 "long-term guarantee.",
+             sHow: "Push the image to a registry, then re-capture " +
+                 "the environment snapshot from the Artifacts " +
+                 "section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
             {sStateKey: "bL3AttestationCurrent",
              sLabel: "Rebuild attestation",
              sWhat: "A full rebuild reran the project and " +

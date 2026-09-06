@@ -7,6 +7,16 @@ var VaibifyContainerManager = (function () {
     var _sSelectedContainerName = null;
     var _sSelectedContainerDirectory = "";
     var _bSelectedContainerIsProject = false;
+    /* The tile list as last rendered by fnRenderContainerList. The
+       picker polls every few seconds and the tiles carry nothing
+       time-varying, so most polls would rebuild an identical list --
+       replacing the nodes a researcher is hovering, or that a click is
+       about to land on (measured on a loaded CI runner: a click on a
+       tile starved for 30 seconds while the list was rebuilt under
+       it). An unchanged list is left alone. Any OTHER writer of
+       #listContainers must reset this to null, or its message would
+       survive the next identical poll. */
+    var _sLastRenderedContainerListHtml = null;
 
     async function fnLoadContainers() {
         try {
@@ -28,6 +38,7 @@ var VaibifyContainerManager = (function () {
 
     function _fnShowContainerListLoadError() {
         var elList = document.getElementById("listContainers");
+        _sLastRenderedContainerListHtml = null;
         elList.innerHTML =
             '<p style="color: var(--color-red-text);">' +
             "Cannot load containers</p>";
@@ -112,16 +123,16 @@ var VaibifyContainerManager = (function () {
 
     function fnRenderContainerList(listContainers) {
         var elList = document.getElementById("listContainers");
-        if (listContainers.length === 0) {
-            elList.innerHTML =
-                '<p class="muted-text" style="text-align: center;">' +
-                "No containers registered. Click + to add one.</p>";
-            return;
-        }
-        elList.innerHTML = listContainers.map(function (dictContainer) {
-            return fsRenderContainerTile(dictContainer);
-        }).join("");
-        fnBindContainerTiles(elList);
+        var sHtml = listContainers.length === 0
+            ? '<p class="muted-text" style="text-align: center;">' +
+                "No containers registered. Click + to add one.</p>"
+            : listContainers.map(function (dictContainer) {
+                return fsRenderContainerTile(dictContainer);
+            }).join("");
+        if (sHtml === _sLastRenderedContainerListHtml) return;
+        _sLastRenderedContainerListHtml = sHtml;
+        elList.innerHTML = sHtml;
+        if (listContainers.length > 0) fnBindContainerTiles(elList);
     }
 
     function fnRenderUnrecognizedList(listUnrecognized) {

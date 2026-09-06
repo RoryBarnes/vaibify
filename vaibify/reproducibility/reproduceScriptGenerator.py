@@ -198,8 +198,8 @@ if ! docker pull "$sImageRef"; then
         if docker image inspect "$sImageRef" > /dev/null 2>&1; then
             echo "vaibify: could not pull $sImageRef; running the copy" >&2
             echo "  already on this host. A reproducer without that copy" >&2
-            echo "  cannot run this script -- publish the image, and" >&2
-            echo "  archive it so the result outlives the registry." >&2
+            echo "  cannot run this script -- archive the image so a" >&2
+            echo "  stranger can load it; a registry copy is optional." >&2
         else
             echo "error: cannot pull $sImageRef, no archived copy could" >&2
             echo "  be loaded, and no local copy exists" >&2

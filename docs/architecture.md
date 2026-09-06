@@ -1921,10 +1921,11 @@ Zenodo puts it under an actual preservation commitment, and the
 reproduce script falls back to it. The fallback is the second link of
 the script's pull chain, after the registry pull and before the copy
 already on the reproducing host; that last link is survivable for the
-author alone and says so. Publication and archive are therefore two
-Level 3 criteria — `image-not-published` and `image-not-archived` —
-because one makes today's pull succeed and the other outlives the
-registry, and neither row offers the other's remedy.
+author alone and says so. Only the archive is a Level 3 criterion
+(`image-not-archived`). A registry copy is reported on the PROOF tab as
+an optional row and gates nothing: Docker Hub and GHCR are commercial
+services with no preservation commitment, so — like Overleaf and arXiv
+— they are integrations of convenience rather than rungs.
 
 The scope is deliberately bounded: preserve a **runnable** environment,
 not a **rebuildable** one. Guix/Nix-style full-source reconstruction

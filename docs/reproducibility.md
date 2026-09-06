@@ -261,10 +261,11 @@ verifying the download against `sTarballSha256` before loading it. The
 archive is the second link of a three-link chain — the registry pull,
 then the archived copy, then a copy already present on the reproducing
 host — and only the first two are open to anyone but the author, which
-is why the last prints a warning naming that. Publishing the image to
-a registry is therefore still its own Level 3 criterion
-(`image-not-published`): the archive is what survives the registry,
-not a substitute for having one. The
+is why the last prints a warning naming that. A registry copy is
+optional and gates no level: a container registry is a commercial
+service with no preservation commitment, so vaibify integrates with it
+for convenience, as it does with Overleaf and arXiv, and the archive is
+the only image criterion on the ladder. The
 record carries the digest and the platform it covers, so an envelope
 regenerated for a different image drops it rather than claiming an
 archive nobody made, and two hashes: `sTarballSha256` binds the bytes

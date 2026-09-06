@@ -256,7 +256,7 @@ def _fdictCreateShadowOrExplainTheMissingImage(
 
     Recognised by the SDK's own exception class, never by matching
     "404" in a message: an unreachable daemon can carry a 404 from an
-    entirely different cause, and telling a researcher to publish an
+    entirely different cause, and telling a researcher to rebuild an
     image that is sitting right there would be worse than the bare
     error.
     """
@@ -287,11 +287,10 @@ def _fsExplainTheMissingImage(sImageReference):
         return (
             f"the image this envelope pins ({sImageReference}) is a "
             "local-only image ID and is no longer on this machine, so "
-            "no shadow container can be built from it. It exists in no "
-            "registry either, so nobody else could reproduce this "
-            "project from it. Push the image to a registry (or "
-            "'docker save' it and archive the tarball with the "
-            "deposit), then re-capture the environment snapshot."
+            "no shadow container can be built from it. Rebuild the "
+            "image, or load it from the archived deposit if this "
+            "project made one, then re-capture the environment "
+            "snapshot."
         )
     return (
         f"the image this envelope pins ({sImageReference}) is not on "

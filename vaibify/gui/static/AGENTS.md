@@ -172,7 +172,7 @@ pattern wholesale.
   `binary-not-captured`. Workflow-scope criteria mirror the backend's
   `_fdictL3WorkflowChecks` dict: `dockerfile-not-pinned`,
   `dependency-lock-missing`, `environment-snapshot-missing`,
-  `image-not-published`, `reproduce-script-missing`,
+  `reproduce-script-missing`,
   `l3-attestation-stale`, `binaries-not-declared-or-waived`,
   `envelope-not-in-github-mirror`, `envelope-not-in-zenodo-archive`
   (the published-envelope pair; the Zenodo remediation is "publish a

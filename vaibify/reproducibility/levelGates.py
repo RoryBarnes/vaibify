@@ -1254,14 +1254,13 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
     verifiers composed by ``fbL3ReadinessOK``) plus a non-stale,
     ``passed`` L3 attestation on file, plus the published-artefact
     set: the envelope matches the GitHub mirror, is present in the
-    Zenodo archive, the image the envelope pins is one a stranger
-    can pull (ruled 2026-09-05 -- reproduce.sh's first act is a
-    ``docker pull``, so an image that exists only on the author's
-    machine makes the whole recipe unusable by anyone else), AND a
-    deposit of that image is on record (the archive is what
-    reproduce.sh falls back to when the registry no longer serves the
-    digest, so the two image conjuncts are distinct: one makes today's
-    pull succeed, the other outlives the registry). They sit
+    Zenodo archive, AND a deposit of the image the envelope pins is
+    on record. A registry copy of that image is NOT a conjunct (ruled
+    2026-09-05, superseding the same day's earlier ruling): Docker Hub
+    and GHCR are commercial services with no preservation commitment,
+    so like Overleaf and arXiv they are conveniences vaibify integrates
+    with, never rungs of the ladder. reproduce.sh still tries the
+    registry first and falls back to the deposit. They sit
     here rather than in readiness so a researcher can attest a complete
     LOCAL envelope before publishing it — but the LEVEL is not
     attained until the copies a third party would fetch agree. Because
@@ -1283,8 +1282,6 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
     if not fbEnvelopeMatchesGithubMirror(filesRepo):
         return False
     if not fbEnvelopeMatchesZenodoArchive(filesRepo):
-        return False
-    if not fbVerifyImagePublished(filesRepo):
         return False
     if not fbImageArchiveDeposited(filesRepo):
         return False
@@ -1386,7 +1383,13 @@ def fbVerifyEnvironmentSnapshot(filesRepo):
 
 
 def fbVerifyImagePublished(filesRepo):
-    """Return True iff the recorded image digest is pullable on a fresh host."""
+    """Return True iff the recorded image digest is pullable on a fresh host.
+
+    Informational only. It feeds the OPTIONAL registry row on the PROOF
+    tab through the readiness payload and is consulted by no gate: a
+    container registry is a commercial convenience with no preservation
+    commitment, so it can never be what a Level rests on.
+    """
     return fbImageDigestPullable(filesRepo)
 
 
@@ -1504,10 +1507,9 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bEnvelopeInZenodoArchive"] = (
         fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
     )
-    # Same category, same reason it is outside the readiness all():
-    # publishing the image is an L3 REQUIREMENT (ruled 2026-09-05) and
-    # not a precondition for attempting the local rerun, which builds
-    # its shadow from whatever the daemon already holds.
+    # Reported and never counted: a registry copy is a convenience,
+    # not a PROOF criterion (ruled 2026-09-05), so this flag feeds the
+    # optional registry row on the PROOF tab and nothing else.
     dictResult["bImagePublished"] = (
         fbVerifyImagePublished(filesRepo) if bRepo else False
     )
@@ -2729,7 +2731,6 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "environment-snapshot-missing": fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),
-        "image-not-published": fbVerifyImagePublished(filesRepo),
         "reproduce-script-missing": fbVerifyReproduceScript(
             filesRepo, dictWorkflow,
         ),
@@ -2998,13 +2999,6 @@ _DICT_L3_REMEDIATION_HINTS = {
     "environment-snapshot-missing":
         "Capture the container image digest into "
         ".vaibify/environment.json.",
-    "image-not-published":
-        "The container image exists only on this machine, so "
-        "reproduce.sh's 'docker pull' fails on every other host and "
-        "each reproducer falls through to the archived copy, if one "
-        "exists. Push the image to a registry, then re-capture the "
-        "environment snapshot. Archiving the image is the separate "
-        "'Environment archived' requirement.",
     "reproduce-script-missing":
         "Generate reproduce.sh and pin it in MANIFEST.sha256. A "
         "script already present fails this too when its commands "
@@ -3592,16 +3586,17 @@ _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
     "arxiv-mismatch", "arxiv-version-stale",
 )
 
-# ``image-not-published`` joined on 2026-09-05 with the ruling that
-# publishing the image is part of Level 3. It was emitted by
-# _fdictL3WorkflowChecks and absent here, which is the shape the
-# repository already learned the hard way: a criterion the gates emit
-# but this tuple omits is silently dropped, so the header cell could
-# paint a check above an orange row.
+# ``image-not-published`` is deliberately ABSENT, and so is every other
+# registry criterion (ruled 2026-09-05): a container registry is a
+# commercial convenience with no preservation commitment, like Overleaf
+# and arXiv, so it gates nothing. The archive criterion at the end is
+# the image's only rung. Whatever this tuple omits must also be omitted
+# by _fdictL3WorkflowChecks -- a criterion the gates emit but this
+# tuple omits is silently dropped from the header count, so the cell
+# could paint a check above an orange row.
 _T_WORKFLOW_LEVEL3_CRITERIA = (
     "dockerfile-not-pinned", "dependency-lock-missing",
-    "environment-snapshot-missing", "image-not-published",
-    "reproduce-script-missing",
+    "environment-snapshot-missing", "reproduce-script-missing",
     "l3-attestation-stale", "binaries-not-declared-or-waived",
     "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
     "attestation-not-in-zenodo-archive", "image-not-archived",
