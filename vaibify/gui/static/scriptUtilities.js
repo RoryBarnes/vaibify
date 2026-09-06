@@ -46,9 +46,11 @@ var VaibifyUtilities = (function () {
         sExtraAttributes) {
         // Cell visuals: favicon = attained, muted dash = not
         // applicable, question mark = unknown (assessed once, answer
-        // stale), a circle (tinted by the level-cell-<sState> class)
-        // for every other state — hollow for not-started, filling in
-        // as reality does.
+        // stale), a warning triangle = diverged (a claim that failed
+        // a comparison), a cross = closed (the thing can no longer be
+        // done at all), a circle (tinted by the level-cell-<sState>
+        // class) for every other state — hollow for not-started,
+        // filling in as reality does.
         var sInner;
         if (sState === "attained") {
             sInner = fsBuildAttainedFavicon(sAltText || "attained");
@@ -56,6 +58,15 @@ var VaibifyUtilities = (function () {
             sInner = '<span class="level-cell-dash">&#8212;</span>';
         } else if (sState === "unknown") {
             sInner = '<span class="level-cell-question">?</span>';
+        } else if (sState === "diverged") {
+            // Two red states that differ in SHAPE, not just colour,
+            // because their remedies are opposite: "diverged" means
+            // fix your deposit, "closed" means nothing can be done.
+            // Shape is also the channel that survives colour
+            // blindness, which a second tint would not be.
+            sInner = '<span class="level-cell-warning">&#9888;</span>';
+        } else if (sState === "closed") {
+            sInner = '<span class="level-cell-closed">&#10007;</span>';
         } else {
             sInner = '<span class="level-cell-circle"></span>';
         }

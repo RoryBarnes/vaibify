@@ -2195,7 +2195,9 @@ def _fnCheckSupervisedIntervalAtConnect(
         )
 
 
-def fnCaptureLiveImageIdentityAtConnect(dictCtx, sContainerId):
+def fnCaptureLiveImageIdentityAtConnect(
+    dictCtx, sContainerId, dictWorkflow=None,
+):
     """Record which image this container is RUNNING, once per session.
 
     The envelope pins the image a project's results claim to come
@@ -2220,11 +2222,121 @@ def fnCaptureLiveImageIdentityAtConnect(dictCtx, sContainerId):
         dictCtx.setdefault("dictLiveImageIdentities", {})[sContainerId] = (
             fdictCaptureLiveImageIdentity(sContainerId)
         )
+        _fnCapturePinnedImagePresence(dictCtx, sContainerId, dictWorkflow)
     except Exception as errorCapture:  # noqa: BLE001 — absent reads as unknown
         logger.warning(
             "Could not capture the live image identity for %s: %s",
             sContainerId, errorCapture,
         )
+
+
+def _fnCapturePinnedImagePresence(dictCtx, sContainerId, dictWorkflow):
+    """Record whether the daemon still holds the image the envelope pins.
+
+    Captured HERE because the poll may make no daemon call, and read
+    by the environment-archive row to tell "not archived" from CLOSED
+    -- declined, with the image gone, so Level 3 is unreachable for
+    this result and no amount of work reopens it. That is a strong
+    statement, so it rests on a probe that positively answered "no";
+    a probe that could not run records ``None`` and the row falls back
+    to the weaker, always-true reading.
+
+    An image is a mutable local resource, so this can go stale within
+    a session (a prune while the tab is open). Stale in the safe
+    direction: the row keeps saying the opportunity is open a little
+    after it closed, rather than announcing a loss that has not
+    happened.
+    """
+    from .routeContext import ffilesForWorkflow
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fsExtractImageDigest, fbImageExistsLocally,
+        fdictReadEnvironmentJson,
+    )
+    if not (dictWorkflow or {}).get("sProjectRepoPath"):
+        return
+    # ``sProjectRepoPath`` is a CONTAINER path. Read as a host path it
+    # names nothing, the pin comes back empty, the probe records None
+    # and CLOSED is unreachable in production -- while every test
+    # that hands the same string to a host adapter passes.
+    sPinned = _fsExtractImageDigest(
+        fdictReadEnvironmentJson(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        ) or {},
+    )
+    dictCtx.setdefault("dictPinnedImagePresence", {})[sContainerId] = (
+        fbImageExistsLocally(sPinned)
+    )
+
+
+def fbPinnedImageIsInLocalStore(dictCtx, sContainerId):
+    """Return the connect-time presence answer: True, False, or None."""
+    return (
+        dictCtx.get("dictPinnedImagePresence") or {}
+    ).get(sContainerId)
+
+
+def fdictBuildImageArchiveDetail(
+    dictWorkflow, filesPoll, sContainerId, bPinnedImageInLocalStore=None,
+):
+    """Return the environment-archive row payload for one poll.
+
+    Pure file reads and in-process state: no container exec and no
+    network, which is the standing rule for this envelope. The
+    consequence is that "the image is gone from the daemon" is read
+    from the identity captured at connect rather than probed here --
+    and when nothing was captured the row says NOT ARCHIVED rather
+    than CLOSED, because claiming the archiving opportunity has
+    passed needs positive evidence of absence.
+    """
+    from vaibify.gui import archiveProgress
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility import imageArchive, levelGates
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictReadEnvironmentJson,
+    )
+    from vaibify.reproducibility.repoFiles import (
+        ffilesEnsureRepoFiles, fsRepoRootOf,
+    )
+    filesRepo = ffilesEnsureRepoFiles(filesPoll)
+    if not fsRepoRootOf(filesRepo):
+        return None
+    dictEnvironment = fdictReadEnvironmentJson(filesRepo)
+    dictDeposit = archiveProgress.fdictReadDeposit(sContainerId)
+    return {
+        "sState": imageArchive.fsResolveArchiveState(
+            dictEnvironment, dictWorkflow,
+            sCheckState=_fsArchiveCheckState(dictDeposit),
+            bPinnedImageInLocalStore=bPinnedImageInLocalStore,
+            bHostProject=fbIsHostProject(sContainerId),
+        ),
+        "dictRecord": imageArchive.fdictReadArchiveRecord(dictEnvironment),
+        "listIssues": levelGates.flistDescribeImageArchiveIssues(
+            filesRepo,
+        ),
+        "dictDeposit": dictDeposit,
+    }
+
+
+def _fsArchiveCheckState(dictDeposit):
+    """Map a deposit IN FLIGHT onto the row's check state, or ``""``.
+
+    Only a live deposit moves the row. One that failed established
+    nothing -- no DOI, no record -- so the row keeps the state the
+    envelope earns on its own (not archived, or mismatched against
+    an older record) and the failure reason travels beside it in
+    ``dictDeposit``. Painting a failed attempt UNCHECKED would turn a
+    red row grey, which reads as an improvement over the attempt that
+    failed.
+    """
+    sPhase = (dictDeposit or {}).get("sPhase") or ""
+    from vaibify.gui import archiveProgress
+    if sPhase in (
+        archiveProgress.S_PHASE_STARTING,
+        archiveProgress.S_PHASE_SAVING,
+        archiveProgress.S_PHASE_UPLOADING,
+    ):
+        return "checking"
+    return ""
 
 
 def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
@@ -2323,6 +2435,7 @@ async def fdictHandleConnect(
         )
         await asyncio.to_thread(
             fnCaptureLiveImageIdentityAtConnect, dictCtx, sContainerId,
+            dictWorkflow,
         )
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
@@ -2949,6 +3062,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
+    routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
     routes.preferencesRoutes.fnRegisterAll(app, dictCtx)

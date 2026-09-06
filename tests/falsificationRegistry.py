@@ -1345,15 +1345,9 @@ LIST_FALSIFICATIONS = [
         # Read the legacy waiver key as the blasVariance answer. Every
         # project that ever opened the old form is silently credited,
         # including one whose block says false.
-        source='vaibify/reproducibility/determinismGate.py',
-        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
-        new=(
-            '    sAnswer = dictDeterminism.get('
-            'dictQuestion["sAnswerKey"])\n'
-            '    if dictQuestion["sKey"] == "blasVariance" and '
-            'dictDeterminism.get(S_ACCEPT_BLAS_WAIVER_KEY):\n'
-            '        sAnswer = S_BLAS_ACCEPTED\n'
-        ),
+        source='vaibify/reproducibility/answeredQuestion.py',
+        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
+        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and dictAnswers.get("bAcceptBlasVariance"):\n        sAnswer = "accepted"\n',
     ),
     Falsification(
         nodeid=(
@@ -1367,18 +1361,9 @@ LIST_FALSIFICATIONS = [
         # questions are open under both the OR and the AND and the
         # gate refuses either way. It survived once for exactly that
         # reason; testEveryQuestionMustBeAnsweredNotJustOne owns the OR.
-        source='vaibify/reproducibility/determinismGate.py',
-        old=(
-            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
-            '        return False\n'
-        ),
-        new=(
-            '    if sAnswer not in dictQuestion["tAnswers"]:\n'
-            '        return _fbValueIsPresent(\n'
-            '            dictDeterminism.get('
-            'dictQuestion["sValueKey"]),\n'
-            '        )\n'
-        ),
+        source='vaibify/reproducibility/answeredQuestion.py',
+        old='    if sAnswer not in dictQuestion["tAnswers"]:\n        return False\n',
+        new='    if sAnswer not in dictQuestion["tAnswers"]:\n        return _fbValueIsPresent(dictAnswers.get(dictQuestion["sValueKey"]))\n',
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_bare_imported_seed_with_clock_is_flagged',
@@ -1783,8 +1768,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_fdictLevel2Gaps_subset_failure_keeps_level2_false',
         source='vaibify/reproducibility/levelGates.py',
-        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal,',
-        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal,',
+        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
+        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_blocker_cache_evicts_oldest_entry_first',
@@ -14884,11 +14869,8 @@ def _fdictEntry(sRel):
         ),
         # Accept "pinned" with nothing pinned: a rule no rerun could
         # follow, recorded as though it were one.
-        source='vaibify/reproducibility/determinismGate.py',
-        old=(
-            '    if sAnswer != dictQuestion["sAnswerNeedingValue"]:\n'
-            '        return True\n'
-        ),
+        source='vaibify/reproducibility/answeredQuestion.py',
+        old='    if sAnswer not in dictQuestion.get("tAnswersNeedingValue", ()):\n        return True\n',
         new='    return True\n    if False:\n        return True\n',
     ),
     Falsification(
@@ -14898,16 +14880,9 @@ def _fdictEntry(sRel):
         ),
         # Read the legacy waiver key as the answer. Every project that
         # ever opened the old form is silently credited.
-        source='vaibify/reproducibility/determinismGate.py',
-        old='    sAnswer = dictDeterminism.get(dictQuestion["sAnswerKey"])\n',
-        new=(
-            '    sAnswer = dictDeterminism.get('
-            'dictQuestion["sAnswerKey"])\n'
-            '    if dictQuestion["sKey"] == "blasVariance" and '
-            'S_ACCEPT_BLAS_WAIVER_KEY in dictDeterminism:\n'
-            '        sAnswer = S_BLAS_ACCEPTED if dictDeterminism['
-            'S_ACCEPT_BLAS_WAIVER_KEY] else S_BLAS_REJECTED\n'
-        ),
+        source='vaibify/reproducibility/answeredQuestion.py',
+        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
+        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and "bAcceptBlasVariance" in dictAnswers:\n        sAnswer = "accepted" if dictAnswers["bAcceptBlasVariance"] else "rejected"\n',
     ),
     Falsification(
         nodeid=(
@@ -17232,5 +17207,254 @@ def _fdictEntry(sRel):
         new=(
             '\'" data-is-project="\' + "false" +\n'
         ),
+    ),
+    # --- 2026-09-05: the environment archive, review fixes ---
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_the_fallback_runs_the_image_docker_load_reports'
+        ),
+        # Run the registry reference again after the fallback loaded
+        # the image by ID: the pull that just failed is attempted a
+        # second time and the fallback becomes a slower way of failing.
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old='    [ -n "$sImageRef" ] || return 1\n',
+        new=(
+            '    sImageRef=$(jq -r .dictContainer.sImageDigest '
+            '.vaibify/environment.json)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_archive_recheck_runs_off_the_event_loop'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await asyncio.to_thread(\n'
+            '        imageDeposit.fdictRecheckArchiveAgainstLocalImage, '
+            'filesRepo,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return imageDeposit.fdictRecheckArchiveAgainstLocalImage('
+            'filesRepo)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_presence_probe_reads_the_envelope_through_the_'
+            'container_adapter'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+        ),
+        new=(
+            '            (dictWorkflow or {}).get("sProjectRepoPath") '
+            'or "",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_verified_reference_lands_in_the_envelope'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '        sImageStreamSha256=str(\n'
+            '            dictFingerprint.get("sImageStreamSha256") or "",\n'
+            '        ),\n'
+        ),
+        new='        sImageStreamSha256="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_failed_deposit_leaves_the_row_the_state_the_envelope_'
+            'earns'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='        return "checking"\n    return ""\n',
+        new=(
+            '        return "checking"\n'
+            '    if sPhase == archiveProgress.S_PHASE_FAILED:\n'
+            '        return "uncheckable"\n'
+            '    return ""\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_upload_phase_is_reported_before_the_bytes_go_up'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old=(
+            '        if fnReportUploadStarted is not None:\n'
+            '            fnReportUploadStarted(iBytes)\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_late_archive_path_claims_equivalence_not_identity'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old=(
+            '    if dictAttestation.get("sStatus") != S_STATUS_PASSED:\n'
+            '        return imageArchive.S_PROVENANCE_ORIGINAL\n'
+        ),
+        new='    pass\n',
+    ),
+    # --- 2026-09-05: the environment archive ---
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_host_project_is_never_asked_to_archive_an_image'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    dictContainer = (dictEnvironment or {}).get("dictContainer")\n'
+            '    if not isinstance(dictContainer, dict):\n'
+            '        return True\n'
+            '    if not dictContainer.get("sImageDigest"):\n'
+            '        return True\n'
+        ),
+        new='    dictContainer = (dictEnvironment or {}).get("dictContainer")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_level_three_criterion_never_reads_the_level_two_answer'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    return imageArchive.fbImageArchiveMatchesEnvelope(\n'
+            '        fdictReadEnvironmentJson(filesRepo),\n'
+            '    )\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_concept_doi_does_not_satisfy_the_criterion'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        old='    if sVersionDoi == str(dictRecord.get("sConceptDoi") or ""):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_matching_digest_with_a_different_platform_is_refused'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        old=(
+            '    if str(dictRecord.get("sArchitecture") or "") '
+            '!= sEnvelopeArchitecture:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_an_envelope_that_cannot_be_compared_is_unchecked'
+            '_never_mismatched'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        old=(
+            '    except LookupError:\n'
+            '        return S_STATE_UNCHECKED\n'
+        ),
+        new=(
+            '    except LookupError:\n'
+            '        return S_STATE_MISMATCHED\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_closed_needs_positive_evidence_that_the_image_is_gone'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        old='        bPinnedImageInLocalStore is False\n',
+        new='        bPinnedImageInLocalStore is not True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_an_image_loaded_from_the_deposit_recheck_is_vacuous'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old='    bLoaded = imageArchive.fbImageWasLoadedFromArchive(filesRepo)\n',
+        new='    bLoaded = False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_regeneration_of_the_same_image_keeps_the_deposit_record'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old=(
+            '    dictCarried = dict(dictFresh)\n'
+            '    dictCarried["dictImageArchive"] = dictRecord\n'
+            '    return dictCarried\n'
+        ),
+        new='    return dictFresh\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_regeneration_of_a_different_platform_drops_the_record'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old='    for sField in ("sImageDigest", "sArchitecture"):\n',
+        new='    for sField in ("sImageDigest",):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_referencing_a_concept_doi_is_refused_by_the_record_it'
+            '_resolves_to'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        old=(
+            '    if sRecordDoi and sRecordDoi '
+            '!= str(sSuppliedDoi or "").strip():\n'
+        ),
+        new='    if False:\n',
+    ),
+    # --- 2026-09-05: the environment-archive row's two reds ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py'
+            '::test_diverged_and_closed_are_told_apart_by_shape_not_colour'
+        ),
+        # Return both red states to the generic circle. Colour alone
+        # then carries the whole distinction, which is no distinction
+        # at all for a colour-blind reader, and "fix your deposit"
+        # renders identically to "nothing can be done".
+        source='vaibify/gui/static/scriptUtilities.js',
+        old=(
+            "        } else if (sState === \"diverged\") {\n"
+        ),
+        new=(
+            "        } else if (false) {\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py'
+            '::test_an_unchecked_archive_never_wears_a_divergence_mark'
+        ),
+        # Paint an uncheckable archive as a divergence: a claim about
+        # a deposit vaibify never compared.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        unknown: "unknown",\n        diverged: "diverged",\n',
+        new='        unknown: "diverged",\n        diverged: "diverged",\n',
     ),
 ]

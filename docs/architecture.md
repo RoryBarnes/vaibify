@@ -1910,6 +1910,139 @@ ledger here records reservations and their outcomes and nothing else,
 because those policies belong to whoever is spending the resource, not
 to the daemon lane.
 
+## The environment archive
+
+A registry digest names bytes somebody else is storing. `reproduce.sh`
+opens with `docker pull`, and the moment the registry stops serving
+that digest — a deleted tag, a retired registry, an account that
+lapsed — the reproduction dies at step one with the environment
+irrecoverable. Depositing a `docker save` of the pinned image into
+Zenodo puts it under an actual preservation commitment, and the
+reproduce script falls back to it.
+
+The scope is deliberately bounded: preserve a **runnable** environment,
+not a **rebuildable** one. Guix/Nix-style full-source reconstruction
+was considered and declined as out of scope. What the deposit contains
+is the C compiler as a binary, the exact `libm` that produced the
+numbers, kernel headers, the interpreter, and every installed package;
+what it does not contain is the kernel (containers use the host's),
+source for anything compiled, or the project itself, which lives in a
+runtime volume and is deposited separately.
+
+### One row, two blocks, and the L3 half never reads the L2 answer
+
+| Block | Criterion | Passes on |
+|---|---|---|
+| L2 | the question was **answered** | archived, referenced, or declined |
+| L3 | a matching archive **exists** | archived and verified |
+
+Blocking Level 2 on the question is deliberate: it forces the decision
+at the one moment the image certainly still exists. A warning beside an
+optional button gets read by nobody.
+
+The Level 3 gate asks one thing — is there an archive that matches? A
+decline is simply an absent archive, so declining is a decision rather
+than a lock: change the answer, deposit, and the level opens with
+nothing to undo. The one direction that IS sound is the other:
+`fbImageArchiveQuestionSettled` reads the deposit record, because
+having deposited is having decided, evidenced more strongly than a
+recorded answer.
+
+This is the third requirement on the ladder where declining passes,
+after Personal AI Configuration and the determinism block, so the
+shared representation was extracted rather than written a third time:
+`answeredQuestion.py` owns the shape, and all three are its consumers.
+
+### Two records, in two files, and they are not the same thing
+
+`project.json` carries the researcher's ANSWER under
+`dictImageArchive`. `.vaibify/environment.json` carries the DEPOSIT
+RECORD under `dictContainer.dictImageArchive`. The record re-states the
+digest and the architecture it covers rather than leaning on adjacency,
+because the envelope is regenerated whenever a workflow crosses Level 1
+and a record carried forward on adjacency alone would describe an image
+nobody deposited.
+
+Three hazards are structural, each a plausible simplification that
+breaks the feature silently:
+
+- **The version DOI, never the concept DOI.** Zenodo's concept DOI
+  always resolves to the *newest* version, so recording it would
+  quietly repoint every earlier paper at whatever image was deposited
+  last. The link still resolves and nothing errors.
+- **Architecture is recorded, never inferred.** Normally a matching
+  digest implies a matching platform — but a **manifest list** digest
+  spans several platforms and pins none of them.
+- **The binding is the tarball hash, not the image store's digest.**
+  The containerd store preserves the registry manifest digest through
+  `docker save` and the classic store does not (measured), so a check
+  written against either behaves differently on a laptop than in CI.
+
+A second hash rides beside the first. `sTarballSha256` covers the bytes
+uploaded, so a downloader can verify what they fetched;
+`sImageStreamSha256` covers `docker save`'s uncompressed output, so the
+attestation-time re-check compares the IMAGE rather than the
+compressor. zstd and gzip give different bytes for one image, and so
+can two builds of one codec, which would report an identical image as
+diverged.
+
+### The deposit runs on the host and the credential crosses once
+
+`docker save` talks to the daemon, so only the hub can produce the
+tarball; vaibify stores the Zenodo token in the CONTAINER keyring,
+because every other Zenodo call it makes runs as a script inside the
+container. The bytes and the credential therefore start on opposite
+sides of the boundary and one of them has to cross. Moving the token is
+the cheaper crossing by a factor of a hundred million: it is read
+through the typed-read seam (`DockerConnection.fsFetchKeyringSecret`),
+held in a local for the length of one upload, and written to no file
+and no log. Moving the tarball would mean streaming a gigabyte through
+an exec socket built for a terminal.
+
+The deposit is a mode-(c) durable task and reports progress, because a
+silent multi-minute upload reads as a hang. Its route is
+`bAgentSafe: False`, and that one is a security decision rather than a
+preference: publishing to Zenodo under the researcher's credentials is
+outward-facing and irreversible.
+
+### Unchecked is never red, and closed is not the same red
+
+Red means *diverged* — a claim about the deposit. A comparison nobody
+could make is UNCHECKED, and the row says so rather than sending a
+researcher to fix a deposit that may be perfectly good. CLOSED (the
+researcher declined and the image is gone, so Level 3 is unreachable
+for this result) shares the colour and differs in SHAPE, because the
+remedies are opposite — "fix your deposit" versus "nothing can be
+done" — and shape is the channel that survives colour blindness.
+Closing the door needs positive evidence of absence: the presence probe
+is three-state and only a probe that positively answered "no" may
+report CLOSED.
+
+### The attestation re-check can be vacuous, and must say so
+
+At attestation time the local image is re-saved and its content hash
+compared with the deposit's. If the image was obtained BY LOADING the
+deposit, that comparison is a download against itself: it matches
+always and proves nothing. `reproduce.sh`'s fallback writes
+`.vaibify/image_loaded_from_archive` when it takes that path — a file
+beside the envelope rather than a field inside it, because the envelope
+is pinned in `MANIFEST.sha256` and the script ends by verifying that
+manifest — and the re-check reports VACUOUS rather than passed. Same
+shape as rooting a rerun's comparison on the shadow rather than the
+live repository.
+
+### One image, N papers
+
+One image record per image digest; one science record per publication;
+the science record references the image record. One image used for N
+papers is one large upload plus N small ones, not N+1 uploads: Zenodo
+versions are self-contained and carry no files forward, which is why
+this is two records rather than two versions of one. The "use an
+existing record" answer is the normal path for papers 2..N, and it is
+verified rather than trusted — vaibify stamps a machine-readable
+fingerprint into the deposit's description, and a record it cannot read
+that fingerprint out of is refused.
+
 ## The Replay axis (AI provenance)
 
 The PROOF ladder measures the state of the artifact; the Replay axis

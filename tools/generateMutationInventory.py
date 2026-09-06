@@ -178,6 +178,12 @@ DICT_PRIMITIVE_ACCESS = {
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
     "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,
+    # The environment-archive deposit's Zenodo token. A typed read like
+    # its neighbours -- the program is server-owned table text and the
+    # caller supplies only which stored slot to ask for -- but the
+    # value that comes back is a CREDENTIAL, so it is recorded here
+    # rather than left invisible.
+    "fsFetchKeyringSecret": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
     # Bulk export through the SAME daemon archive API fiterStreamFile
     # uses, at repository scale instead of one file. Classified with the

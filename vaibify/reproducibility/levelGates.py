@@ -27,6 +27,7 @@ from pathlib import Path
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 
+from . import imageArchive
 from . import replayGate
 from . import scheduledReverify
 from .aiDeclarationStep import fbStepIsAiDeclaration
@@ -42,6 +43,7 @@ from .determinismGate import (
 from .environmentSnapshot import (
     fbEnvironmentDigestPinned,
     fbImageDigestPullable,
+    fdictReadEnvironmentJson,
 )
 from .l3Attestation import (
     fbL3AttestationCurrent,
@@ -1204,11 +1206,45 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         return False
     if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):
         return False
+    if not fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
+        return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
     ):
         return False
     return True
+
+
+def fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
+    """Return True unless a project with a pinned image has not answered.
+
+    The question is only ASKED once the envelope names an image, which
+    is also what makes this criterion host-safe without a host flag: a
+    host project's environment snapshot records ``sMode`` and no
+    container block, so it is never asked about archiving an image it
+    does not have. A container project that has not yet captured an
+    envelope is not asked either -- there is nothing yet to archive,
+    and the question appears the moment the capture pins one.
+
+    A deposit RECORD settles the question by itself, and reading it
+    here is the one direction that is sound: having deposited is
+    having decided, evidenced more strongly than a recorded answer.
+    The forbidden direction is the other one -- the Level 3 criterion
+    must never consult the answer, or declining would become a lock.
+    It also removes a real gap: the deposit finishes inside a durable
+    task whose request is long gone, so it holds no commit lane to
+    persist an answer through, and a hub restart would otherwise put
+    the Level 2 row back to unanswered over an archive that exists.
+    """
+    dictEnvironment = fdictReadEnvironmentJson(filesRepo)
+    dictContainer = (dictEnvironment or {}).get("dictContainer")
+    if not isinstance(dictContainer, dict):
+        return True
+    if not dictContainer.get("sImageDigest"):
+        return True
+    if imageArchive.fdictReadArchiveRecord(dictEnvironment) is not None:
+        return True
+    return imageArchive.fbWorkflowAnswersImageArchive(dictWorkflow)
 
 
 def fbAtLeastLevel3(dictWorkflow, filesRepo):
@@ -1239,6 +1275,8 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
     if not fbEnvelopeMatchesGithubMirror(filesRepo):
         return False
     if not fbEnvelopeMatchesZenodoArchive(filesRepo):
+        return False
+    if not fbImageArchiveDeposited(filesRepo):
         return False
     return True
 
@@ -1456,6 +1494,19 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     dictResult["bEnvelopeInZenodoArchive"] = (
         fbEnvelopeMatchesZenodoArchive(filesRepo) if bRepo else False
     )
+    # The environment archive rides beside the published-envelope
+    # pair for the same reason: it is a publication question, so it
+    # blocks ATTAINMENT without blocking a researcher from attesting
+    # a complete local envelope first. The issue list travels with the
+    # verdict because "not archived" and "archived, but the deposit
+    # covers a different platform" are different problems with
+    # different remedies, and a bare false says neither.
+    dictResult["bImageArchived"] = (
+        fbImageArchiveDeposited(filesRepo) if bRepo else False
+    )
+    dictResult["listImageArchiveIssues"] = (
+        flistDescribeImageArchiveIssues(filesRepo) if bRepo else []
+    )
     # The determinism row's own detail. bDeterminismDeclared is a
     # verdict with no subject: an agent asked "what is wrong with
     # determinism here" had a false boolean and nothing else, so
@@ -1467,6 +1518,23 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
         fsCurrentManifestDigest(filesRepo) if bRepo else ""
     )
     return dictResult
+
+
+def flistDescribeImageArchiveIssues(filesRepo):
+    """Return why the environment archive does not cover this envelope.
+
+    An empty list means either that it does, or that nothing could be
+    compared -- the caller distinguishes those through
+    ``bImageArchived`` and the row state, because a comparison nobody
+    could make is UNCHECKED and must never be rendered as a
+    divergence.
+    """
+    try:
+        return imageArchive.flistDescribeArchiveMismatch(
+            fdictReadEnvironmentJson(filesRepo),
+        )
+    except LookupError:
+        return []
 
 
 def fbWorkflowHasAiDeclarationStep(dictWorkflow):
@@ -1851,6 +1919,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
             "bPersonalLayerDeclared": bool,
+            "bImageArchiveAnswered": bool,
             "bPromptRecordCurrent": bool,
             "bSupervisionClean": bool,
             "bProjectContextFileExists": bool,
@@ -1894,6 +1963,9 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow)
     bModels = replayGate.fbWorkflowDeclaresAiModels(dictWorkflow)
     bPersonal = replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow)
+    bArchiveAnswered = fbImageArchiveQuestionSettled(
+        dictWorkflow, filesRepo,
+    )
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
@@ -1902,6 +1974,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         "bAiDeclarationAttested": bDecl,
         "bAiModelsDeclared": bModels,
         "bPersonalLayerDeclared": bPersonal,
+        "bImageArchiveAnswered": bArchiveAnswered,
         "bPromptRecordCurrent": replayGate.fbPromptRecordCurrent(
             dictWorkflow,
         ),
@@ -1914,7 +1987,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         ).fbIsFile(".vaibify/AGENTS.md"),
         "bAtLeastLevel2":
             bL1 and bGithub and bZenodo and bArxiv and bDecl
-            and bModels and bPersonal,
+            and bModels and bPersonal and bArchiveAnswered,
     }
 
 
@@ -1965,6 +2038,12 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
+        # The environment-archive criterion reads environment.json, so
+        # a deposit (or an envelope regeneration that drops the
+        # record) must be able to clear or raise this blocker. Without
+        # this component the cached list keeps quoting the old answer
+        # -- the masked-transition class the L3 key already guards.
+        _fsEnvelopeStateFingerprint(filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -1990,6 +2069,9 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
     ))
     listBlockers.extend(_flistAiProvenanceLevel2Blockers(
         dictWorkflow,
+    ))
+    listBlockers.extend(_flistImageArchiveLevel2Blockers(
+        dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistOverleafLevel2Blockers(
         dictWorkflow, filesRepo,
@@ -2338,6 +2420,23 @@ def _flistAiProvenanceLevel2Blockers(dictWorkflow):
     return listBlockers
 
 
+def _flistImageArchiveLevel2Blockers(dictWorkflow, filesRepo):
+    """Return the workflow-scope environment-archive L2 blocker, if any."""
+    if fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
+        return []
+    return [_fdictWorkflowScopeLevel2Blocker(
+        sCriterion="image-archive-unanswered",
+        sRemediationHint=(
+            "Answer the Environment archive question in the Artifacts "
+            "section of the Project block: deposit the container "
+            "image, point at a deposit that already holds it, or "
+            "decline. Declining passes this requirement — but the "
+            "image is a local resource a prune or a rebuild can "
+            "remove, so the opportunity may not come back."
+        ),
+    )]
+
+
 def _fdictWorkflowScopeLevel2Blocker(sCriterion, sRemediationHint):
     """Build one workflow-scope L2 blocker entry from its two texts."""
     return {
@@ -2627,7 +2726,21 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
             fbEnvelopeMatchesZenodoArchive(filesRepo),
         "attestation-not-in-zenodo-archive":
             fbAttestationIsPubliclyArchived(filesRepo),
+        "image-not-archived": fbImageArchiveDeposited(filesRepo),
     }
+
+
+def fbImageArchiveDeposited(filesRepo):
+    """Return True iff a deposit covers the image the envelope pins.
+
+    NEVER reads the Level 2 answer. It asks one thing: is there an
+    archive that matches? A decline is simply an absent archive, so
+    declining is not a lock -- change the answer, deposit, and Level 3
+    opens with nothing to undo.
+    """
+    return imageArchive.fbImageArchiveMatchesEnvelope(
+        fdictReadEnvironmentJson(filesRepo),
+    )
 
 
 def fbAttestationIsPubliclyArchived(filesRepo):
@@ -2847,6 +2960,14 @@ _DICT_L3_REMEDIATION_HINTS = {
         "version containing the envelope (or declare the Zenodo "
         "record that already holds it), then click Verify now on the "
         "Zenodo row.",
+    "image-not-archived":
+        "The container image that produced these results is not in a "
+        "permanent archive, or the deposit on record covers a "
+        "different image or platform. A registry digest names bytes "
+        "somebody else is storing; when the registry forgets them, "
+        "reproduce.sh fails. Deposit the image from the Artifacts "
+        "section of the Project block, or point at the deposit that "
+        "already holds it.",
     S_L3_HOST_MODE_CRITERION:
         "Level 3 requires a containerized project: it is defined by a "
         "pinned image digest and an in-container rerun. This project "
@@ -3442,6 +3563,11 @@ _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
     # only gap was two stale verify caches read "none" (red) while
     # its AI rows sat green in the Project block.
     "ai-models-undeclared", "personal-layer-unanswered",
+    # The environment-archive question, on the same footing: an
+    # answered question is a met requirement, and a criterion the
+    # gates emit but this tuple omits is invisible to the header
+    # rather than merely uncounted.
+    "image-archive-unanswered",
 )
 
 _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
@@ -3453,7 +3579,7 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
     "environment-snapshot-missing", "reproduce-script-missing",
     "l3-attestation-stale", "binaries-not-declared-or-waived",
     "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
-    "attestation-not-in-zenodo-archive",
+    "attestation-not-in-zenodo-archive", "image-not-archived",
 )
 
 

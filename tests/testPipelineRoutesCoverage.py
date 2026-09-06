@@ -1666,12 +1666,42 @@ _DICT_ALL_ATTAINED_STEP_CELLS = {
     "s3": _fdictAttainedCell(1, 1),
 }
 
+def _levelGatesModule():
+    """Return the level-gate module the scope-cell counts come from."""
+    from vaibify.reproducibility import levelGates
+    return levelGates
+
+
+def _fiWorkflowScopeCriteriaCount(tCriteria):
+    """Return how many criteria one workflow-scope level cell counts.
+
+    Read from the gate's own tuples rather than re-typed. A count
+    written here by hand is wrong the day a criterion is added, and
+    the wrongness looks exactly like the header-over-reports bug this
+    payload exists to prevent -- so pin the relationship instead of
+    the number.
+    """
+    return len(tCriteria)
+
+
 _DICT_ALL_ATTAINED_SCOPE_CELLS = {
     "s1": _fdictAttainedCell(1, 1),
-    # Six, not four, since 2026-08-30: each remote's published-copy
-    # check contributes a STALENESS criterion and a DIVERGENCE one.
-    "s2": _fdictAttainedCell(6, 6),
-    "s3": _fdictAttainedCell(9, 9),
+    "s2": _fdictAttainedCell(
+        _fiWorkflowScopeCriteriaCount(
+            _levelGatesModule()._T_WORKFLOW_LEVEL2_BASE_CRITERIA,
+        ),
+        _fiWorkflowScopeCriteriaCount(
+            _levelGatesModule()._T_WORKFLOW_LEVEL2_BASE_CRITERIA,
+        ),
+    ),
+    "s3": _fdictAttainedCell(
+        _fiWorkflowScopeCriteriaCount(
+            _levelGatesModule()._T_WORKFLOW_LEVEL3_CRITERIA,
+        ),
+        _fiWorkflowScopeCriteriaCount(
+            _levelGatesModule()._T_WORKFLOW_LEVEL3_CRITERIA,
+        ),
+    ),
 }
 
 _DICT_NO_WARNING = {
@@ -1862,6 +1892,13 @@ class TestPollLevelStatePayload:
             # snapshot regeneration is announced instead of every
             # verification silently grading the old image.
             "dictImageCurrency",
+            # The environment archive, as a seven-valued STATE rather
+            # than a boolean: "not deposited", "the deposit covers
+            # another platform", "Zenodo could not be reached" and
+            # "declined, and the image is gone" are situations a
+            # researcher acts on differently, and two of them must
+            # never wear a divergence's colour.
+            "dictImageArchive",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bRebuildAttestationRunning", "dictRebuildAttestation",
@@ -2059,6 +2096,7 @@ class TestBuildWorkflowEnvelopeDetail:
         self._fnWriteEnvironmentCapture(tmp_path, "1.9", "a" * 64)
         dictDetail = _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, str(tmp_path),
+            dictImageArchive=None,
         )
         dictEntry = dictDetail["listBinaries"][0]
         assert dictEntry["sExpectedVersion"] == "2.0"
@@ -2075,6 +2113,7 @@ class TestBuildWorkflowEnvelopeDetail:
         self._fnWriteEnvironmentCapture(tmp_path, "2.0", "b" * 64)
         dictEntry = _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, str(tmp_path),
+            dictImageArchive=None,
         )["listBinaries"][0]
         assert dictEntry["bVersionMatch"] is True
 
@@ -2090,6 +2129,7 @@ class TestBuildWorkflowEnvelopeDetail:
         dictWorkflow = self._fdictWorkflowWithBinary(str(tmp_path))
         dictEntry = _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, str(tmp_path),
+            dictImageArchive=None,
         )["listBinaries"][0]
         assert dictEntry["sCapturedVersion"] is None
         assert dictEntry["sCapturedSha256"] is None
@@ -2106,6 +2146,7 @@ class TestBuildWorkflowEnvelopeDetail:
         self._fnWriteEnvironmentCapture(tmp_path, "2.0", None)
         dictEntry = _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, str(tmp_path),
+            dictImageArchive=None,
         )["listBinaries"][0]
         assert dictEntry["bHashCurrent"] is False
         assert dictEntry["bVersionMatch"] is True
@@ -2120,6 +2161,7 @@ class TestBuildWorkflowEnvelopeDetail:
         dictDetail = _fdictBuildWorkflowEnvelopeDetail(
             {"sProjectRepoPath": str(tmp_path), "listSteps": []},
             str(tmp_path),
+            dictImageArchive=None,
         )
         dictArtifacts = dictDetail["dictArtifacts"]
         assert set(dictArtifacts.keys()) == {
@@ -2145,6 +2187,7 @@ class TestBuildWorkflowEnvelopeDetail:
                 "dictDeterminism": dictDeterminism,
             },
             str(tmp_path),
+            dictImageArchive=None,
         )
         assert dictDetail["dictDeterminism"] == dictDeterminism
 
@@ -2168,6 +2211,7 @@ class TestBuildWorkflowEnvelopeDetail:
         dictSyncs = _fdictBuildWorkflowEnvelopeDetail(
             {"sProjectRepoPath": str(tmp_path), "listSteps": []},
             str(tmp_path),
+            dictImageArchive=None,
         )["dictRemoteSyncs"]
         assert dictSyncs["github"] == {
             "sLastVerified": "2020-01-01T00:00:00Z",
@@ -2192,6 +2236,7 @@ class TestBuildWorkflowEnvelopeDetail:
         )
         dictDetail = _fdictBuildWorkflowEnvelopeDetail(
             {"sProjectRepoPath": "", "listSteps": []}, "",
+            dictImageArchive=None,
         )
         assert dictDetail["dictArtifacts"] == {}
         assert dictDetail["listBinaries"] == []

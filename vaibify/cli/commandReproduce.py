@@ -66,8 +66,10 @@ from vaibify.reproducibility.levelGates import (
     fbVerifyReproduceScript,
     fbWorkflowDeclaresBinaries,
 )
+from vaibify.reproducibility import imageDeposit
 from vaibify.reproducibility.environmentSnapshot import (
     _fsExtractImageDigest,
+    fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
 from vaibify.reproducibility.repoFiles import ContainerRepoFiles
@@ -850,6 +852,13 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
         dictRerunFailure=dict(dictOutcome.get("dictRerunFailure") or {}),
         sRunLogPath="",
         dictAiProvenance=_fdictBuildCliProvenanceStamp(sProjectRepo),
+        # The same re-check the dashboard lane records. Both lanes
+        # write the same file, so they must agree about what it says.
+        dictImageArchiveCheck=imageDeposit.
+        fdictRecheckArchiveAgainstLocalImage(
+            ffilesEnsureRepoFiles(sProjectRepo),
+            fdictReadEnvironmentJson(sProjectRepo),
+        ),
     )
 
 
