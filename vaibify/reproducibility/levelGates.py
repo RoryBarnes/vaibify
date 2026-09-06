@@ -7,8 +7,10 @@ three rungs are implemented here: L1 (Self-Consistent), L2
 (Reproducible) via ``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s
 seven verifiers plus a current L3 attestation plus the
 published-envelope pair (envelope matching the GitHub mirror and
-present in the Zenodo archive). L4 and L5 are outside
-vaibify's scope by design; see ``docs/reproducibility.md``.
+present in the Zenodo archive). L4 (Traceable), L5 (Regenerated) and
+L6 (Attested) are outside vaibify's scope by design; see
+``docs/reproducibility.md`` for the ceiling and ``docs/vision.md``
+for the full six-rung ladder.
 
 Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
 L2 predicates are split across this module and ``scheduledReverify``

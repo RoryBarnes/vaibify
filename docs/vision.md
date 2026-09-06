@@ -44,7 +44,7 @@ verify without rerunning the computation.
 
 ## The PROOF ladder
 
-Reproducibility is not a binary. We distinguish five levels, each
+Reproducibility is not a binary. We distinguish six levels, each
 strictly harder than the last. The ladder is named for the five
 pillars a result must rest on to be trusted by someone who was not
 there: **P**rovenance, **R**eproducibility, **O**penness,
@@ -79,6 +79,14 @@ for bundled data. The commit SHA is reachable on the public branch.
 - **Does not prove**: that the computation producing those files can
   be re-executed to yield the same bits.
 
+A project that intends to reach L5 one day publishes its equivalence
+tolerances here, in the paper, because L5 requires them to predate the
+regeneration they will judge. **L2 itself does not require them** —
+the gate is the hash agreement above, and a project with no ambition
+beyond publication owes no tolerance table. This is the same shape as
+L4's transcript: recorded early because a later rung needs it to
+already exist, not because this rung asks for it.
+
 ### L3 — Reproducible
 
 The Docker image is reproducibly buildable: `docker build .` at the
@@ -102,38 +110,150 @@ vaibify's role is to package it for working scientists.
 
 ### L4 — Traceable
 
-Every external input is recorded with `(source URL, fetch timestamp,
-content hash)` in a committed manifest. Re-fetching the URL produces
-a matching hash; archival services (Zenodo, Software Heritage, Wayback
-Machine) hold snapshots in case the source disappears.
+The whole sequence of events, from the first commit to the curation of
+a long-term archive, is publicly recorded: the raw data, the analysis
+scripts, the plotting scripts behind every published figure, and a
+public changelog for each of them. The changelog is two things
+together — the git commit history and the transcript of the AI prompts
+that produced the work — because with agentic contributors neither
+half alone says who decided what. Every external input is recorded
+with `(source URL, fetch timestamp, content hash)` in a committed
+manifest; re-fetching the URL produces a matching hash, and archival
+services (Zenodo, Software Heritage, Wayback Machine) hold snapshots
+in case the source disappears. Traceability runs back through
+calibration to the raw observations themselves.
 
 The rung is named for the unbroken chain, not the copies that back it
-up: what L4 adds is metrological *traceability* — every input is
-followed back to a documented origin, the same relation that anchors a
-measurement to a reference standard or a painting to its provenance.
-L3 proves you can regenerate the outputs; L4 proves you can vouch for
-what went in. (It was called "Archived" until 2026-08, which named a
-mechanism rather than the claim, and named one that L2 already uses:
-a Zenodo DOI is a publication authority there.)
+up: what L4 adds is metrological *traceability* — every input and
+every decision is followed back to a documented origin, the same
+relation that anchors a measurement to a reference standard or a
+painting to its provenance. L3 proves you can regenerate the outputs;
+L4 proves you can vouch for what went in and for how it got there.
+(It was called "Archived" until 2026-08, which named a mechanism
+rather than the claim, and named one that L2 already uses: a Zenodo
+DOI is a publication authority there.)
+
+L4 is the one rung that cannot be reached retroactively. The prompt
+transcript has to exist before L1, so a project that did not plan for
+L4 at conception cannot climb to it later. That is why vaibify records
+AI provenance on its own axis from the beginning — see
+[The Replay axis](#the-replay-axis) below — even though the ladder
+rung itself is out of scope.
 
 - **Proves**: the full causal chain from raw observation to published
-  plot is tamper-evident.
-- **Does not prove**: that anyone besides the author has independently
-  verified the re-execution.
+  plot is tamper-evident, and the development history that produced it
+  is public.
+- **Does not prove**: that the result is independent of the particular
+  agents that produced it.
 
-### L5 — Attested
+### L5 — Regenerated
 
-Independent third parties — CI services, collaborators, archival
-bots — have re-run the project and published signed attestations
-that their output hashes match the committed baseline. Attestations
-are in a transparency log (Sigstore / Rekor style), so revocation
-and provenance of the attestation itself are public.
+The work is retraced by a *different* AI model and the result comes
+out the same. This controls for the biases and assumptions baked into
+whichever model wrote the original code.
+
+**The regeneration starts from the publication, not the transcript.**
+The L2 paper — its hypothesis, data, methods, and acceptance criteria
+— is the specification, and it is the right one on three counts: it
+already exists, it is immutable and timestamped by a third party, and
+reproducing from the published methods is what replication has always
+meant. The L4 transcript stays public for audit; it is deliberately
+*not* the input, because replaying it reproduces the first model's
+path rather than independently deriving anything.
+
+**The equivalence tolerance is declared at L2, in the publication.** A
+table states, per compared quantity, how close is close enough and
+why — "0.1 K, a tenth of the model's grid resolution" rather than a
+bare "0.1 K" — and it must cover every quantity the paper's claims
+rest on. Tolerances published for three quantities out of thirty yield
+a verdict over a curated subset: honestly computed, and close to
+meaningless. Because the table is published before any regeneration
+exists, the threshold is pre-registered. The judgement remains human
+and qualitative; what it can no longer be is made with knowledge of
+the answer.
+
+**L5 then returns a verdict**: did every compared quantity fall inside
+the published tolerance? That is mechanical, and anyone holding both
+artifacts can compute it. What stays with the reader is whether the
+tolerance was *appropriate* — and because it is public, a skeptic who
+finds it too loose applies their own and reaches their own conclusion
+from the same material. The ladder lays out the evidence; it does not
+adjudicate the threshold.
+
+Byte-identity across the two runs is neither expected nor required.
+Different models write different code with different orders of
+operation, so the artifacts will usually differ in their last
+significant figures. What is required is that *each* artifact
+independently satisfies L3, so both are internally bit-reproducible
+and a third party can verify either one exactly.
+
+Two limits are worth stating rather than discovering. First, **"a
+different model" means a different model identifier, which is a floor
+rather than a guarantee.** Vendors do not disclose whether two of
+their models share a pretraining corpus, so a stricter criterion would
+be unverifiable by anyone outside the vendor — and a rung that depends
+on undisclosed information is uncheckable by construction. Same-vendor
+siblings very likely do share one, which weakens the independence
+claim considerably; a cross-vendor regeneration, and better still an
+open-weight one, is substantially stronger. The models used are
+declared either way, so a reader can judge a particular pairing.
+
+Second, **the specification covers the science, not the software.** A
+regeneration produces a different codebase with different steps, so
+only output quantities are comparable — which is why the tolerance is
+declared per quantity rather than per file. It also means L5 costs a
+second complete L3 envelope: another manifest, lockfile, pinned image
+digest, and immutable deposit.
+
+A regeneration that fails because the published methods were not
+sufficient to work from is not wasted effort. It is a public,
+mechanical demonstration that the methods section was inadequate,
+which is a more useful finding than most of what a passing L5
+establishes.
+
+- **Proves**: the result does not depend on the particular model that
+  produced it, to within a threshold fixed before the answer was
+  known.
+- **Does not prove**: that the result is independent of the
+  *researcher* — the same person directed both runs and cannot un-know
+  the first outcome. Nor that anyone besides the author has verified
+  either run.
+
+### L6 — Attested
+
+All of the above, plus independent and publicly verifiable
+attestations by trusted third parties — collaborators, CI services,
+archival bots — who have retraced the work themselves and confirmed
+the L3 reproducibility of *both* artifacts along with the equivalence
+verdict between them. Note what is not claimed: attestors do not
+report byte-identical results across the original and the
+regeneration, which L5 has already established is not the
+expectation. They verify each artifact exactly, and the equivalence
+judgement against the published tolerance.
+
+The attestations must be verifiable in public: tests run on a public
+GitHub repository, or cryptographic links to witness identities
+(ORCID keys bound to the DOIs of remote archives). Zenodo supports
+this directly, and standalone tooling exists in
+[in-toto](https://in-toto.io/) and the Sigstore / Rekor transparency
+logs.
+
+L6 is also where independence from the *researcher* arrives. Its
+attestors never saw the original process, so they control for the
+human as well as the model — which is the thing L5 structurally
+cannot do, since one person directs both of its runs.
+
+L6 is a high bar that costs the community real effort, so in the near
+term it will be reserved for results that warrant it — the claim of
+life on another world, not a routine parameter study.
 
 - **Proves**: reproducibility is no longer the author's claim alone;
-  it is community-verified and the community verification is itself
+  it is community-verified, and the community verification is itself
   publicly auditable.
-- **Does not prove**: anything deeper. This is the ceiling of what
-  hashes and signatures alone can guarantee.
+- **Does not prove**: that the result describes the universe
+  correctly. Corrupt observations, conceptual errors, and a bug that
+  every agent makes identically all survive L6 intact. This is the
+  ceiling of what hashes and signatures alone can guarantee.
 
 ## What this framework is and is not
 
@@ -154,7 +274,10 @@ Two properties we deliberately keep off the ladder:
   respects conservation laws, symmetries, or asymptotic limits is a
   correctness claim about the science, not a reproducibility claim
   about the bits. Results can be perfectly reproducible and
-  scientifically wrong.
+  scientifically wrong. L5's verdict is not an exception to this: it
+  checks a threshold the author fixed in advance and published, and
+  whether that threshold was the right one is itself off the ladder,
+  left to the reader who can see it.
 
 Both deserve attention; neither is a rung on this ladder.
 
@@ -167,11 +290,18 @@ All three have working enforcement in
 seven readiness verifiers plus a current attestation), each with a
 blocker list that tells the researcher exactly what is missing.
 
-L4 and L5 are described here for completeness and are **not
-implemented**: they depend on institutional archiving and third-party
-attestation that sit outside a local-first tool. See
-[reproducibility.md](reproducibility.md), which is the normative
-statement of the L3 ceiling.
+L4, L5, and L6 are described here for completeness and are **not
+implemented**: they depend on institutional archiving, cross-agent
+regeneration, and third-party attestation that sit outside a
+local-first tool. See [reproducibility.md](reproducibility.md), which
+is the normative statement of the L3 ceiling.
+
+One further limit is worth stating here because it surprises people:
+**Level 3 requires a containerized project.** A host-mode project —
+one whose pipeline runs directly on the researcher's own machine — is
+refused L3 with the `host-mode` criterion, because the level is
+defined by a pinned image digest and an in-container rerun, and a host
+project has neither. Host mode reaches L2 and stops.
 
 Two deliberate design choices shape the implementation.
 
@@ -192,6 +322,41 @@ manifest check, content-hash-bound test markers, and per-remote
 freshness badges exist so that agent output is subject to the same
 verification gates as human output, with no special privilege in
 either direction.
+
+## The Replay axis
+
+The ladder measures the state of the *artifact*. It says nothing about
+the provenance of the *process* that produced it, which is a separate
+question once agents are doing the writing — and one whose evidence
+must be collected from the very beginning, since a prompt transcript
+cannot be reconstructed after the fact.
+
+Vaibify therefore tracks AI provenance on its own axis, orthogonal to
+the ladder, in `vaibify/reproducibility/replayGate.py`. Its states, in
+ascending order:
+
+- **untracked** — nothing declared.
+- **declared** — every model used in the project is declared, with
+  vendor, model id, and the interval it was used over. This is the one
+  state the ladder also depends on: L2 requires it.
+- **recorded** — the Prompt Record is enabled and its first capture
+  reviewed. The in-container agent's session transcripts are copied
+  into the repository under `.vaibify/promptRecord/`, sanitized at
+  capture (nothing lands in a public repository unscanned) and
+  hash-chained, so removing or editing a record breaks the chain. A
+  project is "Replayable" at this state or better.
+- **supervised** — the attribution watchdog is enabled, recording file
+  changes alongside the prompts regardless of who made them.
+
+The axis is deliberately honest about what it cannot establish: the
+chain is *tamper-evident*, not *provably complete*. Nothing can prove
+every prompt was recorded, so coverage intervals make the monitored
+windows explicit and gaps render as gaps.
+
+The axis exists at the L1–L3 ceiling because L4 needs it. Without a
+transcript recorded before L1, the traceability rung is permanently
+out of reach for that project, so the evidence is collected whether or
+not the researcher intends to climb.
 
 ## Scope and non-goals
 
@@ -223,7 +388,7 @@ Vaibify is not:
   Ocean exist and serve users who want cloud-first workflows.
   Vaibify is local-first by design.
 - A cryptographic attestation service. Sigstore, Rekor, and in-toto
-  exist for that. Vaibify integrates with them (or will, at L5); it
+  exist for that. Vaibify integrates with them (or will, at L6); it
   does not replace them.
 
 ## Related work
@@ -291,7 +456,7 @@ to machine-verifiable reproducibility — not replacing peer review,
 but supplementing it with a verifiable substrate that a reviewer
 (human or agent) can check in seconds rather than days. Getting
 astrophysics to L2 in 2026 is a small step toward that substrate.
-Getting the field to L5 by the time a remote-sensing result needs
+Getting the field to L6 by the time a remote-sensing result needs
 to be trusted as evidence for life beyond Earth is the ambition
 this framework anchors.
 

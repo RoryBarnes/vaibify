@@ -989,8 +989,8 @@ Usage:
 
 **Diagnosing a failed run from inside the container.** When a pipeline reports exit-code -9999 ("runner disappeared") or the dashboard shows a step stuck in an unknown state:
 
-- "what killed the last run?" → \`vaibify-do get-pipeline-state\` — returns the reconciled \`pipeline_state.json\` with \`sFailureReason\` (symptom, e.g. \`heartbeat_stale\`) and \`sFailureCauseHost\` (the actual host exception, e.g. an ASGI WebSocket close). \`iActiveStepAtDeath\` names the step that was running when the runner died.
-- "show the host log for this container" → \`vaibify-do get-host-log-tail --lines 200\` (or \`--lines=200\`) — returns \`{bSanitized: true, listIncidents: [...]}\`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw \`~/.vaibify/vaibify.log\` spans every container and carries host paths, so it is withheld from the agent lane by design — only the dashboard sees \`listLines\`. An empty \`listIncidents\` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
+- "what killed the last run?" → `vaibify-do get-pipeline-state` — returns the reconciled `pipeline_state.json` with `sFailureReason` (symptom, e.g. `heartbeat_stale`) and `sFailureCauseHost` (the actual host exception, e.g. an ASGI WebSocket close). `iActiveStepAtDeath` names the step that was running when the runner died.
+- "show the host log for this container" → `vaibify-do get-host-log-tail --lines 200` (or `--lines=200`) — returns `{bSanitized: true, listIncidents: [...]}`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw `~/.vaibify/vaibify.log` spans every container and carries host paths, so it is withheld from the agent lane by design — only the dashboard sees `listLines`. An empty `listIncidents` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
@@ -1083,12 +1083,16 @@ trivial tests just to satisfy the dashboard.
 
 ## The PROOF ladder
 
-PROOF is a five-rung reproducibility ladder — Provenance,
-Reproducibility, Openness, Oversight, Falsifiability (L1
-Self-Consistent, L2 Published, L3 Reproducible; L4/L5 are non-goals).
-To raise or audit a project's level, use the **proof-ladder** skill —
-it carries the ordered L1->L3 gate walkthrough and the known audit
-traps.
+PROOF is a six-rung reproducibility ladder named for the pillars a
+result must rest on — Provenance, Reproducibility, Openness,
+Oversight, Falsifiability (L1 Self-Consistent, L2 Published, L3
+Reproducible, L4 Traceable, L5 Regenerated, L6 Attested). Vaibify
+implements L1-L3; L4-L6 are non-goals. To raise or audit a project's
+level, use the **proof-ladder** skill — it carries the ordered L1->L3
+gate walkthrough and the known audit traps.
+
+Level 3 additionally requires a CONTAINERIZED project. A host-mode
+project reaches L2 and stops; the refusal criterion is `host-mode`.
 
 Two rules that must never be violated, skill or not:
 
@@ -1136,13 +1140,13 @@ procedure to fix them permanently.
 
 The immediate `pip install` is ephemeral, and **you cannot make it permanent from inside this container.**
 
-Dependencies are declared in exactly ONE place: \`pythonPackages\` in the project's \`vaibify.yml\`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
+Dependencies are declared in exactly ONE place: `pythonPackages` in the project's `vaibify.yml`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
 
-\`<repo>/.vaibify/requirements.txt\` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start, and PROOF Level 3 compiles \`requirements.lock\` from it — so the image, the mirror and the lock agree by construction. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost.
+`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start, and PROOF Level 3 compiles `requirements.lock` from it — so the image, the mirror and the lock agree by construction. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost.
 
-So: **tell the researcher which package you need and why, and ask them to add it to \`pythonPackages\` in \`vaibify.yml\` and rebuild the image.** Until they do, your \`pip install\` holds for this container session only — say that plainly rather than reporting the dependency as handled.
+So: **tell the researcher which package you need and why, and ask them to add it to `pythonPackages` in `vaibify.yml` and rebuild the image.** Until they do, your `pip install` holds for this container session only — say that plainly rather than reporting the dependency as handled.
 
-Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in \`requirements.lock\`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it. That split cost a real project six rounds of diagnosis (2026-09-01).
+Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in `requirements.lock`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it. That split cost a real project six rounds of diagnosis (2026-09-01).
 
 ### Rules
 

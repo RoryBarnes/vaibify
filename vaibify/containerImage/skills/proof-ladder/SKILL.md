@@ -5,14 +5,58 @@ description: Raise a vaibify project to PROOF Level 1, 2, or 3, audit why a leve
 
 # Driving a project up the PROOF ladder
 
-PROOF is a five-rung reproducibility ladder named for the pillars a
+PROOF is a six-rung reproducibility ladder named for the pillars a
 result must rest on — Provenance, Reproducibility, Openness,
 Oversight, Falsifiability
 (L1 Self-Consistent, L2 Published, L3 Reproducible, L4 Traceable,
-L5 Attested). Vaibify implements L1-L3; L4/L5 are deliberate
-non-goals — if asked, say so honestly and point at `docs/vision.md`
-(see the vaibify-doc-map skill). Walk the gates in order, stopping at
-the requested level.
+L5 Regenerated, L6 Attested). Vaibify implements L1-L3; L4-L6 are
+deliberate non-goals — if asked, say so honestly and point at
+`docs/vision.md` (see the vaibify-doc-map skill). Walk the gates in
+order, stopping at the requested level.
+
+What the three out-of-scope rungs mean, so you can answer without
+inventing:
+
+**L4 Traceable** adds a public changelog for every artifact — git
+history *and* the AI prompt transcript — plus traceability back
+through calibration to the raw observations. It cannot be reached
+retroactively, because the transcript has to exist before L1.
+
+**L5 Regenerated** retraces the work with a *different* AI model and
+gets the same science. Four things a researcher may ask you about,
+each easy to get wrong:
+
+- The regeneration starts from the **publication**, not the
+  transcript. Replaying the transcript reproduces the first model's
+  path instead of deriving anything independently. The transcript
+  stays public for audit; it is not the input.
+- The equivalence **tolerance is declared in the publication**, per
+  quantity and with a justification, and must cover every quantity
+  the paper's claims rest on. Publishing it beforehand is what makes
+  it pre-registered rather than a rationalisation.
+- L5 then returns a **verdict** — did every compared quantity fall
+  inside that tolerance? Whether the tolerance was *appropriate* is
+  the reader's call, not the ladder's.
+- Byte-identity across the two runs is NOT expected. Each artifact
+  must independently be L3; the two are not compared byte for byte.
+
+"A different model" means a different model identifier — a floor, not
+a guarantee, since same-vendor siblings likely share a pretraining
+corpus. L5 claims model-independence conditional on the same
+researcher; it cannot claim more, because one person directs both
+runs.
+
+**L6 Attested** adds independent, publicly verifiable attestations by
+third parties who retraced the work themselves and confirmed the L3
+reproducibility of BOTH artifacts plus the equivalence verdict. They
+do not report cross-run byte-identity. Because those attestors never
+saw the original process, L6 is where independence from the
+researcher arrives.
+
+**Level 3 requires a containerized project.** A host-mode project is
+refused with the `host-mode` criterion — the level is defined by a
+pinned image digest and an in-container rerun, and a host project has
+neither. Do not walk a host project up to L3; say it reaches L2.
 
 ## The one authority rule
 

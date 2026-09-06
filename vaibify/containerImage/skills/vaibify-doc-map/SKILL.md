@@ -21,7 +21,8 @@ All paths are under `/usr/share/vaibify/docs/`.
 | What each PROOF level proves / requires | reproducibility.md | `## The Reproducibility Stack`, `## PROOF Level 3 — Reproducible` |
 | The reproducibility envelope files | reproducibility.md | `## The Reproducibility Envelope` (Tier 1/2/3 subsections) |
 | How `vaibify reproduce` verifies | reproducibility.md | `## The verification ceremony` |
-| The full ladder incl. L4/L5 (out of scope) | vision.md | (whole file is short) |
+| The full ladder incl. L4-L6 (out of scope) | vision.md | `## The PROOF ladder` |
+| AI-provenance states (declared/recorded/supervised) | vision.md | `## The Replay axis` |
 | The project.json / step object schema | pipelines.md | `## Project File`, `## Step Object` |
 | Project size limits, core allocation | pipelines.md | `### Project size limits`, `## Core Allocation` |
 | Test file formats and detection | testFormats.md | `## Format Table`, `## How Format Detection Works` |

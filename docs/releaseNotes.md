@@ -98,6 +98,17 @@ containment rests on creating a disposable container and proving it
 gone afterwards, and a host project has none to create. See
 [agentCouncil.md](agentCouncil.md).
 
+### The PROOF ladder is six rungs
+
+The ladder's vocabulary now names a rung between Traceable and
+Attested: **L5 Regenerated**, in which the work is retraced by
+*different* AI agents and the science comes out the same. What was
+L5 Attested is now **L6**. Nothing about vaibify's behaviour changed
+— L1 through L3 are still what vaibify implements and enforces — but
+the two rungs above the ceiling are renumbered, so a project that
+described itself as targeting "L5" under the old vocabulary means
+L6 under the new one. See [vision.md](vision.md).
+
 ### Host mode
 
 Vaibify can now run a project **directly on your own machine**, with

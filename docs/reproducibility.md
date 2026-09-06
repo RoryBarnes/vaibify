@@ -82,6 +82,18 @@ canonical flow.
 
 ## PROOF Level 3 — Reproducible
 
+The PROOF ladder has six rungs — L1 Self-Consistent, L2 Published,
+L3 Reproducible, L4 Traceable, L5 Regenerated, L6 Attested — and
+[vision.md](vision.md) is the normative statement of all six. This
+page is the normative statement of the ceiling vaibify implements.
+
+**Level 3 requires a containerized project.** The level is defined by
+a pinned image digest and a rerun inside that image, and a host-mode
+project — one whose pipeline runs directly on the researcher's own
+machine — has neither. Such a project is refused L3 with the
+`host-mode` criterion and reaches L2. This is a property of what the
+level claims, not a gap in host mode.
+
 Vaibify targets **PROOF Level 3 ("Reproducible")** on the PROOF
 ladder: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts

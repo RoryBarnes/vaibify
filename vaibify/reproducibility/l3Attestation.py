@@ -25,13 +25,16 @@ migration is needed yet. Two extension points are anticipated:
   ``iSchemaVersion`` to 2; the migrator at index 0 fills the new
   keys with safe defaults so L1-L3 readers can still parse a v2
   record without crashing.
-* **L5 ("Attested")** will generalize the single-attestor block
+* **L6 ("Attested")** will generalize the single-attestor block
   (``sStatus``, ``sAttestedAtUtc``) to ``listAttestations: [
   {sAttestor, sAttestedAtUtc, sStatus}, ...]`` so external auditors
-  can co-sign. An L5 record bumps ``iSchemaVersion`` to 5; the
+  can co-sign. An L6 record bumps ``iSchemaVersion`` to 5; the
   migrator wraps the legacy single-attestor fields into the new list
   shape. (It read 3 until carrying claimed that number — see the v3
-  migrator below.)
+  migrator below.) L5 ("Regenerated") sits between the two and needs
+  no schema of its own: a regeneration is a second L3 attestation
+  produced by different agents, plus the researcher's written
+  justification of the byte differences.
 
 Adding a future migrator is one tuple append: see
 ``_fdictMigrateAttestation`` for the contract.
@@ -166,7 +169,7 @@ def _fdictMigrateAttestationV3ToV4(dictPayload):
 
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
-# v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L5 work
+# v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L6 work
 # appends one tuple each. See module docstring.
 _LIST_ATTESTATION_MIGRATORS = [
     (1, _fdictMigrateAttestationV1ToV2),
