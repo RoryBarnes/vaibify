@@ -865,8 +865,13 @@ def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
 
     Kills: dropping ``ai-models-undeclared`` /
     ``personal-layer-unanswered`` from
-    ``_T_WORKFLOW_LEVEL2_BASE_CRITERIA``, which collapses the counted
-    set back to the two verifies and turns this state red again.
+    ``_T_WORKFLOW_LEVEL2_BASE_CRITERIA``. The cell intersects the live
+    blockers against that tuple, so a criterion dropped from it is
+    invisible: blocking the two AI declarations would then move the
+    satisfied count by nothing. The expected total is read from the
+    same tuple, so the count alone cannot see that mutation (it did,
+    while the total was hand-typed); the CREDIT the declarations earn
+    is what the assertion below pins.
     """
     listLevel2 = [
         _fdictWorkflowBlocker(2, "github-verify-stale"),
@@ -879,6 +884,18 @@ def testWorkflowScopeStaleCachesWithGreenAiProvenanceReadPartial():
         "partial", _fiCountLevelTwoCriteria() - 2,
         _fiCountLevelTwoCriteria(),
     )
+    dictStatesWithAiBlocked = fdictComputeWorkflowScopeLevelStates(
+        _fdictWorkflowWithCleanSteps(1),
+        listLevel2 + [
+            _fdictWorkflowBlocker(2, "ai-models-undeclared"),
+            _fdictWorkflowBlocker(2, "personal-layer-unanswered"),
+        ],
+        [],
+    )
+    assert (
+        dictStates["s2"]["iSatisfied"]
+        - dictStatesWithAiBlocked["s2"]["iSatisfied"]
+    ) == 2, "the two AI declarations earned the header no credit"
 
 
 def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
