@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.10.dev5 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.10.dev7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9e9b39e7"></script>
+      <script src="_static/documentation_options.js?v=0d1b3794"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -208,6 +208,16 @@ canonical flow.</p>
 </section>
 <section id="proof-level-3-reproducible">
 <h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
+<p>The PROOF ladder has six rungs — L1 Self-Consistent, L2 Published,
+L3 Reproducible, L4 Traceable, L5 Regenerated, L6 Attested — and
+<a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a> is the normative statement of all six. This
+page is the normative statement of the ceiling vaibify implements.</p>
+<p><strong>Level 3 requires a containerized project.</strong> The level is defined by
+a pinned image digest and a rerun inside that image, and a host-mode
+project — one whose pipeline runs directly on the researcher’s own
+machine — has neither. Such a project is refused L3 with the
+<code class="docutils literal notranslate"><span class="pre">host-mode</span></code> criterion and reaches L2. This is a property of what the
+level claims, not a gap in host mode.</p>
 <p>Vaibify targets <strong>PROOF Level 3 (“Reproducible”)</strong> on the PROOF
 ladder: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts
