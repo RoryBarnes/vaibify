@@ -1938,14 +1938,40 @@ attestation, never written into any repository, and possibly
 deposited publicly one day.
 
 The image acquisition chain (registry pull, then the Zenodo deposit,
-then a copy already on the daemon) is shared with the generated
-`reproduce.sh` rather than re-derived beside it, and the platform is
-three facts kept apart by name -- the envelope's required platform,
-the platform of the image the chain actually obtained, and the
-daemon's own architecture. Those land with the acquisition step; the
-staging phase records the required platform from the envelope's
-architecture and REFUSES its absence rather than defaulting it to the
-host's -- the source names its environment, and there is no picker.
+then a copy already on the daemon) lives in `imageAcquisition` and
+mirrors the shell chain in `reproduce.sh` link for link rather than
+re-deriving it; `tests/testImageAcquisition.py` drives both lanes
+against one tarball and one envelope. The three links that touch the
+daemon -- pull, load, inspect -- are SDK calls in
+`disposableContainer`, the SDK authority for disposable work, so the
+chain module acquires neither a subprocess nor a client of its own.
+The platform is three facts kept apart by name: the envelope's
+required platform (requested of the pull and of the create; staging
+refuses an envelope that records none, because the source names its
+environment and there is no picker), the platform of the image the
+chain actually obtained (differing always refuses), and the daemon's
+own architecture, asked of the daemon (differing is emulation,
+refused without `--allow-emulation` and recorded with it).
+
+`shadowRerun.fdictRerunAndVerifyFromSnapshot` is the second seed. It
+takes the snapshot archive and the acquisition's answer, requests the
+platform on the create specification, writes the loaded-from-archive
+marker into the shadow under the shadow's own admission before any
+step runs, and hands everything else to the lane the first seed uses.
+The image reference comes from the acquisition, never re-read from
+the envelope, because a deposit-loaded image answers to its ID alone.
+
+The **reproduction report** (`reproductionReport`) is why the lane
+can serve a stranger at all. An attestation is the author's claim
+about their own project and is written into it; a report is a
+stranger's record of what happened when they tried, written under the
+reproducer's own home with its own schema and retention, apart from
+the staging scratch that is deleted after every run. `levelGates`
+never imports it, and a test pins that. Its verdicts are
+"reproduced", "reproduced under emulation", "diverged" and "no
+verdict"; the word "attested" appears nowhere on this lane, because
+vaibify offers no publishing, depositing, pushing or attesting action
+on a reproduction.
 
 ## The environment archive
 

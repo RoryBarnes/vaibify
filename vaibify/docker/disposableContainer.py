@@ -65,6 +65,10 @@ __all__ = [
     "fdockerCreateDisposableClient",
     "fdictCreateDisposableGateway",
     "fdictReserveAndCreateContainer",
+    "fdictPullImage",
+    "fsLoadImageFromStream",
+    "fdictInspectImage",
+    "fsReadDaemonArchitecture",
     "fnCopyArchiveIntoContainer",
     "fdictExecuteBoundedCommand",
     "fdictDestroyAndSettle",
@@ -150,12 +154,102 @@ def _fdictResolveHandle(dictGateway, sHandle):
     return dictHandle
 
 
+# ----- the image store, for the reproduction lane -----------------------
+#
+# The three links of the acquisition chain that touch the daemon --
+# pull, load, inspect -- live HERE because this module is the SDK
+# authority for disposable work. The chain's ORDER and its verdicts
+# belong to ``reproducibility.imageAcquisition``, which composes these
+# and never reaches the SDK itself.
+
+
+def fdictPullImage(dockerDisposable, sImageReference, sPlatform):
+    """Pull one reference for one platform; ``{bPulled, sDetail}``.
+
+    The platform is REQUESTED, never left to the daemon: a
+    multi-architecture reference pulled without one yields this host's
+    build. A failure is an answer, not an exception, because the
+    acquisition chain reports every link it tried.
+    """
+    try:
+        sPulledId = _fsSdkImageIdentity(dockerDisposable.images.pull(
+            sImageReference, platform=sPlatform,
+        ))
+    except Exception as errorPull:  # noqa: BLE001 -- reported, not raised
+        return {
+            "bPulled": False,
+            "sDetail": f"{type(errorPull).__name__}: {errorPull}",
+        }
+    return {"bPulled": True, "sDetail": sPulledId}
+
+
+def _fsSdkImageIdentity(dockerImage):
+    """Return an SDK image's id, or empty for an object that has none."""
+    return str(getattr(dockerImage, "id", "") or "")
+
+
+def fsLoadImageFromStream(dockerDisposable, fileStream):
+    """Load an image tarball stream; return the ID the daemon reports.
+
+    Raises ``DisposableContainerError`` when the daemon reports no
+    image, because an empty answer here would otherwise be run as an
+    empty reference.
+    """
+    listIds = [
+        sId for sId in map(
+            _fsSdkImageIdentity, dockerDisposable.images.load(fileStream) or [],
+        ) if sId
+    ]
+    if not listIds:
+        raise DisposableContainerError(
+            "the daemon loaded the archived tarball but reported no "
+            "image, so there is nothing to run"
+        )
+    return listIds[0]
+
+
+def fdictInspectImage(dockerDisposable, sImageReference):
+    """Return ``{sId, sOs, sArchitecture}`` for a held image, or ``None``.
+
+    ``None`` means the daemon does not hold the reference -- the
+    honest answer for "is a copy already here", and never a platform
+    claim about an image nobody inspected.
+    """
+    try:
+        dockerImage = dockerDisposable.images.get(sImageReference)
+    except Exception:  # noqa: BLE001 -- absence is the answer
+        return None
+    dictAttributes = getattr(dockerImage, "attrs", None) or {}
+    return {
+        "sId": _fsSdkImageIdentity(dockerImage),
+        "sOs": str(dictAttributes.get("Os") or ""),
+        "sArchitecture": str(dictAttributes.get("Architecture") or ""),
+    }
+
+
+def fsReadDaemonArchitecture(dockerDisposable):
+    """Return the DAEMON's architecture in Go's spelling, or ``""``.
+
+    Asked of the daemon itself (``docker version``'s server ``Arch``),
+    never of the host Python: on macOS the daemon is a virtual machine
+    whose architecture is a property of that machine, and inspecting
+    an obtained image cannot reveal it either -- an image reports its
+    own architecture on any host. Empty means nobody could ask.
+    """
+    try:
+        dictVersion = dockerDisposable.version()
+    except Exception:  # noqa: BLE001 -- unanswerable reads as unknown
+        return ""
+    return str((dictVersion or {}).get("Arch") or "")
+
+
 # ----- reserve-before-create lifecycle ----------------------------------
 
 
 def fdictReserveAndCreateContainer(
     dictGateway, sRole, sImageReference,
     dictLimits=None, sNetworkName=None, bReadOnlyRootFilesystem=False,
+    sPlatform=None,
 ):
     """Reserve, then create and start one disposable container.
 
@@ -173,7 +267,7 @@ def fdictReserveAndCreateContainer(
             disposableSpecification.fdictComposeCreateSpecification(
                 sImageReference, sReservationId, sRole, dictLimits,
                 sNetworkName, dictGateway.get("sResourceName", ""),
-                bReadOnlyRootFilesystem))
+                bReadOnlyRootFilesystem, sPlatform))
         containerDisposable = (
             dictGateway["dockerDisposable"].containers.create(
                 sImageReference,

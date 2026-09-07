@@ -544,10 +544,105 @@ not the author's Level 3 gate) and discarded; nothing was
 pulled, installed or run.
 ```
 
-This release stages, validates and describes. Acquiring the pinned
-image and re-running the snapshot in a shadow container arrive with
-later releases; `--from` combined with `--rerun` says so rather than
-pretending.
+Alone, `--from` stages, validates, describes and discards. Two more
+modes go further:
+
+```
+$ vaibify reproduce --from https://host.example/group/project.git --rerun
+...
+Obtaining the pinned image:
+  registry pull: failed (manifest unknown)
+  downloading the deposit: 0/821000000 bytes
+  downloading the deposit: 821000000/821000000 bytes
+  archived deposit: served
+  obtained from:   archive (sha256:29e0...)
+  platform:        required linux/amd64, obtained linux/amd64, daemon amd64
+Re-running the snapshot in a shadow container ...
+... workflow re-ran successfully in a shadow container
+... hashes match 47/47 OK
+
+Verdict: reproduced
+Reproduction report: ~/.vaibify/reproductions/reports/680f090caf425eb6.json
+This report is yours, not the author's attestation; nothing was written into the project.
+```
+
+- `--prepare` obtains the pinned image through the published chain
+  and stops, so a long download can be done ahead of a run.
+- `--rerun` obtains the image, re-runs the snapshot in a fresh shadow
+  container built from it, compares the produced bytes with the
+  project's manifest **inside that container**, and writes a
+  reproduction report. The exit code is `0` only when the verdict is
+  *reproduced*.
+- `--allow-emulation` accepts a pinned build of another architecture
+  than this daemon's; without it that case is refused by name.
+
+### The image is obtained through the chain `reproduce.sh` uses
+
+The order is a ruling and is not reordered: **registry pull, then the
+archived deposit, then a copy already on this daemon.** A registry is
+a convenience; the Zenodo deposit is the archive; a local copy is
+survivable for the author alone, and the run says so when it takes
+that path. Every link reports as it happens, and a refusal names every
+link tried and why each failed. The deposit is trusted through the
+envelope, never through the record page: its `sTarballSha256` is
+checked before anything is handed to the daemon, a download that
+differs is deleted and reported as "did not match its hash", and the
+tarball is removed on every exit path. There is no Dockerfile rebuild:
+the digest is the reproduction and the Dockerfile is provenance.
+
+The Python chain and the shell chain in `reproduce.sh` are pinned to
+agree link for link (`tests/testImageAcquisition.py` drives both
+against the same tarball bytes), and both now request the pinned
+platform: `reproduce.sh` passes `--platform linux/<arch>` to `docker
+pull` and `docker run`, read from the envelope's `sArchitecture`, and
+announces on stderr when an older envelope recorded none.
+
+### The platform is three facts, not one
+
+| Fact | Where it comes from |
+|---|---|
+| **required** platform | the envelope's `sArchitecture`, as `linux/<arch>` |
+| **obtained** platform | what the image the chain produced reports of itself |
+| **daemon** architecture | asked of the daemon itself, never of the host Python |
+
+An obtained platform that differs from the required one **always**
+refuses: the chain produced the wrong bytes. A daemon of another
+architecture is *emulation*: refused unless `--allow-emulation`, and
+when allowed the verdict reads "reproduced under emulation
+(`linux/amd64` image on a `arm64` host)". Inspecting the obtained
+image cannot reveal emulation, because an image reports its own
+architecture on any host, which is why the third fact has its own
+name.
+
+### What the shadow run is, and is not
+
+The rerun runs in the same shadow lane the dashboard's Verify uses,
+seeded from the staged snapshot instead of a running container: a
+container built from the obtained image with no network, no volumes,
+no credentials, no ports and no GPU, whatever the snapshot's
+`vaibify.yml` declares -- that file is data to the run, never an input
+to its runtime specification. The comparison is rooted on the shadow's
+filesystem, an interactive step's outputs are carried in and reported
+beside the counts, the first failing step's output is kept, and the
+shadow is destroyed with proof. When the image came from the archive,
+the loaded-from-archive marker is written into the shadow before any
+step runs, so the report's image re-check is *vacuous* by construction
+rather than a download compared with itself.
+
+### What a report is, and is not
+
+A **reproduction report** is the reproducer's own artefact. It lives
+under `~/.vaibify/reproductions/reports/<id>.json`, apart from the
+staging directory that is deleted after every run, with its own
+retention. It carries the redacted source facts, the manifest digest,
+the three platform facts, where the image came from and which
+reference ran, the verdict and the per-file comparison, the carried
+paths beside the counts, the failure record, and the image re-check.
+It is never an attestation, never written into any repository, and
+never read by the Level 3 gate; vaibify offers no publishing,
+depositing, pushing or attesting action on it. Its verdicts are
+*reproduced*, *reproduced under emulation*, *diverged*, and *no
+verdict* (the rerun never started, and the reason is named).
 
 ### What a source can be
 

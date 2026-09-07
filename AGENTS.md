@@ -424,6 +424,43 @@ real `git` and a real loopback HTTP remote, and every rule has a
 kill-confirmed entry. The staging sweep skips any directory whose live
 lock is held, whatever its age — the `~/.vaibify/tmp` lesson.
 
+**The image is obtained through the chain `reproduce.sh` runs, and
+the two lanes are pinned to agree.** `imageAcquisition` walks registry
+pull, then the archived deposit (hash from the ENVELOPE, checked
+before any load; tarball removed on every exit path), then a copy on
+this daemon (author-only, and it says so) — the order is a ruling and
+is never reordered or extended. The three links that touch the daemon
+are SDK calls in `disposableContainer` (`fdictPullImage`,
+`fsLoadImageFromStream`, `fdictInspectImage`,
+`fsReadDaemonArchitecture`), the SDK authority for disposable work;
+the chain module acquires no subprocess and no client, because a
+`docker pull` or `docker load` outside a gateway module is a
+mutation-capable row the ratchet refuses. The generated script now
+passes `--platform` to `docker pull` AND `docker run`, from the
+envelope's architecture normalized in shell, and announces an absent
+architecture on stderr rather than defaulting it — the same treatment
+as an absent epoch; the option rides in a bash array expanded with the
+guarded idiom because an empty array under `set -u` is an error on
+bash 3. `tests/testImageAcquisition.py` drives BOTH lanes against one
+tarball and one envelope. The three platform facts stay apart:
+obtained ≠ required always refuses, required ≠ daemon is emulation
+(refused without `--allow-emulation`, recorded with it), and the
+daemon's architecture is asked of the daemon — an image reports its
+own on any host. `shadowRerun.fdictRerunAndVerifyFromSnapshot` is the
+second seed: image and platform from the acquisition's answer (a
+deposit-loaded image answers to its ID alone), platform requested on
+the create, the loaded-from-archive marker written under the shadow's
+own admission before any step. `reproductionReport` is the
+reproducer's artefact under `~/.vaibify/reproductions/reports/`, apart
+from staging, never read by `levelGates`; its verdicts are
+"reproduced", "reproduced under emulation", "diverged", "no verdict",
+never "attested". `tests/testReproductionLive.py` drives the whole
+lane against a real daemon — registry fails by DNS, the deposit loads,
+the shadow runs the loaded ID — and proves the platform reaches the
+daemon by the daemon's own refusal of a wrong one. Two facts found
+live: a stock base image already owns uid 1000, and the shadow's typed
+reads need a `python3` in the image.
+
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and
 the container starts (ruled 2026-09-05, making the Features page's

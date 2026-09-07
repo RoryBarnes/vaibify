@@ -17566,8 +17566,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproduceFromSource.py::test_from_stages_describes_and_discards_without_a_tier',
         source='vaibify/cli/commandReproduce.py',
-        old='        _fnStageFromSource(sSource, sWorkflowName, bRerun)\n        return\n',
-        new='        _fnStageFromSource(sSource, sWorkflowName, bRerun)\n',
+        old='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n        return\n',
+        new='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_rule_2_a_missing_architecture_refuses',
@@ -17586,5 +17586,115 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/reproductionSource.py',
         old='    return shlex.join([listWords[0], "-o", "BatchMode=yes", *listWords[1:]])\n',
         new='    return shlex.join([*listWords, "-o", "BatchMode=yes"])\n',
+    ),
+    # --- 2026-09-06: Reproduce a published project, phase 2 -- the
+    # acquisition chain, the platform facts, the snapshot seed, the report ---
+    Falsification(
+        nodeid='tests/testReproduceScriptDeterminism.py::test_the_script_requests_the_pinned_platform_of_pull_and_run',
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old='docker run --rm -i --entrypoint bash \\\\\n    ${{saPlatformOption[@]+"${{saPlatformOption[@]}}"}} \\\\\n',
+        new='docker run --rm -i --entrypoint bash \\\\\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceScriptDeterminism.py::test_the_pull_requests_the_pinned_platform_too',
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old='if ! docker pull ${{saPlatformOption[@]+"${{saPlatformOption[@]}}"}} "$sImageRef"; then',
+        new='if ! docker pull "$sImageRef"; then',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionReport.py::test_the_carried_paths_ride_beside_the_counts',
+        source='vaibify/reproducibility/reproductionReport.py',
+        old='        "listCarriedPaths": list(dictOutcome.get("listCarriedPaths") or []),\n',
+        new='        "listCarriedPaths": [],\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionReport.py::test_retention_sweeps_only_reports_past_their_age',
+        source='vaibify/reproducibility/reproductionReport.py',
+        old='            if os.path.getmtime(sPath) > fCutoff:\n                continue\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_the_registry_serves_first_and_the_deposit_is_never_fetched',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n',
+        new='    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_the_pull_requests_the_required_platform',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    dictPull = disposableContainer.fdictPullImage(\n        dockerDisposable, sPinnedReference, sRequiredPlatform,\n    )',
+        new='    dictPull = disposableContainer.fdictPullImage(\n        dockerDisposable, sPinnedReference, None,\n    )',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_a_verified_deposit_is_loaded_and_the_loaded_id_is_what_runs',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n',
+        new='    if sLoadedId:\n        return sPinnedReference, S_OBTAINED_ARCHIVE\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_a_tampered_deposit_never_reaches_the_daemon',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if sActualSha != sExpectedSha:\n        os.remove(sTarballPath)\n',
+        new='    if False:\n        os.remove(sTarballPath)\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_an_obtained_platform_that_differs_refuses_whatever_the_flag_says',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if sObtainedPlatform != sRequiredPlatform:\n        raise ImageAcquisitionRefusedError(',
+        new='    if False:\n        raise ImageAcquisitionRefusedError(',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_a_daemon_of_another_architecture_is_emulation',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    sDaemonArchitecture = disposableContainer.fsReadDaemonArchitecture(\n        dockerDisposable,\n    )\n',
+        new='    sDaemonArchitecture = fsArchitectureOfPlatform(sObtainedPlatform)\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageAcquisition.py::test_both_lanes_walk_the_same_chain',
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    sActualSha = _fsStreamDownload(\n        sFileUrl, sTarballPath, iExpectedBytes, fnStatus,\n    )\n    if sActualSha != sExpectedSha:\n        os.remove(sTarballPath)\n        raise ImageAcquisitionRefusedError(\n            "the deposit did not match its hash: the envelope records "\n            f"{sExpectedSha[:19]}... and the download hashed to "\n            f"{sActualSha[:19]}...; nothing was loaded"\n        )\n    return sTarballPath\n',
+        new='    _fsStreamDownload(\n        sFileUrl, sTarballPath, iExpectedBytes, fnStatus,\n    )\n    return sTarballPath\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_the_comparison_is_rooted_on_the_shadow_never_on_the_staged_clone',
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='    tShadowPaths = ftResolveShadowPaths(\n        sNominalRepoPath,\n        posixpath.join(sNominalRepoPath, sWorkflowRelativePath),\n    )\n    dictWorkflow = dict(dictWorkflow)\n    dictWorkflow["sProjectRepoPath"] = tShadowPaths[1]\n',
+        new='    tShadowPaths = ftResolveShadowPaths(\n        sNominalRepoPath,\n        posixpath.join(sNominalRepoPath, sWorkflowRelativePath),\n    )\n    tShadowPaths = (tShadowPaths[0], sNominalRepoPath, tShadowPaths[2])\n    dictWorkflow = dict(dictWorkflow)\n    dictWorkflow["sProjectRepoPath"] = tShadowPaths[1]\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_the_create_requests_the_required_platform',
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='        sPlatform=str(dictAcquiredImage.get("sRequiredPlatform") or "") or None,\n',
+        new='        sPlatform=None,\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_no_credential_port_gpu_or_mount_reaches_the_shadow',
+        source='vaibify/docker/disposableSpecification.py',
+        old='            "network_mode": (\n                sNetworkName if sNetworkName is not None else "none"),\n',
+        new='            "network_mode": (\n                sNetworkName if sNetworkName is not None else "bridge"),\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_an_archive_loaded_image_marks_the_shadow_before_any_step',
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='    if dictAcquiredImage.get("sObtainedFrom") == "archive":\n        baSnapshotArchive = _fbaAppendLoadedFromArchiveMarker(\n',
+        new='    if dictAcquiredImage.get("sObtainedFrom") == "registry":\n        baSnapshotArchive = _fbaAppendLoadedFromArchiveMarker(\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_a_rerun_writes_a_report_and_never_an_attestation',
+        source='vaibify/cli/commandReproduce.py',
+        old='            _fnReproduceStagedSnapshot(sToken, dictAcquired)\n    finally:\n        fnDiscardStagedSource(sToken)\n',
+        new='            _fnReproduceStagedSnapshot(sToken, dictAcquired)\n            fnWriteAttestation(sSource, {"sStatus": "passed"})\n    finally:\n        fnDiscardStagedSource(sToken)\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_staging_is_deleted_and_the_report_survives_on_every_outcome',
+        source='vaibify/cli/commandReproduce.py',
+        old='            _fnReproduceStagedSnapshot(sToken, dictAcquired)\n    finally:\n        fnDiscardStagedSource(sToken)\n',
+        new='            _fnReproduceStagedSnapshot(sToken, dictAcquired)\n    finally:\n        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproduceFromSnapshot.py::test_from_never_spawns_pip_on_the_host',
+        source='vaibify/cli/commandReproduce.py',
+        old='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n        return\n',
+        new='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n',
     ),
 ]

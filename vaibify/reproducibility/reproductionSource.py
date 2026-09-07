@@ -111,6 +111,7 @@ __all__ = [
     "fcontextHoldStagedSource",
     "fdictClassifySource",
     "fdictDescribeStagedSource",
+    "fdictLoadStagedWorkflow",
     "fdictSelectWorkflowEntry",
     "fdictStageSource",
     "flistAdmittedLocalCloneRoots",
@@ -1076,6 +1077,23 @@ def _fdictReadSourceRecord(sToken):
         raise ReproductionSourceRefusedError(
             f"no staged snapshot is recorded under token {sToken!r}"
         ) from error
+
+
+def fdictLoadStagedWorkflow(sToken):
+    """Return the staged snapshot's selected workflow, loaded strictly.
+
+    The same loader staging validated it through, so a rerun runs the
+    workflow the six rules passed and no other, with step labels
+    attached the way the hub attaches them on load.
+    """
+    from vaibify.gui.pipelineUtils import fnAttachStepLabels
+    dictRecord = _fdictReadSourceRecord(sToken)
+    dictWorkflow = _fdictLoadWorkflowStrictly(
+        os.path.join(_fsStagingDirectory(sToken), dictRecord["sRepositoryName"]),
+        dictRecord["sWorkflowPath"],
+    )
+    fnAttachStepLabels(dictWorkflow)
+    return dictWorkflow
 
 
 def fdictDescribeStagedSource(sToken):
