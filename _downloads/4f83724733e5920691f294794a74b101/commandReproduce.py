@@ -25,10 +25,18 @@ inside a project repository. Walks five tiers in sequence:
 
 ``--from <source>`` is a different entry altogether: it stages a
 PUBLISHED project (a clone URL or a clean local clone) as an exact
-snapshot of one commit, validates it strictly as reproduction-ready
+snapshot of one commit and validates it strictly as reproduction-ready
 (the six staging rules a rerun depends on -- deliberately not the
-author's Level 3 gate), describes it and discards it. It never enters
-the tier sequence; see ``reproducibility.reproductionSource``.
+author's Level 3 gate). Alone it describes the snapshot and discards
+it; ``--prepare`` also obtains the pinned image through the published
+chain (registry, then the archived deposit, then a copy on this
+daemon) and stops; ``--rerun`` obtains the image, re-runs the snapshot
+in a shadow container built from it, compares the bytes there, and
+writes a REPRODUCTION REPORT under the reproducer's own home -- never
+an attestation, never into any repository. It never enters the tier
+sequence and never runs tier 2's host ``pip install``; see
+``reproducibility.reproductionSource``, ``imageAcquisition`` and
+``reproductionReport``.
 
 Tiers 1-4 are read-only over the project repo. Tier 5 no longer writes
 to the researcher's own working tree at all — the rerun's output lands
@@ -84,13 +92,22 @@ from vaibify.reproducibility.rerunVerification import (
     S_DIVERGENCE_PIPELINE_FAILED,
     fdictUnrunOutcome,
 )
+from vaibify.reproducibility import imageAcquisition
+from vaibify.reproducibility import reproductionReport
 from vaibify.reproducibility.reproductionSource import (
     ReproductionSourceRefusedError,
+    fbaExportStagedSnapshot,
+    fcontextHoldStagedSource,
+    fdictDescribeStagedSource,
+    fdictLoadStagedWorkflow,
     fdictSelectWorkflowEntry,
     fdictStageSource,
     fnDiscardStagedSource,
+    fsStagedClonePath,
 )
 from vaibify.reproducibility.shadowRerun import (
+    ShadowRerunRefusedError,
+    fdictRerunAndVerifyFromSnapshot,
     fdictRerunAndVerifyThroughShadow,
 )
 
@@ -954,37 +971,153 @@ def _fnReportStagedSource(dictStaged):
         )
 
 
-def _fnStageFromSource(sSource, sWorkflowName, bRerun):
-    """Stage and validate a published project, then discard the staging.
+def _fnStageFromSource(sSource, sWorkflowName, sMode, bAllowEmulation):
+    """Stage a published project, then describe, prepare or reproduce it.
 
-    Nothing consumes the snapshot in this release, so keeping a
-    checked-out repository under the researcher's home after a dry run
-    would be waste dressed as caching; it is removed as soon as it has
-    been described. No image is acquired here: acquisition mutates the
-    daemon and can take minutes, and this lane is the part that costs
-    nothing but a clone.
+    ``sMode`` is ``"describe"`` (stage, validate, print, discard),
+    ``"prepare"`` (also obtain the pinned image, then stop) or
+    ``"rerun"`` (obtain, re-run in a shadow, compare, write the
+    report). The staging directory is removed on every exit path: it
+    is scratch, and a report is the one durable thing a run leaves.
+    No image is acquired in describe mode, because acquisition mutates
+    the daemon and can take minutes, and describing costs nothing but
+    a clone.
     """
-    if bRerun:
-        click.echo(
-            "Error: --from stages and validates a published project; "
-            "re-running the staged snapshot arrives with the image "
-            "acquisition step in a later release."
-        )
-        sys.exit(2)
     try:
         dictStaged = fdictStageSource(sSource, sWorkflowName)
     except ReproductionSourceRefusedError as error:
         click.echo(f"Refused: {error}")
         sys.exit(1)
+    sToken = dictStaged["sToken"]
     try:
-        _fnReportStagedSource(dictStaged)
+        with fcontextHoldStagedSource(sToken):
+            _fnReportStagedSource(dictStaged)
+            if sMode == "describe":
+                click.echo(
+                    "Snapshot validated as reproduction-ready (the six "
+                    "staging rules, not the author's Level 3 gate) and "
+                    "discarded; nothing was pulled, installed or run."
+                )
+                return
+            dictAcquired = _fdictAcquireOrExit(sToken, bAllowEmulation)
+            if sMode == "prepare":
+                click.echo(
+                    "Image obtained and snapshot discarded; nothing was run."
+                )
+                return
+            _fnReproduceStagedSnapshot(sToken, dictAcquired)
     finally:
-        fnDiscardStagedSource(dictStaged["sToken"])
-    click.echo(
-        "Snapshot validated as reproduction-ready (the six staging rules, "
-        "not the author's Level 3 gate) and discarded; nothing was "
-        "pulled, installed or run."
+        fnDiscardStagedSource(sToken)
+
+
+def _fdictAcquireOrExit(sToken, bAllowEmulation):
+    """Obtain the pinned image through the published chain, or exit 1."""
+    dictEnvironment = fdictReadEnvironmentJson(
+        ffilesEnsureRepoFiles(fsStagedClonePath(sToken)),
     )
+    dictSource = fdictDescribeStagedSource(sToken)
+    click.echo("Obtaining the pinned image:")
+    try:
+        dictAcquired = imageAcquisition.fdictAcquirePinnedImage(
+            dictEnvironment, dictSource["sRequiredPlatform"],
+            _fnPrintAcquisitionEvent, bAllowEmulation,
+        )
+    except imageAcquisition.ImageAcquisitionRefusedError as error:
+        click.echo(f"Refused: {error}")
+        sys.exit(1)
+    click.echo(
+        f"  obtained from:   {dictAcquired['sObtainedFrom']} "
+        f"({dictAcquired['sImageReference']})"
+    )
+    click.echo(
+        f"  platform:        required {dictAcquired['sRequiredPlatform']}, "
+        f"obtained {dictAcquired['sObtainedPlatform']}, daemon "
+        f"{dictAcquired['sDaemonArchitecture']}"
+        + (" (emulated)" if dictAcquired["bEmulated"] else "")
+    )
+    return dictAcquired
+
+
+def _fnPrintAcquisitionEvent(dictEvent):
+    """Print one acquisition event as it happens."""
+    sPhase = dictEvent.get("sPhase", "")
+    if sPhase == "attempt":
+        sOutcome = "served" if dictEvent.get("bSucceeded") else "failed"
+        sDetail = dictEvent.get("sDetail") or ""
+        click.echo(
+            f"  {dictEvent.get('sLink')}: {sOutcome}"
+            + (f" ({sDetail})" if sDetail and not dictEvent.get(
+                "bSucceeded") else "")
+        )
+    elif sPhase == "downloading" and dictEvent.get("iTotalBytes"):
+        iBytes = int(dictEvent.get("iBytes") or 0)
+        iTotal = int(dictEvent.get("iTotalBytes") or 0)
+        if iBytes == 0 or iBytes >= iTotal:
+            click.echo(f"  downloading the deposit: {iBytes}/{iTotal} bytes")
+
+
+def _fnReproduceStagedSnapshot(sToken, dictAcquired):
+    """Re-run the staged snapshot in a shadow and write the report."""
+    from .commandUtilsDocker import fconnectionRequireDocker
+    fStarted = time.monotonic()
+    dictSource = fdictDescribeStagedSource(sToken)
+    click.echo("Re-running the snapshot in a shadow container ...")
+    try:
+        dictOutcome = fdictRerunAndVerifyFromSnapshot(
+            fconnectionRequireDocker(), fbaExportStagedSnapshot(sToken),
+            dictAcquired, fdictLoadStagedWorkflow(sToken),
+            dictSource["sWorkflowPath"], dictSource["sRepositoryName"],
+            sResourceName=f"reproduction-{sToken}",
+        )
+    except ShadowRerunRefusedError as error:
+        dictOutcome = fdictUnrunOutcome(str(error))
+    _fnReportRerunExecution(dictOutcome)
+    _fnReportHashCompare(dictOutcome)
+    dictRecheck = _fdictRecheckObtainedImage(sToken, dictAcquired)
+    dictReport = reproductionReport.fdictBuildReproductionReport(
+        dictSource, dictAcquired, dictOutcome, dictRecheck,
+        time.monotonic() - fStarted,
+    )
+    sReportPath = reproductionReport.fsWriteReproductionReport(dictReport)
+    click.echo("")
+    click.echo(f"Verdict: {reproductionReport.fsRenderVerdict(dictReport)}")
+    click.echo(f"Reproduction report: {sReportPath}")
+    click.echo(
+        "This report is yours, not the author's attestation; nothing was "
+        "written into the project."
+    )
+    if dictReport["sVerdict"] != reproductionReport.S_VERDICT_REPRODUCED:
+        sys.exit(1)
+
+
+def _fdictRecheckObtainedImage(sToken, dictAcquired):
+    """Judge the obtained image against the deposit on record, if any.
+
+    Vacuous by construction when the chain LOADED the deposit: a
+    download re-hashed against itself matches always, and the report
+    says so rather than recording a comparison nobody made.
+    """
+    from vaibify.reproducibility import imageArchive
+    dictEnvironment = fdictReadEnvironmentJson(
+        ffilesEnsureRepoFiles(fsStagedClonePath(sToken)),
+    ) or {}
+    bLoadedFromArchive = (
+        dictAcquired.get("sObtainedFrom") == imageAcquisition.S_OBTAINED_ARCHIVE
+    )
+    sLocalStreamSha = ""
+    if imageArchive.fdictReadArchiveRecord(dictEnvironment) and not (
+        bLoadedFromArchive
+    ):
+        sLocalStreamSha = imageDeposit.fsRecomputeImageStreamSha256(
+            dictAcquired["sImageReference"],
+        )
+    dictVerdict = imageArchive.fdictJudgeArchiveRecheck(
+        dictEnvironment, sLocalStreamSha, bLoadedFromArchive,
+    )
+    dictVerdict["bVacuous"] = (
+        dictVerdict.get("sVerdict") == imageArchive.S_RECHECK_VACUOUS
+    )
+    return dictVerdict
 
 
 @click.command("reproduce")
@@ -993,9 +1126,21 @@ def _fnStageFromSource(sSource, sWorkflowName, bRerun):
     help="Reproduce a PUBLISHED project: an https:// or ssh:// clone "
          "URL, a user@host:path address, or the path of a clean local "
          "clone under your home directory. Stages an exact snapshot of "
-         "one commit and validates it as reproduction-ready without "
-         "pulling, installing or running anything. Cannot be "
-         "combined with --repo or --skip-tier.",
+         "one commit and validates it as reproduction-ready. Alone it "
+         "describes and discards the snapshot; with --prepare it also "
+         "obtains the pinned image; with --rerun it re-runs the snapshot "
+         "in a shadow container and writes a reproduction report. Cannot "
+         "be combined with --repo or --skip-tier.",
+)
+@click.option(
+    "--prepare", "bPrepare", is_flag=True, default=False,
+    help="With --from: obtain the pinned image through the published "
+         "chain (registry, archived deposit, local copy) and stop.",
+)
+@click.option(
+    "--allow-emulation", "bAllowEmulation", is_flag=True, default=False,
+    help="With --from: run a pinned build of another architecture under "
+         "emulation; the report says so. Refused otherwise.",
 )
 @click.option(
     "--repo", "sRepo", default=None,
@@ -1019,7 +1164,10 @@ def _fnStageFromSource(sSource, sWorkflowName, bRerun):
     type=click.Choice(_T_TIER_CHOICES),
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
-def fnReproduceCommand(sSource, sRepo, bRerun, sWorkflowName, saSkipTier):
+def fnReproduceCommand(
+    sSource, bPrepare, bAllowEmulation, sRepo, bRerun, sWorkflowName,
+    saSkipTier,
+):
     """Verify a project's PROOF L3 reproducibility envelope."""
     if sSource is not None:
         if sRepo is not None or saSkipTier:
@@ -1027,8 +1175,21 @@ def fnReproduceCommand(sSource, sRepo, bRerun, sWorkflowName, saSkipTier):
                 "--from names a published project and takes neither "
                 "--repo nor --skip-tier; it never enters the tier sequence."
             )
-        _fnStageFromSource(sSource, sWorkflowName, bRerun)
+        if bPrepare and bRerun:
+            raise click.UsageError(
+                "--prepare stops after the image is obtained and --rerun "
+                "goes on to run it; pass one of them."
+            )
+        _fnStageFromSource(
+            sSource, sWorkflowName,
+            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),
+            bAllowEmulation,
+        )
         return
+    if bPrepare or bAllowEmulation:
+        raise click.UsageError(
+            "--prepare and --allow-emulation apply to --from only."
+        )
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)
     bAllPassed = True

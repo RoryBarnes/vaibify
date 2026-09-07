@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release Notes &mdash; Vaibify 0.0.10.dev11 documentation</title>
+  <title>Release Notes &mdash; Vaibify 0.0.10.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a9f867f7"></script>
+      <script src="_static/documentation_options.js?v=3a786984"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,6 +65,7 @@
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Release Notes</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#reproduce-a-published-project-re-run-it-in-a-shadow-and-get-a-report">Reproduce a published project: re-run it in a shadow and get a report</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone">Reproduce a published project: stage and validate from a URL or a clone</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-container-registry-is-optional-not-a-level-3-requirement">A container registry is optional, not a Level 3 requirement</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#your-container-image-can-be-archived-so-a-reproduction-survives-the-registry">Your container image can be archived, so a reproduction survives the registry</a></li>
@@ -113,6 +114,25 @@ observes, not internal mechanics; the architecture document carries
 the reasoning.</p>
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="reproduce-a-published-project-re-run-it-in-a-shadow-and-get-a-report">
+<h3>Reproduce a published project: re-run it in a shadow and get a report<a class="headerlink" href="#reproduce-a-published-project-re-run-it-in-a-shadow-and-get-a-report" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span> <span class="pre">&lt;source&gt;</span> <span class="pre">--rerun</span></code> now goes all the way. After
+staging, vaibify obtains the pinned image the way <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> does
+– the registry first, then the archived deposit on Zenodo (verified
+against the hash the envelope records before anything is loaded),
+then a copy already on this machine, saying which one served – runs
+the snapshot in a fresh shadow container built from that image with
+no network and no credentials, compares the bytes inside it, and
+writes a <strong>reproduction report</strong> under your own home. The report is
+yours: it is never an attestation, nothing is written into the
+project, and its verdict is <em>reproduced</em>, <em>reproduced under emulation</em>
+(when the pinned build is not your machine’s architecture and you
+passed <code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code>), <em>diverged</em>, or <em>no verdict</em> with the
+reason. <code class="docutils literal notranslate"><span class="pre">--prepare</span></code> obtains the image and stops. The generated
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> now requests the pinned platform of both <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code>
+and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span></code>, so a multi-architecture reference no longer yields
+whatever build the reproducer’s host prefers.</p>
+</section>
 <section id="reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone">
 <h3>Reproduce a published project: stage and validate from a URL or a clone<a class="headerlink" href="#reproduce-a-published-project-stage-and-validate-from-a-url-or-a-clone" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span> <span class="pre">&lt;source&gt;</span></code> starts from what a stranger has: an

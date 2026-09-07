@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.10.dev11 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.10.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a9f867f7"></script>
+      <script src="_static/documentation_options.js?v=3a786984"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -760,7 +760,7 @@ the seven L3 artifact-coherence checks, and — with <code class="docutils liter
 re-run of the workflow with a post-run hash compare and an L3
 attestation written to <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span><span class="o">[</span>--repo<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--rerun<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-tier<span class="w"> </span>N<span class="o">]</span>
-vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span class="w"> </span>SOURCE<span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span>
+vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span class="w"> </span>SOURCE<span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prepare<span class="w"> </span><span class="p">|</span><span class="w"> </span>--rerun<span class="o">]</span><span class="w"> </span><span class="o">[</span>--allow-emulation<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -783,7 +783,16 @@ vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span clas
 <td><p>Skip tier 1, 2, 3, or 4; may be repeated</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--from</span> <span class="pre">SOURCE</span></code></p></td>
-<td><p>Reproduce a <strong>published</strong> project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author’s Level 3 gate), pulling, installing and running nothing. Takes <code class="docutils literal notranslate"><span class="pre">--workflow</span></code>; refuses <code class="docutils literal notranslate"><span class="pre">--repo</span></code> and <code class="docutils literal notranslate"><span class="pre">--skip-tier</span></code>. Exit <code class="docutils literal notranslate"><span class="pre">1</span></code> names the first rule the snapshot failed. See <a class="reference internal" href="reproducibility.html#reproducing-somebody-else-s-project-vaibify-reproduce-from"><span class="std std-ref">Reproducing somebody else’s project</span></a></p></td>
+<td><p>Reproduce a <strong>published</strong> project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author’s Level 3 gate). Alone it describes and discards the snapshot. Takes <code class="docutils literal notranslate"><span class="pre">--workflow</span></code>; refuses <code class="docutils literal notranslate"><span class="pre">--repo</span></code> and <code class="docutils literal notranslate"><span class="pre">--skip-tier</span></code>. Exit <code class="docutils literal notranslate"><span class="pre">1</span></code> names the first rule the snapshot failed. See <a class="reference internal" href="reproducibility.html#reproducing-somebody-else-s-project-vaibify-reproduce-from"><span class="std std-ref">Reproducing somebody else’s project</span></a></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--prepare</span></code></p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">--from</span></code>: obtain the pinned image through the published chain (registry, archived deposit, local copy) and stop</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> with <code class="docutils literal notranslate"><span class="pre">--from</span></code></p></td>
+<td><p>Obtain the image, re-run the snapshot in a shadow container, compare the bytes there, and write a reproduction report under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. Exit <code class="docutils literal notranslate"><span class="pre">0</span></code> only when the verdict is <em>reproduced</em></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code></p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">--from</span></code>: accept a pinned build of another architecture than this daemon’s; the verdict then reads “reproduced under emulation”. Refused by name otherwise</p></td>
 </tr>
 </tbody>
 </table>

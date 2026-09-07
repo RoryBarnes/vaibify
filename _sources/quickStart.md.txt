@@ -108,7 +108,9 @@ vaibify reproduce --repo . --skip-tier 2 --skip-tier 3
 
 Tiers 2 and 3 are skipped because they install a pinned dependency set
 and pull a container image; neither is needed to answer the question in
-front of you. (If you do run tier 2 later, do it inside a virtual
+front of you. (`vaibify reproduce --from <url>` checks the same things
+from the published URL alone, without touching the clone you have open
+in the hub -- and, as section 7 shows, can go on to re-run it.) (If you do run tier 2 later, do it inside a virtual
 environment — it installs an exact, hash-pinned dependency set into
 whatever Python is active.)
 
@@ -282,7 +284,10 @@ whether a rebuild from that image reproduces the outputs.
 
 The obvious next move is to run the pipeline again and re-check the
 manifest. **Don't** — that is not a byte test, and it cannot come out
-clean.
+clean. And note that you did not need to containerize anything to
+check the bytes: the command below the two claims works from the
+published URL alone, in a shadow container built from the image the
+author pinned, on any machine with Docker.
 
 Every figure vaibify renders is dated and salted from the project
 repository's HEAD commit. That is what makes two runs of the same
@@ -305,16 +310,36 @@ result?" without asking anything about your libraries. They passed, and
 they passed before you had a container at all — which is the point of
 section 6: the science agreed while the bytes did not.
 
-**The bytes — checked in the pinned environment.** The artefact that
-does it is the one the project publishes for a stranger:
+**The bytes — checked in the pinned environment.** Three ways, and
+they check the same thing.
+
+As a stranger, from the URL alone:
+
+```bash
+vaibify reproduce --from https://github.com/RoryBarnes/aigreenhouse.git --rerun
+```
+
+It clones the project in full, validates the snapshot, obtains the
+image the author pinned (the registry first, then the archived copy on
+Zenodo, then a copy already on your machine, saying which one served),
+runs every step in a fresh *shadow* container built from that image
+with no network and no credentials, compares the bytes inside it, and
+writes a **reproduction report** under your own home. The verdict is
+*reproduced* — or *reproduced under emulation* if the pinned build is
+not your machine's architecture and you passed `--allow-emulation`,
+or *diverged*, or *no verdict* with the reason. The report is yours,
+not the author's: nothing is written into the project, and it is not
+an attestation.
+
+As a stranger without vaibify, the artefact the project publishes:
 
 ```bash
 ./reproduce.sh
 ```
 
-It reads the image digest and the recorded epoch out of
-`.vaibify/environment.json`, pulls that exact image, runs every step
-inside it, and finishes with
+It reads the image digest, the pinned platform and the recorded epoch
+out of `.vaibify/environment.json`, pulls that exact image for that
+platform, runs every step inside it, and finishes with
 
 ```
 sha256sum -c MANIFEST.sha256
@@ -324,14 +349,16 @@ sha256sum -c MANIFEST.sha256
 what lets a reader who has never met you re-derive your figures byte
 for byte, and it is the whole reason the environment is pinned.
 
-The dashboard equivalent is **Verify Level 3 Reproducibility**, in the
-**Run** menu (it also has a button on the PROOF tab's Level 3 row). It
-creates a *shadow* container from the image digest your project pins,
-copies the repository into it, runs the whole pipeline there, and
-compares the results against your files — then destroys the shadow. It
-does not touch your outputs. Like `reproduce.sh`, it re-runs against
-the epoch the envelope recorded rather than against today's HEAD,
-which is exactly why it can come out at zero and a hand rerun cannot.
+As the author, the dashboard equivalent is **Verify Level 3
+Reproducibility**, in the **Run** menu (it also has a button on the
+PROOF tab's Level 3 row). It creates a shadow container from the image
+digest your project pins, copies the repository into it, runs the
+whole pipeline there, and compares the results against your files —
+then destroys the shadow. It does not touch your outputs, and it is
+the one of the three that writes an attestation, because it is your
+claim about your own project. All three re-run against the epoch the
+envelope recorded rather than against today's HEAD, which is exactly
+why they can come out at zero and a hand rerun cannot.
 
 It is the difference between believing your work reproduces and having
 watched it happen.

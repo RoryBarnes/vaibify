@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.10.dev11 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.10.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a9f867f7"></script>
+      <script src="_static/documentation_options.js?v=3a786984"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2079,14 +2079,38 @@ because a reproduction report is the reproducer’s artefact, never an
 attestation, never written into any repository, and possibly
 deposited publicly one day.</p>
 <p>The image acquisition chain (registry pull, then the Zenodo deposit,
-then a copy already on the daemon) is shared with the generated
-<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> rather than re-derived beside it, and the platform is
-three facts kept apart by name – the envelope’s required platform,
-the platform of the image the chain actually obtained, and the
-daemon’s own architecture. Those land with the acquisition step; the
-staging phase records the required platform from the envelope’s
-architecture and REFUSES its absence rather than defaulting it to the
-host’s – the source names its environment, and there is no picker.</p>
+then a copy already on the daemon) lives in <code class="docutils literal notranslate"><span class="pre">imageAcquisition</span></code> and
+mirrors the shell chain in <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> link for link rather than
+re-deriving it; <code class="docutils literal notranslate"><span class="pre">tests/testImageAcquisition.py</span></code> drives both lanes
+against one tarball and one envelope. The three links that touch the
+daemon – pull, load, inspect – are SDK calls in
+<code class="docutils literal notranslate"><span class="pre">disposableContainer</span></code>, the SDK authority for disposable work, so the
+chain module acquires neither a subprocess nor a client of its own.
+The platform is three facts kept apart by name: the envelope’s
+required platform (requested of the pull and of the create; staging
+refuses an envelope that records none, because the source names its
+environment and there is no picker), the platform of the image the
+chain actually obtained (differing always refuses), and the daemon’s
+own architecture, asked of the daemon (differing is emulation,
+refused without <code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code> and recorded with it).</p>
+<p><code class="docutils literal notranslate"><span class="pre">shadowRerun.fdictRerunAndVerifyFromSnapshot</span></code> is the second seed. It
+takes the snapshot archive and the acquisition’s answer, requests the
+platform on the create specification, writes the loaded-from-archive
+marker into the shadow under the shadow’s own admission before any
+step runs, and hands everything else to the lane the first seed uses.
+The image reference comes from the acquisition, never re-read from
+the envelope, because a deposit-loaded image answers to its ID alone.</p>
+<p>The <strong>reproduction report</strong> (<code class="docutils literal notranslate"><span class="pre">reproductionReport</span></code>) is why the lane
+can serve a stranger at all. An attestation is the author’s claim
+about their own project and is written into it; a report is a
+stranger’s record of what happened when they tried, written under the
+reproducer’s own home with its own schema and retention, apart from
+the staging scratch that is deleted after every run. <code class="docutils literal notranslate"><span class="pre">levelGates</span></code>
+never imports it, and a test pins that. Its verdicts are
+“reproduced”, “reproduced under emulation”, “diverged” and “no
+verdict”; the word “attested” appears nowhere on this lane, because
+vaibify offers no publishing, depositing, pushing or attesting action
+on a reproduction.</p>
 </section>
 </section>
 <section id="the-environment-archive">

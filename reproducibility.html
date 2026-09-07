@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.10.dev11 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.10.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a9f867f7"></script>
+      <script src="_static/documentation_options.js?v=3a786984"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -80,6 +80,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-verification-ceremony-vaibify-reproduce">The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#reproducing-somebody-else-s-project-vaibify-reproduce-from">Reproducing somebody else’s project: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-image-is-obtained-through-the-chain-reproduce-sh-uses">The image is obtained through the chain <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> uses</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-platform-is-three-facts-not-one">The platform is three facts, not one</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-shadow-run-is-and-is-not">What the shadow run is, and is not</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-report-is-and-is-not">What a report is, and is not</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-a-source-can-be">What a source can be</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-reproduction-is-of-a-commit">A reproduction is of a commit</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">Validation is strict, not advisory – and it is not the Level 3 gate</a></li>
@@ -666,10 +670,115 @@ not the author's Level 3 gate) and discarded; nothing was
 pulled, installed or run.
 </pre></div>
 </div>
-<p>This release stages, validates and describes. Acquiring the pinned
-image and re-running the snapshot in a shadow container arrive with
-later releases; <code class="docutils literal notranslate"><span class="pre">--from</span></code> combined with <code class="docutils literal notranslate"><span class="pre">--rerun</span></code> says so rather than
-pretending.</p>
+<p>Alone, <code class="docutils literal notranslate"><span class="pre">--from</span></code> stages, validates, describes and discards. Two more
+modes go further:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ vaibify reproduce --from https://host.example/group/project.git --rerun
+...
+Obtaining the pinned image:
+  registry pull: failed (manifest unknown)
+  downloading the deposit: 0/821000000 bytes
+  downloading the deposit: 821000000/821000000 bytes
+  archived deposit: served
+  obtained from:   archive (sha256:29e0...)
+  platform:        required linux/amd64, obtained linux/amd64, daemon amd64
+Re-running the snapshot in a shadow container ...
+... workflow re-ran successfully in a shadow container
+... hashes match 47/47 OK
+
+Verdict: reproduced
+Reproduction report: ~/.vaibify/reproductions/reports/680f090caf425eb6.json
+This report is yours, not the author's attestation; nothing was written into the project.
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--prepare</span></code> obtains the pinned image through the published chain
+and stops, so a long download can be done ahead of a run.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> obtains the image, re-runs the snapshot in a fresh shadow
+container built from it, compares the produced bytes with the
+project’s manifest <strong>inside that container</strong>, and writes a
+reproduction report. The exit code is <code class="docutils literal notranslate"><span class="pre">0</span></code> only when the verdict is
+<em>reproduced</em>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code> accepts a pinned build of another architecture
+than this daemon’s; without it that case is refused by name.</p></li>
+</ul>
+<section id="the-image-is-obtained-through-the-chain-reproduce-sh-uses">
+<h3>The image is obtained through the chain <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> uses<a class="headerlink" href="#the-image-is-obtained-through-the-chain-reproduce-sh-uses" title="Link to this heading"></a></h3>
+<p>The order is a ruling and is not reordered: <strong>registry pull, then the
+archived deposit, then a copy already on this daemon.</strong> A registry is
+a convenience; the Zenodo deposit is the archive; a local copy is
+survivable for the author alone, and the run says so when it takes
+that path. Every link reports as it happens, and a refusal names every
+link tried and why each failed. The deposit is trusted through the
+envelope, never through the record page: its <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> is
+checked before anything is handed to the daemon, a download that
+differs is deleted and reported as “did not match its hash”, and the
+tarball is removed on every exit path. There is no Dockerfile rebuild:
+the digest is the reproduction and the Dockerfile is provenance.</p>
+<p>The Python chain and the shell chain in <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> are pinned to
+agree link for link (<code class="docutils literal notranslate"><span class="pre">tests/testImageAcquisition.py</span></code> drives both
+against the same tarball bytes), and both now request the pinned
+platform: <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> passes <code class="docutils literal notranslate"><span class="pre">--platform</span> <span class="pre">linux/&lt;arch&gt;</span></code> to <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code> and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span></code>, read from the envelope’s <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>, and
+announces on stderr when an older envelope recorded none.</p>
+</section>
+<section id="the-platform-is-three-facts-not-one">
+<h3>The platform is three facts, not one<a class="headerlink" href="#the-platform-is-three-facts-not-one" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Fact</p></th>
+<th class="head"><p>Where it comes from</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>required</strong> platform</p></td>
+<td><p>the envelope’s <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>, as <code class="docutils literal notranslate"><span class="pre">linux/&lt;arch&gt;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>obtained</strong> platform</p></td>
+<td><p>what the image the chain produced reports of itself</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>daemon</strong> architecture</p></td>
+<td><p>asked of the daemon itself, never of the host Python</p></td>
+</tr>
+</tbody>
+</table>
+<p>An obtained platform that differs from the required one <strong>always</strong>
+refuses: the chain produced the wrong bytes. A daemon of another
+architecture is <em>emulation</em>: refused unless <code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code>, and
+when allowed the verdict reads “reproduced under emulation
+(<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code> image on a <code class="docutils literal notranslate"><span class="pre">arm64</span></code> host)”. Inspecting the obtained
+image cannot reveal emulation, because an image reports its own
+architecture on any host, which is why the third fact has its own
+name.</p>
+</section>
+<section id="what-the-shadow-run-is-and-is-not">
+<h3>What the shadow run is, and is not<a class="headerlink" href="#what-the-shadow-run-is-and-is-not" title="Link to this heading"></a></h3>
+<p>The rerun runs in the same shadow lane the dashboard’s Verify uses,
+seeded from the staged snapshot instead of a running container: a
+container built from the obtained image with no network, no volumes,
+no credentials, no ports and no GPU, whatever the snapshot’s
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> declares – that file is data to the run, never an input
+to its runtime specification. The comparison is rooted on the shadow’s
+filesystem, an interactive step’s outputs are carried in and reported
+beside the counts, the first failing step’s output is kept, and the
+shadow is destroyed with proof. When the image came from the archive,
+the loaded-from-archive marker is written into the shadow before any
+step runs, so the report’s image re-check is <em>vacuous</em> by construction
+rather than a download compared with itself.</p>
+</section>
+<section id="what-a-report-is-and-is-not">
+<h3>What a report is, and is not<a class="headerlink" href="#what-a-report-is-and-is-not" title="Link to this heading"></a></h3>
+<p>A <strong>reproduction report</strong> is the reproducer’s own artefact. It lives
+under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/&lt;id&gt;.json</span></code>, apart from the
+staging directory that is deleted after every run, with its own
+retention. It carries the redacted source facts, the manifest digest,
+the three platform facts, where the image came from and which
+reference ran, the verdict and the per-file comparison, the carried
+paths beside the counts, the failure record, and the image re-check.
+It is never an attestation, never written into any repository, and
+never read by the Level 3 gate; vaibify offers no publishing,
+depositing, pushing or attesting action on it. Its verdicts are
+<em>reproduced</em>, <em>reproduced under emulation</em>, <em>diverged</em>, and <em>no
+verdict</em> (the rerun never started, and the reason is named).</p>
+</section>
 <section id="what-a-source-can-be">
 <h3>What a source can be<a class="headerlink" href="#what-a-source-can-be" title="Link to this heading"></a></h3>
 <table class="docutils align-default">

@@ -6,6 +6,25 @@ the reasoning.
 
 ## Unreleased
 
+### Reproduce a published project: re-run it in a shadow and get a report
+
+`vaibify reproduce --from <source> --rerun` now goes all the way. After
+staging, vaibify obtains the pinned image the way `reproduce.sh` does
+-- the registry first, then the archived deposit on Zenodo (verified
+against the hash the envelope records before anything is loaded),
+then a copy already on this machine, saying which one served -- runs
+the snapshot in a fresh shadow container built from that image with
+no network and no credentials, compares the bytes inside it, and
+writes a **reproduction report** under your own home. The report is
+yours: it is never an attestation, nothing is written into the
+project, and its verdict is *reproduced*, *reproduced under emulation*
+(when the pinned build is not your machine's architecture and you
+passed `--allow-emulation`), *diverged*, or *no verdict* with the
+reason. `--prepare` obtains the image and stops. The generated
+`reproduce.sh` now requests the pinned platform of both `docker pull`
+and `docker run`, so a multi-architecture reference no longer yields
+whatever build the reproducer's host prefers.
+
 ### Reproduce a published project: stage and validate from a URL or a clone
 
 `vaibify reproduce --from <source>` starts from what a stranger has: an
