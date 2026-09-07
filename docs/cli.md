@@ -449,7 +449,7 @@ attestation written to `.vaibify/l3_attestation.json`.
 
 ```bash
 vaibify reproduce [--repo PATH] [--rerun] [--workflow NAME] [--skip-tier N]
-vaibify reproduce --from SOURCE [--workflow NAME]
+vaibify reproduce --from SOURCE [--workflow NAME] [--prepare | --rerun] [--allow-emulation]
 ```
 
 | Option             | Description                              |
@@ -458,7 +458,10 @@ vaibify reproduce --from SOURCE [--workflow NAME]
 | `--rerun` / `--no-rerun` | Also re-run the workflow (tier 5), re-hash its outputs, and write an attestation (default: off) |
 | `--workflow NAME`  | Name (or container path) of the workflow to re-run; required when the container hosts more than one |
 | `--skip-tier N`    | Skip tier 1, 2, 3, or 4; may be repeated |
-| `--from SOURCE`    | Reproduce a **published** project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author's Level 3 gate), pulling, installing and running nothing. Takes `--workflow`; refuses `--repo` and `--skip-tier`. Exit `1` names the first rule the snapshot failed. See [Reproducing somebody else's project](reproducibility.md#reproducing-somebody-elses-project-vaibify-reproduce---from) |
+| `--from SOURCE`    | Reproduce a **published** project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author's Level 3 gate). Alone it describes and discards the snapshot. Takes `--workflow`; refuses `--repo` and `--skip-tier`. Exit `1` names the first rule the snapshot failed. See [Reproducing somebody else's project](reproducibility.md#reproducing-somebody-elses-project-vaibify-reproduce---from) |
+| `--prepare`        | With `--from`: obtain the pinned image through the published chain (registry, archived deposit, local copy) and stop |
+| `--rerun` with `--from` | Obtain the image, re-run the snapshot in a shadow container, compare the bytes there, and write a reproduction report under `~/.vaibify/reproductions/reports/`. Exit `0` only when the verdict is *reproduced* |
+| `--allow-emulation` | With `--from`: accept a pinned build of another architecture than this daemon's; the verdict then reads "reproduced under emulation". Refused by name otherwise |
 
 Exit codes: `0` when every selected tier passed, `1` when any tier
 failed, `2` on a usage error (missing required file, malformed

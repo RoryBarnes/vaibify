@@ -167,6 +167,33 @@ if [ -z "$sImageRef" ] || [ "$sImageRef" = "null" ]; then
     exit 2
 fi
 
+# The platform the envelope PINS is requested of the pull and of the
+# run, in Docker's own spelling (linux/<arch>): without the request a
+# multi-architecture reference silently yields whatever build THIS
+# host prefers, and a run of the wrong build reproduces nothing. An
+# envelope that recorded no architecture is announced, never defaulted
+# to this host's -- the same treatment as an absent epoch below. The
+# option rides in an array expanded with the guarded-expansion idiom,
+# because an empty array under set -u is an error on bash 3.
+sImageArchitecture=$(jq -r '.dictContainer.sArchitecture // ""' \\
+    .vaibify/environment.json)
+case "$sImageArchitecture" in
+    ''|null) sImageArchitecture="" ;;
+esac
+if [ -z "$sImageArchitecture" ]; then
+    echo "vaibify: .vaibify/environment.json records no image architecture;" >&2
+    echo "  the pull and the run cannot request the pinned platform, so a" >&2
+    echo "  multi-architecture reference yields this host's build. Regenerate" >&2
+    echo "  the environment envelope on the authoring machine to fix it." >&2
+    saPlatformOption=()
+else
+    case "$sImageArchitecture" in
+        linux/*) sPlatform="$sImageArchitecture" ;;
+        *)       sPlatform="linux/$sImageArchitecture" ;;
+    esac
+    saPlatformOption=(--platform "$sPlatform")
+fi
+
 # The epoch RECORDED when the manifest was pinned, never one derived
 # from HEAD here: the commit that published the manifest moved HEAD,
 # so a re-derived epoch would date and salt every figure differently
@@ -193,7 +220,7 @@ fi
 # pinned image, but what the failed pull and the failed load together
 # prove is that nobody ELSE can run this script yet. Say which one
 # happened rather than silently doing either.
-if ! docker pull "$sImageRef"; then
+if ! docker pull ${{saPlatformOption[@]+"${{saPlatformOption[@]}}"}} "$sImageRef"; then
     if ! fnLoadImageFromArchive; then
         if docker image inspect "$sImageRef" > /dev/null 2>&1; then
             echo "vaibify: could not pull $sImageRef; running the copy" >&2
@@ -216,6 +243,7 @@ fi
 # the pinned steps, over the mounted repo, and nothing that reaches the
 # network or the wall clock.
 docker run --rm -i --entrypoint bash \\
+    ${{saPlatformOption[@]+"${{saPlatformOption[@]}}"}} \\
     -e "SOURCE_DATE_EPOCH=$sSourceDateEpoch" \\
     -v "$PWD":/work -w /work "$sImageRef" \\
     -s <<'{sDelimiter}'

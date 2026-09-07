@@ -81,6 +81,7 @@ __all__ = [
     "ShadowRerunRefusedError",
     "S_SHADOW_ROLE",
     "S_SHADOW_WORKSPACE_ROOT",
+    "fdictRerunAndVerifyFromSnapshot",
     "fdictRerunAndVerifyThroughShadow",
     "flistNameCommandsMissingFromTheImage",
     "fdictRerunInShadowContainer",
@@ -241,7 +242,7 @@ def fdictRerunInShadowContainer(
 
 
 def _fdictCreateShadowOrExplainTheMissingImage(
-    dictGateway, sImageReference, dictCapacity,
+    dictGateway, sImageReference, dictCapacity, sPlatform=None,
 ):
     """Create the shadow, naming the remedy when the image is absent.
 
@@ -264,6 +265,7 @@ def _fdictCreateShadowOrExplainTheMissingImage(
         return disposableContainer.fdictReserveAndCreateContainer(
             dictGateway, S_SHADOW_ROLE, sImageReference,
             disposableSpecification.fdictBuildDefaultLimits(dictCapacity),
+            sPlatform=sPlatform,
         )
     except Exception as errorCreate:  # noqa: BLE001 -- re-raised below
         if not _fbNamesAnAbsentImage(errorCreate):
@@ -304,7 +306,7 @@ def _fsExplainTheMissingImage(sImageReference):
 def _fdictDriveShadowLifecycle(
     connectionDocker, dictWorkflow, sImageReference, tShadowPaths,
     baRepositoryArchive, dictCapacity, sResourceName,
-    fnStatusCallback, fdictRunAndVerify,
+    fnStatusCallback, fdictRunAndVerify, sPlatform=None,
 ):
     """Create, load, compare, and destroy one shadow container.
 
@@ -312,6 +314,9 @@ def _fdictDriveShadowLifecycle(
     raised has still left a container on the researcher's daemon, and a
     destruction that cannot be PROVEN leaves the gateway's reservation
     visibly quarantined rather than reporting a clean completion.
+
+    ``sPlatform`` is requested of the create when the seed pins one
+    (the reproduction lane).
     """
     dockerDisposable = (
         disposableContainer.fdockerCreateDisposableClient())
@@ -320,7 +325,7 @@ def _fdictDriveShadowLifecycle(
     with _fcontextHoldShadowLaneLock(sResourceName):
         _fnSweepShadowsLeftByACrash(dockerDisposable, sResourceName)
         dictCreated = _fdictCreateShadowOrExplainTheMissingImage(
-            dictGateway, sImageReference, dictCapacity,
+            dictGateway, sImageReference, dictCapacity, sPlatform,
         )
         try:
             disposableContainer.fnCopyArchiveIntoContainer(
@@ -416,6 +421,100 @@ def fdictRerunAndVerifyThroughShadow(
         dictWorkflow.get("sProjectRepoPath", ""), dictEnvironmentPayload,
         sContainerId, fnStatusCallback,
     )
+
+
+# Where a staged snapshot is placed for path resolution. It names no
+# real directory anywhere: ``ftResolveShadowPaths`` needs an absolute
+# repository path only to take its basename and to root the workflow
+# path beneath it, and a staged snapshot has no container path of its
+# own -- it came from a tarball on the host.
+_S_SNAPSHOT_NOMINAL_ROOT = "/staged"
+
+
+def fdictRerunAndVerifyFromSnapshot(
+    connectionDocker, baSnapshotArchive, dictAcquiredImage, dictWorkflow,
+    sWorkflowRelativePath, sRepositoryName, sResourceName="",
+    fnStatusCallback=None, fdictRunAndVerify=None,
+):
+    """Drive a shadow rerun seeded from a STAGED SNAPSHOT of a published project.
+
+    The second seed into this lane. The first is a coherent export of
+    a running project container; this one is the tar
+    ``reproductionSource.fbaExportStagedSnapshot`` produced, whose
+    members are already named ``<repository>/...``. Everything after
+    the seed is the same lane: reserve-and-create from the image the
+    acquisition chain obtained, the stamped copy-in, the frozen
+    expected manifest, the comparison rooted on the SHADOW, carried
+    interactive outputs, the failure record and the teardown with
+    proof, all under the shadow's own admission.
+
+    Three things the seed decides. The image comes from
+    ``dictAcquiredImage`` -- the reference the chain obtained and the
+    platform the envelope requires -- never re-read from the envelope
+    here, because the chain may have loaded the deposit and the image
+    then answers to its ID alone. The platform is REQUESTED of the
+    create. And when the image came from the archive, the
+    loaded-from-archive marker RIDES IN THE SEED: it is appended to the
+    snapshot archive as one more member, so it lands in the shadow's
+    repository with the rest of the copy -- stamped and validated by
+    the same repack, before any step runs, through no write of its own
+    -- and the re-check the report records is vacuous by construction
+    rather than a comparison of a download with itself.
+    """
+    if fdictRunAndVerify is None:
+        from vaibify.reproducibility.rerunVerification import (
+            fdictRerunAndVerifyWorkflow,
+        )
+        fdictRunAndVerify = fdictRerunAndVerifyWorkflow
+    sImageReference = str(dictAcquiredImage.get("sImageReference") or "")
+    if not sImageReference:
+        raise ShadowRerunRefusedError(
+            "the acquisition recorded no image reference, so no shadow "
+            "container can be built."
+        )
+    sNominalRepoPath = posixpath.join(_S_SNAPSHOT_NOMINAL_ROOT, sRepositoryName)
+    tShadowPaths = ftResolveShadowPaths(
+        sNominalRepoPath,
+        posixpath.join(sNominalRepoPath, sWorkflowRelativePath),
+    )
+    dictWorkflow = dict(dictWorkflow)
+    dictWorkflow["sProjectRepoPath"] = tShadowPaths[1]
+    dictCapacity = daemonCapacity.fdictResolveDaemonCapacity(connectionDocker)
+    if dictAcquiredImage.get("sObtainedFrom") == "archive":
+        baSnapshotArchive = _fbaAppendLoadedFromArchiveMarker(
+            baSnapshotArchive, sRepositoryName,
+        )
+    dictOutcome = _fdictDriveShadowLifecycle(
+        connectionDocker, dictWorkflow, sImageReference, tShadowPaths,
+        baSnapshotArchive, dictCapacity, sResourceName,
+        fnStatusCallback, fdictRunAndVerify,
+        sPlatform=str(dictAcquiredImage.get("sRequiredPlatform") or "") or None,
+    )
+    dictOutcome["sImageDigest"] = sImageReference
+    dictOutcome["sObtainedFrom"] = str(dictAcquiredImage.get("sObtainedFrom") or "")
+    return dictOutcome
+
+
+def _fbaAppendLoadedFromArchiveMarker(baSnapshotArchive, sRepositoryName):
+    """Return the snapshot archive with the archive-loaded marker appended.
+
+    One empty member at ``<repository>/<marker>``, built by the
+    specification module's own stamped builder and validated again by
+    the repack on copy-in, so the marker is owned by the container
+    user and named where ``imageArchive.fbImageWasLoadedFromArchive``
+    looks.
+    """
+    import io
+    import tarfile
+    from vaibify.reproducibility.imageArchive import (
+        S_LOADED_FROM_ARCHIVE_MARKER,
+    )
+    bufferArchive = io.BytesIO(bytes(baSnapshotArchive))
+    with tarfile.open(fileobj=bufferArchive, mode="a") as fileTar:
+        fileTar.addfile(disposableSpecification.finfoBuildEmptyFileEntry(
+            posixpath.join(sRepositoryName, S_LOADED_FROM_ARCHIVE_MARKER),
+        ))
+    return bufferArchive.getvalue()
 
 
 def flistNameCommandsMissingFromTheImage(listErrors):

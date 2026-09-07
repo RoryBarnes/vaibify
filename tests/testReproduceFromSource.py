@@ -121,14 +121,23 @@ def test_from_refuses_the_tier_flags(sPublishedRepo):
     assert result.exit_code == 2
 
 
-def test_from_with_rerun_says_the_rerun_is_not_here_yet(sPublishedRepo):
-    with _fnRefuseEveryTier():
-        result = CliRunner().invoke(
-            fnReproduceCommand, ["--from", sPublishedRepo, "--rerun"],
-        )
+def test_prepare_and_rerun_together_are_a_usage_error(sPublishedRepo):
+    result = CliRunner().invoke(
+        fnReproduceCommand,
+        ["--from", sPublishedRepo, "--rerun", "--prepare"],
+    )
     assert result.exit_code == 2, result.output
-    assert "later release" in result.output
+    assert "--prepare" in result.output
     assert _flistStagingTokens() == []
+
+
+def test_the_from_only_flags_are_refused_without_from(sPublishedRepo):
+    for listArguments in (["--prepare"], ["--allow-emulation"]):
+        result = CliRunner().invoke(
+            fnReproduceCommand, ["--repo", sPublishedRepo, *listArguments],
+        )
+        assert result.exit_code == 2, result.output
+        assert "--from" in result.output
 
 
 def test_from_selects_a_named_workflow(sPublishedRepo):

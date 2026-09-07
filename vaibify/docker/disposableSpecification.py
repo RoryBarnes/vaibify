@@ -84,6 +84,7 @@ __all__ = [
     "fdictBuildDefaultLimits",
     "fdictComposeCreateSpecification",
     "fbufferRepackArchiveStamped",
+    "finfoBuildEmptyFileEntry",
     "fnSendAllBounded",
     "fdictPumpBoundedExecStream",
     "LIST_OOM_COUNTER_COMMAND",
@@ -175,7 +176,7 @@ def _fnValidateLimits(dictLimits):
 def fdictComposeCreateSpecification(
     sImageReference, sReservationId, sRole,
     dictLimits=None, sNetworkName=None, sResourceName="",
-    bReadOnlyRootFilesystem=False,
+    bReadOnlyRootFilesystem=False, sPlatform=None,
 ):
     """Compose the SDK create keywords for one disposable container.
 
@@ -187,16 +188,26 @@ def fdictComposeCreateSpecification(
     degrades to an unattributable survivor that any reconcile sweeps,
     which is the fail-closed direction because it preserves crash
     recovery.
+
+    ``sPlatform`` (``linux/<arch>``) is REQUESTED of the daemon when
+    given. Without the request a multi-architecture reference silently
+    yields whatever build this host prefers, and a reproduction that
+    runs the wrong build of the pinned image is not a reproduction of
+    anything; with it, a daemon holding only another build refuses the
+    create by name. ``None`` keeps the daemon's default, which is what
+    every caller that pins by image ID wants: an ID names one build.
     """
     if dictLimits is None:
         dictLimits = fdictBuildDefaultLimits()
     _fnValidateLimits(dictLimits)
     sContainerName = (
         f"vaibifyDisposable{sRole.capitalize()}{secrets.token_hex(6)}")
+    dictPlatformKeyword = {"platform": sPlatform} if sPlatform else {}
     return {
         "sContainerName": sContainerName,
         "sRole": sRole,
         "dictCreateKeywords": {
+            **dictPlatformKeyword,
             "entrypoint": LIST_IDLE_ENTRYPOINT,
             "command": LIST_IDLE_COMMAND,
             "name": sContainerName,
@@ -346,6 +357,20 @@ def _fnEmitMissingParentDirectories(fileTarStamped, sMemberPath,
         fileTarStamped.addfile(
             _finfoStampContainerOwnership(
                 _finfoBuildDirectoryEntry(sAccumulated)))
+
+
+def finfoBuildEmptyFileEntry(sMemberPath):
+    """Return a stamped, empty regular-file member at ``sMemberPath``.
+
+    For a seed that owes the container one marker file beside the
+    repository it copies in: built HERE, by the module that owns the
+    ownership stamp, so the uid-1000 contract every tar-building write
+    path carries is not re-derived beside a caller.
+    """
+    infoMember = tarfile.TarInfo(sMemberPath)
+    infoMember.size = 0
+    infoMember.mode = 0o644
+    return _finfoStampContainerOwnership(infoMember)
 
 
 def _finfoBuildDirectoryEntry(sDirectoryPath, iMode=0o755):

@@ -512,9 +512,18 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # 45 (2026-09-02, on merge): MEASURED on the merged tree — the 12
 # pre-council SDK roots, the shadow lane's +11, and the council's +22
 # both landed; neither branch's number describes the merged scan.
+# 48 (2026-09-06): MEASURED after the reproduction lane's image store
+# joined disposableContainer -- fdictPullImage, fsLoadImageFromStream and
+# fdictInspectImage each reach the SDK through the gateway's client
+# PARAMETER, the same untraceable root shape as every other site in that
+# module. They live there rather than beside the chain that calls them
+# because `docker pull` and `docker load` as subprocesses outside a
+# gateway module would be mutation-capable rows the other ratchet
+# refuses; three declared blind spots in the SDK authority is the
+# honest trade.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 45,
+    "untraceable-docker-sdk-root": 48,
 }
 
 

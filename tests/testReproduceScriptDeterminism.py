@@ -258,6 +258,99 @@ def test_an_envelope_with_no_epoch_says_so_instead_of_using_the_clock(
 
 
 @_skipWithoutTooling
+@pytest.mark.falsification
+def test_the_script_requests_the_pinned_platform_of_pull_and_run(tmp_path):
+    """Both docker calls carry ``--platform linux/<arch>`` from the envelope.
+
+    Without the request a multi-architecture reference yields the
+    reproducer's host build, so a run of the wrong build would be
+    graded against bytes produced by the right one. The architecture
+    is deliberately one this test machine is unlikely to be, so a
+    default-to-host cannot pass.
+
+    Kills: dropping the platform option from the ``docker run`` line.
+    """
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {
+            "sImageDigest": S_PROBE_IMAGE, "sArchitecture": "s390x",
+        },
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    pathRecord = tmp_path / "argv.txt"
+    _fsInstallRecordingDocker(tmp_path / "bin", pathRecord)
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == 0, tResult.stderr
+    listCalls = pathRecord.read_text(encoding="utf-8").splitlines()
+    listPulls = [sCall for sCall in listCalls if sCall.startswith("pull ")]
+    listRuns = [sCall for sCall in listCalls if sCall.startswith("run ")]
+    assert listPulls and listRuns, listCalls
+    assert all("--platform linux/s390x" in sCall for sCall in listPulls)
+    assert all("--platform linux/s390x" in sCall for sCall in listRuns)
+    assert "architecture" not in tResult.stderr
+
+
+@_skipWithoutTooling
+@pytest.mark.falsification
+def test_the_pull_requests_the_pinned_platform_too(tmp_path):
+    """The pull line carries the platform as well as the run line.
+
+    A pull without the request fetches this host's build and the run's
+    own request then refuses it, or worse, runs a copy that happens to
+    be present: the two must ask for the same thing.
+
+    Kills: dropping the platform option from the ``docker pull`` line.
+    """
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {
+            "sImageDigest": S_PROBE_IMAGE, "sArchitecture": "linux/ppc64le",
+        },
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    pathRecord = tmp_path / "argv.txt"
+    _fsInstallRecordingDocker(tmp_path / "bin", pathRecord)
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == 0, tResult.stderr
+    listCalls = pathRecord.read_text(encoding="utf-8").splitlines()
+    listPulls = [sCall for sCall in listCalls if sCall.startswith("pull ")]
+    assert listPulls, listCalls
+    assert all("--platform linux/ppc64le" in sCall for sCall in listPulls)
+
+
+@_skipWithoutTooling
+def test_an_envelope_with_no_architecture_says_so_and_requests_nothing(
+    tmp_path,
+):
+    """An absent architecture is announced, never defaulted to this host.
+
+    The same treatment as an absent epoch: the script runs, says on
+    stderr what is missing and what it costs, and passes no platform
+    at all rather than inventing one from ``uname``.
+    """
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {"sImageDigest": S_PROBE_IMAGE},
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    pathRecord = tmp_path / "argv.txt"
+    _fsInstallRecordingDocker(tmp_path / "bin", pathRecord)
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == 0, tResult.stderr
+    assert "architecture" in tResult.stderr
+    assert "--platform" not in pathRecord.read_text(encoding="utf-8")
+
+
+@_skipWithoutTooling
 def test_a_zero_epoch_is_treated_as_unrecorded(tmp_path):
     """``0`` is the envelope's "could not determine", not an epoch.
 
