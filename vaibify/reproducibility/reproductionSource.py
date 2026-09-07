@@ -102,6 +102,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ReproductionSourceRefusedError",
+    "WorkflowSelectionRequiredError",
     "F_STAGING_TTL_SECONDS",
     "I_STAGING_SIZE_CEILING_BYTES",
     "S_KIND_GIT_URL",
@@ -109,6 +110,7 @@ __all__ = [
     "T_ACCEPTED_URL_SCHEMES",
     "fbaExportStagedSnapshot",
     "fcontextHoldStagedSource",
+    "ffnHoldStagedSource",
     "fdictClassifySource",
     "fdictDescribeStagedSource",
     "fdictLoadStagedWorkflow",
@@ -129,6 +131,20 @@ class ReproductionSourceRefusedError(Exception):
     by an ``except OSError`` is how a control decision silently
     downgrades into an I/O hiccup.
     """
+
+
+class WorkflowSelectionRequiredError(ReproductionSourceRefusedError):
+    """The snapshot hosts several workflows and none was named.
+
+    A refusal like any other to the CLI, which prints it; a structured
+    one to the dashboard, which reads ``listWorkflowNames`` off it and
+    offers the choice instead of the sentence. The names are the
+    declared workflow names, never paths on this host.
+    """
+
+    def __init__(self, sMessage, listWorkflowNames):
+        super().__init__(sMessage)
+        self.listWorkflowNames = list(listWorkflowNames)
 
 
 S_KIND_GIT_URL = "git-url"
@@ -346,22 +362,44 @@ def _fsCreateStagingDirectory():
     return tempfile.mkdtemp(prefix="snapshot", dir=_fsStagingRoot())
 
 
-@contextlib.contextmanager
-def _fcontextHoldLiveLock(sStagingDirectory):
-    """Hold the directory's live lock; refuse when another holder has it."""
+def _ffnHoldLiveLock(sStagingDirectory):
+    """Take the directory's live lock; return the function that releases it.
+
+    Refuses when another holder has it. Closing the file releases the
+    lock, so the returned function is the file's own ``close``.
+    """
     sLockPath = os.path.join(sStagingDirectory, _S_LIVE_LOCK_NAME)
     fileLock = open(sLockPath, "a+")
     try:
-        try:
-            fcntl.flock(fileLock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            raise ReproductionSourceRefusedError(
-                f"staged snapshot {os.path.basename(sStagingDirectory)!r} "
-                "is held by another job"
-            ) from error
+        fcntl.flock(fileLock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        fileLock.close()
+        raise ReproductionSourceRefusedError(
+            f"staged snapshot {os.path.basename(sStagingDirectory)!r} "
+            "is held by another job"
+        ) from error
+    return fileLock.close
+
+
+@contextlib.contextmanager
+def _fcontextHoldLiveLock(sStagingDirectory):
+    """Hold the directory's live lock for a ``with`` block."""
+    fnRelease = _ffnHoldLiveLock(sStagingDirectory)
+    try:
         yield
     finally:
-        fileLock.close()
+        fnRelease()
+
+
+def ffnHoldStagedSource(sToken):
+    """Hold a staged snapshot outside a ``with`` block; return the releaser.
+
+    For a holder whose life is not a code block: the dashboard's
+    reproduction job takes the hold in the request that staged the
+    snapshot and releases it from the task that settles the job. Same
+    lock, same sweep protection as :func:`fcontextHoldStagedSource`.
+    """
+    return _ffnHoldLiveLock(_fsStagingDirectory(sToken))
 
 
 @contextlib.contextmanager
@@ -1037,12 +1075,17 @@ def _fdictStageIntoDirectory(dictClassified, sStagingDirectory, sWorkflowName):
     sClonePath = os.path.join(
         sStagingDirectory, dictMaterialized["sRepositoryName"],
     )
+    listWorkflows = _flistDiscoverWorkflowFiles(sClonePath)
     try:
         dictEntry = fdictSelectWorkflowEntry(
-            _flistDiscoverWorkflowFiles(sClonePath), sWorkflowName,
-            "the staged snapshot",
+            listWorkflows, sWorkflowName, "the staged snapshot",
         )
     except ValueError as error:
+        if not sWorkflowName and len(listWorkflows) > 1:
+            raise WorkflowSelectionRequiredError(
+                str(error),
+                [dictOne.get("sName", "") for dictOne in listWorkflows],
+            ) from error
         raise ReproductionSourceRefusedError(str(error)) from error
     dictFacts = _fdictValidateStagedProject(sClonePath, dictEntry["sPath"])
     return {

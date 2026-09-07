@@ -1973,6 +1973,22 @@ verdict"; the word "attested" appears nowhere on this lane, because
 vaibify offers no publishing, depositing, pushing or attesting action
 on a reproduction.
 
+The dashboard's one-shot job (`reproductionRoutes`,
+`reproductionProgress`) is a third caller of the same seams, not a
+third derivation. Its two mutating routes carry the browser-hub
+credential and refuse the agent lane -- staging reads and writes host
+state, the run spends the daemon -- and are declared
+`separate-authority`, because the only container the job ever touches
+is the shadow that `shadowRerun` creates, admits and destroys itself.
+The job record is its own (keyed by job, holding the staged snapshot's
+live lock for exactly the job's life, consumed once) rather than the
+deposit registry's, which is keyed by a container the job does not
+have; the frontend borrows the deposit row's visual shape only. The
+phases a client sees are the ones an event actually reported -- the
+acquisition chain's and the pipeline's -- with the comparison and the
+teardown, which the rerun seam performs with no event of their own,
+reported together as `finishing` rather than invented from a timer.
+
 ## The environment archive
 
 A registry digest names bytes somebody else is storing. `reproduce.sh`

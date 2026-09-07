@@ -1126,6 +1126,14 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent must never operate that control plane, so it is excluded here
     # and the browser-hub route never carries an @ffnAgentAction.
     ("POST", "/api/registry/{sName}/promote-to-host-project"),
+    # Reproducing a published project is HUMAN-ONLY. Staging clones a
+    # stranger's repository under the researcher's home and reads host
+    # state; the run spends the daemon on a shadow container and writes
+    # the reproducer's own report. Neither is a decision an in-container
+    # agent may make, so both are excluded here and each handler also
+    # rejects the agent token lane by name.
+    ("POST", "/api/reproductions/stage"),
+    ("POST", "/api/reproductions/{sJobId}/run"),
     # Clearing a quarantine asserts the container is safe to use again;
     # a compromised agent asserting that about its own container is the
     # exact inversion of what the journal exists for.

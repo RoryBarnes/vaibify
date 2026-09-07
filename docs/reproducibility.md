@@ -718,6 +718,22 @@ order, the first to fail named with the file that failed it:
    its architecture. No deposit on record is not a refusal -- the
    registry may still serve the image -- and is reported as such.
 
+### From the dashboard
+
+The hub's **+** dialog offers the same run as a third kind card,
+**Reproduce a published project**: a source field and a Stage button,
+a confirmation card showing everything a run would use (project and
+workflow, commit, pinned image, required platform, deposit on record,
+whether this daemon's architecture matches, the chain links in
+order), a Run button that starts the job, a progress card that polls
+only while the hub reports the job live, and a result card with the
+verdict, the per-file outcomes with the carried paths beside the
+count, the three platform facts, the image's provenance and the
+report id. No tile persists and no publishing, depositing or
+attesting action is offered. It drives exactly the staging, chain and
+shadow the command line does, through the same seams, so the two
+cannot describe two different reproductions.
+
 ### What a report may carry
 
 Only what `fdictDescribeStagedSource` returns: the source kind, the

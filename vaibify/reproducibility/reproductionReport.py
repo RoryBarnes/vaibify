@@ -32,10 +32,18 @@ import time
 from datetime import datetime, timezone
 
 from vaibify import __version__
+from vaibify.reproducibility import imageAcquisition
+from vaibify.reproducibility import imageArchive
+from vaibify.reproducibility import imageDeposit
 from vaibify.reproducibility import reproductionSource
+from vaibify.reproducibility.environmentSnapshot import (
+    fdictReadEnvironmentJson,
+)
+from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
 
 __all__ = [
+    "fdictRecheckObtainedImage",
     "F_REPORT_RETENTION_SECONDS",
     "I_REPORT_SCHEMA_VERSION",
     "S_VERDICT_DIVERGED",
@@ -145,6 +153,38 @@ def _fdictSourceFacts(dictSource):
             "sDepositVersionDoi",
         )
     }
+
+
+def fdictRecheckObtainedImage(sToken, dictAcquired):
+    """Judge the obtained image against the deposit on record, if any.
+
+    Vacuous by construction when the chain LOADED the deposit: a
+    download re-hashed against itself matches always, and the report
+    says so rather than recording a comparison nobody made. Shared by
+    the CLI and the dashboard job because both write the same report,
+    and two derivations of one verdict are the drift this module's
+    attestation-writing cousins already suffered once.
+    """
+    dictEnvironment = fdictReadEnvironmentJson(
+        ffilesEnsureRepoFiles(reproductionSource.fsStagedClonePath(sToken)),
+    ) or {}
+    bLoadedFromArchive = (
+        dictAcquired.get("sObtainedFrom") == imageAcquisition.S_OBTAINED_ARCHIVE
+    )
+    sLocalStreamSha = ""
+    if imageArchive.fdictReadArchiveRecord(dictEnvironment) and not (
+        bLoadedFromArchive
+    ):
+        sLocalStreamSha = imageDeposit.fsRecomputeImageStreamSha256(
+            dictAcquired["sImageReference"],
+        )
+    dictVerdict = imageArchive.fdictJudgeArchiveRecheck(
+        dictEnvironment, sLocalStreamSha, bLoadedFromArchive,
+    )
+    dictVerdict["bVacuous"] = (
+        dictVerdict.get("sVerdict") == imageArchive.S_RECHECK_VACUOUS
+    )
+    return dictVerdict
 
 
 def fsRenderVerdict(dictReport):

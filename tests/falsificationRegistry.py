@@ -17697,4 +17697,54 @@ def _fdictEntry(sRel):
         old='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n        return\n',
         new='        _fnStageFromSource(\n            sSource, sWorkflowName,\n            "rerun" if bRerun else ("prepare" if bPrepare else "describe"),\n            bAllowEmulation,\n        )\n',
     ),
+    # --- 2026-09-07: Reproduce a published project, phase 3 -- the
+    # dashboard job runs once, hides its token, and confirms before it runs ---
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_a_job_is_claimed_for_its_run_exactly_once',
+        source='vaibify/gui/reproductionProgress.py',
+        old='        if dictJob is None or dictJob["bConsumed"]:\n            return False\n',
+        new='        if dictJob is None:\n            return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_the_client_view_never_carries_the_staging_token',
+        source='vaibify/gui/reproductionProgress.py',
+        old='_T_PUBLIC_FIELDS = (\n    "sJobId", "sPhase",',
+        new='_T_PUBLIC_FIELDS = (\n    "sJobId", "sToken", "sPhase",',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_settling_releases_the_snapshot_hold_exactly_once',
+        source='vaibify/gui/reproductionProgress.py',
+        old='        fnReleaseSnapshot = dictJob.pop("fnReleaseSnapshot", None)\n    _fnReleaseHold(fnReleaseSnapshot)\n',
+        new='        fnReleaseSnapshot = dictJob.pop("fnReleaseSnapshot", None)\n    del fnReleaseSnapshot\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_the_agent_lane_is_refused_on_both_mutating_routes',
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        old='        fnRejectAgentTokenLane(requestHttp)\n        try:\n            dictStaged = await asyncio.to_thread(\n',
+        new='        try:\n            dictStaged = await asyncio.to_thread(\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_a_snapshot_runs_once_and_a_second_run_is_refused_by_name',
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        old='        if not reproductionProgress.fbClaimJobForRun(\n            sJobId, request.bAllowEmulation,\n        ):\n',
+        new='        if not reproductionProgress.fbClaimJobForRun(\n            sJobId, request.bAllowEmulation,\n        ) and False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_no_response_names_a_path_on_this_host',
+        source='vaibify/gui/reproductionProgress.py',
+        old='    "sFailure", "bConsumed", "bAllowEmulation",\n)',
+        new='    "sFailure", "bConsumed", "bAllowEmulation", "sToken",\n)',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_no_run_request_leaves_before_the_researcher_confirms',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='            _sJobId = dictResponse.sJobId;\n            _dictStaged = dictResponse;\n',
+        new='            _sJobId = dictResponse.sJobId;\n            _dictStaged = dictResponse;\n            _fnRun();\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_the_poll_stops_when_the_job_settles_and_the_result_is_shown',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='        _fnDisarmPoll();\n        _fnRenderResult(dictJob);\n',
+        new='        _fnRenderResult(dictJob);\n',
+    ),
 ]

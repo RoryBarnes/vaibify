@@ -5593,7 +5593,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # unreachable), and a FAILED deposit no longer repaints the
     # row UNCHECKED. Both are the reasons, written where the
     # next reader will look for them.
-    "pipelineServer.py": 3185,
+    # +1 on 2026-09-07: the reproduction route module's registration.
+    "pipelineServer.py": 3186,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6455,7 +6456,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment archive, both bAgentSafe False. This module
     # is a catalog — it grows by one record per action by
     # construction, and a record carries its own rationale.
-    "actionCatalog.py": 1202,
+    # +8 on 2026-09-07: the reproduction job's two human-only routes and
+    # their rationale joined SET_INTENTIONALLY_EXCLUDED_PATHS.
+    "actionCatalog.py": 1210,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6759,7 +6762,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 988 (2026-09-02, on merge): MEASURED on the merged file. The
     # shadow branch recorded 975 and main 985 for changes that both
     # landed; neither number describes the file that now exists.
-    "routeScope.py": 988,
+    # +8 on 2026-09-07: the reproduction job's two browser-hub scopes
+    # and their rationale joined DICT_CONTROL_PLANE_SCOPES.
+    "routeScope.py": 996,
 }
 
 

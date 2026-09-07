@@ -879,6 +879,48 @@ verifiable: every action it takes is one the user could have taken
 through the dashboard, and every action triggers the same verification
 state machine.
 
+## Reproduce a published project
+
+The **+** button's Add Environment dialog offers a third kind card
+beside *Container* and *This machine*: **Reproduce a published
+project**. It is not a place work runs. It re-runs somebody else's
+finished result once, in a shadow container, and leaves no tile
+behind.
+
+The card opens a dialog with four stages, in this order:
+
+1. **Source.** A clone URL (`https://`, `ssh://` or `user@host:path`)
+   or the path of a clean clone under your home directory. **Stage**
+   clones one commit and validates it as reproduction-ready (the six
+   staging rules, not the author's Level 3 gate). A refusal names the
+   rule and the file. A repository holding several workflows offers a
+   selector rather than picking one by sort order.
+2. **Confirmation.** The project and selected workflow, the resolved
+   commit, the pinned image, the required platform, whether an image
+   deposit is on record, whether this daemon's architecture matches
+   the pinned build (with an emulation checkbox, off by default, when
+   it does not), and the three links the image will be tried through,
+   in order. Nothing has been pulled or run yet, and nothing is until
+   you click **Run**; **Not now** sends nothing.
+3. **Progress.** The dialog polls only while the hub reports the job
+   live: pulling, downloading (with bytes), loading, running (with the
+   step), finishing. It stops the moment the job settles. **Hide**
+   closes the dialog without stopping the job; it reopens on settle.
+4. **Result.** The verdict -- *reproduced*, *reproduced under
+   emulation*, *diverged*, or *no verdict* with the reason -- the
+   files that diverged and the files carried in unchanged beside the
+   matched count, the three platform facts, where the image came from,
+   the deposit re-check, and the id of the report written under
+   `~/.vaibify/reproductions/reports/`.
+
+The report is yours, not the author's attestation: nothing is written
+into the project, the dialog offers no publish, deposit or attest
+action, and the shadow container is destroyed with proof when the
+comparison is made. The command-line equivalent is
+`vaibify reproduce --from <source> --rerun`; both drive the same
+staging, acquisition and shadow lane. See
+[Reproducibility](reproducibility.md#reproducing-somebody-elses-project-vaibify-reproduce---from).
+
 ## Hub mode
 
 The hub is a separate page from the dashboard, but you visit it every

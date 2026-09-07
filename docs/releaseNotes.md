@@ -6,6 +6,22 @@ the reasoning.
 
 ## Unreleased
 
+### Reproduce a published project from the hub
+
+The **+** button's Add Environment dialog gains a third kind card,
+**Reproduce a published project**. Give it a clone URL or a clean
+local clone; it stages one commit, validates it as reproduction-ready,
+and shows you what a run would use -- the workflow, the commit, the
+pinned image and platform, whether an image deposit is on record,
+whether your daemon's architecture matches the pinned build -- before
+anything is pulled or run. Run starts the same job the command line
+runs: obtain the image through the published chain, re-run every step
+in a shadow container, compare the bytes inside it, write your
+reproduction report. The dialog reports progress only while the job is
+live and shows the verdict, the files, the three platform facts and
+the report id when it settles. No tile persists, nothing is written
+into the project, and no publishing or attesting action is offered.
+
 ### Reproduce a published project: re-run it in a shadow and get a report
 
 `vaibify reproduce --from <source> --rerun` now goes all the way. After

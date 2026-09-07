@@ -4023,6 +4023,106 @@ body.proof-level-3 .toolbar-label {
     color: var(--text-secondary);
 }
 
+/* --- Reproduce a published project --- */
+
+.reproduce-lead {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.reproduce-source-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
+.reproduce-error {
+    color: var(--color-orange, #ff9a3c);
+    font-size: 12px;
+    min-height: 1em;
+    margin: 4px 0 8px;
+}
+
+.reproduce-facts {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.reproduce-facts th {
+    text-align: left;
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.reproduce-facts td {
+    padding: 3px 0;
+    word-break: break-all;
+}
+
+.reproduce-chain {
+    font-size: 12px;
+    margin: 0 0 12px 20px;
+    color: var(--text-primary);
+}
+
+.reproduce-emulation {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.reproduce-progress-phase {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.reproduce-attempts {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0 0 12px 20px;
+}
+
+.reproduce-verdict {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.reproduce-verdict-reproduced { color: var(--color-green, #4caf50); }
+.reproduce-verdict-diverged { color: var(--color-orange, #ff9a3c); }
+.reproduce-verdict-none { color: var(--text-secondary); }
+
+.reproduce-files {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.reproduce-files th,
+.reproduce-files td {
+    text-align: left;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border-color);
+    word-break: break-all;
+}
+
+.reproduce-tail {
+    font-size: 11px;
+    max-height: 200px;
+    overflow: auto;
+    background: var(--bg-input);
+    padding: 8px;
+    border-radius: var(--border-radius);
+}
+
 /* --- Wizard Progress --- */
 
 .wizard-progress {

@@ -461,6 +461,35 @@ daemon by the daemon's own refusal of a wrong one. Two facts found
 live: a stock base image already owns uid 1000, and the shadow's typed
 reads need a `python3` in the image.
 
+**The dashboard's reproduction is a one-shot JOB with no project
+container, and its record is its own.** `POST /api/reproductions/stage`
+and `POST /api/reproductions/{sJobId}/run` (`reproductionRoutes`) are
+browser-hub control-plane routes, excluded from the agent catalog AND
+rejecting the agent lane by name, declared `separate-authority`
+because the only container they touch is the shadow `shadowRerun`
+creates, admits and destroys itself — `tests/testCarrierMigratedRoutes.py`
+pins that they reach no project primitive. The job record
+(`reproductionProgress`) is keyed by job, NOT by container: it holds
+the staged snapshot's live lock for exactly the job's life (taken in
+the request that staged it, released from the task that settles it),
+is consumed ONCE (`fbClaimJobForRun` checks and marks under one lock;
+a second Run is a 409 by name), and its client view carries no staging
+token — the token names a directory on this host. Do not key it on
+`archiveProgress`, which is the deposit registry keyed by a container
+the job does not have; only the deposit row's VISUAL shape is borrowed.
+Phases are written from events that happened — the chain's `pulling` /
+`downloading` / `loading`, the pipeline's `stepStarted` — and the
+comparison plus teardown, which the rerun seam performs with no event,
+are reported together as `finishing`, never invented from a timer. The
+card polls only while the hub says `bLive` and disarms on settle
+(`tests/browser/testReproducePublishedCard.py` counts polls after
+settle), and no run request leaves the page before the researcher has
+seen the confirmation and clicked Run (the same file asserts the
+ORDER, not the wording). Both lanes write the same report through the
+same seams, including the shared archive re-check
+`reproductionReport.fdictRecheckObtainedImage`, which moved out of the
+CLI when the dashboard became its second caller.
+
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and
 the container starts (ruled 2026-09-05, making the Features page's

@@ -52,6 +52,75 @@
     </div>
 </div>
 
+<!-- Reproduce a published project: one modal, four stages in order.
+     The run request is sent from the confirmation stage's own button
+     and from nowhere else; the progress poll runs only while the hub
+     reports the job live. -->
+<div class="modal-overlay" id="modalReproducePublished" style="display: none;">
+    <div class="modal modal-medium">
+        <h2 style="color: var(--color-pale-blue);">Reproduce a published project</h2>
+        <div id="reproduceStageSource">
+            <p class="reproduce-lead">
+                A clone URL (<code>https://</code>, <code>ssh://</code> or
+                <code>user@host:path</code>) or the path of a clean clone
+                under your home directory. Vaibify stages one commit,
+                checks that it is reproduction-ready, and shows you what a
+                run would use before anything is pulled or run.
+            </p>
+            <input type="text" id="reproduceSourceInput"
+                   class="reproduce-source-input"
+                   placeholder="https://host.example/group/project.git"
+                   autocomplete="off" spellcheck="false">
+            <select id="reproduceWorkflowSelect" style="display: none;"
+                    aria-label="Workflow to reproduce"></select>
+            <p class="reproduce-error" id="reproduceSourceError"></p>
+            <div class="modal-actions">
+                <button class="btn" id="btnReproduceCancelSource">Cancel</button>
+                <button class="btn btn-primary" id="btnReproduceStage">Stage</button>
+            </div>
+        </div>
+        <div id="reproduceStageConfirm" style="display: none;">
+            <p class="reproduce-lead">
+                Staged and reproduction-ready. A run obtains the pinned
+                image, re-runs every step in a fresh shadow container with
+                no network and no credentials, compares the bytes inside
+                it, and writes a reproduction report under your home.
+                Nothing is written into the project, and the shadow is
+                destroyed when the comparison is made.
+            </p>
+            <table class="reproduce-facts" id="reproduceConfirmFacts"></table>
+            <p class="reproduce-lead">The image will be tried in this order:</p>
+            <ol class="reproduce-chain" id="reproduceChainLinks"></ol>
+            <label class="reproduce-emulation" id="reproduceEmulationRow"
+                   style="display: none;">
+                <input type="checkbox" id="reproduceEmulationCheckbox">
+                This daemon's architecture differs from the pinned build.
+                Run it under emulation (the report will say so).
+            </label>
+            <p class="reproduce-error" id="reproduceConfirmError"></p>
+            <div class="modal-actions">
+                <button class="btn" id="btnReproduceCancelConfirm">Not now</button>
+                <button class="btn btn-primary" id="btnReproduceRun">Run</button>
+            </div>
+        </div>
+        <div id="reproduceStageProgress" style="display: none;">
+            <p class="reproduce-progress-phase pulsing"
+               id="reproduceProgressPhase"></p>
+            <ul class="reproduce-attempts" id="reproduceProgressAttempts"></ul>
+            <div class="modal-actions">
+                <button class="btn" id="btnReproduceHideProgress">Hide</button>
+            </div>
+        </div>
+        <div id="reproduceStageResult" style="display: none;">
+            <p class="reproduce-verdict" id="reproduceResultVerdict"></p>
+            <div id="reproduceResultBody"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="btnReproduceCloseResult">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add Container Modal (Directory Browser) -->
 <div class="modal-overlay" id="modalAddContainer" style="display: none;">
     <div class="modal modal-directory-browser">
@@ -118,6 +187,16 @@
                 <div class="add-choice-title">This machine</div>
                 <div class="add-choice-description">
                     No container. For experimentation
+                </div>
+            </div>
+            <!-- The third kind is not a place work runs: it is a
+                 stranger's published result, re-run once in a shadow
+                 container and destroyed with proof. No tile persists. -->
+            <div class="add-choice-card" id="btnChoiceKindReproduce">
+                <div class="add-choice-icon">&#128300;</div>
+                <div class="add-choice-title">Reproduce a published project</div>
+                <div class="add-choice-description">
+                    Re-run somebody else's result from its URL. Needs Docker
                 </div>
             </div>
         </div>
@@ -1218,6 +1297,7 @@
 <script src="/static/scriptFiles.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDirectoryBrowser.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFilePull.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptReproducePublished.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptContainerManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDependencyScanner.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPlotStandards.js?v=__CACHE_VERSION__"></script>

@@ -331,6 +331,12 @@ or *diverged*, or *no verdict* with the reason. The report is yours,
 not the author's: nothing is written into the project, and it is not
 an attestation.
 
+Or, from the hub instead of the terminal: the **+** button's third
+kind card, **Reproduce a published project**, takes the same URL,
+shows you what a run would use before anything is pulled, and shows
+the same verdict and report when it settles. No tile is added; the
+shadow is destroyed when the comparison is made.
+
 As a stranger without vaibify, the artefact the project publishes:
 
 ```bash
