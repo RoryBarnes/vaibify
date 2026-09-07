@@ -1969,16 +1969,6 @@ var VaibifyContainerManager = (function () {
         'credentials &mdash; and vaibify cannot reach Level 3 or ' +
         'provide Supervised attribution for that project. You are ' +
         'shown this again, in full, before you open one.</p>' +
-        '<p><strong>Reproduce a published project</strong> &mdash; not ' +
-        'a place work runs but somebody else\'s finished result. Give ' +
-        'its clone URL, or a clean clone under your home directory; ' +
-        'vaibify stages one commit, checks it is reproduction-ready, ' +
-        'obtains the container image the author pinned, re-runs every ' +
-        'step in a shadow container with no network and no credentials, ' +
-        'compares the bytes inside it, and writes a reproduction report ' +
-        'under your home. Nothing is written into the project, no tile ' +
-        'is added, and the shadow is destroyed when the comparison is ' +
-        'made. Requires Docker.</p>' +
         '<p><strong>Add Existing</strong> &mdash; point vaibify at a ' +
         'directory that already contains a <code>vaibify.yml</code>: ' +
         'one a collaborator shared, one you cloned from GitHub, or one ' +
@@ -1989,6 +1979,16 @@ var VaibifyContainerManager = (function () {
         'starter template and a name; a container environment also ' +
         'asks about features and packages, which a host one has no ' +
         'use for.</p>' +
+        '<p><strong>Reproduce a published project</strong> &mdash; not ' +
+        'a place work runs but somebody else\'s finished result. Give ' +
+        'its clone URL, or a clean clone under your home directory; ' +
+        'vaibify stages one commit, checks it is reproduction-ready, ' +
+        'obtains the container image the author pinned, re-runs every ' +
+        'step in a shadow container with no network and no credentials, ' +
+        'compares the bytes inside it, and writes a reproduction report ' +
+        'under your home. Nothing is written into the project, no tile ' +
+        'is added, and the shadow is destroyed when the comparison is ' +
+        'made. Requires Docker.</p>' +
         '<p>The choice is not permanent in the sense that matters: ' +
         'the same directory can be registered as a container ' +
         'environment later, and starting on this machine is a ' +
