@@ -110,7 +110,15 @@ def test_describe_shows_only_the_allowlisted_display_fields():
     assert set(listRecords[0]) == setExpectedKeys
     assert listRecords[0]["sOperationId"] == sOperationId
     assert listRecords[0]["sKind"] == "helper"
-    assert "12345" not in json.dumps(listRecords[0])
+    # The pid must not leak through any display field. The operation
+    # id is excluded from the substring check because it is random hex
+    # and can legitimately contain the digits "12345" -- it did, once,
+    # on a CI runner, and the test read its own fixture as a leak.
+    dictWithoutId = {
+        sKey: jsonValue for sKey, jsonValue in listRecords[0].items()
+        if sKey != "sOperationId"
+    }
+    assert "12345" not in json.dumps(dictWithoutId)
 
 
 def test_describe_raises_with_the_read_state_for_a_damaged_journal():
