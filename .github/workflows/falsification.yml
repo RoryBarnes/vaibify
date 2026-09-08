@@ -131,7 +131,9 @@ jobs:
         # had FINISHED, which is what the 60-minute whole-registry
         # ceiling did on 2026-08-12: it printed "721/721
         # kill-confirmed" and failed the job two minutes later.
-        timeout-minutes: 30
+        # Linux shards measure 15-18 minutes (6 runs, 2026-09-08). 30 was
+        # 1.7x the max, which is a budget rather than a hang detector.
+        timeout-minutes: 45
         env:
           # The Linux runners ship a Docker daemon, so they are where
           # the real-container entries are actually judged. Demanding
@@ -202,14 +204,21 @@ jobs:
       # (7 to 14 minutes, measured) cost more than the three minutes
       # of work it contained.
       - name: Re-confirm (exclusive, 1 worker)
-        timeout-minutes: 20
+        # The macOS exclusive leg shares these slow runners with the
+        # shareable leg below; 20 minutes was set before the registry grew.
+        timeout-minutes: 40
         run: |
           python tools/reconfirmFalsification.py \
             --class exclusive \
             --summary-json "$RUNNER_TEMP/exclusive/shardSummary.json"
 
       - name: Re-confirm (shareable, 4 workers)
-        timeout-minutes: 45
+        # RAISED from 45 (2026-09-08). This leg's MEDIAN was 45 minutes
+        # against a 45-minute ceiling (6 runs), so it failed roughly half
+        # the time on runner variance alone -- and a shard that dies takes
+        # the summary with it, because an unreported shard is unjudged.
+        # Max observed 53 minutes.
+        timeout-minutes: 90
         run: |
           python tools/reconfirmFalsification.py \
             --class shareable \
@@ -297,7 +306,10 @@ jobs:
           python tools/checkChromiumLaunches.py
 
       - name: Re-confirm (exclusive, 1 worker)
-        timeout-minutes: 45
+        # A hang detector, not a budget. The ubuntu exclusive leg measures
+        # 26-28 minutes (6 runs, 2026-09-08), so 45 left under 1.6x and one
+        # slow runner would kill a leg that was going to pass.
+        timeout-minutes: 75
         env:
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
           VAIBIFY_REQUIRE_BROWSER: '1' 
