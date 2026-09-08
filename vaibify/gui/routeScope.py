@@ -251,6 +251,7 @@ DICT_CONTROL_PLANE_SCOPES = {
     # and writes host state and the run spends the daemon.
     ("POST", "/api/reproductions/stage"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/reproductions/{sJobId}/run"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/reproductions/{sJobId}/discard"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }

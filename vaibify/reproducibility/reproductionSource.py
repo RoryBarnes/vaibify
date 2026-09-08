@@ -65,7 +65,6 @@ import tarfile
 import tempfile
 import time
 from datetime import datetime, timezone
-from io import BytesIO
 from urllib.parse import urlsplit, urlunsplit
 
 from vaibify.gui import workflowMigrations
@@ -76,7 +75,11 @@ from vaibify.gui.workflowManager import (
     fsDescribeValidationFailure,
 )
 from vaibify.reproducibility import imageArchive
-from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
+from vaibify.reproducibility.credentialRedactor import (
+    _TUPLE_QUERY_PARAM_NAMES,
+    fsRedactCredentials,
+    fsRedactUrlCredentials,
+)
 from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
@@ -106,6 +109,8 @@ __all__ = [
     "F_STAGING_TTL_SECONDS",
     "I_STAGING_SIZE_CEILING_BYTES",
     "S_KIND_GIT_URL",
+    "S_STAGE_PHASE_MATERIALIZING",
+    "S_STAGE_PHASE_VALIDATING",
     "S_KIND_LOCAL_CLONE",
     "T_ACCEPTED_URL_SCHEMES",
     "fbaExportStagedSnapshot",
@@ -147,6 +152,12 @@ class WorkflowSelectionRequiredError(ReproductionSourceRefusedError):
         self.listWorkflowNames = list(listWorkflowNames)
 
 
+# The two phases a stage passes through, reported to a caller that
+# keeps a record. Spelled here because staging owns the sequence; the
+# hub's job record maps them onto its own vocabulary.
+S_STAGE_PHASE_MATERIALIZING = "staging"
+S_STAGE_PHASE_VALIDATING = "validating"
+
 S_KIND_GIT_URL = "git-url"
 S_KIND_LOCAL_CLONE = "local-clone"
 
@@ -165,6 +176,7 @@ _S_REPRODUCTIONS_DIRECTORY = os.path.expanduser("~/.vaibify/reproductions")
 _S_STAGING_SUBDIRECTORY = "staging"
 _S_SOURCE_RECORD_NAME = "source.json"
 _S_LIVE_LOCK_NAME = "live.lock"
+_S_EXPORT_SPOOL_NAME = "export.tar"
 _I_PRIVATE_DIRECTORY_MODE = 0o700
 
 # A clone larger than this is refused WHILE it grows, not after it has
@@ -266,7 +278,35 @@ def _fsAdmitUrl(sUrl):
             "credential-free URL and let git ask its own helper. "
             + _fsAcceptedShapes(sUrl)
         )
+    _fnRefuseCredentialQueryParameters(sUrl, tParts.query)
     return sUrl
+
+
+def _fnRefuseCredentialQueryParameters(sUrl, sQuery):
+    """Refuse a URL whose QUERY carries a credential.
+
+    Userinfo is not the only place a token rides. A forge that accepts
+    ``?access_token=...`` puts the secret in the same string a report
+    records, and stripping userinfo alone left it there (found by
+    review, 2026-09-07). The parameter names are the redactor's own
+    tuple rather than a second list, so the refusal and the scrub can
+    never disagree about what counts as a credential.
+    """
+    for sPair in (sQuery or "").split("&"):
+        sName = sPair.split("=", 1)[0].strip().lower()
+        if sName in _TUPLE_QUERY_PARAM_NAMES:
+            # The refused URL is never echoed: it holds the secret
+            # this refusal is about, and a message is printed, logged
+            # and read over shoulders.
+            raise ReproductionSourceRefusedError(
+                f"the clone URL carries a {sName!r} query parameter, "
+                "which is a credential. It would be recorded in the "
+                "reproduction report and copied into the container; "
+                "use a credential-free URL and let git ask its own "
+                "helper. " + _fsAcceptedShapes(
+                    fsRedactUrlCredentials(sUrl),
+                )
+            )
 
 
 def _fsStripUserinfo(sUrl):
@@ -281,13 +321,58 @@ def _fsStripUserinfo(sUrl):
         sHost = tParts.hostname or ""
         if tParts.port:
             sHost = f"{sHost}:{tParts.port}"
-        return urlunsplit(
+        # The query is scrubbed through the redactor as well as the
+        # userinfo: the classifier refuses a credential parameter, and
+        # this is the second line that holds for a URL reaching here by
+        # any other path (a recorded origin, a future caller).
+        return fsRedactUrlCredentials(urlunsplit(
             (tParts.scheme, sHost, tParts.path, tParts.query, ""),
-        )
+        ))
     matchScp = _REGEX_SCP_LIKE.match(sUrl)
     if matchScp:
         return f"{matchScp.group('host')}:{matchScp.group('path')}"
     return sUrl
+
+
+def _fnScrubStagedGitMetadata(sClonePath, sRemoteUrl):
+    """Remove every record of WHERE the staged clone came from.
+
+    ``git clone`` writes the source it was given into TWO places, and
+    fixing only the obvious one leaves the leak: ``.git/config`` holds
+    it as ``remote.origin.url``, and ``.git/logs/HEAD`` holds it in the
+    reflog line ``clone: from <source>``. A local clone's source is an
+    absolute host path and a URL clone's is the URL as typed; the
+    staged tree, ``.git`` included, is copied into a container built
+    from somebody else's image, so either would put the reproducer's
+    filesystem layout inside an untrusted runtime (found by review
+    2026-09-07; the reflog half was found by the test written for the
+    first half, which is why the guard asserts over every archive
+    member rather than over one file).
+
+    The remote is rewritten to the same redacted string a report may
+    carry, and removed outright when there is none. The reflog is
+    deleted: it is local bookkeeping about one machine's fetches, no
+    part of any commit, and nothing downstream reads it.
+    """
+    _fnRemoveTreeQuietly(os.path.join(sClonePath, ".git", "logs"))
+    if sRemoteUrl:
+        _fsGitQueryOrRefuse(
+            ["remote", "set-url", "origin", sRemoteUrl], sClonePath,
+            "rewriting the staged clone's origin",
+        )
+        return
+    processGit = _fprocessRunGit(["remote", "remove", "origin"], sCwd=sClonePath)
+    if processGit.returncode not in (0, 2, 128):
+        raise ReproductionSourceRefusedError(
+            "the staged clone's origin could not be removed, so it "
+            "would carry the source's location into the container: "
+            + fsRedactCredentials((processGit.stderr or "").strip())
+        )
+
+
+def _fnRemoveTreeQuietly(sPath):
+    """Delete a directory tree, tolerating its absence."""
+    shutil.rmtree(sPath, ignore_errors=True)
 
 
 def flistAdmittedLocalCloneRoots():
@@ -1035,7 +1120,7 @@ def _fdictValidateStagedProject(sClonePath, sWorkflowRelativePath):
 # ---------------------------------------------------------------------
 
 
-def fdictStageSource(sInput, sWorkflowName=None):
+def fdictStageSource(sInput, sWorkflowName=None, fnStatusCallback=None):
     """Stage ``sInput`` as a validated snapshot; return its description.
 
     Runs the whole of phase 1 -- classify, materialize one commit,
@@ -1048,12 +1133,14 @@ def fdictStageSource(sInput, sWorkflowName=None):
     """
     dictClassified = fdictClassifySource(sInput)
     flistSweepAbandonedStaging()
+    fnStatusCallback = fnStatusCallback or (lambda sPhase: None)
     sStagingDirectory = _fsCreateStagingDirectory()
     sToken = os.path.basename(sStagingDirectory)
     try:
         with _fcontextHoldLiveLock(sStagingDirectory):
             dictRecord = _fdictStageIntoDirectory(
                 dictClassified, sStagingDirectory, sWorkflowName,
+                fnStatusCallback,
             )
             _fnWriteSourceRecord(sStagingDirectory, dictRecord)
     except BaseException:
@@ -1062,7 +1149,9 @@ def fdictStageSource(sInput, sWorkflowName=None):
     return {"sToken": sToken, **dictRecord}
 
 
-def _fdictStageIntoDirectory(dictClassified, sStagingDirectory, sWorkflowName):
+def _fdictStageIntoDirectory(
+    dictClassified, sStagingDirectory, sWorkflowName, fnStatusCallback=None,
+):
     """Materialize, select and validate inside a held staging directory."""
     if dictClassified["sKind"] == S_KIND_LOCAL_CLONE:
         dictMaterialized = _fdictMaterializeLocalClone(
@@ -1075,6 +1164,12 @@ def _fdictStageIntoDirectory(dictClassified, sStagingDirectory, sWorkflowName):
     sClonePath = os.path.join(
         sStagingDirectory, dictMaterialized["sRepositoryName"],
     )
+    _fnScrubStagedGitMetadata(sClonePath, dictMaterialized["sRemoteUrl"])
+    if fnStatusCallback is not None:
+        # The clone is on disk; what follows is the six rules. A job
+        # record that says "validating" is the difference between a
+        # researcher watching a long clone and one watching a hang.
+        fnStatusCallback(S_STAGE_PHASE_VALIDATING)
     listWorkflows = _flistDiscoverWorkflowFiles(sClonePath)
     try:
         dictEntry = fdictSelectWorkflowEntry(
@@ -1155,7 +1250,7 @@ def fdictDescribeStagedSource(sToken):
 # ---------------------------------------------------------------------
 
 
-def fbaExportStagedSnapshot(sToken):
+def fbaExportStagedSnapshot(sToken, iMaxBytes=None):
     """Return the staged clone as tar bytes named ``<repository>/...``.
 
     The shape ``container.get_archive`` produces and
@@ -1164,23 +1259,79 @@ def fbaExportStagedSnapshot(sToken):
     Every later step consumes THIS archive -- never a re-clone, and
     never the source -- so a branch that moved after staging, or a
     working tree edited since, changes nothing about what runs.
+
+    ``iMaxBytes`` is the SAME bound the live shadow lane applies to its
+    own export (``daemonCapacity``'s ``iArchiveTotalBytes``), and both
+    production callers pass it, because the staging ceiling bounds what
+    a clone may occupy on DISK and says nothing about what the hub may
+    materialise in its own address space. It is checked before the
+    archive is built and again on the built archive, so neither a large
+    tree nor a tree that grew during the walk can be handed on. The
+    default is the staging ceiling, for a caller with no daemon to ask.
+
+    The archive is spooled to a private file inside the staging
+    directory rather than assembled in memory. One in-memory copy
+    remains at the end, and a second is made by the repack the copy-in
+    performs; that residual is bounded by this check rather than
+    removed, and removing it means changing the copy-in interface,
+    which this change deliberately does not touch.
     """
     sClonePath = fsStagedClonePath(sToken)
+    iBound = iMaxBytes or I_STAGING_SIZE_CEILING_BYTES
+    _fnRefuseAnExportOverTheBound(_fiDirectoryBytes(sClonePath), iBound,
+                                  "the staged clone occupies")
+    sArchivePath = os.path.join(
+        _fsStagingDirectory(sToken), _S_EXPORT_SPOOL_NAME,
+    )
+    try:
+        _fnSpoolStagedArchive(sClonePath, sArchivePath)
+        _fnRefuseAnExportOverTheBound(
+            os.path.getsize(sArchivePath), iBound, "the staged archive is",
+        )
+        with open(sArchivePath, "rb") as fileArchive:
+            return fileArchive.read()
+    finally:
+        _fnRemoveQuietly(sArchivePath)
+
+
+def _fnRefuseAnExportOverTheBound(iBytes, iBound, sWhat):
+    """Refuse to materialise an archive the hub cannot afford to hold."""
+    if iBytes <= iBound:
+        return
+    raise ReproductionSourceRefusedError(
+        f"{sWhat} {iBytes} bytes, over the {iBound} this host can "
+        "copy into a container in one piece. A reproduction stages the "
+        "repository alone; data this large belongs in a declared remote."
+    )
+
+
+def _fnSpoolStagedArchive(sClonePath, sArchivePath):
+    """Write the staged clone to a private tar file, one member at a time."""
     sRepositoryName = os.path.basename(sClonePath)
-    bufferArchive = BytesIO()
-    with tarfile.open(fileobj=bufferArchive, mode="w") as fileTar:
-        fileTar.add(sClonePath, arcname=sRepositoryName, recursive=False)
-        for sParent, listDirectories, listFiles in os.walk(sClonePath):
-            listDirectories.sort()
-            sRelativeParent = os.path.relpath(sParent, sClonePath)
-            for sName in sorted(listDirectories) + sorted(listFiles):
-                sAbsolute = os.path.join(sParent, sName)
-                sMember = (
-                    sName if sRelativeParent == os.curdir
-                    else "/".join(sRelativeParent.split(os.sep) + [sName])
-                )
-                fileTar.add(
-                    sAbsolute, arcname=f"{sRepositoryName}/{sMember}",
-                    recursive=False,
-                )
-    return bufferArchive.getvalue()
+    iDescriptor = os.open(
+        sArchivePath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600,
+    )
+    with os.fdopen(iDescriptor, "wb") as fileArchive:
+        with tarfile.open(fileobj=fileArchive, mode="w") as fileTar:
+            fileTar.add(sClonePath, arcname=sRepositoryName, recursive=False)
+            for sParent, listDirectories, listFiles in os.walk(sClonePath):
+                listDirectories.sort()
+                sRelativeParent = os.path.relpath(sParent, sClonePath)
+                for sName in sorted(listDirectories) + sorted(listFiles):
+                    sAbsolute = os.path.join(sParent, sName)
+                    sMember = (
+                        sName if sRelativeParent == os.curdir
+                        else "/".join(sRelativeParent.split(os.sep) + [sName])
+                    )
+                    fileTar.add(
+                        sAbsolute, arcname=f"{sRepositoryName}/{sMember}",
+                        recursive=False,
+                    )
+
+
+def _fnRemoveQuietly(sPath):
+    """Delete a file, tolerating its absence."""
+    try:
+        os.remove(sPath)
+    except OSError:
+        pass

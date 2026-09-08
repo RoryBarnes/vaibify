@@ -966,6 +966,33 @@ LIST_AGENT_ACTIONS = [
                      "post-reconciliation view the dashboard sees (with "
                      "stale-heartbeat fields stamped, including "
                      "sFailureCauseHost and iActiveStepAtDeath)."},
+    # ---- Reproducing a published project (human-only) ----
+    # REGISTERED rather than excluded, so the catalog says what these
+    # are and the server-side gate refuses them by their own flag
+    # rather than by a path list. bAgentSafe is False on all three:
+    # staging clones a stranger's repository under the researcher's
+    # home and reads host state, the run spends the daemon on a shadow
+    # container and writes the reproducer's own record, and the
+    # discard deletes a staged clone. Each handler ALSO rejects the
+    # agent token lane by name, because a host-filesystem capability
+    # is not something the catalog can express on its own.
+    {"sName": "stage-published-project", "sCategory": "reproduction",
+     "sMethod": "POST", "sPath": "/api/reproductions/stage",
+     "bAgentSafe": False,
+     "sDescription": "Stage a published project from a clone URL or a "
+                     "clean local clone as an exact snapshot of one "
+                     "commit. Human-only."},
+    {"sName": "run-reproduction", "sCategory": "reproduction",
+     "sMethod": "POST", "sPath": "/api/reproductions/{sJobId}/run",
+     "bAgentSafe": False,
+     "sDescription": "Obtain the pinned image and re-run a staged "
+                     "snapshot in a shadow container, writing the "
+                     "reproducer's own report. Human-only."},
+    {"sName": "discard-reproduction", "sCategory": "reproduction",
+     "sMethod": "POST", "sPath": "/api/reproductions/{sJobId}/discard",
+     "bAgentSafe": False,
+     "sDescription": "Delete a staged snapshot that will not be run. "
+                     "Human-only."},
 ]
 
 
@@ -1126,14 +1153,6 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent must never operate that control plane, so it is excluded here
     # and the browser-hub route never carries an @ffnAgentAction.
     ("POST", "/api/registry/{sName}/promote-to-host-project"),
-    # Reproducing a published project is HUMAN-ONLY. Staging clones a
-    # stranger's repository under the researcher's home and reads host
-    # state; the run spends the daemon on a shadow container and writes
-    # the reproducer's own report. Neither is a decision an in-container
-    # agent may make, so both are excluded here and each handler also
-    # rejects the agent token lane by name.
-    ("POST", "/api/reproductions/stage"),
-    ("POST", "/api/reproductions/{sJobId}/run"),
     # Clearing a quarantine asserts the container is safe to use again;
     # a compromised agent asserting that about its own container is the
     # exact inversion of what the journal exists for.

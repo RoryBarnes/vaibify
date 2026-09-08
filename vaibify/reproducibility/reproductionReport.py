@@ -130,6 +130,7 @@ def fdictBuildReproductionReport(
         "iOutputHashesMatched": int(dictOutcome.get("iOutputHashesMatched", 0)),
         "iOutputHashesTotal": int(dictOutcome.get("iOutputHashesTotal", 0)),
         "listDivergedHashes": list(dictOutcome.get("listDivergedHashes") or []),
+        "listMatchedPaths": list(dictOutcome.get("listMatchedPaths") or []),
         "listCarriedPaths": list(dictOutcome.get("listCarriedPaths") or []),
         "dictRerunFailure": dict(dictOutcome.get("dictRerunFailure") or {}),
         "dictImageRecheck": {

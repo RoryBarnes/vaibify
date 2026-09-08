@@ -1059,12 +1059,18 @@ def _fnPrintAcquisitionEvent(dictEvent):
 def _fnReproduceStagedSnapshot(sToken, dictAcquired):
     """Re-run the staged snapshot in a shadow and write the report."""
     from .commandUtilsDocker import fconnectionRequireDocker
+    from vaibify.docker import daemonCapacity
     fStarted = time.monotonic()
     dictSource = fdictDescribeStagedSource(sToken)
     click.echo("Re-running the snapshot in a shadow container ...")
+    connectionDocker = fconnectionRequireDocker()
+    iArchiveBound = daemonCapacity.fdictResolveDaemonCapacity(
+        connectionDocker,
+    )["iArchiveTotalBytes"]
     try:
         dictOutcome = fdictRerunAndVerifyFromSnapshot(
-            fconnectionRequireDocker(), fbaExportStagedSnapshot(sToken),
+            connectionDocker,
+            fbaExportStagedSnapshot(sToken, iArchiveBound),
             dictAcquired, fdictLoadStagedWorkflow(sToken),
             dictSource["sWorkflowPath"], dictSource["sRepositoryName"],
             sResourceName=f"reproduction-{sToken}",

@@ -37,6 +37,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from ...config.connectionAvailability import fbDockerReachable
+from ...docker import daemonCapacity
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import imageAcquisition
 from ...reproducibility import reproductionReport
@@ -61,6 +62,7 @@ from ...reproducibility.shadowRerun import (
     fdictRerunAndVerifyFromSnapshot,
 )
 from .. import reproductionProgress
+from ..actionCatalog import ffnAgentAction
 from ..routeContext import fnRejectAgentTokenLane
 from ..routeScope import (
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -98,41 +100,56 @@ def _fnRegisterStage(app, dictCtx):
 
     @app.post("/api/reproductions/stage")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnAgentAction("stage-published-project")
     async def fdictStagePublishedProject(
         request: StageRequest, requestHttp: Request,
     ):
         fnRejectAgentTokenLane(requestHttp)
         try:
+            dictJob = reproductionProgress.fdictOpenStagingJob()
+        except reproductionProgress.TooManyReproductionJobsError as error:
+            raise HTTPException(429, str(error)) from None
+        sJobId = dictJob["sJobId"]
+        try:
             dictStaged = await asyncio.to_thread(
                 fdictStageSource, request.sSource,
                 request.sWorkflowName or None,
+                lambda sPhase: reproductionProgress.fnRecordPhase(
+                    sJobId, sPhase,
+                ),
             )
         except WorkflowSelectionRequiredError as error:
+            reproductionProgress.fnForgetJob(sJobId)
             return {
                 "bWorkflowSelectionRequired": True,
                 "listWorkflowNames": list(error.listWorkflowNames),
             }
         except ReproductionSourceRefusedError as error:
+            reproductionProgress.fnForgetJob(sJobId)
             raise HTTPException(422, f"Refused: {error}") from None
-        return _fdictRegisterStagedJob(dictCtx, dictStaged)
+        except BaseException:
+            reproductionProgress.fnForgetJob(sJobId)
+            raise
+        return _fdictAdoptStagedJob(dictCtx, sJobId, dictStaged)
 
 
-def _fdictRegisterStagedJob(dictCtx, dictStaged):
+def _fdictAdoptStagedJob(dictCtx, sJobId, dictStaged):
     """Hold the staged snapshot for the job's life and describe it."""
     sToken = dictStaged["sToken"]
     fnReleaseSnapshot = ffnHoldStagedSource(sToken)
     try:
         dictDescription = fdictDescribeStagedSource(sToken)
         dictDaemon = _fdictDescribeDaemon(dictCtx, dictDescription)
-        dictJob = reproductionProgress.fdictCreateJob(
-            sToken, dictDescription, dictDaemon, fnReleaseSnapshot,
+        reproductionProgress.fnAdoptStagedSnapshot(
+            sJobId, sToken, dictDescription, dictDaemon, fnReleaseSnapshot,
         )
     except Exception:
         fnReleaseSnapshot()
+        reproductionProgress.fnForgetJob(sJobId)
         fnDiscardStagedSource(sToken)
         raise
     return {
-        "sJobId": dictJob["sJobId"],
+        "sJobId": sJobId,
         "dictStaged": dictDescription,
         "dictDaemon": dictDaemon,
         "listChainLinks": list(LIST_CHAIN_LINKS),
@@ -171,7 +188,7 @@ def _fsReadDaemonArchitectureQuietly():
     """Return the daemon's architecture, or empty when it cannot be asked."""
     from ...docker import disposableContainer
     try:
-        return str(disposableContainer.fsReadDaemonArchitecture(
+        return str(daemonCapacity.fsReadDaemonArchitecture(
             disposableContainer.fdockerCreateDisposableClient(),
         ) or "")
     except Exception as error:  # noqa: BLE001 - reported as unknown, never guessed
@@ -185,6 +202,7 @@ def _fnRegisterRun(app, dictCtx):
 
     @app.post("/api/reproductions/{sJobId}/run")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnAgentAction("run-reproduction")
     async def fdictRunReproduction(
         sJobId: str, request: RunRequest, requestHttp: Request,
     ):
@@ -321,8 +339,12 @@ def _fdictRerunAndReport(
         )
 
     try:
+        iArchiveBound = daemonCapacity.fdictResolveDaemonCapacity(
+            connectionDocker,
+        )["iArchiveTotalBytes"]
         dictOutcome = fdictRerunAndVerifyFromSnapshot(
-            connectionDocker, fbaExportStagedSnapshot(sToken), dictAcquired,
+            connectionDocker,
+            fbaExportStagedSnapshot(sToken, iArchiveBound), dictAcquired,
             dictWorkflow, dictSource["sWorkflowPath"],
             dictSource["sRepositoryName"],
             sResourceName=f"reproduction-{sToken}",
@@ -331,7 +353,7 @@ def _fdictRerunAndReport(
     except ShadowRerunRefusedError as error:
         dictOutcome = fdictUnrunOutcome(str(error))
     reproductionProgress.fnRecordPhase(
-        sJobId, reproductionProgress.S_PHASE_FINISHING,
+        sJobId, reproductionProgress.S_PHASE_TEARING_DOWN,
     )
     dictReport = reproductionReport.fdictBuildReproductionReport(
         dictSource, dictAcquired, dictOutcome,
@@ -343,6 +365,61 @@ def _fdictRerunAndReport(
         dictReport,
     )
     return dictReport
+
+
+def _fnRegisterDiscard(app, dictCtx):
+    """Register POST /api/reproductions/{sJobId}/discard."""
+    del dictCtx
+
+    @app.post("/api/reproductions/{sJobId}/discard")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnAgentAction("discard-reproduction")
+    async def fdictDiscardReproduction(sJobId: str, requestHttp: Request):
+        """Delete a staged snapshot the researcher is not going to run.
+
+        Closing the card used to hide it and leave the clone: a staged
+        job holds its own live lock, which is exactly what keeps the
+        staging sweep off it, so an abandoned confirmation kept a whole
+        repository until the hub restarted (found by review,
+        2026-09-07). A job already RUNNING is refused rather than
+        yanked out from under its shadow container; it discards its own
+        staging when it settles.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        _fnRequireJob(sJobId)
+        if reproductionProgress.fbJobIsLive(sJobId):
+            raise HTTPException(
+                409,
+                "This reproduction is running. It discards its staged "
+                "snapshot when it settles.",
+            )
+        reproductionProgress.fnDiscardJob(sJobId)
+        return {"bDiscarded": True}
+
+
+def _fnRegisterReportRead(app, dictCtx):
+    """Register GET /api/reproductions/reports/{sReportId}."""
+    del dictCtx
+
+    @app.get("/api/reproductions/reports/{sReportId}")
+    async def fdictReadReproductionReport(
+        sReportId: str, requestHttp: Request,
+    ):
+        """Serve one reproduction report so the result can link to it.
+
+        Browser-only, like every route in this module: the report
+        describes a run on this researcher's own machine. The id is
+        validated as a bare name by the reader it delegates to -- it
+        indexes a directory, and a caller must never be able to spell
+        a path.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        try:
+            return reproductionReport.fdictReadReproductionReport(sReportId)
+        except LookupError:
+            raise HTTPException(
+                404, "No reproduction report is stored under that id.",
+            ) from None
 
 
 def _fnRegisterProgress(app, dictCtx):
@@ -364,4 +441,6 @@ def fnRegisterAll(app, dictCtx):
     """Register the reproduction routes."""
     _fnRegisterStage(app, dictCtx)
     _fnRegisterRun(app, dictCtx)
+    _fnRegisterDiscard(app, dictCtx)
+    _fnRegisterReportRead(app, dictCtx)
     _fnRegisterProgress(app, dictCtx)

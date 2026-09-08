@@ -17476,8 +17476,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_the_export_carries_the_staged_commit_after_the_remote_moves',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='    sClonePath = fsStagedClonePath(sToken)\n    sRepositoryName = os.path.basename(sClonePath)\n',
-        new='    sClonePath = fsStagedClonePath(\n        fdictStageSource(\n            fdictDescribeStagedSource(sToken)["sRemoteUrl"],\n        )["sToken"],\n    )\n    sRepositoryName = os.path.basename(sClonePath)\n',
+        old='    sClonePath = fsStagedClonePath(sToken)\n    iBound = iMaxBytes or I_STAGING_SIZE_CEILING_BYTES\n',
+        new='    sClonePath = fsStagedClonePath(\n        fdictStageSource(\n            fdictDescribeStagedSource(sToken)["sRemoteUrl"],\n        )["sToken"],\n    )\n    iBound = iMaxBytes or I_STAGING_SIZE_CEILING_BYTES\n',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_two_workflows_are_refused_until_one_is_named',
@@ -17646,7 +17646,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_a_daemon_of_another_architecture_is_emulation',
         source='vaibify/reproducibility/imageAcquisition.py',
-        old='    sDaemonArchitecture = disposableContainer.fsReadDaemonArchitecture(\n        dockerDisposable,\n    )\n',
+        old='    sDaemonArchitecture = daemonCapacity.fsReadDaemonArchitecture(\n        dockerDisposable,\n    )\n',
         new='    sDaemonArchitecture = fsArchitectureOfPlatform(sObtainedPlatform)\n',
     ),
     Falsification(
@@ -17720,8 +17720,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionRoutes.py::test_the_agent_lane_is_refused_on_both_mutating_routes',
         source='vaibify/gui/routes/reproductionRoutes.py',
-        old='        fnRejectAgentTokenLane(requestHttp)\n        try:\n            dictStaged = await asyncio.to_thread(\n',
-        new='        try:\n            dictStaged = await asyncio.to_thread(\n',
+        old='        fnRejectAgentTokenLane(requestHttp)\n        try:\n            dictJob = reproductionProgress.fdictOpenStagingJob()\n',
+        new='        try:\n            dictJob = reproductionProgress.fdictOpenStagingJob()\n',
     ),
     Falsification(
         nodeid='tests/testReproductionRoutes.py::test_a_snapshot_runs_once_and_a_second_run_is_refused_by_name',
@@ -17746,5 +17746,73 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptReproducePublished.js',
         old='        _fnDisarmPoll();\n        _fnRenderResult(dictJob);\n',
         new='        _fnRenderResult(dictJob);\n',
+    ),
+    # --- 2026-09-07: review round 3 -- the redaction boundary, what an
+    # abandoned job costs, and the bounds on what the hub materialises ---
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_a_credential_query_parameter_is_refused',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='        if sName in _TUPLE_QUERY_PARAM_NAMES:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_the_recorded_remote_scrubs_a_query_credential',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='        return fsRedactUrlCredentials(urlunsplit(\n            (tParts.scheme, sHost, tParts.path, tParts.query, ""),\n        ))\n',
+        new='        return urlunsplit(\n            (tParts.scheme, sHost, tParts.path, tParts.query, ""),\n        )\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_the_staged_clone_carries_no_host_path_in_its_git_config',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    _fnScrubStagedGitMetadata(sClonePath, dictMaterialized["sRemoteUrl"])\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_a_staged_url_clone_keeps_only_the_redacted_remote',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    _fnRemoveTreeQuietly(os.path.join(sClonePath, ".git", "logs"))\n    if sRemoteUrl:\n        _fsGitQueryOrRefuse(\n            ["remote", "set-url", "origin", sRemoteUrl], sClonePath,\n',
+        new='    _fnRemoveTreeQuietly(os.path.join(sClonePath, ".git", "logs"))\n    if sRemoteUrl:\n        _fsGitQueryOrRefuse(\n            ["remote", "get-url", "origin"], sClonePath,\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_an_export_over_the_archive_bound_is_refused',
+        source='vaibify/reproducibility/reproductionSource.py',
+        old='    if iBytes <= iBound:\n        return\n',
+        new='    if True:\n        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_a_staged_job_nobody_ran_expires_and_its_clone_is_discarded',
+        source='vaibify/gui/reproductionProgress.py',
+        old='    if dictJob["sPhase"] == S_PHASE_STAGED:\n        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds\n',
+        new='    if False:\n        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_the_hub_refuses_more_snapshots_than_it_will_hold',
+        source='vaibify/gui/reproductionProgress.py',
+        old='    if iHolding >= I_MAX_CONCURRENT_JOBS:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_a_live_reproduction_vetoes_the_hubs_self_exit',
+        source='vaibify/gui/reproductionProgress.py',
+        old='        return any(\n            dictJob["sPhase"] in T_LIVE_PHASES\n            for dictJob in DICT_JOBS.values()\n        )\n',
+        new='        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_dismissing_a_staged_job_deletes_its_clone',
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        old='        reproductionProgress.fnDiscardJob(sJobId)\n        return {"bDiscarded": True}\n',
+        new='        reproductionProgress.fnForgetJob(sJobId)\n        return {"bDiscarded": True}\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_declining_the_confirmation_discards_the_staged_clone',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='        if (sJobId && !bRunning) {\n            VaibifyApi.fdictPost(\n                "/api/reproductions/" + encodeURIComponent(sJobId)\n                + "/discard", {}).catch(function () {});\n        }\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_a_job_this_hub_no_longer_holds_stops_the_poll',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='        _fnDisarmPoll();\n        _fnRenderResult({sFailure: bGone',
+        new='        _fnRenderResult({sFailure: bGone',
     ),
 ]

@@ -68,6 +68,7 @@ DICT_REPORT = {
                         "a arm64 host)",
     "iOutputHashesMatched": 2, "iOutputHashesTotal": 2,
     "listDivergedHashes": [], "listCarriedPaths": ["Notes/declaration.md"],
+    "listMatchedPaths": ["MakeNumbers/numbers.txt", "Figures/figure.pdf"],
     "dictPlatform": {"sRequiredPlatform": "linux/amd64",
                      "sObtainedPlatform": "linux/amd64",
                      "sDaemonArchitecture": "arm64", "bEmulated": True},
@@ -80,7 +81,8 @@ DICT_REPORT = {
 
 def _fdictInterceptTheJob(pageDashboard, iLivePolls=2):
     """Answer the three routes at the page; record every request."""
-    dictSeen = {"listStagePosts": [], "listRunPosts": [], "iPolls": 0}
+    dictSeen = {"listStagePosts": [], "listRunPosts": [],
+                "listDiscardPosts": [], "iPolls": 0}
 
     def fnAnswerStage(route):
         dictSeen["listStagePosts"].append(json.loads(route.request.post_data))
@@ -100,8 +102,16 @@ def _fdictInterceptTheJob(pageDashboard, iLivePolls=2):
                           bLive, "running" if bLive else "settled",
                           None if bLive else DICT_REPORT)))
 
+    def fnAnswerDiscard(route):
+        dictSeen["listDiscardPosts"].append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"bDiscarded": True}))
+
     pageDashboard.route("**/api/reproductions/stage", fnAnswerStage)
     pageDashboard.route(f"**/api/reproductions/{S_JOB_ID}/run", fnAnswerRun)
+    pageDashboard.route(
+        f"**/api/reproductions/{S_JOB_ID}/discard", fnAnswerDiscard,
+    )
     pageDashboard.route(f"**/api/reproductions/{S_JOB_ID}", fnAnswerPoll)
     return dictSeen
 
@@ -220,3 +230,99 @@ def test_the_poll_stops_when_the_job_settles_and_the_result_is_shown(
     assert dictSeen["iPolls"] == iPollsAtSettle, (
         "the card kept polling after the hub reported the job settled"
     )
+
+
+# ---------------------------------------------------------------------
+# What a dismissed card and a lost job do (review, 2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_declining_the_confirmation_discards_the_staged_clone(
+    pageDashboard, serverHub,
+):
+    """Hiding the modal used to leave a whole repository on disk.
+
+    Kills: closing the modal without the discard request.
+    """
+    _fnOpenTheCard(pageDashboard, serverHub)
+    dictSeen = _fdictInterceptTheJob(pageDashboard)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageConfirm", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnReproduceCancelConfirm")
+    pageDashboard.wait_for_selector(
+        "#modalReproducePublished", state="hidden", timeout=5000,
+    )
+    pageDashboard.wait_for_timeout(400)
+    assert len(dictSeen["listDiscardPosts"]) == 1, dictSeen
+    assert dictSeen["listRunPosts"] == []
+
+
+@pytest.mark.falsification
+def test_a_job_this_hub_no_longer_holds_stops_the_poll(
+    pageDashboard, serverHub,
+):
+    """A 404 means there is nothing left to wait for.
+
+    Jobs live only as long as the hub that started them, so a restart
+    loses one -- and the card used to poll a hub that would never
+    answer, forever.
+
+    Kills: returning from the poll's failure branch without disarming.
+    """
+    _fnOpenTheCard(pageDashboard, serverHub)
+    dictSeen = _fdictInterceptTheJob(pageDashboard)
+
+    def fnAnswerGone(route):
+        dictSeen["iPolls"] += 1
+        route.fulfill(status=404, content_type="application/json",
+                      body=json.dumps({"detail": "No reproduction job."}))
+
+    pageDashboard.route(f"**/api/reproductions/{S_JOB_ID}", fnAnswerGone)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageConfirm", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnReproduceRun")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageResult", state="visible", timeout=15000,
+    )
+    assert "no longer holding" in pageDashboard.text_content(
+        "#reproduceResultBody",
+    )
+    iAfterSettle = dictSeen["iPolls"]
+    pageDashboard.wait_for_timeout(3 * 2000)
+    assert dictSeen["iPolls"] == iAfterSettle, (
+        "the card kept polling a hub that answered 404"
+    )
+
+
+def test_the_result_names_every_file_and_links_its_report(
+    pageDashboard, serverHub,
+):
+    _fnOpenTheCard(pageDashboard, serverHub)
+    _fdictInterceptTheJob(pageDashboard, iLivePolls=1)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageConfirm", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnReproduceRun")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageResult", state="visible", timeout=15000,
+    )
+    sBody = pageDashboard.text_content("#reproduceResultBody")
+    for sPath in DICT_REPORT["listMatchedPaths"]:
+        assert sPath in sBody, sPath
+    assert "re-derived, byte-identical" in sBody
+    sHref = pageDashboard.get_attribute(
+        "#reproduceResultBody a[href*='reproductions/reports']", "href",
+    )
+    assert sHref.endswith("/api/reproductions/reports/report01"), sHref

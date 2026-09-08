@@ -6458,7 +6458,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # construction, and a record carries its own rationale.
     # +8 on 2026-09-07: the reproduction job's two human-only routes and
     # their rationale joined SET_INTENTIONALLY_EXCLUDED_PATHS.
-    "actionCatalog.py": 1210,
+    # 1210 -> 1229 later the same day, and the shape is what the review
+    # asked for: those two paths left the exclusion set and became
+    # three REGISTERED entries (stage, run, discard) carrying
+    # bAgentSafe False, so the gate refuses them by their own flag and
+    # the catalog says what they are. Net +19 for three records and one
+    # rationale, which is a catalog growing by construction.
+    "actionCatalog.py": 1229,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6764,7 +6770,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # landed; neither number describes the file that now exists.
     # +8 on 2026-09-07: the reproduction job's two browser-hub scopes
     # and their rationale joined DICT_CONTROL_PLANE_SCOPES.
-    "routeScope.py": 996,
+    # +1 later the same day: the discard route's scope. One line per
+    # route in a map of routes.
+    "routeScope.py": 997,
 }
 
 

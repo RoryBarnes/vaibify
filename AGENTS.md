@@ -424,6 +424,50 @@ real `git` and a real loopback HTTP remote, and every rule has a
 kill-confirmed entry. The staging sweep skips any directory whose live
 lock is held, whatever its age — the `~/.vaibify/tmp` lesson.
 
+**The redaction boundary is wider than the userinfo, and the staged
+`.git` is inside it.** Three leaks, all found by review on 2026-09-07,
+all in code that read as careful. A credential rides in a URL's QUERY
+(`?access_token=`) as readily as in its userinfo, so the classifier
+REFUSES those parameters — pinned to `credentialRedactor`'s own tuple,
+never a second list — the recorded remote is scrubbed through
+`fsRedactUrlCredentials` as a second line, and the refusal does not
+echo the URL it is about. `git clone` records the source it was given
+in TWO places, `.git/config` and the `clone: from …` reflog line, so
+`_fnScrubStagedGitMetadata` rewrites the origin to the redacted remote
+(or removes it) and deletes `.git/logs` before anything reads the
+snapshot: the staged tree, `.git` included, is copied into a container
+built from a stranger's image, and a local clone's source is an
+absolute host path. The guard asserts over EVERY archive member, not
+over `.git/config`, which is how the reflog half was found at all —
+and the URL-clone test carries a USERNAME, because with a bare URL the
+recorded remote and the cloned URL are the same string and the
+assertion is vacuous (it was, and the mutation survived it). And the
+staging size ceiling bounds the DISK: the export is separately bounded
+by `daemonCapacity`'s `iArchiveTotalBytes` and spooled to a private
+file, because what the hub may hold in memory is a different question
+from what a clone may occupy.
+
+**A staged job holds the lock that keeps the sweep off its clone, so
+it needs an expiry of its own.** `reproductionProgress` carries TWO
+retentions — a settled job holds a report id, a staged one holds a
+whole repository — plus a concurrency cap, and dismissing the
+confirmation card DELETES the snapshot (`fnDiscardJob`, the
+`/discard` route) rather than merely releasing it. Before that, stage
+and close left a repository per attempt until the hub restarted. A
+RUNNING job is never discarded out from under its shadow. The three
+routes are catalog entries with `bAgentSafe: False` AND their own
+agent-lane rejection, because a host-filesystem capability is not
+something the catalog can express. The run is NOT in the durable-task
+registry: that registry is keyed on a container with an owner lane
+tuple, and a reproduction has neither — its shadow is created inside
+the worker and destroyed at the end. What "durable" was wanted FOR is
+delivered instead by `fbHubHoldsLiveReproduction`, the idle
+watchdog's veto, on the Agent Council's precedent and for the same
+reason: a reproduction holds no socket and no owned container, so
+without it a closed tab lets the clock go stale and the hub SIGTERMs
+itself mid-run. A poll that meets a 404 DISARMS and says the job is
+gone; jobs live only as long as their hub.
+
 **The image is obtained through the chain `reproduce.sh` runs, and
 the two lanes are pinned to agree.** `imageAcquisition` walks registry
 pull, then the archived deposit (hash from the ENVELOPE, checked

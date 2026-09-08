@@ -431,6 +431,16 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
     from . import agentCouncilRegistry
     if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
         return False
+    # A live reproduction vetoes self-exit for exactly the council's
+    # reason: it holds no WebSocket and no container in
+    # dictContainerOwners -- its shadow is created inside the worker
+    # and destroyed at the end -- so both other signals report an idle
+    # hub while somebody's reproduction is halfway through a workflow.
+    # A run that outlives its tab is the normal case here, which is
+    # what makes the blind spot reachable rather than theoretical.
+    from . import reproductionProgress
+    if reproductionProgress.fbHubHoldsLiveReproduction():
+        return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False
     fLast = getattr(

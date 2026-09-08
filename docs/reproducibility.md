@@ -648,7 +648,7 @@ verdict* (the rerun never started, and the reason is named).
 
 | Source | Accepted as | Notes |
 |---|---|---|
-| An `https://` or `ssh://` clone URL, or `user@host:path` | `git-url` | Matched by shape, never by which forge hosts it. A URL carrying a username or password is refused: credentials in a URL end up in shell history and in reports. |
+| An `https://` or `ssh://` clone URL, or `user@host:path` | `git-url` | Matched by shape, never by which forge hosts it. A URL carrying a username, a password, or an `access_token=` / `token=` query parameter is refused: credentials in a URL end up in shell history, in reports, and inside the container. |
 | The path of a clone under your home directory | `local-clone` | Only when `git status` reports nothing at all -- tracked, untracked *and* ignored. A dirty clone is not a published project. |
 
 `file://`, `git://`, `ext::` and plain `http://` are refused, each
@@ -684,7 +684,17 @@ against is never read.
 
 A clone is refused while it grows past a size ceiling, not after it
 has filled the disk, and an abandoned staging directory is swept after
-a day -- never one a live job still holds.
+a day -- never one a live job still holds. The staged clone's `origin`
+is rewritten to the redacted remote and its reflog removed before
+anything reads it: `git clone` records the source it was given in two
+places, and the staged tree is copied into a container built from
+somebody else's image.
+
+The archive handed to that container is bounded by the same figure the
+live shadow lane uses for its own export, and spooled to a private
+file rather than assembled in memory: the size ceiling above bounds
+what a clone may occupy on disk and says nothing about what the hub
+may materialise in its own address space.
 
 ### Validation is strict, not advisory -- and it is not the Level 3 gate
 
@@ -727,17 +737,20 @@ workflow, commit, pinned image, required platform, deposit on record,
 whether this daemon's architecture matches, the chain links in
 order), a Run button that starts the job, a progress card that polls
 only while the hub reports the job live, and a result card with the
-verdict, the per-file outcomes with the carried paths beside the
-count, the three platform facts, the image's provenance and the
-report id. No tile persists and no publishing, depositing or
-attesting action is offered. It drives exactly the staging, chain and
+verdict, every pinned file by name (diverged, carried in unchanged,
+or re-derived byte-identically), the three platform facts, the
+image's provenance and a link to the report. No tile persists and no
+publishing, depositing or attesting action is offered. Dismissing the
+confirmation deletes the staged clone; a staged job nobody runs
+expires; and the hub holds only a few staged snapshots at once. It drives exactly the staging, chain and
 shadow the command line does, through the same seams, so the two
 cannot describe two different reproductions.
 
 ### What a report may carry
 
 Only what `fdictDescribeStagedSource` returns: the source kind, the
-resolved commit, the remote URL with any `user:password@` stripped,
+resolved commit, the remote URL with any `user:password@` **and any
+credential query parameter** stripped,
 the workflow name and its repo-relative path, and the validated facts
 above. Never a path on the reproducer's machine. A reproduction report
 is the reproducer's own artefact -- never an attestation, never

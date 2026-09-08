@@ -903,15 +903,27 @@ The card opens a dialog with four stages, in this order:
    in order. Nothing has been pulled or run yet, and nothing is until
    you click **Run**; **Not now** sends nothing.
 3. **Progress.** The dialog polls only while the hub reports the job
-   live: pulling, downloading (with bytes), loading, running (with the
-   step), finishing. It stops the moment the job settles. **Hide**
-   closes the dialog without stopping the job; it reopens on settle.
+   live: staging, validating, pulling, downloading (with bytes),
+   loading, running (with the step), comparing, tearing down. It stops
+   the moment the job settles, and it also stops if this hub no longer
+   holds the job -- jobs live only as long as the hub that started
+   them, so a restart loses one, and the dialog says so instead of
+   waiting for an answer that will never come. **Hide** closes the
+   dialog without stopping the job; it reopens on settle.
 4. **Result.** The verdict -- *reproduced*, *reproduced under
-   emulation*, *diverged*, or *no verdict* with the reason -- the
-   files that diverged and the files carried in unchanged beside the
-   matched count, the three platform facts, where the image came from,
-   the deposit re-check, and the id of the report written under
-   `~/.vaibify/reproductions/reports/`.
+   emulation*, *diverged*, or *no verdict* with the reason -- then
+   **every pinned file by name**: the ones that diverged, the ones
+   carried in unchanged because a human step produced them, and the
+   ones re-derived byte-identically. Beside them: the three platform
+   facts, where the image came from, the deposit re-check, and a link
+   to the report written under `~/.vaibify/reproductions/reports/`.
+
+Dismissing the confirmation deletes the staged clone rather than
+leaving it: a staged snapshot is a whole repository on your disk, and
+one nobody is going to run is waste. A staged job you neither run nor
+dismiss is expired by the hub after half an hour, and the hub holds a
+small fixed number of staged snapshots at once -- stage another and it
+says so rather than filling the disk.
 
 The report is yours, not the author's attestation: nothing is written
 into the project, the dialog offers no publish, deposit or attest

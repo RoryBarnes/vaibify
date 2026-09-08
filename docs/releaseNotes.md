@@ -6,6 +6,28 @@ the reasoning.
 
 ## Unreleased
 
+### Reproducing a published project: what a dismissed card costs, and what a report shows
+
+Three changes a researcher notices, from a review of the dashboard
+job. Dismissing the confirmation card now **deletes** the staged
+clone instead of leaving a whole repository on disk until the hub
+restarts, a job nobody runs expires by itself, and the hub holds only
+a few staged snapshots at once rather than one per attempt. The
+result card names **every pinned file** -- diverged, carried in
+unchanged, and re-derived byte-identically -- and links the report
+rather than printing an id and a directory to go and find. And a
+progress card whose hub no longer holds the job now says so and
+stops, instead of polling an answer that will never come.
+
+Two things that are not visible and matter more. A clone URL carrying
+a credential in its query (`?access_token=`) is refused, and the
+staged clone's record of where it came from -- its `origin` and its
+reflog -- is rewritten before the snapshot is copied into a container
+built from somebody else's image; neither your filesystem layout nor
+a token travels with it. And a reproduction in progress now stops the
+hub from retiring itself for idleness, which it could previously do
+in the middle of a two-hour run once you closed the tab.
+
 ### Reproduce a published project from the hub
 
 The **+** button's Add Environment dialog gains a third kind card,

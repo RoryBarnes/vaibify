@@ -347,3 +347,90 @@ def test_no_response_names_a_path_on_this_host(sPublishedRepo, tmp_path):
         assert sStagingRoot not in sBody
         assert sToken not in sBody
         assert os.path.expanduser("~") not in sBody
+
+
+# ---------------------------------------------------------------------
+# What a dismissed card costs, and what a report is served as
+# (review, 2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_dismissing_a_staged_job_deletes_its_clone(sPublishedRepo):
+    """A staged job holds the lock the staging sweep skips.
+
+    Kills: dropping the discard route's registration or its delete.
+    """
+    with patch.object(
+        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        lambda: "amd64",
+    ), _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        assert len(_flistStagingTokens()) == 1
+        responseDiscard = client.post(
+            f"/api/reproductions/{sJobId}/discard", json={},
+        )
+    assert responseDiscard.status_code == 200, responseDiscard.text
+    assert responseDiscard.json() == {"bDiscarded": True}
+    assert _flistStagingTokens() == [], "the clone is gone, not just released"
+    assert reproductionProgress.fdictReadJobView(sJobId) is None
+
+
+def test_a_running_job_is_not_discarded_out_from_under_its_shadow(
+    sPublishedRepo,
+):
+    with patch.object(
+        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        lambda: "amd64",
+    ), _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        reproductionProgress.fnRecordPhase(
+            sJobId, reproductionProgress.S_PHASE_RUNNING,
+        )
+        responseDiscard = client.post(
+            f"/api/reproductions/{sJobId}/discard", json={},
+        )
+    assert responseDiscard.status_code == 409
+    assert "running" in responseDiscard.text
+    reproductionProgress.fnForgetJob(sJobId)
+
+
+def test_the_report_route_serves_one_report_and_refuses_a_spelled_path():
+    dictReport = {
+        "sReportId": "reportfixture01", "iSchemaVersion": 1,
+        "sVerdict": "reproduced",
+    }
+    with patch.object(
+        reproductionReport, "fdictReadReproductionReport",
+        side_effect=lambda sReportId: (
+            dictReport if sReportId == "reportfixture01"
+            else _fnRaiseLookup(sReportId)
+        ),
+    ), _fclientBuild() as client:
+        responseGood = client.get(
+            "/api/reproductions/reports/reportfixture01",
+        )
+        responseMissing = client.get("/api/reproductions/reports/nope")
+    assert responseGood.status_code == 200
+    assert responseGood.json()["sVerdict"] == "reproduced"
+    assert responseMissing.status_code == 404
+
+
+def _fnRaiseLookup(sReportId):
+    raise LookupError(sReportId)
+
+
+def test_the_agent_lane_is_refused_on_the_report_and_discard_routes(
+    sPublishedRepo,
+):
+    with _fclientBuild() as client:
+        for sMethod, sPath in (
+            ("post", "/api/reproductions/anyjob/discard"),
+            ("get", "/api/reproductions/reports/anyreport"),
+        ):
+            response = getattr(client, sMethod)(
+                sPath,
+                headers={S_SESSION_HEADER_NAME: "agent-token-not-a-browser"},
+                **({"json": {}} if sMethod == "post" else {}),
+            )
+            assert response.status_code == 403, (sPath, response.text)

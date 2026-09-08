@@ -21,7 +21,10 @@ var VaibifyReproducePublished = (function () {
     var _I_POLL_MILLISECONDS = 2000;
     var _sJobId = "";
     var _iPollTimer = 0;
+    var _iPollFailures = 0;
+    var _I_POLL_FAILURES_TOLERATED = 3;
     var _dictStaged = null;
+    var _bRunStarted = false;
 
     function _felById(sId) {
         return document.getElementById(sId);
@@ -37,6 +40,8 @@ var VaibifyReproducePublished = (function () {
     function fnOpen() {
         _sJobId = "";
         _dictStaged = null;
+        _bRunStarted = false;
+        _iPollFailures = 0;
         _fnDisarmPoll();
         _felById("reproduceSourceInput").value = "";
         _felById("reproduceWorkflowSelect").style.display = "none";
@@ -47,8 +52,24 @@ var VaibifyReproducePublished = (function () {
     }
 
     function fnClose() {
+        /* Hiding the modal used to leave the staged clone on disk: a
+           staged job holds its own lock, which is what keeps the
+           staging sweep off it, so an abandoned confirmation kept a
+           whole repository until the hub restarted (found by review,
+           2026-09-07). Dismissing the card discards it. A RUNNING job
+           is left alone -- it owns a shadow container and discards its
+           own staging when it settles -- and the request is
+           best-effort, because the server expires it either way. */
         _fnDisarmPoll();
+        var sJobId = _sJobId;
+        var bRunning = _bRunStarted;
+        _sJobId = "";
         _felById("modalReproducePublished").style.display = "none";
+        if (sJobId && !bRunning) {
+            VaibifyApi.fdictPost(
+                "/api/reproductions/" + encodeURIComponent(sJobId)
+                + "/discard", {}).catch(function () {});
+        }
     }
 
     /* ---------------- stage 1: the source ---------------- */
@@ -110,6 +131,15 @@ var VaibifyReproducePublished = (function () {
             fnEscapeHtml(sValue) + '</td></tr>';
     }
 
+    function _fsFactRowHtml(sLabel, sHtmlValue) {
+        /* The one row whose value is markup this module built itself
+           (the report link). Every OTHER value goes through
+           _fsFactRow, which escapes: values from a report describe a
+           stranger's repository. */
+        return '<tr><th>' + fnEscapeHtml(sLabel) + '</th><td>' +
+            sHtmlValue + '</td></tr>';
+    }
+
     function _fnRenderConfirmation(dictResponse) {
         var dictStaged = dictResponse.dictStaged || {};
         var dictDaemon = dictResponse.dictDaemon || {};
@@ -160,6 +190,7 @@ var VaibifyReproducePublished = (function () {
             elError.textContent = error.message || String(error);
             return;
         }
+        _bRunStarted = true;
         _fnShowStage("Progress");
         _fnRenderProgress({sPhase: "pulling", bLive: true});
         _fnArmPoll();
@@ -178,15 +209,41 @@ var VaibifyReproducePublished = (function () {
         _iPollTimer = 0;
     }
 
+    function _fnHandlePollFailure(error) {
+        /* A poll that cannot answer must eventually STOP. A 404 means
+           the job is gone -- jobs live only as long as the hub, so a
+           restart loses one -- and there is nothing left to wait for;
+           anything else may be a moment's network trouble, so a few
+           are tolerated before the card gives up. Either way the
+           spinner stops and says which happened, rather than pulsing
+           at a server that will never answer (found by review,
+           2026-09-07). */
+        var bGone = error && error.iStatus === 404;
+        _iPollFailures += 1;
+        if (!bGone && _iPollFailures < _I_POLL_FAILURES_TOLERATED) {
+            _fnRenderProgress({sPhase: "unreachable", bLive: true,
+                sFailure: error.message || String(error)});
+            return;
+        }
+        _fnDisarmPoll();
+        _fnRenderResult({sFailure: bGone
+            ? "This hub is no longer holding that reproduction. Jobs "
+                + "live only as long as the hub that started them; the "
+                + "report, if the run reached one, is still on disk."
+            : "The hub stopped answering: "
+                + (error.message || String(error))});
+        _fnShowStage("Result");
+    }
+
     async function _fnPollOnce() {
         if (!_sJobId) { _fnDisarmPoll(); return; }
         var dictJob;
         try {
             dictJob = await VaibifyApi.fdictGet(
                 "/api/reproductions/" + encodeURIComponent(_sJobId));
+            _iPollFailures = 0;
         } catch (error) {
-            _fnRenderProgress({sPhase: "unreachable", bLive: true,
-                sFailure: error.message || String(error)});
+            _fnHandlePollFailure(error);
             return;
         }
         if (dictJob.bLive) {
@@ -252,6 +309,17 @@ var VaibifyReproducePublished = (function () {
 
     /* ---------------- stage 4: the result ---------------- */
 
+    function _fsReportLink(dictReport) {
+        /* The report is a file this hub can serve, so the row is a
+           link to it rather than an id and a directory to go and find
+           by hand. */
+        var sReportId = dictReport.sReportId || "";
+        if (!sReportId) return "";
+        return '<a href="/api/reproductions/reports/'
+            + encodeURIComponent(sReportId) + '" target="_blank" '
+            + 'rel="noopener">' + fnEscapeHtml(sReportId) + "</a>";
+    }
+
     function _fsRenderVerdict(dictReport) {
         return dictReport.sVerdictRendered || dictReport.sVerdict || "";
     }
@@ -294,8 +362,7 @@ var VaibifyReproducePublished = (function () {
                     ? "vacuous (the image was loaded from the deposit)"
                     : ((dictReport.dictImageRecheck || {}).sVerdict ||
                         "not compared")) +
-            _fsFactRow("Report", (dictReport.sReportId || "") +
-                " under ~/.vaibify/reproductions/reports") +
+            _fsFactRowHtml("Report", _fsReportLink(dictReport)) +
             "</table>" +
             _fsRenderFileTable(dictReport, listCarried) +
             _fsRenderFailure(dictReport.dictRerunFailure || {}) +
@@ -306,14 +373,25 @@ var VaibifyReproducePublished = (function () {
     }
 
     function _fsRenderFileTable(dictReport, listCarried) {
+        /* Every pinned file, not only the unhappy ones: a ratio is a
+           claim about a set the reader cannot see, and "which files"
+           is what somebody deciding whether to trust a result is
+           asking. Diverged first, because that is what they act on. */
         var listDiverged = dictReport.listDivergedHashes || [];
-        if (!listDiverged.length && !listCarried.length) return "";
+        var listMatched = dictReport.listMatchedPaths || [];
+        if (!listDiverged.length && !listCarried.length
+                && !listMatched.length) {
+            return "";
+        }
         var sRows = listDiverged.map(function (sPath) {
             return "<tr><td>" + fnEscapeHtml(sPath) +
                 "</td><td>diverged</td></tr>";
         }).join("") + listCarried.map(function (sPath) {
             return "<tr><td>" + fnEscapeHtml(sPath) +
                 "</td><td>carried in unchanged</td></tr>";
+        }).join("") + listMatched.map(function (sPath) {
+            return "<tr><td>" + fnEscapeHtml(sPath) +
+                "</td><td>re-derived, byte-identical</td></tr>";
         }).join("");
         return '<table class="reproduce-files"><thead><tr><th>File</th>' +
             "<th>Outcome</th></tr></thead><tbody>" + sRows +

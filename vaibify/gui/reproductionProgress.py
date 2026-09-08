@@ -45,7 +45,9 @@ happened.
 __all__ = [
     "S_PHASE_DOWNLOADING",
     "S_PHASE_FAILED",
-    "S_PHASE_FINISHING",
+    "S_PHASE_VALIDATING",
+    "S_PHASE_COMPARING",
+    "S_PHASE_TEARING_DOWN",
     "S_PHASE_LOADING",
     "S_PHASE_PULLING",
     "S_PHASE_RUNNING",
@@ -57,7 +59,12 @@ __all__ = [
     "fbJobIsLive",
     "fdictCreateJob",
     "fdictReadJobView",
-    "flistSweepSettledJobs",
+    "TooManyReproductionJobsError",
+    "fbHubHoldsLiveReproduction",
+    "fdictOpenStagingJob",
+    "fnAdoptStagedSnapshot",
+    "flistSweepExpiredJobs",
+    "fnDiscardJob",
     "fnFailJob",
     "fnForgetJob",
     "fnRecordAcquisitionEvent",
@@ -73,12 +80,14 @@ import time
 
 
 S_PHASE_STAGING = "staging"
+S_PHASE_VALIDATING = "validating"
 S_PHASE_STAGED = "staged"
 S_PHASE_PULLING = "pulling"
 S_PHASE_DOWNLOADING = "downloading"
 S_PHASE_LOADING = "loading"
 S_PHASE_RUNNING = "running"
-S_PHASE_FINISHING = "finishing"
+S_PHASE_COMPARING = "comparing"
+S_PHASE_TEARING_DOWN = "tearing-down"
 S_PHASE_SETTLED = "settled"
 S_PHASE_FAILED = "failed"
 
@@ -86,12 +95,27 @@ S_PHASE_FAILED = "failed"
 # server reports one of them, and disarms otherwise. ``staged`` is
 # NOT live: a staged job is waiting for the researcher, not working.
 T_LIVE_PHASES = (
-    S_PHASE_STAGING, S_PHASE_PULLING, S_PHASE_DOWNLOADING,
-    S_PHASE_LOADING, S_PHASE_RUNNING, S_PHASE_FINISHING,
+    S_PHASE_STAGING, S_PHASE_VALIDATING, S_PHASE_PULLING,
+    S_PHASE_DOWNLOADING, S_PHASE_LOADING, S_PHASE_RUNNING,
+    S_PHASE_COMPARING, S_PHASE_TEARING_DOWN,
 )
 
 # How long a settled or failed job stays readable after it settles.
 F_SETTLED_JOB_RETENTION_SECONDS = 60 * 60
+
+# How long a STAGED job nobody ran keeps its clone. A staged snapshot
+# holds its own live lock, which is what keeps the staging TTL sweep
+# off a job still in use -- so without an expiry of its own, a
+# researcher who stages and then closes the card leaves a clone on
+# disk until the hub restarts, and repeating that fills the disk one
+# repository at a time (found by review, 2026-09-07). Long enough to
+# read a confirmation card and think about it; far shorter than the
+# staging TTL, which is the backstop for a hub that died.
+F_STAGED_JOB_RETENTION_SECONDS = 30 * 60
+
+# How many jobs may hold a staged clone at once. Each may occupy up to
+# the staging ceiling, so this is the number that bounds the disk.
+I_MAX_CONCURRENT_JOBS = 3
 
 # The acquisition chain's link names, mapped onto the phase a
 # researcher sees while that link is being tried. Read from the
@@ -117,19 +141,84 @@ DICT_JOBS = {}
 _LOCK_JOBS = threading.Lock()
 
 
+class TooManyReproductionJobsError(RuntimeError):
+    """This hub already holds as many staged snapshots as it allows."""
+
+
+def fdictOpenStagingJob():
+    """Register a job BEFORE its snapshot exists, in the staging phase.
+
+    Staging clones a whole repository and then applies the six rules,
+    which is the longest a researcher waits without a container being
+    involved. Opening the record first is what makes ``staging`` and
+    ``validating`` observable at all: a concurrent poll sees them, and
+    the concurrency cap counts a stage in flight rather than only the
+    snapshots already on disk.
+    """
+    return _fdictRegisterJob("", {}, {}, None, S_PHASE_STAGING)
+
+
+def fnAdoptStagedSnapshot(
+    sJobId, sToken, dictStaged, dictDaemon, fnReleaseSnapshot,
+):
+    """Attach a finished snapshot to the job that was staging it.
+
+    Returns nothing: a caller that wants the view asks for it. A job
+    that vanished mid-stage (swept, or dismissed from another tab)
+    releases the hold rather than resurrecting a record nobody holds.
+    """
+    with _LOCK_JOBS:
+        dictJob = DICT_JOBS.get(sJobId)
+        if dictJob is None:
+            _fnReleaseHold(fnReleaseSnapshot)
+            return
+        dictJob.update({
+            "sToken": sToken,
+            "sPhase": S_PHASE_STAGED,
+            "dictStaged": dict(dictStaged),
+            "dictDaemon": dict(dictDaemon),
+            "fnReleaseSnapshot": fnReleaseSnapshot,
+            "fStagedAtMonotonic": time.monotonic(),
+        })
+
+
 def fdictCreateJob(sToken, dictStaged, dictDaemon, fnReleaseSnapshot):
     """Register a freshly staged snapshot as a job awaiting its run.
 
     ``fnReleaseSnapshot`` releases the staged snapshot's live lock; it
     is called when the job settles, fails or is forgotten, which is
     what keeps the sweep off a snapshot a job still needs.
+
+    Raises :class:`TooManyReproductionJobsError` when this hub already
+    holds ``I_MAX_CONCURRENT_JOBS`` snapshots, counted AFTER the sweep
+    so an expired one never blocks a new one.
     """
-    flistSweepSettledJobs()
+    return _fdictRegisterJob(
+        sToken, dictStaged, dictDaemon, fnReleaseSnapshot, S_PHASE_STAGED,
+    )
+
+
+def _fdictRegisterJob(
+    sToken, dictStaged, dictDaemon, fnReleaseSnapshot, sPhase,
+):
+    """Register one job in ``sPhase``, refusing over the concurrency cap."""
+    flistSweepExpiredJobs()
+    with _LOCK_JOBS:
+        iHolding = sum(
+            1 for dictOther in DICT_JOBS.values()
+            if dictOther["sPhase"] not in (S_PHASE_SETTLED, S_PHASE_FAILED)
+        )
+    if iHolding >= I_MAX_CONCURRENT_JOBS:
+        raise TooManyReproductionJobsError(
+            f"this hub is already holding {iHolding} staged snapshots, "
+            f"the most it keeps at once ({I_MAX_CONCURRENT_JOBS}). Run "
+            "or dismiss one before staging another."
+        )
     sJobId = secrets.token_hex(8)
     dictJob = {
         "sJobId": sJobId,
         "sToken": sToken,
-        "sPhase": S_PHASE_STAGED,
+        "sPhase": sPhase,
         "sStepLabel": "",
         "sStepName": "",
         "iBytes": 0,
@@ -146,6 +235,7 @@ def fdictCreateJob(sToken, dictStaged, dictDaemon, fnReleaseSnapshot):
         "bAllowEmulation": False,
         "fnReleaseSnapshot": fnReleaseSnapshot,
         "taskWorker": None,
+        "fStagedAtMonotonic": time.monotonic(),
         "fSettledAtMonotonic": 0.0,
     }
     with _LOCK_JOBS:
@@ -237,8 +327,12 @@ def fnRecordAcquisitionEvent(sJobId, dictEvent):
 
 
 def fnRecordPipelineEvent(sJobId, dictEvent, dictWorkflow):
-    """Fold one pipeline status event into the job's running phase."""
-    if str((dictEvent or {}).get("sType") or "") != "stepStarted":
+    """Fold one pipeline status event into the job's phase."""
+    sType = str((dictEvent or {}).get("sType") or "")
+    if sType == "comparingOutputs":
+        fnRecordPhase(sJobId, S_PHASE_COMPARING)
+        return
+    if sType != "stepStarted":
         return
     iStepNumber = int(dictEvent.get("iStepNumber") or 0)
     listSteps = (dictWorkflow or {}).get("listSteps") or []
@@ -292,18 +386,80 @@ def fnForgetJob(sJobId):
         _fnReleaseHold(dictJob.get("fnReleaseSnapshot"))
 
 
-def flistSweepSettledJobs(fMaxAgeSeconds=F_SETTLED_JOB_RETENTION_SECONDS):
-    """Forget settled and failed jobs older than the retention; return ids."""
-    fCutoff = time.monotonic() - fMaxAgeSeconds
+def flistSweepExpiredJobs(
+    fMaxAgeSeconds=F_SETTLED_JOB_RETENTION_SECONDS,
+    fStagedMaxAgeSeconds=F_STAGED_JOB_RETENTION_SECONDS,
+):
+    """Forget jobs past their retention and discard their clones.
+
+    TWO retentions, because the two states cost different things. A
+    settled job holds a report id and no disk; a STAGED job nobody ran
+    holds a whole repository and its live lock, so it expires sooner
+    and its snapshot is discarded rather than merely released.
+    """
+    fNow = time.monotonic()
     with _LOCK_JOBS:
         listExpired = [
             sJobId for sJobId, dictJob in DICT_JOBS.items()
-            if dictJob["sPhase"] in (S_PHASE_SETTLED, S_PHASE_FAILED)
-            and dictJob["fSettledAtMonotonic"] < fCutoff
+            if _fbJobIsPastRetention(
+                dictJob, fNow, fMaxAgeSeconds, fStagedMaxAgeSeconds,
+            )
         ]
     for sJobId in listExpired:
-        fnForgetJob(sJobId)
+        fnDiscardJob(sJobId)
     return listExpired
+
+
+def _fbJobIsPastRetention(
+    dictJob, fNow, fMaxAgeSeconds, fStagedMaxAgeSeconds,
+):
+    """Return True when a job has outlived the retention for its state."""
+    if dictJob["sPhase"] in (S_PHASE_SETTLED, S_PHASE_FAILED):
+        return dictJob["fSettledAtMonotonic"] < fNow - fMaxAgeSeconds
+    if dictJob["sPhase"] == S_PHASE_STAGED:
+        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds
+    return False
+
+
+def fnDiscardJob(sJobId, fnDiscardSnapshot=None):
+    """Forget a job and DELETE its staged snapshot.
+
+    ``fnForgetJob`` releases the hold and leaves the clone for the
+    staging TTL; this removes it now, which is what a dismissed card
+    and an expired staged job both want. The discard is late-bound so
+    this module keeps its one job -- being the record -- and the
+    caller supplies the deleter; the default is the staging module's.
+    """
+    sToken = fsStagingTokenOf(sJobId)
+    fnForgetJob(sJobId)
+    if not sToken:
+        return
+    if fnDiscardSnapshot is None:
+        from vaibify.reproducibility.reproductionSource import (
+            fnDiscardStagedSource,
+        )
+        fnDiscardSnapshot = fnDiscardStagedSource
+    try:
+        fnDiscardSnapshot(sToken)
+    except Exception:  # noqa: BLE001 - a discard must never mask an outcome
+        pass
+
+
+def fbHubHoldsLiveReproduction():
+    """Return True while any job is between its run and its settlement.
+
+    The idle watchdog's veto reads this. A reproduction holds no
+    container and no WebSocket -- the same blind spot the Agent
+    Council has, and for the same reason -- so without it a closed tab
+    lets the activity clock go stale and the hub SIGTERMs itself in
+    the middle of somebody's two-hour reproduction. Fail-closed is not
+    available here and not needed: the record is in this process.
+    """
+    with _LOCK_JOBS:
+        return any(
+            dictJob["sPhase"] in T_LIVE_PHASES
+            for dictJob in DICT_JOBS.values()
+        )
 
 
 def _fnReleaseHold(fnReleaseSnapshot):
