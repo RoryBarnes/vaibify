@@ -65,6 +65,7 @@ __all__ = [
     "fnAdoptStagedSnapshot",
     "flistSweepExpiredJobs",
     "fnDiscardJob",
+    "fnSweepOnTheHubsTick",
     "fnFailJob",
     "fnForgetJob",
     "fnRecordAcquisitionEvent",
@@ -74,9 +75,13 @@ __all__ = [
     "fsStagingTokenOf",
 ]
 
+import logging
 import secrets
 import threading
 import time
+
+
+logger = logging.getLogger(__name__)
 
 
 S_PHASE_STAGING = "staging"
@@ -481,6 +486,25 @@ def fnDiscardJob(sJobId, fnDiscardSnapshot=None):
         fnDiscardSnapshot(sToken)
     except Exception:  # noqa: BLE001 - a discard must never mask an outcome
         pass
+
+
+def fnSweepOnTheHubsTick():
+    """Expire abandoned staged jobs, swallowing any failure.
+
+    Called from the hub's periodic sweep. The expiry used to be
+    evaluated only when the NEXT job was registered, so a researcher
+    who staged one snapshot and walked away kept a whole repository
+    until the hub restarted -- the check existed and nothing ran it
+    (found by review, 2026-09-07). It lives HERE rather than in the
+    lifespan module because the retention policy is this record's, and
+    a sweep must never be able to end the loop that calls it.
+    """
+    try:
+        flistSweepExpiredJobs()
+    except Exception:  # noqa: BLE001 - a sweep must not end the tick
+        logger.warning(
+            "Could not sweep expired reproduction jobs", exc_info=True,
+        )
 
 
 def fbHubHoldsLiveReproduction():

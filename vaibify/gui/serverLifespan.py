@@ -168,7 +168,8 @@ async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
 async def _fnRunOneContainerSweep(dictCtx):
     """Execute a single sweep tick against the current running set."""
     from .fileStatusManager import fsetSweepAllContainerCaches
-    _fnExpireAbandonedReproductionJobs()
+    from . import reproductionProgress
+    reproductionProgress.fnSweepOnTheHubsTick()
     connectionDocker = dictCtx.get("docker") if dictCtx else None
     from vaibify.config.connectionAvailability import (
         fbDockerReachable,
@@ -191,25 +192,6 @@ async def _fnRunOneContainerSweep(dictCtx):
     fsetSweepAllContainerCaches(
         dictCtx, [sId for sId in listIds if sId],
     )
-
-
-def _fnExpireAbandonedReproductionJobs():
-    """Expire staged reproduction jobs nobody ran, on the sweep's tick.
-
-    The expiry used to be evaluated only when the NEXT job was
-    registered, so a researcher who staged one snapshot and walked
-    away kept a whole repository until the hub restarted -- the check
-    existed and simply never ran (found by review, 2026-09-07). This
-    is the hub's existing periodic tick, and the sweep it calls takes
-    its own lock, so it needs nothing from the container half below.
-    """
-    from . import reproductionProgress
-    try:
-        reproductionProgress.flistSweepExpiredJobs()
-    except Exception:  # noqa: BLE001 - a sweep must not end the loop
-        logger.warning(
-            "Could not sweep expired reproduction jobs", exc_info=True,
-        )
 
 
 # Docker connection pool ceiling (see ``_fnTuneDockerSessionPool``) is

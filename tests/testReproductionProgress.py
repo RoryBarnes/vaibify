@@ -369,11 +369,28 @@ def test_the_hubs_periodic_sweep_expires_a_staged_job_nobody_ran():
     it until the hub restarted: the check existed and nothing called
     it.
     """
-    from vaibify.gui import serverLifespan
     dictJob = _fdictCreate()
     reproductionProgress.DICT_JOBS[dictJob["sJobId"]][
         "fStagedAtMonotonic"
     ] -= 10 * reproductionProgress.F_STAGED_JOB_RETENTION_SECONDS
     with patch.object(reproductionProgress, "fnDiscardJob") as fnDiscard:
-        serverLifespan._fnExpireAbandonedReproductionJobs()
+        reproductionProgress.fnSweepOnTheHubsTick()
     fnDiscard.assert_called_once_with(dictJob["sJobId"])
+
+
+def test_the_hubs_periodic_tick_calls_the_sweep():
+    """The lifespan loop's tick reaches the record's sweep.
+
+    The sweep lives with the retention policy it enforces, so this is
+    the one assertion that the loop actually calls it -- the defect it
+    fixes was a check nothing ran.
+    """
+    import asyncio
+    from vaibify.gui import serverLifespan
+    with patch.object(
+        reproductionProgress, "fnSweepOnTheHubsTick",
+    ) as fnSweep:
+        asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+            serverLifespan._fnRunOneContainerSweep({"docker": None}),
+        )
+    fnSweep.assert_called_once_with()
