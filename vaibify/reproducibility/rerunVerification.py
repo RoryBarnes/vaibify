@@ -178,6 +178,13 @@ def fdictRerunAndVerifyWorkflow(
         posixpath.dirname(sWorkflowPath), fnCollect,
         iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),
     )
+    # The run is over and the re-hash begins. Announced because the
+    # two look identical from outside -- a card that says "running"
+    # through a long comparison of a large manifest is telling the
+    # researcher the wrong thing. A consumer that does not know this
+    # event ignores it, as every consumer does for every other type.
+    if fnStatusCallback is not None:
+        fnStatusCallback({"sType": "comparingOutputs"})
     dictOutcome = fdictVerifyRerunOutputs(
         filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
         dictDiagnostics,
@@ -444,6 +451,16 @@ def fdictVerifyRerunOutputs(
             len(listCompared) - len(listMismatches), 0,
         ),
         "iOutputHashesTotal": len(listCompared),
+        # The paths that MATCHED, named rather than counted. A ratio
+        # is a claim about a set the reader cannot see; a reproduction
+        # report is read by somebody deciding whether to trust a
+        # result, and "which files" is the question they are asking.
+        # Derived from the compared set minus the mismatches, so it
+        # can never disagree with the count beside it.
+        "listMatchedPaths": sorted(
+            {dictEntry["sPath"] for dictEntry in listCompared}
+            - {dictMismatch["sPath"] for dictMismatch in listMismatches}
+        ),
         "listCarriedPaths": listCarried,
         "dictRerunFailure": dict(dictRerunFailure or {}),
         "listDivergedHashes": _flistOrderDivergences(

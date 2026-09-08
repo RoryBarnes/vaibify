@@ -98,7 +98,18 @@ jobs:
           python tools/checkChromiumLaunches.py
 
       - name: Run the browser lane
-        timeout-minutes: 10
+        # 10 -> 15 on 2026-09-08, with the researcher's approval. The
+        # lane had grown to its ceiling on its own: a run finished all
+        # 299 tests, every one passing, four seconds PAST ten minutes,
+        # and the step failed for having done the whole job. A lane
+        # that reports failure for finishing says nothing about the
+        # frontend, which is the same class as a lane that skips
+        # itself green -- and at nine minutes fifty the next browser
+        # test anyone adds tips it again. Raise this rather than
+        # trimming tests when it next gets close; the honest reason to
+        # cut a browser test is that it proves nothing, never that the
+        # clock is short.
+        timeout-minutes: 15
         env:
           # Turns the "playwright not installed" skip into a failure.
           # A browser job that goes green without a browser is the same

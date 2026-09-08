@@ -41,11 +41,13 @@ import shutil
 
 import requests
 
+from vaibify.docker import daemonCapacity
 from vaibify.docker import disposableContainer
 from vaibify.gui.workflowManager import fsZenodoRecordIdFromDoi
 from vaibify.reproducibility import _hashing
 from vaibify.reproducibility import imageArchive
 from vaibify.reproducibility import imageDeposit
+from vaibify.reproducibility import zenodoClient
 from vaibify.reproducibility.reproductionSource import (
     fsRequiredPlatformFromArchitecture,
 )
@@ -140,7 +142,7 @@ def fdictAcquirePinnedImage(
             f"{sRequiredPlatform}. The chain produced the wrong bytes; "
             "nothing was run. " + _fsDescribeAttempts(listAttempts)
         )
-    sDaemonArchitecture = disposableContainer.fsReadDaemonArchitecture(
+    sDaemonArchitecture = daemonCapacity.fsReadDaemonArchitecture(
         dockerDisposable,
     )
     bEmulated = _fbJudgeEmulation(
@@ -324,12 +326,33 @@ def _fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
 
 
 def _fsResolveDepositFileUrl(sDoi, sTarballName):
-    """Follow the DOI to its record and name the tarball beneath it.
+    """Name the tarball's URL under the record the DOI identifies.
 
-    The same two moves the generated script makes (``curl -L`` on the
-    DOI, then ``<record>/files/<name>?download=1``), so the two lanes
-    fetch from one place rather than two derivations of it.
+    The record page is fetched through the BOUNDED client
+    (``zenodoClient``), not with a bare request: it is an untrusted
+    document served by a third party, and the client is where the
+    timeouts, the response check and the size discipline for Zenodo
+    JSON already live. The file URL comes from the record's own
+    ``files`` list, so a record that renames or moves its files is
+    followed rather than guessed at.
+
+    The DOI-follow remains as the FALLBACK, and is what the generated
+    shell script does. It covers a record the client cannot address --
+    a DOI whose id is not a Zenodo record id, or a Zenodo instance
+    this build does not name -- and it is why this function takes a
+    DOI rather than a record id.
+
+    What is NOT delegated is the download itself. The client's
+    ``fnDownloadFile`` writes with no size ceiling, computes no
+    digest, and draws a terminal progress bar from whatever thread
+    calls it; the download here is bounded against the envelope's
+    recorded size, hashed as it lands, and reported to the card. Using
+    the client for it would be a downgrade, so the split is: the
+    client fetches the untrusted JSON, this module fetches the bytes.
     """
+    sFileUrl = _fsFileUrlFromPublishedRecord(sDoi, sTarballName)
+    if sFileUrl:
+        return sFileUrl
     try:
         responseDoi = requests.get(
             _S_DOI_RESOLVER + sDoi, allow_redirects=True,
@@ -342,6 +365,31 @@ def _fsResolveDepositFileUrl(sDoi, sTarballName):
             f"the DOI {sDoi} could not be resolved: {error}"
         ) from error
     return f"{sRecordUrl.rstrip('/')}/files/{sTarballName}?download=1"
+
+
+def _fsFileUrlFromPublishedRecord(sDoi, sTarballName):
+    """Return the tarball's URL from the bounded record fetch, or "".
+
+    Empty rather than raising: a record the client cannot fetch is not
+    an error here, it is the case the DOI-follow above exists for. The
+    client is built with an EMPTY token so no host keyring is touched
+    -- a published record is public, and a reproduction is somebody
+    reading a stranger's deposit.
+    """
+    sRecordId = fsZenodoRecordIdFromDoi(sDoi)
+    if not sRecordId:
+        return ""
+    try:
+        clientZenodo = zenodoClient.ZenodoClient(
+            sService=(
+                "sandbox" if "sandbox" in sDoi.lower() else "zenodo"
+            ),
+            sToken="",
+        )
+        dictPublished = clientZenodo.fdictFetchPublishedRecord(sRecordId)
+    except Exception:  # noqa: BLE001 - the DOI-follow is the fallback
+        return ""
+    return zenodoClient._fsFindFileUrlOrNone(dictPublished, sTarballName)
 
 
 def _fsStreamDownload(sFileUrl, sTarballPath, iExpectedBytes, fnStatus):

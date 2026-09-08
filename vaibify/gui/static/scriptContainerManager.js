@@ -1904,6 +1904,16 @@ var VaibifyContainerManager = (function () {
         _fnBindAddChoiceCard("btnChoiceCreateNew", "create");
         _fnBindEnvironmentKindCard("btnChoiceKindContainer", "container");
         _fnBindEnvironmentKindCard("btnChoiceKindHost", "host");
+        /* The third kind is a stranger's result, not a place work runs,
+           so it takes no second stage: it closes this dialog and opens
+           its own, which asks for the source first. */
+        document.getElementById("btnChoiceKindReproduce").addEventListener(
+            "click", function () {
+                _fnCloseAddChoice();
+                VaibifyReproducePublished.fnOpen();
+            }
+        );
+        VaibifyReproducePublished.fnBind();
         var elHelp = document.getElementById("btnAddChoiceHelp");
         if (elHelp) {
             elHelp.addEventListener("click", _fnShowAddChoiceHelp);
@@ -1969,6 +1979,16 @@ var VaibifyContainerManager = (function () {
         'starter template and a name; a container environment also ' +
         'asks about features and packages, which a host one has no ' +
         'use for.</p>' +
+        '<p><strong>Reproduce a published project</strong> &mdash; not ' +
+        'a place work runs but somebody else\'s finished result. Give ' +
+        'its clone URL, or a clean clone under your home directory; ' +
+        'vaibify stages one commit, checks it is reproduction-ready, ' +
+        'obtains the container image the author pinned, re-runs every ' +
+        'step in a shadow container with no network and no credentials, ' +
+        'compares the bytes inside it, and writes a reproduction report ' +
+        'under your home. Nothing is written into the project, no tile ' +
+        'is added, and the shadow is destroyed when the comparison is ' +
+        'made. Requires Docker.</p>' +
         '<p>The choice is not permanent in the sense that matters: ' +
         'the same directory can be registered as a container ' +
         'environment later, and starting on this machine is a ' +

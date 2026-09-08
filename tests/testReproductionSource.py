@@ -617,3 +617,158 @@ def test_the_sweep_leaves_a_young_snapshot_alone(sPublishedRepo):
     dictStaged = fdictStageSource(sPublishedRepo)
     assert flistSweepAbandonedStaging() == []
     assert _flistStagingTokens() == [dictStaged["sToken"]]
+
+
+# ---------------------------------------------------------------------
+# The redaction boundary: a credential and a host path (review, 2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_credential_query_parameter_is_refused(sAdmittedRoot):
+    """A token rides in the query as readily as in the userinfo.
+
+    Kills: dropping the query-parameter refusal from the URL admission.
+    """
+    for sName in ("access_token", "token"):
+        sUrl = f"https://host.example/group/project.git?{sName}=TOPSECRET"
+        with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+            fdictClassifySource(sUrl)
+        assert sName in str(excinfo.value)
+        assert "TOPSECRET" not in str(excinfo.value)
+    assert fdictClassifySource(
+        "https://host.example/group/project.git?ref=main",
+    )["sKind"] == "git-url"
+
+
+@pytest.mark.falsification
+def test_the_recorded_remote_scrubs_a_query_credential(sAdmittedRoot):
+    """The second line, for a URL that reached the recorder another way.
+
+    Kills: returning the composed URL without the redactor's scrub.
+    """
+    assert "TOPSECRET" not in reproductionSource._fsStripUserinfo(
+        "https://host.example/p.git?access_token=TOPSECRET",
+    )
+
+
+@pytest.mark.falsification
+def test_the_staged_clone_carries_no_host_path_in_its_git_config(
+    sPublishedRepo,
+):
+    """``git clone`` records the source it was given; the export carries it.
+
+    Kills: not rewriting the staged clone's origin before the record.
+    """
+    dictStaged = fdictStageSource(sPublishedRepo)
+    sConfigPath = os.path.join(
+        reproductionSource.fsStagedClonePath(dictStaged["sToken"]),
+        ".git", "config",
+    )
+    with open(sConfigPath, "r", encoding="utf-8") as fileConfig:
+        sConfig = fileConfig.read()
+    assert sPublishedRepo not in sConfig, sConfig
+    dictMembers = _fdictTarMembers(
+        fbaExportStagedSnapshot(dictStaged["sToken"]),
+    )
+    for sName, baContent in dictMembers.items():
+        assert sPublishedRepo.encode("utf-8") not in baContent, sName
+
+
+@pytest.mark.falsification
+def test_a_staged_url_clone_keeps_only_the_redacted_remote(
+    sPublishedRepo, tmp_path, monkeypatch,
+):
+    """The staged config names the redacted remote, never the typed URL.
+
+    The URL carries a USERNAME, which is what makes the assertion
+    discriminating: without it the recorded remote and the cloned URL
+    are the same string, and a test that compares them passes against
+    a clone whose origin was never rewritten (this test was written
+    that way first, and the mutation survived it).
+
+    Kills: reading the origin instead of rewriting it.
+    """
+    monkeypatch.setattr(
+        reproductionSource, "T_ACCEPTED_URL_SCHEMES", ("https", "ssh", "http"),
+    )
+    sBarePath = os.path.join(str(tmp_path), "served.git")
+    fnPublishToBare(sPublishedRepo, sBarePath)
+    with LoopbackGitServer(sBarePath) as server:
+        sUrlWithUser = server.sUrl.replace("http://", "http://someone@", 1)
+        dictStaged = fdictStageSource(sUrlWithUser)
+    sConfigPath = os.path.join(
+        reproductionSource.fsStagedClonePath(dictStaged["sToken"]),
+        ".git", "config",
+    )
+    with open(sConfigPath, "r", encoding="utf-8") as fileConfig:
+        sConfig = fileConfig.read()
+    assert dictStaged["sRemoteUrl"] in sConfig
+    assert "someone@" not in sConfig, sConfig
+    assert "someone@" not in dictStaged["sRemoteUrl"]
+    assert sBarePath not in sConfig
+
+
+@pytest.mark.falsification
+def test_an_export_over_the_archive_bound_is_refused(sPublishedRepo):
+    """The staging ceiling bounds the DISK; this bounds the hub's memory.
+
+    Kills: ignoring ``iMaxBytes`` in the export.
+    """
+    dictStaged = fdictStageSource(sPublishedRepo)
+    with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+        fbaExportStagedSnapshot(dictStaged["sToken"], 512)
+    assert "512" in str(excinfo.value)
+    assert fbaExportStagedSnapshot(dictStaged["sToken"], 50_000_000)
+
+
+def test_the_export_spool_is_removed_on_every_path(sPublishedRepo):
+    dictStaged = fdictStageSource(sPublishedRepo)
+    sSpool = os.path.join(
+        reproductionSource._fsStagingDirectory(dictStaged["sToken"]),
+        reproductionSource._S_EXPORT_SPOOL_NAME,
+    )
+    fbaExportStagedSnapshot(dictStaged["sToken"])
+    assert not os.path.exists(sSpool)
+    with pytest.raises(ReproductionSourceRefusedError):
+        fbaExportStagedSnapshot(dictStaged["sToken"], 512)
+    assert not os.path.exists(sSpool)
+
+
+# ---------------------------------------------------------------------
+# The redaction boundary, second pass (review, 2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_percent_encoded_credential_parameter_is_refused(sAdmittedRoot):
+    """A server decodes the name, so the comparison must too.
+
+    Kills: comparing the raw parameter name instead of the decoded one.
+    """
+    with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+        fdictClassifySource(
+            "https://host.example/p.git?access%5Ftoken=TOPSECRET",
+        )
+    assert "access_token" in str(excinfo.value)
+    assert "TOPSECRET" not in str(excinfo.value)
+    assert "TOPSECRET" not in reproductionSource._fsStripUserinfo(
+        "https://host.example/p.git?access%5Ftoken=TOPSECRET",
+    )
+
+
+@pytest.mark.falsification
+def test_no_refusal_ever_echoes_the_credential_it_refuses(sAdmittedRoot):
+    """The message names the secret it is about, and messages travel.
+
+    Kills: echoing the raw URL in the userinfo refusal.
+    """
+    for sUrl in (
+        "https://someone:TOPSECRET@host.example/p.git",
+        "ssh://someone:TOPSECRET@host.example/p.git",
+        "https://host.example/p.git?token=TOPSECRET",
+        "https://host.example/p.git?ACCESS_TOKEN=TOPSECRET",
+    ):
+        with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+            fdictClassifySource(sUrl)
+        assert "TOPSECRET" not in str(excinfo.value), sUrl

@@ -243,6 +243,15 @@ DICT_CONTROL_PLANE_SCOPES = {
     # container-lifecycle, never a lease-enforced scope.
     ("POST", "/api/registry/{sName}/reconcile"):
         S_SCOPE_CONTAINER_LIFECYCLE,
+    # Reproducing a PUBLISHED project has no project container: it
+    # stages a stranger's repository under the researcher's home and
+    # runs it in a shadow the job creates and destroys itself. Both are
+    # pre-container hub operations on the terms of build and convert,
+    # and both handlers refuse the agent lane, because staging reads
+    # and writes host state and the run spends the daemon.
+    ("POST", "/api/reproductions/stage"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/reproductions/{sJobId}/run"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/reproductions/{sJobId}/discard"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }

@@ -168,6 +168,8 @@ async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
 async def _fnRunOneContainerSweep(dictCtx):
     """Execute a single sweep tick against the current running set."""
     from .fileStatusManager import fsetSweepAllContainerCaches
+    from . import reproductionProgress
+    reproductionProgress.fnSweepOnTheHubsTick()
     connectionDocker = dictCtx.get("docker") if dictCtx else None
     from vaibify.config.connectionAvailability import (
         fbDockerReachable,
@@ -430,6 +432,16 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
     # mid-turn. Fail-closed: absence of the registry is "no council work".
     from . import agentCouncilRegistry
     if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
+        return False
+    # A live reproduction vetoes self-exit for exactly the council's
+    # reason: it holds no WebSocket and no container in
+    # dictContainerOwners -- its shadow is created inside the worker
+    # and destroyed at the end -- so both other signals report an idle
+    # hub while somebody's reproduction is halfway through a workflow.
+    # A run that outlives its tab is the normal case here, which is
+    # what makes the blind spot reachable rather than theoretical.
+    from . import reproductionProgress
+    if reproductionProgress.fbHubHoldsLiveReproduction():
         return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False

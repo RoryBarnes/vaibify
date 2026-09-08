@@ -7426,3 +7426,111 @@ async def testTheRemoteRefreshLeavesTheContainerFreeToWorkOn():
                     "the remotes take to answer"
                 )
             await asyncio.sleep(0.05)
+
+
+# ---------------------------------------------------------------------
+# Reproduce a published project: two separate-authority routes with no
+# project container. The only container the job ever touches is the
+# shadow, which shadowRerun creates and admits itself; these routes
+# must reach no container primitive of the PROJECT connection at all.
+# ---------------------------------------------------------------------
+
+
+@pytest.fixture
+def tclientForReproductions(tmp_path, monkeypatch):
+    """The gated client plus a real reproduction-ready repo under a root."""
+    from tests.reproductionSourceFixtures import fsBuildPublishedProject
+    from vaibify.reproducibility import reproductionSource
+    from vaibify.gui import reproductionProgress
+    from vaibify.gui.routes import reproductionRoutes
+    sRoot = os.path.realpath(str(tmp_path))
+    monkeypatch.setattr(
+        reproductionSource, "flistAdmittedLocalCloneRoots", lambda: [sRoot],
+    )
+    monkeypatch.setattr(
+        reproductionRoutes, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
+    )
+    sRepoPath = os.path.join(sRoot, "publishedProject")
+    fsBuildPublishedProject(sRepoPath)
+    reproductionProgress.DICT_JOBS.clear()
+    client, connectionDocker = _tConnectGatedClient(
+        DockerDoubleThatCallsTheRealGates(),
+    )
+    yield client, connectionDocker, sRepoPath
+    reproductionProgress.DICT_JOBS.clear()
+
+
+def testStagingAPublishedProjectReachesNoContainerPrimitive(
+    tclientForReproductions,
+):
+    """POST /api/reproductions/stage is separate-authority: no container.
+
+    Both halves are asserted, as for the personal-layer hash route: the
+    gated ledger stays EMPTY -- the claim ``separate-authority`` makes
+    about the project connection -- AND the response carries the real
+    staged description, which proves the request did its work (a real
+    clone under the admitted root) rather than returning early.
+
+    Not marked falsification: there is no guard to break here. The
+    authority that IS this route's -- the agent-lane rejection and the
+    one-run-per-snapshot claim -- has its own kill-confirmed coverage in
+    tests/testReproductionRoutes.py.
+    """
+    client, connectionDocker, sRepoPath = tclientForReproductions
+    connectionDocker.listAdmittedPrimitives.clear()
+    response = client.post(
+        "/api/reproductions/stage", json={"sSource": sRepoPath},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["dictStaged"]["sRepositoryName"] == (
+        "publishedProject"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+def testRunningAStagedSnapshotStartsNoProjectContainerMutation(
+    tclientForReproductions,
+):
+    """POST .../run consumes the job and reaches no PROJECT primitive.
+
+    The worker is stood in for at the route's seam names, because the
+    real one needs a daemon; what is asserted is that the route itself,
+    and the worker's bookkeeping around the seams, touch nothing on the
+    project connection. The shadow's own admission is proven in
+    tests/testShadowContainerAdmission.py.
+    """
+    from vaibify.gui.routes import reproductionRoutes
+    client, connectionDocker, sRepoPath = tclientForReproductions
+    sJobId = client.post(
+        "/api/reproductions/stage", json={"sSource": sRepoPath},
+    ).json()["sJobId"]
+    connectionDocker.listAdmittedPrimitives.clear()
+    with patch.object(
+        reproductionRoutes, "_fnRunReproductionWorker",
+        _fnWorkerThatSettlesAtOnce,
+    ):
+        response = client.post(f"/api/reproductions/{sJobId}/run", json={})
+        assert response.status_code == 200, response.text
+        time.sleep(0.2)
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+    assert client.get(f"/api/reproductions/{sJobId}").json()["bConsumed"]
+
+
+async def _fnWorkerThatSettlesAtOnce(sJobId, connectionDocker):
+    """Settle the job without a daemon; the route under test is the point."""
+    from vaibify.gui import reproductionProgress
+    from vaibify.reproducibility.reproductionSource import (
+        fnDiscardStagedSource,
+    )
+    del connectionDocker
+    sToken = reproductionProgress.fsStagingTokenOf(sJobId)
+    reproductionProgress.fnSettleJob(sJobId, {"sReportId": "stand-in"})
+    fnDiscardStagedSource(sToken)

@@ -1059,12 +1059,18 @@ def _fnPrintAcquisitionEvent(dictEvent):
 def _fnReproduceStagedSnapshot(sToken, dictAcquired):
     """Re-run the staged snapshot in a shadow and write the report."""
     from .commandUtilsDocker import fconnectionRequireDocker
+    from vaibify.docker import daemonCapacity
     fStarted = time.monotonic()
     dictSource = fdictDescribeStagedSource(sToken)
     click.echo("Re-running the snapshot in a shadow container ...")
+    connectionDocker = fconnectionRequireDocker()
+    iArchiveBound = daemonCapacity.fdictResolveDaemonCapacity(
+        connectionDocker,
+    )["iArchiveTotalBytes"]
     try:
         dictOutcome = fdictRerunAndVerifyFromSnapshot(
-            fconnectionRequireDocker(), fbaExportStagedSnapshot(sToken),
+            connectionDocker,
+            fbaExportStagedSnapshot(sToken, iArchiveBound),
             dictAcquired, fdictLoadStagedWorkflow(sToken),
             dictSource["sWorkflowPath"], dictSource["sRepositoryName"],
             sResourceName=f"reproduction-{sToken}",
@@ -1073,7 +1079,9 @@ def _fnReproduceStagedSnapshot(sToken, dictAcquired):
         dictOutcome = fdictUnrunOutcome(str(error))
     _fnReportRerunExecution(dictOutcome)
     _fnReportHashCompare(dictOutcome)
-    dictRecheck = _fdictRecheckObtainedImage(sToken, dictAcquired)
+    dictRecheck = reproductionReport.fdictRecheckObtainedImage(
+        sToken, dictAcquired,
+    )
     dictReport = reproductionReport.fdictBuildReproductionReport(
         dictSource, dictAcquired, dictOutcome, dictRecheck,
         time.monotonic() - fStarted,
@@ -1088,36 +1096,6 @@ def _fnReproduceStagedSnapshot(sToken, dictAcquired):
     )
     if dictReport["sVerdict"] != reproductionReport.S_VERDICT_REPRODUCED:
         sys.exit(1)
-
-
-def _fdictRecheckObtainedImage(sToken, dictAcquired):
-    """Judge the obtained image against the deposit on record, if any.
-
-    Vacuous by construction when the chain LOADED the deposit: a
-    download re-hashed against itself matches always, and the report
-    says so rather than recording a comparison nobody made.
-    """
-    from vaibify.reproducibility import imageArchive
-    dictEnvironment = fdictReadEnvironmentJson(
-        ffilesEnsureRepoFiles(fsStagedClonePath(sToken)),
-    ) or {}
-    bLoadedFromArchive = (
-        dictAcquired.get("sObtainedFrom") == imageAcquisition.S_OBTAINED_ARCHIVE
-    )
-    sLocalStreamSha = ""
-    if imageArchive.fdictReadArchiveRecord(dictEnvironment) and not (
-        bLoadedFromArchive
-    ):
-        sLocalStreamSha = imageDeposit.fsRecomputeImageStreamSha256(
-            dictAcquired["sImageReference"],
-        )
-    dictVerdict = imageArchive.fdictJudgeArchiveRecheck(
-        dictEnvironment, sLocalStreamSha, bLoadedFromArchive,
-    )
-    dictVerdict["bVacuous"] = (
-        dictVerdict.get("sVerdict") == imageArchive.S_RECHECK_VACUOUS
-    )
-    return dictVerdict
 
 
 @click.command("reproduce")

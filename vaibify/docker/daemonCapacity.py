@@ -50,6 +50,7 @@ __all__ = [
     "fdictFloorDaemonCapacity",
     "fdictResolveDaemonCapacity",
     "fiReadHostMemoryBytes",
+    "fsReadDaemonArchitecture",
 ]
 
 
@@ -151,6 +152,22 @@ def _fiReadMemoryFromDarwinSysctl():
         ctypes.byref(iResultSize), None, 0,
     )
     return iMemorySize.value if iStatus == 0 else 0
+
+
+def fsReadDaemonArchitecture(dockerDisposable):
+    """Return the DAEMON's own architecture, or ``""`` when unaskable.
+
+    The third of the three platform facts a reproduction keeps apart,
+    and it lives here beside the other daemon-scoped figure for the
+    same reason that one does: on macOS the daemon is a virtual
+    machine with its own allocation AND its own architecture, and
+    reading either from the host Python is the bug. The SDK call
+    itself belongs to ``disposableContainer``, which is the SDK
+    authority; this is the seam a caller asks, so "ask the daemon
+    about the daemon" has one address.
+    """
+    from vaibify.docker import disposableContainer
+    return disposableContainer.fsReadDaemonArchitecture(dockerDisposable)
 
 
 def fdictFloorDaemonCapacity():

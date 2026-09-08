@@ -424,6 +424,75 @@ real `git` and a real loopback HTTP remote, and every rule has a
 kill-confirmed entry. The staging sweep skips any directory whose live
 lock is held, whatever its age — the `~/.vaibify/tmp` lesson.
 
+**The redaction boundary is wider than the userinfo, and the staged
+`.git` is inside it.** Three leaks, all found by review on 2026-09-07,
+all in code that read as careful. A credential rides in a URL's QUERY
+(`?access_token=`) as readily as in its userinfo, so the classifier
+REFUSES those parameters — pinned to `credentialRedactor`'s own tuple,
+never a second list — the recorded remote is scrubbed through
+`fsRedactUrlCredentials` as a second line, and the refusal does not
+echo the URL it is about. `git clone` records the source it was given
+in TWO places, `.git/config` and the `clone: from …` reflog line, so
+`_fnScrubStagedGitMetadata` rewrites the origin to the redacted remote
+(or removes it) and deletes `.git/logs` before anything reads the
+snapshot: the staged tree, `.git` included, is copied into a container
+built from a stranger's image, and a local clone's source is an
+absolute host path. The guard asserts over EVERY archive member, not
+over `.git/config`, which is how the reflog half was found at all —
+and the URL-clone test carries a USERNAME, because with a bare URL the
+recorded remote and the cloned URL are the same string and the
+assertion is vacuous (it was, and the mutation survived it). And the
+staging size ceiling bounds the DISK: the export is separately bounded
+by `daemonCapacity`'s `iArchiveTotalBytes` and spooled to a private
+file, because what the hub may hold in memory is a different question
+from what a clone may occupy.
+
+**A staged job holds the lock that keeps the sweep off its clone, so
+it needs an expiry of its own.** `reproductionProgress` carries TWO
+retentions — a settled job holds a report id, a staged one holds a
+whole repository — plus a concurrency cap, and dismissing the
+confirmation card DELETES the snapshot (`fnDiscardJob`, the
+`/discard` route) rather than merely releasing it. Before that, stage
+and close left a repository per attempt until the hub restarted. A
+RUNNING job is never discarded out from under its shadow. The three
+routes are catalog entries with `bAgentSafe: False` AND their own
+agent-lane rejection, because a host-filesystem capability is not
+something the catalog can express. The run is NOT in the durable-task
+registry: that registry is keyed on a container with an owner lane
+tuple, and a reproduction has neither — its shadow is created inside
+the worker and destroyed at the end. What "durable" was wanted FOR is
+delivered instead by `fbHubHoldsLiveReproduction`, the idle
+watchdog's veto, on the Agent Council's precedent and for the same
+reason: a reproduction holds no socket and no owned container, so
+without it a closed tab lets the clock go stale and the hub SIGTERMs
+itself mid-run. A poll that meets a 404 DISARMS and says the job is
+gone; jobs live only as long as their hub.
+
+**A second review of the same code found five more, and their shapes
+are the lesson.** A refusal that redacts ONE of its branches redacts
+nothing: the query branch was scrubbed and the userinfo branch went on
+echoing the password it refused. A credential parameter name is
+PERCENT-DECODED before it is compared, because a server decodes it —
+`?access%5Ftoken=` and `?access_token=` are the same parameter — and
+the shared redactor's URL regex matches ANY scheme, because
+`ssh://user:key@host` is the same credential in the same place and the
+http-only spelling left every ssh remote unredacted (it also captures
+the scheme and writes it back, so redacting does not silently rename
+the transport). A cap whose count and insert are two critical sections
+is not a cap; twelve registrations released into the gap all pass, and
+the guard for it is STRUCTURAL — a racy test serialises often enough to
+pass against the bug. `fbClaimJobForRun` moves the job into a live
+phase in the SAME acquisition that consumes it, because a job claimed
+but still reading `staged` is one a Discard deletes the snapshot out
+from under, and the card's own running flag is set only when the Run
+request returns. And a status callback handed to a lane that runs in a
+worker thread must be SYNCHRONOUS: an `async def` there returned a
+coroutine nobody awaited, so every step label and both new phases went
+to the floor behind a `RuntimeWarning` — which is also why `comparing`
+and `tearing-down` are emitted from INSIDE the lane, at the moment the
+thing they name begins, rather than set by the caller after the lane
+has returned and the container is already destroyed.
+
 **The image is obtained through the chain `reproduce.sh` runs, and
 the two lanes are pinned to agree.** `imageAcquisition` walks registry
 pull, then the archived deposit (hash from the ENVELOPE, checked
@@ -460,6 +529,35 @@ the shadow runs the loaded ID — and proves the platform reaches the
 daemon by the daemon's own refusal of a wrong one. Two facts found
 live: a stock base image already owns uid 1000, and the shadow's typed
 reads need a `python3` in the image.
+
+**The dashboard's reproduction is a one-shot JOB with no project
+container, and its record is its own.** `POST /api/reproductions/stage`
+and `POST /api/reproductions/{sJobId}/run` (`reproductionRoutes`) are
+browser-hub control-plane routes, excluded from the agent catalog AND
+rejecting the agent lane by name, declared `separate-authority`
+because the only container they touch is the shadow `shadowRerun`
+creates, admits and destroys itself — `tests/testCarrierMigratedRoutes.py`
+pins that they reach no project primitive. The job record
+(`reproductionProgress`) is keyed by job, NOT by container: it holds
+the staged snapshot's live lock for exactly the job's life (taken in
+the request that staged it, released from the task that settles it),
+is consumed ONCE (`fbClaimJobForRun` checks and marks under one lock;
+a second Run is a 409 by name), and its client view carries no staging
+token — the token names a directory on this host. Do not key it on
+`archiveProgress`, which is the deposit registry keyed by a container
+the job does not have; only the deposit row's VISUAL shape is borrowed.
+Phases are written from events that happened — the chain's `pulling` /
+`downloading` / `loading`, the pipeline's `stepStarted` — and the
+comparison plus teardown, which the rerun seam performs with no event,
+are reported together as `finishing`, never invented from a timer. The
+card polls only while the hub says `bLive` and disarms on settle
+(`tests/browser/testReproducePublishedCard.py` counts polls after
+settle), and no run request leaves the page before the researcher has
+seen the confirmation and clicked Run (the same file asserts the
+ORDER, not the wording). Both lanes write the same report through the
+same seams, including the shared archive re-check
+`reproductionReport.fdictRecheckObtainedImage`, which moved out of the
+CLI when the dashboard became its second caller.
 
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and

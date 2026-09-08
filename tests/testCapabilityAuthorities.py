@@ -145,6 +145,32 @@ DICT_NAMED_AUTHORITIES = {
             "non-zero exit, raised as CalledProcessError or reported "
             "as UNAVAILABLE.",
         ),
+    # -- reproducing a published project ---------------------------------
+    "reproducibility/reproductionSource.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["http", "background", "host-cli"],
+            "`git` for staging a published project: clone one commit, "
+            "read its status, HEAD and origin. Hub-reachable since the "
+            "dashboard's reproduction job (phase 3) called the same "
+            "staging the CLI calls, from the stage route's worker "
+            "thread; the run's own work touches no git. It runs on the "
+            "HOST because the snapshot is staged under the researcher's "
+            "home before any container exists, and it mutates nothing "
+            "of the researcher's: it writes only into a fresh staging "
+            "directory vaibify created, swept by TTL and never while "
+            "held. Two launch sites, both a fixed argv list with no "
+            "shell -- _fprocessRunGit and _fnCloneBounded -- carrying "
+            "BOTH gitHardening lists, GIT_TERMINAL_PROMPT=0 and ssh in "
+            "batch mode; the values that reach argv are a source the "
+            "classifier admitted (an https/ssh URL without userinfo, "
+            "or a realpath under the researcher's home) passed after "
+            "`--` as its own element, and a clone directory vaibify "
+            "made. The stage route additionally rejects the agent lane, "
+            "so no in-container agent can point this at a host path. "
+            "tests/testReproductionSource.py records every launch and "
+            "fails when either list or the prompt guard is dropped.",
+        ),
     # -- the host-mode gateway -------------------------------------------
     "host/hostConnection.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
