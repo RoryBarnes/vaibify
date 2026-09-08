@@ -7534,4 +7534,3 @@ async def _fnWorkerThatSettlesAtOnce(sJobId, connectionDocker):
     sToken = reproductionProgress.fsStagingTokenOf(sJobId)
     reproductionProgress.fnSettleJob(sJobId, {"sReportId": "stand-in"})
     fnDiscardStagedSource(sToken)
-

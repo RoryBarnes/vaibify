@@ -333,7 +333,17 @@ def _fdictRerunAndReport(
     dictSource = fdictDescribeStagedSource(sToken)
     dictWorkflow = fdictLoadStagedWorkflow(sToken)
 
-    async def fnRecordEvent(dictEvent):
+    def fnRecordEvent(dictEvent):
+        """Fold one lane event into the job record.
+
+        SYNCHRONOUS on purpose. The shadow lane runs in a worker
+        thread and calls this straight, so an ``async def`` here
+        returned a coroutine nobody awaited: every step label, and
+        both new phases, went to the floor with a RuntimeWarning
+        nobody was reading (found by review, 2026-09-07). The record
+        it writes takes a threading lock, which is what makes calling
+        it from that thread correct.
+        """
         reproductionProgress.fnRecordPipelineEvent(
             sJobId, dictEvent, dictWorkflow,
         )
@@ -352,9 +362,6 @@ def _fdictRerunAndReport(
         )
     except ShadowRerunRefusedError as error:
         dictOutcome = fdictUnrunOutcome(str(error))
-    reproductionProgress.fnRecordPhase(
-        sJobId, reproductionProgress.S_PHASE_TEARING_DOWN,
-    )
     dictReport = reproductionReport.fdictBuildReproductionReport(
         dictSource, dictAcquired, dictOutcome,
         reproductionReport.fdictRecheckObtainedImage(sToken, dictAcquired),

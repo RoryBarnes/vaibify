@@ -337,6 +337,14 @@ def _fdictDriveShadowLifecycle(
                 fnStatusCallback, fdictRunAndVerify,
             )
         finally:
+            # Announced BEFORE the container is destroyed, not after
+            # the lane returns: a phase set once teardown has already
+            # happened describes a container that is gone, which is
+            # the one thing a progress card must never do (found by
+            # review, 2026-09-07). In the `finally`, so it is true on
+            # the exception path too.
+            if fnStatusCallback is not None:
+                fnStatusCallback({"sType": "tearingDownShadow"})
             dictTeardown = _fdictTearDownShadow(
                 dictGateway, dictCreated["sHandle"])
             if dictTeardown["sOutcome"] != (

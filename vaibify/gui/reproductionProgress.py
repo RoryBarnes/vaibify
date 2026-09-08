@@ -121,6 +121,15 @@ I_MAX_CONCURRENT_JOBS = 3
 # researcher sees while that link is being tried. Read from the
 # chain's own events; a link this table does not name keeps the
 # current phase rather than inventing one.
+# The shadow lane's own events, mapped onto the phase a researcher
+# sees. Both are emitted from inside the lane, at the moment the thing
+# they name begins -- a phase set by the caller AFTER the lane returns
+# would describe work that is already over.
+_DICT_PHASE_BY_LANE_EVENT = {
+    "comparingOutputs": S_PHASE_COMPARING,
+    "tearingDownShadow": S_PHASE_TEARING_DOWN,
+}
+
 _DICT_PHASE_BY_ACQUISITION_EVENT = {
     "pulling": S_PHASE_PULLING,
     "downloading": S_PHASE_DOWNLOADING,
@@ -201,21 +210,42 @@ def fdictCreateJob(sToken, dictStaged, dictDaemon, fnReleaseSnapshot):
 def _fdictRegisterJob(
     sToken, dictStaged, dictDaemon, fnReleaseSnapshot, sPhase,
 ):
-    """Register one job in ``sPhase``, refusing over the concurrency cap."""
+    """Register one job in ``sPhase``, refusing over the concurrency cap.
+
+    The count and the insert happen under ONE acquisition of the lock.
+    They used to be two, and a cap enforced across a gap is not a cap:
+    twelve registrations released into the gap together all read the
+    same count and all inserted, three times over the limit, each
+    entitled to a clone (found by review, 2026-09-07). The sweep runs
+    BEFORE the lock, because it takes the lock itself; an expired job
+    it misses only makes this refuse sooner than it must.
+    """
     flistSweepExpiredJobs()
+    sJobId = secrets.token_hex(8)
     with _LOCK_JOBS:
         iHolding = sum(
             1 for dictOther in DICT_JOBS.values()
             if dictOther["sPhase"] not in (S_PHASE_SETTLED, S_PHASE_FAILED)
         )
-    if iHolding >= I_MAX_CONCURRENT_JOBS:
-        raise TooManyReproductionJobsError(
-            f"this hub is already holding {iHolding} staged snapshots, "
-            f"the most it keeps at once ({I_MAX_CONCURRENT_JOBS}). Run "
-            "or dismiss one before staging another."
+        if iHolding >= I_MAX_CONCURRENT_JOBS:
+            raise TooManyReproductionJobsError(
+                f"this hub is already holding {iHolding} staged "
+                f"snapshots, the most it keeps at once "
+                f"({I_MAX_CONCURRENT_JOBS}). Run or dismiss one before "
+                "staging another."
+            )
+        DICT_JOBS[sJobId] = _fdictBuildJobRecord(
+            sJobId, sToken, dictStaged, dictDaemon, fnReleaseSnapshot,
+            sPhase,
         )
-    sJobId = secrets.token_hex(8)
-    dictJob = {
+    return fdictReadJobView(sJobId)
+
+
+def _fdictBuildJobRecord(
+    sJobId, sToken, dictStaged, dictDaemon, fnReleaseSnapshot, sPhase,
+):
+    """Return one job's record. Called with the registry lock HELD."""
+    return {
         "sJobId": sJobId,
         "sToken": sToken,
         "sPhase": sPhase,
@@ -238,9 +268,6 @@ def _fdictRegisterJob(
         "fStagedAtMonotonic": time.monotonic(),
         "fSettledAtMonotonic": 0.0,
     }
-    with _LOCK_JOBS:
-        DICT_JOBS[sJobId] = dictJob
-    return dictJob
 
 
 def fdictReadJobView(sJobId):
@@ -279,6 +306,15 @@ def fbClaimJobForRun(sJobId, bAllowEmulation, taskWorker=None):
     The check and the mark happen under the lock, so two Run clicks
     that race cannot both start a shadow for one snapshot -- the
     second is refused by name, never silently doubled.
+
+    The claim also moves the job into a LIVE phase, in the same
+    acquisition. It used to leave it ``staged`` until the route set
+    ``pulling`` after creating the task, and in that window the job
+    was claimed but not live -- so a Discard arriving there passed the
+    liveness check and deleted the snapshot out from under a run that
+    had already been authorized. The frontend made the window
+    reachable, because its own "running" flag is set only when the Run
+    request RETURNS (found by review, 2026-09-07).
     """
     with _LOCK_JOBS:
         dictJob = DICT_JOBS.get(sJobId)
@@ -287,6 +323,7 @@ def fbClaimJobForRun(sJobId, bAllowEmulation, taskWorker=None):
         dictJob["bConsumed"] = True
         dictJob["bAllowEmulation"] = bool(bAllowEmulation)
         dictJob["taskWorker"] = taskWorker
+        dictJob["sPhase"] = S_PHASE_PULLING
         return True
 
 
@@ -329,8 +366,9 @@ def fnRecordAcquisitionEvent(sJobId, dictEvent):
 def fnRecordPipelineEvent(sJobId, dictEvent, dictWorkflow):
     """Fold one pipeline status event into the job's phase."""
     sType = str((dictEvent or {}).get("sType") or "")
-    if sType == "comparingOutputs":
-        fnRecordPhase(sJobId, S_PHASE_COMPARING)
+    sPhase = _DICT_PHASE_BY_LANE_EVENT.get(sType)
+    if sPhase is not None:
+        fnRecordPhase(sJobId, sPhase)
         return
     if sType != "stepStarted":
         return

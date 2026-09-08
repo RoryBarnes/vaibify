@@ -14028,18 +14028,15 @@ def _fdictEntry(sRel):
         # accumulate invisibly.
         source='vaibify/reproducibility/shadowRerun.py',
         old=(
-            '        finally:\n'
             '            dictTeardown = _fdictTearDownShadow(\n'
             '                dictGateway, dictCreated["sHandle"])\n'
             '            if dictTeardown["sOutcome"] != ('
         ),
         new=(
-            '        except BaseException:\n'
-            '            raise\n'
+            '            pass\n'
             '        dictTeardown = _fdictTearDownShadow(\n'
             '            dictGateway, dictCreated["sHandle"])\n'
-            '        if True:\n'
-            '            if dictTeardown["sOutcome"] != ('
+            '        if dictTeardown["sOutcome"] != ('
         ),
     ),
     Falsification(
@@ -17752,7 +17749,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_a_credential_query_parameter_is_refused',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='        if sName in _TUPLE_QUERY_PARAM_NAMES:\n',
+        old='        if fbNamesACredentialParameter(sRawName):\n',
         new='        if False:\n',
     ),
     Falsification(
@@ -17814,5 +17811,50 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptReproducePublished.js',
         old='        _fnDisarmPoll();\n        _fnRenderResult({sFailure: bGone',
         new='        _fnRenderResult({sFailure: bGone',
+    ),
+    # --- 2026-09-07: second review -- decoded parameter names, any
+    # scheme's userinfo, an atomic cap, a claim that is live at once,
+    # and lane events that actually reach the record ---
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_a_percent_encoded_credential_parameter_is_refused',
+        source='vaibify/reproducibility/credentialRedactor.py',
+        old='    return unquote_plus(sRawName or "").strip().lower() in (\n        _TUPLE_QUERY_PARAM_NAMES\n    )',
+        new='    return (sRawName or "").strip().lower() in _TUPLE_QUERY_PARAM_NAMES',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_no_refusal_ever_echoes_the_credential_it_refuses',
+        source='vaibify/reproducibility/credentialRedactor.py',
+        old='r"([A-Za-z][A-Za-z0-9+.\\-]*://)[^:@\\s/?#]+:[^@\\s/?#]+@",',
+        new='r"(https?://)[^:@\\s/?#]+:[^@\\s/?#]+@",',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_the_count_and_the_insert_share_one_acquisition_of_the_lock',
+        source='vaibify/gui/reproductionProgress.py',
+        old='        DICT_JOBS[sJobId] = _fdictBuildJobRecord(\n            sJobId, sToken, dictStaged, dictDaemon, fnReleaseSnapshot,\n            sPhase,\n        )\n    return fdictReadJobView(sJobId)',
+        new='    with _LOCK_JOBS:\n        DICT_JOBS[sJobId] = _fdictBuildJobRecord(\n            sJobId, sToken, dictStaged, dictDaemon, fnReleaseSnapshot,\n            sPhase,\n        )\n    return fdictReadJobView(sJobId)',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionProgress.py::test_a_claimed_job_is_live_before_the_claim_returns',
+        source='vaibify/gui/reproductionProgress.py',
+        old='        dictJob["sPhase"] = S_PHASE_PULLING\n        return True',
+        new='        return True',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_a_run_in_flight_cannot_be_discarded_from_another_tab',
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        old='        if reproductionProgress.fbJobIsLive(sJobId):\n            raise HTTPException(\n                409,',
+        new='        if False:\n            raise HTTPException(\n                409,',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionRoutes.py::test_the_lane_events_reach_the_record_from_a_worker_thread',
+        source='vaibify/gui/reproductionProgress.py',
+        old='    sPhase = _DICT_PHASE_BY_LANE_EVENT.get(sType)\n    if sPhase is not None:\n        fnRecordPhase(sJobId, sPhase)\n        return',
+        new='    sPhase = None\n    if sPhase is not None:\n        fnRecordPhase(sJobId, sPhase)\n        return',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_closing_the_card_mid_stage_discards_the_snapshot_that_arrives',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='            if (_bClosedWhileStaging) {',
+        new='            if (false) {',
     ),
 ]

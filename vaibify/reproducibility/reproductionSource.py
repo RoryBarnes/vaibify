@@ -65,7 +65,7 @@ import tarfile
 import tempfile
 import time
 from datetime import datetime, timezone
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 from vaibify.gui import workflowMigrations
 from vaibify.gui.workflowManager import (
@@ -76,7 +76,7 @@ from vaibify.gui.workflowManager import (
 )
 from vaibify.reproducibility import imageArchive
 from vaibify.reproducibility.credentialRedactor import (
-    _TUPLE_QUERY_PARAM_NAMES,
+    fbNamesACredentialParameter,
     fsRedactCredentials,
     fsRedactUrlCredentials,
 )
@@ -272,11 +272,15 @@ def _fsAdmitUrl(sUrl):
     if tParts.password is not None or (
         sScheme == "https" and tParts.username is not None
     ):
+        # Redacted for the reason the query branch is: the message
+        # names the very secret it refuses, and messages are printed,
+        # logged and pasted into issues. Fixing only the query branch
+        # left this one echoing (second review, 2026-09-07).
         raise ReproductionSourceRefusedError(
             "the clone URL carries a username or password. Credentials "
             "in a URL end up in shell history and in reports; use a "
             "credential-free URL and let git ask its own helper. "
-            + _fsAcceptedShapes(sUrl)
+            + _fsAcceptedShapes(fsRedactUrlCredentials(sUrl))
         )
     _fnRefuseCredentialQueryParameters(sUrl, tParts.query)
     return sUrl
@@ -288,13 +292,17 @@ def _fnRefuseCredentialQueryParameters(sUrl, sQuery):
     Userinfo is not the only place a token rides. A forge that accepts
     ``?access_token=...`` puts the secret in the same string a report
     records, and stripping userinfo alone left it there (found by
-    review, 2026-09-07). The parameter names are the redactor's own
-    tuple rather than a second list, so the refusal and the scrub can
-    never disagree about what counts as a credential.
+    review, 2026-09-07). The names come from the redactor's own
+    PREDICATE rather than a second list, so the refusal and the scrub
+    can never disagree -- and that predicate percent-decodes, because
+    a server does: ``?access%5Ftoken=`` and ``?access_token=`` name
+    the same parameter and carry the same secret, and comparing the
+    raw spelling admitted the first (second review, same day).
     """
     for sPair in (sQuery or "").split("&"):
-        sName = sPair.split("=", 1)[0].strip().lower()
-        if sName in _TUPLE_QUERY_PARAM_NAMES:
+        sRawName = sPair.split("=", 1)[0]
+        if fbNamesACredentialParameter(sRawName):
+            sName = unquote_plus(sRawName).strip().lower()
             # The refused URL is never echoed: it holds the secret
             # this refusal is about, and a message is printed, logged
             # and read over shoulders.

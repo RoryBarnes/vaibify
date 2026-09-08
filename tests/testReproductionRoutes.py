@@ -434,3 +434,74 @@ def test_the_agent_lane_is_refused_on_the_report_and_discard_routes(
                 **({"json": {}} if sMethod == "post" else {}),
             )
             assert response.status_code == 403, (sPath, response.text)
+
+
+@pytest.mark.falsification
+def test_a_run_in_flight_cannot_be_discarded_from_another_tab(
+    sPublishedRepo,
+):
+    """The claim makes the job live, so Discard refuses from that moment.
+
+    The window this closes is between the claim and the route's first
+    phase; the card's own running flag is set only when the Run
+    request returns, so a Cancel in that window reached the server.
+
+    Kills: leaving the phase ``staged`` in the claim.
+    """
+    with patch.object(
+        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        lambda: "amd64",
+    ), _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        assert reproductionProgress.fbClaimJobForRun(sJobId, False)
+        responseDiscard = client.post(
+            f"/api/reproductions/{sJobId}/discard", json={},
+        )
+    assert responseDiscard.status_code == 409, responseDiscard.text
+    assert _flistStagingTokens() != [], "the snapshot survived the discard"
+    reproductionProgress.fnForgetJob(sJobId)
+
+
+@pytest.mark.falsification
+def test_the_lane_events_reach_the_record_from_a_worker_thread(
+    sPublishedRepo,
+):
+    """The status callback is called synchronously, from a thread.
+
+    An ``async def`` callback returned a coroutine nobody awaited, so
+    every step label and both new phases went to the floor with a
+    warning nobody read.
+
+    Kills: making the route's callback ``async def`` again.
+    """
+    listPhases = []
+
+    def fdictRerunRecordingPhases(*args, **kwargs):
+        fnStatus = kwargs.get("fnStatusCallback")
+        fnStatus({"sType": "stepStarted", "iStepNumber": 1})
+        listPhases.append(_fsPhaseOfTheOnlyJob())
+        fnStatus({"sType": "comparingOutputs"})
+        listPhases.append(_fsPhaseOfTheOnlyJob())
+        fnStatus({"sType": "tearingDownShadow"})
+        listPhases.append(_fsPhaseOfTheOnlyJob())
+        return _fdictOutcomeFake()
+
+    tPatches = _fcontextFakeTheDaemonHalf()
+    with tPatches[1], tPatches[2], patch.multiple(
+        reproductionRoutes,
+        fdictRerunAndVerifyFromSnapshot=fdictRerunRecordingPhases,
+        _fsReadDaemonArchitectureQuietly=lambda: "amd64",
+    ), _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        client.post(f"/api/reproductions/{sJobId}/run", json={})
+        _fdictAwaitSettled(client, sJobId)
+    assert listPhases == ["running", "comparing", "tearing-down"], listPhases
+
+
+def _fsPhaseOfTheOnlyJob():
+    """Return the phase of the single job this test registered."""
+    listViews = [
+        reproductionProgress.fdictReadJobView(sJobId)
+        for sJobId in list(reproductionProgress.DICT_JOBS)
+    ]
+    return listViews[0]["sPhase"] if listViews else ""

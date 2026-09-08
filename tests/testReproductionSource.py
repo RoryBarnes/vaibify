@@ -733,3 +733,42 @@ def test_the_export_spool_is_removed_on_every_path(sPublishedRepo):
     with pytest.raises(ReproductionSourceRefusedError):
         fbaExportStagedSnapshot(dictStaged["sToken"], 512)
     assert not os.path.exists(sSpool)
+
+
+# ---------------------------------------------------------------------
+# The redaction boundary, second pass (review, 2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_percent_encoded_credential_parameter_is_refused(sAdmittedRoot):
+    """A server decodes the name, so the comparison must too.
+
+    Kills: comparing the raw parameter name instead of the decoded one.
+    """
+    with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+        fdictClassifySource(
+            "https://host.example/p.git?access%5Ftoken=TOPSECRET",
+        )
+    assert "access_token" in str(excinfo.value)
+    assert "TOPSECRET" not in str(excinfo.value)
+    assert "TOPSECRET" not in reproductionSource._fsStripUserinfo(
+        "https://host.example/p.git?access%5Ftoken=TOPSECRET",
+    )
+
+
+@pytest.mark.falsification
+def test_no_refusal_ever_echoes_the_credential_it_refuses(sAdmittedRoot):
+    """The message names the secret it is about, and messages travel.
+
+    Kills: echoing the raw URL in the userinfo refusal.
+    """
+    for sUrl in (
+        "https://someone:TOPSECRET@host.example/p.git",
+        "ssh://someone:TOPSECRET@host.example/p.git",
+        "https://host.example/p.git?token=TOPSECRET",
+        "https://host.example/p.git?ACCESS_TOKEN=TOPSECRET",
+    ):
+        with pytest.raises(ReproductionSourceRefusedError) as excinfo:
+            fdictClassifySource(sUrl)
+        assert "TOPSECRET" not in str(excinfo.value), sUrl

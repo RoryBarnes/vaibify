@@ -25,6 +25,8 @@ var VaibifyReproducePublished = (function () {
     var _I_POLL_FAILURES_TOLERATED = 3;
     var _dictStaged = null;
     var _bRunStarted = false;
+    var _bStaging = false;
+    var _bClosedWhileStaging = false;
 
     function _felById(sId) {
         return document.getElementById(sId);
@@ -41,6 +43,8 @@ var VaibifyReproducePublished = (function () {
         _sJobId = "";
         _dictStaged = null;
         _bRunStarted = false;
+        _bStaging = false;
+        _bClosedWhileStaging = false;
         _iPollFailures = 0;
         _fnDisarmPoll();
         _felById("reproduceSourceInput").value = "";
@@ -52,6 +56,13 @@ var VaibifyReproducePublished = (function () {
     }
 
     function fnClose() {
+        if (_bStaging && !_sJobId) {
+            /* Nothing to discard yet: the stage request has not come
+               back with a job id. Remembered, so the response
+               discards on arrival rather than leaving a clone nobody
+               will ever see (found by review, 2026-09-07). */
+            _bClosedWhileStaging = true;
+        }
         /* Hiding the modal used to leave the staged clone on disk: a
            staged job holds its own lock, which is what keeps the
            staging sweep off it, so an abandoned confirmation kept a
@@ -89,6 +100,7 @@ var VaibifyReproducePublished = (function () {
         var elButton = _felById("btnReproduceStage");
         elButton.disabled = true;
         elButton.textContent = "Staging…";
+        _bStaging = true;
         try {
             var dictResponse = await VaibifyApi.fdictPost(
                 "/api/reproductions/stage",
@@ -99,11 +111,21 @@ var VaibifyReproducePublished = (function () {
             }
             _sJobId = dictResponse.sJobId;
             _dictStaged = dictResponse;
+            if (_bClosedWhileStaging) {
+                /* The researcher closed the card while the clone was
+                   still being made, so there was no job id to discard
+                   yet. The response carries one now, and the snapshot
+                   it names is one nobody asked for. */
+                _bClosedWhileStaging = false;
+                fnClose();
+                return;
+            }
             _fnRenderConfirmation(dictResponse);
             _fnShowStage("Confirm");
         } catch (error) {
             elError.textContent = error.message || String(error);
         } finally {
+            _bStaging = false;
             elButton.disabled = false;
             elButton.textContent = "Stage";
         }

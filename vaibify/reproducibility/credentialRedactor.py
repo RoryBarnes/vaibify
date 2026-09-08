@@ -24,17 +24,21 @@ ReDoS-style adversarial input runs in linear time.
 """
 
 import re
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import unquote_plus, urlparse, urlunparse
 
 
 __all__ = [
+    "fbNamesACredentialParameter",
     "fsRedactCredentials",
     "fsRedactUrlCredentials",
 ]
 
 
 _S_REDACTED = "<redacted>"
-_S_REDACTED_URL_PREFIX = "https://<redacted>@"
+# The scheme is CAPTURED and written back, so redacting an ``ssh://``
+# remote does not silently rename its transport to https in the very
+# message a researcher reads to work out what went wrong.
+_S_REDACTED_URL_PREFIX = r"\1<redacted>@"
 
 _REGEX_URL_WITH_CREDENTIALS = re.compile(
     # ``user:token@`` only counts when it sits between ``://`` and the
@@ -42,7 +46,14 @@ _REGEX_URL_WITH_CREDENTIALS = re.compile(
     # netloc. Permitting slashes in the user-info segment caused
     # benign query values like ``?path=user:thing@x`` to look like a
     # credential URL and over-redact downstream text.
-    r"https?://[^:@\s/?#]+:[^@\s/?#]+@",
+    #
+    # ANY scheme, not just http(s): ``ssh://user:key@host`` carries a
+    # credential in exactly the same place, and the http-only spelling
+    # left every ssh remote unredacted -- including in the refusal that
+    # exists to say a URL carries a credential (found by review,
+    # 2026-09-07). A ``scheme://user:secret@`` shape is a credential
+    # whatever the scheme is.
+    r"([A-Za-z][A-Za-z0-9+.\-]*://)[^:@\s/?#]+:[^@\s/?#]+@",
 )
 _REGEX_BEARER_TOKEN = re.compile(
     r"(?i)(authorization|bearer|token)[\s:=]+\S+",
@@ -132,13 +143,31 @@ def _fsScrubUrlQueryParts(sCandidate):
 
 
 def _fsScrubQueryString(sQuery):
-    """Remove access_token / token parameters from a URL query string."""
+    """Remove access_token / token parameters from a URL query string.
+
+    The name is PERCENT-DECODED before it is compared, because a
+    server decodes it too: ``?access%5Ftoken=…`` and
+    ``?access_token=…`` name the same parameter and carry the same
+    secret, and comparing the raw spelling scrubbed one and kept the
+    other (found by review, 2026-09-07). Pairs that survive keep their
+    original encoding -- this scrubs, it does not rewrite.
+    """
     if not sQuery:
         return sQuery
-    listKept = []
-    for sPair in sQuery.split("&"):
-        sName = sPair.split("=", 1)[0].lower()
-        if sName in _TUPLE_QUERY_PARAM_NAMES:
-            continue
-        listKept.append(sPair)
+    listKept = [
+        sPair for sPair in sQuery.split("&")
+        if not fbNamesACredentialParameter(sPair.split("=", 1)[0])
+    ]
     return "&".join(listKept)
+
+
+def fbNamesACredentialParameter(sRawName):
+    """Return True when a query parameter name carries a credential.
+
+    The one place the comparison is made, so a caller that REFUSES
+    such a URL and a caller that scrubs one can never disagree about
+    which names count.
+    """
+    return unquote_plus(sRawName or "").strip().lower() in (
+        _TUPLE_QUERY_PARAM_NAMES
+    )

@@ -254,3 +254,126 @@ def test_the_comparison_event_moves_the_job_out_of_running():
     assert reproductionProgress.fdictReadJobView(
         dictJob["sJobId"],
     )["sPhase"] == reproductionProgress.S_PHASE_COMPARING
+
+
+# ---------------------------------------------------------------------
+# Races the second review reproduced (2026-09-07)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_the_count_and_the_insert_share_one_acquisition_of_the_lock():
+    """A cap enforced across a GAP in the lock is not a cap.
+
+    Asserted structurally rather than by racing threads, because the
+    race is real but not reliably lost: twelve threads released
+    together usually serialise anyway, so the concurrent test below
+    passes against the broken code and cannot be the guard. What makes
+    the cap sound is that nothing can release the lock between reading
+    the count and inserting the record, and that is what this counts.
+
+    Kills: counting under one acquisition of the lock and inserting
+    under another.
+    """
+    lockReal = reproductionProgress._LOCK_JOBS
+    listAcquisitions = []
+
+    class _CountingLock:
+        def __enter__(self):
+            listAcquisitions.append("acquired")
+            return lockReal.__enter__()
+
+        def __exit__(self, *args):
+            return lockReal.__exit__(*args)
+
+    fBuildReal = reproductionProgress._fdictBuildJobRecord
+    listAcquisitionsAtInsert = []
+
+    def fdictBuildNotingTheAcquisition(*args, **kwargs):
+        listAcquisitionsAtInsert.append(len(listAcquisitions))
+        return fBuildReal(*args, **kwargs)
+
+    with patch.object(
+        reproductionProgress, "flistSweepExpiredJobs", lambda **kwargs: [],
+    ), patch.object(
+        reproductionProgress, "_fdictBuildJobRecord",
+        fdictBuildNotingTheAcquisition,
+    ), patch.object(reproductionProgress, "_LOCK_JOBS", _CountingLock()):
+        reproductionProgress.fdictCreateJob("snapshot0001", {}, {}, None)
+    # The record is built during the FIRST acquisition -- the same one
+    # that counted. A later acquisition means the lock was released in
+    # between, which is the gap. (The read that composes the return
+    # value takes the lock again, after the insert, and is harmless.)
+    assert listAcquisitionsAtInsert == [1], (
+        "the registration released the lock between counting and "
+        "inserting; a cap checked across that gap is not a cap"
+    )
+
+
+def test_the_concurrency_cap_holds_against_simultaneous_registrations():
+    """The outcome the structural guard above protects.
+
+    Not marked falsification: threads released together serialise
+    often enough that this passes against a registration whose count
+    and insert are two critical sections.
+    """
+    import threading
+    barrierStart = threading.Barrier(12)
+    listAccepted = []
+
+    def fnRegisterOne(iIndex):
+        barrierStart.wait()
+        try:
+            reproductionProgress.fdictCreateJob(
+                f"snapshot{iIndex:04d}", {}, {}, None,
+            )
+            listAccepted.append(iIndex)
+        except reproductionProgress.TooManyReproductionJobsError:
+            pass
+
+    listThreads = [
+        threading.Thread(target=fnRegisterOne, args=(iIndex,))
+        for iIndex in range(12)
+    ]
+    for threadOne in listThreads:
+        threadOne.start()
+    for threadOne in listThreads:
+        threadOne.join()
+    assert len(listAccepted) == reproductionProgress.I_MAX_CONCURRENT_JOBS
+    assert len(reproductionProgress.DICT_JOBS) == (
+        reproductionProgress.I_MAX_CONCURRENT_JOBS
+    )
+
+
+@pytest.mark.falsification
+def test_a_claimed_job_is_live_before_the_claim_returns():
+    """The window between claiming and the route's first phase.
+
+    A job claimed but still reading ``staged`` is one a Discard can
+    delete the snapshot out from under, and the card sets its own
+    running flag only when the Run request returns.
+
+    Kills: leaving the phase alone in the claim.
+    """
+    dictJob = _fdictCreate()
+    assert reproductionProgress.fbClaimJobForRun(dictJob["sJobId"], False)
+    assert reproductionProgress.fbJobIsLive(dictJob["sJobId"]), (
+        "a claimed job that is not live can be discarded mid-run"
+    )
+
+
+def test_the_hubs_periodic_sweep_expires_a_staged_job_nobody_ran():
+    """The expiry must run on a tick, not only when the next job stages.
+
+    A researcher who stages one snapshot and walks away used to keep
+    it until the hub restarted: the check existed and nothing called
+    it.
+    """
+    from vaibify.gui import serverLifespan
+    dictJob = _fdictCreate()
+    reproductionProgress.DICT_JOBS[dictJob["sJobId"]][
+        "fStagedAtMonotonic"
+    ] -= 10 * reproductionProgress.F_STAGED_JOB_RETENTION_SECONDS
+    with patch.object(reproductionProgress, "fnDiscardJob") as fnDiscard:
+        serverLifespan._fnExpireAbandonedReproductionJobs()
+    fnDiscard.assert_called_once_with(dictJob["sJobId"])

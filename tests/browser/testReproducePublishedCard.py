@@ -326,3 +326,35 @@ def test_the_result_names_every_file_and_links_its_report(
         "#reproduceResultBody a[href*='reproductions/reports']", "href",
     )
     assert sHref.endswith("/api/reproductions/reports/report01"), sHref
+
+
+@pytest.mark.falsification
+def test_closing_the_card_mid_stage_discards_the_snapshot_that_arrives(
+    pageDashboard, serverHub,
+):
+    """The card can be closed before the job id exists.
+
+    Staging clones a repository, which takes time; a researcher who
+    closes the card during it has no job id to discard yet, and the
+    snapshot the response eventually names is one nobody asked for.
+
+    Kills: forgetting the close that happened while staging was in
+    flight.
+    """
+    _fnOpenTheCard(pageDashboard, serverHub)
+    dictSeen = _fdictInterceptTheJob(pageDashboard)
+
+    def fnAnswerSlowly(route):
+        dictSeen["listStagePosts"].append(json.loads(route.request.post_data))
+        pageDashboard.wait_for_timeout(700)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(DICT_STAGED_RESPONSE))
+
+    pageDashboard.route("**/api/reproductions/stage", fnAnswerSlowly)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.click("#btnReproduceCancelSource")
+    pageDashboard.wait_for_timeout(2000)
+    assert len(dictSeen["listDiscardPosts"]) == 1, dictSeen
+    assert pageDashboard.is_hidden("#modalReproducePublished")

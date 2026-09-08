@@ -468,6 +468,31 @@ without it a closed tab lets the clock go stale and the hub SIGTERMs
 itself mid-run. A poll that meets a 404 DISARMS and says the job is
 gone; jobs live only as long as their hub.
 
+**A second review of the same code found five more, and their shapes
+are the lesson.** A refusal that redacts ONE of its branches redacts
+nothing: the query branch was scrubbed and the userinfo branch went on
+echoing the password it refused. A credential parameter name is
+PERCENT-DECODED before it is compared, because a server decodes it —
+`?access%5Ftoken=` and `?access_token=` are the same parameter — and
+the shared redactor's URL regex matches ANY scheme, because
+`ssh://user:key@host` is the same credential in the same place and the
+http-only spelling left every ssh remote unredacted (it also captures
+the scheme and writes it back, so redacting does not silently rename
+the transport). A cap whose count and insert are two critical sections
+is not a cap; twelve registrations released into the gap all pass, and
+the guard for it is STRUCTURAL — a racy test serialises often enough to
+pass against the bug. `fbClaimJobForRun` moves the job into a live
+phase in the SAME acquisition that consumes it, because a job claimed
+but still reading `staged` is one a Discard deletes the snapshot out
+from under, and the card's own running flag is set only when the Run
+request returns. And a status callback handed to a lane that runs in a
+worker thread must be SYNCHRONOUS: an `async def` there returned a
+coroutine nobody awaited, so every step label and both new phases went
+to the floor behind a `RuntimeWarning` — which is also why `comparing`
+and `tearing-down` are emitted from INSIDE the lane, at the moment the
+thing they name begins, rather than set by the caller after the lane
+has returned and the container is already destroyed.
+
 **The image is obtained through the chain `reproduce.sh` runs, and
 the two lanes are pinned to agree.** `imageAcquisition` walks registry
 pull, then the archived deposit (hash from the ENVELOPE, checked
