@@ -521,9 +521,14 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # gateway module would be mutation-capable rows the other ratchet
 # refuses; three declared blind spots in the SDK authority is the
 # honest trade.
+# 50 (2026-09-08, on merge): the image store's 48 plus each lane's
+# kill helper, which now verifies the kill against the daemon's own
+# Running answer because a wedged daemon absorbs the first kill
+# while reporting success -- one inspect_container site per lane,
+# beside the kill it verifies.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 48,
+    "untraceable-docker-sdk-root": 50,
 }
 
 

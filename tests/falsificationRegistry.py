@@ -17109,8 +17109,8 @@ def _fdictEntry(sRel):
         # Drop the threaded snapshot: the counter half can never
         # conclude, and the outcome quietly reverts to the daemon
         # flag alone.
-        old='        fStartedMonotonic, iOomKillsBefore)',
-        new='        fStartedMonotonic, None)',
+        old='        fStartedMonotonic, iOomKillsBefore, bBreached)',
+        new='        fStartedMonotonic, None, bBreached)',
     ),
     Falsification(
         nodeid=(
@@ -17856,5 +17856,50 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptReproducePublished.js',
         old='            if (_bClosedWhileStaging) {',
         new='            if (false) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBreachOutcomeDeterminism.py::'
+            'test_a_breached_disposable_command_is_not_asked_for_an_'
+            'exit_code'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # Ask the daemon for a killed exec's exit code again: the
+        # answer is a race -- 137, or a 60-second blocked inspect --
+        # and the runaway-cap live test's intermittent both ways.
+        old='    if not bGatewayKilled:',
+        new='    if True:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBreachOutcomeDeterminism.py::'
+            'test_a_breached_council_turn_is_not_asked_for_an_exit_code'
+        ),
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        # The council lane's copy of the same laundered race.
+        old='    if not bBreached:',
+        new='    if True:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBreachOutcomeDeterminism.py::'
+            'test_the_disposable_kill_retries_until_the_daemon_confirms'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # A single-attempt kill against the wedged daemon measured
+        # live: the first kill is absorbed and the runaway keeps
+        # running, unenforced.
+        old='    for _ in range(3):',
+        new='    for _ in range(1):',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBreachOutcomeDeterminism.py::'
+            'test_the_council_kill_retries_until_the_daemon_confirms'
+        ),
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        # The council lane's copy of the same single-attempt collapse.
+        old='    for _ in range(3):',
+        new='    for _ in range(1):',
     ),
 ]

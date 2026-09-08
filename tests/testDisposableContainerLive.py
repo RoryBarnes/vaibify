@@ -171,9 +171,14 @@ def test_a_runaway_command_is_killed_at_its_output_cap(tGatewayAndHandle):
 
     Truncating host-side while the process keeps producing is the
     plausible wrong implementation, and it looks identical from the
-    returned bytes. The discriminator is the exit code: a killed
-    container can establish none, so ``iExitCode`` is None rather than a
-    fabricated zero.
+    returned bytes. The discriminator is the DAEMON's answer that the
+    container is no longer running -- a truncate-only implementation
+    leaves it alive. The exit code cannot discriminate: the daemon's
+    answer for a SIGKILL'd exec is a race (137 settled, or an inspect
+    that blocks out the whole client timeout -- both measured live,
+    back to back, 2026-09-02, which was this test's intermittent), so
+    the gateway does not ask, and ``iExitCode`` is None by
+    construction rather than by luck.
     """
     dictGateway, dictCreated = tGatewayAndHandle
     dictOutcome = disposableContainer.fdictExecuteBoundedCommand(
@@ -184,8 +189,15 @@ def test_a_runaway_command_is_killed_at_its_output_cap(tGatewayAndHandle):
     assert dictOutcome["bOutputCapExceeded"] is True
     assert dictOutcome["iOutputBytes"] <= 4096
     assert dictOutcome["iExitCode"] is None, (
-        "a container killed at its output cap can establish no exit "
-        f"code; got {dictOutcome['iExitCode']}"
+        "a command the gateway killed must not launder a daemon race "
+        f"into an exit code; got {dictOutcome['iExitCode']}"
+    )
+    sContainerId = dictGateway["dictHandlesById"][
+        dictCreated["sHandle"]]["sContainerId"]
+    dictInspected = dictGateway["dockerDisposable"].api.inspect_container(
+        sContainerId)
+    assert dictInspected["State"]["Running"] is False, (
+        "the cap must stop the container itself; it is still running"
     )
 
 
