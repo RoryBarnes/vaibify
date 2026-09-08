@@ -257,7 +257,7 @@ def test_declining_the_confirmation_discards_the_staged_clone(
     pageDashboard.wait_for_selector(
         "#modalReproducePublished", state="hidden", timeout=5000,
     )
-    pageDashboard.wait_for_timeout(400)
+    pageDashboard.wait_for_timeout(250)
     assert len(dictSeen["listDiscardPosts"]) == 1, dictSeen
     assert dictSeen["listRunPosts"] == []
 
@@ -297,7 +297,11 @@ def test_a_job_this_hub_no_longer_holds_stops_the_poll(
         "#reproduceResultBody",
     )
     iAfterSettle = dictSeen["iPolls"]
-    pageDashboard.wait_for_timeout(3 * 2000)
+    # One poll interval and a margin: an armed poll fires within the
+    # interval, so a count that has not moved after it is a disarmed
+    # one. Waiting several intervals proves nothing more and costs the
+    # lane its whole margin against the step ceiling.
+    pageDashboard.wait_for_timeout(2600)
     assert dictSeen["iPolls"] == iAfterSettle, (
         "the card kept polling a hub that answered 404"
     )
@@ -346,7 +350,7 @@ def test_closing_the_card_mid_stage_discards_the_snapshot_that_arrives(
 
     def fnAnswerSlowly(route):
         dictSeen["listStagePosts"].append(json.loads(route.request.post_data))
-        pageDashboard.wait_for_timeout(700)
+        pageDashboard.wait_for_timeout(400)
         route.fulfill(status=200, content_type="application/json",
                       body=json.dumps(DICT_STAGED_RESPONSE))
 
@@ -355,6 +359,6 @@ def test_closing_the_card_mid_stage_discards_the_snapshot_that_arrives(
     pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
     pageDashboard.click("#btnReproduceStage")
     pageDashboard.click("#btnReproduceCancelSource")
-    pageDashboard.wait_for_timeout(2000)
+    pageDashboard.wait_for_timeout(900)
     assert len(dictSeen["listDiscardPosts"]) == 1, dictSeen
     assert pageDashboard.is_hidden("#modalReproducePublished")
