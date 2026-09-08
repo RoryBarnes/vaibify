@@ -4591,7 +4591,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # helpers, and the combiner is shared pure code in
     # disposableSpecification, so the growth is the two thin adapters
     # and their docstrings.
-    "agentCouncilDockerGateway.py": 997,
+    # +30 (2026-09-02): the breach path stops laundering a daemon
+    # race into an exit code, and the kill helper verifies the kill
+    # against the daemon's own answer with bounded retries -- the
+    # wedged daemon it defends against absorbs the first kill while
+    # reporting success (measured live).
+    "agentCouncilDockerGateway.py": 1027,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
