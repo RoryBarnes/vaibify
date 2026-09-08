@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.10.dev13 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.10.dev23 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a786984"></script>
+      <script src="_static/documentation_options.js?v=97281948"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -89,6 +89,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#why-this-matters">Why this matters</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#reproduce-a-published-project">Reproduce a published project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub mode</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#one-browser-session-per-container">One browser session per container</a></li>
 </ul>
@@ -1046,6 +1047,58 @@ verifiable: every action it takes is one the user could have taken
 through the dashboard, and every action triggers the same verification
 state machine.</p>
 </section>
+</section>
+<section id="reproduce-a-published-project">
+<h2>Reproduce a published project<a class="headerlink" href="#reproduce-a-published-project" title="Link to this heading"></a></h2>
+<p>The <strong>+</strong> button’s Add Environment dialog offers a third kind card
+beside <em>Container</em> and <em>This machine</em>: <strong>Reproduce a published
+project</strong>. It is not a place work runs. It re-runs somebody else’s
+finished result once, in a shadow container, and leaves no tile
+behind.</p>
+<p>The card opens a dialog with four stages, in this order:</p>
+<ol class="arabic simple">
+<li><p><strong>Source.</strong> A clone URL (<code class="docutils literal notranslate"><span class="pre">https://</span></code>, <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> or <code class="docutils literal notranslate"><span class="pre">user&#64;host:path</span></code>)
+or the path of a clean clone under your home directory. <strong>Stage</strong>
+clones one commit and validates it as reproduction-ready (the six
+staging rules, not the author’s Level 3 gate). A refusal names the
+rule and the file. A repository holding several workflows offers a
+selector rather than picking one by sort order.</p></li>
+<li><p><strong>Confirmation.</strong> The project and selected workflow, the resolved
+commit, the pinned image, the required platform, whether an image
+deposit is on record, whether this daemon’s architecture matches
+the pinned build (with an emulation checkbox, off by default, when
+it does not), and the three links the image will be tried through,
+in order. Nothing has been pulled or run yet, and nothing is until
+you click <strong>Run</strong>; <strong>Not now</strong> sends nothing.</p></li>
+<li><p><strong>Progress.</strong> The dialog polls only while the hub reports the job
+live: staging, validating, pulling, downloading (with bytes),
+loading, running (with the step), comparing, tearing down. It stops
+the moment the job settles, and it also stops if this hub no longer
+holds the job – jobs live only as long as the hub that started
+them, so a restart loses one, and the dialog says so instead of
+waiting for an answer that will never come. <strong>Hide</strong> closes the
+dialog without stopping the job; it reopens on settle.</p></li>
+<li><p><strong>Result.</strong> The verdict – <em>reproduced</em>, <em>reproduced under
+emulation</em>, <em>diverged</em>, or <em>no verdict</em> with the reason – then
+<strong>every pinned file by name</strong>: the ones that diverged, the ones
+carried in unchanged because a human step produced them, and the
+ones re-derived byte-identically. Beside them: the three platform
+facts, where the image came from, the deposit re-check, and a link
+to the report written under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>.</p></li>
+</ol>
+<p>Dismissing the confirmation deletes the staged clone rather than
+leaving it: a staged snapshot is a whole repository on your disk, and
+one nobody is going to run is waste. A staged job you neither run nor
+dismiss is expired by the hub after half an hour, and the hub holds a
+small fixed number of staged snapshots at once – stage another and it
+says so rather than filling the disk.</p>
+<p>The report is yours, not the author’s attestation: nothing is written
+into the project, the dialog offers no publish, deposit or attest
+action, and the shadow container is destroyed with proof when the
+comparison is made. The command-line equivalent is
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span> <span class="pre">&lt;source&gt;</span> <span class="pre">--rerun</span></code>; both drive the same
+staging, acquisition and shadow lane. See
+<a class="reference internal" href="reproducibility.html#reproducing-somebody-else-s-project-vaibify-reproduce-from"><span class="std std-ref">Reproducibility</span></a>.</p>
 </section>
 <section id="hub-mode">
 <h2>Hub mode<a class="headerlink" href="#hub-mode" title="Link to this heading"></a></h2>

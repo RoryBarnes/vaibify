@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.10.dev13 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.10.dev23 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a786984"></script>
+      <script src="_static/documentation_options.js?v=97281948"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2111,6 +2111,21 @@ never imports it, and a test pins that. Its verdicts are
 verdict”; the word “attested” appears nowhere on this lane, because
 vaibify offers no publishing, depositing, pushing or attesting action
 on a reproduction.</p>
+<p>The dashboard’s one-shot job (<code class="docutils literal notranslate"><span class="pre">reproductionRoutes</span></code>,
+<code class="docutils literal notranslate"><span class="pre">reproductionProgress</span></code>) is a third caller of the same seams, not a
+third derivation. Its two mutating routes carry the browser-hub
+credential and refuse the agent lane – staging reads and writes host
+state, the run spends the daemon – and are declared
+<code class="docutils literal notranslate"><span class="pre">separate-authority</span></code>, because the only container the job ever touches
+is the shadow that <code class="docutils literal notranslate"><span class="pre">shadowRerun</span></code> creates, admits and destroys itself.
+The job record is its own (keyed by job, holding the staged snapshot’s
+live lock for exactly the job’s life, consumed once) rather than the
+deposit registry’s, which is keyed by a container the job does not
+have; the frontend borrows the deposit row’s visual shape only. The
+phases a client sees are the ones an event actually reported – the
+acquisition chain’s and the pipeline’s – with the comparison and the
+teardown, which the rerun seam performs with no event of their own,
+reported together as <code class="docutils literal notranslate"><span class="pre">finishing</span></code> rather than invented from a timer.</p>
 </section>
 </section>
 <section id="the-environment-archive">

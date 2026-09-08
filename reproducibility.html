@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.10.dev13 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.10.dev23 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a786984"></script>
+      <script src="_static/documentation_options.js?v=97281948"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -87,6 +87,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#what-a-source-can-be">What a source can be</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#a-reproduction-is-of-a-commit">A reproduction is of a commit</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">Validation is strict, not advisory – and it is not the Level 3 gate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#from-the-dashboard">From the dashboard</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-a-report-may-carry">What a report may carry</a></li>
 </ul>
 </li>
@@ -791,7 +792,7 @@ verdict</em> (the rerun never started, and the reason is named).</p>
 <tbody>
 <tr class="row-even"><td><p>An <code class="docutils literal notranslate"><span class="pre">https://</span></code> or <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> clone URL, or <code class="docutils literal notranslate"><span class="pre">user&#64;host:path</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">git-url</span></code></p></td>
-<td><p>Matched by shape, never by which forge hosts it. A URL carrying a username or password is refused: credentials in a URL end up in shell history and in reports.</p></td>
+<td><p>Matched by shape, never by which forge hosts it. A URL carrying a username, a password, or an <code class="docutils literal notranslate"><span class="pre">access_token=</span></code> / <code class="docutils literal notranslate"><span class="pre">token=</span></code> query parameter is refused: credentials in a URL end up in shell history, in reports, and inside the container.</p></td>
 </tr>
 <tr class="row-odd"><td><p>The path of a clone under your home directory</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">local-clone</span></code></p></td>
@@ -830,7 +831,16 @@ for no submodule, so the hostile <code class="docutils literal notranslate"><spa
 against is never read.</p>
 <p>A clone is refused while it grows past a size ceiling, not after it
 has filled the disk, and an abandoned staging directory is swept after
-a day – never one a live job still holds.</p>
+a day – never one a live job still holds. The staged clone’s <code class="docutils literal notranslate"><span class="pre">origin</span></code>
+is rewritten to the redacted remote and its reflog removed before
+anything reads it: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span></code> records the source it was given in two
+places, and the staged tree is copied into a container built from
+somebody else’s image.</p>
+<p>The archive handed to that container is bounded by the same figure the
+live shadow lane uses for its own export, and spooled to a private
+file rather than assembled in memory: the size ceiling above bounds
+what a clone may occupy on disk and says nothing about what the hub
+may materialise in its own address space.</p>
 </section>
 <section id="validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">
 <h3>Validation is strict, not advisory – and it is not the Level 3 gate<a class="headerlink" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate" title="Link to this heading"></a></h3>
@@ -865,10 +875,29 @@ its architecture. No deposit on record is not a refusal – the
 registry may still serve the image – and is reported as such.</p></li>
 </ol>
 </section>
+<section id="from-the-dashboard">
+<h3>From the dashboard<a class="headerlink" href="#from-the-dashboard" title="Link to this heading"></a></h3>
+<p>The hub’s <strong>+</strong> dialog offers the same run as a third kind card,
+<strong>Reproduce a published project</strong>: a source field and a Stage button,
+a confirmation card showing everything a run would use (project and
+workflow, commit, pinned image, required platform, deposit on record,
+whether this daemon’s architecture matches, the chain links in
+order), a Run button that starts the job, a progress card that polls
+only while the hub reports the job live, and a result card with the
+verdict, every pinned file by name (diverged, carried in unchanged,
+or re-derived byte-identically), the three platform facts, the
+image’s provenance and a link to the report. No tile persists and no
+publishing, depositing or attesting action is offered. Dismissing the
+confirmation deletes the staged clone; a staged job nobody runs
+expires; and the hub holds only a few staged snapshots at once. It drives exactly the staging, chain and
+shadow the command line does, through the same seams, so the two
+cannot describe two different reproductions.</p>
+</section>
 <section id="what-a-report-may-carry">
 <h3>What a report may carry<a class="headerlink" href="#what-a-report-may-carry" title="Link to this heading"></a></h3>
 <p>Only what <code class="docutils literal notranslate"><span class="pre">fdictDescribeStagedSource</span></code> returns: the source kind, the
-resolved commit, the remote URL with any <code class="docutils literal notranslate"><span class="pre">user:password&#64;</span></code> stripped,
+resolved commit, the remote URL with any <code class="docutils literal notranslate"><span class="pre">user:password&#64;</span></code> <strong>and any
+credential query parameter</strong> stripped,
 the workflow name and its repo-relative path, and the validated facts
 above. Never a path on the reproducer’s machine. A reproduction report
 is the reproducer’s own artefact – never an attestation, never
