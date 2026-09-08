@@ -203,6 +203,13 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|fdictExecuteBoundedTurn|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
+    # The kill helper's verification inspect (2026-09-02): the kill
+    # is now confirmed against the daemon's own Running answer, since
+    # a wedged daemon absorbs the first kill while reporting success.
+    # Same target as the kill beside it -- a handle-resolved council
+    # container -- so the same runner judgement covers it.
+    "gui/agentCouncilDockerGateway.py|_fnKillContainerQuietly|"
+    "untraceable-docker-sdk-root|1": _DICT_COUNCIL_RUNNER_DISPOSITION,
     # The turn's inspect_container moved into
     # _fbConcludeOomKilledForContainer on 2026-09-02, when OOM
     # attribution grew its cgroup-counter half. Re-read at the new

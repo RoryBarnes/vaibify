@@ -499,11 +499,32 @@ def _fnStreamArchiveThroughExec(dictGateway, dictHandle, baRepacked,
 
 
 def _fnKillContainerQuietly(dockerDisposable, sContainerId):
-    """Kill the container, tolerating one already stopped or gone."""
-    try:
-        dockerDisposable.api.kill(sContainerId)
-    except Exception:
-        pass
+    """Kill the container until the DAEMON confirms it stopped.
+
+    One kill is not enough: a daemon wedged on an abandoned exec
+    stream absorbs the first kill -- the API blocks ~10 seconds,
+    answers OK, and the container keeps running, while a second
+    identical kill lands (measured live, back to back, 2026-09-02).
+    Success is therefore the daemon's own Running answer, never the
+    kill call's return. Bounded so a pathological daemon cannot hold
+    the breach path forever; a container that survives every attempt
+    is left to the caller's destroy, which force-removes. An inspect
+    that raises means the container is already gone, which is the
+    outcome this function exists to reach.
+    """
+    for _ in range(3):
+        try:
+            dockerDisposable.api.kill(sContainerId)
+        except Exception:
+            pass
+        time.sleep(0.2)
+        try:
+            dictInspected = dockerDisposable.api.inspect_container(sContainerId)
+        except Exception:
+            return
+        dictState = dictInspected.get("State") or {}
+        if dictState.get("Running") is False:
+            return
 
 
 def fdictExecuteBoundedCommand(
@@ -552,17 +573,20 @@ def fdictExecuteBoundedCommand(
             socketRaw, iOutputByteCap, fDeadlineMonotonic)
     finally:
         socketRaw.close()
-    if dictPumped["bOutputCapExceeded"] or dictPumped["bDeadlineExceeded"]:
+    bBreached = (
+        dictPumped["bOutputCapExceeded"] or dictPumped["bDeadlineExceeded"]
+    )
+    if bBreached:
         _fnKillContainerQuietly(
             dockerDisposable, dictHandle["sContainerId"])
     return _fdictDescribeCommandOutcome(
         dockerDisposable, dictHandle, sExecId, dictPumped,
-        fStartedMonotonic, iOomKillsBefore)
+        fStartedMonotonic, iOomKillsBefore, bBreached)
 
 
 def _fdictDescribeCommandOutcome(dockerDisposable, dictHandle, sExecId,
                                  dictPumped, fStartedMonotonic,
-                                 iOomKillsBefore):
+                                 iOomKillsBefore, bGatewayKilled):
     """Assemble the bounded command's outcome from the daemon's answers.
 
     Each inspect result is bound before it is read. A ``.get()`` chained
@@ -572,13 +596,22 @@ def _fdictDescribeCommandOutcome(dockerDisposable, dictHandle, sExecId,
     one-liner spends blind-spot budget per link. Subscripting a bound
     dict is not a call at all, and a missing key raises into the same
     ``except`` the chain's ``None`` already fell through to.
+
+    A command this gateway killed for a breach is never asked for an
+    exit code. The daemon's answer for a SIGKILL'd exec is a RACE --
+    137 when the exec has settled, an inspect that blocks out the
+    whole 60-second client timeout when it has not (both measured
+    live, back to back, 2026-09-02) -- and the contract above already
+    promises None for a killed command. Skipping the ask makes that
+    promise true by construction and keeps the breach path fast.
     """
     iExitCode = None
-    try:
-        dictExecInspected = dockerDisposable.api.exec_inspect(sExecId)
-        iExitCode = dictExecInspected["ExitCode"]
-    except Exception:
-        pass
+    if not bGatewayKilled:
+        try:
+            dictExecInspected = dockerDisposable.api.exec_inspect(sExecId)
+            iExitCode = dictExecInspected["ExitCode"]
+        except Exception:
+            pass
     bOomKilled = _fbConcludeOomKilledForContainer(
         dockerDisposable, dictHandle["sContainerId"], iOomKillsBefore)
     return {
