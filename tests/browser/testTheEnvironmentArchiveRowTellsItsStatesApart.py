@@ -754,3 +754,140 @@ def test_a_rerender_does_not_revert_an_answer_being_changed(
         "the block was not replaced even unfocused, so this test "
         "cannot tell the guard from a render that never ran"
     )
+
+
+@pytest.mark.falsification
+def test_a_deposit_in_flight_pulses(pageDashboard, serverHub):
+    """A multi-minute operation must not look settled.
+
+    A deposit is a save, a compress and an upload -- over a minute on
+    a real image (researcher-reported, 2026-09-09). The orange circle
+    alone is a static mark and reads as a state the project is IN;
+    the pulse is what says work is under way. The
+    rebuild-attestation row beside it has carried this since its
+    rerun could take hours.
+
+    Kills: dropping `bChecking` from the environment-archive row.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    bPulsing = pageDashboard.evaluate("""(dictArchive) => {
+        const sHtml = VaibifyWorkflowRequirements.fsRenderProjectBlock({
+            dictWorkflowEnvelopeDetail: {dictImageArchive: dictArchive},
+            dictRemoteChecks: {},
+            setExpandedRequirementGroups: new Set(['artifacts']),
+            setExpandedRequirementRows: new Set(),
+            setToggledFileGroups: new Set()});
+        const elHost = document.createElement('div');
+        elHost.innerHTML = sHtml;
+        document.body.appendChild(elHost);
+        const elRow = Array.from(elHost.querySelectorAll(
+            '.requirement-row-header')).find(
+                el => (el.dataset.req || '') === 'environmentArchive');
+        const bSeen = elRow.closest('.requirement-row')
+            .classList.contains('requirement-row-checking');
+        elHost.remove();
+        return bSeen;
+    }""", _fdictArchivePayload("running", bAnswered=True))
+
+    assert bPulsing is True, (
+        "a deposit in flight renders as a settled orange mark"
+    )
+
+
+@pytest.mark.falsification
+def test_a_record_without_an_architecture_says_so(
+    pageDashboard, serverHub,
+):
+    """A bare "?" reads as a glitch, not as the fact it is.
+
+    The deposit covers a build nobody recorded, so it can never be
+    matched to this envelope -- a real consequence a researcher asked
+    about directly after seeing "Deposited ? build under 10.5072/..."
+    (2026-09-09).
+
+    Kills: restoring `dictRecord.sArchitecture || "?"`.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictSeen = pageDashboard.evaluate(
+        _S_DRIVE_ROW,
+        _fdictArchivePayload(
+            "unknown", bAnswered=True,
+            dictRecord={"sVersionDoi": "10.5072/zenodo.599592",
+                        "sArchitecture": ""},
+        ),
+    )
+
+    assert "Deposited ? build" not in dictSeen["sText"], (
+        "the row still prints a bare question mark: " + dictSeen["sText"]
+    )
+    assert "does not name" in dictSeen["sText"], (
+        "the missing architecture is not explained: " + dictSeen["sText"]
+    )
+    assert "10.5072/zenodo.599592" in dictSeen["sText"]
+
+
+@pytest.mark.falsification
+def test_a_deposited_doi_gets_its_own_selectable_field(
+    pageDashboard, serverHub,
+):
+    """The DOI a researcher must cite must be selectable.
+
+    It was reported only inside a prose sentence while the DOI input
+    below still showed its placeholder, so the screen read as though
+    nothing had been recorded and the one string worth copying was
+    the hardest thing on the row to select (researcher-reported,
+    2026-09-09).
+
+    Read-only and SEPARATE from the input beneath it: that input
+    means "point at someone else's deposit", and this is the deposit
+    this project made. Both properties are asserted, because a
+    writable field here would invite editing a value whose source is
+    the envelope record.
+
+    Kills: dropping `_fsRenderDepositedDoiRow`, or rendering the DOI
+    into the `environment-archive-doi` input instead.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictSeen = pageDashboard.evaluate("""(dictArchive) => {
+        const sHtml = VaibifyWorkflowRequirements.fsRenderProjectBlock({
+            dictWorkflowEnvelopeDetail: {dictImageArchive: dictArchive},
+            dictRemoteChecks: {},
+            setExpandedRequirementGroups: new Set(['artifacts']),
+            setExpandedRequirementRows: new Set(['environmentArchive']),
+            setToggledFileGroups: new Set()});
+        const elHost = document.createElement('div');
+        elHost.innerHTML = sHtml;
+        document.body.appendChild(elHost);
+        const elValue = elHost.querySelector(
+            '.environment-archive-doi-value');
+        const elInput = elHost.querySelector('.environment-archive-doi');
+        const dictSeen = {
+            sDeposited: elValue ? elValue.value : '',
+            bReadOnly: elValue ? elValue.readOnly : null,
+            sReferenceInput: elInput ? elInput.value : '',
+        };
+        elHost.remove();
+        return dictSeen;
+    }""", _fdictArchivePayload(
+        "attained", bAnswered=True,
+        dictRecord={"sVersionDoi": "10.5072/zenodo.599633",
+                    "sArchitecture": "amd64"},
+    ))
+
+    assert dictSeen["sDeposited"] == "10.5072/zenodo.599633", (
+        "the deposited DOI has no field of its own: " + str(dictSeen)
+    )
+    assert dictSeen["bReadOnly"] is True, (
+        "the deposited DOI is editable, but its source is the "
+        "envelope record"
+    )
+    assert dictSeen["sReferenceInput"] == "", (
+        "the DOI was written into the point-at-someone-else's-deposit "
+        "input: " + str(dictSeen)
+    )

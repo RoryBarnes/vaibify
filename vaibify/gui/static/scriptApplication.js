@@ -3553,6 +3553,28 @@ const VaibifyApp = (function () {
         "regenerate-envelope": {
             sPath: "/level3/envelope",
             bOfferCommitAfterGenerate: true,
+            // Asked BEFORE, because the cost lands afterwards and is
+            // not recoverable by undoing anything. A fresh capture
+            // can differ from the published one, and then the level
+            // drops, the remotes no longer match, and a deposit
+            // record whose image the new capture does not name is
+            // discarded. A researcher met all of that as a silent
+            // ten-second wait followed by a drop to Level 1 and a
+            // modal about something else (researcher-reported,
+            // 2026-09-09). An unchanged capture now rewrites nothing,
+            // so this warns about the case that really can cost
+            // something.
+            dictConfirm: {
+                sTitle: "Regenerate the reproducibility envelope",
+                sMessage: "Re-capture the manifest, dependency lock " +
+                    "and environment snapshot from this container? " +
+                    "If the capture differs from what you have " +
+                    "published, the project drops a level until you " +
+                    "push again and publish a new Zenodo version, " +
+                    "and a deposited image the new capture does not " +
+                    "name stops counting. An identical capture " +
+                    "changes nothing.",
+            },
             fdictAfterResponse: function (dictResult) {
                 var dictGaps =
                     (dictResult || {}).dictL3ReadinessGaps || {};
@@ -3571,9 +3593,34 @@ const VaibifyApp = (function () {
                         "snapshot are all current." + sDelta,
                         sType: "info"};
                 }
+                // The REASON, not a pointer to a log. Each tier
+                // returns why it did not write, the route ships that
+                // as dictTierResults -- and no JavaScript read it, so
+                // a researcher whose environment snapshot silently
+                // failed to rebuild was told to go and read a file
+                // they have no path to, while the sentence explaining
+                // it sat unused in the response
+                // (researcher-reported, 2026-09-09). A regenerate
+                // that did not regenerate must say what stopped it.
+                var listReasons = [];
+                var dictTiers = (dictResult || {}).dictTierResults || {};
+                Object.keys(dictTiers).forEach(function (sTier) {
+                    var dictTier = dictTiers[sTier] || {};
+                    if (dictTier.bWritten === false &&
+                            dictTier.sSkipReason) {
+                        listReasons.push(
+                            sTier + ": " + dictTier.sSkipReason);
+                    }
+                });
+                if (listReasons.length) {
+                    return {sMessage: "Envelope regenerated, but " +
+                        listReasons.join(" · ") + sDelta,
+                        sType: "warning"};
+                }
                 return {sMessage: "Envelope regenerated, but still " +
                     "failing: " + listStillFailing.join(", ") +
-                    ". Check the hub log for the tier error." + sDelta,
+                    ". Nothing reported a reason \u2014 check the " +
+                    "hub log." + sDelta,
                     sType: "warning"};
             },
         },

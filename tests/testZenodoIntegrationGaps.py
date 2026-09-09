@@ -32,7 +32,9 @@ def test_fsZenodoTokenNameForInstance_rejects_service_key():
 
 def test_flistBuildApiCreators_skips_empty_name_entries():
     """Creators with blank sName are dropped; others kept."""
-    from vaibify.gui.syncDispatcher import _flistBuildApiCreators
+    from vaibify.reproducibility.zenodoClient import (
+        flistBuildApiCreators as _flistBuildApiCreators,
+    )
     listApi = _flistBuildApiCreators([
         {"sName": ""},
         {"sName": "   "},
@@ -43,7 +45,9 @@ def test_flistBuildApiCreators_skips_empty_name_entries():
 
 def test_flistBuildApiCreators_falls_back_to_placeholder():
     """An all-empty creators list yields the Vaibify User placeholder."""
-    from vaibify.gui.syncDispatcher import _flistBuildApiCreators
+    from vaibify.reproducibility.zenodoClient import (
+        flistBuildApiCreators as _flistBuildApiCreators,
+    )
     listApi = _flistBuildApiCreators([{"sName": ""}, {}])
     assert listApi == [{"name": "Vaibify User"}]
 

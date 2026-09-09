@@ -205,7 +205,10 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # `clientZenodo` and its neighbours were debt only because the
 # vocabulary had no word for a service client, not because they were
 # badly named. The burn-down is the registry entry, not a rename.
-I_LEGACY_VARIABLE_BUDGET = 362
+# 362 -> 361 (2026-09-09): the Zenodo metadata translator moved to
+# the client boundary so both deposit paths share it, and its
+# keyword comprehension bound `k`.
+I_LEGACY_VARIABLE_BUDGET = 361
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

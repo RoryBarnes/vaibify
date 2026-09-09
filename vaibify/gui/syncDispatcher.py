@@ -6,6 +6,7 @@ import re
 import subprocess
 import uuid
 
+from vaibify.reproducibility import zenodoClient
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.manifestPaths import (
     flistStepScriptRepoPaths,
@@ -427,65 +428,16 @@ def ftResultArchiveToZenodo(
 
 
 def _fdictBuildApiMetadata(dictMetadata):
-    """Translate a vaibify metadata dict to the Zenodo API shape."""
-    sTitle = (dictMetadata.get("sTitle") or "").strip() or (
-        "Vaibify archive"
-    )
-    sDescription = (
-        dictMetadata.get("sDescription") or ""
-    ).strip() or f"Archived by Vaibify ({sTitle})"
-    dictApi = {
-        "title": sTitle,
-        "upload_type": "dataset",
-        "description": sDescription,
-        "creators": _flistBuildApiCreators(
-            dictMetadata.get("listCreators") or []
-        ),
-        "license": (
-            dictMetadata.get("sLicense") or "CC-BY-4.0"
-        ).strip(),
-    }
-    listKeywords = [
-        k.strip() for k in (dictMetadata.get("listKeywords") or [])
-        if isinstance(k, str) and k.strip()
-    ]
-    if listKeywords:
-        dictApi["keywords"] = listKeywords
-    sRelatedUrl = (
-        dictMetadata.get("sRelatedGithubUrl") or ""
-    ).strip()
-    if sRelatedUrl:
-        dictApi["related_identifiers"] = [{
-            "identifier": sRelatedUrl,
-            "relation": "isSupplementTo",
-            "resource_type": "software",
-        }]
-    return dictApi
+    """Translate a vaibify metadata dict to the Zenodo API shape.
 
-
-def _flistBuildApiCreators(listCreators):
-    """Build the Zenodo creators list; fall back to a placeholder."""
-    listApi = []
-    for dictCreator in listCreators:
-        sName = (dictCreator.get("sName") or "").strip()
-        if not sName:
-            continue
-        listApi.append(
-            _fdictBuildOneApiCreator(dictCreator, sName)
-        )
-    return listApi or [{"name": "Vaibify User"}]
-
-
-def _fdictBuildOneApiCreator(dictCreator, sName):
-    """Build a single Zenodo-shaped creator dict from a vaibify creator."""
-    dictApi = {"name": sName}
-    sAffiliation = (dictCreator.get("sAffiliation") or "").strip()
-    if sAffiliation:
-        dictApi["affiliation"] = sAffiliation
-    sOrcid = (dictCreator.get("sOrcid") or "").strip()
-    if sOrcid:
-        dictApi["orcid"] = sOrcid
-    return dictApi
+    Delegates to the Zenodo boundary, which is where the mapping now
+    lives so that the science deposit and the environment-archive
+    deposit cannot drift apart on it. The defaults are invisible to a
+    caller -- a creators placeholder Zenodo will accept, a licence --
+    and two copies of them would only ever announce their divergence
+    as a rejected upload.
+    """
+    return zenodoClient.fdictBuildApiMetadata(dictMetadata)
 
 
 def _fnValidateApiMetadata(dictApi):

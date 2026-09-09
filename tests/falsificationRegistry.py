@@ -18023,4 +18023,85 @@ def _fdictEntry(sRel):
         old='    ".vaibify/l3_attestation.json",\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_deposit_sends_the_fields_zenodo_requires'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # The reported bug exactly: vaibify's Hungarian metadata shape
+        # posted straight to Zenodo, refused for three missing
+        # required fields AFTER the image had been saved and
+        # compressed.
+        old=(
+            '        zenodoClient.fdictBuildApiMetadata(\n'
+            '            imageArchive.fdictStampDepositMetadata(\n'
+            '                dictMetadata, dictRecord,\n'
+            '            ),\n'
+            '            S_IMAGE_UPLOAD_TYPE,\n'
+            '        ),\n'
+        ),
+        new=(
+            '        imageArchive.fdictStampDepositMetadata('
+            'dictMetadata, dictRecord),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_an_unchanged_envelope_is_not_rewritten'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # Every write stamps a fresh timestamp, so an unchanged
+        # capture still moved the file's hash -- diverging both
+        # remotes and costing an immutable Zenodo version to
+        # republish content nobody changed.
+        old=(
+            '    if fbEnvironmentPayloadMatches(\n'
+            '        fdictReadEnvironmentJson(filesRepo), dictPayload,\n'
+            '    ):\n        return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_changed_envelope_is_still_written'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # The other direction: skipping every write turns the churn
+        # fix into silent data loss.
+        old=(
+            '    if fbEnvironmentPayloadMatches(\n'
+            '        fdictReadEnvironmentJson(filesRepo), dictPayload,\n'
+            '    ):'
+        ),
+        new='    if isinstance(fdictReadEnvironmentJson(filesRepo), dict):',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_depositing_writes_nothing_into_the_project_definition'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # Satisfying a Level 3 requirement diverging a Level 2 file,
+        # for a field no gate reads.
+        old='        archiveProgress.fnSettleDeposit(sContainerId)',
+        new=(
+            '        _fnRecordArchivedAnswer(dictWorkflow)\n'
+            '        archiveProgress.fnSettleDeposit(sContainerId)'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_deposit_without_a_recorded_architecture_is_refused'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # Without this the refusal arrives AFTER `docker save`,
+        # compression and the upload, leaving a published DOI whose
+        # record names no build and so matches nothing.
+        old='    if not dictContainer.get("sArchitecture"):\n',
+        new='    if False:\n',
+    ),
 ]

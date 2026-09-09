@@ -910,6 +910,12 @@ var VaibifyWorkflowRequirements = (function () {
         return [{
             sKey: "environmentArchive",
             iLevel: 3,
+            // A deposit is a save, a compress and an upload -- minutes
+            // on a real image. The orange circle alone is a static
+            // mark and reads as a settled state; the pulse is what
+            // says work is under way, and the rebuild-attestation row
+            // beside it has said so all along.
+            bChecking: sState === "running",
             dictStateByLevel: dictStateByLevel,
             dictReasonByLevel: _fdictArchiveReasonByLevel(
                 dictArchive, sState),
@@ -929,6 +935,7 @@ var VaibifyWorkflowRequirements = (function () {
         sHtml += _fsRenderArchiveIssues(dictArchive);
         sHtml += _fsRenderArchiveDepositProgress(dictArchive);
         sHtml += _fsRenderArchiveRecord(dictArchive);
+        sHtml += _fsRenderDepositedDoiRow(dictArchive);
         return sHtml + _fsRenderArchiveForm(dictArchive) + '</div>';
     }
 
@@ -1008,14 +1015,49 @@ var VaibifyWorkflowRequirements = (function () {
         if (!dictRecord) return "";
         /* The DOI and the platform, never a bare check: a deposit
            that names neither is indistinguishable from a claim. */
+        // A bare "?" for the architecture read as a glitch rather
+        // than as the fact it is: the deposit covers a build nobody
+        // recorded, so it can never be matched to this envelope. It
+        // says so, and the deposit route now refuses to create such a
+        // record in the first place.
+        var sBuild = dictRecord.sArchitecture
+            ? dictRecord.sArchitecture + " build"
+            : "a build this envelope does not name";
         return '<div class="requirement-row-status">' +
             fnEscapeHtml(
-                "Deposited " + (dictRecord.sArchitecture || "?") +
-                " build under " + (dictRecord.sVersionDoi || "?") +
+                "Deposited " + sBuild +
+                " under " + (dictRecord.sVersionDoi || "no DOI") +
                 (dictRecord.sProvenance === "verified-equivalent"
                     ? " — this environment reproduces these results " +
                       "rather than being the one that produced them"
                     : "")) + '</div>';
+    }
+
+    function _fsRenderDepositedDoiRow(dictArchive) {
+        /* The DOI of the deposit vaibify made, as its own selectable
+           field. It was reported only inside a prose sentence, while
+           the DOI input a few lines below still showed its
+           placeholder -- so the screen looked like nothing had been
+           recorded, and the one string a researcher needs to cite or
+           paste was the hardest thing on the row to select
+           (researcher-reported, 2026-09-09).
+
+           READ-ONLY, and separate from the input beneath it. That
+           input means "point at someone else's deposit"; this is the
+           deposit this project made. Putting the value there would
+           invite editing a field that is not its source -- the
+           record in the envelope is. */
+        var dictRecord = dictArchive.dictRecord;
+        var sDoi = (dictRecord || {}).sVersionDoi || "";
+        if (!sDoi) return "";
+        return '<label class="determinism-form-row ' +
+            'environment-archive-deposited">' +
+            '<span class="environment-archive-doi-label">' +
+            'Deposited DOI</span>' +
+            '<input type="text" readonly ' +
+            'class="input-modal-field environment-archive-doi-value" ' +
+            'value="' + fnEscapeHtml(sDoi) + '">' +
+            '</label>';
     }
 
     function _fsRenderArchiveForm(dictArchive) {

@@ -212,6 +212,24 @@ def _fdictRequireEnvelopeContainerBlock(filesRepo):
             "image yet, so there is nothing an archive could cover. "
             "Regenerate the envelope while the container is running.",
         )
+    # Refused BEFORE the image is saved, because the cost of learning
+    # this late is the whole operation: `docker save` plus compression
+    # plus the upload, minutes and hundreds of megabytes, ending in a
+    # published record that can never be checked. A deposit records
+    # the architecture it covers -- a manifest-list digest spans
+    # several platforms and pins none of them -- so a record written
+    # without one matches no envelope, and the row that should read
+    # "archived" reads "could not check" forever
+    # (researcher-reported, 2026-09-09).
+    if not dictContainer.get("sArchitecture"):
+        raise HTTPException(
+            409,
+            "This project's environment snapshot records the image "
+            "but not the architecture it was built for, and a "
+            "deposit that does not say which build it covers can "
+            "never be checked against this envelope. Regenerate the "
+            "envelope while the container is running, then deposit.",
+        )
     return dictContainer
 
 
@@ -490,7 +508,6 @@ async def _fnRunDepositWorker(
         await asyncio.to_thread(
             _fdictStampArchiveRecord, filesRepo, dictWorkflow, dictRecord,
         )
-        _fnRecordArchivedAnswer(dictWorkflow)
         archiveProgress.fnSettleDeposit(sContainerId)
     except Exception as errorDeposit:  # noqa: BLE001 — reported, not raised
         # The researcher is the only one who can act on this, and the
@@ -588,23 +605,19 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
     }
 
 
-def _fnRecordArchivedAnswer(dictWorkflow):
-    """Record ``archived`` in memory once a deposit has been published.
-
-    Written to the in-memory workflow only, and NOTHING gates on its
-    persistence. The deposit finishes inside a durable task whose HTTP
-    request is long gone, so it holds no commit lane to save through;
-    the researcher's next workflow save persists it. Both gates are
-    already satisfied without it -- Level 3 by the record on disk, and
-    Level 2 because ``fbImageArchiveQuestionSettled`` reads that
-    record too. This exists so the answer the researcher sees matches
-    what they just did, not because a gate needs it.
-    """
-    dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {
-        "sAnswer": imageArchive.S_ANSWER_ARCHIVED,
-        "sAnsweredIso": datetime.now(timezone.utc).isoformat(),
-    }
-
+# The `archived` answer is NOT recorded in the workflow, and the
+# absence is the point. It gated nothing -- Level 2 reads the deposit
+# record on disk through `fbImageArchiveQuestionSettled`, and the
+# answer route refuses `archived` as something a caller may assert --
+# so its only effect was to write a cosmetic field into
+# `project.json`, which is a file the Level 2 verifies COMPARE against
+# GitHub and Zenodo. Depositing therefore dropped the project a level
+# for a field nothing reads: a researcher followed the dashboard from
+# Level 2 toward Level 3, deposited the image, and landed back at
+# Level 1 with a file they had already published now diverged
+# (researcher-reported, 2026-09-09). The deposit record in
+# `environment.json` is the durable evidence, and the row renders the
+# DOI from it.
 
 def fnRegisterAll(app, dictCtx):
     """Register every environment-archive endpoint."""

@@ -283,6 +283,25 @@ html, body {
     color: var(--text-secondary);
 }
 
+/* The deposited DOI, shown as its own field so it can be selected
+   and pasted. Read-only because its source is the deposit record in
+   the envelope, not this box. */
+.environment-archive-deposited {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.environment-archive-doi-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.environment-archive-doi-value {
+    flex: 1;
+}
+
 .container-menu-separator {
     height: 1px;
     background: var(--border-color);

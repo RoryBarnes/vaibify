@@ -10,6 +10,7 @@ evidence.
 import json
 import os
 import subprocess
+from unittest.mock import patch
 
 import pytest
 
@@ -954,3 +955,246 @@ def test_the_attestation_is_badgeable_not_only_comparable():
         "a path the remote verifies compare has no badge, so it can "
         "be counted but never listed or pushed: " + sPath
     )
+
+
+# ----------------------------------------------------------------------
+# The deposit must speak Zenodo's shape, not vaibify's
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_the_deposit_sends_the_fields_zenodo_requires(tmp_path):
+    """Vaibify's metadata shape is not Zenodo's, and the API says so.
+
+    The deposit passed its own Hungarian dict straight to the draft
+    call, so Zenodo refused it with "Missing data for required field"
+    naming `title`, `creators` and the upload type at once -- after
+    the image had been saved and compressed, which on a real project
+    is hundreds of megabytes and several minutes of a researcher's
+    time (researcher-reported, 2026-09-09).
+
+    The fingerprint is the second half. It is appended to
+    `sDescription` in the vaibify shape and read back out of the
+    published record's `description`, so translating BEFORE stamping
+    would drop the only field that lets a referenced deposit be
+    verified. Both are asserted here because either alone still ships
+    a broken deposit.
+
+    Kills: passing `fdictStampDepositMetadata(...)` to
+    `fdictCreateDraft` without `fdictBuildApiMetadata`, or swapping
+    the order of the two.
+    """
+    from vaibify.reproducibility import imageDeposit
+
+    listDrafts = []
+
+    class _FakeZenodo:
+        def fdictCreateDraft(self, dictMetadata):
+            listDrafts.append(dictMetadata)
+            return {"id": 1, "links": {"bucket": "https://b"}}
+
+        def fnUploadToBucket(self, sBucket, sPath):
+            return None
+
+        def fdictPublishDraft(self, iDepositId):
+            return {"doi": "10.5281/zenodo.1", "conceptdoi": "10.5281/z.0"}
+
+    def _ftFakeSave(sImage, sScratch, fnProgress=None):
+        return (str(tmp_path / "image.tar.zst"), "sha256:" + "d" * 64,
+                123, "sha256:" + "e" * 64)
+
+    with patch.object(imageDeposit, "ftSaveAndCompressImage", _ftFakeSave):
+        imageDeposit.fdictDepositImageArchive(
+            _FakeZenodo(), _S_DIGEST, _S_ARCHITECTURE, str(tmp_path),
+            {"sTitle": "Container image for X",
+             "sDescription": "The container image.",
+             "listCreators": [{"sName": "A Researcher"}]},
+        )
+
+    dictSent = listDrafts[0]
+    for sField in ("title", "creators", "upload_type"):
+        assert sField in dictSent, (
+            "Zenodo requires " + sField + " and the draft carries "
+            "vaibify's shape instead: " + str(sorted(dictSent))
+        )
+    assert dictSent["creators"] == [{"name": "A Researcher"}]
+    assert imageArchive.S_DEPOSIT_FINGERPRINT_PREFIX in (
+        dictSent["description"]
+    ), (
+        "the fingerprint did not survive translation, so a reference "
+        "to this deposit could never be verified"
+    )
+
+
+def test_a_project_with_no_creators_still_deposits(tmp_path):
+    """Zenodo refuses an empty creators array.
+
+    A researcher who has declared no creators must not discover that
+    at the end of a multi-hundred-megabyte upload.
+    """
+    from vaibify.reproducibility.zenodoClient import fdictBuildApiMetadata
+
+    dictApi = fdictBuildApiMetadata({"sTitle": "T"}, "software")
+    assert dictApi["creators"], "an empty creators list reaches Zenodo"
+    assert dictApi["upload_type"] == "software"
+
+
+@pytest.mark.falsification
+def test_a_deposit_without_a_recorded_architecture_is_refused(
+    sProjectRepo,
+):
+    """Refused BEFORE the upload, not discovered after it.
+
+    A deposit records the architecture it covers, because a
+    manifest-list digest spans several platforms and pins none of
+    them. An envelope that records no architecture therefore produces
+    a record that matches nothing -- and the researcher learns this
+    only after `docker save`, compression and an upload have all
+    completed, ending in a published DOI whose row reads "could not
+    check" permanently (researcher-reported, 2026-09-09).
+
+    The refusal names the remedy, because "regenerate the envelope
+    while the container is running" is not something a researcher can
+    infer from a rejected deposit.
+
+    Kills: dropping the `sArchitecture` clause from
+    `_fdictRequireEnvelopeContainerBlock`.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui.routes import environmentArchiveRoutes
+
+    _fnWriteEnvelope(sProjectRepo, {"dictContainer": {
+        "sImageDigest": _S_DIGEST,
+    }})
+    with pytest.raises(HTTPException) as recordRaised:
+        environmentArchiveRoutes._fdictRequireEnvelopeContainerBlock(
+            sProjectRepo,
+        )
+    assert recordRaised.value.status_code == 409
+    assert "architecture" in str(recordRaised.value.detail)
+    assert "Regenerate the envelope" in str(recordRaised.value.detail)
+
+
+def test_a_complete_envelope_still_deposits(sProjectRepo):
+    """The other direction, so the guard is not simply a refusal."""
+    from vaibify.gui.routes import environmentArchiveRoutes
+
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    dictContainer = (
+        environmentArchiveRoutes._fdictRequireEnvelopeContainerBlock(
+            sProjectRepo,
+        )
+    )
+    assert dictContainer["sArchitecture"] == _S_ARCHITECTURE
+
+
+@pytest.mark.falsification
+def test_an_unchanged_envelope_is_not_rewritten(sProjectRepo):
+    """A capture that describes the same environment costs nothing.
+
+    Every write stamps a fresh ``sTimestamp``, so re-capturing an
+    unchanged environment still produced different bytes: a new hash,
+    divergence from GitHub and Zenodo, a dropped level, and on Zenodo
+    an immutable version spent republishing a file whose content
+    nobody changed. A researcher regenerated, dropped to Level 1 and
+    was told to re-sync and re-archive, correctly suspecting the two
+    files were the same (2026-09-09).
+
+    Asserted on the file's BYTES, because that is what the manifest
+    hashes and the remotes compare -- a test on the parsed dict would
+    pass against a rewrite that only moved the timestamp.
+
+    Kills: dropping the `fbEnvironmentPayloadMatches` short-circuit
+    from `fnWriteEnvironmentJson`.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fnWriteEnvironmentJson,
+    )
+    sPath = os.path.join(sProjectRepo, ".vaibify", "environment.json")
+    dictPayload = {"dictContainer": {
+        "sImageDigest": _S_DIGEST, "sArchitecture": _S_ARCHITECTURE,
+    }}
+    fnWriteEnvironmentJson(sProjectRepo, dictPayload)
+    baFirst = open(sPath, "rb").read()
+
+    fnWriteEnvironmentJson(sProjectRepo, dict(dictPayload))
+
+    assert open(sPath, "rb").read() == baFirst, (
+        "an identical capture rewrote the file, so its hash moved and "
+        "every published copy now differs"
+    )
+
+
+@pytest.mark.falsification
+def test_a_changed_envelope_is_still_written(sProjectRepo):
+    """The other direction, or the short-circuit is a data-loss bug.
+
+    A capture that genuinely differs MUST land. Comparing on
+    everything except the timestamp is what keeps both true at once.
+
+    Kills: comparing nothing (always skipping), or excluding a field
+    that describes the environment rather than the write.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictReadEnvironmentJson, fnWriteEnvironmentJson,
+    )
+    fnWriteEnvironmentJson(sProjectRepo, {"dictContainer": {
+        "sImageDigest": _S_DIGEST, "sArchitecture": "",
+    }})
+    fnWriteEnvironmentJson(sProjectRepo, {"dictContainer": {
+        "sImageDigest": _S_DIGEST, "sArchitecture": _S_ARCHITECTURE,
+    }})
+
+    dictRead = fdictReadEnvironmentJson(sProjectRepo)
+    assert dictRead["dictContainer"]["sArchitecture"] == (
+        _S_ARCHITECTURE
+    ), "a real change was swallowed by the unchanged-write guard"
+
+
+@pytest.mark.falsification
+def test_depositing_writes_nothing_into_the_project_definition():
+    """Reaching Level 3 must not invalidate Level 2.
+
+    Depositing recorded `archived` into the workflow, and
+    `project.json` is a file the Level 2 verifies COMPARE against
+    GitHub and Zenodo -- so satisfying an L3 requirement diverged an
+    L2 one. A researcher followed the dashboard from Level 2 toward
+    Level 3, deposited the image, and landed back at Level 1 holding
+    a file they had already published (researcher-reported,
+    2026-09-09).
+
+    Nothing read the field: Level 2 reads the deposit RECORD through
+    `fbImageArchiveQuestionSettled`, and the answer route refuses
+    `archived` as something a caller may assert. It was echo for the
+    form, priced at a level, a push and an immutable Zenodo version.
+
+    Kills: restoring the `_fnRecordArchivedAnswer(dictWorkflow)` call
+    in the deposit task.
+    """
+    from vaibify.gui.routes import environmentArchiveRoutes
+
+    sSource = _fsReadRouteSource(environmentArchiveRoutes)
+    assert "_fnRecordArchivedAnswer" not in sSource, (
+        "the deposit writes a cosmetic answer into project.json, "
+        "which the Level 2 verifies compare against both remotes"
+    )
+
+
+def test_a_deposit_record_alone_settles_the_level_two_question(
+    sProjectRepo,
+):
+    """Which is why the workflow write was never needed.
+
+    The record on disk is the durable evidence -- having deposited is
+    having decided -- so removing the echo costs no gate anything.
+    """
+    _fnWriteEnvelope(
+        sProjectRepo, _fdictBuildEnvelope(_fdictBuildRecord()),
+    )
+    assert levelGates.fbImageArchiveQuestionSettled({}, sProjectRepo)
+
+
+def _fsReadRouteSource(moduleRoutes):
+    """Return the route module's source text."""
+    import inspect
+    return inspect.getsource(moduleRoutes)
