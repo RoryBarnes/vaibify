@@ -79,6 +79,14 @@ TUPLE_ROOT_CONFIG_FILES = (
     "requirements.lock",
     "reproduce.sh",
     ".vaibify/environment.json",
+    # The rebuild attestation. It is in the set the remote verifies
+    # COMPARE, so its absence was counted -- "24 of 25 files matching"
+    # -- while no badge existed for it and therefore no file list
+    # could show it, and the badge is also the control that pushes a
+    # file. Omitting it here is the same defect the comment above
+    # records for the envelope artifacts: generated, compared, and
+    # reachable by nothing the researcher could click.
+    ".vaibify/l3_attestation.json",
     ".gitignore",
 )
 

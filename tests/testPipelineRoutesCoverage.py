@@ -1907,6 +1907,12 @@ class TestPollLevelStatePayload:
             # gates: the PROOF tab encourages the GitHub copy and the
             # Level 3 criterion asks only for the archived one.
             "dictAttestationPublication",
+            # Added 2026-09-08. WHERE the attestation lives, so its
+            # row can render an actionable badge rather than a
+            # decorative icon. Shipped by the module that owns the
+            # filename; a JS literal would be a second authority on a
+            # string the badge lookup and the push both key on.
+            "sAttestationRepoPath",
             # Added 2026-08-27. The Software row could not tell "no
             # binaries declared yet" from "the researcher answered:
             # there are none", so it showed an unanswered "?" forever

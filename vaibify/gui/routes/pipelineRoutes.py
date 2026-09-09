@@ -2420,6 +2420,11 @@ def _fdictBuildWorkflowEnvelopeDetail(
             levelGates.fdictAttestationPublicationState(filesRepo)
             if bHasRepo else {}
         ),
+        # WHERE it lives, so the row renders an actionable badge
+        # rather than an icon. From the module that owns the name; a
+        # JS literal would be a second authority on it.
+        "sAttestationRepoPath": publicationScope.
+        TUPLE_COMPARED_NOT_REQUIRED_PATHS[0],
         # Whether a rerun is running RIGHT NOW -- transient hub state,
         # not a verdict, and deliberately a separate key from the one
         # above. The row renders the gate's answer for its colour and

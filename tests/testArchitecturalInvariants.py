@@ -4933,7 +4933,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # assessment it sits next to on the wire, because both are
     # read by two route modules and a route module may not
     # import a sibling.
-    "routes/pipelineRoutes.py": 3511,
+    # 2026-09-08: +5 for the attestation's repo path, so its row
+    # can render an actionable badge instead of an icon. One key
+    # on an existing payload; no new concern to split on.
+    "routes/pipelineRoutes.py": 3516,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

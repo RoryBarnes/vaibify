@@ -235,6 +235,54 @@ html, body {
     color: var(--bg-primary);
 }
 
+/* Caution, not danger. Red already means "this discards work"; a
+   cleared answer discards no artefact and can be given again, but it
+   drops the project below the level the answer satisfied. Orange is
+   the same "partial / attention" signal the level cells use, so the
+   button reads as a cost rather than a loss. */
+.btn.wf-action-caution {
+    color: var(--color-orange);
+    border-color: var(--color-orange);
+}
+
+.btn.wf-action-caution:hover {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+}
+
+/* The attestation nudge's badge host. It is a badge, not an icon,
+   so it must sit inline with the sentence and stay clickable; the
+   file-row layout absolutely positions its badge strip, which would
+   drag this one out of the line it belongs to. */
+/* The badge host carries `.detail-item`, because that is the hook the
+   one global badge handler resolves `data-resolved` from -- but that
+   class is built for a FILE ROW: it reserves a 76px left gutter and
+   pins an absolutely positioned badge strip into it. Both halves have
+   to be undone here, and the selectors are deliberately compound:
+   `.detail-item` is defined later in this file, so a single-class rule
+   loses to it and the gutter survives as blank space to the left of
+   the mark. */
+.attestation-nudge .attestation-badge-host {
+    display: inline-flex;
+    align-items: center;
+    position: static;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+.attestation-nudge .attestation-badge-host .remote-badges {
+    position: static;
+    transform: none;
+    top: auto;
+    left: auto;
+}
+
+.attestation-nudge-published {
+    color: var(--text-secondary);
+}
+
 .container-menu-separator {
     height: 1px;
     background: var(--border-color);

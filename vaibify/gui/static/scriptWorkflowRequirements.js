@@ -666,7 +666,9 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
 
-    function _fsRenderActionButton(sAction, sArg, sLabel, bDestructive) {
+    function _fsRenderActionButton(
+        sAction, sArg, sLabel, bDestructive, bCaution,
+    ) {
         // A button that runs a project action in place (the
         // functionality that used to live only on the PROOF card).
         // bDestructive paints it red — the same signal
@@ -676,7 +678,8 @@ var VaibifyWorkflowRequirements = (function () {
         // signal available BEFORE the click.
         return '<div class="requirement-row-actions">' +
             '<button type="button" class="btn wf-action-btn' +
-            (bDestructive ? ' wf-action-danger' : '') + '" ' +
+            (bDestructive ? ' wf-action-danger' : '') +
+            (bCaution ? ' wf-action-caution' : '') + '" ' +
             'data-wf-action="' + fnEscapeHtml(sAction) + '" ' +
             'data-wf-arg="' + fnEscapeHtml(sArg || "") + '">' +
             fnEscapeHtml(sLabel) + '</button></div>';
@@ -1087,7 +1090,7 @@ var VaibifyWorkflowRequirements = (function () {
             (sAnswer
                 ? _fsRenderActionButton(
                     "clear-environment-archive-answer", "",
-                    "Clear this answer")
+                    "Clear this answer", false, true)
                 : "") +
             '</div>' +
             _fsRenderActionButton(
@@ -1134,7 +1137,23 @@ var VaibifyWorkflowRequirements = (function () {
                 'resolves in ten years must carry what they need to ' +
                 're-run this project. Publish a new deposit version ' +
                 'containing the envelope (or declare the Zenodo ' +
-                'record that already holds it), then verify.'),
+                'record that already holds it), then verify.' +
+                // The ORDER, said here because this is the row that
+                // costs a DOI and the one a researcher reaches it
+                // from. Zenodo versions are immutable, so a deposit
+                // made at Level 2 cannot gain the attestation later
+                // -- and the attestation does not exist until the
+                // rerun has run. Getting this wrong costs a
+                // published version, which is the one mistake on
+                // this ladder that cannot be undone.
+                ' Order matters: deposit the environment image and ' +
+                'run Verify Level 3 FIRST, so the attestation exists ' +
+                'and is committed, then publish the Zenodo version ' +
+                'that carries the envelope and the attestation ' +
+                'together. Later re-verifies that change only the ' +
+                'timestamp do not need another version \u2014 the ' +
+                'archived attestation is checked against the ' +
+                'archived manifest, not against your local file.'),
         ];
     }
 
@@ -1764,7 +1783,30 @@ var VaibifyWorkflowRequirements = (function () {
            as claiming it is published. */
         if (dictDetail.bRebuildAttestationCurrent !== true) return "";
         var dictWhere = dictDetail.dictAttestationPublication || {};
-        if (dictWhere.github === true) return "";
+        var sPath = dictDetail.sAttestationRepoPath || "";
+        // The octocat was decorative: it named the problem beside the
+        // only place a researcher reads about the attestation, and
+        // the fix lived in another block entirely. Rendered as a real
+        // badge on a `.detail-item` carrying `data-resolved`, the
+        // global badge handler picks it up and offers "Sync now" for
+        // this exact file, which is the same control every other file
+        // row already had. Without a path from the server there is
+        // nothing to act on, so it falls back to the plain icon
+        // rather than inventing one.
+        var sMark = sPath
+            ? _fsRenderAttestationBadge(sPath)
+            : _S_OCTOCAT_SVG;
+        if (dictWhere.github === true) {
+            // Said out loud rather than by absence. The row used to
+            // render nothing here, so "published" and "this row has
+            // no opinion" looked identical -- and a researcher who
+            // had just pushed got no confirmation that it landed.
+            return '<div class="attestation-nudge ' +
+                'attestation-nudge-published">' + sMark +
+                '<span>Synced to GitHub \u2014 anyone who clones ' +
+                'this repository can see that the rebuild passed.' +
+                '</span></div>';
+        }
         var sBody = (dictWhere.github === false)
             ? "Your rebuild attestation is not on GitHub. Pushing it " +
               "lets anyone who clones this repository see that the " +
@@ -1772,11 +1814,26 @@ var VaibifyWorkflowRequirements = (function () {
             : "No verification has checked whether your rebuild " +
               "attestation is on GitHub. Pushing it lets anyone who " +
               "clones this repository see that the rebuild passed.";
-        return '<div class="attestation-nudge">' + _S_OCTOCAT_SVG +
+        return '<div class="attestation-nudge">' + sMark +
             '<span>' + fnEscapeHtml(sBody) + ' ' +
             'This does not affect your PROOF level \u2014 Level 3 ' +
             'asks for the copy in the archive, not on GitHub.' +
             '</span></div>';
+    }
+
+    function _fsRenderAttestationBadge(sPath) {
+        // The same markup a file row uses, so the ONE badge handler
+        // serves both: it reads `data-resolved` off the enclosing
+        // .detail-item and bails without it. `data-workdir` is empty
+        // because the path is repo-relative and the push runs
+        // `cd <repo>` first -- the pair the badge lookup already uses.
+        var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+            sPath, "");
+        return '<span class="detail-item attestation-badge-host" ' +
+            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +
+            'data-workdir="">' +
+            VaibifyGitBadges.fsRenderBadgeRow(dictBadges, ["sGithub"]) +
+            '</span>';
     }
 
     function _fsDescribeAttestation(dictDetail, bRunning) {

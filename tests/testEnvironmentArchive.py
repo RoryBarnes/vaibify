@@ -923,3 +923,34 @@ def test_a_comparable_envelope_ships_no_unchecked_reason(sProjectRepo):
     )
     assert dictDetail["sUncheckedReason"] == ""
     assert dictDetail["listIssues"] != []
+
+
+@pytest.mark.falsification
+def test_the_attestation_is_badgeable_not_only_comparable():
+    """A compared path with no badge is counted and never shown.
+
+    The remote verifies compare ``.vaibify/l3_attestation.json``, so
+    its absence was counted -- a row reading "24 of 25 files matching"
+    -- while the badge map is built from an enumerated scan set that
+    omitted it. No badge means no row in any file list, and the badge
+    is also the control that pushes a file, so the one file blocking
+    publication was both invisible and unreachable
+    (researcher-reported, 2026-09-08).
+
+    The relationship is what matters, not the spelling: every path the
+    verifies COMPARE and that lives at the repo root or under
+    ``.vaibify/`` directly must be in the scan set, or the count and
+    the list describe different sets. This pins the one that was
+    missing.
+
+    Kills: removing ``.vaibify/l3_attestation.json`` from
+    ``stateContract.TUPLE_ROOT_CONFIG_FILES``.
+    """
+    from vaibify.gui import stateContract
+    from vaibify.reproducibility import publicationScope
+
+    sPath = publicationScope.TUPLE_COMPARED_NOT_REQUIRED_PATHS[0]
+    assert sPath in stateContract.TUPLE_ROOT_CONFIG_FILES, (
+        "a path the remote verifies compare has no badge, so it can "
+        "be counted but never listed or pushed: " + sPath
+    )

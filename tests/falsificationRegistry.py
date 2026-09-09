@@ -408,8 +408,18 @@ LIST_FALSIFICATIONS = [
             'test_clicking_a_project_block_badge_opens_its_picklist'
         ),
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old="""            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +""",
-        new="""            '' +""",
+        # Retargeted 2026-09-08: the attestation nudge now renders
+        # the same `data-resolved` markup, so the bare line is no
+        # longer unique. Anchored to the file-row renderer by the
+        # class attribute that only it carries.
+        old=(
+            """            'detail-item--badges-' + iBadgeCount + '" ' +\n"""
+            """            'data-resolved="' + fnEscapeHtml(sPath) + '" ' +"""
+        ),
+        new=(
+            """            'detail-item--badges-' + iBadgeCount + '" ' +\n"""
+            """            '' +"""
+        ),
     ),
     Falsification(
         nodeid=(
@@ -13976,8 +13986,13 @@ def _fdictEntry(sRel):
         # for. The confirm dialog still fires; this removes the only
         # signal available BEFORE the click.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old="            (bDestructive ? ' wf-action-danger' : '') + '\" ' +\n",
-        new="            '\" ' +\n",
+        # Retargeted 2026-09-08: a caution variant now follows the
+        # danger one on the next line.
+        old=(
+            "            (bDestructive ? ' wf-action-danger' : '') +\n"
+            "            (bCaution ? ' wf-action-caution' : '') + '\" ' +\n"
+        ),
+        new="            (bCaution ? ' wf-action-caution' : '') + '\" ' +\n",
     ),
     # --- 2026-08-28: the shadow-container rerun lane -------------------
     Falsification(
@@ -17995,5 +18010,17 @@ def _fdictEntry(sRel):
         # happened.
         old='    if bAttestationWritten:\n',
         new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_attestation_is_badgeable_not_only_comparable'
+        ),
+        source='vaibify/gui/stateContract.py',
+        # Without a badge the file is counted by the remote verifies
+        # and shown by no list, and the badge is the control that
+        # pushes it.
+        old='    ".vaibify/l3_attestation.json",\n',
+        new='',
     ),
 ]
