@@ -18167,4 +18167,300 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- 2026-09-09: the browser tests written for the environment
+    # archive row, the attestation nudge and the missing-file list
+    # were marked `falsification` and never registered, so the
+    # mutation each one names in prose was never applied to
+    # anything. Registered and replayed here.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAMissingFileIsListedNotJustCounted.py::'
+            'test_a_file_absent_from_the_remote_is_still_listed'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # restores the `!== "none"` filter, which drops the one file
+        # blocking publication out of the list that reports it
+        old='                return Boolean(_dictState.dictBadges[sPath][sBadgeKey]);',
+        new=(
+            '                return _dictState.dictBadges[sPath][sBadgeKey] &&\n'
+            '                    _dictState.dictBadges[sPath][sBadgeKey] !== "none";'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAMissingFileIsListedNotJustCounted.py::'
+            'test_a_file_the_map_never_mentioned_is_not_listed'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # lists every path, so a remote with no answer about a file still
+        # files it under a disposition heading
+        old=(
+            '        var listKeys = Object.keys(_dictState.dictBadges).filter(\n'
+            '            function (sPath) {\n'
+            '                return Boolean(_dictState.dictBadges[sPath][sBadgeKey]);\n'
+            '            });'
+        ),
+        new='        var listKeys = Object.keys(_dictState.dictBadges);',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAttestationNudgeIsActionable.py::'
+            'test_the_unpublished_mark_is_a_control_not_a_picture'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # renders the decorative octocat, so the mark that names the problem
+        # carries no data-resolved and the badge handler bails
+        old=(
+            '        var sMark = sPath\n'
+            '            ? _fsRenderAttestationBadge(sPath)\n'
+            '            : _S_OCTOCAT_SVG;'
+        ),
+        new='        var sMark = _S_OCTOCAT_SVG;',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAttestationNudgeIsActionable.py::'
+            'test_a_published_attestation_says_so_instead_of_vanishing'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # restores the bare early exit, so `published` and `this row has no
+        # opinion` render identically
+        old='        if (dictWhere.github === true) {',
+        new=(
+            '        if (dictWhere.github === true) return "";\n'
+            '        if (false) {'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAttestationNudgeIsActionable.py::'
+            'test_the_badge_sits_beside_its_sentence'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # drops the compound selector to a single class, which loses to the
+        # later .detail-item rule and leaves the file-row gutter
+        old='.attestation-nudge .attestation-badge-host {',
+        new='.attestation-badge-host {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_an_unanswered_archive_is_red_at_level_two_never_a_dash'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # drops the per-level states, returning the Level 2 cell to the not-
+        # applicable dash over a live L2 blocker
+        old='            dictStateByLevel: dictStateByLevel,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_declining_turns_level_two_green_while_level_three_stays_red'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # derives the Level 2 cell from the Level 3 state instead of the
+        # gate's own verdict, which is wrong in exactly the declining case
+        old=(
+            '        dictStateByLevel[2] = dictArchive.bAnswered === true\n'
+            '            ? "attained"\n'
+            '            : (dictArchive.bAnswered === false ? "none" : "unknown");'
+        ),
+        new=(
+            '        dictStateByLevel[2] =\n'
+            '            _DICT_MARK_TO_LEVEL_STATE[\n'
+            '                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||\n'
+            '            "unknown";'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_the_group_header_never_outranks_the_archive_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # counts a multi-level row at its nominal level only, so the group
+        # header aggregates L2 from zero rows and outranks its own row
+        old=(
+            '            var listAtLevel = listRows.filter(function (dictRow) {\n'
+            '                return dictRow.dictStateByLevel\n'
+            '                    ? dictRow.dictStateByLevel[iLevel] !== undefined\n'
+            '                    : (dictRow.iLevel || 3) === iLevel;\n'
+            '            });'
+        ),
+        new=(
+            '            var listAtLevel = listRows.filter(function (dictRow) {\n'
+            '                return (dictRow.iLevel || 3) === iLevel;\n'
+            '            });'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_closed_archive_keeps_its_cross_on_the_two_level_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # collapses the Level 3 cell to a generic state, losing the mark
+        # that distinguishes a closed archive from an ordinary miss
+        old=(
+            '        dictStateByLevel[3] =\n'
+            '            _DICT_MARK_TO_LEVEL_STATE[\n'
+            '                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||\n'
+            '            "unknown";'
+        ),
+        new='        dictStateByLevel[3] = "none";',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_saved_answer_is_shown_back_in_the_form'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # leaves every radio blank, so a recorded answer reads as a save
+        # that did not take
+        old="            return sAnswer === sValue ? ' checked' : '';",
+        new="            return '';",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_an_unanswered_form_selects_nothing'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # defaults the answer, so an unanswered question renders as one the
+        # researcher already decided
+        old='        var sAnswer = dictArchive.sAnswer || "";',
+        new='        var sAnswer = dictArchive.sAnswer || "referenced";',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_referenced_deposit_restores_its_version_doi'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # hands back Zenodo's concept DOI, which always resolves to the
+        # newest version and so is the wrong string to pin
+        old='                dictArchive.dictRecord.sVersionDoi) + \'"\';',
+        new='                dictArchive.dictRecord.sConceptDoi) + \'"\';',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_the_level_three_tooltip_names_the_actual_cause'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # drops the reason clause, leaving a tooltip that says whether and
+        # never what is missing
+        old='                (sReason ? " — " + sReason : ""));',
+        new='                "");',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_an_unchecked_level_three_says_what_is_missing'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # reads the issue list for the unchecked state, which is empty
+        # by design, so the tooltip silently loses the one actionable
+        # sentence there is. The payload's own key is off this test's
+        # path -- it builds the detail in the page -- so mutating the
+        # server field is unobservable here rather than undefended.
+        old=(
+            '        if (sState === "unknown") {\n'
+            '            if (dictArchive.sUncheckedReason) {\n'
+            '                dictReasonByLevel[3] = dictArchive.sUncheckedReason;\n'
+            '            }\n'
+            '        } else if (sState === "closed") {\n'
+        ),
+        new=(
+            '        if (sState === "unknown") {\n'
+            '            if (listIssues.length) {\n'
+            '                dictReasonByLevel[3] = listIssues[0];\n'
+            '            }\n'
+            '        } else if (sState === "closed") {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_mismatch_tooltip_names_one_cause_and_counts_the_rest'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # puts the whole difference list in a tooltip, which is the
+        # paragraph the expanded row already carries
+        old=(
+            '            dictReasonByLevel[3] = listIssues[0] + " (and " +\n'
+            '                (listIssues.length - 1) + " more difference" +\n'
+            '                (listIssues.length > 2 ? "s" : "") + ")";'
+        ),
+        new='            dictReasonByLevel[3] = listIssues.join("; ");',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_rerender_does_not_revert_an_answer_being_changed'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # lets a poll landing mid-edit replace the block, putting the old
+        # answer back and making a decline final in practice
+        old='        if (fbProjectFormFieldFocused()) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_deposit_in_flight_pulses'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # shows a settled orange mark over a multi-minute deposit, which
+        # reads as a finished state
+        old='            bChecking: sState === "running",',
+        new='            bChecking: false,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_record_without_an_architecture_says_so'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # restores the bare question mark, which reads as a glitch rather
+        # than as a deposit that can never be matched
+        old=(
+            '        var sBuild = dictRecord.sArchitecture\n'
+            '            ? dictRecord.sArchitecture + " build"\n'
+            '            : "a build this envelope does not name";'
+        ),
+        new='        var sBuild = (dictRecord.sArchitecture || "?") + " build";',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_deposited_doi_gets_its_own_selectable_field'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # removes the read-only DOI field, leaving the one string a
+        # researcher must cite reachable only inside prose
+        old='        sHtml += _fsRenderDepositedDoiRow(dictArchive);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_declining_warns_that_level_three_becomes_unreachable'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # removes the warning, so a researcher can retire an image believing
+        # Level 3 is still open to them
+        old=(
+            '            \'<div class="environment-archive-decline-warning">\' +\n'
+            "            'Declining answers the Level 2 question, but leaves this ' +\n"
+            "            'project unable to reach PROOF Level 3: that rung ' +\n"
+            "            'requires the image to EXIST in a permanent archive, ' +\n"
+            "            'not merely that you decided about it. You can change ' +\n"
+            "            'this answer and deposit later — nothing here is ' +\n"
+            "            'irreversible until the image is gone from this machine.' +\n"
+            "            '</div>' +\n"
+        ),
+        new='',
+    ),
 ]
