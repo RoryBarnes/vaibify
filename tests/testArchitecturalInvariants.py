@@ -5599,7 +5599,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # row UNCHECKED. Both are the reasons, written where the
     # next reader will look for them.
     # +1 on 2026-09-07: the reproduction route module's registration.
-    "pipelineServer.py": 3186,
+    # 2026-09-08: +39 for the environment-archive row payload gaining
+    # its Level 2 verdict, the recorded answer and the unchecked
+    # reason, plus the small reader for the answer. Same cohesive
+    # responsibility (this module builds the poll payloads), so the
+    # seam a split would need does not exist here; the candidate seam
+    # is moving the whole archive-row builder beside its routes.
+    "pipelineServer.py": 3225,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6720,7 +6726,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The comparison itself lives in manifestWriter beside the parser;
     # what is here is the before/after reading, which belongs to the
     # handler that performs the write between them.
-    "routes/reproducibilityRoutes.py": 1618,
+    # 2026-09-08: +66 for committing the attestation the L3
+    # verification writes. Same responsibility (this module owns
+    # the verification lane end to end) and the commit belongs
+    # beside the write it follows, so there is no seam to split
+    # on; the candidate one is the whole lane moving out of
+    # routes/, which is a larger decision than this change.
+    "routes/reproducibilityRoutes.py": 1684,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

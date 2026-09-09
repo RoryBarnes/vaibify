@@ -751,3 +751,175 @@ def test_the_presence_probe_reads_the_envelope_through_the_container_adapter(
     assert pipelineServer.fbPinnedImageIsInLocalStore(
         dictCtx, "cid-probe",
     ) is False
+
+
+# ----------------------------------------------------------------------
+# An absent deposit is a FACT, not an unchecked comparison
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_no_deposit_answers_not_archived_even_with_no_architecture():
+    """Absence needs no comparison, so it is not reported as unchecked.
+
+    The digest and architecture pair used to be required before the
+    record was looked for at all, so a project whose envelope pinned
+    an image but recorded no architecture reported UNCHECKED when the
+    honest answer -- available one branch below, and unreachable --
+    was that no archive had been deposited. The row rendered a grey
+    "?" and the Level 3 cell followed it, so a researcher who had
+    just declined watched Level 2 go green and Level 3 stay a
+    question mark (researcher-reported, 2026-09-08).
+
+    This does not weaken "unchecked is never red": that rule forbids
+    claiming DIVERGENCE with one side missing, and "no deposit was
+    made" is not a divergence claim. Its twin below is the half that
+    must not move.
+
+    Kills: restoring the combined
+    ``if not sEnvelopeDigest or not sEnvelopeArchitecture`` guard
+    ahead of the record lookup.
+    """
+    listReasons = imageArchive.flistDescribeArchiveMismatch(
+        {"dictContainer": {"sImageDigest": _S_DIGEST}},
+    )
+    assert listReasons == [
+        "No image archive has been deposited for this envelope.",
+    ]
+
+
+@pytest.mark.falsification
+def test_a_deposit_with_no_architecture_is_still_unchecked():
+    """The comparison half of the same function must NOT move.
+
+    Once a deposit exists the question becomes whether it covers this
+    envelope, and that is a comparison -- so a missing architecture
+    leaves one side absent and the answer is unchecked, never a
+    reason. Reporting a difference here would be a claim about the
+    deposit that nobody earned, and a manifest-list digest spans
+    several platforms and pins none of them, so the digest agreeing
+    is not evidence the build does.
+
+    Kills: moving the architecture guard below the comparison, or
+    dropping it so ``_flistCompareRecordToEnvelope`` is handed an
+    empty architecture.
+    """
+    dictEnvelope = {"dictContainer": {
+        "sImageDigest": _S_DIGEST,
+        "dictImageArchive": _fdictBuildRecord(),
+    }}
+    with pytest.raises(LookupError):
+        imageArchive.flistDescribeArchiveMismatch(dictEnvelope)
+
+
+@pytest.mark.falsification
+def test_the_row_payload_reports_which_answer_was_recorded(sProjectRepo):
+    """The form shows the answer back, so the poll has to carry it.
+
+    `bAnswered` cannot serve: it is the gate's boolean verdict, true
+    for a deposit record carrying no recorded answer at all, and it
+    never says WHICH of the three was chosen. Without `sAnswer` the
+    radios render blank on every open and a researcher who declined
+    cannot tell a saved answer from a save that failed.
+
+    Kills: dropping `sAnswer` from `fdictBuildImageArchiveDetail`.
+    """
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    archiveProgress.fnForgetDeposit("cid-answer")
+    dictDetail = fdictBuildImageArchiveDetail(
+        {imageArchive.S_IMAGE_ARCHIVE_KEY: {
+            "sAnswer": imageArchive.S_ANSWER_DECLINED,
+        }},
+        sProjectRepo, "cid-answer",
+    )
+    assert dictDetail["sAnswer"] == imageArchive.S_ANSWER_DECLINED
+
+
+@pytest.mark.falsification
+def test_the_row_payload_answers_level_two_with_the_gate(sProjectRepo):
+    """`bAnswered` IS the gate's verdict, pinned as a relationship.
+
+    The row renders two cells from one payload and the Level 2 cell
+    must not be re-derived in JavaScript -- a mirrored predicate is a
+    second authority on a question that has one, which is how the
+    Reproducibility-rules row came to paint green over a refusing
+    gate. Asserting the relationship rather than a literal is what
+    keeps them from drifting apart.
+
+    Kills: computing `bAnswered` from the deposit record or the row
+    state instead of calling `fbImageArchiveQuestionSettled`.
+    """
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    archiveProgress.fnForgetDeposit("cid-gate")
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    for dictWorkflow in (
+        {},
+        {imageArchive.S_IMAGE_ARCHIVE_KEY: {
+            "sAnswer": imageArchive.S_ANSWER_DECLINED,
+        }},
+    ):
+        dictDetail = fdictBuildImageArchiveDetail(
+            dictWorkflow, sProjectRepo, "cid-gate",
+        )
+        assert dictDetail["bAnswered"] == (
+            levelGates.fbImageArchiveQuestionSettled(
+                dictWorkflow, ffilesEnsureRepoFiles(sProjectRepo),
+            )
+        )
+    # The two workflows must actually DISAGREE, or the loop above is
+    # satisfied by a constant.
+    assert fdictBuildImageArchiveDetail(
+        {}, sProjectRepo, "cid-gate",
+    )["bAnswered"] is False
+
+
+@pytest.mark.falsification
+def test_the_row_payload_carries_why_nothing_could_be_compared(
+    sProjectRepo,
+):
+    """The unchecked reason is shipped, and kept apart from the issues.
+
+    ``flistDescribeImageArchiveIssues`` returns [] for this state on
+    purpose, so that a comparison nobody could make can never be
+    rendered as a divergence -- and that discards the only actionable
+    sentence there is. A researcher whose envelope recorded no
+    architecture met a grey "?" with an empty issue list and nothing
+    to act on.
+
+    Both halves are asserted because either alone would be wrong:
+    ``listIssues`` must stay EMPTY (no differences were found), and
+    the reason must be PRESENT (something is missing and here it is).
+
+    Kills: dropping ``sUncheckedReason`` from
+    ``fdictBuildImageArchiveDetail``, or folding the reason into
+    ``listIssues``.
+    """
+    _fnWriteEnvelope(sProjectRepo, {"dictContainer": {
+        "sImageDigest": _S_DIGEST,
+        "dictImageArchive": _fdictBuildRecord(),
+    }})
+    archiveProgress.fnForgetDeposit("cid-unchecked")
+    dictDetail = fdictBuildImageArchiveDetail(
+        {}, sProjectRepo, "cid-unchecked",
+    )
+    assert dictDetail["listIssues"] == []
+    assert "architecture" in dictDetail["sUncheckedReason"], (
+        "the unchecked state ships no reason: "
+        + repr(dictDetail["sUncheckedReason"])
+    )
+
+
+def test_a_comparable_envelope_ships_no_unchecked_reason(sProjectRepo):
+    """The other direction: a reason present here would be a lie.
+
+    Something WAS compared, so there is no "could not look" to
+    report, and a stale reason sitting beside real issues would tell
+    the researcher to regenerate an envelope that is fine.
+    """
+    _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
+    archiveProgress.fnForgetDeposit("cid-comparable")
+    dictDetail = fdictBuildImageArchiveDetail(
+        {}, sProjectRepo, "cid-comparable",
+    )
+    assert dictDetail["sUncheckedReason"] == ""
+    assert dictDetail["listIssues"] != []

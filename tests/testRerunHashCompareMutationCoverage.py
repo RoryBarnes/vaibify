@@ -20,7 +20,7 @@ import json
 import pytest
 
 from vaibify.cli import commandReproduce
-from vaibify.gui.routes.reproducibilityRoutes import _fnPersistAttestation
+from vaibify.gui.routes.reproducibilityRoutes import _fbPersistAttestation
 from vaibify.reproducibility.rerunVerification import (
     fdictVerifyRerunOutputs,
 )
@@ -103,7 +103,7 @@ def test_cli_attestation_matched_count_comes_from_the_rehash(tmp_path):
 def test_route_attestation_matched_count_comes_from_the_rehash(tmp_path):
     """The dashboard lane must record the re-hash's matched count too.
 
-    Kills: In reproducibilityRoutes._fnPersistAttestation, pass
+    Kills: In reproducibilityRoutes._fbPersistAttestation, pass
     dictResult["iOutputHashesTotal"] as iOutputHashesMatched.
     """
     dictResult = {
@@ -114,7 +114,7 @@ def test_route_attestation_matched_count_comes_from_the_rehash(tmp_path):
         "sImageDigest": "img@sha256:" + "a" * 64,
         "sRunLogPath": "",
     }
-    _fnPersistAttestation(
+    _fbPersistAttestation(
         str(tmp_path), "sha256:" + "b" * 64, dictResult, 9.0,
     )
     dictAttestation = json.loads(
@@ -165,11 +165,11 @@ def test_route_attestation_manifest_digest_comes_from_the_comparison(
     the two puts a digest on the attestation the comparison never read,
     so the outcome's digest must win when present.
 
-    Kills: In reproducibilityRoutes._fnRecordOutcome, pass
-    sManifestDigest to _fnPersistAttestation instead of preferring
+    Kills: In reproducibilityRoutes._fbRecordOutcome, pass
+    sManifestDigest to _fbPersistAttestation instead of preferring
     dictResult["sManifestDigest"].
     """
-    from vaibify.gui.routes.reproducibilityRoutes import _fnRecordOutcome
+    from vaibify.gui.routes.reproducibilityRoutes import _fbRecordOutcome
 
     sShadowDigest = "sha256:" + "e" * 64
     sSnapshotDigest = "sha256:" + "f" * 64
@@ -183,7 +183,7 @@ def test_route_attestation_manifest_digest_comes_from_the_comparison(
         "sImageDigest": "img@sha256:" + "a" * 64,
         "sRunLogPath": "",
     }
-    _fnRecordOutcome(
+    _fbRecordOutcome(
         "teardown_cid", str(tmp_path), sSnapshotDigest, dictResult,
         9.0, None,
     )

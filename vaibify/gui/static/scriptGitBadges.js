@@ -168,14 +168,27 @@ var VaibifyGitBadges = (function () {
     }
 
     function flistFilesForRemote(sBadgeKey) {
-        // Repo-relative paths this remote actually knows about — every
-        // badge-map key whose state for sBadgeKey (sGithub / sZenodo /
-        // sArxiv / sOverleaf) is not the "none" placeholder. Sorted for
-        // stable rendering. Used by the Project-block Publication rows.
+        /* Repo-relative paths this remote has an ANSWER about --
+           every badge-map key carrying a state for sBadgeKey
+           (sGithub / sZenodo / sArxiv / sOverleaf). Sorted for stable
+           rendering. Used by the Project-block Publication rows.
+
+           "none" means NOT ON THE REMOTE, and it used to be filtered
+           out here as though it were the absence of an answer. It is
+           the opposite: it is the answer a researcher most needs,
+           and dropping it made the one file blocking publication the
+           one file the list could not show. The Published-copies
+           block counted it (24 of 25) while its own file list had no
+           row for it, and the disposition group named "Not on the
+           remote" could never be populated by construction
+           (researcher-reported, 2026-09-08).
+
+           A path the map has no entry for at all is still excluded:
+           that is genuinely nothing known, and the placeholder
+           renders "unknown" rather than a claim. */
         var listKeys = Object.keys(_dictState.dictBadges).filter(
             function (sPath) {
-                return (_dictState.dictBadges[sPath][sBadgeKey] ||
-                    "none") !== "none";
+                return Boolean(_dictState.dictBadges[sPath][sBadgeKey]);
             });
         listKeys.sort();
         return listKeys;

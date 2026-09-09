@@ -1858,8 +1858,10 @@ LIST_FALSIFICATIONS = [
         # produces an attestation naming a manifest nobody compared
         # (external review, 2026-09-01).
         source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # Retargeted 2026-09-08: the call gained a `return` when the
+        # worker began committing the attestation it writes.
         old=(
-            '    _fnPersistAttestation(\n'
+            '    return _fbPersistAttestation(\n'
             '        filesRepo,\n'
             '        dictResult.get("sManifestDigest") or '
             'sManifestDigest,\n'
@@ -1867,7 +1869,7 @@ LIST_FALSIFICATIONS = [
             '    )'
         ),
         new=(
-            '    _fnPersistAttestation(\n'
+            '    return _fbPersistAttestation(\n'
             '        filesRepo, sManifestDigest, dictResult, fDuration,\n'
             '        dictAiProvenance,\n'
             '    )'
@@ -17901,5 +17903,97 @@ def _fdictEntry(sRel):
         # The council lane's copy of the same single-attempt collapse.
         old='    for _ in range(3):',
         new='    for _ in range(1):',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_no_deposit_answers_not_archived_even_with_no_'
+            'architecture'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        # Requiring the architecture before the record is looked for
+        # makes "no deposit exists" -- a fact needing no comparison --
+        # report as UNCHECKED, which is the grey "?" a researcher met
+        # after declining.
+        old='    if not sEnvelopeDigest:\n',
+        new='    if not sEnvelopeDigest or not sEnvelopeArchitecture:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_deposit_with_no_architecture_is_still_unchecked'
+        ),
+        source='vaibify/reproducibility/imageArchive.py',
+        # The half that must NOT move: once a deposit exists the
+        # question is a comparison, and a missing architecture leaves
+        # one side absent.
+        old='    if not sEnvelopeArchitecture:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_row_payload_reports_which_answer_was_recorded'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='        "sAnswer": _fsReadRecordedArchiveAnswer(dictWorkflow),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_row_payload_answers_level_two_with_the_gate'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Deriving the Level 2 cell from the deposit record instead of
+        # the gate: true for a record with no recorded answer, false
+        # for the decline that legitimately settles the question.
+        old=(
+            '        "bAnswered": levelGates.fbImageArchiveQuestionSettled('
+            '\n            dictWorkflow, filesRepo,\n        ),\n'
+        ),
+        new=(
+            '        "bAnswered": imageArchive.fdictReadArchiveRecord('
+            '\n            dictEnvironment,\n        ) is not None,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_row_payload_carries_why_nothing_could_be_compared'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='        "sUncheckedReason": sUncheckedReason,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_written_attestation_is_staged_and_committed'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # Without the commit the attestation stays untracked, and
+        # `git add -u` covers tracked files only -- so no push the
+        # researcher can make will ever carry it.
+        old=(
+            '    if bAttestationWritten:\n'
+            '        await asyncio.to_thread(\n'
+            '            _fnCommitAttestation,\n'
+            '            connectionDocker, sContainerId, dictWorkflow,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_rerun_with_no_verdict_commits_nothing'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # Committing regardless of the verdict puts a file in the
+        # researcher's history describing a verification that never
+        # happened.
+        old='    if bAttestationWritten:\n',
+        new='    if True:\n',
     ),
 ]

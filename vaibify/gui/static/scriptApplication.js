@@ -2157,6 +2157,34 @@ const VaibifyApp = (function () {
 
     var _sLastProjectBlockHtml = null;
 
+    function fbProjectFormFieldFocused() {
+        /* True while the researcher is editing a field inside the
+           Project block, so a poll does not replace the form under
+           their hands.
+
+           The byte-identical memo below is the steady-state
+           protection and is not sufficient on its own: it holds only
+           while NOTHING else in the block moves, and the block also
+           carries pulsing remote badges and live counts. When one of
+           those changed mid-edit the whole block was rewritten and
+           the researcher's selection went back to whatever the server
+           last stored. That was survivable while the radios rendered
+           blank; once they render the SAVED answer it becomes a trap
+           -- a researcher who declined and then chose another option
+           watched the form snap back to Declined and reported,
+           correctly, that they could not undecline (2026-09-08).
+
+           Buttons are deliberately NOT guarded. Focus lands on
+           "Save this answer" at the moment the answer is submitted,
+           and skipping the render then would suppress the very update
+           that shows it was recorded. */
+        var elActive = document.activeElement;
+        if (!elActive || !elActive.closest) return false;
+        if (!elActive.closest("#projectBlock")) return false;
+        return ["INPUT", "SELECT", "TEXTAREA"].indexOf(
+            elActive.tagName) !== -1;
+    }
+
     function _fnRenderProjectBlock(dictContext) {
         // Rebuilt from data on every render — the block lives in its
         // own container, never in the incremental step-hash path, so
@@ -2176,6 +2204,12 @@ const VaibifyApp = (function () {
             VaibifyWorkflowRequirements.fsRenderProjectBlock(
                 dictContext);
         if (sHtml === _sLastProjectBlockHtml) return;
+        // The memo above did not match, so this render WOULD replace
+        // the block. Hold it while a field is being edited, and
+        // deliberately do not update _sLastProjectBlockHtml: the next
+        // render after the field is left still sees a difference and
+        // writes, so held state is delayed, never dropped.
+        if (fbProjectFormFieldFocused()) return;
         elBlock.innerHTML = sHtml;
         _sLastProjectBlockHtml = sHtml;
     }
@@ -3629,6 +3663,21 @@ const VaibifyApp = (function () {
             sPath: "/environment-archive/answer",
             fdictBodyFromElement: _fdictReadEnvironmentArchiveForm,
             sToast: "Environment-archive answer recorded.",
+        },
+        "clear-environment-archive-answer": {
+            sPath: "/environment-archive/answer",
+            fdictBody: function () {
+                return {sAnswer: "cleared"};
+            },
+            dictConfirm: {
+                sTitle: "Clear the environment-archive answer",
+                sMessage: "Return this question to unanswered? " +
+                    "Answering it is a Level 2 requirement, so the " +
+                    "project drops back below Level 2 until you " +
+                    "answer again. Nothing already deposited is " +
+                    "removed.",
+            },
+            sToast: "Environment-archive answer cleared.",
         },
         "deposit-environment-archive": {
             sPath: "/environment-archive/deposit",

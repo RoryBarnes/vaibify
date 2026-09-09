@@ -826,20 +826,90 @@ var VaibifyWorkflowRequirements = (function () {
         closed: "closed",
     };
 
+    function _fdictArchiveReasonByLevel(dictArchive, sState) {
+        /* The reason this row is the colour it is -- the ACTUAL
+           cause of the current state, not a list of things that
+           could be wrong. Each state has exactly one thing to say:
+
+           - unchecked: nothing was compared, and the envelope field
+             that is missing is the whole answer;
+           - not archived: no deposit exists, which is one fact;
+           - mismatched: the deposit disagrees, and the FIRST
+             difference is named with a count of any others rather
+             than a paragraph -- the expanded row lists them all;
+           - closed: the answer and the vanished image together, since
+             either alone would misstate why nothing can be done.
+
+           A tooltip that enumerated possibilities would make the
+           researcher do the diagnosis vaibify has already done. */
+        var listIssues = dictArchive.listIssues || [];
+        var dictReasonByLevel = {
+            2: dictArchive.bAnswered === true
+                ? "you have answered this question"
+                : "you have not answered this question yet",
+        };
+        if (sState === "unknown") {
+            if (dictArchive.sUncheckedReason) {
+                dictReasonByLevel[3] = dictArchive.sUncheckedReason;
+            }
+        } else if (sState === "closed") {
+            dictReasonByLevel[3] = "you declined to archive this " +
+                "image, and it is no longer on this machine";
+        } else if (listIssues.length === 1) {
+            dictReasonByLevel[3] = listIssues[0];
+        } else if (listIssues.length > 1) {
+            dictReasonByLevel[3] = listIssues[0] + " (and " +
+                (listIssues.length - 1) + " more difference" +
+                (listIssues.length > 2 ? "s" : "") + ")";
+        }
+        return dictReasonByLevel;
+    }
+
     function _flistEnvironmentArchiveRows(dictDetail) {
-        /* One row for a question with two blocks: Level 2 asks
-           whether it was ANSWERED (declining passes) and Level 3 asks
-           whether a matching archive EXISTS. The row is filed at
-           level 3 because that is the stronger of the two claims it
-           reports; the Level 2 half shows in the PROOF tab's own
-           list. */
+        /* One row for a question with two blocks, and it now carries
+           a cell for EACH: Level 2 asks whether the researcher
+           ANSWERED (declining passes), Level 3 whether a matching
+           archive EXISTS.
+
+           It used to be filed at level 3 alone, on the grounds that
+           this was the stronger of the two claims and the Level 2
+           half showed in the PROOF tab's own list. The cost was a
+           permanent n/a dash in the L2 column of the one row that
+           owns the question -- `_fsRenderLevelStrip` fills every
+           level a row does not claim with the dash, so the row read
+           "not applicable at Level 2" while `image-archive-unanswered`
+           was being emitted as an L2 blocker behind it. A dash where
+           the honest answer is red is the shape of the
+           Published-copies projection bug: a narrow true statement
+           that reads as a broad false one.
+
+           `bAnswered` is the GATE's verdict, shipped in the poll --
+           never re-derived here from `dictRecord` or `sState`. The
+           two halves are different questions and the L3 criterion
+           deliberately never consults the answer, so an L2 cell
+           computed from the L3 state would be wrong in exactly the
+           case that matters: a decline leaves L2 met and L3 unmet. */
         var dictArchive = dictDetail.dictImageArchive;
         if (!dictArchive) return [];
         var sState = dictArchive.sState || "unknown";
         if (sState === "not-applicable") return [];
+        var dictStateByLevel = {};
+        // Absent (an older hub, or a payload that predates the field)
+        // is UNKNOWN, never a pass: silence is not an answer, and a
+        // green cell here would claim the researcher decided.
+        dictStateByLevel[2] = dictArchive.bAnswered === true
+            ? "attained"
+            : (dictArchive.bAnswered === false ? "none" : "unknown");
+        dictStateByLevel[3] =
+            _DICT_MARK_TO_LEVEL_STATE[
+                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||
+            "unknown";
         return [{
             sKey: "environmentArchive",
             iLevel: 3,
+            dictStateByLevel: dictStateByLevel,
+            dictReasonByLevel: _fdictArchiveReasonByLevel(
+                dictArchive, sState),
             sTitle: _DICT_ARCHIVE_STATE_TITLES[sState] ||
                 "Environment archive",
             sState: _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown",
@@ -947,23 +1017,78 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsRenderArchiveForm(dictArchive) {
         if (dictArchive.sState === "running") return "";
+        // Show the recorded answer back. The radios rendered blank on
+        // every open until 2026-09-08, so a researcher who declined
+        // and reopened the block saw an untouched form -- which reads
+        // as "the save did not take", not as "you already answered".
+        // A form that cannot show its own state is write-only, and a
+        // researcher cannot audit a decision they cannot see.
+        var sAnswer = dictArchive.sAnswer || "";
+        var fsChecked = function (sValue) {
+            return sAnswer === sValue ? ' checked' : '';
+        };
+        // The DOI belongs to the RECORD, not the answer -- no answer
+        // carries a value, deliberately, so that the DOI has one
+        // authority. It is restored only for the answer that means
+        // "I pointed at an existing deposit": showing it under a
+        // deposit vaibify made would invite an edit to a field that
+        // is not the source of that DOI. The version DOI is the one
+        // recorded and so the one shown; Zenodo's concept DOI always
+        // resolves to the newest version, which is the wrong string
+        // to hand back to a researcher editing a pin.
+        var sDoiValue = "";
+        if (sAnswer === "referenced" && dictArchive.dictRecord &&
+                dictArchive.dictRecord.sVersionDoi) {
+            sDoiValue = ' value="' + fnEscapeHtml(
+                dictArchive.dictRecord.sVersionDoi) + '"';
+        }
         return '<div class="environment-archive-form">' +
             '<label class="determinism-form-row">' +
             '<input type="radio" name="environment-archive-answer" ' +
-            'class="environment-archive-answer" value="referenced">' +
+            'class="environment-archive-answer" value="referenced"' +
+            fsChecked("referenced") + '>' +
             '<span>Use a deposit that already holds this image</span>' +
             '</label>' +
             '<label class="determinism-form-row">' +
             '<input type="text" class="environment-archive-doi" ' +
-            'placeholder="10.5281/zenodo.NNNNNNN (version DOI)">' +
+            'placeholder="10.5281/zenodo.NNNNNNN (version DOI)"' +
+            sDoiValue + '>' +
             '</label>' +
             '<label class="determinism-form-row">' +
             '<input type="radio" name="environment-archive-answer" ' +
-            'class="environment-archive-answer" value="declined">' +
+            'class="environment-archive-answer" value="declined"' +
+            fsChecked("declined") + '>' +
             '<span>Decline — do not archive this image</span>' +
             '</label>' +
+            // Declining is a complete answer to the Level 2 question
+            // and a permanent bar on Level 3, and those two facts
+            // pull opposite ways -- so the row says both, where the
+            // choice is made. The Level 3 gate reads the deposit
+            // RECORD and never this answer, which is what keeps
+            // declining a decision rather than a lock: depositing
+            // later opens Level 3 with nothing to undo. Saying only
+            // "this passes Level 2" would let a researcher retire an
+            // image believing the ladder was still open to them.
+            '<div class="environment-archive-decline-warning">' +
+            'Declining answers the Level 2 question, but leaves this ' +
+            'project unable to reach PROOF Level 3: that rung ' +
+            'requires the image to EXIST in a permanent archive, ' +
+            'not merely that you decided about it. You can change ' +
+            'this answer and deposit later — nothing here is ' +
+            'irreversible until the image is gone from this machine.' +
+            '</div>' +
             _fsRenderActionButton(
                 "answer-environment-archive", "", "Save this answer") +
+            // Only once something is recorded: a radio cannot be
+            // unselected by clicking it, so without this the answer
+            // was final in practice even though the Level 3 gate
+            // never reads it. Offering it on an unanswered question
+            // would be a control that undoes nothing.
+            (sAnswer
+                ? _fsRenderActionButton(
+                    "clear-environment-archive-answer", "",
+                    "Clear this answer")
+                : "") +
             '</div>' +
             _fsRenderActionButton(
                 "deposit-environment-archive", "",
@@ -1956,7 +2081,9 @@ var VaibifyWorkflowRequirements = (function () {
         "not-applicable": "no requirement at this level",
     };
 
-    function _fsRenderLevelStrip(dictStateByLevel, sTitle) {
+    function _fsRenderLevelStrip(
+        dictStateByLevel, sTitle, dictReasonByLevel,
+    ) {
         // Three cells (L1 | L2 | L3) behind a warning-column spacer,
         // so every strip in the column shares the banner's four-slot
         // geometry: the levels this requirement gates carry its
@@ -1967,10 +2094,16 @@ var VaibifyWorkflowRequirements = (function () {
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             var sLevelState = dictStateByLevel[iLevel] ||
                 "not-applicable";
+            // The state phrase says WHETHER; a reason says WHAT IS
+            // MISSING. "Level 3: not met" is true and leaves the
+            // researcher to go hunting, which is the opposite of the
+            // premise that a refusal names its cause.
+            var sReason = (dictReasonByLevel || {})[iLevel] || "";
             sHtml += fsBuildLevelCell(
                 sLevelState,
                 sTitle + " — Level " + iLevel + ": " +
-                _DICT_LEVEL_STATE_PHRASES[sLevelState]);
+                _DICT_LEVEL_STATE_PHRASES[sLevelState] +
+                (sReason ? " — " + sReason : ""));
         }
         return sHtml + '</span>';
     }
@@ -1988,14 +2121,26 @@ var VaibifyWorkflowRequirements = (function () {
             (bOpen ? "▾" : "▸") + '</span> ';
     }
 
+    function _fdictSingleLevelState(dictRow) {
+        // The one-level map a single-level row renders.
+        var dictStateByLevel = {};
+        dictStateByLevel[dictRow.iLevel || 3] =
+            _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] || "unknown";
+        return dictStateByLevel;
+    }
+
     function _fsRenderRequirementRow(dictRow, setExpandedRows) {
         // Mirrors a step row's banner: triangle and title on the left,
         // the L1-L3 level strip on the right; the banner is the
         // expand control.
         var bOpen = setExpandedRows && setExpandedRows.has(dictRow.sKey);
-        var dictStateByLevel = {};
-        dictStateByLevel[dictRow.iLevel || 3] =
-            _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] || "unknown";
+        // A row may claim SEVERAL levels when it reports genuinely
+        // different questions at each (the environment archive: was
+        // it answered, does the archive exist). Rows that claim one
+        // keep the single-level form; every level a row does not
+        // claim still renders the n/a dash.
+        var dictStateByLevel = dictRow.dictStateByLevel ||
+            _fdictSingleLevelState(dictRow);
         var sHtml = '<div class="requirement-row' +
             (bOpen ? ' expanded' : '') +
             (dictRow.bChecking === true
@@ -2005,7 +2150,9 @@ var VaibifyWorkflowRequirements = (function () {
             '<span class="requirement-row-title">' +
             _fsExpandTriangle(bOpen) +
             fnEscapeHtml(dictRow.sTitle) + '</span>' +
-            _fsRenderLevelStrip(dictStateByLevel, dictRow.sTitle) +
+            _fsRenderLevelStrip(
+                dictStateByLevel, dictRow.sTitle,
+                dictRow.dictReasonByLevel) +
             '</div>';
         if (bOpen) {
             sHtml += dictRow.fsDetail();
@@ -2101,6 +2248,29 @@ var VaibifyWorkflowRequirements = (function () {
             }}];
     }
 
+    function _fsSummarizableLevelState(sLevelState) {
+        /* Reduce a level state to a word `fsSummarizeLevelStates`
+           knows. That summarizer is shared with the Steps banner and
+           understands only attained / partial / none / not-started /
+           unassessed / not-applicable, so anything else it is handed
+           counts as NOTHING ASSESSED -- a grey pulsing "?" over a
+           requirement that is plainly running or plainly failed.
+
+           A running row summarizes as PARTIAL: work in progress is
+           progress, and it paints the same orange the row shows
+           (researcher-reported, 2026-09-01, when a rerun plainly
+           under way summarized as unassessed). `diverged` and
+           `closed` summarize as NONE: both are assessments and both
+           are failures. They keep their own shapes on the ROW, where
+           a warning triangle and a cross say opposite things about
+           the remedy -- this reduction is only for the aggregate. */
+        if (sLevelState === "running") return "partial";
+        if (sLevelState === "diverged" || sLevelState === "closed") {
+            return "none";
+        }
+        return sLevelState || "unknown";
+    }
+
     function _fdictGroupStateByLevel(listRows) {
         // Aggregate the group's rows per level with the shared
         // banner rule (VaibifyUtilities.fsSummarizeLevelStates):
@@ -2108,32 +2278,31 @@ var VaibifyWorkflowRequirements = (function () {
         // progress in the mix → partial, nothing assessed → unknown.
         var dictByLevel = {};
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            // A multi-level row is counted at EVERY level it
+            // claims. Filtering on `iLevel` alone would have let the
+            // environment archive's new Level 2 state reach the row
+            // and never the group header above it -- the header would
+            // aggregate Artifacts at L2 from zero rows, keep showing
+            // the n/a dash, and contradict the red cell directly
+            // beneath it. A level cell and the rows under it must
+            // fail on the same set.
             var listAtLevel = listRows.filter(function (dictRow) {
-                return (dictRow.iLevel || 3) === iLevel;
+                return dictRow.dictStateByLevel
+                    ? dictRow.dictStateByLevel[iLevel] !== undefined
+                    : (dictRow.iLevel || 3) === iLevel;
             });
             if (listAtLevel.length === 0) continue;
             var listStates = listAtLevel.map(function (dictRow) {
-                // A running row summarizes as PARTIAL, not as its own
-                // state: fsSummarizeLevelStates is shared with the
-                // Steps banner and knows nothing about "running", so
-                // it counted such a row as nothing assessed and the
-                // banner rendered a pulsing "?" over a rerun that was
-                // plainly under way (researcher-reported, 2026-09-01).
-                // Partial is the honest summary -- work in progress is
-                // progress -- and it paints the same orange circle the
-                // row itself shows.
-                if (dictRow.sState === "running") return "partial";
-                // fsSummarizeLevelStates is shared with the Steps
-                // banner and knows nothing about these two either, so
-                // it would count them as nothing assessed and paint a
-                // grey "?" over a requirement that plainly failed.
-                // Both are assessments, and both are failures.
-                if (dictRow.sState === "diverged" ||
-                        dictRow.sState === "closed") {
-                    return "none";
-                }
-                return _DICT_MARK_TO_LEVEL_STATE[dictRow.sState] ||
-                    "unknown";
+                // A multi-level row already speaks the level-state
+                // vocabulary; a single-level row carries a ROW MARK
+                // and needs the mark map. Both then go through the
+                // SAME normalizer, because both vocabularies contain
+                // words the shared summarizer does not know.
+                var sLevelState = dictRow.dictStateByLevel
+                    ? dictRow.dictStateByLevel[iLevel]
+                    : (_DICT_MARK_TO_LEVEL_STATE[dictRow.sState] ||
+                        "unknown");
+                return _fsSummarizableLevelState(sLevelState);
             });
             dictByLevel[iLevel] =
                 VaibifyUtilities.fsSummarizeLevelStates(listStates);

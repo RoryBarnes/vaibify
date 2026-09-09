@@ -6897,6 +6897,16 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 12px;
 }
 
+/* The Level 3 consequence of declining, beside the decline option
+   itself. Orange rather than muted grey: it is a consequence the
+   researcher is choosing, not a footnote about one. */
+.environment-archive-decline-warning {
+    padding-left: 22px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--color-orange);
+}
+
 .determinism-omp-threads {
     width: 64px;
     margin-left: 4px;

@@ -96,6 +96,12 @@ def _fnRegisterAnswerEnvironmentArchive(app, dictCtx):
         )
 
 
+# The researcher taking their answer back. Not one of
+# imageArchive's three answers -- those are things a project can BE,
+# and this is the absence of all of them.
+S_ANSWER_CLEARED = "cleared"
+
+
 def _fsValidateArchiveAnswer(dictBody):
     """Return the requested answer, or raise HTTP 422.
 
@@ -106,6 +112,17 @@ def _fsValidateArchiveAnswer(dictBody):
     precisely the shape this feature exists to prevent.
     """
     sAnswer = str((dictBody or {}).get("sAnswer") or "").strip()
+    # Clearing is an answer the researcher may give back. Declining is
+    # meant to be revocable -- the Level 3 criterion reads the deposit
+    # record and never this answer, precisely so a decline is a
+    # decision rather than a lock -- but a radio cannot be unselected
+    # by clicking it, so without this the recorded answer was final in
+    # practice (researcher-reported, 2026-09-08). It returns the
+    # project to UNANSWERED, which fails Level 2 again; that is the
+    # honest consequence and the researcher's own choice, not a
+    # silent demotion.
+    if sAnswer == S_ANSWER_CLEARED:
+        return sAnswer
     if sAnswer == imageArchive.S_ANSWER_ARCHIVED:
         raise HTTPException(
             422,
@@ -134,10 +151,18 @@ def _fdictRecordArchiveAnswer(
         # researcher has answered; a live attempt is still theirs to
         # watch and is left alone.
         archiveProgress.fnForgetDeposit(sContainerId)
-    dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {
-        "sAnswer": sAnswer,
-        "sAnsweredIso": datetime.now(timezone.utc).isoformat(),
-    }
+    if sAnswer == S_ANSWER_CLEARED:
+        # Removed, never stored as a value: an empty string in this
+        # block would be a recorded answer that means nothing, and
+        # `fbImageArchiveQuestionSettled` would have to special-case
+        # it. Absence is what "unanswered" already means everywhere
+        # that reads this key.
+        dictWorkflow.pop(imageArchive.S_IMAGE_ARCHIVE_KEY, None)
+    else:
+        dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {
+            "sAnswer": sAnswer,
+            "sAnsweredIso": datetime.now(timezone.utc).isoformat(),
+        }
     fdictCommitWorkflowSave(
         dictCtx, sContainerId, dictWorkflow, requestHttp,
         "The environment-archive answer",
