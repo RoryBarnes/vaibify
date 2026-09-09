@@ -18104,4 +18104,67 @@ def _fdictEntry(sRel):
         old='    if not dictContainer.get("sArchitecture"):\n',
         new='    if False:\n',
     ),
+    # --- 2026-09-09: reaching for a rung must not knock the project
+    # off a lower one. The general guard over the two instances the
+    # researcher found by walking the ladder.
+    Falsification(
+        nodeid=(
+            'tests/testAdvancingALevelNeverLowersOne.py::'
+            'test_no_ladder_action_crosses_a_level_without_a_recorded'
+            '_disposition'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # The deposit instance, restored: an action clicked to reach
+        # Level 3 writing the project definition, which the Level 2
+        # verifies compare against both remotes. Written inline rather
+        # than through the deleted helper because this guard reads the
+        # AST, and a call to a helper that no longer exists is not the
+        # write that did the damage.
+        old='        archiveProgress.fnSettleDeposit(sContainerId)',
+        new=(
+            '        dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {\n'
+            '            "sAnswer": imageArchive.S_ANSWER_ARCHIVED,\n'
+            '        }\n'
+            '        archiveProgress.fnSettleDeposit(sContainerId)'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAdvancingALevelNeverLowersOne.py::'
+            'test_a_crossing_recorded_as_warned_really_warns'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # `warns-first` is the reason several crossings are accepted,
+        # so it is worth exactly as much as the confirmation it claims.
+        # Deleting one leaves the ledger asserting a warning the
+        # dashboard no longer shows.
+        old=(
+            '            dictConfirm: {\n'
+            '                sTitle: "Remove package",\n'
+            '                sMessage: "Remove this package from the declared " +\n'
+            '                    "software list? Its captured version and hash " +\n'
+            '                    "stay in the environment snapshot until the " +\n'
+            '                    "next regeneration.",\n'
+            '            },\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAdvancingALevelNeverLowersOne.py::'
+            'test_a_content_guarded_artifact_is_not_rewritten_when'
+            '_nothing_changed'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # The churn instance, restored. `content-guarded` is what lets
+        # a crossing be dismissed without asking the researcher
+        # anything, so the claim is driven against the real writer
+        # rather than believed.
+        old=(
+            '    if fbEnvironmentPayloadMatches(\n'
+            '        fdictReadEnvironmentJson(filesRepo), dictPayload,\n'
+            '    ):\n        return\n'
+        ),
+        new='',
+    ),
 ]
