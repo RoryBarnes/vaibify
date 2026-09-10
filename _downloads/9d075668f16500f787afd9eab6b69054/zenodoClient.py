@@ -76,6 +76,8 @@ _TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
 
 
 __all__ = [
+    "fdictBuildApiMetadata",
+    "flistBuildApiCreators",
     "ZenodoClient",
     "ZenodoError",
     "ZenodoAuthError",
@@ -370,6 +372,85 @@ def _fdictBuildAuthHeader(sToken):
     if not sToken:
         return {}
     return {"Authorization": f"Bearer {sToken}"}
+
+
+def fdictBuildApiMetadata(dictMetadata, sUploadType="dataset"):
+    """Translate a vaibify metadata dict into the Zenodo API shape.
+
+    Vaibify carries metadata in its own Hungarian shape (``sTitle``,
+    ``listCreators``) and Zenodo requires ``title``, ``creators`` and
+    an upload type. Passing the vaibify shape straight to the API is
+    not a partial success -- Zenodo rejects the draft with "Missing
+    data for required field" naming three fields at once, which is
+    what the environment-archive deposit did until 2026-09-09.
+
+    It lives HERE, at the Zenodo boundary both deposit paths already
+    import, because the mapping carries defaults a caller cannot see:
+    a creators list that falls back to a placeholder rather than an
+    empty array Zenodo refuses, and a licence default. Two copies of
+    that would diverge silently, and the divergence would only ever
+    surface as a rejected upload after a multi-hundred-megabyte
+    save.
+    """
+    sTitle = (dictMetadata.get("sTitle") or "").strip() or (
+        "Vaibify archive"
+    )
+    sDescription = (
+        dictMetadata.get("sDescription") or ""
+    ).strip() or f"Archived by Vaibify ({sTitle})"
+    dictApi = {
+        "title": sTitle,
+        "upload_type": sUploadType,
+        "description": sDescription,
+        "creators": flistBuildApiCreators(
+            dictMetadata.get("listCreators") or []
+        ),
+        "license": (
+            dictMetadata.get("sLicense") or "CC-BY-4.0"
+        ).strip(),
+    }
+    listKeywords = [
+        sKeyword.strip()
+        for sKeyword in (dictMetadata.get("listKeywords") or [])
+        if isinstance(sKeyword, str) and sKeyword.strip()
+    ]
+    if listKeywords:
+        dictApi["keywords"] = listKeywords
+    sRelatedUrl = (dictMetadata.get("sRelatedGithubUrl") or "").strip()
+    if sRelatedUrl:
+        dictApi["related_identifiers"] = [{
+            "identifier": sRelatedUrl,
+            "relation": "isSupplementTo",
+            "resource_type": "software",
+        }]
+    return dictApi
+
+
+def flistBuildApiCreators(listCreators):
+    """Build the Zenodo creators list; fall back to a placeholder.
+
+    Zenodo refuses an empty creators array, so a project that has
+    declared none still deposits rather than failing at the upload.
+    """
+    listApi = []
+    for dictCreator in listCreators:
+        sName = (dictCreator.get("sName") or "").strip()
+        if not sName:
+            continue
+        listApi.append(_fdictBuildOneApiCreator(dictCreator, sName))
+    return listApi or [{"name": "Vaibify User"}]
+
+
+def _fdictBuildOneApiCreator(dictCreator, sName):
+    """Build a single Zenodo-shaped creator dict from a vaibify creator."""
+    dictApi = {"name": sName}
+    sAffiliation = (dictCreator.get("sAffiliation") or "").strip()
+    if sAffiliation:
+        dictApi["affiliation"] = sAffiliation
+    sOrcid = (dictCreator.get("sOrcid") or "").strip()
+    if sOrcid:
+        dictApi["orcid"] = sOrcid
+    return dictApi
 
 
 def _fdictEmptyMetadata():

@@ -39,6 +39,7 @@ __all__ = [
     "fdictReadEnvironmentJson",
     "fiCaptureSourceDateEpoch",
     "fiRecordedSourceDateEpoch",
+    "fbEnvironmentPayloadMatches",
     "fnWriteEnvironmentJson",
 ]
 
@@ -579,12 +580,43 @@ def fnWriteEnvironmentJson(filesRepo, dictEnvironment):
     The adapter's atomic write (sibling temp file + rename) ensures a
     crash mid-write cannot leave a half-written ``environment.json``
     that downstream parsers would reject.
+
+    A capture that DESCRIBES the same environment does not rewrite the
+    file. Every write stamps a fresh ``sTimestamp``, so an unchanged
+    capture still produced different bytes -- a new hash, divergence
+    from GitHub and Zenodo, a dropped level, and on Zenodo an
+    immutable version spent to republish a file whose content nobody
+    changed (researcher-reported, 2026-09-09). The timestamp is the
+    only field allowed to differ for this comparison, because it is
+    the only one that describes the WRITE rather than the environment.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictPayload = _fdictAnnotateEnvironment(dictEnvironment)
+    if fbEnvironmentPayloadMatches(
+        fdictReadEnvironmentJson(filesRepo), dictPayload,
+    ):
+        return
     filesRepo.fnWriteJsonAtomic(
         _fsEnvironmentRelativePath(), dictPayload,
     )
+
+
+def fbEnvironmentPayloadMatches(dictExisting, dictFresh):
+    """Return True iff the two describe the same environment.
+
+    ``sTimestamp`` is excluded and nothing else is: the schema version
+    is compared, because a file written under an older schema is not
+    the same file even when every other field agrees.
+    """
+    if not isinstance(dictExisting, dict):
+        return False
+    return {
+        sKey: dictValue for sKey, dictValue in dictExisting.items()
+        if sKey != "sTimestamp"
+    } == {
+        sKey: dictValue for sKey, dictValue in dictFresh.items()
+        if sKey != "sTimestamp"
+    }
 
 
 def _fsEnvironmentRelativePath():
