@@ -44,6 +44,46 @@ def fnFail(sMessage, iCode=3):
     sys.exit(iCode)
 
 
+def fbIsConnectionRefused(error):
+    """Return True when the host actively refused the TCP connection."""
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    return isinstance(error, ConnectionRefusedError)
+
+
+def fnFailHostUnreachable(sUrl, error):
+    """Exit 4 naming the cause a refused or unanswered dial points at.
+
+    A REFUSAL means the packet reached the host and nothing was
+    listening there: the session file is correct and reconnecting from
+    the dashboard, which only rewrites it, cannot help. The likely
+    cause is a hub bound to the host's loopback interface alone, which
+    a container cannot reach on Linux; the hub prints the addresses it
+    bound at start, and that is where the researcher should look. Any
+    other failure (a timeout, a name that does not resolve) keeps the
+    reconnect advice, because a rewritten session file is the fix for
+    those.
+    """
+    if fbIsConnectionRefused(error):
+        fnFail(
+            "vaibify hub refused the connection at " + sUrl + ". The "
+            "session file is correct, so reconnecting from the dashboard "
+            "will not fix this: nothing on the host is listening where "
+            "this container can reach. Either no hub is running on that "
+            "port, or the hub is bound to the host's loopback interface "
+            "only; on Linux it must also bind the Docker bridge gateway, "
+            "which it does when the Docker daemon was reachable at hub "
+            "start. Ask the researcher to check the hub's startup output "
+            "for the addresses it bound.",
+            iCode=4,
+        )
+    fnFail(
+        "vaibify host unreachable at " + sUrl + " (" + str(error) + "); "
+        "reconnect the container from the dashboard",
+        iCode=4,
+    )
+
+
 def fdictReadSession():
     """Parse /tmp/vaibify-session.env into a dict."""
     if not os.path.exists(S_SESSION_ENV_PATH):
@@ -389,9 +429,8 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
             return 0
     except urllib.error.HTTPError as errHttp:
         return _fiHandleHttpError(errHttp, bJsonMode)
-    except (urllib.error.URLError, socket.timeout, OSError):
-        fnFail("vaibify host unreachable at " + dictTarget["sUrl"]
-               + "; reconnect the container from the dashboard", iCode=4)
+    except (urllib.error.URLError, socket.timeout, OSError) as error:
+        fnFailHostUnreachable(dictTarget["sUrl"], error)
 
 
 def _fiHandleHttpError(errHttp, bJsonMode):
@@ -540,9 +579,8 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     try:
         socketConnection = socket.create_connection(
             (sHost, iPort), timeout=F_CONNECT_TIMEOUT)
-    except (OSError, socket.timeout):
-        fnFail("vaibify host unreachable at " + dictEnv["VAIBIFY_HOST_URL"]
-               + "; reconnect the container from the dashboard", iCode=4)
+    except (OSError, socket.timeout) as error:
+        fnFailHostUnreachable(dictEnv["VAIBIFY_HOST_URL"], error)
     socketConnection.settimeout(F_READ_TIMEOUT)
     fnEnableTcpKeepalive(socketConnection)
     fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
