@@ -2302,6 +2302,16 @@ def fdictBuildImageArchiveDetail(
         return None
     dictEnvironment = fdictReadEnvironmentJson(filesRepo)
     dictDeposit = archiveProgress.fdictReadDeposit(sContainerId)
+    # Both halves from the one authority, so the issue list and the
+    # unchecked reason cannot describe different reads.
+    try:
+        listIssues = imageArchive.flistDescribeArchiveMismatch(
+            dictEnvironment,
+        )
+        sUncheckedReason = ""
+    except LookupError as errorLookup:
+        listIssues = []
+        sUncheckedReason = str(errorLookup)
     return {
         "sState": imageArchive.fsResolveArchiveState(
             dictEnvironment, dictWorkflow,
@@ -2309,12 +2319,41 @@ def fdictBuildImageArchiveDetail(
             bPinnedImageInLocalStore=bPinnedImageInLocalStore,
             bHostProject=fbIsHostProject(sContainerId),
         ),
-        "dictRecord": imageArchive.fdictReadArchiveRecord(dictEnvironment),
-        "listIssues": levelGates.flistDescribeImageArchiveIssues(
-            filesRepo,
+        # The row renders a cell per level from this one payload, so
+        # the LEVEL 2 half travels as the gate's own verdict. Deriving
+        # it in JavaScript would make the frontend a second authority
+        # on a question that has one.
+        "bAnswered": levelGates.fbImageArchiveQuestionSettled(
+            dictWorkflow, filesRepo,
         ),
+        # WHICH answer, so the form can show it back. `bAnswered`
+        # cannot serve: it is true for a deposit record carrying no
+        # recorded answer, and never says which of the three.
+        "sAnswer": _fsReadRecordedArchiveAnswer(dictWorkflow),
+        "dictRecord": imageArchive.fdictReadArchiveRecord(dictEnvironment),
+        "listIssues": listIssues,
+        # WHY nothing could be compared, in its own key so it can
+        # never read as a difference that was found.
+        "sUncheckedReason": sUncheckedReason,
         "dictDeposit": dictDeposit,
     }
+
+
+def _fsReadRecordedArchiveAnswer(dictWorkflow):
+    """Return the recorded environment-archive answer, or ``""``.
+
+    Both key names come from the question definition that owns them,
+    so the answer key stays spelled in exactly one place.
+    """
+    from vaibify.reproducibility import imageArchive
+    dictAnswers = (dictWorkflow or {}).get(
+        imageArchive.S_IMAGE_ARCHIVE_KEY,
+    )
+    if not isinstance(dictAnswers, dict):
+        return ""
+    return str(dictAnswers.get(
+        imageArchive.DICT_IMAGE_ARCHIVE_QUESTION["sAnswerKey"],
+    ) or "")
 
 
 def _fsArchiveCheckState(dictDeposit):

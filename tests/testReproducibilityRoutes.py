@@ -24,7 +24,7 @@ from vaibify.gui.routes.reproducibilityRoutes import (
     _DICT_VERIFY_TASKS,
     _fdictBuildAttestationResponse,
     _fdictRunReproductionSync,
-    _fnPersistAttestation,
+    _fbPersistAttestation,
     _fsResolveImageDigest,
     fnRegisterAll,
 )
@@ -716,7 +716,7 @@ def test_resolve_image_digest_falls_back_to_flat(fixtureProjectRepo):
 
 
 # ============================================================================
-# _fnPersistAttestation
+# _fbPersistAttestation
 # ============================================================================
 
 
@@ -730,7 +730,7 @@ def test_persist_attestation_writes_passed_status(fixtureProjectRepo):
         "sImageDigest": "img@sha256:abc",
         "sRunLogPath": "",
     }
-    _fnPersistAttestation(
+    _fbPersistAttestation(
         fixtureProjectRepo, "sha256:manifest", dictResult, 2.5,
     )
     pathAttestation = os.path.join(
@@ -753,7 +753,7 @@ def test_persist_attestation_writes_failed_status(fixtureProjectRepo):
         "sImageDigest": "",
         "sRunLogPath": "",
     }
-    _fnPersistAttestation(
+    _fbPersistAttestation(
         fixtureProjectRepo, "sha256:manifest", dictResult, 1.0,
     )
     pathAttestation = os.path.join(
@@ -779,7 +779,7 @@ def test_persist_attestation_logs_on_oserror(fixtureProjectRepo, caplog):
         side_effect=OSError("disk full"),
     ):
         # Should not raise.
-        _fnPersistAttestation(
+        _fbPersistAttestation(
             fixtureProjectRepo, "sha256:manifest", dictResult, 1.0,
         )
 
@@ -1343,3 +1343,107 @@ def test_a_rerun_that_reached_no_verdict_spends_no_save_on_the_recheck(
             fixtureProjectRepo + "/.vaibify/workflows/project.json",
         ))
     assert listCalls == []
+
+
+@pytest.mark.falsification
+def test_a_written_attestation_is_staged_and_committed(fixtureProjectRepo):
+    """The file vaibify writes must reach the repository by itself.
+
+    The attestation is vaibify's own artefact and sits in the set the
+    remote verifies compare, so leaving it untracked made it
+    permanently absent from GitHub and Zenodo -- and unreachable by
+    any action the researcher had. The Repos panel's Push stages with
+    ``git add -u``, which by ruling covers TRACKED files only, so a
+    file nobody ever added could never be pushed. A project sat at
+    "24 of 25 files matching" with no way to reach 25
+    (researcher-reported, 2026-09-08).
+
+    The pathspec is asserted, not just the call: a bare commit in a
+    repository the researcher is working in would sweep in whatever
+    else happened to be staged.
+
+    Kills: dropping the `_fnCommitAttestation` call from the worker.
+    """
+    listAdded, listCommitted = [], []
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+    with patch.object(
+        reproducibilityRoutes, "_fbPersistAttestation",
+        lambda *aArgs, **dictKwargs: True,
+    ), patch(
+        "vaibify.gui.containerGit.ftResultGitAddInContainer",
+        lambda cx, sid, listPaths, sWorkspace="": (
+            listAdded.append((listPaths, sWorkspace)) or (0, "")
+        ),
+    ), patch(
+        "vaibify.gui.containerGit.ftResultGitCommitInContainer",
+        lambda cx, sid, sMessage, sWorkspace="", listFilePaths=None: (
+            listCommitted.append((listFilePaths, sWorkspace)) or (0, "")
+        ),
+    ), patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fdictRunReproductionSync",
+        return_value={
+            "bPassed": True, "bRerunAttempted": True,
+            "iOutputHashesMatched": 1, "iOutputHashesTotal": 1,
+            "listDivergedHashes": [], "sImageDigest": "sha256:i",
+            "sRunLogPath": "", "sManifestDigest": "sha256:m",
+        },
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": [],
+                         "sProjectRepoPath": "/workspace/repo"}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+
+    assert listAdded, "the attestation was never staged"
+    assert listAdded[0][0] == [".vaibify/l3_attestation.json"], (
+        "staged the wrong paths: " + str(listAdded)
+    )
+    assert listAdded[0][1] == "/workspace/repo", (
+        "staged outside the project repo: " + str(listAdded)
+    )
+    assert listCommitted[0][0] == [".vaibify/l3_attestation.json"], (
+        "committed without an explicit pathspec, so unrelated staged "
+        "work would be swept in: " + str(listCommitted)
+    )
+
+
+@pytest.mark.falsification
+def test_a_rerun_with_no_verdict_commits_nothing(fixtureProjectRepo):
+    """No attestation written means nothing to commit.
+
+    A refused rerun establishes nothing, and committing on that path
+    would put a file in the researcher's history describing a
+    verification that never happened.
+
+    Kills: committing unconditionally instead of on the
+    `_fbRecordOutcome` verdict.
+    """
+    listAdded = []
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+    with patch(
+        "vaibify.gui.containerGit.ftResultGitAddInContainer",
+        lambda cx, sid, listPaths, sWorkspace="": (
+            listAdded.append(listPaths) or (0, "")
+        ),
+    ), patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fdictRunReproductionSync",
+        side_effect=RuntimeError("boom"),
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": [],
+                         "sProjectRepoPath": "/workspace/repo"}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+
+    assert listAdded == [], (
+        "a no-verdict rerun committed an attestation anyway: "
+        + str(listAdded)
+    )

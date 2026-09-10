@@ -222,16 +222,35 @@ def flistDescribeArchiveMismatch(dictEnvironment):
         )
     sEnvelopeDigest = str(dictContainer.get("sImageDigest") or "")
     sEnvelopeArchitecture = str(dictContainer.get("sArchitecture") or "")
-    if not sEnvelopeDigest or not sEnvelopeArchitecture:
+    if not sEnvelopeDigest:
         raise LookupError(
-            "The environment snapshot records no image digest and "
-            "architecture pair, so a deposit cannot be checked "
-            "against it. Regenerate the envelope while the container "
-            "is running."
+            "The environment snapshot pins no image, so there is "
+            "nothing a deposit could be checked against. Regenerate "
+            "the envelope while the container is running."
         )
+    # ABSENCE is answerable without comparing anything, so it is
+    # answered before the architecture is required. The two checks
+    # were the other way round until 2026-09-08, which made a project
+    # with a complete-enough envelope and NO deposit report UNCHECKED
+    # -- the row showed a grey "?" and the Level 3 cell followed it,
+    # over a question whose answer was plainly "no archive exists".
+    # A researcher who had just declined saw Level 2 go green and
+    # Level 3 stay a question mark (researcher-reported).
+    #
+    # This does not weaken "unchecked is never red": that rule forbids
+    # claiming DIVERGENCE with one side of the comparison missing, and
+    # "no deposit was made" is not a divergence claim. The architecture
+    # is what a COMPARISON needs, so it is required on the comparison
+    # path only.
     dictRecord = dictContainer.get(S_IMAGE_ARCHIVE_KEY)
     if not isinstance(dictRecord, dict):
         return ["No image archive has been deposited for this envelope."]
+    if not sEnvelopeArchitecture:
+        raise LookupError(
+            "The environment snapshot records no architecture, so "
+            "the deposit on record cannot be checked against it. "
+            "Regenerate the envelope while the container is running."
+        )
     return _flistCompareRecordToEnvelope(
         dictRecord, sEnvelopeDigest, sEnvelopeArchitecture,
     )

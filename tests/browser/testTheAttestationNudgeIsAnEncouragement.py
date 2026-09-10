@@ -95,11 +95,30 @@ def testAnUncheckedRemoteIsNotDescribedAsAbsent(
     assert pageDashboard.listPageErrors == []
 
 
-def testAPublishedAttestationDrawsNoNudge(pageDashboard, serverHub):
-    """Nothing to encourage once the copy is there."""
+def testAPublishedAttestationIsNeverUrgedToPublishAgain(
+    pageDashboard, serverHub,
+):
+    """No ENCOURAGEMENT once the copy is there -- a confirmation instead.
+
+    This asserted that no element rendered at all, which was the
+    shape of the old behaviour rather than its purpose. Rendering
+    nothing made "published" indistinguishable from "this row has no
+    opinion", and a researcher who had just pushed got no
+    confirmation that it landed (researcher-reported, 2026-09-08), so
+    the row now states the published case out loud.
+
+    The guarantee this test exists for is unchanged and still pinned:
+    a researcher who has already published must not be pressed to
+    publish. That is asserted as the ABSENCE OF THE URGING, not the
+    absence of the block -- the distinction the old assertion could
+    not make.
+    """
     _fnLoadTheDashboardScripts(pageDashboard, serverHub)
     sHtml = _fsRenderAttestationRow(pageDashboard, True)
-    assert "attestation-nudge" not in sHtml, sHtml
+    assert "is not on GitHub" not in sHtml, sHtml
+    assert "Pushing it lets anyone" not in sHtml, sHtml
+    assert "No verification has checked" not in sHtml, sHtml
+    assert "Synced to GitHub" in sHtml, sHtml
     assert pageDashboard.listPageErrors == []
 
 

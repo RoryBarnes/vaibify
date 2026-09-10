@@ -67,6 +67,7 @@ from ...reproducibility.repoFiles import (
     fsRepoRootOf,
 )
 from ...reproducibility.l3Attestation import (
+    S_ATTESTATION_FILENAME,
     S_STATUS_FAILED,
     S_STATUS_PASSED,
     fdictBuildAttestation,
@@ -625,7 +626,7 @@ async def _fnRunVerificationWorker(
     loop. An outcome that reached no verdict -- a crash, or a rerun
     refused before any step ran -- is recorded in
     ``_DICT_LAST_NO_VERDICT`` and reported to the researcher, but NEVER
-    written as an attestation; see :func:`_fnPersistAttestation`.
+    written as an attestation; see :func:`_fbPersistAttestation`.
     """
     dictStatus = _DICT_VERIFY_TASKS[sContainerId]["dictStatus"]
     dictStatus["sPhase"] = "running"
@@ -666,10 +667,15 @@ async def _fnRunVerificationWorker(
     dictResult["dictImageArchiveCheck"] = (
         await _fdictRecheckImageArchiveOrNone(filesRepo, dictResult)
     )
-    _fnRecordOutcome(
+    bAttestationWritten = _fbRecordOutcome(
         sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
         dictAiProvenance,
     )
+    if bAttestationWritten:
+        await asyncio.to_thread(
+            _fnCommitAttestation,
+            connectionDocker, sContainerId, dictWorkflow,
+        )
     dictStatus["sPhase"] = _fsPhaseForOutcome(dictResult)
     dictStatus["listReasons"] = list(
         dictResult.get("listDivergedHashes") or []
@@ -727,11 +733,69 @@ def _fsPhaseForOutcome(dictResult):
     return "passed" if dictResult.get("bPassed") else "failed"
 
 
-def _fnRecordOutcome(
+def _fnCommitAttestation(connectionDocker, sContainerId, dictWorkflow):
+    """Stage and commit the attestation the verification just wrote.
+
+    It is vaibify's own artefact and is compared against both
+    remotes, but nothing tracked it -- and ``git add -u`` covers
+    tracked files only, so no push the researcher could make would
+    ever carry it (researcher-reported, 2026-09-08).
+
+    Commit only, never push: publication stays the researcher's
+    action. The pathspec is explicit so a bare commit cannot sweep in
+    unrelated staged work. A failure is logged and swallowed, because
+    turning a git problem into a failed scientific claim is the error
+    the no-verdict branch already exists to avoid.
+    """
+    from ...config.registryManager import fbIsHostProject
+    from .. import containerGit
+    if fbIsHostProject(sContainerId):
+        return
+    sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
+    if not sProjectRepo:
+        return
+    sRelPath = posixpath.join(".vaibify", S_ATTESTATION_FILENAME)
+    try:
+        iAddCode, sAddOutput = containerGit.ftResultGitAddInContainer(
+            connectionDocker, sContainerId, [sRelPath],
+            sWorkspace=sProjectRepo,
+        )
+        if iAddCode != 0:
+            logger.warning(
+                "Could not stage the L3 attestation: %s", sAddOutput,
+            )
+            return
+        iCode, sOutput = containerGit.ftResultGitCommitInContainer(
+            connectionDocker, sContainerId,
+            "Record the Level 3 rebuild attestation",
+            sWorkspace=sProjectRepo, listFilePaths=[sRelPath],
+        )
+        # An unchanged attestation stages nothing and `git commit`
+        # exits non-zero saying so. That is the ordinary state of a
+        # re-verified project, not a failure worth a log line.
+        if iCode != 0 and "nothing to commit" not in (sOutput or ""):
+            logger.warning(
+                "Could not commit the L3 attestation: %s", sOutput,
+            )
+    except Exception as errorCaught:
+        # A carrier refusal means the durable admission was not open,
+        # which is a programming error rather than a git problem, and
+        # it must reach the caller instead of being logged as a
+        # failed commit.
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.warning(
+            "Could not commit the L3 attestation: %s", errorCaught,
+        )
+
+
+def _fbRecordOutcome(
     sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
     dictAiProvenance,
 ):
     """Persist an attestation, or remember a no-verdict outcome.
+
+    Returns True iff an attestation was actually written, which is
+    what tells the caller there is a file to commit.
 
     The branch is the whole point: an attestation is written only when
     the comparison actually reached a verdict. A rerun refused before
@@ -745,7 +809,7 @@ def _fnRecordOutcome(
             dictResult.get("listDivergedHashes") or [],
             fDuration, sManifestDigest,
         )
-        return
+        return False
     verificationProgress.fnForgetNoVerdict(sContainerId)
     # The comparison reports the digest of the manifest it was
     # actually made against -- the SHADOW's copy. The readiness
@@ -753,7 +817,7 @@ def _fnRecordOutcome(
     # anything that re-pins the manifest between the snapshot and the
     # coherent export would otherwise put a digest on the attestation
     # that the comparison never read.
-    _fnPersistAttestation(
+    return _fbPersistAttestation(
         filesRepo,
         dictResult.get("sManifestDigest") or sManifestDigest,
         dictResult, fDuration, dictAiProvenance,
@@ -838,11 +902,11 @@ def _fsResolveImageDigest(filesRepo):
     return dictPayload.get("sImageDigest") or ""
 
 
-def _fnPersistAttestation(
+def _fbPersistAttestation(
     filesRepo, sManifestDigest, dictResult, fDuration,
     dictAiProvenance=None,
 ):
-    """Write the attestation file and update the in-flight status dict."""
+    """Write the attestation file; return True iff it was written."""
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
     dictAttestation = fdictBuildAttestation(
         sStatus=sStatus,
@@ -865,6 +929,8 @@ def _fnPersistAttestation(
         fnWriteAttestation(filesRepo, dictAttestation)
     except OSError as errorCaught:
         logger.error("Could not persist L3 attestation: %s", errorCaught)
+        return False
+    return True
 
 
 def _fnRegisterScanDeterminism(app, dictCtx):

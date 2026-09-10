@@ -282,7 +282,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/sessionLifecycle.py::fnScheduleConnectionFencing.loopRunning", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/staleOutputDetector.py::_ffParseMtime::value", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/stateContract.py::_flistExcludedPathsFromWorkflow.p", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/syncDispatcher.py::_fdictBuildApiMetadata.k", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/syncDispatcher.py::_flistFilterByExtension::frozensetExtensions", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/syncDispatcher.py::fdictComputeContainerDigests.p", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/testGenerator.py::_fdictBuildIntegrityStandards.r", "sReason": ""},
@@ -381,7 +380,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 362,
+    "legacy-variable": 361,
     "legacy-yield": 0
   }
 }

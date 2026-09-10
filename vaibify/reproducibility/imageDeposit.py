@@ -63,7 +63,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 
-from vaibify.reproducibility import _hashing, imageArchive
+from vaibify.reproducibility import _hashing, imageArchive, zenodoClient
 from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
@@ -335,6 +335,12 @@ def fsJudgeDepositProvenance(sImageReference, dictAttestation):
     return imageArchive.S_PROVENANCE_VERIFIED_EQUIVALENT
 
 
+# A container image is software, not a dataset. Zenodo asks for no
+# extra field for this type, unlike "publication" or "image", so it
+# costs nothing and describes the artefact honestly.
+S_IMAGE_UPLOAD_TYPE = "software"
+
+
 def fdictDepositImageArchive(
     clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
     dictMetadata, fnReportProgress=None, dictAttestation=None,
@@ -373,8 +379,18 @@ def fdictDepositImageArchive(
     # Stamped BEFORE the draft is created, because Zenodo's metadata
     # has no field for "which image is this" and a later reference to
     # this record has nothing else to check itself against.
+    # Stamp in the vaibify shape, THEN translate. The fingerprint is
+    # appended to `sDescription`, and it is read back out of the
+    # published record's `description` when a researcher references an
+    # existing deposit -- so translating first would drop the one
+    # field that lets a reference be verified at all.
     dictDraft = clientZenodo.fdictCreateDraft(
-        imageArchive.fdictStampDepositMetadata(dictMetadata, dictRecord),
+        zenodoClient.fdictBuildApiMetadata(
+            imageArchive.fdictStampDepositMetadata(
+                dictMetadata, dictRecord,
+            ),
+            S_IMAGE_UPLOAD_TYPE,
+        ),
     )
     iDepositId = dictDraft["id"]
     try:

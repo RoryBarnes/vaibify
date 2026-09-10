@@ -872,7 +872,7 @@ def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
     put that claim on disk anyway, and would destroy an earlier passing
     attestation the unchanged manifest still entitles the project to.
     The dashboard lane makes the same distinction in
-    ``reproducibilityRoutes._fnRecordOutcome``; the two must agree,
+    ``reproducibilityRoutes._fbRecordOutcome``; the two must agree,
     because they write the same file.
     """
     if not dictOutcome.get("bRerunAttempted", True):
