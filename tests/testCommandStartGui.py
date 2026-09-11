@@ -14,6 +14,25 @@ def _fConfigStub():
     )
 
 
+@pytest.fixture(autouse=True)
+def fnNoRealSockets():
+    """The launcher binds real sockets before uvicorn sees them.
+
+    These tests replace the uvicorn MODULE, so the server never runs,
+    but the bind happens first and on a real port; stub it so no test
+    here contends for a port the researcher's own hub may hold.
+    """
+    with patch(
+        "vaibify.cli.serverLaunch.flistBindServerSockets", return_value=[],
+    ):
+        yield
+
+
+def _fmockRunOf(mockUvicorn):
+    """The launcher builds a Server from the config and calls its run."""
+    return mockUvicorn.Server.return_value.run
+
+
 def _fdictPatchSysModules(mockCreate, mockUvicorn):
     """Build the sys.modules patch dict used across tests."""
     mockPipelineServer = types.ModuleType(
@@ -60,7 +79,6 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
     mockApp = MagicMock(name="FastAPIApp")
     mockCreate = MagicMock(return_value=mockApp)
     mockUvicorn = MagicMock()
-    mockUvicorn.run = MagicMock()
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
     with patch.dict(
@@ -71,8 +89,8 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
     mockCreate.assert_called_once_with(
         sWorkspaceRoot="/workspace", iExpectedPort=8050,
     )
-    mockUvicorn.run.assert_called_once()
-    tArgs, dictKwargs = mockUvicorn.run.call_args
+    _fmockRunOf(mockUvicorn).assert_called_once()
+    tArgs, dictKwargs = mockUvicorn.Config.call_args
     assert tArgs[0] is mockApp
     assert dictKwargs["host"] == "127.0.0.1"
     assert dictKwargs["port"] == 8050
@@ -81,11 +99,11 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
 
 
 def test_fnLaunchGui_uvicorn_failure_propagates():
-    """When uvicorn.run raises, fnLaunchGui does not swallow it."""
+    """When the server run raises, fnLaunchGui does not swallow it."""
     from vaibify.cli.commandStart import fnLaunchGui
     config = _fConfigStub()
     mockUvicorn = MagicMock()
-    mockUvicorn.run.side_effect = OSError("port in use")
+    _fmockRunOf(mockUvicorn).side_effect = OSError("port in use")
     mockCreate = MagicMock(return_value=MagicMock())
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
@@ -118,7 +136,7 @@ def test_fnLaunchGui_uses_workspace_root_from_config():
 
 
 def test_fnLaunchGui_passes_explicit_port_to_uvicorn():
-    """Explicit --port values thread through to uvicorn.run."""
+    """Explicit --port values thread through to the uvicorn config."""
     from vaibify.cli.commandStart import fnLaunchGui
     config = _fConfigStub()
     mockCreate = MagicMock(return_value=MagicMock())
@@ -135,7 +153,7 @@ def test_fnLaunchGui_passes_explicit_port_to_uvicorn():
     mockCreate.assert_called_once_with(
         sWorkspaceRoot="/workspace", iExpectedPort=8062,
     )
-    _, dictKwargs = mockUvicorn.run.call_args
+    _, dictKwargs = mockUvicorn.Config.call_args
     assert dictKwargs["port"] == 8062
 
 
@@ -168,7 +186,7 @@ def test_fnLaunchGui_exits_when_container_locked():
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None)
     assert exitInfo.value.code == 1
-    mockUvicorn.run.assert_not_called()
+    _fmockRunOf(mockUvicorn).assert_not_called()
 
 
 def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
@@ -225,7 +243,7 @@ def test_fnLaunchGui_exits_when_port_held_by_foreign_process():
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None, "/tmp/vaibify.yml")
     assert exitInfo.value.code == 1
-    mockUvicorn.run.assert_not_called()
+    _fmockRunOf(mockUvicorn).assert_not_called()
 
 
 def test_fnLaunchGui_sets_graceful_shutdown_timeout():
@@ -241,7 +259,7 @@ def test_fnLaunchGui_sets_graceful_shutdown_timeout():
     ), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, None, "/tmp/vaibify.yml")
-    _, dictKwargs = mockUvicorn.run.call_args
+    _, dictKwargs = mockUvicorn.Config.call_args
     assert dictKwargs["timeout_graceful_shutdown"] == 3
 
 
@@ -266,7 +284,7 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None)
     assert exitInfo.value.code == 1
-    mockUvicorn.run.assert_not_called()
+    _fmockRunOf(mockUvicorn).assert_not_called()
 
 
 def test_start_command_without_gui_starts_container_only():

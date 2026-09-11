@@ -224,8 +224,11 @@ def test_fnAddBindMounts_regular(tmp_path, monkeypatch):
         {"host": sHostPath, "container": "/mnt/data"},
     ]
     _fnAddBindMounts(config, saRunArgs)
-    assert "-v" in saRunArgs
-    assert f"{sHostPath}:/mnt/data" in saRunArgs
+    assert "--mount" in saRunArgs
+    assert "-v" not in saRunArgs
+    assert (
+        f'type=bind,"source={sHostPath}","target=/mnt/data"' in saRunArgs
+    )
 
 
 def test_fnAddBindMounts_readonly(tmp_path, monkeypatch):
@@ -243,7 +246,10 @@ def test_fnAddBindMounts_readonly(tmp_path, monkeypatch):
         },
     ]
     _fnAddBindMounts(config, saRunArgs)
-    assert f"{sHostPath}:/mnt/data:ro" in saRunArgs
+    assert (
+        f'type=bind,"source={sHostPath}","target=/mnt/data",readonly'
+        in saRunArgs
+    )
 
 
 # -----------------------------------------------------------------------

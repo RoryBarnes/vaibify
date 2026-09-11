@@ -19,7 +19,9 @@ from .configLoader import (
     fsResolveProjectConfigPath,
 )
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
-from .preflightResult import PreflightResult, fnPrintPreflightReport
+from .preflightResult import (
+    S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
+)
 from vaibify.resources import fnCopyPackagedTree
 
 
@@ -837,40 +839,51 @@ def _fiParseHumanSize(sSize):
         return -1
 
 
-def _fsDiskRemediation():
-    """Return remediation text for a near-full Docker VM disk."""
-    from vaibify.docker.dockerContext import fbColimaActive
-    sBase = "Run `docker system prune -af` to reclaim space."
-    if fbColimaActive():
-        return (
-            f"{sBase} If still tight, grow the VM with "
-            "`colima stop && colima start --disk 100`."
-        )
-    return sBase
-
-
 def _fpreflightDiskWarn(iBytes):
-    """Return a warn-level PreflightResult for high Docker disk usage."""
+    """Return a warn-level PreflightResult for high daemon storage USAGE.
+
+    Usage, never headroom, and the wording says so. ``docker system
+    df`` reports what the daemon is holding; it says nothing about
+    what is left. The old wording ("the VM may run out of space
+    mid-build") warned a roomy 1 TB daemon and stayed silent on a
+    nearly full 40 GB one, which is the exact opposite of the reading
+    a researcher takes from it. Real headroom needs runtime-specific
+    evidence that this check does not have, so it does not claim any.
+    """
+    from vaibify.docker.dockerContext import fdictClassifyDockerRuntime
+    from vaibify.docker.runtimeRemedies import (
+        S_SITUATION_RECLAIM_DISK, ftRemedyForSituation,
+    )
     fGigabytes = iBytes / (2 ** 30)
+    sRemediation, sCommand = ftRemedyForSituation(
+        S_SITUATION_RECLAIM_DISK, fdictClassifyDockerRuntime(),
+    )
     return PreflightResult(
-        sName="docker-disk",
+        sName="docker-storage-usage",
         sLevel="warn",
         sMessage=(
-            f"Docker is using {fGigabytes:.1f} GB of images/volumes; "
-            "the VM may run out of space mid-build."
+            f"Docker is holding {fGigabytes:.1f} GB of images, volumes "
+            "and build cache. This is how much it is USING; it is not "
+            "a measurement of how much room is left."
         ),
-        sRemediation=_fsDiskRemediation(),
+        sRemediation=sRemediation,
+        sCommand=sCommand,
+        sMechanism=(
+            "Sums the Size column of `docker system df --format "
+            "'{{json .}}'`. The daemon reports no free-space figure "
+            "there, so no headroom claim can be derived from it."
+        ),
     )
 
 
 def _flistPreflightDisk():
-    """Return list of PreflightResult records for Docker disk usage."""
+    """Return list of PreflightResult records for daemon storage usage."""
     iBytes = _fiDockerDfBytes()
     if iBytes < 0:
         return [PreflightResult(
-            sName="docker-disk",
-            sLevel="info",
-            sMessage="Could not assess Docker disk usage.",
+            sName="docker-storage-usage",
+            sLevel=S_LEVEL_NOT_CHECKED,
+            sMessage="`docker system df` did not answer.",
         )]
     if iBytes >= _I_DOCKER_DISK_WARN_BYTES:
         return [_fpreflightDiskWarn(iBytes)]
@@ -900,31 +913,45 @@ def _fiDockerVmMemoryBytes():
         return -1
 
 
-def _fsMemoryRemediation():
-    """Return remediation text for low Docker VM memory."""
-    from vaibify.docker.dockerContext import fbColimaActive
-    if fbColimaActive():
-        return "Run `colima stop && colima start --memory 6`."
-    return "Increase the memory allocation of your Docker VM."
+def _ftMemoryRemediation():
+    """Return ``(sRemediation, sCommand)`` for a small daemon memory."""
+    from vaibify.docker.dockerContext import fdictClassifyDockerRuntime
+    from vaibify.docker.runtimeRemedies import (
+        S_SITUATION_MORE_DAEMON_MEMORY, ftRemedyForSituation,
+    )
+    return ftRemedyForSituation(
+        S_SITUATION_MORE_DAEMON_MEMORY, fdictClassifyDockerRuntime(),
+    )
 
 
 def _flistPreflightMemory():
-    """Return list of PreflightResult records for Docker VM memory."""
+    """Return list of PreflightResult records for daemon memory."""
     iBytes = _fiDockerVmMemoryBytes()
     if iBytes < 0:
-        return []
-    if iBytes < _I_DOCKER_MEMORY_MIN_BYTES:
-        fGigabytes = iBytes / (2 ** 30)
         return [PreflightResult(
             sName="docker-memory",
-            sLevel="warn",
-            sMessage=(
-                f"Docker VM has {fGigabytes:.1f} GB RAM. Builds with "
-                "heavy Python packages may OOM (exit 137)."
-            ),
-            sRemediation=_fsMemoryRemediation(),
+            sLevel=S_LEVEL_NOT_CHECKED,
+            sMessage="the daemon did not report its total memory.",
         )]
-    return []
+    if iBytes >= _I_DOCKER_MEMORY_MIN_BYTES:
+        return []
+    fGigabytes = iBytes / (2 ** 30)
+    sRemediation, sCommand = _ftMemoryRemediation()
+    return [PreflightResult(
+        sName="docker-memory",
+        sLevel="warn",
+        sMessage=(
+            f"The Docker daemon has {fGigabytes:.1f} GB RAM. Builds "
+            "with heavy Python packages may be OOM-killed (exit 137)."
+        ),
+        sRemediation=sRemediation,
+        sCommand=sCommand,
+        sMechanism=(
+            "Reads `docker info --format '{{.MemTotal}}'`, which is "
+            "the DAEMON's memory. On macOS that is a virtual machine "
+            "with its own allocation, routinely half the host's."
+        ),
+    )]
 
 
 def flistRunBuildPreflight(config):

@@ -3,6 +3,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from tests.dockerRuntimeStub import fnPinDockerRuntime
+from vaibify.docker.dockerContext import (
+    S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP,
+    S_RUNTIME_LINUX_ROOTFUL, S_RUNTIME_LINUX_ROOTLESS,
+)
+
 from click.testing import CliRunner
 
 from vaibify.cli.commandDoctor import fnDoctorCommand, flistRunDoctorChecks
@@ -72,7 +78,8 @@ def test_fpreflightDaemon_reachable_returns_ok(mockProbe):
 )
 def test_fpreflightDaemon_colima_remediation(mockProbe, mockContext):
     """Colima-active failure points the user at `colima start`."""
-    resultPreflight = fpreflightDaemon("build")
+    with fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"):
+        resultPreflight = fpreflightDaemon("build")
     assert resultPreflight.sLevel == "fail"
     assert resultPreflight.sCommand == "colima start"
     assert "colima" in resultPreflight.sRemediation.lower()
@@ -81,35 +88,54 @@ def test_fpreflightDaemon_colima_remediation(mockProbe, mockContext):
 
 @patch("vaibify.cli.preflightChecks.sys.platform", "darwin")
 @patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="desktop-linux",
-)
-@patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_COLIMA_DAEMON_STDERR),
 )
-def test_fpreflightDaemon_no_colima_remediation(mockProbe, mockContext):
+def test_fpreflightDaemon_no_colima_remediation(mockProbe):
     """Non-Colima failure on macOS points the user at Docker Desktop."""
-    resultPreflight = fpreflightDaemon()
+    with fnPinDockerRuntime(S_RUNTIME_DOCKER_DESKTOP):
+        resultPreflight = fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
 
 
-@patch("vaibify.cli.preflightChecks.sys.platform", "linux")
-@patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="default",
-)
 @patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_COLIMA_DAEMON_STDERR),
 )
-def test_fpreflightDaemon_linux_remediation(mockProbe, mockContext):
-    """Non-Colima failure on Linux points the user at systemctl."""
-    resultPreflight = fpreflightDaemon()
+def test_fpreflightDaemon_linux_remediation(mockProbe):
+    """A rootful Linux daemon points the user at the system unit.
+
+    The RUNTIME is pinned rather than the evidence it is derived
+    from. Patching the context name alone is not enough any more, and
+    is not enough in a subtler way either: the classifier also reads
+    ``DOCKER_HOST`` and the active context's endpoint, and the
+    suite's own state isolation redirects ``HOME`` -- so a test that
+    leaves any of that to the machine asserts against whatever
+    runtime happens to be installed where it runs.
+    """
+    with fnPinDockerRuntime(S_RUNTIME_LINUX_ROOTFUL):
+        resultPreflight = fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert resultPreflight.sCommand == "sudo systemctl start docker"
-    assert "docker.service" in resultPreflight.sRemediation
+    assert "system Docker daemon" in resultPreflight.sRemediation
+
+
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(1, _S_COLIMA_DAEMON_STDERR),
+)
+def test_fpreflightDaemon_rootless_never_says_sudo(mockProbe):
+    """The most-seen finding of all must not start the WRONG daemon.
+
+    `sudo systemctl start docker` on a rootless host starts a second,
+    rootful daemon the researcher's context does not point at, so the
+    advice reads as simply not working.
+    """
+    with fnPinDockerRuntime(S_RUNTIME_LINUX_ROOTLESS):
+        resultPreflight = fpreflightDaemon()
+    assert resultPreflight.sCommand == "systemctl --user start docker"
+    assert "sudo" not in resultPreflight.sCommand
 
 
 @patch(
@@ -125,7 +151,8 @@ def test_fpreflightDaemon_linux_remediation(mockProbe, mockContext):
 )
 def test_fpreflightDaemon_surfaces_colima_stale_lock(mockProbe, mockContext):
     """A stale-lock stderr produces the specific catalog hint and command."""
-    resultPreflight = fpreflightDaemon("start")
+    with fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"):
+        resultPreflight = fpreflightDaemon("start")
     assert resultPreflight.sLevel == "fail"
     assert resultPreflight.sCommand == "colima stop --force && colima start"
     assert "stale" in resultPreflight.sRemediation.lower()
@@ -262,7 +289,13 @@ def _runDoctor(saArgs, listShared=None, listBuild=None, listStart=None):
 
 
 def test_doctor_happy_path_exits_zero():
-    """All-ok results yield exit 0 and a `N ok / 0 warn / 0 fail` summary."""
+    """All-ok results yield exit 0 and a tally line counting unassessed.
+
+    The container-scope checks report `not checked` here -- no
+    container exists in the test environment -- and the tally keeps
+    them in their own column. Without an explicit `--container` they
+    do not make the run non-zero.
+    """
     listShared = [_fresultOk("docker-context"), _fresultOk("docker-daemon")]
     listBuild = [_fresultOk("docker-disk")]
     listStart = [_fresultOk("image")]
@@ -272,7 +305,8 @@ def test_doctor_happy_path_exits_zero():
     )
     assert result.exit_code == 0
     assert "[ok] docker-daemon" in result.output
-    assert "4 ok / 0 warn / 0 fail" in result.output
+    assert "0 warn / 0 fail" in result.output
+    assert "not checked" in result.output
 
 
 def test_doctor_exits_one_on_fail():

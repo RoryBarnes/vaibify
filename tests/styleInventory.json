@@ -13,11 +13,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandConfig.py::fnConfigExportCommand::sfilepath", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandConfig.py::fnConfigImportCommand::sfilepath", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDestroy.py::fnRemoveVolume.volume", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDoctor.py::_flistFilterQuiet.r", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDoctor.py::_flistOptionalSharedChecks.r", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDoctor.py::_ftCountLevels.r", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDoctor.py::flistRunDoctorChecks.r", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandDoctor.py::fnDoctorCommand.r", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandRegister.py::fnRegisterCommand::sdirectory", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandRevoke.py::_fdictRevokeForService::sservice", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/commandRevoke.py::fnPrintRevocationReport::sservice", "sReason": ""},
@@ -45,8 +40,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/main.py::fnPushCommand::source", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/main.py::main::ctx", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/portAllocator.py::fbIsPortFree.sock", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/preflightResult.py::_fnPrintDetailBlock::resultPreflight", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/cli/preflightResult.py::fnPrintPreflightReport.resultPreflight", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/bindMountValidator.py::_fbEntryIsDirectory::entryChild", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/bindMountValidator.py::_fbEntryIsSymlink::entryChild", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/bindMountValidator.py::_fnAssertChildIsNotSocket::entryChild", "sReason": ""},
@@ -380,7 +373,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 361,
+    "legacy-variable": 354,
     "legacy-yield": 0
   }
 }

@@ -11,70 +11,85 @@ The same catalog feeds the FastAPI lazy-init path
 (``preflightChecks.fpreflightDaemon``), and the ``vaibify doctor``
 diagnostic probes that tail the Colima hostagent log or the systemd
 journal. Keeping one catalog avoids drift between those surfaces.
+
+**The runtime-dependent answers are not written here.** Three of them
+-- what starts a stopped daemon, what restarts a stale Colima, and
+what a permission-denied socket needs -- depend on WHICH runtime this
+host talks to, and this module used to decide that from the context
+NAME alone. It therefore answered ``colima start`` to a Docker Desktop
+user, the default profile to somebody running ``colima --profile
+gpu``, and ``sudo systemctl start docker`` to a rootless daemon whose
+unit is a ``--user`` one. Those answers now come from
+``runtimeRemedies``, which asks the classifier; this module keeps the
+PATTERN MATCHING, which is what it is actually good at.
 """
 
 
 __all__ = ["fdictDiagnoseDockerError"]
 
 
-def fdictDiagnoseDockerError(sError, sContext="", sPlatform=""):
+def fdictDiagnoseDockerError(
+    sError, sContext="", sPlatform="", dictRuntime=None,
+):
     """Return ``{sHint, sCommand}`` for a Docker init error string.
 
     ``sContext`` is the active Docker context name (``"colima"``,
     ``"desktop-linux"``, …). ``sPlatform`` is ``sys.platform``.
-    Empty defaults preserve the legacy macOS+Colima behaviour.
+
+    ``dictRuntime`` is the answer from
+    :func:`dockerContext.fdictClassifyDockerRuntime`, and it is what
+    the three runtime-dependent branches are decided from. A caller
+    that has already classified passes it; one that has not gets a
+    classification made here, because the alternative -- falling back
+    to the context NAME -- is exactly the guess that answered ``colima
+    start`` to Docker Desktop users. The classification is made only
+    on the branches that need it, so the common paths cost nothing.
     """
     sLower = (sError or "").lower()
     if "in use by instance" in sLower:
-        return _fdictColimaStaleLockDiagnosis()
+        return _fdictColimaStaleLockDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
     if _fbErrorIsDaemonUnreachable(sLower):
-        return _fdictDaemonUnreachableDiagnosis(sContext, sPlatform)
+        return _fdictDaemonUnreachableDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
     if _fbErrorIsSocketAbsent(sLower):
         return _fdictSocketAbsentDiagnosis()
     if _fbErrorIsBinaryMissing(sLower):
         return _fdictBinaryMissingDiagnosis(sPlatform)
     if "permission denied" in sLower:
-        return _fdictPermissionDeniedDiagnosis(sContext, sPlatform)
+        return _fdictPermissionDeniedDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
     return _fdictUnknownErrorDiagnosis()
 
 
-def _fbUseLinuxSystemd(sContext, sPlatform):
-    """True when Linux + system Docker daemon (not Colima) is implied."""
-    if sPlatform != "linux":
-        return False
-    if sContext == "colima":
-        return False
-    return True
+def _fdictResolveRuntime(dictRuntime):
+    """Return the caller's classification, or make one."""
+    if dictRuntime:
+        return dictRuntime
+    from .dockerContext import fdictClassifyDockerRuntime
+    return fdictClassifyDockerRuntime()
 
 
-def _fdictColimaStaleLockDiagnosis():
+def _fdictRuntimeRemedy(sSituation, dictRuntime):
+    """Return the catalog shape for one runtime-dependent situation."""
+    from .runtimeRemedies import ftRemedyForSituation
+    sHint, sCommand = ftRemedyForSituation(sSituation, dictRuntime)
+    return {"sHint": sHint, "sCommand": sCommand}
+
+
+def _fdictColimaStaleLockDiagnosis(dictRuntime):
     """Diagnosis for a Colima VM disk lock left from an unclean shutdown."""
-    return {
-        "sHint": "Colima's VM lock is stale, likely from an "
-                 "unclean shutdown. Force-stop and restart Colima.",
-        "sCommand": "colima stop --force && colima start",
-    }
+    from .runtimeRemedies import S_SITUATION_STALE_COLIMA_LOCK
+    return _fdictRuntimeRemedy(S_SITUATION_STALE_COLIMA_LOCK, dictRuntime)
 
 
-def _fdictDaemonUnreachableDiagnosis(sContext, sPlatform):
-    """Diagnosis for a daemon-unreachable error, context/platform aware."""
-    if _fbUseLinuxSystemd(sContext, sPlatform):
-        return {
-            "sHint": "The Docker daemon (docker.service) is not "
-                     "running. Start it via systemd.",
-            "sCommand": "sudo systemctl start docker",
-        }
-    if sContext == "colima":
-        return {
-            "sHint": "Colima is not running. Run `colima start` to "
-                     "bring up the Docker daemon.",
-            "sCommand": "colima start",
-        }
-    return {
-        "sHint": "The Docker daemon is not reachable. Start your "
-                 "Docker runtime (Colima or Docker Desktop).",
-        "sCommand": "colima start",
-    }
+def _fdictDaemonUnreachableDiagnosis(dictRuntime):
+    """Diagnosis for a daemon-unreachable error, from the RUNTIME."""
+    from .runtimeRemedies import S_SITUATION_DAEMON_UNREACHABLE
+    return _fdictRuntimeRemedy(S_SITUATION_DAEMON_UNREACHABLE, dictRuntime)
 
 
 def _fdictSocketAbsentDiagnosis():
@@ -123,19 +138,32 @@ def _fdictBinaryMissingDiagnosis(sPlatform):
     }
 
 
-def _fdictPermissionDeniedDiagnosis(sContext, sPlatform):
-    """Diagnosis for a permission-denied error on the Docker socket."""
-    if _fbUseLinuxSystemd(sContext, sPlatform):
+def _fdictPermissionDeniedDiagnosis(dictRuntime):
+    """Diagnosis for a permission-denied error on the Docker socket.
+
+    The ``docker`` group answer belongs to a ROOTFUL Linux daemon and
+    nowhere else. A rootless daemon's socket is the caller's own and
+    the group does not govern it, so that advice is not merely
+    unhelpful there -- it sends a researcher to add themselves to a
+    group that changes nothing.
+    """
+    from .dockerContext import S_RUNTIME_LINUX_ROOTFUL
+    from .runtimeRemedies import S_SITUATION_RESTART_RUNTIME
+    if dictRuntime.get("sRuntime") == S_RUNTIME_LINUX_ROOTFUL:
         return {
             "sHint": "Docker socket permission was denied. Add your "
                      "user to the 'docker' group and re-login.",
             "sCommand": "sudo usermod -aG docker $USER",
         }
+    dictRemedy = _fdictRuntimeRemedy(
+        S_SITUATION_RESTART_RUNTIME, dictRuntime,
+    )
     return {
-        "sHint": "Docker socket permission was denied. Restart "
-                 "your runtime so the socket is recreated with "
-                 "the expected ownership.",
-        "sCommand": "colima restart",
+        "sHint": (
+            "Docker socket permission was denied, so the socket is "
+            "not owned the way this host expects. " + dictRemedy["sHint"]
+        ),
+        "sCommand": dictRemedy["sCommand"],
     }
 
 

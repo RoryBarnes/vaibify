@@ -729,6 +729,41 @@ a multi-container hub cannot authenticate against another. The REST
 matching the presented token against the owner of the container id named
 in the request path; a request that names no container fails closed.
 
+### Where the hub listens
+
+`host.docker.internal` is not the same address everywhere. On macOS the
+daemon runs in a virtual machine, and the VM forwards that name to the
+host's loopback interface, so a hub bound to `127.0.0.1` answers a
+container. On Linux there is no VM: Docker resolves `host-gateway` to
+the IPv4 gateway of its default `bridge` network (`172.17.0.1` unless
+the daemon was configured otherwise), a container's packet arrives on
+the `docker0` interface, and a loopback-only socket refuses it. That
+was every Linux hub until 2026-09-10 — the in-container agent lane had
+never worked on Linux, and nothing noticed, because the dashboard
+talks to the hub over loopback and an agent that cannot reach the
+backend quietly improvises in the shell instead.
+
+`cli/serverLaunch.fnRunServer` therefore binds the sockets itself and
+hands them to uvicorn (which binds one address per server): loopback
+always, and on Linux also the bridge gateway, read from the daemon
+through `docker/bridgeGateway.fsResolveDockerBridgeGateway` rather than
+hard-coded, so a renamed or renumbered default bridge still resolves.
+The choice is deliberately narrow. macOS stays loopback-only, because
+the second socket would be an exposure with no traffic behind it.
+`0.0.0.0` is never used: the container's session file carries a bearer
+token, and the gateway address is reachable from every container on
+that daemon and from nothing beyond it, which bounds the exposure to
+parties that already needed a per-container token. The Host-header
+check treats a bridge-address request with no agent token exactly as it
+treats a rebinding attack on loopback, so the wider bind opens no route
+the token does not gate. A gateway the daemon cannot name — it was not
+running when the hub started, or a `host-gateway-ip` override points
+elsewhere — degrades to loopback only and is announced on the hub's
+own startup output, because the silent version of that degrade is the
+defect this section exists to record. `vaibify-do` distinguishes a
+refused connection from a timeout for the same reason: a refusal means
+the session file is correct and reconnecting cannot help.
+
 ### `bAgentSafe` is enforced, not advertised
 
 Authorizing the agent lane answers *which container* an agent may act

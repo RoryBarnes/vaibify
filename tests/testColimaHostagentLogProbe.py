@@ -8,6 +8,9 @@ lock, daemon unreachable) proactively in `vaibify doctor`.
 
 from unittest.mock import patch
 
+from tests.dockerRuntimeStub import fnPinDockerRuntime
+from vaibify.docker.dockerContext import S_RUNTIME_COLIMA
+
 from vaibify.cli.preflightChecks import fpreflightColimaHostagentLog
 
 
@@ -57,7 +60,7 @@ def test_silent_when_log_has_only_info_lines(tmp_path):
     pathLog = _fpathFakeLog(tmp_path, _S_GENERIC_NOISE_LOG)
     with patch(
         "vaibify.docker.dockerContext.fbColimaActive", return_value=True,
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"), patch(
         "vaibify.cli.preflightChecks._fpathColimaHostagentLog",
         return_value=pathLog,
     ):
@@ -69,7 +72,7 @@ def test_surfaces_stale_disk_lock(tmp_path):
     pathLog = _fpathFakeLog(tmp_path, _S_STALE_LOCK_LOG)
     with patch(
         "vaibify.docker.dockerContext.fbColimaActive", return_value=True,
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"), patch(
         "vaibify.cli.preflightChecks._fpathColimaHostagentLog",
         return_value=pathLog,
     ):
@@ -91,7 +94,7 @@ def test_picks_most_recent_fatal_line(tmp_path):
     pathLog = _fpathFakeLog(tmp_path, sLog)
     with patch(
         "vaibify.docker.dockerContext.fbColimaActive", return_value=True,
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"), patch(
         "vaibify.cli.preflightChecks._fpathColimaHostagentLog",
         return_value=pathLog,
     ):
@@ -108,7 +111,7 @@ def test_silent_when_log_unparseable(tmp_path):
     )
     with patch(
         "vaibify.docker.dockerContext.fbColimaActive", return_value=True,
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"), patch(
         "vaibify.cli.preflightChecks._fpathColimaHostagentLog",
         return_value=pathLog,
     ):

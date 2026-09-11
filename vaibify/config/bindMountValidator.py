@@ -126,11 +126,29 @@ def fnValidateBindMount(dictMount, sProjectRepoPath=None):
         raise BindMountValidationError(
             f"bindMounts host path '{sRaw}' contains '..'"
         )
+    _fnRejectUnexpressablePath(sRaw, "host")
+    _fnRejectUnexpressablePath(dictMount.get("container") or "", "container")
     sResolved = _fsResolveSymlinks(sRaw)
     _fnRejectDeniedPrefix(sResolved)
     _fnRejectDaemonSocket(sResolved)
     _fnRequireWithinAllowedRoot(sResolved, sProjectRepoPath)
     _fnValidateContainerTarget(dictMount.get("container"))
+
+
+def _fnRejectUnexpressablePath(sPath, sSide):
+    """Reject a path that cannot be written into a ``--mount`` value.
+
+    Docker parses the ``--mount`` value as CSV. Vaibify quotes both
+    paths so a comma is carried correctly, but a double quote inside
+    one cannot be expressed at all -- and a mount silently pointing
+    somewhere other than where it says is worse than a refusal.
+    """
+    if '"' in sPath:
+        raise BindMountValidationError(
+            f"bindMounts {sSide} path '{sPath}' contains a double "
+            "quote, which cannot be expressed in a docker --mount "
+            "value; rename the path."
+        )
 
 
 def _fnRejectDaemonSocket(sResolved):

@@ -369,7 +369,54 @@ why they can come out at zero and a hand rerun cannot.
 It is the difference between believing your work reproduces and having
 watched it happen.
 
-## 8. Where to next
+## 8. When something is wrong
+
+Run `vaibify doctor`, and do what it says.
+
+```bash
+vaibify doctor              # every scope
+vaibify doctor --container  # only what is inside the running container
+```
+
+It is the command for the moment when a build will not build, a
+container will not start, an agent inside the container cannot reach
+anything, or the dashboard is saying something you did not expect. It
+reports on three scopes — this machine, the inside of the running
+container, and vaibify's own record of the project — and every finding
+that needs action names the exact command to run, correct for the
+Docker runtime you are actually using.
+
+Three things about the report are worth knowing before you read one.
+
+**Doctor changes nothing.** It never starts, stops, removes or restarts
+anything. You can run it against a container that has just died without
+destroying the evidence of why.
+
+**"Not checked" is not "ok".** A check that could not run says so, with
+the reason, in its own group, and it is counted in its own column. A
+diagnostic that quietly reports success for having run nothing is worse
+than no diagnostic.
+
+**A finding you can act on names its own command.** Where vaibify can
+apply the fix itself, that command is `vaibify repair`. Where it
+cannot — a network that is down, a daemon that needs more memory — the
+finding says so plainly rather than sending you to a tab.
+
+### Outputs that were re-run outside the container
+
+If you run a step's script yourself — in a terminal, in your editor, on
+a cluster — the outputs it writes are not the outputs vaibify recorded,
+and the dashboard will turn those files red. Nothing is broken and
+nothing was lost: the badge is telling you the truth, which is that the
+file on disk is no longer the one the recorded run produced.
+
+The way forward is to run the step through vaibify (Run Step, or
+`vaibify run`), so the run that produced the file is the run vaibify
+recorded. Vaibify deliberately does not offer a way to mark a file
+"fine as it is": a green badge over a file whose provenance nobody
+knows is exactly the claim this tool exists not to make.
+
+## 9. Where to next
 
 - **[The three templates: sandbox, toolkit, workflow](templates.md)** —
   starting your own project rather than driving someone else's.

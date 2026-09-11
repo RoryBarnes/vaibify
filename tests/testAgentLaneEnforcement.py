@@ -721,3 +721,70 @@ def test_has_credential_still_answers_the_browser_lane(clientBrowser):
     responseHttp = _fresponseHasCredential(clientBrowser)
     assert responseHttp.status_code == 200
     assert responseHttp.json() == {"bHasCredential": True}
+
+
+# ── The Linux bridge bind admits nothing without an agent token ──
+
+S_BRIDGE_HOST_HEADER = "172.17.0.1:8050"
+
+
+def test_a_bridge_address_request_without_a_token_is_refused(appViewer):
+    """On Linux the hub also listens on the Docker bridge gateway, so a
+    request can now arrive with that address in its ``Host`` header from
+    any container on the daemon. Without a per-container agent token it
+    is refused by the same DNS-rebinding check that refuses a
+    non-loopback name on the loopback socket — the wider bind exposes
+    no route the token does not already gate.
+    """
+    from vaibify.gui import serverMiddleware
+    # The harness opts out of the Host check with port 0; a production
+    # launcher passes its real port, and that is the case under test.
+    appViewer.state.iExpectedPort = 8050
+    assert not serverMiddleware.fbIsAllowedHostHeader(
+        S_BRIDGE_HOST_HEADER, 8050,
+    )
+    clientAnonymous = TestClient(
+        appViewer, headers={"Host": S_BRIDGE_HOST_HEADER},
+    )
+    responseHttp = clientAnonymous.get(
+        "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+    )
+    assert responseHttp.status_code == 400
+    assert "Host" in responseHttp.text
+
+
+def test_a_bridge_address_request_with_the_agent_token_is_admitted(
+    appViewer, tmp_path,
+):
+    """The same request carrying the container's own token is served.
+
+    ``clientAgent`` sends ``host.docker.internal``, the name a container
+    dials; this sends the NUMERIC gateway, which is what a container
+    that resolved the name itself presents. Both must ride the agent
+    lane, or a Linux agent would authenticate and then be refused on
+    the Host header.
+    """
+    from vaibify.gui.routes import pipelineRoutes
+    appViewer.state.dictContainerOwners[S_CONTAINER_NAME] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="researcher-lease", fileHandleLock=None,
+            sAgentToken=S_AGENT_TOKEN, sContainerId=S_CONTAINER_ID,
+        )
+    )
+    clientBridge = TestClient(
+        appViewer,
+        headers={
+            actionCatalog.S_SESSION_HEADER_NAME: S_AGENT_TOKEN,
+            "Host": S_BRIDGE_HOST_HEADER,
+        },
+    )
+    sLog = tmp_path / "vaibify.log"
+    sLog.write_text("", encoding="utf-8")
+    with patch.object(
+        pipelineRoutes, "_fsResolveHostLogPath", return_value=str(sLog),
+    ):
+        responseHttp = clientBridge.get(
+            "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json().get("bSanitized") is True

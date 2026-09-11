@@ -147,20 +147,24 @@ def _fdictParseReadinessMarker(sRaw):
     sStripped = (sRaw or "").strip()
     if not sStripped:
         return {
-            "sStatus": "ok", "sReason": "",
-            "saWarnings": [], "sEntrypointVersion": "",
+            "sStatus": "ok", "sReason": "", "saWarnings": [],
+            "listObservations": [], "sEntrypointVersion": "",
         }
     try:
         dictParsed = json.loads(sStripped)
     except (ValueError, TypeError):
         return {
-            "sStatus": "ok", "sReason": "",
-            "saWarnings": [], "sEntrypointVersion": "",
+            "sStatus": "ok", "sReason": "", "saWarnings": [],
+            "listObservations": [], "sEntrypointVersion": "",
         }
     return {
         "sStatus": str(dictParsed.get("sStatus") or "ok"),
         "sReason": str(dictParsed.get("sReason") or ""),
         "saWarnings": list(dictParsed.get("saWarnings") or []),
+        # Absent in every marker an older image wrote, which is why
+        # the entrypoint version is NOT bumped for this field: a
+        # missing list is an older image, not a fault.
+        "listObservations": list(dictParsed.get("listObservations") or []),
         "sEntrypointVersion": str(
             dictParsed.get("sEntrypointVersion") or "",
         ),
@@ -182,6 +186,9 @@ def _fdictBuildReadyResponse(dictMarker):
     sActualVersion = dictMarker.get("sEntrypointVersion") or ""
     if _fbVersionIsMismatched(sActualVersion):
         return _fdictStaleVersionResponse(sActualVersion)
+    from vaibify.gui.startupObservations import (
+        flistDescribeStartupObservations,
+    )
     bReady = sStatus in ("ok", "failed")
     return {
         "bReady": bReady,
@@ -189,6 +196,13 @@ def _fdictBuildReadyResponse(dictMarker):
         "sReason": dictMarker.get("sReason") or "",
         "saWarnings": listWarnings,
         "iWarningCount": len(listWarnings),
+        # Historical evidence from the last `docker start`, never
+        # current state: the entrypoint does not run again when a
+        # laptop changes network. The free-text warnings above are
+        # unchanged, so nothing the dashboard already renders moves.
+        "listStartupObservations": flistDescribeStartupObservations(
+            dictMarker.get("listObservations"),
+        ),
     }
 
 
