@@ -707,6 +707,29 @@ pair for each resolver, and the container direction is the one with
 the wider blast radius: a container handed the host answer gets a
 path that does not exist inside it.
 
+**On Linux the hub binds the Docker bridge gateway beside loopback,
+and only there.** A container dials the hub as `host.docker.internal`.
+On macOS the daemon's VM forwards that name to the host's loopback, so
+a `127.0.0.1` bind answers; on Linux `host-gateway` IS the bridge
+gateway (`172.17.0.1` by default) and a loopback-only socket refuses
+the packet. Every in-container `vaibify-do` call on every Linux box
+failed that way for as long as the agent bridge existed (found
+2026-09-10), and nothing noticed because the dashboard talks over
+loopback and an agent that cannot reach the backend improvises in the
+shell. `serverLaunch.fnRunServer` binds the sockets itself and hands
+them to uvicorn, with the gateway read from the DAEMON
+(`bridgeGateway.fsResolveDockerBridgeGateway`) and never hard-coded.
+Three things not to undo: macOS stays loopback-only (the second socket
+would be exposure with no traffic behind it); an unknown gateway
+degrades to loopback and is ANNOUNCED at launch, because a silent
+degrade is the defect; and `0.0.0.0` is never the answer, since the
+session file carries a bearer token and the gateway address is
+reachable from every container on the daemon and nothing beyond it.
+The Host-header check refuses a bridge-address request that carries no
+per-container agent token, so the wider bind opens no route the token
+does not gate. `tests/testServerLaunchContract.py` is the guard, and
+its live leg runs a real uvicorn on two addresses on the Linux lane.
+
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
 auto-detected from the project.json's parent via

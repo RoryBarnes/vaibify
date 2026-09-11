@@ -13251,6 +13251,27 @@ def _fdictEntry(sRel):
         ),
     ),
 
+    # --- A Linux server binds the Docker bridge gateway beside
+    # loopback. Dropping the append is the loopback-only bind every
+    # Linux hub had until 2026-09-10, under which a container's dial to
+    # host.docker.internal is refused at the socket and every
+    # vaibify-do call fails while the dashboard works.
+    Falsification(
+        nodeid=(
+            'tests/testServerLaunchContract.py::'
+            'test_a_linux_server_binds_the_bridge_gateway_beside_loopback'
+        ),
+        source='vaibify/cli/serverLaunch.py',
+        old=(
+            '    if sGateway and sGateway != sLoopbackHost:\n'
+            '        listAddresses.append(sGateway)\n'
+        ),
+        new=(
+            '    if sGateway and sGateway != sLoopbackHost:\n'
+            '        pass\n'
+        ),
+    ),
+
     # --- The reconnect ladder is sized from the server's hold window.
     # Withhold the window and the client silently falls back to its
     # built-in default, which is the two-constants-that-must-agree

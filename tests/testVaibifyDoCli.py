@@ -1434,3 +1434,67 @@ def test_run_frame_carries_the_bound_acknowledgment(
     assert dictFrame["sAcknowledgedWorkflowPath"] == (
         "/w/repo/.vaibify/projects/p.json"
     )
+
+
+# -----------------------------------------------------------------------
+# A refused connection names its cause; reconnecting cannot fix it
+# -----------------------------------------------------------------------
+
+
+def _fsStderrOfFailedHttpRequest(modCli, capsys, errorFromUrlopen):
+    dictTarget = {"sUrl": "http://host.docker.internal:8051/api/x",
+                  "dictBody": {}}
+    with patch.object(
+        modCli.urllib.request, "urlopen", side_effect=errorFromUrlopen,
+    ):
+        with pytest.raises(SystemExit) as errorExit:
+            modCli.fiSendHttpRequest(dictTarget, "tok", "GET", False)
+    assert errorExit.value.code == 4
+    return capsys.readouterr().err
+
+
+def test_a_refused_http_connection_blames_the_bind_not_the_session(
+    modCli, capsys,
+):
+    """A refusal means nothing listened where the container can reach.
+
+    The old text told the agent to reconnect the container, which
+    rewrites a session file that was already correct; every Linux
+    agent that followed it got the same refusal back. The message must
+    say that, and point at the hub's bind.
+    """
+    sStderr = _fsStderrOfFailedHttpRequest(
+        modCli, capsys,
+        urllib.error.URLError(ConnectionRefusedError(111, "refused")),
+    )
+    assert "refused" in sStderr
+    assert "loopback" in sStderr
+    assert "will not fix" in sStderr
+    assert "http://host.docker.internal:8051/api/x" in sStderr
+
+
+def test_a_timed_out_http_connection_keeps_the_reconnect_advice(
+    modCli, capsys,
+):
+    """A timeout is not a refusal: the packet went nowhere, and a stale
+    session file is the ordinary cause, so the reconnect advice stands.
+    """
+    sStderr = _fsStderrOfFailedHttpRequest(
+        modCli, capsys, socket.timeout("timed out"),
+    )
+    assert "reconnect the container" in sStderr
+    assert "loopback" not in sStderr
+
+
+def test_a_refused_websocket_dial_blames_the_bind(modCli, dictValidEnv, capsys):
+    """The WebSocket path dials with a raw socket and must agree."""
+    with patch.object(
+        socket, "create_connection",
+        side_effect=ConnectionRefusedError(111, "refused"),
+    ):
+        with pytest.raises(SystemExit) as errorExit:
+            modCli.fiRunWebsocket(dictValidEnv, {"sAction": "x"}, False)
+    assert errorExit.value.code == 4
+    sStderr = capsys.readouterr().err
+    assert "refused" in sStderr
+    assert "loopback" in sStderr

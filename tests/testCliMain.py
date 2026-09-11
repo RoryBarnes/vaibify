@@ -7,9 +7,10 @@ from unittest.mock import patch, MagicMock
 
 from vaibify.cli.main import main
 
-# The fnLaunchHub / setup / gui tests below patch ``uvicorn.run`` and
-# ``webbrowser.open`` directly rather than swapping the modules out of
-# ``sys.modules``. Earlier revisions of this file used
+# The fnLaunchHub / setup / gui tests below patch the launcher
+# (``serverLaunch.fnRunServer``, which binds real sockets before it
+# hands them to uvicorn) and ``webbrowser.open`` directly rather than
+# swapping the modules out of ``sys.modules``. Earlier revisions of this file used
 # ``patch.dict(sys.modules, {"uvicorn": mock, "webbrowser": mock})``,
 # but that snapshots and restores ``sys.modules`` on context exit —
 # evicting every module imported transitively *during* the context,
@@ -20,7 +21,7 @@ from vaibify.cli.main import main
 # ``FastAPIError`` on ``lenient_issubclass(annotation, Request)`` —
 # the symptom was ``test_gui_launches_pipeline_viewer`` passing in
 # isolation but failing after ``test_fnLaunchHub_starts_server``.
-# Patching ``uvicorn.run`` and ``webbrowser.open`` at attribute level
+# Patching the launcher and ``webbrowser.open`` at attribute level
 # leaves ``sys.modules`` undisturbed and avoids the cascade.
 
 
@@ -360,7 +361,7 @@ def test_fnLaunchHub_starts_server():
     """
     import os
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
-    with patch("uvicorn.run") as mockRun, \
+    with patch("vaibify.cli.serverLaunch.fnRunServer") as mockRun, \
             patch("webbrowser.open"), \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -374,7 +375,7 @@ def test_fnLaunchHub_starts_server():
             mockApp.assert_called_once()
             mockRun.assert_called_once()
             args = mockRun.call_args
-            assert args[1]["port"] == 8050
+            assert args[0][1] == 8050
 
 
 def test_fnLaunchHub_suppresses_browser_when_env_set():
@@ -382,7 +383,7 @@ def test_fnLaunchHub_suppresses_browser_when_env_set():
     import os
     import time
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
-    with patch("uvicorn.run"), \
+    with patch("vaibify.cli.serverLaunch.fnRunServer"), \
             patch("webbrowser.open") as mockOpen, \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -406,7 +407,7 @@ def test_setup_suppresses_browser_when_env_set():
     """
     import os
     import time
-    with patch("uvicorn.run"), \
+    with patch("vaibify.cli.serverLaunch.fnRunServer"), \
             patch("webbrowser.open") as mockOpen, \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -434,7 +435,7 @@ def test_gui_suppresses_browser_when_env_set(mockConfig):
         sWorkspaceRoot="/workspace",
         sContainerUser="researcher",
     )
-    with patch("uvicorn.run"), \
+    with patch("vaibify.cli.serverLaunch.fnRunServer"), \
             patch("webbrowser.open") as mockOpen, \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -452,7 +453,7 @@ def test_fnLaunchHub_exits_when_session_limit_reached():
     """fnLaunchHub exits nonzero when the 99-session cap is hit."""
     import os
     from vaibify.config.sessionRegistry import SessionLimitExceededError
-    with patch("uvicorn.run") as mockRun, \
+    with patch("vaibify.cli.serverLaunch.fnRunServer") as mockRun, \
             patch("webbrowser.open"), \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -481,7 +482,7 @@ def test_setup_launches_wizard():
     from firing a real browser tab after the patch context exits.
     """
     import os
-    with patch("uvicorn.run") as mockRun, \
+    with patch("vaibify.cli.serverLaunch.fnRunServer") as mockRun, \
             patch("webbrowser.open"), \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -523,7 +524,7 @@ def test_gui_with_a_project_launches_that_projects_viewer(mockConfig):
         sContainerUser="researcher",
     )
     mockCreateApp = MagicMock(return_value=MagicMock())
-    with patch("uvicorn.run") as mockRun, \
+    with patch("vaibify.cli.serverLaunch.fnRunServer") as mockRun, \
             patch("webbrowser.open"), \
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
@@ -555,7 +556,7 @@ def _fnPatchedHeadlessLaunch(dictEnvironment):
     import os
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
     return (
-        patch("uvicorn.run"),
+        patch("vaibify.cli.serverLaunch.fnRunServer"),
         patch("webbrowser.open"),
         patch("vaibify.gui.browserSession.fsMintBootstrapCapability"),
         patch.dict(os.environ, dictEnvironment),
@@ -578,7 +579,7 @@ def test_no_browser_flag_suppresses_the_launch():
     import os
     import time
     patchAcquireSlot, patchReleaseSlot = _fnPatchSessionSlot()
-    with patch("uvicorn.run"), \
+    with patch("vaibify.cli.serverLaunch.fnRunServer"), \
             patch("webbrowser.open") as mockOpen, \
             patch.dict(os.environ, {}), \
             patch(
