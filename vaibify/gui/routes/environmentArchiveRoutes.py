@@ -259,12 +259,12 @@ def _fdictVerifyReferencedDeposit(dictWorkflow, sVersionDoi, dictContainer):
     if listProblems:
         raise HTTPException(409, " ".join(listProblems))
     return _fdictBuildReferencedArchiveRecord(
-        dictZenodoRecord, sVersionDoi, dictContainer,
+        dictZenodoRecord, sVersionDoi, dictContainer, clientZenodo.sService,
     )
 
 
 def _fdictBuildReferencedArchiveRecord(
-    dictZenodoRecord, sVersionDoi, dictContainer,
+    dictZenodoRecord, sVersionDoi, dictContainer, sZenodoService,
 ):
     """Turn a verified Zenodo record into this project's archive record.
 
@@ -297,6 +297,7 @@ def _fdictBuildReferencedArchiveRecord(
         sImageStreamSha256=str(
             dictFingerprint.get("sImageStreamSha256") or "",
         ),
+        sZenodoService=sZenodoService,
     )
 
 

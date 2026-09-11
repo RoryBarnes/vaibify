@@ -11,12 +11,17 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 
 import pytest
 
 from vaibify.reproducibility.imageArchive import S_LOADED_FROM_ARCHIVE_MARKER
+from vaibify.reproducibility.zenodoClient import (
+    S_DOI_RESOLVER_BASE,
+    fdictZenodoServiceTable,
+)
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     _S_HEREDOC_DELIMITER,
@@ -466,21 +471,43 @@ echo "unexpected docker invocation: $*" >&2
 exit 97
 """
 
+# A curl that answers the way the script's hand-followed loop asks:
+# the write-out is ``<http_code> <redirect_url>``, the DOI resolver
+# answers 302 (to a Zenodo record by default, or wherever
+# ``VAIBIFY_TEST_REDIRECT_TO`` says), a file link copies the tarball,
+# anything else is a 200 -- and EVERY URL asked for is recorded, so a
+# test can assert that a refused host was never contacted.
 _S_CURL_STUB = """\
 sOutput=""
+sUrl=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) sOutput="$2"; shift ;;
         -w) shift ;;
+        -*) ;;
+        *) sUrl="$1" ;;
     esac
     shift
 done
-if [ "$sOutput" = "/dev/null" ]; then
-    printf 'https://zenodo.example/records/7000001'
-    exit 0
-fi
-cp "$VAIBIFY_TEST_TARBALL" "$sOutput"
+printf '%s\\n' "$sUrl" >> "$VAIBIFY_TEST_RECORD_DIR/curl.urls"
+case "$sUrl" in
+    https://doi.org/*)
+        printf '302 %s' \\
+            "${VAIBIFY_TEST_REDIRECT_TO:-https://zenodo.org/records/7000001}" ;;
+    */files/*)
+        cp "$VAIBIFY_TEST_TARBALL" "$sOutput"; printf '200 ' ;;
+    *)
+        printf '200 ' ;;
+esac
 """
+
+
+def flistRecordedCurlUrls(pathRecord):
+    """Return every URL the curl stub was asked for, in order."""
+    pathUrls = pathRecord / "curl.urls"
+    if not pathUrls.exists():
+        return []
+    return pathUrls.read_text(encoding="utf-8").splitlines()
 
 
 def _fnWriteStub(pathDirectory, sName, sBody):
@@ -490,7 +517,10 @@ def _fnWriteStub(pathDirectory, sName, sBody):
     pathStub.chmod(0o755)
 
 
-def _fdictDriveFallback(tmp_path, baServedTarball, sRecordedSha256):
+def _fdictDriveFallback(
+    tmp_path, baServedTarball, sRecordedSha256, dictRecordExtra=None,
+    dictEnvironmentExtra=None,
+):
     """Run the rendered script against a registry that no longer serves.
 
     ``docker`` and ``curl`` are stubbed on PATH: the pull fails, the
@@ -502,14 +532,16 @@ def _fdictDriveFallback(tmp_path, baServedTarball, sRecordedSha256):
     """
     pathRepo = tmp_path / "clone"
     (pathRepo / ".vaibify").mkdir(parents=True)
+    dictRecord = {
+        "sVersionDoi": "10.5281/zenodo.7000001",
+        "sTarballName": "environment-image.tar.gz",
+        "sTarballSha256": sRecordedSha256,
+    }
+    dictRecord.update(dictRecordExtra or {})
     (pathRepo / ".vaibify" / "environment.json").write_text(json.dumps({
         "dictContainer": {
             "sImageDigest": _S_ARCHIVED_IMAGE_DIGEST,
-            "dictImageArchive": {
-                "sVersionDoi": "10.5281/zenodo.7000001",
-                "sTarballName": "environment-image.tar.gz",
-                "sTarballSha256": sRecordedSha256,
-            },
+            "dictImageArchive": dictRecord,
         },
     }), encoding="utf-8")
     pathStubs = tmp_path / "stubs"
@@ -533,6 +565,7 @@ def _fdictDriveFallback(tmp_path, baServedTarball, sRecordedSha256):
     dictEnvironment["VAIBIFY_TEST_RECORD_DIR"] = str(pathRecord)
     dictEnvironment["VAIBIFY_TEST_TARBALL"] = str(pathServed)
     dictEnvironment["VAIBIFY_TEST_LOADED_ID"] = _S_LOADED_IMAGE_ID
+    dictEnvironment.update(dictEnvironmentExtra or {})
     tResult = subprocess.run(
         ["bash", str(pathScript)], cwd=str(pathRepo), env=dictEnvironment,
         capture_output=True, text=True, timeout=120,
@@ -542,6 +575,7 @@ def _fdictDriveFallback(tmp_path, baServedTarball, sRecordedSha256):
         "sStderr": tResult.stderr,
         "pathRecord": pathRecord,
         "pathRepo": pathRepo,
+        "listCurlUrls": flistRecordedCurlUrls(pathRecord),
     }
 
 
@@ -590,3 +624,104 @@ def test_a_tampered_archive_never_reaches_docker_load(tmp_path):
     assert not (dictRun["pathRecord"] / "loaded.bin").exists()
     assert not (dictRun["pathRecord"] / "run.argv").exists()
     assert not (dictRun["pathRepo"] / S_LOADED_FROM_ARCHIVE_MARKER).exists()
+
+
+# ============================================================================
+# Which Zenodo, and never a host the table does not name (shell lane)
+# ============================================================================
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+@pytest.mark.falsification
+def test_the_shell_refuses_a_redirect_off_zenodo_before_contacting_it(
+    tmp_path,
+):
+    """A hop that leaves Zenodo is refused BEFORE the request for it is sent.
+
+    The resolver answers 302 to a host outside the table. ``curl -L``
+    would have contacted that host by the time its final URL was
+    readable; the hand-followed loop must never ask for it at all, so
+    the recorded URLs carry exactly the one request that was allowed.
+
+    Kills: skipping the host check in fnFetchWithinAllowlist.
+    """
+    baTarball = gzip.compress(b"bytes behind a hostile redirect")
+    dictRun = _fdictDriveFallback(
+        tmp_path, baTarball,
+        "sha256:" + hashlib.sha256(baTarball).hexdigest(),
+        dictEnvironmentExtra={
+            "VAIBIFY_TEST_REDIRECT_TO": "https://evil.example/records/7000001",
+        },
+    )
+    assert dictRun["iExit"] != 0
+    assert "refusing to fetch from evil.example" in dictRun["sStderr"]
+    assert dictRun["listCurlUrls"] == ["https://doi.org/10.5281/zenodo.7000001"]
+    assert not (dictRun["pathRecord"] / "loaded.bin").exists()
+    assert not (dictRun["pathRepo"] / S_LOADED_FROM_ARCHIVE_MARKER).exists()
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+@pytest.mark.falsification
+def test_a_recorded_service_composes_the_record_url_and_never_asks_the_resolver(
+    tmp_path,
+):
+    """Kills: following the DOI whether or not the record names its service."""
+    baTarball = gzip.compress(b"bytes on the sandbox")
+    dictRun = _fdictDriveFallback(
+        tmp_path, baTarball,
+        "sha256:" + hashlib.sha256(baTarball).hexdigest(),
+        dictRecordExtra={"sZenodoService": "sandbox"},
+    )
+    assert dictRun["iExit"] == 0, dictRun["sStderr"]
+    assert dictRun["listCurlUrls"] == [
+        "https://sandbox.zenodo.org/records/7000001/files/"
+        "environment-image.tar.gz?download=1",
+    ]
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+def test_an_unknown_service_in_the_record_is_refused_without_a_fetch(tmp_path):
+    baTarball = gzip.compress(b"bytes nobody asks for")
+    dictRun = _fdictDriveFallback(
+        tmp_path, baTarball,
+        "sha256:" + hashlib.sha256(baTarball).hexdigest(),
+        dictRecordExtra={"sZenodoService": "mirror"},
+    )
+    assert dictRun["iExit"] != 0
+    assert "mirror" in dictRun["sStderr"]
+    assert dictRun["listCurlUrls"] == []
+
+
+def test_the_shell_and_the_client_spell_the_same_hosts():
+    """The service table in the script IS the client's table, arm for arm.
+
+    Rendered from the table rather than typed twice, and read back out
+    of the shell text here so a rendering that dropped an arm, or an
+    allowlist that forgot a host, fails by name.
+    """
+    sScript = fsRenderReproduceScript({"listSteps": []})
+    dictShell = dict(re.findall(
+        r"^        (\w+)\) printf '%s' '([^']+)' ;;$", sScript, re.MULTILINE,
+    ))
+    assert dictShell == fdictZenodoServiceTable()
+    matchAllow = re.search(r"^        (\S+)\) return 0 ;;$", sScript, re.MULTILINE)
+    assert matchAllow is not None
+    assert set(matchAllow.group(1).split("|")) == (
+        {f"{sBase}/*" for sBase in dictShell.values()}
+        | {S_DOI_RESOLVER_BASE.rstrip("/") + "/*"}
+    )
+
+
+def test_the_shell_never_lets_curl_follow_a_redirect_on_its_own():
+    """Every curl in the script is the one inside the checked loop, sans -L."""
+    sScript = fsRenderReproduceScript({"listSteps": []})
+    assert "--location" not in sScript
+    assert re.search(r"\bcurl -[A-Za-z]*L\b", sScript) is None
+    listInvocations = re.findall(r"^.*\bcurl -.*$", sScript, re.MULTILINE)
+    assert len(listInvocations) == 1, listInvocations
+    iLoopStart = sScript.index("fnFetchWithinAllowlist() {")
+    iLoopEnd = sScript.index("\n}\n", iLoopStart)
+    assert iLoopStart < sScript.index(listInvocations[0]) < iLoopEnd

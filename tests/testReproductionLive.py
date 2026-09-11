@@ -39,10 +39,9 @@ from tests.reproductionSourceFixtures import (
     fsBuildPublishedProject,
 )
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
-from tests.testImageAcquisition import LoopbackDeposit
+from tests.testImageAcquisition import LoopbackDeposit, fnPointZenodoAt
 from vaibify.cli.commandReproduce import fnReproduceCommand
 from vaibify.docker import disposableContainer
-from vaibify.reproducibility import imageAcquisition
 from vaibify.reproducibility import imageDeposit
 from vaibify.reproducibility import reproductionReport
 from vaibify.reproducibility import reproductionSource
@@ -163,7 +162,7 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     the real shadow has something to grade.
     """
     with LoopbackDeposit(dictLiveProbe["pathZenodo"]) as server:
-        monkeypatch.setattr(imageAcquisition, "_S_DOI_RESOLVER", server.sResolver)
+        fnPointZenodoAt(monkeypatch, server)
         result = CliRunner().invoke(
             fnReproduceCommand,
             ["--from", dictLiveProbe["sRepoPath"], "--rerun"],

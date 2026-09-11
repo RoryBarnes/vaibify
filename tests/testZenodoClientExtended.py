@@ -189,14 +189,14 @@ def _fmockResponse(iStatusCode=200, dictJson=None, sText=""):
     return mockResp
 
 
-@patch("requests.request")
-def test_fdictGetDeposit(mockRequest, clientTest):
-    mockRequest.return_value = _fmockResponse(
+@patch("requests.get")
+def test_fdictGetDeposit(mockGet, clientTest):
+    mockGet.return_value = _fmockResponse(
         dictJson={"id": 42, "metadata": {}},
     )
     dictResult = clientTest.fdictGetDeposit(42)
     assert dictResult["id"] == 42
-    sUrl = mockRequest.call_args[0][1]
+    sUrl = mockGet.call_args[0][0]
     assert "/42" in sUrl
 
 
@@ -218,14 +218,14 @@ def test_fdictCopyDraft(mockRequest, clientTest):
     assert "newversion" in sUrl
 
 
-@patch("requests.request")
-def test_flistSearchDeposits(mockRequest, clientTest):
-    mockRequest.return_value = _fmockResponse(
+@patch("requests.get")
+def test_flistSearchDeposits(mockGet, clientTest):
+    mockGet.return_value = _fmockResponse(
         dictJson=[{"id": 1}, {"id": 2}],
     )
     listResult = clientTest.flistSearchDeposits("vaibify")
     assert isinstance(listResult, list)
-    dictParams = mockRequest.call_args[1].get("params", {})
+    dictParams = mockGet.call_args[1].get("params", {})
     assert dictParams.get("q") == "vaibify"
 
 
@@ -302,28 +302,23 @@ def test_fdictGetNewVersionDraft_raises_clean_error_on_missing_links(
 
 
 @patch("requests.request")
+@patch("requests.get")
 def test_fdictGetNewVersionDraft_follows_latest_draft_link(
-    mockRequest, clientTest,
+    mockGet, mockRequest, clientTest,
 ):
-    listResponses = [
-        _fmockResponse(
-            dictJson={
-                "links": {
-                    "latest_draft": "https://example.invalid/draft/9"
-                },
-            },
-        ),
-        _fmockResponse(
-            dictJson={"id": 9, "links": {"bucket": "https://b/9"}},
-        ),
-    ]
-    mockRequest.side_effect = listResponses
+    """The POST creates the version; the GET follows its draft link."""
+    sDraftUrl = "https://sandbox.zenodo.org/api/deposit/depositions/9"
+    mockRequest.return_value = _fmockResponse(
+        dictJson={"links": {"latest_draft": sDraftUrl}},
+    )
+    mockGet.return_value = _fmockResponse(
+        dictJson={"id": 9, "links": {"bucket": "https://b/9"}},
+    )
     dictDraft = clientTest.fdictGetNewVersionDraft(7)
     assert dictDraft["id"] == 9
-    assert mockRequest.call_count == 2
-    assert mockRequest.call_args_list[1][0][1] == (
-        "https://example.invalid/draft/9"
-    )
+    assert mockRequest.call_count == 1
+    assert mockGet.call_count == 1
+    assert mockGet.call_args[0][0] == sDraftUrl
 
 
 # -----------------------------------------------------------------------
@@ -332,60 +327,70 @@ def test_fdictGetNewVersionDraft_follows_latest_draft_link(
 
 
 @patch("requests.request")
+@patch("requests.get")
 def test_fnClearDraftFiles_no_op_when_files_field_absent(
-    mockRequest, clientTest,
+    mockGet, mockRequest, clientTest,
 ):
-    mockRequest.return_value = _fmockResponse(
+    mockGet.return_value = _fmockResponse(
         dictJson={"id": 7},
     )
     clientTest.fnClearDraftFiles(7)
-    assert mockRequest.call_count == 1
+    assert mockGet.call_count == 1
+    mockRequest.assert_not_called()
 
 
 @patch("requests.request")
+@patch("requests.get")
 def test_fnClearDraftFiles_no_op_when_files_list_empty(
-    mockRequest, clientTest,
+    mockGet, mockRequest, clientTest,
 ):
-    mockRequest.return_value = _fmockResponse(
+    mockGet.return_value = _fmockResponse(
         dictJson={"id": 7, "files": []},
     )
     clientTest.fnClearDraftFiles(7)
-    assert mockRequest.call_count == 1
+    assert mockGet.call_count == 1
+    mockRequest.assert_not_called()
 
 
 @patch("requests.request")
+@patch("requests.get")
 def test_fnClearDraftFiles_skips_files_without_id(
-    mockRequest, clientTest,
+    mockGet, mockRequest, clientTest,
 ):
-    mockRequest.return_value = _fmockResponse(
+    mockGet.return_value = _fmockResponse(
         dictJson={
             "id": 7,
             "files": [{"filename": "no-id.png"}],
         },
     )
     clientTest.fnClearDraftFiles(7)
-    assert mockRequest.call_count == 1
+    assert mockGet.call_count == 1
+    mockRequest.assert_not_called()
 
 
 @patch("requests.request")
-def test_fnClearDraftFiles_deletes_each_file(mockRequest, clientTest):
-    listResponses = [
-        _fmockResponse(
-            dictJson={
-                "id": 7,
-                "files": [
-                    {"id": "fid1"}, {"file_id": "fid2"},
-                ],
-            },
-        ),
+@patch("requests.get")
+def test_fnClearDraftFiles_deletes_each_file(
+    mockGet, mockRequest, clientTest,
+):
+    """The file list arrives by GET; each file then goes by DELETE."""
+    mockGet.return_value = _fmockResponse(
+        dictJson={
+            "id": 7,
+            "files": [
+                {"id": "fid1"}, {"file_id": "fid2"},
+            ],
+        },
+    )
+    mockRequest.side_effect = [
         _fmockResponse(iStatusCode=204),
         _fmockResponse(iStatusCode=204),
     ]
-    mockRequest.side_effect = listResponses
     clientTest.fnClearDraftFiles(7)
-    assert mockRequest.call_count == 3
+    assert mockGet.call_count == 1
+    assert mockRequest.call_count == 2
     saMethods = [
         call_args[0][0]
-        for call_args in mockRequest.call_args_list[1:]
+        for call_args in mockRequest.call_args_list
     ]
     assert saMethods == ["DELETE", "DELETE"]

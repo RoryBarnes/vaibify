@@ -28,6 +28,7 @@ implementing every HTTP path. That deployment has two consequences:
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -59,10 +60,38 @@ class ZenodoRateLimitError(ZenodoError):
     """Rate limit exceeded (429)."""
 
 
+class ZenodoRedirectRefusedError(ZenodoError):
+    """A fetch would have left the allowed hosts, and was not sent.
+
+    Raised BEFORE the request that would have crossed over: the host
+    is checked on the URL a caller hands in and on every ``Location``
+    a redirect names, so a redirect is never followed on trust.
+    """
+
+
+# The only place a Zenodo host is spelled. Every reader of a deposit
+# record maps the record's service name through this table; a record
+# that names any other service is refused, never fetched.
 _SERVICES = {
     "zenodo": "https://zenodo.org",
     "sandbox": "https://sandbox.zenodo.org",
 }
+
+# The DOI resolver, for a deposit record the client cannot address.
+# Followed BY HAND through the same origin check as every other fetch,
+# so it may send a request to Zenodo and nowhere else.
+S_DOI_RESOLVER_BASE = "https://doi.org/"
+
+# DataCite's test prefix, which every sandbox DOI carries. The
+# sandbox's DOIs do not contain the word "sandbox", so a classifier
+# that looked for it sent every sandbox deposit to production Zenodo.
+_S_SANDBOX_DOI_PREFIX = "10.5072/"
+
+# How many redirects a hand-followed fetch will take before refusing.
+# Zenodo answers its API and file links directly (measured against
+# both instances on 2026-09-11); the loop exists for the doi.org
+# resolver and for the day either instance starts redirecting.
+_I_MAX_REDIRECT_HOPS = 5
 
 _CHUNK_SIZE = 1024 * 1024
 _HASH_CHUNK_SIZE = 64 * 1024
@@ -83,6 +112,14 @@ __all__ = [
     "ZenodoAuthError",
     "ZenodoNotFoundError",
     "ZenodoRateLimitError",
+    "ZenodoRedirectRefusedError",
+    "S_DOI_RESOLVER_BASE",
+    "fdictZenodoServiceTable",
+    "flistAllowedZenodoOrigins",
+    "fresponseGetWithinAllowlist",
+    "fsOriginOfUrl",
+    "fsResolveServiceBaseUrl",
+    "fsServiceForDoi",
     "fsZenodoTokenName",
     "fdictFetchRemoteHashes",
     "fdictRevokeZenodoToken",
@@ -97,6 +134,24 @@ class ZenodoClient:
         self._sService = sService
         self._sBaseUrl = sBaseUrl or f"{_SERVICES[sService]}/api"
         self._sToken = sToken
+
+    @property
+    def sService(self):
+        """The service key this client was built for."""
+        return self._sService
+
+    def flistAllowedOrigins(self):
+        """Return the origins a GET from this client may reach.
+
+        The table's hosts plus this client's own base URL, so a client
+        built over an injected base (a loopback fixture, the container
+        script's fixed API base) can reach it and nothing else.
+        """
+        listOrigins = flistAllowedZenodoOrigins()
+        sOwnOrigin = fsOriginOfUrl(self._sBaseUrl)
+        if sOwnOrigin not in listOrigins:
+            listOrigins.append(sOwnOrigin)
+        return listOrigins
 
     # ------------------------------------------------------------------
     # Public API
@@ -160,9 +215,7 @@ class ZenodoClient:
         sFileUrl = _fsFindFileUrlOrNone(dictRecord, sFileName)
         if not sFileUrl:
             return None
-        baContent = _fbaFetchBoundedContent(
-            _fdictBuildAuthHeader(self._fsGetToken()), sFileUrl,
-        )
+        baContent = _fbaFetchBoundedContent(self, sFileUrl)
         if baContent is None:
             return None
         try:
@@ -290,11 +343,26 @@ class ZenodoClient:
     # ------------------------------------------------------------------
 
     def _fdictRequest(self, sMethod, sUrl, **kwargs):
-        """Send an authenticated request and return decoded JSON."""
+        """Send an authenticated request and return decoded JSON.
+
+        A GET is hand-followed through :func:`fresponseGetWithinAllowlist`
+        so no redirect is taken before its target host is checked. Any
+        other method is sent without following redirects at all: a
+        mutating call Zenodo answers with a 3xx is an error to report,
+        never a request to replay somewhere else.
+        """
         dictHeaders = _fdictBuildAuthHeader(self._fsGetToken())
         kwargs.setdefault("headers", {}).update(dictHeaders)
         kwargs.setdefault("timeout", _TUPLE_REQUEST_TIMEOUT_SECONDS)
-        responseHttp = requests.request(sMethod, sUrl, **kwargs)
+        if sMethod.upper() == "GET":
+            responseHttp = fresponseGetWithinAllowlist(
+                sUrl, self.flistAllowedOrigins(),
+                dictHeaders=kwargs["headers"], tTimeout=kwargs["timeout"],
+                dictParams=kwargs.get("params"),
+            )
+        else:
+            kwargs.setdefault("allow_redirects", False)
+            responseHttp = requests.request(sMethod, sUrl, **kwargs)
         _fnCheckResponse(responseHttp)
         if responseHttp.status_code == 204:
             return {}
@@ -329,6 +397,122 @@ def _fnValidateService(sService):
             f"Unknown Zenodo service '{sService}'. "
             f"Valid options: {sorted(_SERVICES)}"
         )
+
+
+def fsResolveServiceBaseUrl(sService):
+    """Return the base URL of a validated service name; raise otherwise."""
+    _fnValidateService(sService)
+    return _SERVICES[sService]
+
+
+def fdictZenodoServiceTable():
+    """Return a copy of the service -> base-URL table.
+
+    For the one other place a Zenodo host must be known -- the shell
+    ``reproduce.sh`` renders -- which is generated from this table so
+    the two lanes cannot disagree about where a deposit lives.
+    """
+    return dict(_SERVICES)
+
+
+def fsServiceForDoi(sDoi):
+    """Return the service a DOI's PREFIX names: sandbox or production.
+
+    Used only for a deposit record written before the record carried
+    its service. A sandbox DOI is ``10.5072/zenodo.<id>`` -- DataCite's
+    test prefix -- and nothing in it says "sandbox"; classifying by the
+    word sent every sandbox deposit to production Zenodo, where the
+    record 404s and the caller fell through to composing a download
+    URL from a DataCite error page.
+    """
+    if str(sDoi or "").strip().startswith(_S_SANDBOX_DOI_PREFIX):
+        return "sandbox"
+    return "zenodo"
+
+
+def fsOriginOfUrl(sUrl):
+    """Return ``scheme://netloc`` of a URL, lowercased, or ``""``.
+
+    The netloc is compared whole -- port and any userinfo included --
+    so ``zenodo.org:8443`` and ``zenodo.org@evil.example`` are both
+    different origins from ``zenodo.org``, and refused.
+    """
+    tParts = urlsplit(str(sUrl or ""))
+    if not tParts.scheme or not tParts.netloc:
+        return ""
+    return f"{tParts.scheme.lower()}://{tParts.netloc.lower()}"
+
+
+def flistAllowedZenodoOrigins():
+    """Return the origins of every service in the table."""
+    return [fsOriginOfUrl(sBaseUrl) for sBaseUrl in _SERVICES.values()]
+
+
+def fresponseGetWithinAllowlist(
+    sUrl, listAllowedOrigins, dictHeaders=None, bStream=False,
+    tTimeout=_TUPLE_REQUEST_TIMEOUT_SECONDS, dictParams=None,
+):
+    """GET one URL, following redirects BY HAND; return the response.
+
+    Every hop's origin -- the URL handed in, then each ``Location`` --
+    is checked against ``listAllowedOrigins`` BEFORE the request for
+    it is sent. ``requests`` with ``allow_redirects=True`` (and ``curl
+    -L``) has already contacted the redirected host by the time the
+    final URL is readable, which is why the following is done here
+    rather than delegated. A ``Location`` whose origin differs from the
+    URL that answered it is fetched without the Authorization header,
+    so a token is never carried to a host that did not receive the
+    first request.
+
+    Raises :class:`ZenodoRedirectRefusedError`, naming the refused
+    host and never echoing the URL's path or query, when a hop leaves
+    the allowlist or the hop limit is exceeded.
+    """
+    dictHeaders = dict(dictHeaders or {})
+    for _iHop in range(_I_MAX_REDIRECT_HOPS + 1):
+        _fnRefuseOutsideAllowlist(sUrl, listAllowedOrigins)
+        responseHttp = requests.get(
+            sUrl, headers=dictHeaders, stream=bStream, timeout=tTimeout,
+            params=dictParams, allow_redirects=False,
+        )
+        if not _fbAnswersWithRedirect(responseHttp):
+            return responseHttp
+        sNextUrl = urljoin(sUrl, str(responseHttp.headers.get("Location")))
+        responseHttp.close()
+        if fsOriginOfUrl(sNextUrl) != fsOriginOfUrl(sUrl):
+            dictHeaders.pop("Authorization", None)
+        sUrl, dictParams = sNextUrl, None
+    raise ZenodoRedirectRefusedError(
+        f"refusing to follow more than {_I_MAX_REDIRECT_HOPS} redirects "
+        f"from {fsOriginOfUrl(sUrl)}"
+    )
+
+
+def _fbAnswersWithRedirect(responseHttp):
+    """Return True iff the response is a 3xx that names a ``Location``.
+
+    Read off the status code and the header rather than the library's
+    ``is_redirect`` so a stand-in response with neither reads as a
+    final answer, never as a hop to follow.
+    """
+    iStatus = getattr(responseHttp, "status_code", None)
+    if not isinstance(iStatus, int) or not 300 <= iStatus < 400:
+        return False
+    dictHeaders = getattr(responseHttp, "headers", None) or {}
+    return bool(dictHeaders.get("Location"))
+
+
+def _fnRefuseOutsideAllowlist(sUrl, listAllowedOrigins):
+    """Raise unless ``sUrl``'s origin is one of the allowed ones."""
+    sOrigin = fsOriginOfUrl(sUrl)
+    if sOrigin and sOrigin in listAllowedOrigins:
+        return
+    raise ZenodoRedirectRefusedError(
+        "refusing to fetch from "
+        + (sOrigin or "a URL with no host")
+        + ": it is not a Zenodo host this vaibify knows ("
+        + ", ".join(listAllowedOrigins) + ")"
+    )
 
 
 def fsZenodoTokenName(sService):
@@ -530,10 +714,10 @@ def _fnStreamDownload(clientZenodo, sFileUrl, sDestination, sFileName):
     pathDest = Path(sDestination)
     pathDest.mkdir(parents=True, exist_ok=True)
     pathOutput = pathDest / sFileName
-    dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
-    responseHttp = requests.get(
-        sFileUrl, headers=dictHeaders, stream=True,
-        timeout=(10, 60),
+    responseHttp = fresponseGetWithinAllowlist(
+        sFileUrl, clientZenodo.flistAllowedOrigins(),
+        dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
+        bStream=True, tTimeout=(10, 60),
     )
     _fnCheckResponse(responseHttp)
     iTotal = int(responseHttp.headers.get("content-length", 0))
@@ -654,16 +838,18 @@ def _fsFindFileUrlOrNone(dictRecord, sFileName):
     return ""
 
 
-def _fbaFetchBoundedContent(dictHeaders, sFileUrl):
+def _fbaFetchBoundedContent(clientZenodo, sFileUrl):
     """Stream up to the byte cap; ``None`` on any transport failure.
 
-    Takes the auth headers rather than the client because it needs
-    nothing else from it, and because a bounded read is the one
-    download path where the caller must be able to see the ceiling.
+    A bounded read is the one download path where the caller must be
+    able to see the ceiling, so the cap is a module constant beside
+    the chunk sizes rather than a parameter.
     """
     try:
-        responseHttp = requests.get(
-            sFileUrl, headers=dictHeaders, stream=True, timeout=(10, 60),
+        responseHttp = fresponseGetWithinAllowlist(
+            sFileUrl, clientZenodo.flistAllowedOrigins(),
+            dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
+            bStream=True, tTimeout=(10, 60),
         )
         _fnCheckResponse(responseHttp)
     except (requests.RequestException, ZenodoError):
@@ -700,11 +886,11 @@ def _fnFillMissingRequestedPaths(dictResult, listRelPaths):
 def _fsHashRemoteFile(clientZenodo, dictFile):
     """Stream-download one deposit file and return its SHA-256 digest."""
     sFileUrl = dictFile["links"]["self"]
-    dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
     try:
-        responseHttp = requests.get(
-            sFileUrl, headers=dictHeaders, stream=True,
-            timeout=(10, 60),
+        responseHttp = fresponseGetWithinAllowlist(
+            sFileUrl, clientZenodo.flistAllowedOrigins(),
+            dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
+            bStream=True, tTimeout=(10, 60),
         )
     except requests.RequestException as errorCaught:
         raise ZenodoError(

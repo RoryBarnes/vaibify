@@ -375,6 +375,7 @@ def fdictDepositImageArchive(
         sImageDigest=sImageReference, sArchitecture=sArchitecture,
         sTarballName=os.path.basename(sTarballPath),
         sImageStreamSha256=sStreamSha256,
+        sZenodoService=clientZenodo.sService,
     )
     # Stamped BEFORE the draft is created, because Zenodo's metadata
     # has no field for "which image is this" and a later reference to

@@ -165,7 +165,7 @@ def fbWorkflowAnswersImageArchive(dictWorkflow):
 def fdictBuildArchiveRecord(
     sVersionDoi, sConceptDoi, sTarballSha256, iTarballBytes,
     sDepositedIso, sProvenance, sImageDigest, sArchitecture,
-    sTarballName, sImageStreamSha256="",
+    sTarballName, sImageStreamSha256="", sZenodoService="",
 ):
     """Assemble the deposit record written into the environment snapshot.
 
@@ -175,10 +175,18 @@ def fdictBuildArchiveRecord(
     because the compressed bytes depend on which codec and which build
     of it produced them and an identical image would otherwise report
     as diverged.
+
+    ``sZenodoService`` names WHICH Zenodo holds the deposit (the
+    client's own service key, ``sandbox`` or ``zenodo``). A reader
+    maps it through the client's host table and refuses any other
+    value; nothing in the record is ever fetched as a URL. Records
+    written before the field existed carry ``""`` and are classified
+    by their DOI prefix.
     """
     return {
         "sVersionDoi": sVersionDoi,
         "sConceptDoi": sConceptDoi,
+        "sZenodoService": sZenodoService,
         "sTarballName": sTarballName,
         "sTarballSha256": sTarballSha256,
         "sImageStreamSha256": sImageStreamSha256,

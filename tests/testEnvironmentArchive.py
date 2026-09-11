@@ -652,6 +652,8 @@ def test_the_upload_phase_is_reported_before_the_bytes_go_up(
     listEvents = []
 
     class _ClientRecordingOrder:
+        sService = "sandbox"
+
         def fdictCreateDraft(self, dictMetadata):
             del dictMetadata
             return {"id": 7, "links": {"bucket": "https://zenodo.example/b"}}
@@ -989,6 +991,8 @@ def test_the_deposit_sends_the_fields_zenodo_requires(tmp_path):
     listDrafts = []
 
     class _FakeZenodo:
+        sService = "sandbox"
+
         def fdictCreateDraft(self, dictMetadata):
             listDrafts.append(dictMetadata)
             return {"id": 1, "links": {"bucket": "https://b"}}
