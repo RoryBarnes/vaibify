@@ -222,6 +222,15 @@ filesystem. On a shared or sensitive machine, prefer
 [rootless mode](https://docs.docker.com/engine/security/rootless/),
 which vaibify works with unchanged.
 
+One Linux-specific point about the in-container agent. A container
+reaches the hub through the Docker bridge gateway (`172.17.0.1` by
+default), not through the host's loopback interface, so on Linux the
+hub also listens on that gateway address. It asks the daemon for the
+address when it starts, and prints what it bound; if the daemon was not
+running at that moment the hub says so and listens on loopback only,
+in which case the dashboard works but `vaibify-do` inside the container
+cannot reach the hub. Start the daemon, then restart `vaibify`.
+
 Finally, make sure the daemon starts with the machine:
 
 ```bash

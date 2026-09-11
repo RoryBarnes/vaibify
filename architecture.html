@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.11.dev10 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.12.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc5db20"></script>
+      <script src="_static/documentation_options.js?v=b0e6865f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -79,6 +79,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#starting-a-container-is-a-server-owned-reservation">Starting a container is a server-owned reservation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#where-the-hub-listens">Where the hub listens</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
@@ -884,6 +885,40 @@ a multi-container hub cannot authenticate against another. The REST
 <code class="docutils literal notranslate"><span class="pre">SessionTokenMiddleware</span></code> enforces the same per-container scoping by
 matching the presented token against the owner of the container id named
 in the request path; a request that names no container fails closed.</p>
+</section>
+<section id="where-the-hub-listens">
+<h3>Where the hub listens<a class="headerlink" href="#where-the-hub-listens" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">host.docker.internal</span></code> is not the same address everywhere. On macOS the
+daemon runs in a virtual machine, and the VM forwards that name to the
+host’s loopback interface, so a hub bound to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> answers a
+container. On Linux there is no VM: Docker resolves <code class="docutils literal notranslate"><span class="pre">host-gateway</span></code> to
+the IPv4 gateway of its default <code class="docutils literal notranslate"><span class="pre">bridge</span></code> network (<code class="docutils literal notranslate"><span class="pre">172.17.0.1</span></code> unless
+the daemon was configured otherwise), a container’s packet arrives on
+the <code class="docutils literal notranslate"><span class="pre">docker0</span></code> interface, and a loopback-only socket refuses it. That
+was every Linux hub until 2026-09-10 — the in-container agent lane had
+never worked on Linux, and nothing noticed, because the dashboard
+talks to the hub over loopback and an agent that cannot reach the
+backend quietly improvises in the shell instead.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cli/serverLaunch.fnRunServer</span></code> therefore binds the sockets itself and
+hands them to uvicorn (which binds one address per server): loopback
+always, and on Linux also the bridge gateway, read from the daemon
+through <code class="docutils literal notranslate"><span class="pre">docker/bridgeGateway.fsResolveDockerBridgeGateway</span></code> rather than
+hard-coded, so a renamed or renumbered default bridge still resolves.
+The choice is deliberately narrow. macOS stays loopback-only, because
+the second socket would be an exposure with no traffic behind it.
+<code class="docutils literal notranslate"><span class="pre">0.0.0.0</span></code> is never used: the container’s session file carries a bearer
+token, and the gateway address is reachable from every container on
+that daemon and from nothing beyond it, which bounds the exposure to
+parties that already needed a per-container token. The Host-header
+check treats a bridge-address request with no agent token exactly as it
+treats a rebinding attack on loopback, so the wider bind opens no route
+the token does not gate. A gateway the daemon cannot name — it was not
+running when the hub started, or a <code class="docutils literal notranslate"><span class="pre">host-gateway-ip</span></code> override points
+elsewhere — degrades to loopback only and is announced on the hub’s
+own startup output, because the silent version of that degrade is the
+defect this section exists to record. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> distinguishes a
+refused connection from a timeout for the same reason: a refusal means
+the session file is correct and reconnecting cannot help.</p>
 </section>
 <section id="bagentsafe-is-enforced-not-advertised">
 <h3><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised<a class="headerlink" href="#bagentsafe-is-enforced-not-advertised" title="Link to this heading"></a></h3>

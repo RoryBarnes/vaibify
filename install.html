@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.11.dev10 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.12.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dc5db20"></script>
+      <script src="_static/documentation_options.js?v=b0e6865f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -348,6 +348,14 @@ equivalent to root on the host, because a container can mount the host
 filesystem. On a shared or sensitive machine, prefer
 <a class="reference external" href="https://docs.docker.com/engine/security/rootless/">rootless mode</a>,
 which vaibify works with unchanged.</p>
+<p>One Linux-specific point about the in-container agent. A container
+reaches the hub through the Docker bridge gateway (<code class="docutils literal notranslate"><span class="pre">172.17.0.1</span></code> by
+default), not through the host’s loopback interface, so on Linux the
+hub also listens on that gateway address. It asks the daemon for the
+address when it starts, and prints what it bound; if the daemon was not
+running at that moment the hub says so and listens on loopback only,
+in which case the dashboard works but <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> inside the container
+cannot reach the hub. Start the daemon, then restart <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>.</p>
 <p>Finally, make sure the daemon starts with the machine:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>docker
 </pre></div>
