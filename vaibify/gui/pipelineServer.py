@@ -2392,6 +2392,7 @@ def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
     """
     from vaibify.reproducibility.environmentSnapshot import (
         _fsExtractImageDigest,
+        fdictCompareEnvelopePin,
         fdictReadEnvironmentJson,
     )
     dictIdentity = (
@@ -2403,17 +2404,11 @@ def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
         )
     except (OSError, ValueError, KeyError):
         sPinned = ""
-    sLiveDigest = dictIdentity.get("sImageDigest") or ""
-    sLiveId = dictIdentity.get("sImageId") or ""
-    dictAnswer = {
-        "sPinnedImageDigest": sPinned,
-        "sLiveImageDigest": sLiveDigest or sLiveId,
-    }
-    if not sPinned or not (sLiveDigest or sLiveId):
-        dictAnswer["bPinnedImageIsLive"] = None
-        return dictAnswer
-    dictAnswer["bPinnedImageIsLive"] = sPinned in (sLiveDigest, sLiveId)
-    return dictAnswer
+    return fdictCompareEnvelopePin(
+        sPinned,
+        dictIdentity.get("sImageDigest") or "",
+        dictIdentity.get("sImageId") or "",
+    )
 
 
 async def fdictHandleConnect(

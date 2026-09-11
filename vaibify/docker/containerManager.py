@@ -13,6 +13,7 @@ a worker thread cannot be terminated, which made "abort the start"
 unachievable as written.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -316,18 +317,51 @@ def _fsRunDetachedCommand(saCommand):
     return processResult.stdout.strip()
 
 
-def _flistAssembleRunCommand(config, saRunArgs, saCommand):
-    """Combine docker run prefix, args, image tag, and user command."""
-    return _flistAssembleDockerCommand("run", config, saRunArgs, saCommand)
+def _flistAssembleRunCommand(
+    config, saRunArgs, saCommand, sImageReference="",
+):
+    """Combine docker run prefix, args, image reference, and user command."""
+    return _flistAssembleDockerCommand(
+        "run", config, saRunArgs, saCommand, sImageReference,
+    )
 
 
-def _flistAssembleDockerCommand(sSubcommand, config, saRunArgs, saCommand):
-    """Combine a docker subcommand, its args, the image tag, and a command."""
-    sImageTag = f"{config.sProjectName}:latest"
-    saFullCommand = ["docker", sSubcommand] + saRunArgs + [sImageTag]
+def _flistAssembleDockerCommand(
+    sSubcommand, config, saRunArgs, saCommand, sImageReference="",
+):
+    """Combine a docker subcommand, its args, an image, and a command.
+
+    ``sImageReference`` defaults to the project's moving
+    ``<project>:latest`` tag, which is right for a fresh start. A
+    REPAIR passes the running container's image ID instead: the tag
+    may have moved since the container was created, so recreating from
+    it would silently swap the environment underneath a project whose
+    envelope pins the old one.
+    """
+    sImage = sImageReference or f"{config.sProjectName}:latest"
+    saFullCommand = ["docker", sSubcommand] + saRunArgs + [sImage]
     if saCommand is not None:
         saFullCommand.extend(saCommand)
     return saFullCommand
+
+
+def fsRecreateContainerDetachedFromImage(config, sImageReference):
+    """Start a detached container from an EXPLICIT image reference.
+
+    The repair lane's launch. It differs from
+    :func:`fsStartContainerDetached` in exactly one way -- the image is
+    given rather than derived from the moving tag -- and that
+    difference is the whole point.
+    """
+    listCleanupFiles = []
+    saRunArgs = flistBuildRunArgs(config, bDetached=True)
+    listUnresolvable = flistMountSecrets(
+        config, saRunArgs, listCleanupFiles,
+    )
+    fnAnnounceUnresolvableSecrets(config, listUnresolvable)
+    return _fsRunDetachedCommand(_flistAssembleRunCommand(
+        config, saRunArgs, ["sleep", "infinity"], sImageReference,
+    ))
 
 
 def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
@@ -496,16 +530,48 @@ def _fnAddBindMounts(config, saRunArgs):
     ``vaibify.yml`` that bypassed the config loader (hand-crafted dict,
     in-memory mutation, future config sources) still cannot smuggle in
     a Docker-socket or ``/etc`` bind mount.
+
+    ``--mount``, never ``-v`` (2026-09-10, with the researcher's
+    approval). Measured live on this project's own daemon: ``-v`` with
+    a missing source silently CREATES it as an empty directory owned
+    by whoever the daemon runs as, and ``--mount`` refuses with a
+    message naming the path. The silent creation is where the
+    unstartable-container stub comes from -- the same shape as the
+    ``~/.vaibify/tmp`` sweep that left a bind-mounted credential file
+    replaced by a directory -- and ``listBindMounts`` declares no
+    file-or-directory kind, so detecting the stub afterwards is not
+    possible from the configuration alone. Prevention is the only
+    sound fix.
+
+    **This is a breaking change**: a project whose declared mount
+    source is missing now fails to start, where it used to start with
+    an empty directory in place of the data. That is the correct
+    behaviour and it will surprise existing projects.
     """
     from vaibify.config.bindMountValidator import (
         fnValidateBindMountList,
     )
     fnValidateBindMountList(config.listBindMounts)
     for dictMount in config.listBindMounts:
-        sMountSpec = f"{dictMount['host']}:{dictMount['container']}"
-        if dictMount.get("readOnly", False):
-            sMountSpec += ":ro"
-        saRunArgs.extend(["-v", sMountSpec])
+        saRunArgs.extend(["--mount", _fsBuildBindMountSpec(dictMount)])
+
+
+def _fsBuildBindMountSpec(dictMount):
+    """Return one ``--mount`` value, with both paths CSV-quoted.
+
+    Docker parses this value as CSV, so a path containing a comma
+    would otherwise split into nonsense options. Quoting both paths
+    handles that (verified live with a source path containing a
+    comma); a path containing a double quote cannot be expressed at
+    all and is refused by the validator rather than mangled here.
+    """
+    sSpec = (
+        'type=bind,"source=' + dictMount["host"] + '"'
+        + ',"target=' + dictMount["container"] + '"'
+    )
+    if dictMount.get("readOnly", False):
+        sSpec += ",readonly"
+    return sSpec
 
 
 def _fnAddGpuPassthrough(config, saRunArgs):
@@ -712,6 +778,62 @@ def fbStopContainerProvenSettled(sProjectName):
     return dictPresence["bAnswered"] and not dictPresence["bPresent"]
 
 
+def fdictRepairContainerLifecycle(
+    config, sProjectName, sOperation, sImageIdentity="",
+):
+    """Perform ONE container repair: restart, or recreate from an image.
+
+    The mutation half of ``vaibify repair``, and it lives here rather
+    than beside the transaction that drives it, deliberately. This
+    module is the container-lifecycle gateway: a repair changes a
+    container's existence exactly as a start or a stop does, and
+    putting the ``docker`` calls anywhere else would spread
+    mutation-capable reach outside the boundary that exists to bound
+    it. What stays outside is everything that is NOT a container
+    mutation -- the busy refusal, the flock or hub lock, the journal
+    record, and telling the researcher what a restart will do -- which
+    is policy about who may spend the capability rather than the
+    capability itself.
+
+    ``sImageIdentity`` is REQUIRED for a recreation and is an image ID,
+    never a tag: ``<project>:latest`` may have moved since the
+    container was created, and recreating from it would silently swap
+    the environment an envelope pins.
+    """
+    if sOperation == "restart":
+        _fnRestartContainerInPlace(sProjectName)
+        return {"sOperation": "restart", "sContainerId": ""}
+    if sOperation != "recreate":
+        raise ValueError(
+            f"{sOperation!r} is not a container repair operation; the "
+            "declared set is ('restart', 'recreate')"
+        )
+    if not sImageIdentity:
+        raise ValueError(
+            "a recreation requires the image identity to recreate from"
+        )
+    if fdictGetContainerStatus(sProjectName)["bExists"]:
+        fnStopContainer(sProjectName)
+    return {
+        "sOperation": "recreate",
+        "sContainerId": fsRecreateContainerDetachedFromImage(
+            config, sImageIdentity,
+        ),
+    }
+
+
+def _fnRestartContainerInPlace(sProjectName):
+    """Run ``docker restart``, raising on a non-zero exit."""
+    processResult = subprocess.run(
+        ["docker", "restart", sProjectName],
+        capture_output=True, text=True,
+    )
+    if processResult.returncode != 0:
+        raise RuntimeError(
+            f"docker restart failed: {processResult.stderr.strip()}"
+        )
+
+
 def fnRemoveStopped(sProjectName):
     """Remove a stopped container if it still exists."""
     saCommand = ["docker", "rm", sProjectName]
@@ -768,6 +890,34 @@ def _fdictParseContainerState(sRawStatus):
     sStatus = sRawStatus if bExists else "not found"
     bRunning = sStatus == "running"
     return {"bExists": bExists, "bRunning": bRunning, "sStatus": sStatus}
+
+
+def fjsonInspectContainer(sContainerIdentifier):
+    """Return the container's full ``docker inspect`` object, or ``{}``.
+
+    A read, and the ONE place the CLI diagnostics get a container's
+    runtime specification -- ``NetworkMode``, ``HostConfig.Dns``, the
+    attached networks, the environment it was created with. ``{}``
+    means the daemon did not answer, which a caller must render as
+    unassessed: an empty specification and an absent container are
+    different facts and neither is "no DNS configured".
+    """
+    try:
+        processResult = subprocess.run(
+            ["docker", "inspect", sContainerIdentifier],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return {}
+    if processResult.returncode != 0:
+        return {}
+    try:
+        listInspected = json.loads(processResult.stdout or "")
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(listInspected, list) or not listInspected:
+        return {}
+    return listInspected[0] if isinstance(listInspected[0], dict) else {}
 
 
 def ftProbeNetworkIsolation(sContainerIdentifier):

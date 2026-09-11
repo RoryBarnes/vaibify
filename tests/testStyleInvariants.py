@@ -208,7 +208,7 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # 362 -> 361 (2026-09-09): the Zenodo metadata translator moved to
 # the client boundary so both deposit paths share it, and its
 # keyword comprehension bound `k`.
-I_LEGACY_VARIABLE_BUDGET = 361
+I_LEGACY_VARIABLE_BUDGET = 354
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

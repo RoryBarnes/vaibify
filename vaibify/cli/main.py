@@ -99,6 +99,7 @@ from .commandRemote import fnRemoteCommand
 from .commandRemoteHelper import fnRemoteHelperCommand
 from .commandSecret import fnSecretCommand
 from .commandReconcile import fnReconcileCommand
+from .commandRepair import fnRepairCommand
 from .commandRegister import fnRegisterCommand
 from .commandReproduce import fnReproduceCommand
 from .commandRevoke import fnRevokeCommand
@@ -312,6 +313,7 @@ main.add_command(fnRevokeCommand)
 main.add_command(fnTestCommand)
 main.add_command(fnGenerateStandardsCommand)
 main.add_command(fnDoctorCommand)
+main.add_command(fnRepairCommand)
 main.add_command(fnListSessionsCommand)
 main.add_command(fnDoCommand)
 main.add_command(fnReconcileCommand)

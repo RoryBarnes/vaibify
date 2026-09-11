@@ -5,6 +5,11 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
+from tests.dockerRuntimeStub import fnPinDockerRuntime
+from vaibify.docker.dockerContext import (
+    S_RUNTIME_COLIMA, S_RUNTIME_LINUX_ROOTFUL,
+)
+
 
 def _fConfigForPreflight(
     listPorts=None, listBindMounts=None, sProjectName="proj",
@@ -40,14 +45,11 @@ def test_preflight_fails_when_daemon_unreachable_colima():
     with patch(
         "vaibify.cli.preflightChecks._ftDockerInfoProbe",
         return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
-    ), patch(
-        "vaibify.docker.dockerContext.fsActiveDockerContext",
-        return_value="colima",
-    ):
+    ), fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"):
         listResults = flistRunStartPreflight(config)
     assert listResults[0].sLevel == "fail"
     assert listResults[0].sName == "docker-daemon"
-    assert "colima start" in listResults[0].sRemediation
+    assert "colima" in listResults[0].sRemediation.lower()
     assert listResults[0].sCommand == "colima start"
     assert len(listResults) == 1
 
@@ -77,10 +79,7 @@ def test_preflight_fails_when_daemon_unreachable_linux_systemd():
     with patch(
         "vaibify.cli.preflightChecks._ftDockerInfoProbe",
         return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
-    ), patch(
-        "vaibify.docker.dockerContext.fsActiveDockerContext",
-        return_value="default",
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_LINUX_ROOTFUL), patch(
         "vaibify.cli.preflightChecks.sys.platform", "linux",
     ):
         listResults = flistRunStartPreflight(config)
@@ -221,8 +220,14 @@ def test_preflight_fails_when_container_already_running():
     mockRemove.assert_not_called()
 
 
-def test_preflight_warn_and_remove_when_container_stopped():
-    """A stopped container is auto-removed and a warn is emitted."""
+def test_preflight_warns_but_removes_nothing_when_container_stopped():
+    """A stopped container is REPORTED; the check removes nothing.
+
+    The removal moved to the launch path
+    (``fnClearStoppedContainerBeforeLaunch``) because ``vaibify
+    doctor`` runs this same check, and a diagnostic that deletes the
+    container it was asked about destroys its own evidence.
+    """
     from vaibify.cli.commandStart import _fpreflightContainerName
     config = _fConfigForPreflight(sProjectName="stale")
     with patch(
@@ -236,7 +241,39 @@ def test_preflight_warn_and_remove_when_container_stopped():
         result = _fpreflightContainerName(config)
     assert result.sLevel == "warn"
     assert "stale" in result.sMessage
+    mockRemove.assert_not_called()
+
+
+def test_the_launch_path_clears_a_stopped_container():
+    """`vaibify start` still reclaims the name before it launches."""
+    from vaibify.cli.commandStart import fnClearStoppedContainerBeforeLaunch
+    config = _fConfigForPreflight(sProjectName="stale")
+    with patch(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        return_value=_fdictContainerStatus(
+            bExists=True, bRunning=False, sStatus="exited",
+        ),
+    ), patch(
+        "vaibify.docker.containerManager.fnRemoveStopped",
+    ) as mockRemove:
+        fnClearStoppedContainerBeforeLaunch(config)
     mockRemove.assert_called_once_with("stale")
+
+
+def test_the_launch_path_never_removes_a_running_container():
+    """A running container is left alone; the pre-flight already failed."""
+    from vaibify.cli.commandStart import fnClearStoppedContainerBeforeLaunch
+    config = _fConfigForPreflight(sProjectName="busy")
+    with patch(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        return_value=_fdictContainerStatus(
+            bExists=True, bRunning=True, sStatus="running",
+        ),
+    ), patch(
+        "vaibify.docker.containerManager.fnRemoveStopped",
+    ) as mockRemove:
+        fnClearStoppedContainerBeforeLaunch(config)
+    mockRemove.assert_not_called()
 
 
 def test_preflight_ok_when_container_not_present():

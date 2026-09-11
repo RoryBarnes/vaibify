@@ -229,9 +229,20 @@ def fnStubTheDockerBinaryStatusProbes(request, monkeypatch):
     ):
         yield
         return
+    from vaibify import docker as packageDocker
     from vaibify.docker import containerManager, imageBuilder
     monkeypatch.setattr(
         imageBuilder, "fbImageExists", lambda sImageName: False,
+    )
+    # BOTH names, because the probe has two and production calls the
+    # other one: `commandStart._fpreflightImage` does `from
+    # vaibify.docker import fbImageExists`, which binds the package
+    # re-export rather than the module attribute. Stubbing only the
+    # module left every test reaching a pre-flight image check running
+    # the REAL docker probe -- invisible on a machine with Docker
+    # installed, and a FileNotFoundError on a macOS runner without it.
+    monkeypatch.setattr(
+        packageDocker, "fbImageExists", lambda sImageName: False,
     )
     monkeypatch.setattr(
         containerManager, "fdictGetContainerStatus",

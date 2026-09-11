@@ -5705,7 +5705,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # with more than one candidate, stays with the caller, which can
     # ask a human. Putting the choice here would have made the socket
     # decide policy.
-    "hostControlChannel.py": 959,
+    # +83 (2026-09-10): repair-container. A repair RESTARTS or
+    # RECREATES a container, which is a lifecycle operation the owning
+    # hub is answerable for -- so `vaibify repair` asks it here rather
+    # than reaching around it, exactly as `vaibify reconcile` does, and
+    # under the same bounded wait on the same container-mutation lock.
+    # The transaction itself is not here: it lives in
+    # docker/containerLifecycleRepair.py, shared with the direct lane
+    # that runs when no hub holds the container. What this module owns
+    # is what it already owned -- validation, the flock question, and
+    # the drain.
+    # +28 (2026-09-10, review round 2): the recreate refusal. A
+    # RESTART keeps the container's id, so every hub-side binding to it
+    # stays true; a RECREATE does not, and this hub's owner record,
+    # workflow cache and file paths are all keyed by the old one. The
+    # refusal and its reasoning live here because this is the module
+    # that knows a hub holds the container.
+    "hostControlChannel.py": 1070,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one

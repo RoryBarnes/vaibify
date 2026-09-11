@@ -282,6 +282,15 @@ DICT_PRIMITIVE_ACCESS = {
     # program table. It replaced a bash while-loop the caller
     # assembled and ran through the general exec primitive.
     "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
+    # The three container-scope diagnostic probes. Typed reads on the
+    # same terms as their neighbours -- each names one program from the
+    # fixed table and supplies only string arguments -- and each one
+    # runs a program that observes and returns: a name lookup, a TCP
+    # connection that sends no request bytes, and a bounded ownership
+    # walk. None of them writes anything in the container.
+    "fdictResolveHostnameInContainer": S_ACCESS_TYPED_READ,
+    "fdictProbeTcpHandshakeInContainer": S_ACCESS_TYPED_READ,
+    "fdictFindForeignOwnedPaths": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
@@ -298,6 +307,19 @@ DICT_PRIMITIVE_ACCESS = {
     "fdictProbeContainerPresence": S_ACCESS_TYPED_READ,
     "fdictFindContainersForReservation": S_ACCESS_TYPED_READ,
     "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,
+    # The full `docker inspect` object, read by the CLI diagnostics.
+    # A read of the daemon's own record; it runs no program anywhere.
+    "fjsonInspectContainer": S_ACCESS_TYPED_READ,
+    # The repair lane's relaunch. Lifecycle, exactly like
+    # `fsStartContainerDetached` beside it -- the one difference is
+    # that the image is an explicit identity rather than the project's
+    # moving tag, which changes what is launched, not what is granted.
+    "fsRecreateContainerDetachedFromImage": S_ACCESS_LIFECYCLE,
+    # The repair lane's single mutation. One primitive rather than
+    # three call sites, so `vaibify repair` adds exactly ONE new way to
+    # change a container from outside this boundary and the ledger says
+    # so on one line.
+    "fdictRepairContainerLifecycle": S_ACCESS_LIFECYCLE,
 }
 
 # The docker-py collections a call chain must pass through to count,

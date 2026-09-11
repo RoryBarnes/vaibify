@@ -13,11 +13,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 
 __all__ = [
     "fsActiveDockerContext", "fbColimaActive", "ftColimaVersion",
     "fsResolveDockerEndpoint", "fsReadActiveContextEndpoint",
+    "fsColimaProfileName", "fdictClassifyDockerRuntime",
+    "S_RUNTIME_DOCKER_DESKTOP", "S_RUNTIME_COLIMA",
+    "S_RUNTIME_LINUX_ROOTFUL", "S_RUNTIME_LINUX_ROOTLESS",
+    "S_RUNTIME_UNKNOWN", "fdictReadDaemonFacts",
 ]
 
 
@@ -91,9 +96,131 @@ def fsResolveDockerEndpoint():
     return "DOCKER_HOST unset and no context endpoint (docker-py default)"
 
 
+# Colima names its default profile's context ``colima`` and every other
+# profile's ``colima-<profile>``. Matching the bare name alone reported
+# a researcher running ``colima start --profile gpu`` as not running
+# Colima at all, so every piece of Colima-specific advice -- the arch
+# remediation, the memory remediation, the hostagent log probe -- went
+# silent on exactly the setup that needed it.
+_RE_COLIMA_CONTEXT = re.compile(r"^colima(?:-(?P<profile>.+))?$")
+
+S_COLIMA_DEFAULT_PROFILE = "default"
+
+
 def fbColimaActive():
-    """Return True iff the active Docker context is 'colima'."""
-    return fsActiveDockerContext() == "colima"
+    """Return True iff the active Docker context is a Colima context."""
+    return bool(_RE_COLIMA_CONTEXT.match(fsActiveDockerContext()))
+
+
+def fsColimaProfileName():
+    """Return the active Colima profile name, or '' when not Colima.
+
+    The default profile answers ``"default"`` -- the name ``colima``
+    itself uses for it -- so a caller can always print the profile it
+    is talking about rather than printing nothing for the common case.
+    """
+    matchContext = _RE_COLIMA_CONTEXT.match(fsActiveDockerContext())
+    if matchContext is None:
+        return ""
+    return matchContext.group("profile") or S_COLIMA_DEFAULT_PROFILE
+
+
+S_RUNTIME_DOCKER_DESKTOP = "docker-desktop"
+S_RUNTIME_COLIMA = "colima"
+S_RUNTIME_LINUX_ROOTFUL = "linux-rootful"
+S_RUNTIME_LINUX_ROOTLESS = "linux-rootless"
+S_RUNTIME_UNKNOWN = "unknown"
+
+# A rootless daemon's socket lives in the caller's own runtime
+# directory. It is the one piece of evidence available without asking
+# the daemon anything, which matters because the classification is
+# consulted while diagnosing a daemon that may not answer.
+_S_ROOTLESS_ENDPOINT_MARKER = "/run/user/"
+_S_DESKTOP_ENDPOINT_MARKER = "/.docker/run/docker.sock"
+_S_DESKTOP_CONTEXT_NAME = "desktop-linux"
+
+
+def _fdictReadDockerInfoJson():
+    """Return ``docker info`` as a decoded dict, or ``{}`` on any error."""
+    try:
+        processResult = subprocess.run(
+            ["docker", "info", "--format", "{{json .}}"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return {}
+    if processResult.returncode != 0:
+        return {}
+    try:
+        jsonInfo = json.loads(processResult.stdout or "")
+    except (ValueError, TypeError):
+        return {}
+    return jsonInfo if isinstance(jsonInfo, dict) else {}
+
+
+def _fbInfoReportsRootless(jsonInfo):
+    """Return True when ``docker info`` declares a rootless daemon."""
+    listSecurity = jsonInfo.get("SecurityOptions") or []
+    if any("rootless" in str(sOption) for sOption in listSecurity):
+        return True
+    return "rootless" in str(jsonInfo.get("Name") or "").lower()
+
+
+def _fbInfoReportsDockerDesktop(jsonInfo):
+    """Return True when ``docker info`` declares Docker Desktop."""
+    sOperatingSystem = str(jsonInfo.get("OperatingSystem") or "")
+    return "docker desktop" in sOperatingSystem.lower()
+
+
+def _fsClassifyFromEvidence(sContext, sEndpoint, jsonInfo):
+    """Return the runtime name implied by the three evidence sources."""
+    if _RE_COLIMA_CONTEXT.match(sContext):
+        return S_RUNTIME_COLIMA
+    if _fbInfoReportsDockerDesktop(jsonInfo):
+        return S_RUNTIME_DOCKER_DESKTOP
+    if sContext == _S_DESKTOP_CONTEXT_NAME:
+        return S_RUNTIME_DOCKER_DESKTOP
+    if _S_DESKTOP_ENDPOINT_MARKER in sEndpoint:
+        return S_RUNTIME_DOCKER_DESKTOP
+    if _fbInfoReportsRootless(jsonInfo):
+        return S_RUNTIME_LINUX_ROOTLESS
+    if _S_ROOTLESS_ENDPOINT_MARKER in sEndpoint:
+        return S_RUNTIME_LINUX_ROOTLESS
+    # A LOCAL unix socket on Linux, and nothing weaker. A `tcp://` or
+    # `ssh://` endpoint reaches a daemon on another machine, where no
+    # command this host can print manages anything -- calling that
+    # "rootful Linux Engine" would answer `sudo systemctl start
+    # docker` about a service that is not here.
+    if sys.platform.startswith("linux") and sEndpoint.startswith("unix://"):
+        return S_RUNTIME_LINUX_ROOTFUL
+    return S_RUNTIME_UNKNOWN
+
+
+def fdictClassifyDockerRuntime():
+    """Identify WHICH Docker runtime this host is talking to.
+
+    Every remediation command a diagnostic can offer depends on the
+    answer: ``sudo systemctl restart docker`` is wrong on Docker
+    Desktop, wrong on Colima, and wrong for a rootless daemon, where
+    the unit is a ``--user`` one and the ``sudo`` actively breaks it.
+
+    Returns ``sRuntime`` plus the evidence it was decided from, so a
+    report can say WHY it thinks what it thinks. ``S_RUNTIME_UNKNOWN``
+    is a real answer and callers must render it as one: a diagnostic
+    that guesses a runtime prints a command that does not apply, which
+    is worse than saying it cannot tell.
+    """
+    sContext = fsActiveDockerContext()
+    sEndpoint = os.environ.get("DOCKER_HOST") or fsReadActiveContextEndpoint()
+    jsonInfo = _fdictReadDockerInfoJson()
+    sRuntime = _fsClassifyFromEvidence(sContext, sEndpoint, jsonInfo)
+    return {
+        "sRuntime": sRuntime,
+        "sContextName": sContext,
+        "sColimaProfile": fsColimaProfileName(),
+        "sEndpoint": sEndpoint,
+        "bDaemonAnswered": bool(jsonInfo),
+    }
 
 
 _RE_COLIMA_VERSION = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
@@ -156,3 +283,30 @@ def _ftTryParseColimaJsonVersion(sOutput):
     iMinor = int(matchVersion.group(2))
     iPatch = int(matchVersion.group(3) or "0")
     return (iMajor, iMinor, iPatch)
+
+
+def fdictReadDaemonFacts():
+    """Return what the DAEMON says about itself, as plain values.
+
+    The CLI lane's authority on the daemon's own figures. It exists
+    beside ``daemonCapacity`` rather than duplicating it: that module
+    answers the hub, which holds a Docker connection and is sizing a
+    container; this one answers a diagnostic that may be running
+    because no connection can be made. The numbers are the same
+    numbers, read the same way -- from the daemon, never from the host
+    -- and on macOS the difference is not academic: the daemon is a
+    virtual machine with its own allocation, measured at 8.3 GB under
+    a 16 GB host.
+
+    ``bAnswered`` is False when the daemon said nothing, and every
+    figure is then zero. A caller must render that as unassessed, not
+    as a daemon with no CPUs.
+    """
+    jsonInfo = _fdictReadDockerInfoJson()
+    return {
+        "bAnswered": bool(jsonInfo),
+        "iCpuCount": int(jsonInfo.get("NCPU") or 0),
+        "iMemoryBytes": int(jsonInfo.get("MemTotal") or 0),
+        "sOperatingSystem": str(jsonInfo.get("OperatingSystem") or ""),
+        "sDataRootDirectory": str(jsonInfo.get("DockerRootDir") or ""),
+    }

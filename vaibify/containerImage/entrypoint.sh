@@ -11,6 +11,40 @@ VC_PROJECT_NAME="${VC_PROJECT_NAME:-Vaibify}"
 # failures without scrolling the container log.
 saStartupWarnings=()
 
+# saStartupObservations: the same events as STRUCTURED records, each a JSON
+# object carrying a stable warning CODE, a UTC timestamp, the probe version
+# that produced it, and a verdict. The free-text array above stays exactly as
+# it is -- the dashboard renders it, and changing what a researcher already
+# reads is a separate decision from adding a machine-readable record beside
+# it.
+#
+# The code is the vocabulary; the REMEDY text is not here on purpose. A shell
+# script baked into an image cannot share the host's Python remedy catalogue,
+# and an image built months ago would otherwise hand out advice that has since
+# changed. The host translates the code at read time.
+#
+# S_ENTRYPOINT_VERSION is deliberately NOT bumped for this addition. The host
+# reads a missing field as "an older image wrote this marker", and bumping
+# would tell every existing container to rebuild -- which changes the image
+# digest an L3 envelope pins, for a purely additive field.
+saStartupObservations=()
+S_OBSERVATION_PROBE_VERSION="1"
+
+# ---------------------------------------------------------------------------
+# fnRecordStartupObservation: Append one structured observation record
+# Arguments: sCode sSubject sVerdict
+# ---------------------------------------------------------------------------
+fnRecordStartupObservation() {
+    local sCode="$1"
+    local sSubject="$2"
+    local sVerdict="$3"
+    local sIso
+    sIso=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')
+    saStartupObservations+=(
+        "{\"sCode\": \"$(fsEscapeJsonString "${sCode}")\", \"sSubject\": \"$(fsEscapeJsonString "${sSubject}")\", \"sIso\": \"${sIso}\", \"sProbeVersion\": \"${S_OBSERVATION_PROBE_VERSION}\", \"sVerdict\": \"$(fsEscapeJsonString "${sVerdict}")\"}"
+    )
+}
+
 # ---------------------------------------------------------------------------
 # fnPrintBanner: Display startup header
 # ---------------------------------------------------------------------------
@@ -30,6 +64,7 @@ fnAppendStartupWarning() {
     local sCategory="$2"
     local sReason="$3"
     saStartupWarnings+=("${sName}: ${sCategory}: ${sReason}")
+    fnRecordStartupObservation "${sCategory}" "${sName}" "warn"
 }
 
 # ---------------------------------------------------------------------------
@@ -71,6 +106,68 @@ fsBuildWarningsJson() {
 }
 
 # ---------------------------------------------------------------------------
+# fsBuildObservationsJson: Render saStartupObservations as a JSON array
+# ---------------------------------------------------------------------------
+fsBuildObservationsJson() {
+    local iCount=${#saStartupObservations[@]}
+    if [ "${iCount}" -eq 0 ]; then
+        printf '[]'
+        return
+    fi
+    local sBuffer="["
+    local i
+    for (( i=0; i<iCount; i++ )); do
+        if [ "${i}" -gt 0 ]; then
+            sBuffer+=", "
+        fi
+        sBuffer+="${saStartupObservations[$i]}"
+    done
+    sBuffer+="]"
+    printf '%s' "${sBuffer}"
+}
+
+# ---------------------------------------------------------------------------
+# fnObserveNameResolution: Record whether this container resolves a name it
+# already depends on. Arguments: sHostname
+#
+# The observation doctor cannot make retroactively. A container whose resolver
+# is a snapshot of a network the laptop has since left resolves nothing, and
+# nothing else records WHEN that started -- but note the honest limit: the
+# entrypoint runs on `docker start`, so it does NOT fire when a running laptop
+# changes network. It complements the live probe rather than replacing it.
+# ---------------------------------------------------------------------------
+S_DNS_OBSERVATION_TIMEOUT_SECONDS="3"
+
+fnObserveNameResolution() {
+    local sHostname="$1"
+    [ -z "${sHostname}" ] && return 0
+    if [ "${VAIBIFY_NETWORK_ISOLATED:-false}" = "true" ]; then
+        fnRecordStartupObservation "dns-not-applicable" "${sHostname}" "info"
+        return 0
+    fi
+    # BOUNDED, and the bound is the point. `getent hosts` against a
+    # resolver that accepts the query and never answers blocks for the
+    # C library's own retry schedule -- tens of seconds -- and this runs
+    # in the startup path, so an unbounded probe would delay every
+    # container start on exactly the broken network it exists to
+    # notice. Without `timeout` the probe is not attempted at all: a
+    # startup this observation could stall is a worse outcome than an
+    # observation nobody made, and the record says which happened.
+    if ! command -v timeout > /dev/null 2>&1; then
+        fnRecordStartupObservation "dns-not-attempted" "${sHostname}" "info"
+        return 0
+    fi
+    if timeout "${S_DNS_OBSERVATION_TIMEOUT_SECONDS}" \
+            getent hosts "${sHostname}" > /dev/null 2>&1; then
+        fnRecordStartupObservation "dns-resolved" "${sHostname}" "ok"
+        return 0
+    fi
+    echo "[vaib] Warning: could not resolve ${sHostname} from inside this container."
+    fnAppendStartupWarning "${sHostname}" "dns-resolution-failed" \
+        "the container could not resolve a host this project depends on"
+}
+
+# ---------------------------------------------------------------------------
 # fnWriteReadinessMarker: Write the structured readiness JSON marker
 # Arguments: sStatus sReason
 # ---------------------------------------------------------------------------
@@ -87,9 +184,11 @@ fnWriteReadinessMarker() {
     sReasonEscaped=$(fsEscapeJsonString "${sReason}")
     local sWarnings
     sWarnings=$(fsBuildWarningsJson)
-    printf '{"sStatus": "%s", "sReason": "%s", "saWarnings": %s, "sEntrypointVersion": "%s"}\n' \
+    local sObservations
+    sObservations=$(fsBuildObservationsJson)
+    printf '{"sStatus": "%s", "sReason": "%s", "saWarnings": %s, "listObservations": %s, "sEntrypointVersion": "%s"}\n' \
         "${sStatusEscaped}" "${sReasonEscaped}" "${sWarnings}" \
-        "${S_ENTRYPOINT_VERSION}" \
+        "${sObservations}" "${S_ENTRYPOINT_VERSION}" \
         > "${sMarker}"
 }
 
@@ -314,6 +413,24 @@ fnParseReposConf() {
         saRepoMethods+=("${sMethod}")
         saRepoDestinations+=("${sDestination}")
     done < "${REPOS_CONF}"
+}
+
+# ---------------------------------------------------------------------------
+# fnObserveFirstRepositoryHost: Probe the resolver against a name this project
+# already depends on. No new third party is introduced: the host is one the
+# repo sync below is about to contact anyway, and an isolated container is
+# recorded as not-applicable rather than probed.
+# ---------------------------------------------------------------------------
+fnObserveFirstRepositoryHost() {
+    local iCount=${#saRepoUrls[@]}
+    [ "${iCount}" -eq 0 ] && return 0
+    local sUrl="${saRepoUrls[0]}"
+    local sHostname
+    sHostname=$(printf '%s' "${sUrl}" | LC_ALL=C sed -E \
+        -e 's|^[a-zA-Z][a-zA-Z0-9+.-]*://||' \
+        -e 's|^[^@/]*@||' \
+        -e 's|[/:].*$||')
+    fnObserveNameResolution "${sHostname}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1523,6 +1640,7 @@ fnRunWorkspacePhase() {
     fnInstallAgentSkills
     fnPersistGitConfig
     fnParseReposConf
+    fnObserveFirstRepositoryHost
     fnSyncAllRepos
     if command -v claude > /dev/null 2>&1; then
         fnConfigureClaudeTheme

@@ -6,6 +6,12 @@ import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from tests.dockerRuntimeStub import fnPinDockerRuntime
+from vaibify.docker.dockerContext import (
+    S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP,
+    S_RUNTIME_LINUX_ROOTFUL,
+)
+
 from click.testing import CliRunner
 
 from vaibify.cli.commandBuild import (
@@ -55,53 +61,43 @@ _S_DAEMON_UNREACHABLE_STDERR = (
 
 
 @patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="colima",
-)
-@patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
 )
-def test_fpreflightDaemon_unreachable_colima_says_colima_start(
-    mockProbe, mockContext,
-):
-    resultPreflight = _fpreflightDaemon()
+def test_fpreflightDaemon_unreachable_colima_says_colima_start(mockProbe):
+    """The remediation comes from the RUNTIME, so the test pins one."""
+    with fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"):
+        resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
-    assert "colima start" in resultPreflight.sRemediation.lower()
+    assert resultPreflight.sCommand == "colima start"
+    assert "colima" in resultPreflight.sRemediation.lower()
 
 
 @patch("vaibify.cli.preflightChecks.sys.platform", "darwin")
-@patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="desktop-linux",
-)
 @patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
 )
 def test_fpreflightDaemon_unreachable_no_colima_says_docker_desktop(
-    mockProbe, mockContext,
+    mockProbe,
 ):
     """Non-Colima failure on macOS points the user at Docker Desktop."""
-    resultPreflight = _fpreflightDaemon()
+    with fnPinDockerRuntime(S_RUNTIME_DOCKER_DESKTOP):
+        resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert "Docker Desktop" in resultPreflight.sRemediation
+    assert "colima" not in resultPreflight.sCommand.lower()
 
 
 @patch("vaibify.cli.preflightChecks.sys.platform", "linux")
 @patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="default",
-)
-@patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
 )
-def test_fpreflightDaemon_unreachable_linux_says_systemctl(
-    mockProbe, mockContext,
-):
-    """Non-Colima failure on Linux points the user at systemctl."""
-    resultPreflight = _fpreflightDaemon()
+def test_fpreflightDaemon_unreachable_linux_says_systemctl(mockProbe):
+    """A rootful Linux daemon points the user at the system unit."""
+    with fnPinDockerRuntime(S_RUNTIME_LINUX_ROOTFUL):
+        resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
     assert resultPreflight.sCommand == "sudo systemctl start docker"
 
@@ -137,20 +133,15 @@ def test_fpreflightDaemon_socket_permission_denied(mockProbe):
 
 
 @patch(
-    "vaibify.docker.dockerContext.fsActiveDockerContext",
-    return_value="colima",
-)
-@patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, "Cannot connect to the Docker daemon"),
 )
-def test_fpreflightDaemon_unreachable_falls_through_when_no_perm(
-    mockProbe, mockContext,
-):
-    """Without a permission stderr, the colima-start branch wins."""
-    resultPreflight = _fpreflightDaemon()
+def test_fpreflightDaemon_unreachable_falls_through_when_no_perm(mockProbe):
+    """Without a permission stderr, the daemon-unreachable branch wins."""
+    with fnPinDockerRuntime(S_RUNTIME_COLIMA, "default"):
+        resultPreflight = _fpreflightDaemon()
     assert resultPreflight.sLevel == "fail"
-    assert "colima start" in resultPreflight.sRemediation.lower()
+    assert resultPreflight.sCommand == "colima start"
 
 
 # -------------------------------------------------------------------
@@ -311,10 +302,11 @@ def test_fiDockerDfBytes_returns_negative_on_nonzero(mockRun):
 
 
 @patch("vaibify.cli.commandBuild._fiDockerDfBytes", return_value=-1)
-def test_flistPreflightDisk_emits_info_when_unparseable(mockBytes):
+def test_flistPreflightDisk_reports_not_checked_when_unparseable(mockBytes):
+    """An unreadable `docker system df` is UNASSESSED, never ok."""
     listResults = _flistPreflightDisk()
     assert len(listResults) == 1
-    assert listResults[0].sLevel == "info"
+    assert listResults[0].sLevel == "not-checked"
 
 
 @patch("vaibify.cli.commandBuild._fiDockerDfBytes",
@@ -323,27 +315,40 @@ def test_flistPreflightDisk_no_warning_when_below_threshold(mockBytes):
     assert _flistPreflightDisk() == []
 
 
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
 @patch("vaibify.cli.commandBuild._fiDockerDfBytes",
        return_value=80 * (2 ** 30))
-def test_flistPreflightDisk_warns_when_threshold_exceeded(
-    mockBytes, mockColima,
-):
+def test_flistPreflightDisk_warns_when_threshold_exceeded(mockBytes):
     listResults = _flistPreflightDisk()
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
-    assert "docker system prune" in listResults[0].sRemediation
-    assert "colima start --disk" in listResults[0].sRemediation
+    assert listResults[0].sCommand == "docker builder prune"
 
 
-@patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
 @patch("vaibify.cli.commandBuild._fiDockerDfBytes",
        return_value=80 * (2 ** 30))
-def test_flistPreflightDisk_warn_no_colima_advice_when_not_colima(
-    mockBytes, mockColima,
+def test_the_storage_check_never_advises_a_prune_that_deletes_images(
+    mockBytes,
 ):
+    """`docker system prune -a` can delete the image an envelope pins.
+
+    On a laptop where the project container is merely stopped, the
+    project's only local copy of its image has no running container,
+    so `-a` removes exactly the bytes a Level 3 attestation is about.
+    """
     listResults = _flistPreflightDisk()
-    assert "colima" not in listResults[0].sRemediation
+    assert "prune -a" not in listResults[0].sCommand
+    assert "Do NOT run `docker system prune -a`" in (
+        listResults[0].sRemediation
+    )
+
+
+@patch("vaibify.cli.commandBuild._fiDockerDfBytes",
+       return_value=80 * (2 ** 30))
+def test_the_storage_check_does_not_claim_to_measure_headroom(mockBytes):
+    """`docker system df` reports usage; the message must not overclaim."""
+    listResults = _flistPreflightDisk()
+    assert "run out of space" not in listResults[0].sMessage
+    assert "USING" in listResults[0].sMessage
 
 
 # -------------------------------------------------------------------
@@ -370,22 +375,25 @@ def test_flistPreflightMemory_silent_above_4gb(mockRun):
 
 
 @patch("subprocess.run", side_effect=FileNotFoundError)
-def test_flistPreflightMemory_silent_when_docker_missing(mockRun):
-    assert _flistPreflightMemory() == []
+def test_flistPreflightMemory_not_checked_when_docker_missing(mockRun):
+    listResults = _flistPreflightMemory()
+    assert [r.sLevel for r in listResults] == ["not-checked"]
 
 
 @patch("subprocess.run")
-def test_flistPreflightMemory_silent_on_garbage_output(mockRun):
+def test_flistPreflightMemory_not_checked_on_garbage_output(mockRun):
     mockRun.return_value = _resultProcess(
         iReturnCode=0, sStdout="not-an-int",
     )
-    assert _flistPreflightMemory() == []
+    listResults = _flistPreflightMemory()
+    assert [r.sLevel for r in listResults] == ["not-checked"]
 
 
 @patch("subprocess.run")
-def test_flistPreflightMemory_silent_on_nonzero_returncode(mockRun):
+def test_flistPreflightMemory_not_checked_on_nonzero_returncode(mockRun):
     mockRun.return_value = _resultProcess(iReturnCode=1)
-    assert _flistPreflightMemory() == []
+    listResults = _flistPreflightMemory()
+    assert [r.sLevel for r in listResults] == ["not-checked"]
 
 
 # -------------------------------------------------------------------
