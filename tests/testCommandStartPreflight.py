@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from tests.dockerRuntimeStub import fnPinDockerRuntime
-from vaibify.docker.dockerContext import S_RUNTIME_COLIMA
+from vaibify.docker.dockerContext import (
+    S_RUNTIME_COLIMA, S_RUNTIME_LINUX_ROOTFUL,
+)
 
 
 def _fConfigForPreflight(
@@ -77,10 +79,7 @@ def test_preflight_fails_when_daemon_unreachable_linux_systemd():
     with patch(
         "vaibify.cli.preflightChecks._ftDockerInfoProbe",
         return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
-    ), patch(
-        "vaibify.docker.dockerContext.fsActiveDockerContext",
-        return_value="default",
-    ), patch(
+    ), fnPinDockerRuntime(S_RUNTIME_LINUX_ROOTFUL), patch(
         "vaibify.cli.preflightChecks.sys.platform", "linux",
     ):
         listResults = flistRunStartPreflight(config)
