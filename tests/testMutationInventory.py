@@ -139,7 +139,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # A fresh scan of the MERGED tree says 284 -- main's reduction survives
 # because the council's own rows are all classified -- and the ratchet
 # test named the value rather than leaving it to be guessed.
-I_UNCLASSIFIED_ROW_BUDGET = 284
+# 284 -> 283 (2026-09-10): the doctor/repair work classified every
+# row it added AND the one it moved -- `vaibify start`'s stale-container
+# removal, which used to sit unclassified inside a pre-flight CHECK and
+# now sits on the launch path where it belongs.
+I_UNCLASSIFIED_ROW_BUDGET = 283
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -243,7 +247,20 @@ I_UNCLASSIFIED_ROW_BUDGET = 284
 # module constant with no caller text, running strictly inside the
 # disposable admission opened one frame up -- the carrier authority
 # for containers vaibify creates and destroys. Classified on arrival.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+# +1 (2026-09-10): `vaibify repair`. A repair RESTARTS or RECREATES a
+# container, so it is new mutation reach and this ratchet is the right
+# place for that to be visible and expensive -- it is raised here
+# deliberately, with the researcher's approval for the feature, rather
+# than routed around. It is ONE row and not three: the two journaled
+# operations funnel through `_fdictMutateThroughTheGateway`, and the
+# `docker` calls themselves live inside containerManager, the lifecycle
+# gateway. What stays outside is the policy about who may spend the
+# capability -- the busy refusal by name, the container flock or the
+# hub's mutation lock, the write-ahead journal record, and telling the
+# researcher what a restart will do -- which is not a container
+# mutation and does not belong in the gateway. The row carries its
+# reviewed exclusion rationale in the inventory.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 213
 
 
 # Every acquisition of a declared capability that still has no reviewed

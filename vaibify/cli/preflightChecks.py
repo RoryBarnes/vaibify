@@ -112,12 +112,22 @@ def _fsBuildDaemonRemediation(dictDiagnosis, sStderr, sNextCommand):
 
 
 def _fpreflightDaemonFromStderr(sStderr, sNextCommand):
-    """Build the fail-level PreflightResult via the diagnosis catalog."""
-    from vaibify.docker.dockerContext import fsActiveDockerContext
+    """Build the fail-level PreflightResult via the diagnosis catalog.
+
+    The RUNTIME travels with the error, not just the context name.
+    This is the oldest and most-seen finding vaibify produces, and
+    until the classification reached it, it answered ``colima start``
+    to a Docker Desktop user on macOS and ``sudo systemctl start
+    docker`` to a rootless daemon.
+    """
+    from vaibify.docker.dockerContext import (
+        fdictClassifyDockerRuntime, fsActiveDockerContext,
+    )
     dictDiagnosis = fdictDiagnoseDockerError(
         sStderr,
         sContext=fsActiveDockerContext(),
         sPlatform=sys.platform,
+        dictRuntime=fdictClassifyDockerRuntime(),
     )
     sRemediation = _fsBuildDaemonRemediation(
         dictDiagnosis, sStderr, sNextCommand,
@@ -354,12 +364,23 @@ def fpreflightColimaHostagentLog():
 # -----------------------------------------------------------------------
 
 
-def _fsSystemDockerServiceStatus():
-    """Return ``systemctl is-active docker`` output, '' on missing tool."""
+def _fsSystemDockerServiceStatus(bRootless=False):
+    """Return ``systemctl is-active docker`` output, '' on missing tool.
+
+    A ROOTLESS daemon is a ``--user`` unit, so the system-wide query
+    answers ``inactive`` for a daemon that is running perfectly. That
+    is not a cosmetic difference: the check below turns the answer
+    into a ``fail`` telling the researcher to ``sudo systemctl start
+    docker``, which starts a SECOND, rootful daemon their context does
+    not point at.
+    """
+    saCommand = ["systemctl"]
+    if bRootless:
+        saCommand.append("--user")
+    saCommand.extend(["is-active", "docker"])
     try:
         processResult = subprocess.run(
-            ["systemctl", "is-active", "docker"],
-            capture_output=True, text=True, timeout=5,
+            saCommand, capture_output=True, text=True, timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -378,38 +399,62 @@ def _fsRecentDockerJournalTail():
     return processResult.stdout or ""
 
 
-def _fdictDefaultLinuxDockerStartDiagnosis():
+def _fdictDefaultLinuxDockerStartDiagnosis(bRootless):
     """Default diagnosis for an inactive docker.service without log signal."""
+    if bRootless:
+        return {
+            "sHint": (
+                "the rootless docker.service is not running. Start it "
+                "as your own user -- `sudo` would start the rootful "
+                "daemon your context does not point at."
+            ),
+            "sCommand": "systemctl --user start docker",
+        }
     return {
         "sHint": "systemd docker.service is not running. Start it.",
         "sCommand": "sudo systemctl start docker",
     }
 
 
-def _fpreflightLinuxDockerServiceFail(sStatus):
+def _fpreflightLinuxDockerServiceFail(sStatus, bRootless):
     """Build the fail-level PreflightResult for an inactive docker.service."""
     sJournalTail = _fsRecentDockerJournalTail()
     dictDiagnosis = fdictDiagnoseDockerError(
         sJournalTail, sContext="", sPlatform="linux",
     )
-    if not _fbDiagnosisIsSpecific(dictDiagnosis):
-        dictDiagnosis = _fdictDefaultLinuxDockerStartDiagnosis()
+    if not _fbDiagnosisIsSpecific(dictDiagnosis) or bRootless:
+        dictDiagnosis = _fdictDefaultLinuxDockerStartDiagnosis(bRootless)
+    sUnit = "the rootless docker.service" if bRootless else "docker.service"
     return PreflightResult(
         sName="docker-service", sLevel="fail",
-        sMessage=f"systemd docker.service is {sStatus}.",
+        sMessage=f"systemd {sUnit} is {sStatus}.",
         sRemediation=dictDiagnosis["sHint"],
         sCommand=dictDiagnosis["sCommand"],
     )
 
 
 def fpreflightLinuxDockerService():
-    """Surface system docker.service status on Linux (non-Colima only)."""
+    """Surface systemd docker.service status on Linux.
+
+    Asks the runtime classifier which daemon this host is talking to,
+    rather than assuming a rootful unit unless the context is exactly
+    ``colima``. Before that it reported every healthy ROOTLESS daemon
+    as an inactive service, because the rootless unit is a ``--user``
+    one and the system-wide query cannot see it.
+    """
     if sys.platform != "linux":
         return None
-    from vaibify.docker.dockerContext import fbColimaActive
-    if fbColimaActive():
+    from vaibify.docker.dockerContext import (
+        S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP,
+        S_RUNTIME_LINUX_ROOTLESS, fdictClassifyDockerRuntime,
+    )
+    dictRuntime = fdictClassifyDockerRuntime()
+    if dictRuntime["sRuntime"] in (
+        S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP,
+    ):
         return None
-    sStatus = _fsSystemDockerServiceStatus()
+    bRootless = dictRuntime["sRuntime"] == S_RUNTIME_LINUX_ROOTLESS
+    sStatus = _fsSystemDockerServiceStatus(bRootless)
     if not sStatus or sStatus == "active":
         return None
-    return _fpreflightLinuxDockerServiceFail(sStatus)
+    return _fpreflightLinuxDockerServiceFail(sStatus, bRootless)

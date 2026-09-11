@@ -47,6 +47,7 @@ __all__ = [
     "S_SOCKET_OPERATION_BREAK_GLASS",
     "S_SOCKET_OPERATION_MINT_TRANSFER",
     "S_SOCKET_OPERATION_MINT_BOOTSTRAP",
+    "S_SOCKET_OPERATION_REPAIR_CONTAINER",
     "F_RECONCILE_DRAIN_WAIT_SECONDS",
     "HostControlError",
     "ftPeerUidGid",
@@ -84,6 +85,7 @@ S_SOCKET_OPERATION_ABANDON_HOST_JOURNAL = "abandon-host-journal"
 S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
 S_SOCKET_OPERATION_MINT_BOOTSTRAP = "mint-bootstrap"
 S_SOCKET_OPERATION_LIST_REATTACHABLE = "list-reattachable"
+S_SOCKET_OPERATION_REPAIR_CONTAINER = "repair-container"
 
 F_RECONCILE_DRAIN_WAIT_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
@@ -866,6 +868,114 @@ async def _fdictHandleListReattachable(app, dictCtx, dictRequest):
 
 
 
+async def _fdictHandleRepairContainer(app, dictCtx, dictRequest):
+    """Restart or recreate a container this live hub holds.
+
+    The routed half of ``vaibify repair``. A hub that owns the
+    container is the authority over its lifecycle, so the CLI asks it
+    rather than reaching around it -- the same arrangement reconcile
+    has, and for the same reason: two processes restarting one
+    container is not a race anybody can reason about.
+
+    The hub's container-mutation lock stands in for the flock the CLI
+    would take on the direct lane, with the same bounded wait: a
+    wedged supervisor holds that lock for its worker's whole life, and
+    an unbounded wait would hang the control plane on exactly the
+    worker a repair might be meant to recover from.
+    """
+    sName = _fsValidatedContainerName(dictRequest)
+    if not sName:
+        return _fdictRefusal("a valid sContainerName is required")
+    sOperation = dictRequest.get("sRepairOperation", "")
+    if sOperation not in ("restart", "recreate"):
+        return _fdictRefusal(
+            "sRepairOperation must be 'restart' or 'recreate'"
+        )
+    if sOperation == "recreate":
+        return _fdictRefusal(_fsRecreateNotOnTheHubLaneRefusal(sName))
+    if not _fbHubHoldsContainerFlock(app.state, sName):
+        return _fdictRefusal(_fsNotHeldHereRefusal(sName))
+    lockMutation = sessionLifecycle.flockContainerMutationForAppState(
+        app.state, sName,
+    )
+    try:
+        await asyncio.wait_for(
+            lockMutation.acquire(), F_RECONCILE_DRAIN_WAIT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        return _fdictRefusal(
+            f"a guarded mutation still holds container '{sName}'s "
+            "drain; a repair now would destroy work in progress"
+        )
+    try:
+        return await _fdictRepairHeldContainer(
+            app, dictCtx, sName, sOperation,
+        )
+    finally:
+        lockMutation.release()
+
+
+def _fsRecreateNotOnTheHubLaneRefusal(sName):
+    """Return the refusal for a recreate asked of a hub that owns it.
+
+    A RESTART keeps the container's id, so every hub-side binding to
+    it stays true. A RECREATE does not: the owner record holds the old
+    ``sContainerId``, and the workflow and path caches are keyed by it
+    -- so the session would remain authorized and cached against a
+    container that no longer exists, and the researcher would meet
+    that as unexplained failures rather than as the recreation they
+    asked for.
+
+    Migrating all of that atomically is real work with a real
+    ownership question inside it, so the honest answer today is to
+    refuse and name what has to happen first. A refusal a researcher
+    can act on beats a hand-over nobody has proven correct.
+    """
+    return (
+        f"a recreate of '{sName}' cannot be done while a vaibify hub "
+        "holds it: recreation gives the container a NEW id, and this "
+        "hub's session, workflow cache and file paths are all bound to "
+        "the old one. Close the dashboard session for this project "
+        "(or stop the hub), then run the same command again -- it will "
+        "take the direct lane, which recreates safely."
+    )
+
+
+async def _fdictRepairHeldContainer(app, dictCtx, sName, sOperation):
+    """Run one repair off the loop, refusing over live work."""
+    from vaibify.docker import containerLifecycleRepair
+    if commitCarrier.fbContainerHasLiveMutationWork(app.state, sName):
+        return _fdictRefusal(
+            f"guarded work is live in container '{sName}'; a repair "
+            "would destroy it"
+        )
+    listAnnouncements = []
+    try:
+        dictOutcome = await asyncio.to_thread(
+            _fdictRunRepairOffLoop, dictCtx, sName, sOperation,
+            listAnnouncements.append,
+        )
+    except containerLifecycleRepair.RepairRefusedError as errorRefused:
+        return _fdictRefusal(str(errorRefused))
+    return dict(
+        dictOutcome, bAccepted=True, listAnnouncements=listAnnouncements,
+    )
+
+
+def _fdictRunRepairOffLoop(dictCtx, sName, sOperation, fnAnnounce):
+    """The blocking half: the repair transaction itself."""
+    from vaibify.docker import containerLifecycleRepair
+    if sOperation == "recreate":
+        from vaibify.cli.configLoader import fconfigResolveProject
+        return containerLifecycleRepair.fdictRecreateUnderJournal(
+            fconfigResolveProject(sName), sName, dictCtx.get("docker"),
+            fnAnnounce,
+        )
+    return containerLifecycleRepair.fdictRestartUnderJournal(
+        sName, dictCtx.get("docker"), fnAnnounce,
+    )
+
+
 _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
     S_SOCKET_OPERATION_FORCE_ABANDON: _fdictHandleForceAbandon,
@@ -876,6 +986,7 @@ _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_MINT_BOOTSTRAP: _fdictHandleMintBootstrap,
     S_SOCKET_OPERATION_LIST_REATTACHABLE:
         _fdictHandleListReattachable,
+    S_SOCKET_OPERATION_REPAIR_CONTAINER: _fdictHandleRepairContainer,
 }
 
 

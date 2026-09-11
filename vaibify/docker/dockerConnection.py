@@ -309,6 +309,23 @@ _TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
     ".opencode", ".openhands", ".pi", ".pytest_cache", ".ssh",
     ".vaibify", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
 )
+# The two network-state reads the container-scope diagnostic runs.
+# They mutate nothing, and they carry no credential: a name lookup
+# sends a query to whatever resolver the container is configured with,
+# and the handshake completes a TLS negotiation and sends no request
+# bytes at all. The hostname reaches the program as a Python string
+# literal through the same ``repr`` slot every other typed read uses,
+# so a project-controlled remote URL cannot become a command.
+S_TYPED_READ_RESOLVE_HOSTNAME = "resolveHostname"
+# Files inside the workspace that the container user does not own. The
+# probe reports the two cases SEPARATELY because only one of them is
+# repaired by a restart: the entrypoint's migration triggers on a
+# root-owned path and skips entirely when /proc/self/mountinfo is
+# unreadable, so a file owned by some third uid survives exactly the
+# restart a naive finding would recommend.
+S_TYPED_READ_FOREIGN_OWNED_PATHS = "foreignOwnedPaths"
+S_TYPED_READ_TCP_HANDSHAKE = "probeTcpHandshake"
+
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 
 # The environment-archive deposit reads the researcher's Zenodo token
@@ -341,6 +358,117 @@ _DICT_TYPED_READ_PROGRAMS = {
     # from "over it". The ceiling is server-owned text, never a
     # caller's value, so the typed-read seam still takes only an
     # operation name and a path.
+    S_TYPED_READ_RESOLVE_HOSTNAME: (
+        "import json,socket,sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sHostname = listArgs[0]\n"
+        "socket.setdefaulttimeout(float(listArgs[1]))\n"
+        "dictAnswer = {'sHostname': sHostname, 'listAddresses': [],\n"
+        "              'listFamilies': [], 'sError': ''}\n"
+        "try:\n"
+        "    listInfo = socket.getaddrinfo(sHostname, None)\n"
+        "    dictAnswer['listAddresses'] = sorted(\n"
+        "        {tEntry[4][0] for tEntry in listInfo})\n"
+        "    dictAnswer['listFamilies'] = sorted(\n"
+        "        {tEntry[0].name for tEntry in listInfo})\n"
+        "except Exception as errorLookup:\n"
+        "    dictAnswer['sError'] = (type(errorLookup).__name__ + ': '\n"
+        "                            + str(errorLookup))\n"
+        "sys.stdout.write(json.dumps(dictAnswer))\n"
+    ),
+    S_TYPED_READ_FOREIGN_OWNED_PATHS: (
+        "import json,os,sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sRoot = listArgs[0]\n"
+        "iExpectedUid = int(listArgs[1])\n"
+        "iMaxNamed = int(listArgs[2])\n"
+        "iMaxVisits = int(listArgs[3])\n"
+        "dictAnswer = {'listRootOwned': [], 'listOtherOwned': [],\n"
+        "              'bTruncated': False,\n"
+        "              'bMountInfoReadable': False}\n"
+        "try:\n"
+        "    with open('/proc/self/mountinfo') as fileMounts:\n"
+        "        fileMounts.read()\n"
+        "    dictAnswer['bMountInfoReadable'] = True\n"
+        "except Exception:\n"
+        "    pass\n"
+        "iVisited = 0\n"
+        "for sDirectory, listDirNames, listFileNames in os.walk(sRoot):\n"
+        "    for sName in list(listDirNames) + list(listFileNames):\n"
+        "        iVisited += 1\n"
+        "        if iVisited > iMaxVisits:\n"
+        "            dictAnswer['bTruncated'] = True\n"
+        "            break\n"
+        "        sPath = os.path.join(sDirectory, sName)\n"
+        "        try:\n"
+        "            iOwnerUid = os.lstat(sPath).st_uid\n"
+        "        except OSError:\n"
+        "            continue\n"
+        "        if iOwnerUid == iExpectedUid:\n"
+        "            continue\n"
+        "        sKey = ('listRootOwned' if iOwnerUid == 0\n"
+        "                else 'listOtherOwned')\n"
+        "        if len(dictAnswer[sKey]) < iMaxNamed:\n"
+        "            dictAnswer[sKey].append(sPath)\n"
+        "    if dictAnswer['bTruncated']:\n"
+        "        break\n"
+        "sys.stdout.write(json.dumps(dictAnswer))\n"
+    ),
+    S_TYPED_READ_TCP_HANDSHAKE: (
+        "import json,socket,ssl,sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sHostname = listArgs[0]\n"
+        "iPort = int(listArgs[1])\n"
+        "fTimeout = float(listArgs[2])\n"
+        "bUseTls = listArgs[3] == 'tls'\n"
+        "sProxyHost = listArgs[4]\n"
+        "iProxyPort = int(listArgs[5] or 0)\n"
+        "dictAnswer = {'sHostname': sHostname, 'iPort': iPort,\n"
+        "              'bConnected': False, 'bTlsVerified': False,\n"
+        "              'bThroughProxy': bool(sProxyHost),\n"
+        "              'sAddress': '', 'sError': '', 'sTlsError': '',\n"
+        "              'sProxyError': ''}\n"
+        "def fnOpenDirect():\n"
+        "    return socket.create_connection((sHostname, iPort), fTimeout)\n"
+        "def fnOpenThroughProxy():\n"
+        "    connectionProxy = socket.create_connection(\n"
+        "        (sProxyHost, iProxyPort), fTimeout)\n"
+        "    sRequest = ('CONNECT ' + sHostname + ':' + str(iPort)\n"
+        "                + ' HTTP/1.1\\r\\nHost: ' + sHostname + ':'\n"
+        "                + str(iPort) + '\\r\\n\\r\\n')\n"
+        "    connectionProxy.sendall(sRequest.encode('ascii'))\n"
+        "    baStatus = connectionProxy.recv(256)\n"
+        "    sStatus = baStatus.decode('latin-1').split('\\r\\n')[0]\n"
+        "    if ' 200' not in sStatus:\n"
+        "        connectionProxy.close()\n"
+        "        dictAnswer['sProxyError'] = sStatus.strip()\n"
+        "        return None\n"
+        "    return connectionProxy\n"
+        "try:\n"
+        "    connectionSocket = (fnOpenThroughProxy() if sProxyHost\n"
+        "                        else fnOpenDirect())\n"
+        "    if connectionSocket is not None:\n"
+        "        dictAnswer['bConnected'] = True\n"
+        "        dictAnswer['sAddress'] = connectionSocket.getpeername()[0]\n"
+        "        if not bUseTls:\n"
+        "            connectionSocket.close()\n"
+        "        else:\n"
+        "            try:\n"
+        "                contextTls = ssl.create_default_context()\n"
+        "                with contextTls.wrap_socket(\n"
+        "                        connectionSocket,\n"
+        "                        server_hostname=sHostname) as connectionTls:\n"
+        "                    dictAnswer['bTlsVerified'] = bool(\n"
+        "                        connectionTls.getpeercert())\n"
+        "            except Exception as errorTls:\n"
+        "                dictAnswer['sTlsError'] = (type(errorTls).__name__\n"
+        "                                           + ': ' + str(errorTls))\n"
+        "                connectionSocket.close()\n"
+        "except Exception as errorConnect:\n"
+        "    dictAnswer['sError'] = (type(errorConnect).__name__ + ': '\n"
+        "                            + str(errorConnect))\n"
+        "sys.stdout.write(json.dumps(dictAnswer))\n"
+    ),
     S_TYPED_READ_CREDENTIAL_FILE: (
         "import base64,sys\n"
         "with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
@@ -812,6 +940,34 @@ def fsRenderBatchedTypedReadProgram(sOperation, listPaths):
         _S_TYPED_READ_PATH_SLOT,
         _fsTypedReadPathLiteral(list(listPaths)),
     )
+
+
+
+def _fdictDecodeProbeAnswer(tExecResult):
+    """Decode one JSON-emitting typed read, or report it unanswered.
+
+    Deliberately NOT a wrapper that also runs the read: every call to
+    :meth:`DockerConnection._ftRunTypedRead` names its operation
+    CONSTANT at the call site, so the boundary check can read the
+    whole set from the source. A helper that took the operation as a
+    parameter would hide one behind a variable, which is the shape
+    ``testEveryTypedReadNamesADeclaredOperation`` exists to refuse.
+
+    ``bAnswered`` False means the probe could not run at all -- which
+    a caller must render as unassessed, never as the answer the probe
+    would have given.
+    """
+    if tExecResult.iExitCode != 0:
+        return {
+            "bAnswered": False,
+            "sError": (tExecResult.sStderr or "").strip()[:400],
+        }
+    try:
+        dictAnswer = json.loads(tExecResult.sStdout or "")
+    except (ValueError, TypeError):
+        return {"bAnswered": False, "sError": "unreadable probe output"}
+    dictAnswer["bAnswered"] = True
+    return dictAnswer
 
 
 def _fsTypedReadPathLiteral(objPaths):
@@ -1315,6 +1471,90 @@ class DockerConnection:
                 f"{sSlotName!r} from this container's keyring."
             )
         return tExecResult.sStdout.strip()
+
+    def fdictResolveHostnameInContainer(
+        self, sContainerId, sHostname, fTimeoutSeconds=2.0,
+    ):
+        """Resolve one name using the CONTAINER's resolver, as a read.
+
+        The container's answer is the only witness to the failure this
+        exists for: a container whose ``/etc/resolv.conf`` is a
+        snapshot of a network the laptop has since left resolves
+        nothing, while the host beside it resolves everything. Asking
+        the host twice cannot see that, and neither can reading the
+        file -- a user-defined network's embedded resolver forwards to
+        upstreams the file does not name.
+
+        Never raises for a lookup failure: the failure IS the answer.
+        ``sError`` carries it, and an exec that could not run at all
+        answers ``bAnswered`` False, which a caller must render as
+        unassessed rather than as a resolver fault.
+        """
+        return _fdictDecodeProbeAnswer(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_RESOLVE_HOSTNAME,
+            [str(sHostname), str(fTimeoutSeconds)],
+        ))
+
+    def fdictProbeTcpHandshakeInContainer(
+        self, sContainerId, sHostname, iPort=443, fTimeoutSeconds=2.0,
+        bUseTls=True, sProxyHost="", iProxyPort=0,
+    ):
+        """Open one connection along the EFFECTIVE path, sending nothing.
+
+        Deliberately mute: it opens the connection, optionally
+        negotiates TLS, and closes. No request line, no headers, no
+        credential -- which matters because the hostname can come from
+        a project-controlled remote URL, and a malicious one must gain
+        nothing from being probed.
+
+        Three parameters exist because a naive dial answers the wrong
+        question. The PORT is the one the project's own remote uses --
+        a git server reachable over ssh answers on 22 and nothing on
+        443, so probing 443 reports a working network as broken. TLS
+        is negotiated only where the scheme actually uses it. And a
+        container configured to reach the network through a PROXY is
+        probed through that proxy with a ``CONNECT``, because a direct
+        dial from behind a corporate proxy fails for every container,
+        working or not.
+
+        No ``Proxy-Authorization`` is ever sent. A proxy that demands
+        credentials answers 407, and that refusal is itself the
+        diagnosis -- guessing at a credential would be a worse answer
+        and a worse idea.
+        """
+        return _fdictDecodeProbeAnswer(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_TCP_HANDSHAKE,
+            [
+                str(sHostname), str(int(iPort)), str(fTimeoutSeconds),
+                "tls" if bUseTls else "plain",
+                str(sProxyHost), str(int(iProxyPort)),
+            ],
+        ))
+
+    def fdictFindForeignOwnedPaths(
+        self, sContainerId, sRootPath, iExpectedUid=1000,
+        iMaxNamed=20, iMaxVisits=20000,
+    ):
+        """Find workspace paths the container user does not own.
+
+        Two lists, never one. The entrypoint's ownership migration
+        triggers on a ROOT-owned path and skips entirely when
+        ``/proc/self/mountinfo`` cannot be read, so root-owned files
+        with readable mount information are the only case a restart
+        repairs. Collapsing the two would produce a finding that
+        recommends a restart which provably does nothing.
+
+        Bounded in both directions -- the number of paths NAMED and
+        the number visited -- because a workspace can hold a million
+        files and this runs on a diagnostic's budget.
+        """
+        return _fdictDecodeProbeAnswer(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_FOREIGN_OWNED_PATHS,
+            [
+                str(sRootPath), str(int(iExpectedUid)),
+                str(int(iMaxNamed)), str(int(iMaxVisits)),
+            ],
+        ))
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,

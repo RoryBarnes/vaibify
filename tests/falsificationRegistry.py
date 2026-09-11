@@ -14194,10 +14194,14 @@ def _fdictEntry(sRel):
         # machinery all still renders -- it just never fires, and a
         # rebuild without a snapshot regeneration goes back to being
         # discovered by a failing step deep inside the shadow.
-        source='vaibify/gui/pipelineServer.py',
+        # Retargeted 2026-09-10: the comparison moved into the leaf
+        # `fdictCompareEnvelopePin`, which the CLI's project-scope
+        # check calls too, so both surfaces answer from one place.
+        source='vaibify/reproducibility/environmentSnapshot.py',
         old=(
-            '    dictAnswer["bPinnedImageIsLive"] = '
-            'sPinned in (sLiveDigest, sLiveId)'
+            '    dictAnswer["bPinnedImageIsLive"] = sPinnedDigest in (\n'
+            '        sLiveImageDigest, sLiveImageId,\n'
+            '    )'
         ),
         new='    dictAnswer["bPinnedImageIsLive"] = True',
     ),
@@ -18462,5 +18466,249 @@ def _fdictEntry(sRel):
             "            '</div>' +\n"
         ),
         new='',
+    ),
+    # --- 2026-09-10: the diagnostic must not destroy its own evidence ---
+    Falsification(
+        nodeid=(
+            'tests/testDoctorIsReadOnly.py::'
+            'test_doctor_removes_nothing_when_the_container_is_stopped'
+        ),
+        source='vaibify/cli/commandStart.py',
+        # restores the `docker rm` inside the pre-flight check doctor
+        # runs, so investigating a stopped container deletes it
+        old=(
+            '    return _fpreflightStaleContainer(\n'
+            '        config.sProjectName, dictStatus["sStatus"],\n'
+            '    )'
+        ),
+        new=(
+            '    from vaibify.docker.containerManager import fnRemoveStopped\n'
+            '    fnRemoveStopped(config.sProjectName)\n'
+            '    return _fpreflightStaleContainer(\n'
+            '        config.sProjectName, dictStatus["sStatus"],\n'
+            '    )'
+        ),
+    ),
+    # --- 2026-09-10: a doctor finding must name the next step ---
+    Falsification(
+        nodeid=(
+            'tests/testDoctorFindingsNameACommand.py::'
+            'test_every_actionable_finding_names_a_next_step'
+        ),
+        source='vaibify/cli/doctorHostChecks.py',
+        # empties the CPU over-allocation warning's remediation, so the
+        # researcher is told the number is wrong and not what to change
+        old=(
+            '        sRemediation=(\n'
+            '            "Set `cpuLimit:` in vaibify.yml to at most the '
+            'daemon\'s "\n'
+            '            "count, or give the daemon\'s virtual machine more '
+            'CPUs."\n'
+            '        ),'
+        ),
+        new='        sRemediation="",',
+    ),
+    # --- 2026-09-10: a missing bind-mount source must refuse, not be
+    # manufactured as an empty directory ---
+    Falsification(
+        nodeid=(
+            'tests/testBindMountRefusesAbsentSource.py::'
+            'test_bind_mounts_are_composed_as_mount_not_as_v'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # reverts the composition to `-v`, which the daemon answers by
+        # creating the missing source as an empty directory
+        old=(
+            '        saRunArgs.extend(["--mount", '
+            '_fsBuildBindMountSpec(dictMount)])'
+        ),
+        new=(
+            '        saRunArgs.extend(["-v", dictMount["host"] + ":"\n'
+            '                          + dictMount["container"]])'
+        ),
+    ),
+    # --- 2026-09-10: `vaibify repair dns` branches on the resolver
+    # configuration, pins an image identity, and re-probes ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerRepairIsLifecycleSafe.py::'
+            'test_an_explicit_dns_container_is_refused_a_restart'
+        ),
+        source='vaibify/cli/commandRepair.py',
+        # drops the explicit-DNS branch, so the command restarts a
+        # container whose baked-in resolver a restart cannot change
+        old=(
+            '    if sResolverKind == S_RESOLVER_EXPLICIT_DNS and not '
+            'bRecreate:\n'
+            '        _fnExplainExplicitDnsRefusal(sContainerName)\n'
+            '        return 1\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerRepairIsLifecycleSafe.py::'
+            'test_a_repair_that_did_not_work_is_reported_as_failed'
+        ),
+        source='vaibify/cli/commandRepair.py',
+        # reports success from the repair's own exit code instead of
+        # from the re-probe, so a repair that changed nothing reads as
+        # a fix
+        old='    return _fiReportReprobe(config, connectionDocker, sContainerName)',
+        new='    return 0',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerRepairIsLifecycleSafe.py::'
+            'test_a_recreation_relaunches_from_the_image_id_not_the_tag'
+        ),
+        # Retargeted 2026-09-10: the mutation moved into the lifecycle
+        # gateway so the repair adds ONE mutation-capable call site
+        # outside it rather than three.
+        source='vaibify/docker/containerManager.py',
+        # relaunches from the project's moving `latest` tag, which may
+        # point at a different image than the envelope pins
+        old=(
+            '        "sContainerId": fsRecreateContainerDetachedFromImage(\n'
+            '            config, sImageIdentity,\n'
+            '        ),'
+        ),
+        new=(
+            '        "sContainerId": fsRecreateContainerDetachedFromImage(\n'
+            '            config, config.sProjectName + ":latest",\n'
+            '        ),'
+        ),
+    ),
+    # --- 2026-09-10: an unassessed check in a REQUESTED scope exits 2 ---
+    Falsification(
+        nodeid=(
+            'tests/testDoctorScopesAndExitCodes.py::'
+            'test_one_unassessed_check_among_passes_still_exits_two'
+        ),
+        source='vaibify/cli/commandDoctor.py',
+        # requires the WHOLE scope to be unassessed, so one timed-out
+        # probe surrounded by successes still exits 0
+        old=(
+            '    if any(\n'
+            '        preflightResult.sLevel == S_LEVEL_NOT_CHECKED\n'
+            '        and preflightResult.sScope in tRequestedScopes\n'
+            '        for preflightResult in listResults\n'
+            '    ):'
+        ),
+        new=(
+            '    if all(\n'
+            '        preflightResult.sLevel == S_LEVEL_NOT_CHECKED\n'
+            '        and preflightResult.sScope in tRequestedScopes\n'
+            '        for preflightResult in listResults\n'
+            '    ):'
+        ),
+    ),
+    # --- 2026-09-10: isolation is a successful assessment; the walk stops ---
+    Falsification(
+        nodeid=(
+            'tests/testDoctorNetworkGraph.py::'
+            'test_an_isolated_container_gets_one_result_and_no_network_checks'
+        ),
+        source='vaibify/cli/doctorNetwork.py',
+        # continues the walk past a deliberately sealed container, so a
+        # working configuration produces a wall of failures
+        old=(
+            '    if bIsolated:\n'
+            '        return [_fpreflightIsolation(sEvidence)]'
+        ),
+        new=(
+            '    if bIsolated:\n'
+            '        listResults = [_fpreflightIsolation(sEvidence)]'
+        ),
+    ),
+    # --- 2026-09-10 (review round 2): the remediation, the probe path,
+    # the repair's honesty, and the project scope's reach ---
+    Falsification(
+        nodeid=(
+            'tests/testDoctorProjectScope.py::'
+            'test_a_project_without_an_envelope_still_has_its_repository_found'
+        ),
+        source='vaibify/cli/doctorProjectChecks.py',
+        # keys discovery on a Level 3 artefact, so every project below
+        # that rung is treated as having no repository at all
+        old=(
+            '        posixpath.join(sWorkspaceRoot, str(sEntry), '
+            '_S_GIT_DIRECTORY)'
+        ),
+        new=(
+            '        posixpath.join(sWorkspaceRoot, str(sEntry), '
+            '_S_ENVELOPE_RELATIVE_PATH)'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDoctorProjectScope.py::'
+            'test_a_truncated_ownership_walk_is_not_a_pass'
+        ),
+        source='vaibify/cli/doctorProjectChecks.py',
+        # reports a partial look as a clean bill
+        old="    if dictAnswer.get(\"bTruncated\"):\n",
+        new="    if False:\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDoctorProjectScope.py::'
+            'test_the_startup_observations_do_not_depend_on_a_repository'
+        ),
+        source='vaibify/cli/commandDoctor.py',
+        # moves the observations below the discovery early return, so a
+        # project with no discoverable repository silently loses them
+        old=(
+            '    listResults.extend(doctorProjectChecks.'
+            'flistReportStartupObservations(\n'
+            '        connectionDocker, sContainerName, '
+            'config.sWorkspaceRoot,\n'
+            '    ))\n'
+            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
+        ),
+        new=(
+            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerRepairIsLifecycleSafe.py::'
+            'test_a_repair_nobody_could_verify_is_not_reported_as_a_fix'
+        ),
+        source='vaibify/cli/commandRepair.py',
+        # answers "confirmed" for a probe that never ran, so a restart
+        # that killed every shell is reported as a fix
+        old=(
+            '    if not dictTarget["sHostname"]:\n'
+            '        return S_REPROBE_UNVERIFIED'
+        ),
+        new=(
+            '    if not dictTarget["sHostname"]:\n'
+            '        return S_REPROBE_CONFIRMED'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerRepairIsLifecycleSafe.py::'
+            'test_a_recreate_is_refused_while_a_hub_holds_the_container'
+        ),
+        source='vaibify/cli/commandRepair.py',
+        # routes a recreate to the hub that owns the container, leaving
+        # its session and caches bound to an id that no longer exists
+        old='        if sOperation == "recreate":\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDoctorNetworkGraph.py::'
+            'test_the_transport_probe_dials_the_project_s_own_port'
+        ),
+        source='vaibify/cli/doctorNetwork.py',
+        # dials 443 whatever transport the project's remote uses, so a
+        # git server reached over ssh reads as unreachable
+        old=(
+            '            dictTarget["iPort"], _F_PROBE_TIMEOUT_SECONDS,'
+        ),
+        new='            443, _F_PROBE_TIMEOUT_SECONDS,',
     ),
 ]

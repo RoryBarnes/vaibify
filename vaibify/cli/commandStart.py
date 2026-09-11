@@ -224,10 +224,22 @@ def _fpreflightSinglePort(iHost, fbCheck):
 
 
 def _fpreflightContainerName(config):
-    """Pre-flight: container name not already in use, or auto-clean stale."""
-    from vaibify.docker.containerManager import (
-        fdictGetContainerStatus, fnRemoveStopped,
-    )
+    """Pre-flight: OBSERVE whether the container name is already taken.
+
+    Purely observational, on every path. It used to call
+    ``fnRemoveStopped`` -- a ``docker rm`` -- so ``vaibify doctor``,
+    the command a researcher runs to investigate a container that
+    stopped unexpectedly, destroyed that container's writable layer
+    and its ``HostConfig`` before anything could read them. The
+    diagnostic deleted its own evidence, and the researcher had to
+    reproduce the failure to look at it.
+
+    ``vaibify start`` still clears a stale container; it does so in
+    :func:`fnClearStoppedContainerBeforeLaunch`, AFTER pre-flight has
+    passed, where the cleanup is part of the launch rather than part
+    of the diagnosis.
+    """
+    from vaibify.docker.containerManager import fdictGetContainerStatus
     dictStatus = fdictGetContainerStatus(config.sProjectName)
     if not dictStatus["bExists"]:
         return PreflightResult(
@@ -236,18 +248,45 @@ def _fpreflightContainerName(config):
         )
     if dictStatus["bRunning"]:
         return _fpreflightRunningContainer(config.sProjectName)
-    fnRemoveStopped(config.sProjectName)
-    return _fpreflightRemovedStaleContainer(config.sProjectName)
+    return _fpreflightStaleContainer(
+        config.sProjectName, dictStatus["sStatus"],
+    )
 
 
-def _fpreflightRemovedStaleContainer(sProjectName):
-    """Build a warn-level PreflightResult for an auto-removed stopped container."""
+def _fpreflightStaleContainer(sProjectName, sStatus):
+    """Build a warn-level PreflightResult for a container in the way."""
     return PreflightResult(
         sName="container-name", sLevel="warn",
         sMessage=(
-            f"Removed stopped container '{sProjectName}' "
-            f"from prior session."
+            f"Container '{sProjectName}' still exists from a prior "
+            f"session and is {sStatus}."
         ),
+        sRemediation=(
+            "`vaibify start` removes it as part of the launch. Remove "
+            "it yourself only if you do not want its writable layer."
+        ),
+        sCommand=f"docker rm {sProjectName}",
+    )
+
+
+def fnClearStoppedContainerBeforeLaunch(config):
+    """Remove a stopped container of this name, just before launching.
+
+    The deliberate half of the split described in
+    :func:`_fpreflightContainerName`: a launch needs the name, so the
+    stale container goes -- but only on the command that is about to
+    create a new one, and only after pre-flight has already passed.
+    """
+    from vaibify.docker.containerManager import (
+        fdictGetContainerStatus, fnRemoveStopped,
+    )
+    dictStatus = fdictGetContainerStatus(config.sProjectName)
+    if not dictStatus["bExists"] or dictStatus["bRunning"]:
+        return
+    fnRemoveStopped(config.sProjectName)
+    click.echo(
+        f"Removed stopped container '{config.sProjectName}' "
+        "from a prior session."
     )
 
 
@@ -542,6 +581,7 @@ def fnStartCommand(bGui, bJupyter, iPort, sProjectName, bDetach, command):
     listPreflight = flistRunStartPreflight(config)
     _fnEnforcePreflightOrExit(listPreflight)
     _fnPrintWarningsIfAny(listPreflight)
+    fnClearStoppedContainerBeforeLaunch(config)
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")
     if bDetach:
