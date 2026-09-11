@@ -1401,6 +1401,54 @@ a standing demonstration that it cannot see a `setsid` descendant.** It
 is not a gate to be satisfied; it is the evidence for the limit stated
 above. A green run there is not containment.
 
+**A resize is an ORDERING problem, and it broke the pane two ways.**
+xterm re-wraps its buffer the instant it is resized; the program in
+the pane learns its width only when SIGWINCH arrives. Between those,
+a program that repaints in place — cursor up N rows, erase, reprint,
+which is what every full-screen agent does dozens of times a second —
+composes a frame for one width and has it painted at another, so its
+erase misses and the old frame survives above the new. That is the
+duplicated text researchers reported for months. The hub therefore
+resizes the pty in the READ loop, **after draining it**, and only
+then tells the browser it may reflow
+(`_fnApplyPendingResizeAndAcknowledge`): the acknowledgement is an
+ordering marker on the output stream, not a reply. Acknowledging
+before draining measured three stale frames on a real pane; draining
+first, one — and the one that remains belongs to the program's own
+model of what it printed, which nothing on this side can reach. Do
+not move that ioctl back to where the request lands, and do not
+reflow without waiting for the marker: both were measured to be
+indistinguishable from having no ordering at all.
+
+The second failure was worse and quieter. A reflow left the viewport
+parked away from its own output — measured, 16 pixels down a buffer
+1475 tall, showing the fourth line of forty — and because xterm
+resumes auto-scrolling only for a pane sitting *exactly* at the
+bottom, it never followed again. The terminal read as hung. The
+follow state is therefore REMEMBERED as the researcher scrolls
+(`fnTrackFollowingOutput`) and restored after a reflow, never
+measured when the resize arrives: by then the browser has re-laid-out
+the pane, so the element reports its new height against a buffer that
+has not reflowed, which measured as a 128-pixel scroll-back nobody
+had performed. Restoring unconditionally is the opposite defect — a
+researcher reading scrollback must not be yanked to the newest line
+because the window changed size — and both directions are
+kill-confirmed in
+`tests/browser/testAResizeKeepsThePaneFollowingItsOutput.py`.
+
+**These two guarantees have historically traded off, so they are
+pinned together.** `d4978e6c` guarded the resize path against reflow
+churn; `93d06af6` guarded the deferred fit so a resize could not take
+a selection mid-copy. Each was verified against its own symptom and
+neither against the other's, which is why fixing one kept appearing
+to break the other.
+`tests/browser/testResizeAndCopyHoldTogether.py` asserts both in one
+pane, including that a deferred fit still LANDS once the selection
+clears — deferring is not dropping. Its companion,
+`tests/testTerminalResizeOrdering.py`, drives the hub half and asserts
+the drain as an ORDER rather than a count, because "the bytes were
+sent" is equally true of the defect.
+
 ## Cross-step references via tokens
 
 **Every cross-step file reference in a vaibify workflow script must be
