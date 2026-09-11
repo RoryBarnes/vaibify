@@ -211,10 +211,19 @@ def test_a_resize_keeps_the_pane_following_its_output(
     SURVIVED on CI: the guard was untested there and the report read
     as an undefended guard rather than an unobservable mutation.
 
-    Kills: the restore never firing (`bWasFollowingOutput` forced
-    false) -> the pane stops following its output. (The opposite
-    mutation, forced true, was also kill-confirmed against property
-    (2); the registry admits one entry per nodeid.)
+    Kills: the restore ALWAYS firing (`bWasFollowingOutput` forced
+    true) -> property (2) fails, the reader yanked to the bottom.
+
+    The opposite mutation -- the restore never firing, which is the
+    defect this guard was written for -- kills here on a stranding
+    geometry and SURVIVED on both Ubuntu CI legs, twice, with both
+    directions driven and the buffer confirmed to overflow. Whether a
+    reflow strands the viewport depends on the pane's rows and
+    columns, and those follow the runner's font metrics; where it does
+    not strand, removing the restore changes nothing any test can
+    observe. So the portable direction is what the registry pins, and
+    this note is the record that the other one is unobservable rather
+    than undefended.
     """
     pageDashboard.context.grant_permissions(
         ["clipboard-read", "clipboard-write"],

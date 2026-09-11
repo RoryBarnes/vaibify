@@ -18523,6 +18523,20 @@ def _fdictEntry(sRel):
     # following for the rest of the session and the terminal read as
     # hung. Measured: 16 pixels down a buffer 1475 tall, showing the
     # fourth line of forty. ---
+    # The mutation registered here is the restore ALWAYS firing, not
+    # the restore never firing. Never-firing is the defect this guard
+    # was written for, and it is killed on a stranding geometry -- but
+    # whether a reflow strands the viewport at all depends on the
+    # pane's rows and columns, which follow the runner's font metrics.
+    # It killed on macOS and SURVIVED on both Ubuntu legs, twice, with
+    # both resize directions driven and the buffer confirmed to
+    # overflow: on that geometry the reflow simply lands at the bottom,
+    # so removing the restore changes nothing a test can see. An entry
+    # that reports SURVIVED for an unobservable mutation reads as an
+    # undefended guard, which is the confusion the registry exists to
+    # avoid. The always-firing direction has no such dependence --
+    # property (2) scrolls back and changes only the HEIGHT, so nothing
+    # re-wraps -- and it is what is pinned.
     Falsification(
         nodeid=(
             'tests/browser/testAResizeKeepsThePaneFollowingItsOutput.py::'
@@ -18530,7 +18544,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptTerminal.js',
         old='        var bWasFollowingOutput = dictTab.bFollowingOutput !== false;',
-        new='        var bWasFollowingOutput = false;',
+        new='        var bWasFollowingOutput = true;',
     ),
 
 
