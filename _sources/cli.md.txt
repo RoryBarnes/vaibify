@@ -147,31 +147,135 @@ vaibify config import <file>                # Load config from a file
 
 ### `vaibify doctor`
 
-Run every relevant pre-flight check and print a single status report,
-modelled after `brew doctor`. Checks cover the active Docker context,
-daemon reachability, Colima health, architecture, disk and memory
-headroom (build scope), and image presence, ports, container name, and
-bind mounts (start scope). Exits non-zero when any check fails.
+The command to run when something is wrong. It DIAGNOSES and changes
+nothing — no container is started, stopped, removed or restarted by any
+check it performs. When a finding has a fix vaibify itself can apply,
+the finding names the command (see `vaibify repair` below).
 
-Doctor also runs before any project exists: with an empty registry it
-performs the environment checks (Docker context, daemon, Colima) and
-notes that the project-scoped checks will run once a project is
-configured. This is the right first command when a fresh install
-misbehaves.
+Three scopes:
+
+| Scope       | What it examines                                              |
+|-------------|---------------------------------------------------------------|
+| `host`      | This machine: Docker context and endpoint, daemon reachability, the runtime (Docker Desktop / Colima / rootful or rootless Engine), architecture, daemon storage and memory, what vaibify will request against what the daemon has, and room for an environment deposit |
+| `container` | Inside the running container: network attachments and default route, the resolver configuration, name resolution compared against this host's, the effective proxy path, and (with `--online`) transport |
+| `project`   | Vaibify's own record of the project: journal quarantine, whether the environment envelope pins the image the container runs, workspace ownership, and what the entrypoint observed at the last start |
+
+Four states, and *not checked* is one of them:
+
+| State         | Meaning                                                         |
+|---------------|-----------------------------------------------------------------|
+| `ok`          | Assessed and correct                                            |
+| `warn`        | Assessed, and something is worth acting on                      |
+| `fail`        | Assessed, and something is broken                               |
+| `not checked` | **Could not be assessed**, with the reason. Never counted as `ok`, and printed in its own group |
+
+Every `warn` and `fail` names a next step, and the command it names is
+correct for the runtime this host is actually using — `colima start
+--profile <yours>`, `systemctl --user start docker` for a rootless
+daemon, `open -a Docker` for Docker Desktop. When the runtime cannot be
+identified, doctor says so and names the diagnostic step rather than
+guessing at a command that does not apply to your machine.
 
 ```bash
-vaibify doctor [--quiet] [--build] [--start] [--project/-p NAME]
+vaibify doctor [--quiet] [--build] [--start] [--container] [--online]
+               [--json] [--explain CHECK] [--project/-p NAME]
 ```
 
 | Option             | Description                              |
 |--------------------|------------------------------------------|
-| `--quiet`          | Suppress `ok` lines; show only warns and fails |
+| `--quiet`          | Suppress `ok` lines; show only warns, fails and unassessed |
 | `--build`          | Run only the build-relevant subset       |
 | `--start`          | Run only the start-relevant subset       |
+| `--container`      | Run only the checks inside the running container and against this project's records |
+| `--online`         | Permit connection attempts to the host this project already depends on |
+| `--json`           | Emit the results as JSON instead of a report |
+| `--explain CHECK`  | Print how one named check decides its answer, and nothing else |
 | `--project`, `-p`  | Target project name (optional if only one exists) |
 
-With neither `--build` nor `--start`, both subsets run. The report ends
-with an `N ok / M warn / K fail` summary line.
+With no scope flag, every scope runs. The report ends with an
+`N ok / M warn / K fail / J not checked` summary line.
+
+**Exit codes.**
+
+| Code | Meaning |
+|------|---------|
+| 0    | Everything applicable in the requested scope was assessed, and nothing failed |
+| 1    | At least one check failed |
+| 2    | A scope you asked for by name contains a check that could not be assessed |
+
+Code 2 fires for *any* unassessed applicable check inside an explicitly
+requested scope — not only when the whole scope was unassessable.
+Without a scope flag nothing is explicitly requested, so a laptop with
+no container running does not turn an ordinary `vaibify doctor` run
+non-zero.
+
+**What doctor does over the network.** By default it resolves exactly
+one name, and it is a name your project already depends on: your first
+configured repository's host, or the API host of the agent provider you
+enabled. It introduces no third party of its own, and with neither
+configured it falls back to inspecting the resolver configuration and
+says so.
+
+Connection attempts happen only with `--online`, and they follow the
+path your project actually uses rather than a fixed one: the **port**
+its remote is reached on (443 for `https://`, 22 for `ssh://` and for
+the `git@host:path` form, 9418 for `git://`, or whatever the URL
+names), TLS **only** where the transport carries it, and through the
+container's own **proxy** with a `CONNECT` when `HTTPS_PROXY` /
+`HTTP_PROXY` is set and `NO_PROXY` does not exempt the host. Nothing
+vaibify probes is ever authenticated to: no request bytes are sent to
+the destination and no `Proxy-Authorization` is sent to the proxy — a
+proxy that answers `407` is reported as exactly that, which is the
+diagnosis rather than a thing to work around.
+
+### `vaibify repair`
+
+The acted-on half of `vaibify doctor`. One subject exists today.
+
+```bash
+vaibify repair dns [--recreate] [--yes] [--project/-p NAME]
+```
+
+`vaibify repair dns` clears a container's stale resolver state. It
+reads the resolver configuration first and branches on it, because the
+three configurations do not have the same remedy:
+
+- a **default bridge** or Docker's **embedded resolver** clears on a
+  restart, so the repair restarts the container;
+- an **explicit `HostConfig.Dns`** is baked into the container and no
+  restart can change it. Vaibify never sets that field, so finding one
+  means the container's specification drifted from its vaibify
+  configuration — introduced from outside vaibify. The repair
+  **refuses** to restart (which would succeed and change nothing, and
+  read as the fix failing) and points at `--recreate`, which recreates
+  the container from the vaibify configuration.
+
+A repair tells you what it is about to do before it does it: a restart
+re-runs the entrypoint and kills every shell, agent and pipeline step
+inside the container. It refuses over live work, naming what is busy;
+it routes a **restart** through the live hub when one owns the
+container; it is journaled, so a crash mid-repair reconciles like any
+other interrupted operation; and a recreation pins the image
+**identity** the container is running rather than the project's
+`latest` tag, which may have moved.
+
+A **recreation is refused while a vaibify hub holds the container**,
+on both sides. Recreating gives the container a new id, and the hub's
+session, workflow cache and file paths are all bound to the old one —
+so the session would stay authorized and cached against a container
+that no longer exists. Close the dashboard session for that project
+and run the command again; it then takes the direct lane.
+
+Afterwards it re-probes and reports the state it actually found.
+
+| Code | Meaning |
+|------|---------|
+| 0    | The repair ran **and** the re-probe confirmed the container resolves names again |
+| 1    | The repair was refused, failed, or ran and the container still does not resolve |
+| 2    | The repair ran and **nothing was verified** — this project names no host vaibify may resolve, or the container could not answer a lookup |
+
+Exit 2 is not a success. It is the command saying it changed something
+and cannot tell you whether that helped.
 
 ### `vaibify build`
 

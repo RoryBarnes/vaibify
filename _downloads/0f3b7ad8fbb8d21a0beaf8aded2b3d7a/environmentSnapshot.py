@@ -713,6 +713,38 @@ def fbImageDigestPullable(filesRepo):
     return not _fbIsImageIdDigest(sDigest)
 
 
+def fdictCompareEnvelopePin(sPinnedDigest, sLiveImageDigest, sLiveImageId):
+    """Compare an envelope's pinned image against the live one, as VALUES.
+
+    The leaf both lanes call. The hub's caller reads the pin from a
+    repo-files adapter and the live identity out of its own connect-time
+    cache; the CLI reads both from the daemon and the container. Neither
+    difference belongs in the comparison, and duplicating the comparison
+    is how the two surfaces come to disagree about the same image.
+
+    ``bPinnedImageIsLive`` is THREE-state and must stay that way. True
+    is the same image; False is a container running an image the
+    envelope does not pin, so the published claim does not cover
+    current work; ``None`` means nothing was determined -- no pin, or
+    no captured identity -- and NO surface may paint a warning from it.
+
+    The pin matches EITHER identity form, because an image pushed to a
+    registry after the capture gains a registry digest without
+    changing.
+    """
+    dictAnswer = {
+        "sPinnedImageDigest": sPinnedDigest,
+        "sLiveImageDigest": sLiveImageDigest or sLiveImageId,
+    }
+    if not sPinnedDigest or not (sLiveImageDigest or sLiveImageId):
+        dictAnswer["bPinnedImageIsLive"] = None
+        return dictAnswer
+    dictAnswer["bPinnedImageIsLive"] = sPinnedDigest in (
+        sLiveImageDigest, sLiveImageId,
+    )
+    return dictAnswer
+
+
 def _fsExtractImageDigest(dictPayload):
     """Return the image-digest string from either supported layout."""
     dictContainer = dictPayload.get("dictContainer")

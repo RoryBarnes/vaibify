@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.12.dev2 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.12.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b0e6865f"></script>
+      <script src="_static/documentation_options.js?v=7b6f1692"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -64,6 +64,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#container-lifecycle">Container Lifecycle</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-doctor"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-repair"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-build"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-start"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-stop"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code></a></li>
@@ -328,17 +329,58 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 <h2>Container Lifecycle<a class="headerlink" href="#container-lifecycle" title="Link to this heading"></a></h2>
 <section id="vaibify-doctor">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code><a class="headerlink" href="#vaibify-doctor" title="Link to this heading"></a></h3>
-<p>Run every relevant pre-flight check and print a single status report,
-modelled after <code class="docutils literal notranslate"><span class="pre">brew</span> <span class="pre">doctor</span></code>. Checks cover the active Docker context,
-daemon reachability, Colima health, architecture, disk and memory
-headroom (build scope), and image presence, ports, container name, and
-bind mounts (start scope). Exits non-zero when any check fails.</p>
-<p>Doctor also runs before any project exists: with an empty registry it
-performs the environment checks (Docker context, daemon, Colima) and
-notes that the project-scoped checks will run once a project is
-configured. This is the right first command when a fresh install
-misbehaves.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor<span class="w"> </span><span class="o">[</span>--quiet<span class="o">]</span><span class="w"> </span><span class="o">[</span>--build<span class="o">]</span><span class="w"> </span><span class="o">[</span>--start<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<p>The command to run when something is wrong. It DIAGNOSES and changes
+nothing — no container is started, stopped, removed or restarted by any
+check it performs. When a finding has a fix vaibify itself can apply,
+the finding names the command (see <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code> below).</p>
+<p>Three scopes:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Scope</p></th>
+<th class="head"><p>What it examines</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">host</span></code></p></td>
+<td><p>This machine: Docker context and endpoint, daemon reachability, the runtime (Docker Desktop / Colima / rootful or rootless Engine), architecture, daemon storage and memory, what vaibify will request against what the daemon has, and room for an environment deposit</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">container</span></code></p></td>
+<td><p>Inside the running container: network attachments and default route, the resolver configuration, name resolution compared against this host’s, the effective proxy path, and (with <code class="docutils literal notranslate"><span class="pre">--online</span></code>) transport</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">project</span></code></p></td>
+<td><p>Vaibify’s own record of the project: journal quarantine, whether the environment envelope pins the image the container runs, workspace ownership, and what the entrypoint observed at the last start</p></td>
+</tr>
+</tbody>
+</table>
+<p>Four states, and <em>not checked</em> is one of them:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>State</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ok</span></code></p></td>
+<td><p>Assessed and correct</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code></p></td>
+<td><p>Assessed, and something is worth acting on</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fail</span></code></p></td>
+<td><p>Assessed, and something is broken</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">not</span> <span class="pre">checked</span></code></p></td>
+<td><p><strong>Could not be assessed</strong>, with the reason. Never counted as <code class="docutils literal notranslate"><span class="pre">ok</span></code>, and printed in its own group</p></td>
+</tr>
+</tbody>
+</table>
+<p>Every <code class="docutils literal notranslate"><span class="pre">warn</span></code> and <code class="docutils literal notranslate"><span class="pre">fail</span></code> names a next step, and the command it names is
+correct for the runtime this host is actually using — <code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">start</span> <span class="pre">--profile</span> <span class="pre">&lt;yours&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">--user</span> <span class="pre">start</span> <span class="pre">docker</span></code> for a rootless
+daemon, <code class="docutils literal notranslate"><span class="pre">open</span> <span class="pre">-a</span> <span class="pre">Docker</span></code> for Docker Desktop. When the runtime cannot be
+identified, doctor says so and names the diagnostic step rather than
+guessing at a command that does not apply to your machine.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor<span class="w"> </span><span class="o">[</span>--quiet<span class="o">]</span><span class="w"> </span><span class="o">[</span>--build<span class="o">]</span><span class="w"> </span><span class="o">[</span>--start<span class="o">]</span><span class="w"> </span><span class="o">[</span>--container<span class="o">]</span><span class="w"> </span><span class="o">[</span>--online<span class="o">]</span>
+<span class="w">               </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--explain<span class="w"> </span>CHECK<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -349,7 +391,7 @@ misbehaves.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--quiet</span></code></p></td>
-<td><p>Suppress <code class="docutils literal notranslate"><span class="pre">ok</span></code> lines; show only warns and fails</p></td>
+<td><p>Suppress <code class="docutils literal notranslate"><span class="pre">ok</span></code> lines; show only warns, fails and unassessed</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--build</span></code></p></td>
 <td><p>Run only the build-relevant subset</p></td>
@@ -357,13 +399,122 @@ misbehaves.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--start</span></code></p></td>
 <td><p>Run only the start-relevant subset</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--container</span></code></p></td>
+<td><p>Run only the checks inside the running container and against this project’s records</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--online</span></code></p></td>
+<td><p>Permit connection attempts to the host this project already depends on</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
+<td><p>Emit the results as JSON instead of a report</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code></p></td>
+<td><p>Print how one named check decides its answer, and nothing else</p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
 <td><p>Target project name (optional if only one exists)</p></td>
 </tr>
 </tbody>
 </table>
-<p>With neither <code class="docutils literal notranslate"><span class="pre">--build</span></code> nor <code class="docutils literal notranslate"><span class="pre">--start</span></code>, both subsets run. The report ends
-with an <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">ok</span> <span class="pre">/</span> <span class="pre">M</span> <span class="pre">warn</span> <span class="pre">/</span> <span class="pre">K</span> <span class="pre">fail</span></code> summary line.</p>
+<p>With no scope flag, every scope runs. The report ends with an
+<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">ok</span> <span class="pre">/</span> <span class="pre">M</span> <span class="pre">warn</span> <span class="pre">/</span> <span class="pre">K</span> <span class="pre">fail</span> <span class="pre">/</span> <span class="pre">J</span> <span class="pre">not</span> <span class="pre">checked</span></code> summary line.</p>
+<p><strong>Exit codes.</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>Everything applicable in the requested scope was assessed, and nothing failed</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>At least one check failed</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>A scope you asked for by name contains a check that could not be assessed</p></td>
+</tr>
+</tbody>
+</table>
+<p>Code 2 fires for <em>any</em> unassessed applicable check inside an explicitly
+requested scope — not only when the whole scope was unassessable.
+Without a scope flag nothing is explicitly requested, so a laptop with
+no container running does not turn an ordinary <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> run
+non-zero.</p>
+<p><strong>What doctor does over the network.</strong> By default it resolves exactly
+one name, and it is a name your project already depends on: your first
+configured repository’s host, or the API host of the agent provider you
+enabled. It introduces no third party of its own, and with neither
+configured it falls back to inspecting the resolver configuration and
+says so.</p>
+<p>Connection attempts happen only with <code class="docutils literal notranslate"><span class="pre">--online</span></code>, and they follow the
+path your project actually uses rather than a fixed one: the <strong>port</strong>
+its remote is reached on (443 for <code class="docutils literal notranslate"><span class="pre">https://</span></code>, 22 for <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> and for
+the <code class="docutils literal notranslate"><span class="pre">git&#64;host:path</span></code> form, 9418 for <code class="docutils literal notranslate"><span class="pre">git://</span></code>, or whatever the URL
+names), TLS <strong>only</strong> where the transport carries it, and through the
+container’s own <strong>proxy</strong> with a <code class="docutils literal notranslate"><span class="pre">CONNECT</span></code> when <code class="docutils literal notranslate"><span class="pre">HTTPS_PROXY</span></code> /
+<code class="docutils literal notranslate"><span class="pre">HTTP_PROXY</span></code> is set and <code class="docutils literal notranslate"><span class="pre">NO_PROXY</span></code> does not exempt the host. Nothing
+vaibify probes is ever authenticated to: no request bytes are sent to
+the destination and no <code class="docutils literal notranslate"><span class="pre">Proxy-Authorization</span></code> is sent to the proxy — a
+proxy that answers <code class="docutils literal notranslate"><span class="pre">407</span></code> is reported as exactly that, which is the
+diagnosis rather than a thing to work around.</p>
+</section>
+<section id="vaibify-repair">
+<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code><a class="headerlink" href="#vaibify-repair" title="Link to this heading"></a></h3>
+<p>The acted-on half of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>. One subject exists today.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>repair<span class="w"> </span>dns<span class="w"> </span><span class="o">[</span>--recreate<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span> <span class="pre">dns</span></code> clears a container’s stale resolver state. It
+reads the resolver configuration first and branches on it, because the
+three configurations do not have the same remedy:</p>
+<ul class="simple">
+<li><p>a <strong>default bridge</strong> or Docker’s <strong>embedded resolver</strong> clears on a
+restart, so the repair restarts the container;</p></li>
+<li><p>an <strong>explicit <code class="docutils literal notranslate"><span class="pre">HostConfig.Dns</span></code></strong> is baked into the container and no
+restart can change it. Vaibify never sets that field, so finding one
+means the container’s specification drifted from its vaibify
+configuration — introduced from outside vaibify. The repair
+<strong>refuses</strong> to restart (which would succeed and change nothing, and
+read as the fix failing) and points at <code class="docutils literal notranslate"><span class="pre">--recreate</span></code>, which recreates
+the container from the vaibify configuration.</p></li>
+</ul>
+<p>A repair tells you what it is about to do before it does it: a restart
+re-runs the entrypoint and kills every shell, agent and pipeline step
+inside the container. It refuses over live work, naming what is busy;
+it routes a <strong>restart</strong> through the live hub when one owns the
+container; it is journaled, so a crash mid-repair reconciles like any
+other interrupted operation; and a recreation pins the image
+<strong>identity</strong> the container is running rather than the project’s
+<code class="docutils literal notranslate"><span class="pre">latest</span></code> tag, which may have moved.</p>
+<p>A <strong>recreation is refused while a vaibify hub holds the container</strong>,
+on both sides. Recreating gives the container a new id, and the hub’s
+session, workflow cache and file paths are all bound to the old one —
+so the session would stay authorized and cached against a container
+that no longer exists. Close the dashboard session for that project
+and run the command again; it then takes the direct lane.</p>
+<p>Afterwards it re-probes and reports the state it actually found.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>The repair ran <strong>and</strong> the re-probe confirmed the container resolves names again</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>The repair was refused, failed, or ran and the container still does not resolve</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>The repair ran and <strong>nothing was verified</strong> — this project names no host vaibify may resolve, or the container could not answer a lookup</p></td>
+</tr>
+</tbody>
+</table>
+<p>Exit 2 is not a success. It is the command saying it changed something
+and cannot tell you whether that helped.</p>
 </section>
 <section id="vaibify-build">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code><a class="headerlink" href="#vaibify-build" title="Link to this heading"></a></h3>
