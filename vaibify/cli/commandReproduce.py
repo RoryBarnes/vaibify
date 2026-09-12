@@ -69,7 +69,6 @@ from vaibify.reproducibility.l3Attestation import (
     S_STATUS_FAILED,
     S_STATUS_PASSED,
     fdictBuildAttestation,
-    fnWriteAttestation,
     fsCurrentManifestDigest,
 )
 from vaibify.reproducibility.levelGates import (
@@ -93,6 +92,7 @@ from vaibify.reproducibility.rerunVerification import (
     fdictUnrunOutcome,
 )
 from vaibify.reproducibility import imageAcquisition
+from vaibify.reproducibility import reproductionRecord
 from vaibify.reproducibility import reproductionReport
 from vaibify.reproducibility.reproductionSource import (
     ReproductionSourceRefusedError,
@@ -587,9 +587,11 @@ def _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName):
         connectionDocker, sContainerName,
         dictWorkflow.get("sProjectRepoPath", ""),
     )
+    from vaibify.docker.containerManager import fdictLiveImageOriginForProject
     dictOutcome = fdictRerunAndVerifyThroughShadow(
         connectionDocker, sContainerName, dictWorkflow, sWorkflowPath,
         filesRepoLive,
+        dictImageOrigin=fdictLiveImageOriginForProject(sContainerName),
     )
     _fnReportRerunExecution(dictOutcome)
     return dictOutcome
@@ -790,7 +792,10 @@ def _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten):
     click.echo("L3 reproduction failed; see tier output above.")
 
 
-def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
+def _fdictBuildRerunAttestation(
+    sProjectRepo, dictOutcome, fDuration, sTimestampUtc="",
+    sReproducedManifestPath=None,
+):
     """Return the attestation dict describing a rerun + hash-compare outcome.
 
     Every count and every diverged path comes from ``dictOutcome``, the
@@ -833,11 +838,21 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
         dictAiProvenance=_fdictBuildCliProvenanceStamp(sProjectRepo),
         # The same re-check the dashboard lane records. Both lanes
         # write the same file, so they must agree about what it says.
-        dictImageArchiveCheck=imageDeposit.
-        fdictRecheckArchiveAgainstLocalImage(
-            ffilesEnsureRepoFiles(sProjectRepo),
-            fdictReadEnvironmentJson(sProjectRepo),
+        # Carried on the outcome when the writer already computed it
+        # (one docker save, not two); computed here otherwise.
+        dictImageArchiveCheck=(
+            dictOutcome.get("dictImageArchiveCheck")
+            or imageDeposit.fdictRecheckArchiveAgainstLocalImage(
+                ffilesEnsureRepoFiles(sProjectRepo),
+                fdictReadEnvironmentJson(sProjectRepo),
+            )
         ),
+        listFileOutcomes=dictOutcome.get("listFileOutcomes"),
+        dictReproductionProvenance=dictOutcome.get(
+            "dictReproductionProvenance",
+        ),
+        sReproducedManifestPath=sReproducedManifestPath,
+        sAttestedAtUtc=sTimestampUtc,
     )
 
 
@@ -858,7 +873,9 @@ def _fdictBuildCliProvenanceStamp(sProjectRepo):
     )
 
 
-def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
+def _fbWriteAttestationFromRun(
+    sProjectRepo, dictOutcome, fDuration, sRecordKind="",
+):
     """Persist an L3 attestation reflecting the rerun outcome.
 
     Called only when ``--rerun`` ran end-to-end so the attestation
@@ -877,15 +894,64 @@ def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
     """
     if not dictOutcome.get("bRerunAttempted", True):
         return False
-    dictAttestation = _fdictBuildRerunAttestation(
-        sProjectRepo, dictOutcome, fDuration,
+    dictOutcome = dict(dictOutcome)
+    dictOutcome["dictImageArchiveCheck"] = (
+        imageDeposit.fdictRecheckArchiveAgainstLocalImage(
+            ffilesEnsureRepoFiles(sProjectRepo),
+            fdictReadEnvironmentJson(sProjectRepo),
+        )
     )
+    # The host checkout ``--repo`` names is the repository that will
+    # RECEIVE the record, so it is the one asked whose attestation it
+    # carries -- through the host runner, never the container's. The
+    # rerun lane settles this before it runs and passes the answer in;
+    # an undetermined owner raises rather than answering.
+    if not sRecordKind:
+        sRecordKind = reproductionRecord.fsRecordKindForRepository(
+            _ffnBuildHostGitRunner(sProjectRepo),
+        )
+
+    def fdictBuildAttestationAt(sTimestampUtc, sReproducedManifestPath):
+        return _fdictBuildRerunAttestation(
+            sProjectRepo, dictOutcome, fDuration, sTimestampUtc,
+            sReproducedManifestPath,
+        )
+
     try:
-        fnWriteAttestation(sProjectRepo, dictAttestation)
+        listWritten = reproductionRecord.flistWriteVerificationOutcome(
+            sProjectRepo, sRecordKind, dictOutcome, fDuration,
+            _fdictAggregateAllWorkflows(sProjectRepo) or {},
+            fdictBuildAttestationAt,
+        )
     except OSError as error:
         click.echo(f"  warning: could not persist attestation: {error}")
         return False
+    _fnReportRecordWritten(sRecordKind, listWritten)
     return True
+
+
+def _ffnBuildHostGitRunner(sProjectRepo):
+    """Return ``ftRunGit(listArguments)`` bound to the host checkout."""
+    from vaibify.gui.gitStatus import fsRunGit
+
+    def ftRunGit(listArguments):
+        tResult = fsRunGit(list(listArguments), sProjectRepo)
+        return (tResult.returncode, tResult.stdout)
+    return ftRunGit
+
+
+def _fnReportRecordWritten(sRecordKind, listWritten):
+    """Say which record the rerun wrote, and where the manifest landed."""
+    if sRecordKind == reproductionRecord.S_RECORD_KIND_REPRODUCTION:
+        click.echo(
+            "  recorded as a REPRODUCTION, not an attestation: the "
+            "attestation in this checkout was last committed by another "
+            "identity, and it was left untouched."
+        )
+    else:
+        click.echo("  recorded as this project's Level 3 attestation.")
+    for sPath in listWritten:
+        click.echo(f"  wrote {sPath}")
 
 
 def _fsRecordedImageDigest(sProjectRepo):
@@ -928,11 +994,22 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     reproduced anything, and Tier 5 must say so.
     """
     fStarted = time.monotonic()
+    # Which record the run would write is settled BEFORE the rerun: a
+    # git that cannot say whose attestation this checkout carries
+    # refuses now, rather than after a rerun whose outcome could then
+    # not be written honestly.
+    try:
+        sRecordKind = reproductionRecord.fsRecordKindForRepository(
+            _ffnBuildHostGitRunner(sProjectRepo),
+        )
+    except reproductionRecord.RecordKindUndeterminedError as error:
+        click.echo(f"  refused before any step ran: {error}")
+        return False, False
     dictOutcome = fdictRerunAndVerify(sProjectRepo, sWorkflowName)
     _fnReportHashCompare(dictOutcome)
     bAttestationWritten = _fbWriteAttestationFromRun(
         sProjectRepo, dictOutcome,
-        time.monotonic() - fStarted,
+        time.monotonic() - fStarted, sRecordKind,
     )
     return dictOutcome["bPassed"], bAttestationWritten
 

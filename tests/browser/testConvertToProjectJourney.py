@@ -178,10 +178,13 @@ def _fnWalkConvertWizardToSummary(page):
     Six clicks, not five, since 2026-08-21: Files to Copy sits between
     Packages and Summary, because a container's workspace is a fresh
     Docker volume rather than the researcher's own folder and the
-    conversion is where they choose what crosses over.
+    conversion is where they choose what crosses over. Seven since
+    2026-09-11: the Environment page sits right after Name, always,
+    and for a directory that pins no obtainable image it shows the
+    refusal and leaves "Build from the Dockerfile" chosen.
     """
     page.fill("#inputWizardProjectName", S_NEW_CONTAINER_NAME)
-    for _iStep in range(6):
+    for _iStep in range(7):
         _fnClickNextPastAnyAgentWarning(page)
 
 
@@ -354,7 +357,7 @@ def testOnlyTheTickedFilesAreCopiedIntoTheContainer(
     # Name -> Python -> Repositories -> Features -> Files. Four, not
     # five: Files moved ahead of Packages so the package page can be
     # filled from the files chosen here.
-    for _iStep in range(4):
+    for _iStep in range(5):
         _fnClickNextPastAnyAgentWarning(pageDashboard)
     assert pageDashboard.text_content(
         "#wizardStepTitle",
@@ -506,7 +509,7 @@ def testThePackagesPageIsPrefilledFromTheChosenScripts(
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "scan-lane-box")
     # Name -> Python -> Repositories -> Features -> Files
-    for _iStep in range(4):
+    for _iStep in range(5):
         _fnClickNextPastAnyAgentWarning(pageDashboard)
     assert pageDashboard.text_content(
         "#wizardStepTitle",
@@ -573,7 +576,7 @@ def testLeavingEveryAgentUntickedAsksBeforeContinuing(
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "agent-lane-box")
     # Name -> Python -> Repositories -> Features.
-    for _iStep in range(3):
+    for _iStep in range(4):
         pageDashboard.click("#btnWizardNext")
         pageDashboard.wait_for_timeout(200)
     assert pageDashboard.text_content(
@@ -619,7 +622,7 @@ def testTickingAnAgentAsksNothing(pageDashboard, serverHub):
     # so the wizard opens on Name (2026-09-04 ruling).
     pageDashboard.wait_for_timeout(200)
     pageDashboard.fill("#inputWizardProjectName", "ticked-lane-box")
-    for _iStep in range(3):
+    for _iStep in range(4):
         pageDashboard.click("#btnWizardNext")
         pageDashboard.wait_for_timeout(200)
     pageDashboard.check('.wizard-feature-input[data-feature="claude"]')

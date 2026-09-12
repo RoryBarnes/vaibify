@@ -117,6 +117,7 @@ __all__ = [
     "fcontextHoldStagedSource",
     "ffnHoldStagedSource",
     "fdictClassifySource",
+    "fdictDescribePinnedEnvironment",
     "fdictDescribeStagedSource",
     "fdictLoadStagedWorkflow",
     "fdictSelectWorkflowEntry",
@@ -1016,6 +1017,44 @@ def _fdictReadEnvelopeOrRefuse(filesRepo):
             "container is running."
         )
     return dictEnvironment
+
+
+def fdictDescribePinnedEnvironment(sRepoPath):
+    """Describe what a clone's envelope pins, and whether it can be obtained.
+
+    Built from the same validators the staging lane applies -- rule 2
+    (a content-pinned image with a recorded architecture) and rule 6
+    (a deposit on record covers the pin; an absent deposit is allowed,
+    because the chain's first link is the registry) -- so "obtainable"
+    here means exactly what "reproduction-ready" means there for the
+    image half. ``bObtainable`` False always carries ``sRefusal``. Read
+    from a HOST path: this is asked of the clone a researcher is about
+    to containerize, before any container exists.
+    """
+    filesRepo = HostRepoFiles(sRepoPath)
+    try:
+        dictEnvironment = _fdictReadEnvelopeOrRefuse(filesRepo)
+        dictDeposit = _fdictDepositFacts(dictEnvironment)
+    except ReproductionSourceRefusedError as error:
+        return {
+            "bObtainable": False, "sRefusal": str(error),
+            "sPinnedImageReference": "", "sRequiredPlatform": "",
+            "bDepositOnRecord": False, "sDepositVersionDoi": "",
+            "sZenodoService": "",
+        }
+    dictContainer = dictEnvironment.get("dictContainer") or {}
+    dictRecord = imageArchive.fdictReadArchiveRecord(dictEnvironment) or {}
+    return {
+        "bObtainable": True,
+        "sRefusal": "",
+        "sPinnedImageReference": dictEnvironment["_sPinnedImageReference"],
+        "sRequiredPlatform": fsRequiredPlatformFromArchitecture(
+            str(dictContainer.get("sArchitecture") or ""),
+        ),
+        "bDepositOnRecord": dictDeposit["bDepositOnRecord"],
+        "sDepositVersionDoi": dictDeposit["sDepositVersionDoi"],
+        "sZenodoService": str(dictRecord.get("sZenodoService") or ""),
+    }
 
 
 def _flistParseManifestOrRefuse(filesRepo):

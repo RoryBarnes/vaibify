@@ -28,6 +28,7 @@ from tests.reproductionSourceFixtures import (
 )
 from vaibify.gui import reproductionProgress
 from vaibify.gui.actionCatalog import S_SESSION_HEADER_NAME
+from vaibify.docker import daemonDescription
 from vaibify.gui.routes import reproductionRoutes
 from vaibify.reproducibility import reproductionReport
 from vaibify.reproducibility import reproductionSource
@@ -115,7 +116,6 @@ def _fcontextFakeTheDaemonHalf(dictAcquired=None, dictOutcome=None,
     return patch.multiple(
         reproductionRoutes,
         fdictRerunAndVerifyFromSnapshot=fdictRerun,
-        _fsReadDaemonArchitectureQuietly=lambda: "amd64",
     ), patch.object(
         reproductionRoutes.imageAcquisition, "fdictAcquirePinnedImage",
         fdictAcquire,
@@ -123,6 +123,8 @@ def _fcontextFakeTheDaemonHalf(dictAcquired=None, dictOutcome=None,
         reproductionRoutes.reproductionReport, "fdictRecheckObtainedImage",
         lambda sToken, dictAcquired: {"sVerdict": "not-compared",
                                       "sReason": "", "bVacuous": False},
+    ), patch.object(
+        daemonDescription, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
     )
 
 
@@ -157,7 +159,7 @@ def _flistStagingTokens():
 
 def test_staging_describes_the_snapshot_and_holds_it(sPublishedRepo):
     with patch.object(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly",
         lambda: "amd64",
     ):
         dictStaged = _fdictStage(_fclientBuild(), sPublishedRepo)
@@ -202,7 +204,7 @@ def test_several_workflows_offer_a_choice_instead_of_a_sentence(
     assert sorted(dictResponse["listWorkflowNames"]) == ["Demo", "Second"]
     assert _flistStagingTokens() == []
     with patch.object(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
     ):
         dictStaged = _fdictStage(client, sPublishedRepo, "Second")
     assert dictStaged["dictStaged"]["sWorkflowName"] == "Second"
@@ -236,7 +238,7 @@ def test_a_snapshot_runs_once_and_a_second_run_is_refused_by_name(
 ):
     """Kills: claiming the job without consulting ``fbClaimJobForRun``."""
     tPatches = _fcontextFakeTheDaemonHalf()
-    with tPatches[0], tPatches[1], tPatches[2], _fclientBuild() as client:
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         response = client.post(f"/api/reproductions/{sJobId}/run", json={})
         assert response.status_code == 200, response.text
@@ -254,7 +256,7 @@ def test_a_settled_run_writes_the_report_and_discards_the_staging(
     sPublishedRepo,
 ):
     tPatches = _fcontextFakeTheDaemonHalf()
-    with tPatches[0], tPatches[1], tPatches[2], _fclientBuild() as client:
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         client.post(f"/api/reproductions/{sJobId}/run", json={})
         dictView = _fdictAwaitSettled(client, sJobId)
@@ -272,7 +274,7 @@ def test_a_diverged_run_reports_the_files(sPublishedRepo):
     tPatches = _fcontextFakeTheDaemonHalf(
         dictOutcome=_fdictOutcomeFake(bPassed=False),
     )
-    with tPatches[0], tPatches[1], tPatches[2], _fclientBuild() as client:
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         client.post(f"/api/reproductions/{sJobId}/run", json={})
         dictView = _fdictAwaitSettled(client, sJobId)
@@ -286,7 +288,7 @@ def test_an_acquisition_refusal_fails_the_job_with_its_reason(sPublishedRepo):
     tPatches = _fcontextFakeTheDaemonHalf(
         errorAcquire=ImageAcquisitionRefusedError("no link served the image"),
     )
-    with tPatches[0], tPatches[1], tPatches[2], _fclientBuild() as client:
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         client.post(f"/api/reproductions/{sJobId}/run", json={})
         dictView = _fdictAwaitSettled(client, sJobId)
@@ -330,7 +332,7 @@ def test_no_response_names_a_path_on_this_host(sPublishedRepo, tmp_path):
     """Kills: adding the staging token to the job's public fields."""
     listBodies = []
     tPatches = _fcontextFakeTheDaemonHalf()
-    with tPatches[0], tPatches[1], tPatches[2], _fclientBuild() as client:
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         dictStaged = _fdictStage(client, sPublishedRepo)
         listBodies.append(json.dumps(dictStaged))
         sJobId = dictStaged["sJobId"]
@@ -362,7 +364,7 @@ def test_dismissing_a_staged_job_deletes_its_clone(sPublishedRepo):
     Kills: dropping the discard route's registration or its delete.
     """
     with patch.object(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly",
         lambda: "amd64",
     ), _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
@@ -380,7 +382,7 @@ def test_a_running_job_is_not_discarded_out_from_under_its_shadow(
     sPublishedRepo,
 ):
     with patch.object(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly",
         lambda: "amd64",
     ), _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
@@ -449,7 +451,7 @@ def test_a_run_in_flight_cannot_be_discarded_from_another_tab(
     Kills: leaving the phase ``staged`` in the claim.
     """
     with patch.object(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly",
         lambda: "amd64",
     ), _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
@@ -487,10 +489,9 @@ def test_the_lane_events_reach_the_record_from_a_worker_thread(
         return _fdictOutcomeFake()
 
     tPatches = _fcontextFakeTheDaemonHalf()
-    with tPatches[1], tPatches[2], patch.multiple(
+    with tPatches[1], tPatches[2], tPatches[3], patch.multiple(
         reproductionRoutes,
         fdictRerunAndVerifyFromSnapshot=fdictRerunRecordingPhases,
-        _fsReadDaemonArchitectureQuietly=lambda: "amd64",
     ), _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         client.post(f"/api/reproductions/{sJobId}/run", json={})

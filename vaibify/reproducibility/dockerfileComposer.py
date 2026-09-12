@@ -34,12 +34,17 @@ from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
 __all__ = [
     "S_GENERATED_MARKER",
     "S_BASE_STAGE_NAME",
+    "S_OVERLAYS_HEADER_PREFIX",
+    "S_OVERLAYS_IMAGE_LABEL",
     "S_RECIPE_HEADER_PREFIX",
     "S_RECIPE_IMAGE_LABEL",
     "fsComposeImageDockerfile",
     "fbTextWasGeneratedByVaibify",
+    "flistExtractOverlayOrder",
+    "flistParseOverlaysLabel",
     "fsComputeRecipeFingerprint",
     "fsExtractRecipeFingerprint",
+    "fsRenderOverlaysLabelValue",
     "fsStageNameForOverlay",
 ]
 
@@ -66,6 +71,15 @@ S_BASE_STAGE_NAME = "vaibifybase"
 # the file still describes the pinned image perfectly.
 S_RECIPE_IMAGE_LABEL = "vaibify-recipe-sha256"
 S_RECIPE_HEADER_PREFIX = "# vaibify:recipe-sha256="
+
+# The overlays an image was built with, stamped beside the recipe
+# fingerprint as a comma-separated list in canonical order. It is what
+# lets a project containerized from the author's PINNED image know which
+# agents that image already holds -- proven by the image, never taken
+# from a comment line in a cloned repository.
+S_OVERLAYS_IMAGE_LABEL = "vaibify-overlays"
+S_OVERLAYS_HEADER_PREFIX = "#   base + overlays in order: "
+_S_OVERLAYS_HEADER_NONE = "(none)"
 
 # Docker compares stage names case-insensitively and accepts
 # [a-zA-Z0-9][a-zA-Z0-9_.-]*; overlay names like "nestedSampling"
@@ -113,6 +127,64 @@ def fsComputeRecipeFingerprint(sBaseText, listTOverlays):
         listParts.append(b"\x00" + str(sOverlayName).encode("utf-8"))
         listParts.append(b"\x00" + (sOverlayText or "").encode("utf-8"))
     return hashlib.sha256(b"".join(listParts)).hexdigest()
+
+
+def flistExtractOverlayOrder(sText):
+    """Return the overlay list the generated header claims, or ``None``.
+
+    ``None`` when the header line is absent; ``[]`` when it says
+    ``(none)``. A CLAIM only: the header sits outside the recipe
+    fingerprint, so a reader binds it to the image (through the
+    overlays label or a recomputation) before trusting it.
+    """
+    for sLine in (sText or "").splitlines():
+        if not sLine.startswith(S_OVERLAYS_HEADER_PREFIX):
+            continue
+        sBody = sLine[len(S_OVERLAYS_HEADER_PREFIX):].strip()
+        if not sBody or sBody == _S_OVERLAYS_HEADER_NONE:
+            return []
+        return [sName.strip() for sName in sBody.split(",") if sName.strip()]
+    return None
+
+
+def fsRenderOverlaysLabelValue(listOverlays):
+    """Return the label value for an overlay list: names joined by commas."""
+    return ",".join(str(sName) for sName in listOverlays or [])
+
+
+def flistParseOverlaysLabel(sValue, listCanonicalOrder):
+    """Return the overlays an image label names, or raise ``ValueError``.
+
+    The label is a SET rendered in canonical order: it says which
+    overlays the image holds and nothing about the order they were
+    installed in, so a differential stack on an obtained base and a
+    build from scratch that hold the same overlays carry the same
+    label. A malformed label -- an unknown name, a repeat, names out
+    of the canonical order -- is refused rather than reordered or
+    pruned: vaibify wrote the label, so a value that breaks its own
+    contract says the image is not one this vaibify understands.
+    """
+    listNames = [
+        sName.strip() for sName in str(sValue or "").split(",")
+        if sName.strip()
+    ]
+    listUnknown = [s for s in listNames if s not in listCanonicalOrder]
+    if listUnknown:
+        raise ValueError(
+            f"the {S_OVERLAYS_IMAGE_LABEL} label names overlays this "
+            f"vaibify does not know: {', '.join(listUnknown)}"
+        )
+    if len(set(listNames)) != len(listNames):
+        raise ValueError(
+            f"the {S_OVERLAYS_IMAGE_LABEL} label repeats an overlay name"
+        )
+    listCanonical = [s for s in listCanonicalOrder if s in listNames]
+    if listCanonical != listNames:
+        raise ValueError(
+            f"the {S_OVERLAYS_IMAGE_LABEL} label lists overlays out of "
+            "the canonical order"
+        )
+    return listNames
 
 
 def fsExtractRecipeFingerprint(sText):
@@ -212,13 +284,13 @@ def _fsRenderHeader(listTOverlays, sImageDigest, sRecipeFingerprint=""):
     """Return the provenance header stamped into the generated file."""
     sOverlays = ", ".join(
         sName for sName, _ in listTOverlays
-    ) or "(none)"
+    ) or _S_OVERLAYS_HEADER_NONE
     listLines = [
         S_GENERATED_MARKER,
         "#",
         f"# {S_DOCKERFILE_FILENAME} for this project's container image,",
         "# composed by vaibify from the image's own build chain:",
-        f"#   base + overlays in order: {sOverlays}",
+        S_OVERLAYS_HEADER_PREFIX + sOverlays,
         "#",
         "# WHAT THIS FILE IS: a record of how the image was built. Each",
         "# stage below is one step of that chain, in the order it ran.",

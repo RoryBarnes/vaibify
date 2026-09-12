@@ -4605,6 +4605,17 @@ const VaibifyApp = (function () {
             "Dockerfile row",
     };
 
+    function _fnCarryRecordKindOntoGaps(dictResponse) {
+        /* Which record a verification would WRITE is an envelope-level
+           fact beside the gaps, like the image currency; it rides on
+           the gaps dict the opener receives, because the modal must
+           say it before the researcher consents. */
+        var dictGaps = (dictResponse || {}).dictL3ReadinessGaps || null;
+        if (dictGaps) {
+            dictGaps.sRecordKind = (dictResponse || {}).sRecordKind || "";
+        }
+    }
+
     async function _fdictFetchL3Readiness() {
         /* Returns the GAPS DICT, not the envelope around it. The
            route answers {iProofLevel, dictL3ReadinessGaps}, and
@@ -4619,6 +4630,7 @@ const VaibifyApp = (function () {
                 "/api/workflow/" +
                 encodeURIComponent(_dictSessionState.sContainerId) +
                 "/level3/readiness");
+            _fnCarryRecordKindOntoGaps(dictResponse);
             var dictGaps = (dictResponse || {}).dictL3ReadinessGaps
                 || null;
             if (dictGaps) {
@@ -4796,6 +4808,100 @@ const VaibifyApp = (function () {
             "on the Environment snapshot row first.\n\n";
     }
 
+    function _fsRecordKindModalSentence(dictReady) {
+        /* Which record the run will WRITE, from the readiness
+           answer. A researcher verifying a clone whose attestation
+           was committed by somebody else gets a reproduction record
+           of their own, and must know that before they consent --
+           otherwise the run they expected to refresh the attestation
+           leaves it untouched and they learn why afterwards. */
+        var sRecordKind = (dictReady || {}).sRecordKind || "";
+        if (sRecordKind === "reproduction") {
+            return "This clone's attestation was committed by someone " +
+                "else, so this run will be recorded as a reproduction " +
+                "under .vaibify/reproductions/ and the attestation will " +
+                "not be touched.\n\n";
+        }
+        if (sRecordKind === "undetermined") {
+            /* Git could not say whose attestation the clone carries.
+               The run will REFUSE rather than guess, and the
+               researcher is told before spending the click. */
+            return "Git could not say whose attestation this clone " +
+                "carries, so the verification will refuse to run " +
+                "rather than risk overwriting someone else's record. " +
+                "Check that git works in the project repository.\n\n";
+        }
+        return "This run will update this project's Level 3 " +
+            "attestation.\n\n";
+    }
+
+    function _fdictRecordWithReproducedManifest(dictPayload,
+                                                sPreferredRecordKind) {
+        /* The record whose reproduced manifest the comparison opens:
+           the one the clicked card belongs to when it has one, else
+           whichever of the attestation and the latest reproduction
+           has one -- the newer when both do. */
+        var dictAttestation = dictPayload.dictCurrentAttestation || null;
+        var dictReproduction = dictPayload.dictLatestReproduction || null;
+        function fbHasManifest(dictRecord) {
+            return Boolean(dictRecord && dictRecord.sReproducedManifestPath);
+        }
+        if (sPreferredRecordKind === "attestation" &&
+                fbHasManifest(dictAttestation)) {
+            return dictAttestation;
+        }
+        if (sPreferredRecordKind === "reproduction" &&
+                fbHasManifest(dictReproduction)) {
+            return dictReproduction;
+        }
+        if (fbHasManifest(dictAttestation) && fbHasManifest(dictReproduction)) {
+            var sAttestedAt = dictAttestation.sAttestedAtUtc || "";
+            var sReproducedAt = dictReproduction.sCreatedAtIso || "";
+            return sReproducedAt > sAttestedAt ?
+                dictReproduction : dictAttestation;
+        }
+        if (fbHasManifest(dictAttestation)) return dictAttestation;
+        if (fbHasManifest(dictReproduction)) return dictReproduction;
+        return null;
+    }
+
+    async function fnCompareManifests(sPreferredRecordKind) {
+        /* MANIFEST.sha256 in viewer A, the reproduced manifest in
+           viewer B, both read-only, every line coloured by the
+           outcome the backend graded for its path. The marks come
+           from listFileOutcomes and nothing else: the viewer never
+           compares the hashes it shows. */
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        var dictPayload;
+        try {
+            dictPayload = await VaibifyApi.fdictGet(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                "/level3/attestation");
+        } catch (error) {
+            fnShowToast("Could not load the attestation record: " +
+                error.message, "error");
+            return;
+        }
+        var dictRecord = _fdictRecordWithReproducedManifest(
+            dictPayload || {}, sPreferredRecordKind || "");
+        if (!dictRecord) {
+            fnShowToast("No reproduced manifest is on file for this " +
+                "project yet. Run a Level 3 verification first.",
+                "warning");
+            return;
+        }
+        var dictLineMarks = VaibifyFileOutcomes.fdictLineMarksFromOutcomes(
+            dictRecord.listFileOutcomes || []);
+        var elFilesTab = document.querySelector(
+            '.left-tab[data-panel="files"]');
+        if (elFilesTab) elFilesTab.click();
+        VaibifyFigureViewer.fnDisplayRecordInViewer(
+            "A", "MANIFEST.sha256", dictLineMarks);
+        VaibifyFigureViewer.fnDisplayRecordInViewer(
+            "B", dictRecord.sReproducedManifestPath, dictLineMarks);
+    }
+
     async function fnConfirmLevel3Verification(fnOnConfirm, elButton) {
         // Readiness FIRST. The copy warning is about a real risk, but
         // only of an operation that can actually start; asking a
@@ -4831,6 +4937,7 @@ const VaibifyApp = (function () {
             "container built from the image your envelope pins. Your " +
             "own files are not touched, and the copy is deleted " +
             "afterwards.\n\n" +
+            _fsRecordKindModalSentence(dictReady) +
             _fsImageCurrencyModalWarning(dictReady) +
             "Before you continue, make sure nothing is writing inside " +
             "the container \u2014 an agent part-way through a task, a " +
@@ -5998,6 +6105,7 @@ const VaibifyApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fnShowConfirmModal: fnShowConfirmModal,
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
+        fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,

@@ -139,8 +139,12 @@ def test_connect_records_the_identity_for_the_session(monkeypatch):
         pipelineServer.fnCaptureLiveImageIdentityAtConnect(
             dictCtx, "cid1",
         )
+    # A project that BUILDS its image has no derivation to describe;
+    # the key is present and None so a reader can tell "built" from
+    # "never captured".
     assert dictCtx["dictLiveImageIdentities"]["cid1"] == {
         "sImageDigest": S_REGISTRY_DIGEST, "sImageId": S_IMAGE_ID,
+        "dictDerivation": None,
     }
 
 

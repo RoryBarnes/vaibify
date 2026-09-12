@@ -424,16 +424,38 @@ var VaibifyProofTab = (function () {
         if (sPhase === "passed") {
             VaibifyApp.fnShowToast(
                 "Level 3 verification passed — the workflow re-ran and " +
-                "its outputs are byte-identical.", "success");
+                "its outputs are byte-identical." +
+                _fsSettledRecordSuffix(dictInFlight), "success");
         } else if (sPhase === "failed") {
             VaibifyApp.fnShowToast(
                 "Level 3 verification finished: the outputs DIFFER. " +
-                "See the attestation card.", "warning");
+                "See the attestation card." +
+                _fsSettledRecordSuffix(dictInFlight), "warning");
         } else if (sPhase === "no-verdict") {
             VaibifyApp.fnShowToast(
                 "Level 3 verification reached no verdict — nothing was " +
                 "attested. See the reason in the PROOF tab.", "warning");
         }
+    }
+
+    function _fsSettledRecordSuffix(dictInFlight) {
+        /* What the settled run WROTE, from the status record: which
+           kind of record, and whether a reproduced manifest now
+           sits beside the pinned one. Both are facts the researcher
+           acts on next -- one names where to look, the other names
+           what to click. */
+        var sSuffix = "";
+        if (dictInFlight.sRecordKind === "reproduction") {
+            sSuffix += " It was recorded as a reproduction under " +
+                ".vaibify/reproductions/, not as this project's " +
+                "attestation.";
+        }
+        if (dictInFlight.sReproducedManifestPath) {
+            sSuffix += " The reproduced manifest was written to " +
+                dictInFlight.sReproducedManifestPath +
+                "; Compare manifests is available on the PROOF tab.";
+        }
+        return sSuffix;
     }
 
     async function fnRender() {
@@ -526,6 +548,7 @@ var VaibifyProofTab = (function () {
         _fnBindLevelSectionHeaders();
         _fnBindGenerateTemplateButton();
         _fnBindVerifyL3Button();
+        _fnBindCompareButtons();
         _fnBindProgressSegments();
     }
 
@@ -677,6 +700,7 @@ var VaibifyProofTab = (function () {
             _fsRenderNoVerdictCard() +
             _fsRenderUnsettledTeardownCard() +
             _fsRenderL3AttestationCard(dictL3) +
+            _fsRenderLatestReproductionCard() +
             _fsRenderL3HistoryTable();
     }
 
@@ -995,7 +1019,9 @@ var VaibifyProofTab = (function () {
             fnEscapeHtml(sStatus) + '</span>' +
             '</div><div class="proof-card-body">' +
             _fsRenderAttestationDetails(dictCurrent) +
-            sStale + '</div></div>';
+            sStale +
+            _fsRenderCompareButton(dictCurrent, "attestation") +
+            '</div></div>';
     }
 
     function _fsRenderAttestationDetails(dictCurrent) {
@@ -1017,8 +1043,82 @@ var VaibifyProofTab = (function () {
             iTotal + '</div>' +
             '<div>Duration: ' + fDuration.toFixed(1) +
             ' s</div>' +
-            _fsRenderCarriedPaths(dictCurrent) +
+            _fsRenderFileOutcomesOrCarried(dictCurrent) +
             '</div>';
+    }
+
+    function _fsRenderFileOutcomesOrCarried(dictRecord) {
+        /* A record that kept every per-file hash renders the shared
+           table; an older one (schema v4 and before) kept only the
+           carried list, and that is all it can honestly show. */
+        var listOutcomes = dictRecord.listFileOutcomes;
+        if (listOutcomes && listOutcomes.length) {
+            return VaibifyFileOutcomes.fsRenderFileOutcomesTable(
+                listOutcomes);
+        }
+        return _fsRenderCarriedPaths(dictRecord);
+    }
+
+    function _fsRenderCompareButton(dictRecord, sRecordKind) {
+        /* Only when this record wrote a reproduced manifest: a v4
+           attestation has null here and offers nothing to compare. */
+        var sManifestPath = dictRecord.sReproducedManifestPath;
+        if (typeof sManifestPath !== "string" || !sManifestPath) return "";
+        return '<div class="proof-compare-row">' +
+            '<button type="button" class="btn btn-compare-manifests" ' +
+            'data-record-kind="' + fnEscapeHtml(sRecordKind) + '" ' +
+            'title="Open MANIFEST.sha256 and ' +
+            fnEscapeHtml(sManifestPath) +
+            ' side by side in the file viewers, each line coloured by ' +
+            'its outcome">Compare manifests</button></div>';
+    }
+
+    function _fsRenderLatestReproductionCard() {
+        /* A reproduction is the reproducer's own record, written when
+           the clone's attestation belongs to somebody else. It sits
+           beneath the attestation and never stands in for it; the
+           Level 3 cell reads nothing from it. */
+        var dictReproduction = (_dictLastL3Attestation &&
+            _dictLastL3Attestation.dictLatestReproduction) || null;
+        if (!dictReproduction) return "";
+        var sVerdict = dictReproduction.sVerdict || "no-verdict";
+        var iMatched = dictReproduction.iOutputHashesMatched || 0;
+        var iTotal = dictReproduction.iOutputHashesTotal || 0;
+        var listCarried = dictReproduction.listCarriedPaths || [];
+        return '<div class="proof-card proof-reproduction-card verdict-' +
+            fnEscapeHtml(sVerdict) + '">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Your reproduction</span>' +
+            '<span class="proof-card-summary">' +
+            fnEscapeHtml(sVerdict) + '</span>' +
+            '</div><div class="proof-card-body">' +
+            '<div class="proof-attestation-details">' +
+            '<div>Recorded: <code>' +
+            fnEscapeHtml(dictReproduction.sCreatedAtIso || "?") +
+            '</code></div>' +
+            '<div>Hashes matched: ' + iMatched + ' / ' + iTotal +
+            (listCarried.length ?
+                '; ' + listCarried.length + ' carried in unchanged' : "") +
+            '</div>' +
+            '<div class="proof-reproduction-note">' +
+            fnEscapeHtml(dictReproduction.sRecordedNote || "") +
+            '</div>' +
+            _fsRenderFileOutcomesOrCarried(dictReproduction) +
+            '</div>' +
+            _fsRenderCompareButton(dictReproduction, "reproduction") +
+            '</div></div>';
+    }
+
+    function _fnBindCompareButtons() {
+        var elContent = _felGetTabContent();
+        if (!elContent) return;
+        elContent.querySelectorAll(".btn-compare-manifests")
+            .forEach(function (elButton) {
+                elButton.addEventListener("click", function () {
+                    VaibifyApp.fnCompareManifests(
+                        elButton.dataset.recordKind || "");
+                });
+            });
     }
 
     function _fsRenderCarriedPaths(dictCurrent) {

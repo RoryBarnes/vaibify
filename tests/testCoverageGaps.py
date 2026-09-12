@@ -1567,8 +1567,8 @@ def test_zenodo_upload_file(tmp_path):
     dictDeposit = {
         "links": {"bucket": "https://zen.org/bucket/1"},
     }
-    with patch("requests.request") as mockRequest:
-        mockRequest.return_value = MagicMock(
+    with patch("requests.get") as mockGet:
+        mockGet.return_value = MagicMock(
             status_code=200,
             json=lambda: dictDeposit,
         )
@@ -1588,8 +1588,8 @@ def test_zenodo_upload_file_not_found():
     dictDeposit = {
         "links": {"bucket": "https://zen.org/bucket/1"},
     }
-    with patch("requests.request") as mockRequest:
-        mockRequest.return_value = MagicMock(
+    with patch("requests.get") as mockGet:
+        mockGet.return_value = MagicMock(
             status_code=200,
             json=lambda: dictDeposit,
         )
@@ -1604,22 +1604,17 @@ def test_zenodo_download_file(tmp_path):
     dictRecord = {
         "files": [{
             "key": "data.hdf5",
-            "links": {"self": "https://zen.org/file/1"},
+            "links": {"self": "https://sandbox.zenodo.org/api/files/1"},
         }],
     }
-    mockResponse = MagicMock()
-    mockResponse.status_code = 200
-    mockResponse.headers = {"content-length": "4"}
-    mockResponse.iter_content.return_value = [b"data"]
-    with patch("requests.request") as mockRequest:
-        mockRequest.return_value = MagicMock(
-            status_code=200,
-            json=lambda: dictRecord,
-        )
-        with patch("requests.get", return_value=mockResponse):
-            client.fnDownloadFile(
-                42, "data.hdf5", str(tmp_path),
-            )
+    mockRecordResponse = MagicMock(status_code=200, json=lambda: dictRecord)
+    mockFileResponse = MagicMock()
+    mockFileResponse.status_code = 200
+    mockFileResponse.headers = {"content-length": "4"}
+    mockFileResponse.iter_content.return_value = [b"data"]
+    with patch("requests.get",
+               side_effect=[mockRecordResponse, mockFileResponse]):
+        client.fnDownloadFile(42, "data.hdf5", str(tmp_path))
     assert (tmp_path / "data.hdf5").exists()
     assert (tmp_path / "data.hdf5").read_bytes() == b"data"
 
@@ -1631,8 +1626,8 @@ def test_zenodo_download_file_not_in_record():
     client = ZenodoClient(sService="sandbox")
     client._sToken = "fake"
     dictRecord = {"files": []}
-    with patch("requests.request") as mockRequest:
-        mockRequest.return_value = MagicMock(
+    with patch("requests.get") as mockGet:
+        mockGet.return_value = MagicMock(
             status_code=200,
             json=lambda: dictRecord,
         )

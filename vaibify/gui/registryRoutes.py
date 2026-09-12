@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui import pinnedEnvironmentConversion
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
     fnRefuseContainerOnlyForHostProject,
@@ -151,6 +152,15 @@ class ConvertToContainerRequest(BaseModel):
     sWorkspaceRoot: str = "/workspace"
     iCpuLimit: int = 0
     fMemoryLimitGigabytes: float = 0.0
+    # How the image comes to exist: "build" runs the Dockerfile (every
+    # existing caller), "archive" OBTAINS the image the clone's envelope
+    # pins through the published chain, so the researcher runs the
+    # author's bytes rather than a rebuild with a different digest.
+    sEnvironmentSource: str = "build"
+    # Consent, recorded durably on the entry and asked again per
+    # attempt: an obtained image built for another architecture runs
+    # under emulation only when the researcher said so twice.
+    bAllowEmulation: bool = False
 
 
 class PromoteHostProjectRequest(BaseModel):
@@ -213,6 +223,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
     _fnRegisterConvertToContainer(app, dictCtx)
+    _fnRegisterPinnedEnvironment(app, dictCtx)
     _fnRegisterPromoteToHostProject(app, dictCtx)
     _fnRegisterCreateHostDirectory(app, dictCtx)
     _fnRegisterClaimContainer(app, dictCtx)
@@ -1592,22 +1603,65 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             dictProject["sDirectory"],
             request.sWorkflowName or request.sProjectName,
         )
+        # The candidate overlay baseline is captured BEFORE the config
+        # is rewritten: after that, and after a hub restart, the
+        # author's original feature set exists nowhere else on this
+        # host.
+        dictImageSource = (
+            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(
+                dictProject, request,
+            )
+            if request.sEnvironmentSource
+            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE
+            else None
+        )
         # Config file FIRST, registry entry SECOND. If the registry write
         # then fails, the config names a container but the entry is still
         # host, so re-running is safe; the reverse order would drift
         # sName from the config's projectName.
-        _fnRewriteConfigForConversion(
-            dictProject["sConfigPath"], request,
-        )
+        if dictImageSource is not None:
+            pinnedEnvironmentConversion.fnRewriteConfigForObtainedImage(
+                dictProject["sConfigPath"], request,
+            )
+        else:
+            _fnRewriteConfigForConversion(
+                dictProject["sConfigPath"], request,
+            )
         try:
             registryManager.fnConvertProjectToContainer(
-                sName, request.sProjectName,
+                sName, request.sProjectName, dictImageSource,
             )
         except KeyError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:
             raise HTTPException(409, str(error))
-        return _fdictConversionResult(request.sProjectName)
+        return _fdictConversionResult(
+            request.sProjectName, dictImageSource is not None,
+        )
+
+
+def _fnRegisterPinnedEnvironment(app, dictCtx):
+    """Register GET /api/registry/{sName}/pinned-environment.
+
+    What the wizard's Environment page shows: whether the clone's
+    envelope pins an image that can be OBTAINED, the platform it needs
+    beside this daemon's architecture, the deposit on record, and the
+    author's own feature set. Reads the HOST clone and asks the daemon
+    its architecture; touches no container, so ``separate-authority``.
+    Excluded from the agent catalog AND rejected at the handler for the
+    agent lane, because it reads the host filesystem.
+    """
+
+    @app.get("/api/registry/{sName}/pinned-environment")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictPinnedEnvironment(requestHttp: Request, sName: str):
+        fnRejectAgentTokenLane(requestHttp)
+        _fnRejectInvalidProjectName(sName)
+        dictProject = _fdictRequireProject(sName)
+        return await asyncio.to_thread(
+            pinnedEnvironmentConversion.fdictDescribePinnedEnvironmentForWizard,
+            dictProject, dictCtx.get("docker"),
+        )
 
 
 async def _fnReleaseCallerOwnedSessionForConversion(app, sName, requestHttp):
@@ -1734,15 +1788,25 @@ def _fnRewriteConfigForConversion(sConfigPath, request):
     fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
 
 
-def _fdictConversionResult(sNewName):
-    """Return the converted registry entry plus the build hand-off."""
+def _fdictConversionResult(sNewName, bObtained=False):
+    """Return the converted registry entry plus the build or acquire hand-off."""
     from vaibify.config.registryManager import fdictGetProject
     dictProject = fdictGetProject(sNewName) or {}
+    if bObtained:
+        return dict(
+            dictProject,
+            bBuildRequired=False,
+            bAcquireRequired=True,
+            sAcquirePath=f"/api/containers/{sNewName}/acquire-image",
+        )
     return dict(
         dictProject,
         bBuildRequired=True,
+        bAcquireRequired=False,
         sBuildPath=f"/api/containers/{sNewName}/build",
     )
+
+
 
 
 def _fnRegisterPromoteToHostProject(app, dictCtx):

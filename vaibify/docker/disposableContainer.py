@@ -68,6 +68,7 @@ __all__ = [
     "fdictPullImage",
     "fsLoadImageFromStream",
     "fdictInspectImage",
+    "fnTagImage",
     "fsReadDaemonArchitecture",
     "fnCopyArchiveIntoContainer",
     "fdictExecuteBoundedCommand",
@@ -209,22 +210,50 @@ def fsLoadImageFromStream(dockerDisposable, fileStream):
 
 
 def fdictInspectImage(dockerDisposable, sImageReference):
-    """Return ``{sId, sOs, sArchitecture}`` for a held image, or ``None``.
+    """Return ``{sId, sOs, sArchitecture, dictLabels}`` for a held image, or ``None``.
 
     ``None`` means the daemon does not hold the reference -- the
     honest answer for "is a copy already here", and never a platform
-    claim about an image nobody inspected.
+    claim about an image nobody inspected. ``dictLabels`` is the
+    image's own label map, which is how an obtained image PROVES which
+    overlays it was built with.
     """
     try:
         dockerImage = dockerDisposable.images.get(sImageReference)
     except Exception:  # noqa: BLE001 -- absence is the answer
         return None
     dictAttributes = getattr(dockerImage, "attrs", None) or {}
+    dictConfig = dictAttributes.get("Config") or {}
+    dictLabels = dictConfig.get("Labels") if isinstance(dictConfig, dict) else None
     return {
         "sId": _fsSdkImageIdentity(dockerImage),
         "sOs": str(dictAttributes.get("Os") or ""),
         "sArchitecture": str(dictAttributes.get("Architecture") or ""),
+        "dictLabels": {
+            str(sKey): str(sValue) for sKey, sValue in (dictLabels or {}).items()
+        },
     }
+
+
+def fnTagImage(dockerDisposable, sImageId, sRepository, sTag):
+    """Tag an image BY ID as ``<repository>:<tag>``.
+
+    The SDK authority for the one mutation an acquisition makes to the
+    image store's names: ``<projectName>:latest`` comes to mean the
+    image the chain obtained (or the overlay result stacked on it).
+    By ID, never by reference, so a tag that moved between the
+    acquisition and this call cannot be re-tagged as the project's.
+    Raises ``DisposableContainerError`` when the daemon does not hold
+    the ID.
+    """
+    try:
+        dockerImage = dockerDisposable.images.get(sImageId)
+        dockerImage.tag(sRepository, tag=sTag)
+    except Exception as errorTag:  # noqa: BLE001 -- one refusal, named
+        raise DisposableContainerError(
+            f"the image {sImageId} could not be tagged as "
+            f"{sRepository}:{sTag}: {type(errorTag).__name__}: {errorTag}"
+        ) from errorTag
 
 
 def fsReadDaemonArchitecture(dockerDisposable):

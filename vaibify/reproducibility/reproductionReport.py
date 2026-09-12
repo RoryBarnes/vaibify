@@ -52,13 +52,17 @@ __all__ = [
     "fdictBuildReproductionReport",
     "fdictReadReproductionReport",
     "flistSweepExpiredReports",
+    "fsReadReproducedManifestText",
     "fsRenderVerdict",
     "fsReportsDirectory",
     "fsWriteReproductionReport",
 ]
 
 
-I_REPORT_SCHEMA_VERSION = 1
+# v2 (2026-09-11) added the per-file outcomes, the provenance block
+# and the name of the reproduced manifest written beside the report.
+I_REPORT_SCHEMA_VERSION = 2
+_S_REPRODUCED_MANIFEST_SUFFIX = ".sha256"
 
 S_VERDICT_REPRODUCED = "reproduced"
 S_VERDICT_DIVERGED = "diverged"
@@ -132,6 +136,21 @@ def fdictBuildReproductionReport(
         "listDivergedHashes": list(dictOutcome.get("listDivergedHashes") or []),
         "listMatchedPaths": list(dictOutcome.get("listMatchedPaths") or []),
         "listCarriedPaths": list(dictOutcome.get("listCarriedPaths") or []),
+        # The per-file hashes, kept whole: the file table and the
+        # reproduced manifest are both rendered from this list and
+        # nothing is re-hashed after the shadow is destroyed.
+        "listFileOutcomes": [
+            dict(dictFile)
+            for dictFile in (dictOutcome.get("listFileOutcomes") or [])
+        ],
+        "dictReproductionProvenance": (
+            dict(dictOutcome["dictReproductionProvenance"])
+            if isinstance(
+                dictOutcome.get("dictReproductionProvenance"), dict,
+            ) else None
+        ),
+        # Filled by the writer once the companion file exists.
+        "sReproducedManifestPath": None,
         "dictRerunFailure": dict(dictOutcome.get("dictRerunFailure") or {}),
         "dictImageRecheck": {
             "sVerdict": str((dictImageRecheck or {}).get("sVerdict") or ""),
@@ -207,15 +226,52 @@ def fsRenderVerdict(dictReport):
 
 
 def fsWriteReproductionReport(dictReport):
-    """Persist a report under its id and return the file path written."""
+    """Persist a report under its id and return the file path written.
+
+    The reproduced manifest lands FIRST as ``<id>.sha256`` beside the
+    JSON, rendered from the report's own per-file outcomes, and the
+    report is written naming it only after -- so a report never points
+    at a companion that does not exist. A report whose rerun compared
+    nothing has no companion and names none.
+    """
+    from vaibify.reproducibility.manifestWriter import (
+        fsRenderReproducedManifest,
+    )
     sDirectory = fsReportsDirectory()
     _fnEnsurePrivateDirectory(sDirectory)
     flistSweepExpiredReports()
-    sPath = os.path.join(sDirectory, f"{dictReport['sReportId']}.json")
+    sReportId = dictReport["sReportId"]
+    listFileOutcomes = dictReport.get("listFileOutcomes") or []
+    if listFileOutcomes:
+        sManifestName = sReportId + _S_REPRODUCED_MANIFEST_SUFFIX
+        with open(
+            os.path.join(sDirectory, sManifestName), "w", encoding="utf-8",
+        ) as fileManifest:
+            fileManifest.write(fsRenderReproducedManifest(listFileOutcomes))
+        dictReport["sReproducedManifestPath"] = sManifestName
+    sPath = os.path.join(sDirectory, f"{sReportId}.json")
     with open(sPath, "w", encoding="utf-8") as fileHandle:
         json.dump(dictReport, fileHandle, indent=2, sort_keys=True)
         fileHandle.write("\n")
     return sPath
+
+
+def fsReadReproducedManifestText(sReportId):
+    """Return a stored report's reproduced manifest; ``LookupError`` if none."""
+    dictReport = fdictReadReproductionReport(sReportId)
+    sManifestName = dictReport.get("sReproducedManifestPath") or ""
+    if not sManifestName or os.path.basename(sManifestName) != sManifestName:
+        raise LookupError(f"report {sReportId!r} names no reproduced manifest")
+    try:
+        with open(
+            os.path.join(fsReportsDirectory(), sManifestName), "r",
+            encoding="utf-8",
+        ) as fileHandle:
+            return fileHandle.read()
+    except OSError as error:
+        raise LookupError(
+            f"the reproduced manifest of report {sReportId!r} is gone"
+        ) from error
 
 
 def fdictReadReproductionReport(sReportId):
@@ -247,8 +303,20 @@ def flistSweepExpiredReports(fMaxAgeSeconds=F_REPORT_RETENTION_SECONDS):
             os.remove(sPath)
         except OSError:
             continue
-        listRemoved.append(sName[:-len(".json")])
+        sReportId = sName[:-len(".json")]
+        _fnRemoveCompanionManifest(sDirectory, sReportId)
+        listRemoved.append(sReportId)
     return listRemoved
+
+
+def _fnRemoveCompanionManifest(sDirectory, sReportId):
+    """Remove the ``<id>.sha256`` written beside a swept report, if any."""
+    try:
+        os.remove(os.path.join(
+            sDirectory, sReportId + _S_REPRODUCED_MANIFEST_SUFFIX,
+        ))
+    except OSError:
+        return
 
 
 def _fnEnsurePrivateDirectory(sPath):

@@ -42,7 +42,13 @@ def _fnPatchAllSubprocessesSucceeding():
 
 @pytest.fixture
 def fixtureRepo(tmp_path):
-    """Build a minimal repo passing tiers 1-3 (Tier 4 readiness extras seeded too)."""
+    """Build a minimal repo passing tiers 1-3 (Tier 4 readiness extras seeded too).
+
+    A git repository, because the record writer asks git whose
+    attestation the checkout carries and a directory git cannot read
+    is refused rather than assumed to be the author's own.
+    """
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
     sBody = "answer = 42\n"
     pathFile = tmp_path / "result.txt"
     pathFile.write_text(sBody)
@@ -329,7 +335,7 @@ def test_write_attestation_from_run_handles_oserror(fixtureRepo):
     """An OSError during write surfaces as False and a warning."""
     dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     with patch(
-        "vaibify.cli.commandReproduce.fnWriteAttestation",
+        "vaibify.reproducibility.reproductionRecord.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         bWritten = commandReproduce._fbWriteAttestationFromRun(

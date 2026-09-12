@@ -41,6 +41,7 @@ quietly disagree with the other about what "reproduced" means.
 
 import asyncio
 import posixpath
+from datetime import datetime, timezone
 
 from vaibify.gui.pipelineUtils import fbStepIsInteractive
 from vaibify.reproducibility.environmentSnapshot import (
@@ -57,9 +58,9 @@ from vaibify.reproducibility.manifestPaths import (
     flistStepOutputRepoPaths,
 )
 from vaibify.reproducibility.manifestWriter import (
+    fdictHashManifestEntries,
     fiCountManifestEntries,
     flistParseManifestLines,
-    flistVerifyManifestEntries,
 )
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
@@ -75,6 +76,10 @@ __all__ = [
     "S_DIVERGENCE_MANIFEST_MUTATED",
     "S_DIVERGENCE_MANIFEST_UNREADABLE",
     "S_DIVERGENCE_PIPELINE_FAILED",
+    "S_FILE_CARRIED",
+    "S_FILE_DIVERGED",
+    "S_FILE_MATCHED",
+    "S_FILE_MISSING",
     "fbRunWorkflowInContainer",
     "fdictRerunAndVerifyWorkflow",
     "fdictSnapshotExpectedManifest",
@@ -114,6 +119,17 @@ S_DIVERGENCE_LOCK_UNSATISFIED = (
 )
 
 
+# The per-file verdicts in ``listFileOutcomes``. One record per frozen
+# manifest entry, in the manifest's order, and the AUTHORITY every
+# count, path list and the reproduced manifest are derived from --
+# nothing downstream may re-hash after the shadow is destroyed or
+# re-read a manifest the rerun may have mutated.
+S_FILE_MATCHED = "matched"
+S_FILE_DIVERGED = "diverged"
+S_FILE_MISSING = "missing"
+S_FILE_CARRIED = "carried"
+
+
 def fdictRerunAndVerifyWorkflow(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     filesRepo, fnStatusCallback=None,
@@ -149,26 +165,33 @@ def fdictRerunAndVerifyWorkflow(
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
+    iSourceDateEpoch = fiRecordedSourceDateEpoch(filesRepo)
+    sRerunStartedIso = datetime.now(timezone.utc).isoformat()
+
+    def fdictStampRunFacts(dictOutcome):
+        """Name the manifest graded and the moment the run began."""
+        dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
+        dictOutcome["iSourceDateEpoch"] = iSourceDateEpoch
+        dictOutcome["sRerunStartedIso"] = sRerunStartedIso
+        return dictOutcome
+
     listBlocking = flistNameStepsThatBlockARerun(dictWorkflow)
     if listBlocking:
-        dictOutcome = {
+        return fdictStampRunFacts({
             "bPassed": False,
             "bRerunAttempted": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
             "listCarriedPaths": [],
+            "listFileOutcomes": [],
             "dictRerunFailure": {},
             "listDivergedHashes": listBlocking,
-        }
-        dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
-        return dictOutcome
+        })
     sRootRefusal = _fsRefuseAMismatchedRunRoot(
         dictWorkflow, sWorkflowPath, filesRepo,
     )
     if sRootRefusal:
-        dictOutcome = fdictUnrunOutcome(sRootRefusal)
-        dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
-        return dictOutcome
+        return fdictStampRunFacts(fdictUnrunOutcome(sRootRefusal))
     listCarriedPaths = flistCarriedOutputRepoPaths(dictWorkflow)
     fnCollect, dictDiagnostics = ftBuildRerunDiagnosticsCollector(
         dictWorkflow, fnStatusCallback,
@@ -176,7 +199,7 @@ def fdictRerunAndVerifyWorkflow(
     bRerunSucceeded = fbRunWorkflowInContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         posixpath.dirname(sWorkflowPath), fnCollect,
-        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),
+        iSourceDateEpochOverride=iSourceDateEpoch,
     )
     # The run is over and the re-hash begins. Announced because the
     # two look identical from outside -- a card that says "running"
@@ -185,12 +208,10 @@ def fdictRerunAndVerifyWorkflow(
     # event ignores it, as every consumer does for every other type.
     if fnStatusCallback is not None:
         fnStatusCallback({"sType": "comparingOutputs"})
-    dictOutcome = fdictVerifyRerunOutputs(
+    return fdictStampRunFacts(fdictVerifyRerunOutputs(
         filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
         dictDiagnostics,
-    )
-    dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
-    return dictOutcome
+    ))
 
 
 def fsResolveRunnerRepoRoot(dictWorkflow, sWorkflowPath):
@@ -433,41 +454,73 @@ def fdictVerifyRerunOutputs(
         return _fdictNoComparisonOutcome(
             S_DIVERGENCE_EVERY_ENTRY_GIVEN, bRerunSucceeded, listCarried,
         )
-    listMismatches = _flistVerifyEntriesOrNone(filesRepo, listCompared)
-    if listMismatches is None:
+    # EVERY frozen entry is hashed, carried ones included: the
+    # reproduced manifest lists them like any other line, and the
+    # outcome's status is what marks them as given rather than graded.
+    dictObserved = _fdictHashEntriesOrNone(filesRepo, listEntries)
+    if dictObserved is None:
         return _fdictNoComparisonOutcome(
             S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded, listCarried,
         )
+    listFileOutcomes = _flistBuildFileOutcomes(
+        listEntries, dictObserved, set(listCarried),
+    )
     bManifestMoved = _fbManifestMovedDuringRerun(
         filesRepo, dictExpectedManifest,
     )
+    listMismatchedPaths = [
+        dictFile["sPath"] for dictFile in listFileOutcomes
+        if dictFile["sStatus"] in (S_FILE_DIVERGED, S_FILE_MISSING)
+    ]
     return {
         "bPassed": (
             bool(bRerunSucceeded)
-            and not listMismatches
+            and not listMismatchedPaths
             and not bManifestMoved
         ),
-        "iOutputHashesMatched": max(
-            len(listCompared) - len(listMismatches), 0,
-        ),
+        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),
         "iOutputHashesTotal": len(listCompared),
         # The paths that MATCHED, named rather than counted. A ratio
         # is a claim about a set the reader cannot see; a reproduction
         # report is read by somebody deciding whether to trust a
         # result, and "which files" is the question they are asking.
-        # Derived from the compared set minus the mismatches, so it
-        # can never disagree with the count beside it.
+        # Derived from the per-file outcomes, as is every other count
+        # and list here, so none of them can disagree with another.
         "listMatchedPaths": sorted(
-            {dictEntry["sPath"] for dictEntry in listCompared}
-            - {dictMismatch["sPath"] for dictMismatch in listMismatches}
+            dictFile["sPath"] for dictFile in listFileOutcomes
+            if dictFile["sStatus"] == S_FILE_MATCHED
         ),
         "listCarriedPaths": listCarried,
+        "listFileOutcomes": listFileOutcomes,
         "dictRerunFailure": dict(dictRerunFailure or {}),
         "listDivergedHashes": _flistOrderDivergences(
-            [dictMismatch["sPath"] for dictMismatch in listMismatches],
-            bRerunSucceeded, bManifestMoved, dictRerunFailure,
+            listMismatchedPaths, bRerunSucceeded, bManifestMoved,
+            dictRerunFailure,
         ),
     }
+
+
+def _flistBuildFileOutcomes(listEntries, dictObserved, setCarried):
+    """Return one ``{sPath, sExpected, sObserved, sStatus}`` per entry, in order."""
+    listFileOutcomes = []
+    for dictEntry in listEntries:
+        sPath = dictEntry["sPath"]
+        sObserved = dictObserved.get(sPath)
+        if sPath in setCarried:
+            sStatus = S_FILE_CARRIED
+        elif sObserved is None:
+            sStatus = S_FILE_MISSING
+        elif sObserved == dictEntry["sExpected"]:
+            sStatus = S_FILE_MATCHED
+        else:
+            sStatus = S_FILE_DIVERGED
+        listFileOutcomes.append({
+            "sPath": sPath,
+            "sExpected": dictEntry["sExpected"],
+            "sObserved": sObserved,
+            "sStatus": sStatus,
+        })
+    return listFileOutcomes
 
 
 def _ftPartitionManifestEntries(listEntries, listCarriedPaths):
@@ -589,6 +642,7 @@ def fdictUnrunOutcome(sReason):
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
         "listCarriedPaths": [],
+        "listFileOutcomes": [],
         "dictRerunFailure": {},
         "listDivergedHashes": [sReason],
     }
@@ -612,6 +666,7 @@ def _fdictNoComparisonOutcome(
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
         "listCarriedPaths": list(listCarriedPaths or []),
+        "listFileOutcomes": [],
         "dictRerunFailure": {},
         "listDivergedHashes": _flistOrderDivergences(
             [sDivergence], bRerunSucceeded, False,
@@ -619,8 +674,8 @@ def _fdictNoComparisonOutcome(
     }
 
 
-def _flistVerifyEntriesOrNone(filesRepo, listEntries):
-    """Return the mismatch list, or ``None`` when hashing is impossible.
+def _fdictHashEntriesOrNone(filesRepo, listEntries):
+    """Return the observed hashes, or ``None`` when hashing is impossible.
 
     A missing repo root, an IO error, or a malformed entry all mean the
     same thing to the caller: no comparison was possible. Distinguishing
@@ -628,7 +683,7 @@ def _flistVerifyEntriesOrNone(filesRepo, listEntries):
     of unusable the manifest was.
     """
     try:
-        return flistVerifyManifestEntries(filesRepo, listEntries)
+        return fdictHashManifestEntries(filesRepo, listEntries)
     except (FileNotFoundError, OSError, ValueError):
         return None
 

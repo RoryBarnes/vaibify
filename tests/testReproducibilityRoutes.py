@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import reproducibilityRoutes
+from vaibify.reproducibility import reproductionRecord
 from vaibify.gui.routes.reproducibilityRoutes import (
     _DICT_VERIFY_TASKS,
     _fdictBuildAttestationResponse,
@@ -546,7 +547,7 @@ def test_run_reproduction_sync_passes_the_active_workflow_through(
 
     def _fdictRecord(
         connectionDocker, sContainerId, dictRunWorkflow, sRunWorkflowPath,
-        filesRepo, fnStatusCallback=None,
+        filesRepo, fnStatusCallback=None, dictImageOrigin=None,
     ):
         listSeen.append((sContainerId, dictRunWorkflow, sRunWorkflowPath))
         return {
@@ -775,7 +776,7 @@ def test_persist_attestation_logs_on_oserror(fixtureProjectRepo, caplog):
         "sRunLogPath": "",
     }
     with patch(
-        "vaibify.gui.routes.reproducibilityRoutes.fnWriteAttestation",
+        "vaibify.reproducibility.reproductionRecord.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         # Should not raise.
@@ -1286,8 +1287,10 @@ def test_the_archive_recheck_runs_off_the_event_loop(fixtureProjectRepo):
 
     listThreads = []
 
-    def fdictRecordTheThread(filesRepo, dictEnvironment=None):
-        del filesRepo, dictEnvironment
+    def fdictRecordTheThread(
+        filesRepo, dictEnvironment=None, bLoadedFromArchive=False,
+    ):
+        del filesRepo, dictEnvironment, bLoadedFromArchive
         listThreads.append(threading.current_thread())
         return {"sVerdict": "matched", "sReason": "stub"}
 
@@ -1372,6 +1375,12 @@ def test_a_written_attestation_is_staged_and_committed(fixtureProjectRepo):
     with patch.object(
         reproducibilityRoutes, "_fbPersistAttestation",
         lambda *aArgs, **dictKwargs: True,
+    ), patch.object(
+        # No connection is passed below, and an ownership question git
+        # cannot answer refuses the run; this test is about staging,
+        # so the answer is supplied.
+        reproducibilityRoutes, "_fsRecordKindForProject",
+        lambda *aArgs: reproductionRecord.S_RECORD_KIND_ATTESTATION,
     ), patch(
         "vaibify.gui.containerGit.ftResultGitAddInContainer",
         lambda cx, sid, listPaths, sWorkspace="": (
@@ -1447,3 +1456,69 @@ def test_a_rerun_with_no_verdict_commits_nothing(fixtureProjectRepo):
         "a no-verdict rerun committed an attestation anyway: "
         + str(listAdded)
     )
+
+
+@pytest.mark.falsification
+def test_an_undetermined_owner_refuses_before_any_step_runs(fixtureProjectRepo):
+    """Git that cannot say whose attestation this clone carries ends the
+    verification BEFORE the rerun, with nothing written.
+
+    Kills: deciding the record kind after the rerun (the run is spent
+    and then cannot be written honestly), and answering ATTESTATION
+    when git cannot be asked (the fail-open that overwrites somebody
+    else's tracked record).
+    """
+    listRuns = []
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+
+    def fsRefuse(*aArgs):
+        raise reproductionRecord.RecordKindUndeterminedError(
+            "git could not be asked",
+        )
+    with patch.object(
+        reproducibilityRoutes, "_fsRecordKindForProject", fsRefuse,
+    ), patch.object(
+        reproducibilityRoutes, "_fdictRunReproductionSync",
+        lambda *aArgs, **dictKwargs: listRuns.append(aArgs) or {
+            "bPassed": True, "bRerunAttempted": True,
+            "iOutputHashesMatched": 1, "iOutputHashesTotal": 1,
+            "listDivergedHashes": [], "sImageDigest": "sha256:i",
+            "sRunLogPath": "", "sManifestDigest": "sha256:m",
+        },
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": [],
+                         "sProjectRepoPath": "/workspace/repo"}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+    assert listRuns == [], "the rerun was spent before the owner was settled"
+    assert not os.path.exists(
+        os.path.join(fixtureProjectRepo, ".vaibify", "l3_attestation.json"),
+    )
+    dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
+    assert dictStatus["sRecordKind"] == ""
+    assert any(
+        "refused before any step ran" in sReason
+        for sReason in dictStatus["listReasons"]
+    ), dictStatus
+
+
+@pytest.mark.falsification
+def test_git_that_cannot_be_asked_in_the_container_is_undetermined():
+    """Kills: swallowing the exec failure into ATTESTATION."""
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproducibilityRoutes._fsRecordKindForProject(
+            None, S_CONTAINER_ID, {"sProjectRepoPath": "/workspace/repo"},
+        )
+    # Readiness keeps answering, by name, so the dialog can say the
+    # verification would refuse before the researcher consents.
+    assert reproducibilityRoutes._fsRecordKindOrUndetermined(
+        None, S_CONTAINER_ID, {"sProjectRepoPath": "/workspace/repo"},
+    ) == reproductionRecord.S_RECORD_KIND_UNDETERMINED
+    assert reproducibilityRoutes._fsRecordKindForProject(
+        None, S_CONTAINER_ID, {"sProjectRepoPath": ""},
+    ) == reproductionRecord.S_RECORD_KIND_ATTESTATION

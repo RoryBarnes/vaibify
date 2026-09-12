@@ -894,6 +894,80 @@ host and the token lives nowhere else; it is held in a local for one
 upload and written to no file and no log.
 `docs/architecture.md` — "The environment archive" — carries the model.
 
+**A deposit is fetched from the Zenodo the record NAMES, and no
+redirect is followed before its host is checked (2026-09-11).** The
+record carries `sZenodoService`; readers map it through
+`zenodoClient`'s table (`fsResolveServiceBaseUrl`) and refuse any other
+value, and a record written before the field existed is classified by
+DOI prefix (`fsServiceForDoi`: `10.5072/` is the sandbox — the word
+"sandbox" is in no sandbox DOI, and matching it sent every sandbox
+deposit to production, where the record 404s and the fallback composed
+a download URL from a DataCite error page). Every GET the client makes
+goes through `fresponseGetWithinAllowlist`, which follows redirects BY
+HAND and checks each hop's origin before sending; the shell fallback in
+`reproduce.sh` does the same with `curl` and `%{redirect_url}`, never
+`-L`, and its host table is RENDERED from the client's. Nothing read
+from the envelope (`environment.json`) is ever fetched as a URL: it is
+a file in a cloned repository. `test_no_reader_of_the_record_fetches_a_url_on_trust`
+pins the single transport call, and the decoy-server tests in
+`tests/testImageAcquisition.py` and `tests/testReproduceScriptGenerator.py`
+prove a refused host receives no request. The download is BOUNDED by
+the envelope's recorded size in both lanes (2026-09-12): the script
+passes it to `curl --max-filesize` and measures the bytes that landed
+before hashing them, the client refuses to grow past it, and a record
+with no size is refused rather than fetched without a ceiling.
+
+**A project containerized from the author's PINNED image is admitted
+by its origin record, and the baseline is proven against the image
+(2026-09-11).** The Containerize wizard can OBTAIN the image a clone's
+envelope pins instead of rebuilding it (`docker/pinnedImageAcquisition`,
+the published chain). Six things not to undo: the conversion is a
+WHITELIST of runtime fields onto the author's vaibify.yml
+(`pinnedEnvironmentConversion`), never a merge, and the agent install
+keys are written only after the overlays exist; which overlays the
+obtained image holds is PROVEN by its `vaibify-overlays` label (which
+must EQUAL the repository's candidate, additions or not) or by
+recomputing the recipe fingerprint over the shipped texts — a header
+line in a cloned repository is a claim, and unproven never fails open
+(no additions: the base runs as-is; additions: refuse before tagging);
+overlays are stacked on the obtained image ID with
+`vaibify.pinnedBaseImageId`, and a DERIVED running image is reported
+as derived, never as the pin; the origin record
+(`config/imageOrigins`) is written LAST and the launch guard in
+`containerManager.flistBuildRunArgs` refuses a start without a good
+one — a STALE record (tag moved, or running image neither the base
+nor labelled derived) reads as absent, so a `docker build` outside
+vaibify cannot inherit the archive's provenance — and requests the
+recorded platform, refusing a switched daemon's silent emulation; the
+record ends only on switch-to-building (one locked mutation with the
+registry's `dictImageSource`), un-registration or rename, never on
+stop, and plain `/build` answers 409 naming the switch; and the shadow
+runs the record's BASE id on the obtained platform with the
+archive-loaded marker, while `fbEnvironmentWasObtained` is the one
+predicate behind the regenerate refusal. Two new routes read the host
+filesystem (`pinned-environment`, `acquire-image`) and are
+catalog-excluded AND agent-lane rejected. `tests/testPinnedImageAcquisition.py`
+is the kill-confirmed guard.
+
+Four more, from a review of that lane (2026-09-12). The overlays
+label is a SET rendered in canonical order (`flistCanonicalizeOverlaySet`),
+never the build order: a differential stack installs `node` after the
+author's `claude`, and a label written in that order is one the
+label's own parser refuses, so the derived image could never be
+acquired again. An unproven baseline with no additions answers `None`,
+not `[]`: an empty PROVEN set would make the differential resolver
+re-stack the author's own overlays onto the image that holds them.
+The unproven-with-additions refusal NAMES its recovery
+(`sAction: reobtain-without-additions`), and `acquire-image` takes
+`bWithoutAdditions`, which drops the added agents from the registry
+entry before obtaining -- a refusal whose remedy has no lane is a dead
+end. And re-obtain and switch-to-building are refused by the server
+while the project's container EXISTS, asked of the daemon
+(`_fnRefuseWhileTheContainerExists`), because the page's stop can
+fail and every transition after a stop reads its answer
+(`fnStopContainer` returns it) -- a stop that failed must never let a
+retag, a cleared origin record or a build through.
+
 ## A human step's outputs are GIVEN, not reproduced
 
 **The rerun carries an interactive step's outputs instead of refusing
@@ -936,6 +1010,47 @@ interactive is a declared property of the workflow; being disabled is a
 switch. Carrying a disabled step's outputs would let anyone silence a
 step and still attest around it. The AI Declaration needs no case of
 its own — it is an interactive step, and the general rule covers it.
+
+**A verification produces a FILE, and the per-file outcomes are the
+authority (2026-09-11).** The rerun keeps every observed hash in
+`listFileOutcomes` (one `{sPath, sExpected, sObserved, sStatus}` per
+FROZEN manifest entry, in the manifest's order) and renders them into
+`REPRODUCED.sha256` at the repository root in `MANIFEST.sha256`'s own
+format — ONE header line, same paths, same order, a `# MISSING  <path>`
+comment at the same position for a file the shadow did not produce —
+so a person compares the two with their own eyes and `diff` works.
+Every count, path list and the rendered file derive from that list;
+nothing re-hashes after the shadow is destroyed or re-reads a manifest
+the rerun may have mutated. Three things not to undo: the write ORDER
+(timestamped copy under `.vaibify/reproducedManifests/`, then the root
+file, THEN the record naming it, shared by both lanes in
+`reproductionRecord.flistWriteVerificationOutcome`, so a record never
+points at a manifest that was not written); the manifest NEVER pins
+`REPRODUCED.sha256`, the history directory or `.vaibify/reproductions/`
+(`fbIsReproductionRecordPath`; a reproduced manifest inside the manifest
+grades itself); and the viewers' line colours come from the record's
+verdict, never from JavaScript comparing hashes. A clone whose
+attestation was last COMMITTED by another identity (tracked at HEAD,
+`%ce` differs from the receiving repository's `user.email`; an
+unconfigured identity is foreign) records a REPRODUCTION under
+`.vaibify/reproductions/` in the report schema and leaves the author's
+attestation untouched — `fbRepositoryCarriesForeignAttestation` takes a
+git RUNNER because the two lanes ask different repositories (the
+container's checkout, the CLI's `--repo` host checkout), and the
+records are read on the attestation GET only, never on the poll.
+Attestation schema v5 migrates the three new fields to `None`.
+`tests/testReproducedManifest.py` is the kill-confirmed guard.
+Whose attestation the clone carries is THREE-state (2026-09-12): a
+git that cannot answer -- a broken executable, an exec failure, a
+tracked file whose committer cannot be read -- raises
+`RecordKindUndeterminedError`, never "not foreign", because that
+answer is the fail-open that overwrites somebody else's record. Both
+lanes settle the question BEFORE the rerun and refuse by name when it
+is undetermined; readiness answers `undetermined` so the confirm
+dialog says so first. Every step is decided by git's own exit code,
+measured: `rev-parse --verify --quiet HEAD` exits 1 with no commits
+and 128 outside a repository, `ls-tree` exits 0 with empty output for
+an untracked path, `config` exits 1 for an unset key.
 
 **A rerun that reached no verdict is NEVER written as an attestation.**
 It used to be: a refusal became `sStatus: "failed"` plus a history
@@ -2215,6 +2330,15 @@ correct approach.
   wearing a performance optimisation's clothes.** Re-probe at the
   moment the content matters. Guarded by
   `tests/testConftestRefreshBeforeRun.py`.
+- **A delegated agent that dies mid-edit leaves a half-applied diff
+  that `git add -A` sweeps up as if it were finished.** One was cut
+  off by an API limit after editing the wizard's page catalogue: it
+  had deleted a page-list constant the sandbox branch still referenced
+  and added nothing that used the new pages, and the commit that
+  followed carried that broken half. Before committing a tree another
+  agent touched, diff its surface and confirm every symbol it removed
+  has no remaining reference (`node --check` catches syntax, not a
+  dangling name).
 - **A `monkeypatch` guarantee stops at the process boundary, and the
   docstring will not say so.** `tests/conftest.py` promised that "no
   test can read, overwrite, or delete the researcher's real stored

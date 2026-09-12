@@ -333,6 +333,18 @@ const VaibifyFigureViewer = (function () {
             });
     }
 
+    function fnDisplayRecordInViewer(sViewerLetter, sPath, dictLineMarks) {
+        /* A manifest opened for comparison: read-only by virtue of
+           being a record file, and coloured line by line from the
+           marks the backend graded. Goes through the same dirty
+           guard as any other display, so an open editor is never
+           overwritten. */
+        _fdictResolveTargetViewer(
+            sViewerLetter, sPath, function (dictViewer) {
+                fnNavigateToPath(dictViewer, sPath, "", dictLineMarks);
+            });
+    }
+
     function fnDisplayInNextViewer(sPath, sWorkdir) {
         _fdictResolveTargetViewer(
             sNextViewer, sPath, function (dictViewer) {
@@ -382,8 +394,15 @@ const VaibifyFigureViewer = (function () {
         return document.getElementById("viewport" + dictViewer.sId);
     }
 
-    function fnNavigateToPath(dictViewer, sPath, sWorkdir) {
-        var dictEntry = { sPath: sPath, sWorkdir: sWorkdir || "" };
+    function fnNavigateToPath(dictViewer, sPath, sWorkdir, dictLineMarks) {
+        /* dictLineMarks rides on the history entry so back, forward
+           and refresh re-render a marked manifest with the marks it
+           was opened with, never as plain text. */
+        var dictEntry = {
+            sPath: sPath,
+            sWorkdir: sWorkdir || "",
+            dictLineMarks: dictLineMarks || null,
+        };
         /* Trim forward nav history */
         if (dictViewer.iNavIndex < dictViewer.listNavHistory.length - 1) {
             dictViewer.listNavHistory = dictViewer.listNavHistory.slice(
@@ -450,7 +469,7 @@ const VaibifyFigureViewer = (function () {
         } else if (fbIsFigureFile(sPath)) {
             fnRenderImage(sUrl, elViewport);
         } else {
-            fnRenderText(sUrl, elViewport);
+            fnRenderText(sUrl, elViewport, dictEntry.dictLineMarks);
         }
     }
 
@@ -715,7 +734,7 @@ const VaibifyFigureViewer = (function () {
         elViewport.appendChild(fnCreateScrollableContent(elCanvas));
     }
 
-    function fnRenderText(sUrl, elViewport) {
+    function fnRenderText(sUrl, elViewport, dictLineMarks) {
         fnDestroyActivePdf(elViewport);
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML =
@@ -726,7 +745,10 @@ const VaibifyFigureViewer = (function () {
                 return r.text();
             })
             .then(function (sText) {
-                fnRenderTextWithToolbar(sText, sUrl, elViewport);
+                fnRenderTextWithToolbar(sText, sUrl, elViewport, {
+                    bReadOnly: fbIsRecordFile(_fsFilePathFromUrl(sUrl)),
+                    dictLineMarks: dictLineMarks || null,
+                });
             })
             .catch(function () {
                 elViewport.innerHTML =
@@ -751,22 +773,73 @@ const VaibifyFigureViewer = (function () {
         fnEnterEditMode(sText, sUrl, elViewport);
     }
 
-    function fnRenderTextWithToolbar(sText, sUrl, elViewport) {
+    function fnRenderTextWithToolbar(sText, sUrl, elViewport, dictOptions) {
+        /* dictOptions: {bReadOnly, dictLineMarks}. A record file --
+           either manifest, or a reproduced manifest under .vaibify --
+           is read-only whatever the caller asked, and every entry
+           point (fetch, save, cancel) lands here, so this is the one
+           place that decides. */
+        var bReadOnly = Boolean(dictOptions && dictOptions.bReadOnly) ||
+            fbIsRecordFile(_fsFilePathFromUrl(sUrl));
+        var dictLineMarks = (dictOptions && dictOptions.dictLineMarks) ||
+            null;
         elViewport.innerHTML = "";
         elViewport.style.flexDirection = "column";
         elViewport.style.alignItems = "stretch";
         var elToolbar = document.createElement("div");
         elToolbar.className = "editor-toolbar";
-        var elEditBtn = felCreateZoomButton(
-            "btn-icon", "Edit", "", function () {
-                fnHandleEditClick(sText, sUrl, elViewport);
-            });
-        elEditBtn.innerHTML = "&#9998;";
-        elToolbar.appendChild(elEditBtn);
-        var elPre = document.createElement("pre");
-        elPre.textContent = sText;
+        if (bReadOnly) {
+            var elReadOnlyLabel = document.createElement("span");
+            elReadOnlyLabel.className = "editor-readonly-label";
+            elReadOnlyLabel.textContent = "record — read-only";
+            elToolbar.appendChild(elReadOnlyLabel);
+        } else {
+            var elEditBtn = felCreateZoomButton(
+                "btn-icon", "Edit", "", function () {
+                    fnHandleEditClick(sText, sUrl, elViewport);
+                });
+            elEditBtn.innerHTML = "&#9998;";
+            elToolbar.appendChild(elEditBtn);
+        }
+        var elPre = dictLineMarks ?
+            felBuildMarkedPre(sText, dictLineMarks) :
+            document.createElement("pre");
+        if (!dictLineMarks) elPre.textContent = sText;
         elViewport.appendChild(elToolbar);
         elViewport.appendChild(elPre);
+    }
+
+    var _S_MISSING_LINE_PREFIX = "# MISSING  ";
+
+    function _fsManifestLinePath(sLine) {
+        /* `<hash>  <path>`, or `# MISSING  <path>` for a file the
+           rerun did not produce. Any other comment line names no
+           path. */
+        if (sLine.indexOf(_S_MISSING_LINE_PREFIX) === 0) {
+            return sLine.slice(_S_MISSING_LINE_PREFIX.length);
+        }
+        if (sLine.charAt(0) === "#") return "";
+        var iSeparator = sLine.indexOf("  ");
+        return iSeparator < 0 ? "" : sLine.slice(iSeparator + 2);
+    }
+
+    function felBuildMarkedPre(sText, dictLineMarks) {
+        /* One span per line, classed by the mark the backend gave
+           that line's path -- never by comparing the hashes on the
+           line. Newlines are kept inside the spans so the text reads
+           back identically to the unmarked rendering. */
+        var elPre = document.createElement("pre");
+        var listLines = sText.split("\n");
+        listLines.forEach(function (sLine, iIndex) {
+            var elLine = document.createElement("span");
+            var sStatus = dictLineMarks[_fsManifestLinePath(sLine)] || "";
+            elLine.className = "manifest-line" +
+                (sStatus ? " manifest-line-" + sStatus : "");
+            elLine.textContent = sLine +
+                (iIndex < listLines.length - 1 ? "\n" : "");
+            elPre.appendChild(elLine);
+        });
+        return elPre;
     }
 
     function fnCreateEditorToolbar() {
@@ -1325,6 +1398,36 @@ const VaibifyFigureViewer = (function () {
         });
     }
 
+    var _S_REPRODUCED_MANIFESTS_DIRECTORY = ".vaibify/reproducedManifests/";
+    var _LIST_RECORD_BASENAMES = ["MANIFEST.sha256", "REPRODUCED.sha256"];
+
+    function fbIsRecordFile(sPath) {
+        /* The two root manifests and every reproduced manifest a
+           report keeps. They are scientific records -- the pinned
+           hashes and what a rerun produced against them -- and the
+           viewer offers no way to edit one. */
+        if (!sPath) return false;
+        var sCleanPath = String(sPath).replace(/^\/+/, "").split("?")[0];
+        if (sCleanPath.indexOf(_S_REPRODUCED_MANIFESTS_DIRECTORY) === 0 ||
+                sCleanPath.indexOf("/" + _S_REPRODUCED_MANIFESTS_DIRECTORY)
+                    >= 0) {
+            return true;
+        }
+        var sBasename = sCleanPath.split("/").pop();
+        return _LIST_RECORD_BASENAMES.indexOf(sBasename) >= 0;
+    }
+
+    function _fsFilePathFromUrl(sUrl) {
+        /* The repo-relative path behind a /api/figure URL, or the
+           URL's own path when it is not one (a generated test is
+           rendered with an empty URL). */
+        if (!sUrl) return "";
+        if (sUrl.indexOf("/api/figure/") >= 0) {
+            return _fdictParseFigureUrl(sUrl).sFilePath;
+        }
+        return sUrl.split("?")[0];
+    }
+
     function fbIsOutputFile(sUrl) {
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return false;
@@ -1731,6 +1834,8 @@ const VaibifyFigureViewer = (function () {
         fnDisplayFileFromContainer: fnDisplayFileFromContainer,
         fnDisplayInNextViewer: fnDisplayInNextViewer,
         fnDisplayFileInViewer: fnDisplayFileInViewer,
+        fnDisplayRecordInViewer: fnDisplayRecordInViewer,
+        fbIsRecordFile: fbIsRecordFile,
         fsClaimNextViewer: fsClaimNextViewer,
         fnClaimNextViewerForReplacement:
             fnClaimNextViewerForReplacement,

@@ -80,10 +80,13 @@ _S_LINK_REGISTRY = "registry pull"
 _S_LINK_ARCHIVE = "archived deposit"
 _S_LINK_LOCAL = "copy on this daemon"
 
-# The DOI is FOLLOWED, exactly as the generated script follows it, so
-# sandbox and production Zenodo -- different hosts, different DOI
-# prefixes -- need no map that could be wrong years from now.
-_S_DOI_RESOLVER = "https://doi.org/"
+# The resolver is the FALLBACK for a record the client cannot address,
+# and it is followed by hand: the record page and the deposit both
+# come from a cloned repository, so no URL read from either is fetched
+# on trust, and no redirect is taken before its target host has been
+# checked against the client's table. Module-level so a test can point
+# it at a loopback server.
+_S_DOI_RESOLVER = zenodoClient.S_DOI_RESOLVER_BASE
 _T_HTTP_TIMEOUT_SECONDS = (10, 60)
 _I_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 # A download is refused once it has grown past what the envelope
@@ -109,13 +112,16 @@ def fdictAcquirePinnedImage(
     ``environment.json`` dict); the pinned reference and the deposit
     record are read from it and nowhere else. Returns::
 
-        {"sImageReference", "sObtainedFrom", "sRequiredPlatform",
-         "sObtainedPlatform", "sDaemonArchitecture", "bEmulated",
-         "listAttempts"}
+        {"sImageReference", "sImageId", "sObtainedFrom",
+         "sRequiredPlatform", "sObtainedPlatform",
+         "sDaemonArchitecture", "bEmulated", "listAttempts"}
 
     ``sImageReference`` is the reference to RUN: the registry reference
     when the pull served it, the loaded image ID when the deposit did
     (a tarball saved by digest carries no tag), or the local reference.
+    ``sImageId`` is the daemon's raw ID for it, whichever link served,
+    so a caller that must name the image by identity has it beside the
+    reference.
     Raises :class:`ImageAcquisitionRefusedError` naming every link tried
     when none served, when the obtained platform differs from the
     required one, or when the daemon's architecture differs and
@@ -148,12 +154,16 @@ def fdictAcquirePinnedImage(
     bEmulated = _fbJudgeEmulation(
         sRequiredPlatform, sDaemonArchitecture, bAllowEmulation,
     )
+    sImageId = str(dictObtained.get("sId") or "")
     fnStatus({
         "sPhase": "acquired", "sObtainedFrom": sObtainedFrom,
-        "sImageReference": sImageReference, "bEmulated": bEmulated,
+        "sImageReference": sImageReference, "sImageId": sImageId,
+        "bEmulated": bEmulated,
     })
     return {
         "sImageReference": sImageReference,
+        "sImageId": sImageId,
+        "sPinnedImageReference": sPinnedReference,
         "sObtainedFrom": sObtainedFrom,
         "sRequiredPlatform": sRequiredPlatform,
         "sObtainedPlatform": sObtainedPlatform,
@@ -307,9 +317,14 @@ def _fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
             f"{sDoi!r} is not a Zenodo DOI, so no deposit was fetched"
         )
     iExpectedBytes = int(dictRecord.get("iTarballBytes") or 0)
+    if iExpectedBytes <= 0:
+        raise ImageAcquisitionRefusedError(
+            "the envelope records no size for the archived image, so the "
+            "download could not be bounded; nothing was fetched"
+        )
     imageDeposit._fnRefuseWithoutRoomOnDisk(sScratchDirectory, iExpectedBytes)
     sTarballPath = os.path.join(sScratchDirectory, os.path.basename(sName))
-    sFileUrl = _fsResolveDepositFileUrl(sDoi, sName)
+    sFileUrl = _fsResolveDepositFileUrl(dictRecord, sDoi, sName)
     fnStatus({"sPhase": "downloading", "sDoi": sDoi, "iBytes": 0,
               "iTotalBytes": iExpectedBytes})
     sActualSha = _fsStreamDownload(
@@ -325,22 +340,27 @@ def _fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
     return sTarballPath
 
 
-def _fsResolveDepositFileUrl(sDoi, sTarballName):
+def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName):
     """Name the tarball's URL under the record the DOI identifies.
 
     The record page is fetched through the BOUNDED client
     (``zenodoClient``), not with a bare request: it is an untrusted
     document served by a third party, and the client is where the
-    timeouts, the response check and the size discipline for Zenodo
-    JSON already live. The file URL comes from the record's own
-    ``files`` list, so a record that renames or moves its files is
-    followed rather than guessed at.
+    timeouts, the response check, the size discipline for Zenodo JSON
+    and the host allowlist already live. WHICH Zenodo is asked comes
+    from the record's own service name, or from the DOI prefix for a
+    record written before that field existed -- never from a URL in
+    the record, and never by following the DOI first. The file URL
+    comes from the record's own ``files`` list, so a record that
+    renames or moves its files is followed rather than guessed at.
 
     The DOI-follow remains as the FALLBACK, and is what the generated
-    shell script does. It covers a record the client cannot address --
-    a DOI whose id is not a Zenodo record id, or a Zenodo instance
-    this build does not name -- and it is why this function takes a
-    DOI rather than a record id.
+    shell script does for a record with no service. It covers a record
+    the client cannot address -- a DOI whose id is not a Zenodo record
+    id -- and it is why this function takes a DOI rather than a record
+    id. It is followed by hand: each hop's host is checked before the
+    request for it is sent, so a DOI that resolves somewhere other than
+    Zenodo is refused by name rather than fetched.
 
     What is NOT delegated is the download itself. The client's
     ``fnDownloadFile`` writes with no size ceiling, computes no
@@ -350,16 +370,21 @@ def _fsResolveDepositFileUrl(sDoi, sTarballName):
     the client for it would be a downgrade, so the split is: the
     client fetches the untrusted JSON, this module fetches the bytes.
     """
-    sFileUrl = _fsFileUrlFromPublishedRecord(sDoi, sTarballName)
+    sFileUrl = _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName)
     if sFileUrl:
         return sFileUrl
     try:
-        responseDoi = requests.get(
-            _S_DOI_RESOLVER + sDoi, allow_redirects=True,
-            timeout=_T_HTTP_TIMEOUT_SECONDS, stream=True,
+        responseDoi = zenodoClient.fresponseGetWithinAllowlist(
+            _S_DOI_RESOLVER + sDoi, _flistDoiFollowOrigins(),
+            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,
         )
         sRecordUrl = responseDoi.url
         responseDoi.close()
+    except zenodoClient.ZenodoRedirectRefusedError as error:
+        raise ImageAcquisitionRefusedError(
+            f"the DOI {sDoi} resolves outside Zenodo, so no deposit was "
+            f"fetched: {error}"
+        ) from error
     except requests.RequestException as error:
         raise ImageAcquisitionRefusedError(
             f"the DOI {sDoi} could not be resolved: {error}"
@@ -367,36 +392,76 @@ def _fsResolveDepositFileUrl(sDoi, sTarballName):
     return f"{sRecordUrl.rstrip('/')}/files/{sTarballName}?download=1"
 
 
-def _fsFileUrlFromPublishedRecord(sDoi, sTarballName):
+def _flistDoiFollowOrigins():
+    """Return the origins a DOI-follow may touch: the resolver and Zenodo."""
+    return zenodoClient.flistAllowedZenodoOrigins() + [
+        zenodoClient.fsOriginOfUrl(_S_DOI_RESOLVER),
+    ]
+
+
+def _fsDepositService(dictRecord, sDoi):
+    """Return the Zenodo service the record names, or its DOI prefix implies.
+
+    The record's own ``sZenodoService`` is the authority when present.
+    It is validated through the client's table, and any other value
+    REFUSES the link rather than being guessed around: a record that
+    names a service this vaibify does not know is a record it cannot
+    fetch from without inventing a host. Records written before the
+    field existed are classified by DOI prefix.
+    """
+    sRecorded = str(dictRecord.get("sZenodoService") or "").strip()
+    if not sRecorded:
+        return zenodoClient.fsServiceForDoi(sDoi)
+    try:
+        zenodoClient.fsResolveServiceBaseUrl(sRecorded)
+    except ValueError as error:
+        raise ImageAcquisitionRefusedError(
+            "the deposit record names a Zenodo service this vaibify "
+            f"does not know ({sRecorded!r}), so no deposit was fetched"
+        ) from error
+    return sRecorded
+
+
+def _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName):
     """Return the tarball's URL from the bounded record fetch, or "".
 
     Empty rather than raising: a record the client cannot fetch is not
     an error here, it is the case the DOI-follow above exists for. The
-    client is built with an EMPTY token so no host keyring is touched
-    -- a published record is public, and a reproduction is somebody
-    reading a stranger's deposit.
+    one exception is a fetch REFUSED at the allowlist -- that names a
+    record page redirecting off Zenodo, which no fallback should paper
+    over. The client is built with an EMPTY token so no host keyring is
+    touched -- a published record is public, and a reproduction is
+    somebody reading a stranger's deposit.
     """
     sRecordId = fsZenodoRecordIdFromDoi(sDoi)
     if not sRecordId:
         return ""
+    clientZenodo = zenodoClient.ZenodoClient(
+        sService=_fsDepositService(dictRecord, sDoi), sToken="",
+    )
     try:
-        clientZenodo = zenodoClient.ZenodoClient(
-            sService=(
-                "sandbox" if "sandbox" in sDoi.lower() else "zenodo"
-            ),
-            sToken="",
-        )
         dictPublished = clientZenodo.fdictFetchPublishedRecord(sRecordId)
+    except zenodoClient.ZenodoRedirectRefusedError as error:
+        raise ImageAcquisitionRefusedError(
+            f"the record page for {sDoi} could not be fetched: {error}"
+        ) from error
     except Exception:  # noqa: BLE001 - the DOI-follow is the fallback
         return ""
     return zenodoClient._fsFindFileUrlOrNone(dictPublished, sTarballName)
 
 
 def _fsStreamDownload(sFileUrl, sTarballPath, iExpectedBytes, fnStatus):
-    """Stream a URL to disk, hashing as it lands; return the sha256."""
+    """Stream a URL to disk, hashing as it lands; return the sha256.
+
+    The URL came out of a record page or was composed from a DOI
+    follow, so it is handed to the allowlisted fetch like every other:
+    a file link that points off Zenodo is refused before any byte is
+    requested.
+    """
     try:
-        with requests.get(
-            sFileUrl, stream=True, timeout=_T_HTTP_TIMEOUT_SECONDS,
+        with zenodoClient.fresponseGetWithinAllowlist(
+            sFileUrl, zenodoClient.flistAllowedZenodoOrigins(),
+            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,
         ) as responseFile:
             responseFile.raise_for_status()
             with open(sTarballPath, "wb") as fileTarball:
@@ -406,6 +471,11 @@ def _fsStreamDownload(sFileUrl, sTarballPath, iExpectedBytes, fnStatus):
                         fileTarball, iExpectedBytes, fnStatus,
                     ),
                 )
+    except zenodoClient.ZenodoRedirectRefusedError as error:
+        raise ImageAcquisitionRefusedError(
+            f"the archived image's link leaves Zenodo, so it was not "
+            f"fetched: {error}"
+        ) from error
     except requests.RequestException as error:
         raise ImageAcquisitionRefusedError(
             f"the archived image could not be fetched: {error}"
@@ -417,14 +487,15 @@ def _fiterWriteBoundedChunks(iterChunks, fileTarball, iExpectedBytes, fnStatus):
     """Write each chunk to disk, report it, and yield it on for hashing.
 
     Refuses once the download has grown past what the envelope
-    recorded (with slack for a record that predates exact sizes), so a
-    hostile or broken server cannot fill the disk.
+    recorded, so a hostile or broken server cannot fill the disk. The
+    caller has already refused a record with no size, so the ceiling
+    is never disabled.
     """
     iCeiling = int(max(iExpectedBytes, 1) * _F_DOWNLOAD_SIZE_SLACK)
     iReceived = 0
     for baChunk in iterChunks:
         iReceived += len(baChunk)
-        if iExpectedBytes and iReceived > iCeiling:
+        if iReceived > iCeiling:
             raise ImageAcquisitionRefusedError(
                 "the download grew past the size the envelope records "
                 "and was stopped"

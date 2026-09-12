@@ -260,7 +260,17 @@ I_UNCLASSIFIED_ROW_BUDGET = 283
 # researcher what a restart will do -- which is not a container
 # mutation and does not belong in the gateway. The row carries its
 # reviewed exclusion rationale in the inventory.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 213
+# +1 (2026-09-11): the reproduction-record predicate. Whether a
+# verification writes the author's attestation or a reproduction
+# record is git EVIDENCE -- is the attestation tracked at HEAD, who
+# last committed it, what identity would commit now -- and the only
+# honest way to ask is to run git in the repository that will receive
+# the record. It is ONE row, the runner builder in containerGit (the
+# git seam every other in-container git query already lives in); the
+# three queries are read-only, every argument is quoted, and the row
+# is classified on arrival. A typed-read migration of these three
+# queries would lower this again and is the candidate the row names.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 214
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -543,9 +553,15 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # Running answer because a wedged daemon absorbs the first kill
 # while reporting success -- one inspect_container site per lane,
 # beside the kill it verifies.
+# 51 (2026-09-11): `disposableContainer.fnTagImage`, the one name
+# mutation an acquisition from the author's pinned image makes to the
+# image store -- `<projectName>:latest` comes to mean the obtained
+# image, tagged by ID. It is an SDK call inside the SDK authority for
+# disposable work, which is exactly where the ratchet wants it and
+# exactly what makes it a root the scan cannot read.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 50,
+    "untraceable-docker-sdk-root": 51,
 }
 
 
@@ -1861,6 +1877,15 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # is module-level rather than a method precisely so the host leg
     # can share the one table instead of growing a second copy.
     "fsRenderBatchedTypedReadProgram",
+    # Reads about an IMAGE and about the DAEMON, not a container: the
+    # launch guard for a project whose image was obtained asks what
+    # the project's tag resolves to (with its labels) and which
+    # architecture the daemon has, through the lifecycle gateway's own
+    # bounded probe. The third composes those two with a host-side
+    # record read; none of them names a container.
+    "fdictInspectImageTag",
+    "fsReadDaemonArchitectureQuietly",
+    "fdictLiveImageOriginForProject",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

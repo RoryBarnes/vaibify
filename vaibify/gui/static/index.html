@@ -159,7 +159,10 @@
 
 <!-- Add Choice Modal -->
 <div class="modal-overlay" id="modalAddChoice" style="display: none;">
-    <div class="modal modal-small">
+    <!-- modal-medium, not modal-small: the kind stage lays three
+         cards side by side, and at the small width the third card's
+         title was clipped at the modal's right edge. -->
+    <div class="modal modal-medium">
         <div class="wizard-title-row">
             <h2 style="color: var(--color-pale-blue);"
                 id="addChoiceTitle">Add Environment</h2>
@@ -1267,6 +1270,7 @@
 <script src="/static/vendor/addon-unicode11.min.js"></script>
 <script src="/static/vendor/pdf.min.js"></script>
 <script src="/static/scriptUtilities.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptFileOutcomes.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApiClient.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptConnectionMonitor.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWebSocket.js?v=__CACHE_VERSION__"></script>

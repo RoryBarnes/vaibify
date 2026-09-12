@@ -25,6 +25,7 @@ connection and routes the bytes through ``fnWriteFile`` /
 import posixpath
 import re
 
+from vaibify.reproducibility import zenodoClient
 from vaibify.reproducibility.imageArchive import (
     S_LOADED_FROM_ARCHIVE_MARKER,
 )
@@ -79,12 +80,20 @@ _S_ENVELOPE_EPOCH_KEY = "iSourceDateEpoch"
 # irrecoverable. When the project deposited its image, the envelope
 # records a DOI, and this fetches from the archive instead.
 #
-# Three properties of the shell below are load-bearing:
+# Five properties of the shell below are load-bearing:
 #
-#  * the DOI is RESOLVED rather than mapped to a host. Sandbox and
-#    production Zenodo have different DOI prefixes and different
-#    hostnames, and a hardcoded map is one more thing that can be
-#    wrong years from now. Following the DOI is what a DOI is for.
+#  * WHICH Zenodo holds the deposit comes from the record's service
+#    name, mapped through a table rendered from the Python client's
+#    own -- so the two lanes cannot disagree about a host -- and a
+#    record naming any other service is refused. Only a record written
+#    before the service was recorded is resolved through doi.org.
+#    Nothing read from the envelope is ever fetched as a URL: the
+#    envelope is a file in a cloned repository.
+#  * no redirect is followed before its target host is checked. `curl
+#    -L` has already contacted the redirected host by the time its
+#    final URL can be read, so every fetch here is sent WITHOUT -L,
+#    reads %{redirect_url}, checks that host, and only then sends the
+#    next request -- for a bounded number of hops.
 #  * the download is VERIFIED against the recorded sha256 before
 #    `docker load` sees it. Without that the fallback would trust
 #    whatever the URL served, which is a worse failure than not
@@ -102,28 +111,120 @@ _S_ENVELOPE_EPOCH_KEY = "iSourceDateEpoch"
 #    ID: sha256:..."), so the loaded image answers to its ID alone;
 #    a `docker run` by the registry reference would attempt the pull
 #    again and die on the line after the fallback rescued it.
-_S_ARCHIVE_FALLBACK = """\
+_I_ARCHIVE_REDIRECT_HOP_LIMIT = 5
+
+_S_ARCHIVE_FALLBACK_TEMPLATE = """\
+# The Zenodo hosts, and nothing else. Rendered from the Python
+# client's own table; a record naming any other service is refused.
+fnZenodoBaseUrl() {
+    case "$1" in
+__SERVICE_CASES__
+        *) return 1 ;;
+    esac
+}
+
+# Whether one URL is on a host a deposit fetch may contact. The DOI
+# resolver is admitted because a record with no recorded service is
+# resolved through it; every hop it names is checked here too.
+fnUrlWithinAllowlist() {
+    case "$1" in
+        __ALLOWLIST_PATTERNS__) return 0 ;;
+    esac
+    return 1
+}
+
+# Fetch one URL into a file, following redirects BY HAND: every hop's
+# host is checked before the request for it is sent, never after.
+# Prints the URL that finally answered, for a caller resolving a DOI.
+# A third argument bounds the body: curl refuses a larger announced
+# size up front (and recent versions stop a transfer that grows past
+# it), so a broken permitted host cannot fill the disk.
+fnFetchWithinAllowlist() {
+    local sUrl="$1" sOutput="$2" iMaxBytes="${3:-}" iHop=0
+    local sAnswer sCode sNext sHost
+    local aCurlLimit=()
+    if [ -n "$iMaxBytes" ]; then
+        aCurlLimit=(--max-filesize "$iMaxBytes")
+    fi
+    while :; do
+        if ! fnUrlWithinAllowlist "$sUrl"; then
+            sHost=${sUrl#*://}
+            echo "error: refusing to fetch from ${sHost%%/*}: not a" >&2
+            echo "       Zenodo host this script knows." >&2
+            return 1
+        fi
+        sAnswer=$(curl -fsS -o "$sOutput" \\
+            ${aCurlLimit[@]+"${aCurlLimit[@]}"} \\
+            -w '%{http_code} %{redirect_url}' "$sUrl") || return 1
+        sCode=${sAnswer%% *}
+        sNext=${sAnswer#* }
+        case "$sCode" in
+            3??) ;;
+            *) printf '%s\\n' "$sUrl"; return 0 ;;
+        esac
+        iHop=$((iHop + 1))
+        if [ -z "$sNext" ] || [ "$iHop" -gt __HOP_LIMIT__ ]; then
+            echo "error: the deposit redirected without a target, or" >&2
+            echo "       more than __HOP_LIMIT__ times; giving up." >&2
+            return 1
+        fi
+        sUrl=$sNext
+    done
+}
+
+# The record's landing URL. A record that names its service composes
+# it from the table and fetches nothing to learn it; a record written
+# before the service was recorded is resolved through doi.org, hop by
+# hop through the same host check.
+fnResolveRecordUrl() {
+    local sService="$1" sDoi="$2" sBase
+    if [ -n "$sService" ]; then
+        if ! sBase=$(fnZenodoBaseUrl "$sService"); then
+            echo "error: the deposit record names a Zenodo service this" >&2
+            echo "       script does not know: $sService" >&2
+            return 1
+        fi
+        printf '%s/records/%s\\n' "$sBase" "${sDoi##*zenodo.}"
+        return 0
+    fi
+    fnFetchWithinAllowlist "__DOI_RESOLVER__$sDoi" /dev/null
+}
+
 fnLoadImageFromArchive() {
-    local sDoi sName sSha sRecordUrl sTarball iOutcome
+    local sDoi sName sSha sService iBytes sRecordUrl sTarball iOutcome
     sDoi=$(jq -r '.dictContainer.dictImageArchive.sVersionDoi // ""' \\
         .vaibify/environment.json)
     sName=$(jq -r '.dictContainer.dictImageArchive.sTarballName // ""' \\
         .vaibify/environment.json)
     sSha=$(jq -r '.dictContainer.dictImageArchive.sTarballSha256 // ""' \\
         .vaibify/environment.json)
+    sService=$(jq -r '.dictContainer.dictImageArchive.sZenodoService // ""' \\
+        .vaibify/environment.json)
+    iBytes=$(jq -r '.dictContainer.dictImageArchive.iTarballBytes // 0' \\
+        .vaibify/environment.json)
     if [ -z "$sDoi" ] || [ -z "$sName" ] || [ -z "$sSha" ]; then
         echo "error: the registry does not serve $sImageRef and this" >&2
         echo "       project archived no copy of its image." >&2
         return 1
     fi
+    # The recorded size bounds the download; without one the fetch
+    # could be made to fill the disk, so it is refused, never unbounded.
+    case "$iBytes" in
+        ''|0|*[!0-9]*)
+            echo "error: the envelope records no size for the archived" >&2
+            echo "       image, so its download cannot be bounded;" >&2
+            echo "       refusing to fetch it." >&2
+            return 1 ;;
+    esac
     echo "Registry pull failed; fetching the archived image from $sDoi"
-    sRecordUrl=$(curl -sL -o /dev/null -w '%{url_effective}' \\
-        "https://doi.org/$sDoi")
+    sRecordUrl=$(fnResolveRecordUrl "$sService" "$sDoi") || return 1
     sTarball=$(mktemp -t vaibifyImage.XXXXXXXX)
     # An `if` rather than a bare list: under `set -e` a failing LAST
     # element of an and-list exits the script on the spot, skipping
     # the cleanup and the message below and leaving the tarball.
-    if curl -fsSL -o "$sTarball" "$sRecordUrl/files/$sName?download=1" \\
+    if fnFetchWithinAllowlist "$sRecordUrl/files/$sName?download=1" \\
+            "$sTarball" "$iBytes" >/dev/null \\
+        && [ "$(( $(wc -c < "$sTarball") ))" -eq "$iBytes" ] \\
         && echo "${sSha#sha256:}  $sTarball" | sha256sum -c - >/dev/null \\
         && fnLoadCheckedTarball "$sTarball" "$sName"; then
         iOutcome=0
@@ -132,9 +233,9 @@ fnLoadImageFromArchive() {
     fi
     rm -f "$sTarball"
     if [ "$iOutcome" -ne 0 ]; then
-        echo "error: the archived image could not be fetched, did not" >&2
-        echo "       match the hash the envelope records, or could not" >&2
-        echo "       be loaded." >&2
+        echo "error: the archived image could not be fetched, was not" >&2
+        echo "       the size the envelope records, did not match the" >&2
+        echo "       hash it records, or could not be loaded." >&2
     fi
     return "$iOutcome"
 }
@@ -152,7 +253,34 @@ fnLoadCheckedTarball() {
     : > __LOADED_FROM_ARCHIVE_MARKER__
 }
 
-""".replace("__LOADED_FROM_ARCHIVE_MARKER__", S_LOADED_FROM_ARCHIVE_MARKER)
+"""
+
+
+def _fsRenderZenodoServiceCases():
+    """Return the ``case`` arms mapping each service name to its host."""
+    return "\n".join(
+        f"        {sService}) printf '%s' '{sBaseUrl}' ;;"
+        for sService, sBaseUrl in sorted(
+            zenodoClient.fdictZenodoServiceTable().items(),
+        )
+    )
+
+
+def _fsRenderZenodoAllowlistPatterns():
+    """Return the ``case`` pattern admitting the Zenodo hosts and the resolver."""
+    listBases = sorted(zenodoClient.fdictZenodoServiceTable().values())
+    listBases.append(zenodoClient.S_DOI_RESOLVER_BASE.rstrip("/"))
+    return "|".join(f"{sBase}/*" for sBase in listBases)
+
+
+_S_ARCHIVE_FALLBACK = (
+    _S_ARCHIVE_FALLBACK_TEMPLATE
+    .replace("__SERVICE_CASES__", _fsRenderZenodoServiceCases())
+    .replace("__ALLOWLIST_PATTERNS__", _fsRenderZenodoAllowlistPatterns())
+    .replace("__DOI_RESOLVER__", zenodoClient.S_DOI_RESOLVER_BASE)
+    .replace("__HOP_LIMIT__", str(_I_ARCHIVE_REDIRECT_HOP_LIMIT))
+    .replace("__LOADED_FROM_ARCHIVE_MARKER__", S_LOADED_FROM_ARCHIVE_MARKER)
+)
 
 _S_HOST_PREAMBLE = """\
 #!/usr/bin/env bash

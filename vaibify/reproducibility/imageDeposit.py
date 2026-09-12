@@ -375,6 +375,7 @@ def fdictDepositImageArchive(
         sImageDigest=sImageReference, sArchitecture=sArchitecture,
         sTarballName=os.path.basename(sTarballPath),
         sImageStreamSha256=sStreamSha256,
+        sZenodoService=clientZenodo.sService,
     )
     # Stamped BEFORE the draft is created, because Zenodo's metadata
     # has no field for "which image is this" and a later reference to
@@ -427,7 +428,9 @@ def _fnDiscardDraft(clientZenodo, iDepositId):
         )
 
 
-def fdictRecheckArchiveAgainstLocalImage(filesRepo, dictEnvironment=None):
+def fdictRecheckArchiveAgainstLocalImage(
+    filesRepo, dictEnvironment=None, bLoadedFromArchive=False,
+):
     """Return the attestation-time verdict on the deposited environment.
 
     ``dictEnvironment`` is read from ``filesRepo`` when not supplied.
@@ -438,12 +441,20 @@ def fdictRecheckArchiveAgainstLocalImage(filesRepo, dictEnvironment=None):
     matters -- re-hashing a download against itself matches always,
     and reporting that as a pass would put a comparison nobody made
     into a scientific record.
+
+    That knowledge has two sources. The marker file beside the
+    envelope, written by ``reproduce.sh``'s fallback for a clone with
+    no hub; and ``bLoadedFromArchive``, which a hub caller sets from
+    the project's origin record when the image was obtained from the
+    deposit -- a host-side fact the repository never carries.
     """
     if dictEnvironment is None:
         dictEnvironment = fdictReadEnvironmentJson(filesRepo)
     dictRecord = imageArchive.fdictReadArchiveRecord(dictEnvironment)
     dictContainer = (dictEnvironment or {}).get("dictContainer") or {}
-    bLoaded = imageArchive.fbImageWasLoadedFromArchive(filesRepo)
+    bLoaded = bool(bLoadedFromArchive) or (
+        imageArchive.fbImageWasLoadedFromArchive(filesRepo)
+    )
     if dictRecord is None or bLoaded:
         return imageArchive.fdictJudgeArchiveRecheck(
             dictEnvironment, "", bLoaded,

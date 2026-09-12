@@ -89,6 +89,22 @@ _DICT_OVERLAY_DOCKERFILE_MAP = {
     "pi": "Dockerfile.pi",
 }
 
+# Every overlay is one of three kinds, and a project containerized from
+# the author's PINNED image treats them differently: AGENT overlays may
+# be stacked onto an obtained base as additions, BASE overlays change the
+# environment the author pinned and are fixed by it, and PREREQUISITE
+# overlays ride in only because an agent needs them. The classification
+# is total over `_LIST_OVERLAY_ORDER`, and a test fails when an overlay
+# is added without being classified.
+T_AGENT_OVERLAY_NAMES = (
+    "claude", "codex", "gemini", "antigravity", "opencode", "cline",
+    "openhands", "pi",
+)
+T_BASE_OVERLAY_NAMES = (
+    "gpu", "jupyter", "rlang", "julia", "database", "dvc", "nestedSampling",
+)
+T_PREREQUISITE_OVERLAY_NAMES = ("node", "uv")
+
 _GPU_BASE_IMAGE = "nvidia/cuda:12.2.0-devel-ubuntu22.04"
 
 _DICT_FEATURE_TO_OVERLAY = {
@@ -129,7 +145,7 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
     )
     fnBuildBase(
         config, sDockerDir, bNoCache,
-        sRecipeFingerprint=sRecipeFingerprint,
+        sRecipeFingerprint=sRecipeFingerprint, listOverlays=listOverlays,
     )
     sPreviousTag = "base"
     for sOverlayName in listOverlays:
@@ -137,11 +153,124 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
         fnApplyOverlay(
             sProjectName, sOverlayName, sDockerDir,
             sPreviousTag, bNoCache,
-            sRecipeFingerprint=sRecipeFingerprint,
+            sRecipeFingerprint=sRecipeFingerprint, listOverlays=listOverlays,
         )
         sPreviousTag = sNewTag
     _fnTagFinalImage(sProjectName, sPreviousTag)
     _fnPruneDanglingImages()
+
+
+def fsComputeShippedRecipeFingerprint(sDockerDir, listOverlays):
+    """Fingerprint THIS vaibify's shipped texts for a candidate overlay list.
+
+    The recomputation proof for an image built before the overlays
+    label existed: equal to the image's recipe label, the candidate
+    list is proven (the name separators make the digest injective over
+    the pair list, so a header line edited to claim a different set
+    fails here even with its fingerprint intact); unequal is UNPROVEN,
+    never a refusal by itself -- an author who built with a vaibify
+    whose overlay texts differed is the ordinary case.
+    """
+    return _fsComputeChainFingerprint(sDockerDir, listOverlays)
+
+
+def flistCanonicalOverlayOrder():
+    """Return the canonical overlay order, for readers of the overlays label."""
+    return list(_LIST_OVERLAY_ORDER)
+
+
+def flistCanonicalizeOverlaySet(listOverlays):
+    """Return the overlays as a SET rendered in canonical order.
+
+    The overlays label records WHICH overlays an image holds, never the
+    order they were installed in: a differential stack puts ``node``
+    after an author's ``claude`` on disk, and a label written in that
+    build order is one the label's own parser refuses. An overlay the
+    order does not know is refused rather than dropped, because
+    silently narrowing the set is how a label comes to under-describe
+    its image.
+    """
+    setNamed = {str(sName) for sName in listOverlays or []}
+    listUnknown = sorted(setNamed - set(_LIST_OVERLAY_ORDER))
+    if listUnknown:
+        raise ValueError(
+            "overlays this vaibify does not know: " + ", ".join(listUnknown)
+        )
+    return [sName for sName in _LIST_OVERLAY_ORDER if sName in setNamed]
+
+
+def fsFeatureFieldForOverlay(sOverlayName):
+    """Return the config feature field that enables an overlay, or ``""``."""
+    for sFeatureField, sMapped in _DICT_FEATURE_TO_OVERLAY.items():
+        if sMapped == sOverlayName:
+            return sFeatureField
+    return ""
+
+
+def flistOverlaysForFeatures(dictFeatureFlags):
+    """Return the overlay chain a feature dict enables, in canonical order.
+
+    The same resolution ``flistDetermineOverlays`` performs on a
+    config, over a plain ``{sFeatureField: bool}`` dict, so a merged
+    feature set (an author's plus a wizard's additions) can be resolved
+    in memory without composing a config file first.
+    """
+    class _FeaturesView:
+        pass
+
+    featuresView = _FeaturesView()
+    for sField in _DICT_FEATURE_TO_OVERLAY:
+        setattr(featuresView, sField, bool(dictFeatureFlags.get(sField)))
+
+    class _ConfigView:
+        features = featuresView
+
+    return flistDetermineOverlays(_ConfigView())
+
+
+def fsStackOverlaysOnObtainedBase(
+    sProjectName, sBaseImageId, listOverlayChain, sDockerDir, sPlatform,
+    listLabelOverlays, bNoCache=False,
+):
+    """Build ``listOverlayChain`` on top of an OBTAINED base image.
+
+    The first stage's base is the obtained image ID (never a tag the
+    daemon could have moved), every stage requests the required
+    platform -- under emulation the installers run under qemu, slowly
+    -- and every stage carries ``vaibify.pinnedBaseImageId`` plus the
+    overlays label naming the proven set AND the chain, so the result
+    reads as DERIVED from the base and never as the base. Returns the
+    tag of the last stage, or the base ID itself when the chain is
+    empty; the caller resolves and tags the final image by ID.
+    """
+    from vaibify.config.imageOrigins import S_PINNED_BASE_LABEL
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_OVERLAYS_IMAGE_LABEL,
+        fsRenderOverlaysLabelValue,
+    )
+    if not listOverlayChain:
+        return sBaseImageId
+    sPreviousReference = sBaseImageId
+    for sOverlayName in listOverlayChain:
+        sNewTag = f"{sProjectName}:{sOverlayName}"
+        saCommand = _flistOverlayCommand(
+            _fsResolveOverlayDockerfile(sOverlayName, sDockerDir),
+            sNewTag, sPreviousReference, sDockerDir,
+        )
+        if bNoCache:
+            saCommand.append("--no-cache")
+        if sPlatform:
+            saCommand[-1:-1] = ["--platform", sPlatform]
+        saCommand[-1:-1] = [
+            "--label", f"{S_PINNED_BASE_LABEL}={sBaseImageId}",
+            "--label", (
+                f"{S_OVERLAYS_IMAGE_LABEL}="
+                + fsRenderOverlaysLabelValue(listLabelOverlays)
+            ),
+        ]
+        _fnRunDockerBuild(saCommand)
+        sPreviousReference = sNewTag
+    return sPreviousReference
 
 
 def _fsComputeChainFingerprint(sDockerDir, listOverlays):
@@ -171,16 +300,33 @@ def _fsComputeChainFingerprint(sDockerDir, listOverlays):
     return fsComputeRecipeFingerprint(sBaseText, listTOverlays)
 
 
-def _flistRecipeLabelArguments(sRecipeFingerprint):
-    """Return the ``--label`` argv pair, or nothing for no fingerprint."""
-    if not sRecipeFingerprint:
-        return []
+def _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays=None):
+    """Return the ``--label`` argv pairs the build chain is stamped with.
+
+    The recipe fingerprint rides only when one was computed; the
+    overlays label rides whenever a list is given, an empty chain
+    included -- an image that says "no overlays" is a different image
+    from one that says nothing, and a project containerized from the
+    author's pinned image relies on that difference.
+    """
     from vaibify.reproducibility.dockerfileComposer import (
+        S_OVERLAYS_IMAGE_LABEL,
         S_RECIPE_IMAGE_LABEL,
+        fsRenderOverlaysLabelValue,
     )
-    return [
-        "--label", f"{S_RECIPE_IMAGE_LABEL}={sRecipeFingerprint}",
-    ]
+    listArguments = []
+    if sRecipeFingerprint:
+        listArguments += [
+            "--label", f"{S_RECIPE_IMAGE_LABEL}={sRecipeFingerprint}",
+        ]
+    if listOverlays is not None:
+        listArguments += [
+            "--label", (
+                f"{S_OVERLAYS_IMAGE_LABEL}="
+                + fsRenderOverlaysLabelValue(listOverlays)
+            ),
+        ]
+    return listArguments
 
 
 def _fnPruneDanglingImages():
@@ -232,7 +378,9 @@ def _flistSortByCanonicalOrder(listOverlayNames):
     return [s for s in _LIST_OVERLAY_ORDER if s in listOverlayNames]
 
 
-def fnBuildBase(config, sDockerDir, bNoCache, sRecipeFingerprint=""):
+def fnBuildBase(
+    config, sDockerDir, bNoCache, sRecipeFingerprint="", listOverlays=None,
+):
     """Build the base Dockerfile with build args from config.
 
     Parameters
@@ -250,7 +398,9 @@ def fnBuildBase(config, sDockerDir, bNoCache, sRecipeFingerprint=""):
     saCommand = _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache)
     # Spliced BEFORE the trailing context path: docker build takes the
     # path as its positional argument and it must stay last.
-    saCommand[-1:-1] = _flistRecipeLabelArguments(sRecipeFingerprint)
+    saCommand[-1:-1] = _flistRecipeLabelArguments(
+        sRecipeFingerprint, listOverlays,
+    )
     _fnRunDockerBuild(saCommand)
 
 
@@ -294,7 +444,7 @@ def _flistBuildArgPairs(config, sBaseImage):
 
 def fnApplyOverlay(
     sProjectName, sOverlayName, sDockerDir, sFromTag,
-    bNoCache=False, sRecipeFingerprint="",
+    bNoCache=False, sRecipeFingerprint="", listOverlays=None,
 ):
     """Build a single overlay Dockerfile on top of the previous tag.
 
@@ -318,7 +468,7 @@ def fnApplyOverlay(
         sDockerfile, sNewTag, sFromImage, sDockerDir)
     if bNoCache:
         saCommand.append("--no-cache")
-    saCommand += _flistRecipeLabelArguments(sRecipeFingerprint)
+    saCommand += _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays)
     _fnRunDockerBuild(saCommand)
 
 
