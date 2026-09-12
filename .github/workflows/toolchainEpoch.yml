@@ -1,0 +1,140 @@
+name: toolchain-epoch
+
+# Asks, once a month, whether Ubuntu has moved past the pinned
+# toolchain epoch -- and reports the answer WITHOUT touching a pull
+# request.
+#
+# That separation is the whole point of this lane. The pins used to be
+# read against the live archive from inside fresh-image-build, so an
+# Ubuntu package rotation turned every unrelated pull request red
+# while it waited for a maintainer. A permanently red lane in front of
+# contributors stops carrying information, and the decision it was
+# waiting for is not one a pull request author can make.
+#
+# So the epoch is frozen in the Dockerfile (APT_SNAPSHOT_DATE) and this
+# lane proposes moving it. It opens an ISSUE rather than a pull
+# request, deliberately: the proposal can report that a package now has
+# several candidate versions, and choosing between them requires dpkg
+# version ordering plus a judgement about what a researcher's results
+# rest on. A tool that guessed would be writing a pin nobody reviewed.
+#
+# Moving the epoch is how Ubuntu's security and correctness fixes reach
+# vaibify users. It is meant to happen -- on a cadence the maintainer
+# chooses, as a reviewed change followed by a re-run and re-verify.
+
+on:
+  schedule:
+    # 06:00 UTC on the first of the month.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      sCandidateDate:
+        description: 'Snapshot date to price, YYYYMMDD (default: yesterday)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  # To open and update the proposal issue, and nothing else.
+  issues: write
+
+jobs:
+  priceTheEpoch:
+    name: 'price the next toolchain epoch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Before asking what WOULD change, confirm the file is
+      # self-consistent. A Dockerfile whose date and pins disagree
+      # produces a proposal about an epoch that cannot build, and the
+      # proposal would look perfectly reasonable.
+      - name: The snapshot date and the pins agree
+        run: python tools/checkToolchainEpoch.py --verify
+
+      - name: Price the candidate epoch
+        id: price
+        run: |
+          set -o pipefail
+          sDate='${{ inputs.sCandidateDate }}'
+          if [ -n "${sDate}" ]; then
+            set -- --propose --date "${sDate}"
+          else
+            set -- --propose
+          fi
+          python tools/checkToolchainEpoch.py "$@" | tee /tmp/proposal.txt
+          # "No bump needed" is the tool's own words for an unchanged
+          # archive. Keyed on that phrase rather than on an exit code,
+          # because the tool exits 0 for both answers -- neither is a
+          # failure, and making one an error would put this lane's red
+          # back on the maintainer's screen every month.
+          if grep -q 'No bump needed' /tmp/proposal.txt; then
+            echo "bChanged=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "bChanged=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update the proposal issue
+        if: steps.price.outputs.bChanged == '1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sTitle='Toolchain epoch: Ubuntu has moved past the pinned snapshot'
+          # One standing issue, reopened and re-bodied, never a new one
+          # per month. A monthly issue for a decision the maintainer is
+          # deliberately deferring is how a notification becomes noise.
+          sExisting=$(gh issue list --state all --search "$sTitle in:title" \
+            --json number,title \
+            --jq "map(select(.title == \"${sTitle}\")) | .[0].number // empty")
+          {
+            echo 'The pinned toolchain epoch is behind the Ubuntu archive.'
+            echo
+            echo '```'
+            cat /tmp/proposal.txt
+            echo '```'
+            echo
+            echo '### What this is'
+            echo
+            echo 'Nothing is broken. The image still builds, and published'
+            echo 'results are unaffected -- they are pinned to an image'
+            echo 'digest, and reproducing them pulls that image rather'
+            echo 'than rebuilding.'
+            echo
+            echo 'This is the standing question of **when** to take'
+            echo "Ubuntu's fixes. Taking them changes the compiler and"
+            echo 'libc that researchers"'"'"' binaries are built against, so'
+            echo 'results produced under the old epoch must be re-run and'
+            echo 're-verified.'
+            echo
+            echo '### To move the epoch'
+            echo
+            echo '1. Update `ARG APT_SNAPSHOT_DATE` and the affected pins'
+            echo '   in `vaibify/containerImage/Dockerfile`. Where several'
+            echo '   candidate versions are listed above, choose'
+            echo '   deliberately -- this tool will not guess.'
+            echo '2. `python tools/checkToolchainEpoch.py --verify`'
+            echo '3. Open a pull request. `fresh-image-build` will build it.'
+            echo '4. Re-run and re-verify the example project.'
+            echo
+            echo "_Refreshed by the monthly toolchain-epoch lane. Closing"
+            echo 'this issue is a fine way to say "not yet"; it reopens'
+            echo 'when the answer changes._'
+          } > /tmp/issueBody.md
+          if [ -n "${sExisting}" ]; then
+            gh issue edit "${sExisting}" --body-file /tmp/issueBody.md
+            gh issue reopen "${sExisting}" 2>/dev/null || true
+            echo "Refreshed issue #${sExisting}"
+          else
+            gh issue create --title "$sTitle" --body-file /tmp/issueBody.md
+          fi
+
+      - name: Report an unchanged epoch
+        if: steps.price.outputs.bChanged == '0'
+        run: cat /tmp/proposal.txt

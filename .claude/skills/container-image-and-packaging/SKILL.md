@@ -15,6 +15,40 @@ them.
 The repository-wide rules in `AGENTS.md` still apply; this file is
 the detail for this subsystem.
 
+## The toolchain epoch is pinned on three axes
+
+The Dockerfile pins the base image by DIGEST, the 45 toolchain
+packages by VERSION, and the archive they come from by DATE
+(`ARG APT_SNAPSHOT_DATE`, served by `snapshot.ubuntu.com`). The third
+axis was added because the first two were not enough: Ubuntu drops
+superseded versions from its pool within weeks, so the pins stopped
+RESOLVING on a monthly cadence and every unrelated pull request went
+red waiting for a maintainer to approve something nobody can evaluate
+-- a glibc SRU changes real bytes, and no review separates "this moves
+a number" from "this does not".
+
+Four things not to undo:
+
+- **The date and the pins are one statement.** Editing either alone
+  produces an image that cannot build.
+  `python tools/checkToolchainEpoch.py --verify` is the agreement
+  check, and `fresh-image-build` runs it before the hour-long build so
+  the answer costs thirty seconds.
+- **The snapshot covers ONLY the pinned block.** The waived block above
+  it floats by design -- see its own comment -- and freezing it would
+  override that decision silently and strand a researcher whose
+  `systemPackages` name anything published since the pinned date.
+- **The live-archive comparison never runs on a pull request.** That is
+  `toolchainEpoch.yml`, monthly, and it opens an ISSUE rather than a
+  pull request because choosing between candidate versions needs dpkg
+  ordering plus a judgment about what results rest on.
+  `testTheLiveArchiveComparisonIsNotOnThePullRequestPath` is the guard.
+- **`fsExtractToolchainBlock` anchors on the `if !` test**, not on the
+  `RUN` line, because the preamble grew a sources swap. It refused
+  rather than scanning nothing when that happened, which is the
+  property to keep -- a permissive anchor would have silently graded
+  the empty set.
+
 **`introspectionScript.py` is an f-string executed inside containers.**
 Editing it as ordinary Python loses escape sequences and string
 delimiters silently. The format-handling duplication with

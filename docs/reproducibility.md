@@ -371,13 +371,91 @@ another architecture requires regenerating the whole list; the build
 diagnostic says so, because otherwise that failure looks identical to a
 withdrawn version.
 
-### When a pinned toolchain version disappears
+### The toolchain epoch
 
-Ubuntu removes superseded package versions from the archive pool
-within weeks or months of a new one landing. With the full closure
-pinned this happens more often than it would with a handful of pins —
-that is the accepted cost of the guarantee, not a regression. When it
-happens, `docker build` **stops with a non-zero exit**:
+The 45 pinned package versions answer "which compiler built this?".
+They left a second question unanswered for a while: **which archive
+were they fetched from?** Ubuntu drops superseded versions from its
+pool within weeks, so a pin that was correct in September stops
+resolving in October and the build refuses — not because anything is
+wrong with the recipe, but because the archive moved on.
+
+That refusal was correct and its timing was not. It arrived on
+Ubuntu's schedule, in the middle of unrelated pull requests, asking a
+maintainer to approve a change nobody can actually evaluate: a glibc
+security update changes real bytes, and no review separates "this
+moves a number" from "this does not".
+
+So the archive is pinned too, to a date:
+
+```dockerfile
+ARG APT_SNAPSHOT_DATE=20260909
+```
+
+`snapshot.ubuntu.com` serves the archive as it stood on that date, so
+the pinned versions always resolve. Three axes are now frozen
+together — the base image by digest, the packages by version, and the
+archive by date — and the toolchain changes when **a maintainer moves
+the date**, never when Ubuntu publishes.
+
+The scope is deliberately narrow. The snapshot covers only the pinned
+toolchain block. Everything in the waived block above it — editors,
+viewers, graphviz — still floats, because those cannot reach a result,
+and freezing them would strand a researcher whose `systemPackages`
+name anything published since that date.
+
+### Moving the epoch
+
+Moving the date is how Ubuntu's security and correctness fixes reach
+vaibify users. It is meant to happen. What it must not be is
+automatic, because it changes the compiler and libc that a
+researcher's binaries are built against.
+
+A monthly lane (`toolchainEpoch.yml`) asks whether the archive has
+moved past the pinned date and, if so, opens a single standing issue
+describing exactly what would change. You can ask the same question
+at any time:
+
+```console
+$ python tools/checkToolchainEpoch.py --propose
+Moving the epoch 20260909 -> 20260911 changes 4 of 45 pinned packages:
+
+  libc-bin: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
+  libc-dev-bin: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
+  libc6: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
+  libc6-dev: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
+```
+
+Note that it lists *every* candidate version rather than choosing one.
+Picking would need dpkg version ordering plus a judgment about what
+your results rest on, and a tool that guessed would be writing a pin
+nobody reviewed.
+
+To move it: edit `ARG APT_SNAPSHOT_DATE` and the affected pins,
+confirm the two halves still agree, open a pull request, and re-run
+and re-verify the results built on the old epoch.
+
+```console
+$ python tools/checkToolchainEpoch.py --verify
+All 45 pins resolve at snapshot 20260909.
+```
+
+That check also runs in `fresh-image-build` before the hour-long
+build, because a Dockerfile whose date and pins were edited apart
+produces an image that cannot build, and discovering that in thirty
+seconds is better than discovering it in sixty minutes.
+
+**The honest cost.** Between epochs you are deliberately running a
+known-older libc in a container that holds credentials for Overleaf,
+GitHub, and Zenodo. That is a real tradeoff, not a free win, and it is
+why the cadence has to be short enough to mean something. The
+recommendation is quarterly, or immediately on a vulnerability that
+matters for this threat model.
+
+### When a pin does not resolve anyway
+
+With the archive frozen this should not happen, so it means something
+other than Ubuntu moving on:
 
 ```
 vaibify: the pinned compiler toolchain is no longer available.
@@ -385,35 +463,23 @@ vaibify: the pinned compiler toolchain is no longer available.
 This build stopped on purpose.
 ```
 
-**This is the intended behavior, not a bug to route around.** The
-alternative — leaving the toolchain unpinned — is a rebuild that
-quietly swaps the compiler underneath a researcher who believes they
-reproduced something. A loud failure hands you the decision; a silent
-substitution takes it away from you.
+The diagnostic prints your options and `apt-cache policy` for the
+affected packages. The likely causes, in order:
 
-The diagnostic prints the three options, and prints `apt-cache policy`
-for the affected packages so the currently available versions are on
-screen when you choose:
+1. **The date and the pins were edited apart.**
+   `python tools/checkToolchainEpoch.py --verify` says so directly.
+2. **`snapshot.ubuntu.com` is unreachable.** A frozen archive is still
+   a network dependency; this is the price of the guarantee.
+3. **`BASE_IMAGE` was repointed at a different architecture.** The
+   `-x86-64-linux-gnu` package names do not exist there, and the whole
+   pin list has to be regenerated. The diagnostic calls this out
+   separately because it produces the same apt message as a withdrawn
+   version and the fixes are nothing alike.
 
-1. **Reproduce the original.** Do not rebuild. Pull the published
-   image by digest — `reproduce.sh` already does exactly this. The
-   original toolchain is inside that image, which is why the digest,
-   not the Dockerfile, is what Level 3 rests on.
-2. **Accept a newer toolchain.** Update the pins in the toolchain
-   block, then **re-run and re-verify**. Your outputs may legitimately
-   change; the manifest hashes will say so, which is the honest signal
-   that a result moved because its compiler did.
-3. **Fetch the old packages.** `snapshot.ubuntu.com` serves the
-   archive as it stood on a given date. Point apt at the snapshot
-   covering the image's build date (`iSourceDateEpoch` in
-   `environment.json` dates it) and keep the pins as they are.
-
-Option 1 is right for verifying published work. Option 2 is right when
-you are moving the project forward and are prepared to re-establish
-its results. Option 3 is right when you must rebuild *and* must keep
-the original toolchain — the most faithful of the three, and the most
-work.
-
+Whatever the cause, the response is never to unpin. If you only need
+to *verify* published work, you do not need this block at all — pull
+the published image by digest, which is what `reproduce.sh` does and
+why Level 3 rests on the digest rather than on the Dockerfile.
 
 ### What vaibify tells you when a rebuild moves the environment
 

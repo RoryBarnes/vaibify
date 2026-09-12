@@ -342,9 +342,19 @@ doubles the wait for no extra signal.
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
+| `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change | monthly + manual |
 
 `tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
 into running on both sides of the merge.
+
+**`toolchainEpoch.yml` deliberately opens an issue, not a pull
+request, and never runs on one.** Moving the epoch changes the
+compiler a researcher's binaries are built against, so it is a
+maintainer's decision on a chosen cadence. Asking it from a
+pull-request lane is what used to paint every unrelated pull request
+red while it waited for an answer nobody reviewing that PR could
+give. `testTheLiveArchiveComparisonIsNotOnThePullRequestPath` fails if
+the live-archive comparison moves back onto the PR path.
 
 ### What the README badges mean
 
