@@ -7014,6 +7014,77 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 11px;
 }
 
+/* The Environment snapshot row of a project whose image was OBTAINED
+   from the author's pin: a derived running image is a note, never a
+   warning, and a Regenerate button that would re-pin the author's
+   envelope to this machine renders disabled with its reason. */
+.requirement-image-derived-note {
+    background: rgba(120, 160, 240, 0.12);
+    border-left: 3px solid #78a0f0;
+    padding: 6px 8px;
+    margin: 4px 0;
+    font-size: 11px;
+}
+
+.requirement-regenerate-disabled-reason {
+    font-size: 11px;
+    opacity: 0.8;
+    padding-top: 4px;
+}
+
+.wf-action-btn[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* The Containerize wizard's Environment page. */
+.wizard-environment-option--disabled {
+    opacity: 0.6;
+}
+
+.wizard-environment-refusal {
+    background: rgba(240, 160, 80, 0.15);
+    border-left: 3px solid #f0a050;
+    padding: 6px 8px;
+    margin: 4px 0 10px 24px;
+    font-size: 12px;
+}
+
+.wizard-environment-note {
+    font-size: 12px;
+    opacity: 0.8;
+    margin: 2px 0 6px 24px;
+}
+
+.wizard-environment-facts {
+    margin: 4px 0 10px 24px;
+    font-size: 12px;
+    border-collapse: collapse;
+}
+
+.wizard-environment-facts th {
+    text-align: left;
+    font-weight: 600;
+    padding: 2px 10px 2px 0;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+.wizard-environment-facts td {
+    padding: 2px 0;
+    word-break: break-all;
+}
+
+.wizard-feature-row--pinned {
+    opacity: 0.75;
+}
+
+.wizard-feature-note {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-left: 6px;
+}
+
 .requirement-row-actions {
     padding-top: 6px;
 }

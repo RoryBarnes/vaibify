@@ -491,8 +491,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-row-howto">' +
             fnEscapeHtml(sHowto) + '</div>';
         if (_SET_REGENERABLE_ARTIFACTS[sKey] === true) {
-            sActions += _fsRenderActionButton(
-                "regenerate-envelope", "", "Regenerate now");
+            sActions += _fsRenderRegenerateButton(dictImageCurrency || {});
         }
         if (sKey === "manifest") {
             sActions += _fsRenderActionButton(
@@ -2101,6 +2100,43 @@ var VaibifyWorkflowRequirements = (function () {
             sPath, ["sGithub", "sZenodo"]);
     }
 
+    var _S_OBTAINED_REGENERATE_REASON =
+        "This envelope is the author’s and names the image you " +
+        "obtained; regenerating would re-pin it to this machine and " +
+        "stale the manifest. To rebuild your own environment, use " +
+        "Rebuild → Switch to building from the Dockerfile.";
+
+    function _fsRenderRegenerateButton(dictImageCurrency) {
+        /* One predicate decides this on the backend
+           (fbEnvironmentWasObtained, which the regenerate route refuses
+           on); the poll ships it as bEnvironmentObtained and the button
+           renders the same verdict rather than re-deriving one. */
+        if (dictImageCurrency.bEnvironmentObtained !== true) {
+            return _fsRenderActionButton(
+                "regenerate-envelope", "", "Regenerate now");
+        }
+        return '<div class="requirement-row-actions">' +
+            '<button type="button" class="btn wf-action-btn" disabled ' +
+            'data-wf-action="regenerate-envelope" data-wf-arg="" ' +
+            'title="' + fnEscapeHtml(_S_OBTAINED_REGENERATE_REASON) + '">' +
+            'Regenerate now</button>' +
+            '<div class="requirement-regenerate-disabled-reason">' +
+            fnEscapeHtml(_S_OBTAINED_REGENERATE_REASON) + '</div></div>';
+    }
+
+    function _fsRenderDerivedImageNote(dictImageCurrency) {
+        /* A NOTE, not a warning: the container runs an image derived
+           from the pinned one by stacking agent overlays, which is
+           what the researcher asked for, and every verification grades
+           the pinned base. */
+        if (dictImageCurrency.sRelation !== "derived") return "";
+        return '<div class="requirement-image-derived-note">' +
+            'The container you have open runs an image derived from ' +
+            'the pinned one (agent overlays stacked on it). ' +
+            'Verifications grade the pinned base, not this container.' +
+            '</div>';
+    }
+
     function _fsRenderImageCurrencyWarning(sKey, dictImageCurrency) {
         /* Rendered only on the Environment snapshot row, and only on a
            determined MISMATCH (bPinnedImageIsLive === false). null is
@@ -2113,7 +2149,9 @@ var VaibifyWorkflowRequirements = (function () {
            forgot to regenerate must hear it here rather than from a
            failed two-hour rerun (researcher-reported, 2026-09-01). */
         if (sKey !== "environmentSnapshot") return "";
-        if (dictImageCurrency.bPinnedImageIsLive !== false) return "";
+        if (dictImageCurrency.bPinnedImageIsLive !== false) {
+            return _fsRenderDerivedImageNote(dictImageCurrency);
+        }
         var sPinned = (dictImageCurrency.sPinnedImageDigest || "")
             .slice(0, 27);
         var sLive = (dictImageCurrency.sLiveImageDigest || "")

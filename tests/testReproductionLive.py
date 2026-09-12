@@ -172,9 +172,27 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     assert "archived deposit: served" in result.output
     assert "Verdict: reproduced" in result.output
     sReportsDirectory = reproductionReport.fsReportsDirectory()
-    listReports = sorted(os.listdir(sReportsDirectory))
+    listReports = sorted(
+        sName for sName in os.listdir(sReportsDirectory)
+        if sName.endswith(".json")
+    )
     assert len(listReports) == 1
     dictReport = json.load(open(os.path.join(sReportsDirectory, listReports[0])))
+    # The reproduced manifest sits beside the report, rendered from the
+    # hashes the SHADOW produced: one line per pinned entry after the
+    # single header, every one a line sha256sum accepts.
+    sManifestPath = os.path.join(
+        sReportsDirectory, dictReport["sReproducedManifestPath"],
+    )
+    listManifestLines = open(sManifestPath).read().splitlines()
+    assert listManifestLines[0].startswith("# ")
+    assert len(listManifestLines) == 1 + dictReport["iOutputHashesTotal"]
+    assert all(
+        len(sLine.split("  ", 1)[0]) == 64 for sLine in listManifestLines[1:]
+    )
+    assert {dictFile["sStatus"] for dictFile in dictReport["listFileOutcomes"]} == {
+        "matched",
+    }
     assert dictReport["sObtainedFrom"] == "archive"
     assert dictReport["sImageReferenceRun"].startswith("sha256:")
     assert dictReport["dictImageRecheck"]["bVacuous"] is True

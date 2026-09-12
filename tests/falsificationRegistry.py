@@ -9821,11 +9821,11 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         old=(
-            '           researcher from being offered them. */\n'
+            "           over the author's image is exactly what the server refuses. */\n"
             '        if (bHost) return "";\n'
         ),
         new=(
-            '           researcher from being offered them. */\n'
+            "           over the author's image is exactly what the server refuses. */\n"
             '        if (false) return "";\n'
         ),
     ),
@@ -9836,11 +9836,11 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         old=(
-            '           researcher from being offered them. */\n'
+            "           over the author's image is exactly what the server refuses. */\n"
             '        if (bHost) return "";\n'
         ),
         new=(
-            '           researcher from being offered them. */\n'
+            "           over the author's image is exactly what the server refuses. */\n"
             '        if (true) return "";\n'
         ),
     ),

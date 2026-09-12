@@ -593,6 +593,10 @@ var VaibifyWorkflowManager = (function () {
         _DICT_WIZARD_PAGE.DESTINATION, _DICT_WIZARD_PAGE.NAME,
         _DICT_WIZARD_PAGE.SUMMARY,
     ];
+    var _T_CONVERT_CHOICE_PAGES = [_DICT_WIZARD_PAGE.DESTINATION].concat(
+        _T_CONVERT_WIZARD_PAGES);
+    var _T_CONVERT_PINNED_CHOICE_PAGES = [_DICT_WIZARD_PAGE.DESTINATION]
+        .concat(_T_CONVERT_PINNED_IMAGE_PAGES);
     var _LIST_WIZARD_HELP = [
         '<p>The folder on your host machine where vaibify writes ' +
         '<code>vaibify.yml</code> and stores any project files. This ' +
@@ -844,14 +848,31 @@ var VaibifyWorkflowManager = (function () {
                question is the container's. A host SANDBOX chooses first,
                and the two branches share the Destination page at
                position 0. */
+            var bPinned = _fbUsingPinnedImage();
             if (!_dictWizardData.bOfferHostPromotion) {
-                return _T_CONVERT_WIZARD_PAGES;
+                return bPinned
+                    ? _T_CONVERT_PINNED_IMAGE_PAGES
+                    : _T_CONVERT_WIZARD_PAGES;
             }
-            return _dictWizardData.sConvertDestination === "host"
-                ? _T_PROMOTE_CHOICE_PAGES
+            if (_dictWizardData.sConvertDestination === "host") {
+                return _T_PROMOTE_CHOICE_PAGES;
+            }
+            return bPinned
+                ? _T_CONVERT_PINNED_CHOICE_PAGES
                 : _T_CONVERT_CHOICE_PAGES;
         }
         return _T_CONTAINER_WIZARD_PAGES;
+    }
+
+    function _fbUsingPinnedImage() {
+        /* The choice made on the Environment page. It decides which
+           pages follow, which feature toggles are live, and which
+           hand-off the conversion returns -- one predicate so the
+           three cannot disagree. */
+        return _dictWizardData.sMode === "convert" &&
+            _dictWizardData.sConvertDestination !== "host" &&
+            _dictWizardData.sEnvironmentSource ===
+                _S_ENVIRONMENT_SOURCE_ARCHIVE;
     }
 
     function fnOpenConvertWizard(sHostName, sDirectory, bOfferHostPromotion) {
@@ -932,6 +953,12 @@ var VaibifyWorkflowManager = (function () {
         dictData.bNetworkIsolation = false;
         dictData.iCpuLimit = 0;
         dictData.fMemoryLimitGigabytes = 0;
+        dictData.sEnvironmentSource = _S_ENVIRONMENT_SOURCE_BUILD;
+        dictData.bAllowEmulation = false;
+        /* The Environment page's answer, fetched once per wizard and
+           never sent: it describes the clone, the request describes the
+           choice. */
+        dictData.dictPinnedEnvironment = null;
         return _fdictExtendWithPackageDefaults(dictData);
     }
 
@@ -1099,8 +1126,176 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderStepSummary,
             _fnRenderStepDestination,
             _fnRenderStepFilesToCopy,
+            _fnRenderStepEnvironment,
         ];
         listRenderers[iPage](elContent);
+    }
+
+    function _fnRenderStepEnvironment(elContent) {
+        /* The clone's envelope is read ONCE per wizard, on this page's
+           first render; the page re-renders itself when the answer
+           lands, but only if the researcher is still on it. */
+        var dictPinned = _dictWizardData.dictPinnedEnvironment;
+        if (dictPinned) {
+            elContent.innerHTML = _fsRenderEnvironmentChoice(dictPinned);
+            _fnBindEnvironmentChoice(elContent);
+            return;
+        }
+        elContent.innerHTML = '<p class="muted-text">Reading the ' +
+            'clone’s reproducibility envelope…</p>';
+        VaibifyApi.fdictGet(
+            "/api/registry/" +
+            encodeURIComponent(_dictWizardData.sHostName) +
+            "/pinned-environment"
+        ).then(function (dictResponse) {
+            _dictWizardData.dictPinnedEnvironment = dictResponse || null;
+        }).catch(function (error) {
+            _dictWizardData.dictPinnedEnvironment = {
+                bObtainable: false,
+                sRefusal: "The clone’s envelope could not be " +
+                    "read: " + VaibifyUtilities.fsSanitizeErrorForUser(
+                        error.message),
+                dictDaemon: {}, dictAuthorFeatures: {},
+                listAgentOverlays: [], listBaseFeatureKeys: [],
+            };
+        }).then(function () {
+            if (!_dictWizardData.dictPinnedEnvironment) {
+                _dictWizardData.dictPinnedEnvironment = {
+                    bObtainable: false,
+                    sRefusal: "The clone’s envelope could not be read.",
+                    dictDaemon: {}, dictAuthorFeatures: {},
+                    listAgentOverlays: [], listBaseFeatureKeys: [],
+                };
+            }
+            if (_fiWizardPageAt(_iWizardStep) ===
+                    _DICT_WIZARD_PAGE.ENVIRONMENT) {
+                _fnRenderStepEnvironment(elContent);
+            }
+        });
+    }
+
+    function _fsEnvironmentFactRow(sLabel, sValue) {
+        return "<tr><th>" + VaibifyUtilities.fnEscapeHtml(sLabel) +
+            "</th><td>" + VaibifyUtilities.fnEscapeHtml(sValue || "") +
+            "</td></tr>";
+    }
+
+    function _fsRenderEnvironmentChoice(dictPinned) {
+        var bObtainable = dictPinned.bObtainable === true;
+        var bPinnedChosen = _fbUsingPinnedImage();
+        var dictDaemon = dictPinned.dictDaemon || {};
+        var sDaemon = dictDaemon.bReachable !== true
+            ? "unknown (the Docker daemon could not be asked)"
+            : (dictDaemon.sArchitecture || "unknown") +
+                (dictDaemon.bArchitectureMatches
+                    ? " (matches the pinned platform)"
+                    : " (does not match the pinned platform)");
+        var sDeposit = dictPinned.bDepositOnRecord
+            ? (dictPinned.sDepositVersionDoi || "") +
+                (dictPinned.sZenodoService
+                    ? " (" + dictPinned.sZenodoService + ")" : "")
+            : "no deposit on record — registry only";
+        var bOfferEmulation = bObtainable &&
+            dictDaemon.bReachable === true &&
+            dictDaemon.bArchitectureMatches !== true;
+        return '<div class="form-group">' +
+            '<label>Where the container’s image comes from</label>' +
+            '<label class="wizard-toggle-row wizard-environment-option' +
+            (bObtainable ? "" : " wizard-environment-option--disabled") +
+            '"><input type="radio" name="wizardEnvironmentSource" ' +
+            'class="wizard-environment-source" value="archive"' +
+            (bPinnedChosen ? " checked" : "") +
+            (bObtainable ? "" : " disabled") + '>' +
+            '<span>Use the author’s pinned image</span></label>' +
+            (bObtainable ? "" :
+                '<div class="wizard-environment-refusal">' +
+                VaibifyUtilities.fnEscapeHtml(dictPinned.sRefusal || "") +
+                '</div>') +
+            (bObtainable ?
+                '<table class="wizard-environment-facts">' +
+                _fsEnvironmentFactRow("Pinned image",
+                    dictPinned.sPinnedImageReference) +
+                _fsEnvironmentFactRow("Required platform",
+                    dictPinned.sRequiredPlatform) +
+                _fsEnvironmentFactRow("This daemon", sDaemon) +
+                _fsEnvironmentFactRow("Deposit", sDeposit) +
+                _fsEnvironmentFactRow("Obtained through",
+                    "registry pull, then the archived deposit, then a " +
+                    "copy already on this daemon") +
+                "</table>" : "") +
+            (bOfferEmulation ?
+                '<label class="wizard-toggle-row">' +
+                '<input type="checkbox" id="wizardAllowEmulation"' +
+                (_dictWizardData.bAllowEmulation ? " checked" : "") + '>' +
+                '<span>Allow emulation — the pinned image was built ' +
+                'for another processor architecture; running it here ' +
+                'is slow, and a reproduction is recorded as emulated' +
+                '</span></label>' : "") +
+            '<label class="wizard-toggle-row wizard-environment-option">' +
+            '<input type="radio" name="wizardEnvironmentSource" ' +
+            'class="wizard-environment-source" value="build"' +
+            (bPinnedChosen ? "" : " checked") + '>' +
+            '<span>Build from the Dockerfile</span></label>' +
+            '<div class="wizard-environment-note">The build produces a ' +
+            'different image digest, so the result will not carry the ' +
+            'author’s digest and cannot reproduce their bytes ' +
+            'exactly.</div></div>';
+    }
+
+    function _fnBindEnvironmentChoice(elContent) {
+        elContent.querySelectorAll(".wizard-environment-source").forEach(
+            function (elRadio) {
+                elRadio.addEventListener("change", function () {
+                    if (!elRadio.checked) return;
+                    _fnChooseEnvironmentSource(elRadio.value);
+                });
+            });
+        var elEmulation = elContent.querySelector("#wizardAllowEmulation");
+        if (elEmulation) {
+            elEmulation.addEventListener("change", function () {
+                _dictWizardData.bAllowEmulation = elEmulation.checked;
+            });
+        }
+    }
+
+    function _fnChooseEnvironmentSource(sSource) {
+        /* Choosing the pinned image seeds the feature list from the
+           author's own file, because those are the features the image
+           HOLDS; the researcher adds agents on the Features page. The
+           step re-renders so the progress dots follow the shorter
+           page list. */
+        _dictWizardData.sEnvironmentSource = sSource;
+        if (sSource === _S_ENVIRONMENT_SOURCE_ARCHIVE) {
+            _dictWizardData.listFeatures = _flistAuthorEnabledFeatures();
+        } else {
+            _dictWizardData.listFeatures = _LIST_DEFAULT_FEATURES.slice();
+        }
+        _fnRenderWizardStep(_iWizardStep);
+    }
+
+    function _flistAuthorEnabledFeatures() {
+        var dictAuthor = (_dictWizardData.dictPinnedEnvironment || {})
+            .dictAuthorFeatures || {};
+        return _LIST_FEATURE_DEFINITIONS.map(function (dictFeature) {
+            return dictFeature.sKey;
+        }).filter(function (sKey) {
+            return dictAuthor[sKey] === true;
+        });
+    }
+
+    function _fsPinnedFeatureState(sKey) {
+        /* "author" for an agent the author installed (part of the
+           pinned image), "base" for a toggle that would alter the base
+           environment (fixed by the pinned image), "" for a live
+           addition. */
+        if (!_fbUsingPinnedImage()) return "";
+        var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
+        var dictAuthor = dictPinned.dictAuthorFeatures || {};
+        var listAgents = dictPinned.listAgentOverlays || [];
+        if (listAgents.indexOf(sKey) !== -1) {
+            return dictAuthor[sKey] === true ? "author" : "";
+        }
+        return "base";
     }
 
     function _fnUpdateWizardProgress(iPosition) {
@@ -1633,15 +1828,25 @@ var VaibifyWorkflowManager = (function () {
     function _fsRenderFeatureRow(dictFeature) {
         var bChecked =
             _dictWizardData.listFeatures.indexOf(dictFeature.sKey) !== -1;
-        return '<label class="wizard-feature-row" title="' +
+        var sPinnedState = _fsPinnedFeatureState(dictFeature.sKey);
+        var sNote = sPinnedState === "author"
+            ? "installed by the author; part of the pinned image"
+            : (sPinnedState === "base" ? "fixed by the pinned image" : "");
+        return '<label class="wizard-feature-row' +
+            (sPinnedState ? " wizard-feature-row--pinned" : "") +
+            '" title="' +
             VaibifyUtilities.fnEscapeHtml(dictFeature.sHint) + '">' +
             '<input type="checkbox" class="wizard-feature-input" ' +
             'data-feature="' +
             VaibifyUtilities.fnEscapeHtml(dictFeature.sKey) + '"' +
-            (bChecked ? " checked" : "") + '>' +
+            (bChecked ? " checked" : "") +
+            (sPinnedState ? " disabled" : "") + '>' +
             '<span>' +
             VaibifyUtilities.fnEscapeHtml(dictFeature.sLabel) +
-            '</span></label>';
+            '</span>' +
+            (sNote ? '<span class="wizard-feature-note">' +
+                VaibifyUtilities.fnEscapeHtml(sNote) + '</span>' : "") +
+            '</label>';
     }
 
     function _fsRenderAuthSection() {
@@ -1961,7 +2166,27 @@ var VaibifyWorkflowManager = (function () {
         var listFeatures = _dictWizardData.listFeatures || [];
         var sValue = listFeatures.length > 0
             ? listFeatures.join(", ") : "None";
-        return _fsSummaryRow("Features", sValue);
+        return _fsSummaryImageLine() + _fsSummaryRow("Features", sValue);
+    }
+
+    function _fsSummaryImageLine() {
+        /* The Summary names the source: the researcher is about to
+           spend a build or an acquisition, and which one must be
+           readable before the final click. */
+        if (_dictWizardData.sMode !== "convert" ||
+                _fbPromotingToHostProject()) {
+            return "";
+        }
+        if (!_fbUsingPinnedImage()) {
+            return _fsSummaryRow("Image", "built from the Dockerfile");
+        }
+        var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
+        return _fsSummaryRow(
+            "Image",
+            "the author’s pinned image " +
+            (dictPinned.sPinnedImageReference || "") +
+            (_dictWizardData.bAllowEmulation ? " (emulation allowed)" : "")
+        );
     }
 
     function _fsSummaryAuthLine() {
@@ -2208,32 +2433,39 @@ var VaibifyWorkflowManager = (function () {
            hold refuses. A failed build does NOT revert to host -- it
            leaves a registered, not-yet-built container, exactly the
            normal post-create state. */
+        var bPinned = _fbUsingPinnedImage();
         VaibifyApp.fnShowConfirmModal(
             "Convert to a containerized Project",
             _fsConversionConfirmBody(),
             _fnExecuteConversion,
             {
-                sConfirmLabel: "Convert and build",
+                sConfirmLabel: bPinned ? "Convert and obtain" : "Convert and build",
                 sCancelLabel: "Go back",
                 sDetails:
                     "If the project is open in this tab it is closed " +
                     "automatically; a project open in another session " +
-                    "must be closed there first. If the build fails, " +
+                    "must be closed there first. If the " +
+                    (bPinned ? "acquisition" : "build") + " fails, " +
                     "the project stays registered as a container that " +
                     "has not been built yet -- it does not revert to a " +
-                    "host sandbox -- and you can retry the build from " +
-                    "its tile.",
+                    "host sandbox -- and you can retry from its tile.",
             }
         );
     }
 
     function _fsConversionConfirmBody() {
+        var sWhatStartsNext = _fbUsingPinnedImage()
+            ? "only its runtime settings are rewritten, and the " +
+              "author’s pinned image is obtained next (a registry " +
+              "pull, then the archived deposit, then a copy on this " +
+              "daemon; agents you added are stacked on it)"
+            : "vaibify.yml is rewritten with the container settings " +
+              "you chose, and a Docker image build starts next (this " +
+              "can take minutes to hours)";
         return "Re-register '" + _dictWizardData.sHostName +
             "' as the containerized project '" +
             _dictWizardData.sProjectName + "'. The project's " +
-            "vaibify.yml is rewritten with the container settings you " +
-            "chose, and a Docker image build starts next (this can " +
-            "take minutes to hours).";
+            sWhatStartsNext + ".";
     }
 
     function _fbWizardTargetsTheOpenProject() {
@@ -2257,11 +2489,12 @@ var VaibifyWorkflowManager = (function () {
            a workflow switch does, so the close reads as intentional. */
         var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
         if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
+        var dictConverted;
         try {
-            await VaibifyApi.fdictPost(
+            dictConverted = await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sHostName) +
                 "/convert-to-container",
-                _fdictWizardDataWithMergedPackages());
+                _fdictConversionRequestBody());
         } catch (error) {
             /* Validators run server-side BEFORE the release, so a
                refusal leaves this tab still owning the project --
@@ -2283,14 +2516,20 @@ var VaibifyWorkflowManager = (function () {
             VaibifyApp.fnForgetLease();
             VaibifyApp.fnDisconnect();
         }
+        /* Branch on the CONVERSION'S answer here, once; every later
+           click branches on the registry entry the tile renders from.
+           Both paths open the same build-progress modal, poll the same
+           record and reload the container list in their finally. */
+        var bAcquire = Boolean(dictConverted &&
+            dictConverted.bAcquireRequired === true);
         VaibifyApp.fnShowToast(
-            "Converted '" + sHostName + "' to '" + sNewName +
-            "'. Building the image now.", "success");
-        /* Reuse the tile build path: it opens the build-progress
-           modal, polls .../build/progress, and reloads the container
-           list (flipping the tile host -> container) in its finally. */
-        var bBuiltAndRunning =
-            await VaibifyContainerManager.fnBuildContainer(sNewName);
+            "Converted '" + sHostName + "' to '" + sNewName + "'. " +
+            (bAcquire ? "Obtaining the author’s pinned image now."
+                : "Building the image now."), "success");
+        var bBuiltAndRunning = bAcquire
+            ? await VaibifyContainerManager.fnAcquireImage(
+                sNewName, _dictWizardData.bAllowEmulation === true)
+            : await VaibifyContainerManager.fnBuildContainer(sNewName);
         /* A failed build has already said so, with the builder's own
            output. Attempting the copy anyway would bury that behind a
            second, vaguer message about a container that was never
@@ -2299,6 +2538,19 @@ var VaibifyWorkflowManager = (function () {
             await _fnCopySelectedFilesIntoContainer(sNewName);
         }
         VaibifyContainerManager.fnLoadContainers();
+    }
+
+    function _fdictConversionRequestBody() {
+        /* The request carries the CHOICE and never the description the
+           Environment page fetched: that answer is about the clone,
+           and the backend re-reads the clone itself. */
+        var dictBody = _fdictWizardDataWithMergedPackages();
+        delete dictBody.dictPinnedEnvironment;
+        dictBody.sEnvironmentSource = _fbUsingPinnedImage()
+            ? _S_ENVIRONMENT_SOURCE_ARCHIVE : _S_ENVIRONMENT_SOURCE_BUILD;
+        dictBody.bAllowEmulation = _fbUsingPinnedImage() &&
+            _dictWizardData.bAllowEmulation === true;
+        return dictBody;
     }
 
     function _fdictWizardDataWithMergedPackages() {

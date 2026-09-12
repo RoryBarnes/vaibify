@@ -132,8 +132,9 @@ def test_wizard_data_includes_all_new_fields():
     # below is still present, and the assertion below is what says so.
     # Raised 4000 -> 6000 on 2026-08-18, when the host-Project promotion
     # branch (the destination-choice helpers beside fnOpenConvertWizard)
-    # landed in the same span.
-    sBody = sSource[iIdx:iIdx + 6000]
+    # landed in the same span. Raised 6000 -> 8000 on 2026-09-11, when
+    # the Environment page's pinned-image choice helpers landed there.
+    sBody = sSource[iIdx:iIdx + 8000]
     for sField in ("listFeatures", "bUseGithubAuth", "bNeverSleep",
                    "bNetworkIsolation", "listSystemPackages",
                    "listPythonPackages", "listCondaPackages",

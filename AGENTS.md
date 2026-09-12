@@ -2248,6 +2248,15 @@ correct approach.
   wearing a performance optimisation's clothes.** Re-probe at the
   moment the content matters. Guarded by
   `tests/testConftestRefreshBeforeRun.py`.
+- **A delegated agent that dies mid-edit leaves a half-applied diff
+  that `git add -A` sweeps up as if it were finished.** One was cut
+  off by an API limit after editing the wizard's page catalogue: it
+  had deleted a page-list constant the sandbox branch still referenced
+  and added nothing that used the new pages, and the commit that
+  followed carried that broken half. Before committing a tree another
+  agent touched, diff its surface and confirm every symbol it removed
+  has no remaining reference (`node --check` catches syntax, not a
+  dangling name).
 - **A `monkeypatch` guarantee stops at the process boundary, and the
   docstring will not say so.** `tests/conftest.py` promised that "no
   test can read, overwrite, or delete the researcher's real stored

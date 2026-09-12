@@ -229,6 +229,12 @@ var VaibifyContainerManager = (function () {
             '" data-mode="' + (bHost ? "host" : "container") +
             '" data-is-project="' + (bIsProject ? "true" : "false") +
             '" data-quarantined="' + (bQuarantined ? "true" : "false") +
+            '" data-image-source="' +
+            (_fbImageObtained(dictContainer) ? "archive" : "build") +
+            '" data-allow-emulation="' +
+            (_fbImageObtained(dictContainer) &&
+                dictContainer.dictImageSource.bAllowEmulation === true
+                ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
@@ -242,7 +248,8 @@ var VaibifyContainerManager = (function () {
             'title="Actions">&#8942;</button>' +
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
-            _fsRenderContainerOnlyMenuItems(bHost) +
+            _fsRenderContainerOnlyMenuItems(
+                bHost, _fbImageObtained(dictContainer)) +
             _fsRenderHostConvertMenuItem(bHost) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
@@ -307,12 +314,33 @@ var VaibifyContainerManager = (function () {
         );
     }
 
-    function _fsRenderContainerOnlyMenuItems(bHost) {
+    function _fbImageObtained(dictContainer) {
+        /* The registry entry is the authority on how a project's image
+           comes to exist. A tile branches on THIS, never on what the
+           conversion answered a while ago. */
+        var dictSource = dictContainer && dictContainer.dictImageSource;
+        return Boolean(dictSource && dictSource.sSource === "archive");
+    }
+
+    function _fsRenderContainerOnlyMenuItems(bHost, bObtained) {
         /* Start, stop, restart and the two rebuilds all drive Docker
            machinery a host project has none of. The server refuses
            them with a 409 naming host mode; this only keeps the
-           researcher from being offered them. */
+           researcher from being offered them. A project whose image
+           was OBTAINED from the author's pin is offered a re-obtain
+           and an explicit switch instead of a rebuild: a silent build
+           over the author's image is exactly what the server refuses. */
         if (bHost) return "";
+        var sRebuildItems = bObtained
+            ? '<div class="container-menu-item" data-action="reobtain">' +
+              "Re-obtain the pinned image</div>" +
+              '<div class="container-menu-item" ' +
+              'data-action="switch-to-building">' +
+              "Switch to building from the Dockerfile</div>"
+            : '<div class="container-menu-item" data-action="rebuild">' +
+              "Rebuild</div>" +
+              '<div class="container-menu-item" data-action="force-rebuild">' +
+              "Force Rebuild</div>";
         return (
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
@@ -322,10 +350,7 @@ var VaibifyContainerManager = (function () {
             "Stop</div>" +
             '<div class="container-menu-item" data-action="restart">' +
             "Restart</div>" +
-            '<div class="container-menu-item" data-action="rebuild">' +
-            "Rebuild</div>" +
-            '<div class="container-menu-item" data-action="force-rebuild">' +
-            "Force Rebuild</div>" +
+            sRebuildItems +
             '<div class="container-menu-separator"></div>'
         );
     }
@@ -695,7 +720,11 @@ var VaibifyContainerManager = (function () {
         var bNotBuilt = elDot &&
             elDot.classList.contains("status-not-built");
         if (bNotBuilt) {
-            await fnBuildContainer(sName);
+            if (_fbTileImageObtained(elTile)) {
+                await fnAcquireImage(sName, _fbTileAllowsEmulation(elTile));
+            } else {
+                await fnBuildContainer(sName);
+            }
             return;
         }
         if (!bRunning) {
@@ -906,6 +935,9 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "stop") await fnStopContainer(sName);
         else if (sAction === "restart") await fnRestartContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
+        else if (sAction === "reobtain") await fnReobtainPinnedImage(sName);
+        else if (sAction === "switch-to-building")
+            await fnSwitchToBuilding(sName);
         else if (sAction === "force-rebuild")
             await fnForceRebuildContainer(sName);
         else if (sAction === "convert") _fnStartConversion(sName);
@@ -1130,7 +1162,9 @@ var VaibifyContainerManager = (function () {
             await fnStartContainer(sName);
             bBuiltAndRunning = true;
         } catch (error) {
-            if (error.iStatus === 409) {
+            if (_fbRefusalNamesTheSwitch(error)) {
+                _fnReportSwitchRefusal(error);
+            } else if (error.iStatus === 409) {
                 bBuiltAndRunning = await _fnWatchRunningBuild(sName);
             } else {
                 _fnReportBuildFailure(error);
@@ -1141,6 +1175,124 @@ var VaibifyContainerManager = (function () {
             fnLoadContainers();
         }
         return bBuiltAndRunning;
+    }
+
+    function _fbRefusalNamesTheSwitch(error) {
+        return Boolean(error && error.iStatus === 409 && error.dictDetail &&
+            error.dictDetail.sAction === "switch-to-building");
+    }
+
+    function _fnReportSwitchRefusal(error) {
+        /* A 409 that names the switch is not a running build to attach
+           to: the project's image is the author's pinned one, and the
+           remedy is on the Rebuild menu. Say so. */
+        VaibifyApp.fnShowToast(
+            VaibifyUtilities.fsSanitizeErrorForUser(
+                (error.dictDetail && error.dictDetail.sMessage) ||
+                error.message), "error");
+    }
+
+    function _fbTileImageObtained(elTile) {
+        return Boolean(elTile && elTile.dataset.imageSource === "archive");
+    }
+
+    function _fbTileAllowsEmulation(elTile) {
+        return Boolean(elTile && elTile.dataset.allowEmulation === "true");
+    }
+
+    function _felTileNamed(sName) {
+        var listTiles = document.querySelectorAll(".container-tile");
+        for (var i = 0; i < listTiles.length; i += 1) {
+            if (listTiles[i].dataset.name === sName) return listTiles[i];
+        }
+        return null;
+    }
+
+    async function fnAcquireImage(sName, bAllowEmulation) {
+        /* The twin of fnBuildContainer for a project whose image is
+           the author's pinned one: same modal, same progress record,
+           same follow-on start. Returns whether the container is now
+           obtained AND running, for the same reason the build does. */
+        var elOverlay = document.getElementById("modalBuildProgress");
+        var bObtainedAndRunning = false;
+        _fnResetBuildProgressTail();
+        elOverlay.style.display = "flex";
+        _fnStartBuildProgressPoll(sName);
+        try {
+            var sUrl = "/api/containers/" +
+                encodeURIComponent(sName) + "/acquire-image" +
+                "?bAllowEmulation=" + (bAllowEmulation ? "true" : "false");
+            await VaibifyApi.fdictPostRaw(sUrl);
+            VaibifyApp.fnShowToast(
+                "Obtained the author’s pinned image", "success");
+            await fnStartContainer(sName);
+            bObtainedAndRunning = true;
+        } catch (error) {
+            if (error.iStatus === 409) {
+                bObtainedAndRunning = await _fnWatchRunningBuild(sName);
+            } else {
+                _fnReportBuildFailure(error);
+            }
+        } finally {
+            _fnStopBuildProgressPoll();
+            elOverlay.style.display = "none";
+            fnLoadContainers();
+        }
+        return bObtainedAndRunning;
+    }
+
+    async function fnReobtainPinnedImage(sName) {
+        var bAllowEmulation = _fbTileAllowsEmulation(_felTileNamed(sName));
+        VaibifyApp.fnShowConfirmModal(
+            "Re-obtain the pinned image",
+            "Stop the container, obtain the author’s pinned image " +
+            "again through the published chain (registry, then the " +
+            "archived deposit, then a copy on this daemon), stack the " +
+            "agents this project adds, and start a fresh container. " +
+            "Workspace files are preserved.",
+            async function () {
+                VaibifyTerminal.fnCloseAll();
+                await fnStopContainer(sName);
+                await fnAcquireImage(sName, bAllowEmulation);
+            },
+            {
+                sDetails: "The image the author pinned is what every " +
+                    "verification grades. Re-obtaining it repairs a " +
+                    "tag that moved or an image that was pruned.",
+            }
+        );
+    }
+
+    async function fnSwitchToBuilding(sName) {
+        VaibifyApp.fnShowConfirmModal(
+            "Switch to building from the Dockerfile",
+            "This project runs the author’s pinned image. Switching " +
+            "builds an image of your own from the Dockerfile instead: " +
+            "it will carry a different digest, so it cannot reproduce " +
+            "the author’s bytes, and the origin record is cleared. " +
+            "Workspace files are preserved.",
+            async function () {
+                VaibifyTerminal.fnCloseAll();
+                try {
+                    await VaibifyApi.fdictPost(
+                        "/api/containers/" + encodeURIComponent(sName) +
+                        "/switch-to-building", {});
+                } catch (error) {
+                    VaibifyApp.fnShowToast(
+                        VaibifyUtilities.fsSanitizeErrorForUser(
+                            error.message), "error");
+                    return;
+                }
+                await fnStopContainer(sName);
+                await fnBuildContainer(sName, false);
+            },
+            {
+                sDetails: "Use this when you want your own " +
+                    "environment rather than the author’s. To keep " +
+                    "the author’s, choose Re-obtain the pinned image.",
+                sCommand: "vaibify stop && vaibify build && vaibify start",
+            }
+        );
     }
 
     async function _fnWatchRunningBuild(sName) {
@@ -2030,5 +2182,6 @@ var VaibifyContainerManager = (function () {
         fnCancelStartContainer: fnCancelStartContainer,
         fnResumeInterruptedStart: fnResumeInterruptedStart,
         fnBuildContainer: fnBuildContainer,
+        fnAcquireImage: fnAcquireImage,
     };
 })();
