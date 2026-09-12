@@ -630,6 +630,40 @@ History** table of every attempt.
 See [Reproducibility](reproducibility.md) for what each envelope
 artifact contains and how third parties verify it without vaibify.
 
+## Admin > Environment Info
+
+Every value in this modal is a fact read off **the image this session
+is connected to**, or the word *unknown*. Nothing falls back to the
+vaibify installed on your machine: the installed recipe describes the
+image vaibify would build today, which is a different question from
+what you are running, and answering the second with the first would
+state an environment your container never had.
+
+| Row | What it is |
+|---|---|
+| Digest / Image ID | The image's content identity. This is what Level 3 pins and what `reproduce.sh` pulls. |
+| Architecture | The platform the image was built for. |
+| Recipe fingerprint | A hash over the build inputs vaibify controls — the Dockerfile, package lists, entrypoint, your `vaibify.yml`. |
+| Archive epoch | The date of the package archive this image's C compiler and libc came from. |
+| Inside the container | Versions probed from within the container itself, not from the host. |
+
+**The archive epoch is the row worth understanding.** It is pinned, so
+every image built from this recipe gets the same compiler whatever day
+it is built, and it moves only when a maintainer deliberately moves it
+— a change that asks you to re-run and re-verify. See
+[The toolchain epoch](reproducibility.md) for what moving it means.
+
+The epoch covers the **compiler only**. Editors, LaTeX, the Python
+interpreter and pip packages track their upstreams and can differ
+between two builds of the same recipe. Pinning those for a particular
+result is what the project's `requirements.lock` is for — which is the
+honest division of labor: the image freezes what compiles your
+binaries, and the lock file freezes what runs your analyses.
+
+*unknown* is a real answer here, not a blank. An image built before
+vaibify recorded the epoch carries no label, and the modal says so
+rather than guessing.
+
 ## The Help panel
 
 The **?** button beside the project name opens the Help panel. It

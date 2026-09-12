@@ -315,6 +315,13 @@ RUN set -eu; \
     fi; \
     rm -rf /etc/apt/vaibifyLiveSources /var/lib/apt/lists/*
 
+# Which archive the 45 pins above came from, recorded ON the image so a
+# researcher can ask what they are running rather than inferring it
+# from whichever vaibify happens to be installed today. Kept next to
+# the block it describes: a label stamped elsewhere drifts from the ARG
+# it claims to report.
+LABEL vaibify-toolchain-epoch="${APT_SNAPSHOT_DATE}"
+
 # Project-specific system packages from vaibify.yml systemPackages
 COPY system-packages.txt /tmp/system-packages.txt
 RUN if [ -s /tmp/system-packages.txt ]; then \

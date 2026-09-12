@@ -14,6 +14,7 @@ from ..dockerStatus import (
     fdictDetectDockerRuntime,
 )
 from ..resourceMonitor import fdictGetContainerStats
+from ..routeScope import S_CARRIER_TYPED_READ, ffnDeclareCarrierMode
 
 
 _S_READY_MARKER_PATH = "/workspace/.vaibify/.entrypoint_ready"
@@ -468,9 +469,85 @@ def _fnRegisterDockerStatus(app, dictCtx):
         )
 
 
+
+def _fdictDescribeEnvironment(dictCtx, sContainerId):
+    """Assemble the facts behind Admin -> Environment Info.
+
+    Every field is a FACT about the image this session is connected to
+    or an empty string meaning nobody could determine it. Nothing here
+    falls back to the vaibify installed on this host: the installed
+    Dockerfile describes the image vaibify would build today, which is
+    a different question from what the researcher is running, and
+    answering the second with the first is how a modal comes to state
+    an epoch the container never had.
+
+    The probes are reused rather than rewritten --
+    ``fdictCaptureSystemTools`` is the authority on in-container tool
+    versions and already runs them inside the container when handed a
+    container-rooted adapter.
+    """
+    import vaibify
+    from ...reproducibility.environmentSnapshot import (
+        fdictCaptureSystemTools,
+        fsReadImageArchitecture,
+        fsReadImageRecipeLabel,
+        fsReadImageToolchainEpoch,
+    )
+    from ..routeContext import ffilesForWorkflow
+
+    # Captured at connect; a container's image cannot change while it
+    # runs, so this needs no daemon call of its own.
+    dictIdentity = (
+        dictCtx.get("dictLiveImageIdentities") or {}
+    ).get(sContainerId) or {}
+    sImageReference = (
+        dictIdentity.get("sImageId")
+        or dictIdentity.get("sImageDigest")
+        or ""
+    )
+
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId) or {}
+    dictTools = {}
+    try:
+        dictTools = fdictCaptureSystemTools(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        ) or {}
+    except Exception:  # noqa: BLE001 — a probe failure is "unknown"
+        dictTools = {}
+
+    return {
+        "sContainerId": sContainerId,
+        "sImageDigest": dictIdentity.get("sImageDigest") or "",
+        "sImageId": dictIdentity.get("sImageId") or "",
+        "sArchitecture": fsReadImageArchitecture(sImageReference),
+        "sRecipeFingerprint": fsReadImageRecipeLabel(sImageReference),
+        "sToolchainEpoch": fsReadImageToolchainEpoch(sImageReference),
+        "sVaibifyVersion": getattr(vaibify, "__version__", "") or "",
+        "dictSystemTools": dictTools,
+    }
+
+
+def _fnRegisterEnvironmentInfo(app, dictCtx):
+    """Register GET /api/system/environment-info/{sContainerId}.
+
+    On demand, never on the poll path: it inspects the image and runs
+    in-container version probes, and the poll is built with no extra
+    container execs precisely so opening a project stays fast.
+    """
+
+    @app.get("/api/system/environment-info/{sContainerId}")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictHandleEnvironmentInfo(sContainerId: str):
+        dictCtx["require"](sContainerId)
+        return await asyncio.to_thread(
+            _fdictDescribeEnvironment, dictCtx, sContainerId,
+        )
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
     _fnRegisterMonitor(app, dictCtx)
+    _fnRegisterEnvironmentInfo(app, dictCtx)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterContainerReady(app, dictCtx)

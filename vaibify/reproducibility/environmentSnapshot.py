@@ -35,6 +35,7 @@ __all__ = [
     "fbImageExistsLocally",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
+    "fsReadImageToolchainEpoch",
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
     "fdictReadEnvironmentJson",
@@ -199,6 +200,39 @@ def fdictCaptureBuiltImageIdentity(sImageReference):
         "sImageDigest": sRepoDigest or sImageId or "",
         "sImageId": sImageId or "",
     }
+
+
+def fsReadImageToolchainEpoch(sImageReference):
+    """Return the archive snapshot date an IMAGE was built from, or ''.
+
+    Read off the image, never off whatever Dockerfile is installed on
+    this host: the two answer different questions, and the installed
+    recipe describes the image vaibify would build TODAY rather than
+    the one the researcher is running. Empty means the image predates
+    the label or could not be inspected -- "nothing determined", which
+    the dashboard renders as unknown and never as an epoch.
+    """
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_TOOLCHAIN_EPOCH_IMAGE_LABEL,
+    )
+    if not sImageReference:
+        return ""
+    try:
+        _fnEnsureDockerAvailable()
+        sValue = _fsRunCheckedCommand([
+            "docker", "image", "inspect", "--format",
+            '{{index .Config.Labels "' + S_TOOLCHAIN_EPOCH_IMAGE_LABEL
+            + '"}}',
+            sImageReference,
+        ])
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return ""
+    sStripped = (sValue or "").strip()
+    # A nil label map renders as "<no value>"; anything that is not an
+    # eight-digit date is an absent label, not evidence of one.
+    if len(sStripped) != 8 or not sStripped.isdigit():
+        return ""
+    return sStripped
 
 
 def fsReadImageRecipeLabel(sImageReference):

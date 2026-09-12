@@ -6854,7 +6854,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 later the same day: the discard route's scope. One line per
     # route in a map of routes.
     # +5 (2026-09-11): the acquire-image and switch-to-building scopes.
-    "routeScope.py": 1002,
+    # RAISED to 1007 (2026-09-12): one more SET_CONTAINER_READ_ROUTES
+    # entry, for Admin > Environment Info, plus the sentences saying
+    # why that route is an owned-container read. The module grew by a
+    # row in a registry whose whole purpose is to hold rows; that is
+    # the responsibility it already has, not a second one, so there is
+    # no seam to split along. Worth stating because the tempting way
+    # past this ratchet is to shorten the comment until the number
+    # fits, which keeps the count honest and makes the file worse.
+    "routeScope.py": 1007,
 }
 
 
