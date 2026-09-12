@@ -144,7 +144,7 @@ rebinding defense). Keep both.
 ### Frontend unified push modal
 The current push modal (`scriptSyncManager.js`) is service-aware:
 - For Overleaf it renders a target-directory input, a diff summary
-  (new / overwrite / unchanged with greyed-unchanged rows), a
+  (new / overwrite / unchanged with grayed-unchanged rows), a
   case-collision banner if applicable, a conflict banner with
   "Overwrite anyway" gating, and a "Push All" / "Push Selected" pair.
 - For GitHub and Zenodo today it renders a simpler list without diff.

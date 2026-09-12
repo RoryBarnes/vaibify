@@ -74,7 +74,7 @@ progressively more reality, and each proves something the others do not.
 
 | Lane | What is real | When | What it proves |
 |---|---|---|---|
-| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
+| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behavior reach the screen honestly |
 | container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands the browser lane's fake models |
 | fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `vaibify/containerImage/**` PRs | the image still builds; the container user is unprivileged |
 
@@ -218,8 +218,9 @@ tools/                On-demand helper scripts (listModules.py,
 docs/                 Sphinx documentation (this site) including
                       architecture.md and vibeCoding.md
 .claude/skills/       Conditional recipes for recurring extension tasks
-AGENTS.md             Repo-wide rules, traps, and discovery commands
-                      for AI coding agents (symlinked from CLAUDE.md)
+AGENTS.md             Repo-wide rules that apply to every edit, and
+                      the routing table from subsystem to skill
+                      (symlinked from CLAUDE.md)
 ```
 
 For the full architectural narrative including module responsibilities,

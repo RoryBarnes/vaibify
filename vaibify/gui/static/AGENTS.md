@@ -67,8 +67,9 @@ verification indicator. If you add a new render path, call it.
 - **The dashboard is ground truth.** Do not cache display state beyond
   its natural lifetime; do not short-circuit polling to appear
   responsive; do not optimistically mark steps as passed. If the
-  backend is slow or a step is failing, show it. See the traps section
-  in `../../../AGENTS.md`.
+  backend is slow or a step is failing, show it. See "The rules with
+  no trigger" in `../../../AGENTS.md`, and the
+  `dashboard-state-honesty` skill.
 - **HTTP goes through `VaibifyApi`.** Do not call `fetch()` directly
   from feature modules; route through `scriptApiClient.js`. This
   centralizes error handling, auth, and response sanitization.

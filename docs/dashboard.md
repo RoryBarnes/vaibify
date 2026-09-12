@@ -30,7 +30,7 @@ The dashboard has a fixed layout:
 Beside the project name, three copies of the vaibify badge mark PROOF
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
 when the project attains that level, and the whole dashboard theme
-shifts colour with the highest level attained: pale blue before Level
+shifts color with the highest level attained: pale blue before Level
 1, purple at Level 1, green at Level 2, and pink at Level 3. The
 badge, the logo, and every "attained" mark share the tint, so a glance
 at any corner of the screen tells you where the project stands.
@@ -153,8 +153,8 @@ column (⚠), and **L1 | L2 | L3**. Each step row then shows, left to
 right:
 
 - **Run checkbox** — include this step in the next run.
-- **Run light** — execution only: hollow grey means the step has not
-  run this session, filled grey means queued, blinking orange means
+- **Run light** — execution only: hollow gray means the step has not
+  run this session, filled gray means queued, blinking orange means
   running now, blinking red means running *past its runtime limit*
   (see below), solid red means the last run failed, and a quiet
   **pale-blue dot** means the last run succeeded. The vaibify check
@@ -165,7 +165,7 @@ right:
   the third *automated* step, `I01` the first *interactive* step.
 - **Warning column (⚠)** — every warning the step carries,
   consolidated into one glyph; hover it for a plain-English list of
-  reasons and remedies. The colour encodes *severity*, not level:
+  reasons and remedies. The color encodes *severity*, not level:
   **red** means something is broken right now (a test failed),
   **orange** means pending work or staleness (a script or output
   changed since verification, an earlier step changed, or a level
@@ -198,7 +198,7 @@ the difference from **Force Run All (Clean)**, which does the same
 delete and then immediately re-runs everything: the rerun overwrites
 what was cleared, so you never see the project in its emptied state.
 Seeing it is the point when you are checking somebody else's work —
-an all-grey dashboard is the evidence that what appears next was
+an all-gray dashboard is the evidence that what appears next was
 produced on your machine and not shipped with the repository.
 Interactive steps keep their outputs (a person made those; nothing
 here can reproduce them), and anything committed to git can be
@@ -261,7 +261,7 @@ Limit…** — the dialog prefills a suggestion of twice the step's last
 *successful* runtime, converting "how long should this take?" into
 "should it take twice as long as last time?". Zero or blank means the
 step inherits the project default; a project default of zero disables
-the feature entirely, so long runs you expect are never mislabelled.
+the feature entirely, so long runs you expect are never mislabeled.
 
 #### Adding a step
 
@@ -286,7 +286,7 @@ shell.
 
 #### The expanded step view
 
-Clicking a step row expands its detail, which is organised by the
+Clicking a step row expands its detail, which is organized by the
 reproducibility ladder. At the top sits an optional, expandable
 **Description** block — a few sentences on what the step does,
 written by you or an agent (click the text to edit; agents set the
@@ -310,7 +310,7 @@ are exactly its self-consistency surface. It ends with the **Run
 Step** button and, just below it, the **Last run** line (outcome,
 finish time, wall-clock and CPU durations). File rows carry the
 per-file marks and remote badges described under
-[Status lights and colours](#status-lights-and-colours), and
+[Status lights and colors](#status-lights-and-colors), and
 clicking a file opens it in a Viewing Window.
 
 **Levels 2 and 3 are requirement sections**, one row per applicable
@@ -507,7 +507,7 @@ and pinning its base image to an exact digest (`FROM
 <image>@sha256:…`) is something you — or the in-container agent — do
 by hand.
 
-## Status lights and colours
+## Status lights and colors
 
 The same small vocabulary repeats across step rows, both block
 banners, and every requirement row. The **?** Help panel carries the
@@ -517,20 +517,20 @@ authoritative legend; this is the summary.
 
 The L1 | L2 | L3 cells (and the single L1 cell on step rows) use
 seven states. The circle fills in as reality does — hollow (nothing
-exists), grey (material exists), coloured (assessed), badge
+exists), gray (material exists), colored (assessed), badge
 (attained):
 
 | Cell | Meaning |
 |---|---|
-| Hollow grey circle | Not started — no outputs on disk and no activity at this level yet. |
-| Grey filled circle | Unassessed — outputs exist on disk, but no tests, checks, or sign-off have been recorded yet. |
+| Hollow gray circle | Not started — no outputs on disk and no activity at this level yet. |
+| Gray filled circle | Unassessed — outputs exist on disk, but no tests, checks, or sign-off have been recorded yet. |
 | Red circle | No requirements met. |
 | Orange circle | Partially met. |
 | Vaibify badge (the favicon, theme-tinted) | Attained — every requirement at this level is met. |
 | Question mark (?) | Unknown — GitHub/Zenodo have not been checked recently; refresh remote status to find out. |
 | Dash (—) | Not applicable — no requirements at this level for this row. |
 
-The grey states are honest by design: "unassessed" asserts only that
+The gray states are honest by design: "unassessed" asserts only that
 the step's declared outputs exist — hours of compute performed
 outside the dashboard stay visible as progress — but it never claims
 verification, and a remote that has never been checked is never
@@ -538,7 +538,7 @@ shown as passing.
 
 ### Warning glyphs
 
-Warning glyphs (⚠) are coloured by **severity**, never by level:
+Warning glyphs (⚠) are colored by **severity**, never by level:
 
 - **Red** — broken or failing *now*: a test failed, a declared file is
   missing, a requirement check failed.
@@ -568,8 +568,8 @@ Overleaf, Zenodo, arXiv), tinted by that remote's state:
 | Amber | Local file differs from the last push. |
 | Red | Uncommitted local changes. |
 | Blue | Not tracked by git (informational). |
-| Solid muted grey | Git-ignored — a deliberate `.gitignore` exclusion, distinct from "never published". |
-| Faded grey | Not synced to this remote. |
+| Solid muted gray | Git-ignored — a deliberate `.gitignore` exclusion, distinct from "never published". |
+| Faded gray | Not synced to this remote. |
 
 Only figure formats travel to a manuscript, so the Overleaf and arXiv
 rows list figure files only.
@@ -581,7 +581,7 @@ ladder. A header card names the project's current level (for
 example, "Level 1: Self-Consistent") with a clickable progression
 strip, followed by three expandable sections — **Level 1 —
 Self-Consistent**, **Level 2 — Published**, **Level 3 — Reproducible**
-— each summarising how many of its requirements are met.
+— each summarizing how many of its requirements are met.
 
 Every requirement row shows a status light, the requirement, what it
 means, and how to meet it, with a deep link to the surface where the
@@ -629,6 +629,40 @@ History** table of every attempt.
 
 See [Reproducibility](reproducibility.md) for what each envelope
 artifact contains and how third parties verify it without vaibify.
+
+## Admin > Environment Info
+
+Every value in this modal is a fact read off **the image this session
+is connected to**, or the word *unknown*. Nothing falls back to the
+vaibify installed on your machine: the installed recipe describes the
+image vaibify would build today, which is a different question from
+what you are running, and answering the second with the first would
+state an environment your container never had.
+
+| Row | What it is |
+|---|---|
+| Digest / Image ID | The image's content identity. This is what Level 3 pins and what `reproduce.sh` pulls. |
+| Architecture | The platform the image was built for. |
+| Recipe fingerprint | A hash over the build inputs vaibify controls — the Dockerfile, package lists, entrypoint, your `vaibify.yml`. |
+| Archive epoch | The date of the package archive this image's C compiler and libc came from. |
+| Inside the container | Versions probed from within the container itself, not from the host. |
+
+**The archive epoch is the row worth understanding.** It is pinned, so
+every image built from this recipe gets the same compiler whatever day
+it is built, and it moves only when a maintainer deliberately moves it
+— a change that asks you to re-run and re-verify. See
+[The toolchain epoch](reproducibility.md) for what moving it means.
+
+The epoch covers the **compiler only**. Editors, LaTeX, the Python
+interpreter and pip packages track their upstreams and can differ
+between two builds of the same recipe. Pinning those for a particular
+result is what the project's `requirements.lock` is for — which is the
+honest division of labor: the image freezes what compiles your
+binaries, and the lock file freezes what runs your analyses.
+
+*unknown* is a real answer here, not a blank. An image built before
+vaibify recorded the epoch carries no label, and the modal says so
+rather than guessing.
 
 ## The Help panel
 
@@ -749,7 +783,7 @@ recently-validated state even if the user never clicks Re-verify.
 
 ### Aggregate consistency banner
 
-Above the per-remote rows, a single line summarises the union of all
+Above the per-remote rows, a single line summarizes the union of all
 remote states. The three forms produced by
 [scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js) are:
 
@@ -758,7 +792,7 @@ remote states. The three forms produced by
 - `Remote consistency: ✓ all <K> configured remote(s) in sync` — every
   configured remote authoritatively matched on its last verify; `<K>`
   is the count of remotes that reported a verified status. The trailing
-  noun is singularised to `remote` when `<K>` is 1, otherwise
+  noun is singularized to `remote` when `<K>` is 1, otherwise
   `remotes` (e.g. `Remote consistency: ✓ all 1 configured remote in
   sync` vs. `Remote consistency: ✓ all 3 configured remotes in sync`).
 - `Remote consistency: ⚠ <N> file(s) drifted across <M> of <K>
@@ -766,7 +800,7 @@ remote states. The three forms produced by
   diverged-file count across all remotes, `<M>` is the number of
   remotes with at least one diverged file, and `<K>` is the count of
   configured-and-verified remotes. Both the file noun and the remote
-  noun singularise independently when their count is 1 (e.g. `Remote
+  noun singularize independently when their count is 1 (e.g. `Remote
   consistency: ⚠ 1 file drifted across 1 of 1 remote` vs. `Remote
   consistency: ⚠ 5 files drifted across 2 of 3 remotes`).
 
@@ -819,7 +853,7 @@ image rebuild refreshes them):
   traps codified (`iProofLevel` is the only authoritative signal;
   marker hashes are git blob SHA-1s; publication is user-only).
 - **create-pipeline-step** — the five-phase protocol for authoring a
-  fully wired step, centred on the `{StepNN.varname}` cross-step
+  fully wired step, centered on the `{StepNN.varname}` cross-step
   token contract.
 - **vaibify-doc-map** — a question→(doc, section) table so the agent
   reads the right 30 lines of vaibify's own docs (staged in-container
@@ -955,7 +989,7 @@ session** at a time. When you claim a container, the server mints a
 private lease for that tab; a different tab — even another tab of the
 same browser on the same hub — that tries to open the same container is
 refused with *"In use in another browser session"* and its tile renders
-greyed out. This holds across two tabs of one browser, two browsers,
+grayed out. This holds across two tabs of one browser, two browsers,
 and two hubs alike; it is the single owner-of-record model described in
 the [architecture reference](architecture.md#single-browser-session-per-container).
 It is an operational guarantee for honest use behind vaibify's loopback
@@ -976,7 +1010,7 @@ anything: the browser fires the same signal on a reload, so treating it
 as release intent would drop a running container every time you
 refreshed the page.
 The hub re-polls availability every few seconds, so a freed container
-un-greys on its own without a page reload. You can also list and stop
+un-grays on its own without a page reload. You can also list and stop
 live sessions from the host with `vaibify sessions` (see the
 [CLI Reference](cli.md#session-management)).
 

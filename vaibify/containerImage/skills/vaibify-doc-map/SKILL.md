@@ -16,7 +16,7 @@ All paths are under `/usr/share/vaibify/docs/`.
 
 | You need to know… | Doc | Section |
 |---|---|---|
-| What a dashboard panel/badge/row means | dashboard.md | `## Status lights and colours`, `## The Main tab`, `## The PROOF tab` |
+| What a dashboard panel/badge/row means | dashboard.md | `## Status lights and colors`, `## The Main tab`, `## The PROOF tab` |
 | The agent-action catalog and shipped skills | dashboard.md | `## Agent actions`, `### Shipped agent skills` |
 | What each PROOF level proves / requires | reproducibility.md | `## The Reproducibility Stack`, `## PROOF Level 3 — Reproducible` |
 | The reproducibility envelope files | reproducibility.md | `## The Reproducibility Envelope` (Tier 1/2/3 subsections) |

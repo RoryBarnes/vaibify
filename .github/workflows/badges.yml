@@ -158,6 +158,47 @@ jobs:
           PY
           cat badgeOutput/*.json
 
+      # An IDENTITY, not a count and not a verdict. The recipe
+      # fingerprint is the hash over every input that can change the
+      # container image -- the Dockerfile, the entrypoint, the overlays,
+      # the staged docs, the code that assembles the context. It answers
+      # the one question a reader of this repository cannot otherwise
+      # answer: which environment does main build today?
+      #
+      # It is deliberately NOT the fresh-image-build verdict beside it.
+      # That lane goes red when Ubuntu rotates a pinned package out of
+      # its archive, which is a decision waiting for a maintainer rather
+      # than a broken project, and a reader who sees only the red badge
+      # concludes the wrong thing. The identity badge is the fact; the
+      # status badge is the verdict; they are different claims.
+      - name: Write the image-recipe identity badge
+        run: |
+          sRecipe=$(python tools/computeBuildInputHash.py)
+          # An empty or malformed hash means the tool stopped resolving
+          # its inputs. Publishing "unknown" as an identity would be a
+          # confident lie about which image main builds, so refuse --
+          # the same rule the zero-count guard above applies.
+          if ! printf '%s' "$sRecipe" | grep -qE '^[0-9a-f]{64}$'; then
+            echo "::error::computeBuildInputHash produced '$sRecipe'; refusing to publish an identity badge that would misstate the image"
+            exit 1
+          fi
+          python - "$sRecipe" <<'PY'
+          import json
+          import sys
+
+          sRecipe = sys.argv[1]
+          with open("badgeOutput/imageRecipe.json", "w",
+                    encoding="utf-8") as fileHandle:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "image recipe",
+                  "message": sRecipe[:12],
+                  "color": "5b8fa8",
+              }, fileHandle)
+              fileHandle.write("\n")
+          print(f"image recipe: {sRecipe[:12]}")
+          PY
+
       - name: Resolve the checks that gated this merge
         id: gate
         env:
@@ -285,6 +326,7 @@ jobs:
           # the previous one is left in place.
           listBadges="tests.json falsification.json invariants.json
                       browser.json style.json ssh.json security.json
+                      imageRecipe.json
                       statusTestsLinux.json statusTestsMacos.json
                       statusFalsification.json statusBrowser.json
                       statusSecurity.json statusAgentDocs.json

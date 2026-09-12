@@ -283,6 +283,11 @@ _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
 # ``container-read`` must appear here, so a NEW owned-container GET fails
 # ``testContainerReadScopeIsAFrozenRatchetedAllowlist`` until acknowledged.
 SET_CONTAINER_READ_ROUTES = frozenset({
+    # Admin > Environment Info. Reads the image's labels off the
+    # daemon and the tool versions from inside the owned container;
+    # writes nothing, and is on demand rather than on the poll path,
+    # which is built with no extra container execs.
+    ("GET", "/api/system/environment-info/{sContainerId}"),
     ("GET", "/api/agent-councils/{sContainerId}"),
     ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
     ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),

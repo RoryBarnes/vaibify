@@ -38,6 +38,7 @@ __all__ = [
     "S_OVERLAYS_IMAGE_LABEL",
     "S_RECIPE_HEADER_PREFIX",
     "S_RECIPE_IMAGE_LABEL",
+    "S_TOOLCHAIN_EPOCH_IMAGE_LABEL",
     "fsComposeImageDockerfile",
     "fbTextWasGeneratedByVaibify",
     "flistExtractOverlayOrder",
@@ -70,6 +71,15 @@ S_BASE_STAGE_NAME = "vaibifybase"
 # whenever the INSTALLED vaibify's packaged texts changed, even though
 # the file still describes the pinned image perfectly.
 S_RECIPE_IMAGE_LABEL = "vaibify-recipe-sha256"
+
+# The archive snapshot date the pinned toolchain was fetched from. It
+# is stamped by the Dockerfile rather than by a --label argument on the
+# build command: the ARG lives in that file, and a value threaded
+# through the build chain is one that can be accepted by a signature
+# and dropped before it arrives, with every call site still reading
+# correctly. An image built before this existed carries no label, which
+# reads as "nothing determined" and never as an epoch.
+S_TOOLCHAIN_EPOCH_IMAGE_LABEL = "vaibify-toolchain-epoch"
 S_RECIPE_HEADER_PREFIX = "# vaibify:recipe-sha256="
 
 # The overlays an image was built with, stamped beside the recipe

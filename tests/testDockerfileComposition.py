@@ -270,9 +270,21 @@ def test_the_toolchain_block_fails_loudly_with_guidance():
     for sOption in (
         "REPRODUCE THE ORIGINAL",
         "ACCEPT A NEWER TOOLCHAIN",
-        "FETCH THE OLD PACKAGES",
+        # Was "FETCH THE OLD PACKAGES" until the toolchain moved to a
+        # frozen archive snapshot. That advice is now what the file
+        # already does, so a reader following it would be told to go
+        # arrange something already arranged -- and, worse, would stop
+        # looking for the real cause, which is no longer Ubuntu.
+        "MOVE THE EPOCH",
     ):
         assert sOption in sText, f"the diagnostic omits {sOption!r}"
+    # With the archive frozen, a pin that does not resolve is the file
+    # disagreeing with its own snapshot date. The diagnostic has to
+    # name the command that answers that, or it sends a maintainer to
+    # debug Ubuntu for a defect in this repository.
+    assert "checkToolchainEpoch.py --verify" in sText, (
+        "the diagnostic does not name the date/pin agreement check"
+    )
     # A withdrawn version and an architecture mismatch produce the
     # SAME apt message ("Version ... was not found"), and the fixes are
     # nothing alike, so the diagnostic has to separate them.

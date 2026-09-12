@@ -614,7 +614,7 @@ Several vaibify instances can run on the same host. Typing
 invocation auto-shifts to the next free port (8051, 8052, …) and
 announces the fallback on stderr. Pass `--port N` to pin an
 explicit port. Any given container may be accessed by only one
-browser session at a time: the hub landing page greys out
+browser session at a time: the hub landing page grays out
 containers already held by another session, a second tab that tries
 to open a held container is refused *"In use in another browser
 session"*, and a second `vaibify start -p X` on the same project
@@ -745,7 +745,7 @@ restrict the person at their own terminal, so user-only actions like
 The `vaibify publish` subcommands are **not implemented**, and the
 `publish` group is not registered on the CLI at all — `vaibify publish`
 is an unknown command, not a command that reports its own absence. The
-sections below describe intended behaviour only.
+sections below describe intended behavior only.
 
 There is no Settings → Publish pane. This section previously said the
 publishing machinery was "already available" through one; it never

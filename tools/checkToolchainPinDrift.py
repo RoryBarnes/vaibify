@@ -114,8 +114,17 @@ def fsParseBaseImage(sDockerfileText):
 
 
 def fsExtractToolchainBlock(sDockerfileText):
-    """Return just the pinned apt block, so no other RUN is scanned."""
-    sMarker = "RUN apt-get update \\\n    && if ! apt-get install"
+    """Return just the pinned apt block, so no other RUN is scanned.
+
+    Anchored on the `if !` test rather than on the `RUN` line that
+    precedes it. The preamble grew a sources swap when the toolchain
+    moved to a frozen archive snapshot, and an anchor that spelled out
+    `RUN apt-get update` stopped matching -- correctly refusing rather
+    than scanning nothing, which is the property to keep. What follows
+    the marker is the pin list either way, so this anchor survives an
+    edit to the lines above it without becoming permissive.
+    """
+    sMarker = "&& if ! apt-get install"
     if sMarker not in sDockerfileText:
         raise ValueError(
             "the Dockerfile no longer contains the pinned toolchain "

@@ -8389,3 +8389,46 @@ body.council-workspace-open #mainLayout {
     margin-top: 1px;
     opacity: 0.8;
 }
+
+/* Admin > Environment Info. A facts table, so the emphasis belongs on
+   the values rather than on the chrome around them. "unknown" is
+   styled to read as an ABSENCE of information rather than as a value,
+   because the one thing this modal must never do is let a field
+   nobody could determine look like a measurement. */
+.env-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+}
+.env-info-table th,
+.env-info-table td {
+    text-align: left;
+    padding: 4px 8px 4px 0;
+    vertical-align: top;
+    font-weight: normal;
+}
+.env-info-table th {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    width: 38%;
+}
+.env-info-table tr.env-info-section th {
+    color: var(--color-pale-blue);
+    font-weight: 600;
+    padding-top: 12px;
+    width: auto;
+}
+.env-info-table tr.env-info-section:first-child th {
+    padding-top: 0;
+}
+.env-info-unknown {
+    color: var(--text-secondary);
+    opacity: 0.65;
+    font-style: italic;
+}
+.env-info-note {
+    color: var(--text-secondary);
+    opacity: 0.85;
+    font-size: 12px;
+    line-height: 1.45;
+}

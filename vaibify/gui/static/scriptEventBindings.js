@@ -907,6 +907,9 @@ var VaibifyEventBindings = (function () {
             btnAdminNewWindow: function () {
                 VaibifyUtilities.fnSpawnNewSession();
             },
+            btnAdminEnvironmentInfo: function () {
+                VaibifyEnvironmentInfo.fnShow();
+            },
             btnAdminQuit: function () { window.close(); },
         };
         for (var sId in dictActions) {
