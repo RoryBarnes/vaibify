@@ -2152,6 +2152,161 @@ manifest — and the re-check reports VACUOUS rather than passed. Same
 shape as rooting a rerun's comparison on the shadow rather than the
 live repository.
 
+### The deposit is found by NAME, and no redirect is followed on trust
+
+`.vaibify/environment.json` is a file in a cloned repository, so
+nothing read from it may be fetched as a URL. The deposit record names
+WHICH Zenodo holds it (`sZenodoService`, the client's own service key);
+readers map that name through the client's host table — the only place
+a Zenodo host is spelled — and refuse any other value. A record written
+before the field existed is classified by DOI prefix: `10.5072/` is
+DataCite's test prefix and therefore the sandbox. Nothing in a sandbox
+DOI says "sandbox", and a classifier that looked for the word sent
+every sandbox deposit to production Zenodo, where the record 404s and
+the fallback composed a download URL from a DataCite error page.
+`reproduce.sh` renders its own service table FROM the client's, so the
+two lanes cannot disagree about a host.
+
+And no redirect is followed before its target host is checked.
+`requests` with `allow_redirects=True` and `curl -L` have both
+contacted the redirected host by the time the final URL is readable, so
+both lanes follow by hand: send without following, read `Location`
+(`%{redirect_url}` in shell), check its origin against the table, and
+only then send the next request, for a bounded number of hops
+(`zenodoClient.fresponseGetWithinAllowlist`; `fnFetchWithinAllowlist`
+in the script). This covers the record fetch, the file download — the
+record's `files[].links.self` is validated the same way — and the
+doi.org fallback, which is admitted as the START of a hop chain only
+for a record with no service. `tests/testImageAcquisition.py` stands
+up a decoy loopback server and asserts it receives NO request;
+`tests/testReproduceScriptGenerator.py` does the same for the shell
+through real `bash`. Measured on 2026-09-11: both Zenodo instances
+answer their record API and file links directly, so the allowlist is
+the two API hosts plus the resolver, and the loop exists for the day
+that changes.
+
+### A verification produces a FILE, not a sentence
+
+"N of N hashes matched" is vaibify asserting it worked. Since
+2026-09-11 the rerun keeps every observed hash — the comparison used to
+compute them all and return only the mismatched paths — and renders
+them into `REPRODUCED.sha256` at the repository root, in
+`MANIFEST.sha256`'s own format: exactly one header line, then the same
+paths in the same order, so line N of one file is the same path as line
+N of the other and `diff` works from a terminal. A file the shadow did
+not produce is a `# MISSING  <path>` comment at the SAME position, never
+a fabricated hash and never an omitted line; every other line is a line
+`sha256sum -c` accepts over the shadow tree. Carried (human-made)
+outputs are hashed and listed like every other entry — what marks them
+as given rather than graded is the record beside the file and the
+viewer, never the file. Provenance (which image, obtained how, on which
+platform, with which epoch) lives in that record too, so the manifest
+carries hashes and repo-relative paths only: it is committed and
+published.
+
+The per-file outcome list (`listFileOutcomes`, one
+`{sPath, sExpected, sObserved, sStatus}` per frozen manifest entry) is
+the AUTHORITY: every count, every path list and the rendered file are
+derived from it, and nothing is re-hashed after the shadow is destroyed
+or re-read from a manifest the rerun may have mutated. The write order
+is load-bearing and shared by both lanes
+(`reproductionRecord.flistWriteVerificationOutcome`): the timestamped
+copy under `.vaibify/reproducedManifests/`, then the root file, THEN the
+record that names it — so a record can never point at a manifest that
+was not written. None of those paths is ever pinned by the manifest; a
+reproduced manifest inside the manifest would grade itself. The
+dashboard's two viewers render the pinned and the reproduced manifest
+side by side, read-only, with line colours taken from the record's
+verdict — never from JavaScript comparing hashes, which would be a
+second authority on a question that has one.
+
+### A clone carrying someone else's attestation records a reproduction
+
+An attestation is the author's claim about their own project. A
+researcher who obtained the author's environment and clicked Verify has
+REPRODUCED the result, or failed to — they have not attested, and
+overwriting `.vaibify/l3_attestation.json` in their clone would put two
+people's claims under one name (a push to a fork would publish the
+stranger's run as the author's). The trigger is git evidence in the
+repository, never a host-side record of how the image was obtained: the
+attestation is tracked at HEAD and its last COMMITTER differs from the
+receiving repository's configured identity — the committer, because a
+rebase preserves someone else's author and re-stamps the committer; an
+unconfigured identity counts as foreign. It is a conservative heuristic
+about who last committed one file, and the record says so. Both lanes
+ask through a git runner bound to the repository that will RECEIVE the
+record (the container's checkout through the exec seam; the CLI's
+`--repo` through the host runner), and the readiness answer carries the
+verdict so the confirm dialog names the record BEFORE the copy. The
+reproduction record is the reproduction REPORT's schema under
+`.vaibify/reproductions/`, read on the attestation GET only — never on
+the file-status poll, whose snapshot adapter cannot enumerate a
+directory. The Level 3 cell keeps reading the author's attestation.
+
+### Containerizing from the author's pinned image
+
+A rebuild from the Dockerfile produces a different digest and cannot
+reproduce the author's bytes. Since 2026-09-11 the Containerize wizard
+offers, on a clone whose envelope pins an image by content digest, to
+OBTAIN that image through the published chain — registry, then the
+archived deposit, then a copy on this daemon (`imageAcquisition`) —
+instead of building. The option is named for what it does, "Use the
+author's pinned image", because rule 6 accepts an absent deposit and
+the chain's first link is the registry.
+
+The conversion is a WHITELIST, not a merge
+(`pinnedEnvironmentConversion.fdictOverlayRuntimeFieldsOnly`): only
+runtime fields — the docker-run flags and environment variables the
+researcher controls — are written onto the clone's `vaibify.yml`;
+every base-defining field stays exactly as the author committed it,
+and the agent INSTALL keys are not written at all until the overlays
+exist. The registry entry gains `dictImageSource` with the CANDIDATE
+overlay baseline captured before anything rewrites the file, because
+after that (and after a hub restart) the author's original feature
+set exists nowhere else on this host.
+
+The acquisition (`docker/pinnedImageAcquisition`) is an ordered lane
+and the order is the contract: re-check the clone, obtain, PROVE the
+baseline, stack the DIFFERENTIAL overlays, tag by ID, describe, commit.
+The baseline is proven against the image — its own `vaibify-overlays`
+label first (which must EQUAL the candidate, additions requested or
+not; a recipe that disagrees with its image is the defect the
+Dockerfile-provenance row exists to catch), else a recomputed recipe
+fingerprint over this vaibify's shipped texts — and never taken from a
+comment line in a cloned repository. Unproven never fails open: with no
+additions the base runs as obtained; with additions the acquisition
+fails before anything is tagged. Overlays are stacked on the obtained
+image ID on the pinned platform and labelled
+`vaibify.pinnedBaseImageId`, so a derived image reads as derived and is
+never reported as the pin. The origin record
+(`config/imageOrigins`, `~/.vaibify/imageOrigins/<project>.json`, 0600)
+is written LAST and is the launch guard's admission: for an
+archive-source project a start refuses, naming the cause and both
+remedies, when the record is absent or STALE — the tag no longer
+resolves to the recorded image, or the running image is neither the
+base nor labelled as derived from it — and never falls back to
+whatever occupies `<projectName>:latest`. Every start requests the
+recorded platform, and a switched daemon whose architecture differs
+from the obtained platform refuses rather than emulating something
+nobody consented to (emulation is consented twice: the entry and the
+per-attempt body).
+
+The record has exactly three ending transitions: switching to
+building (which clears `dictImageSource` and the record in ONE locked
+registry mutation), un-registration, and rename. Stop is not one. A
+plain `/build` on an archive-source project answers 409 naming the
+switch. At connect the identity capture records `dictDerivation`, and
+the currency assessment gains a fourth answer: the running image IS
+the base (`bPinnedImageIsLive` true, `sRelation: "base"`) or is derived
+(`sRelation: "derived"`, a note rather than a warning, never reported
+as the pin). Regenerating the envelope is refused for an obtained
+environment through one predicate, `fbEnvironmentWasObtained`, so the
+ruling is cheap to flip. The shadow rerun creates its container from
+the record's BASE id on the obtained platform — never the overlay
+result the researcher sits in — and carries the archive-loaded marker,
+so the deposit re-check reads vacuous exactly as it does for a
+`reproduce.sh` clone.
+
 ### One image, N papers
 
 One image record per image digest; one science record per publication;

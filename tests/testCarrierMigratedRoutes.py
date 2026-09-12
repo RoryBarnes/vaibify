@@ -7442,13 +7442,14 @@ def tclientForReproductions(tmp_path, monkeypatch):
     from tests.reproductionSourceFixtures import fsBuildPublishedProject
     from vaibify.reproducibility import reproductionSource
     from vaibify.gui import reproductionProgress
+    from vaibify.docker import daemonDescription
     from vaibify.gui.routes import reproductionRoutes
     sRoot = os.path.realpath(str(tmp_path))
     monkeypatch.setattr(
         reproductionSource, "flistAdmittedLocalCloneRoots", lambda: [sRoot],
     )
     monkeypatch.setattr(
-        reproductionRoutes, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
+        daemonDescription, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
     )
     sRepoPath = os.path.join(sRoot, "publishedProject")
     fsBuildPublishedProject(sRepoPath)

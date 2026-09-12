@@ -34,10 +34,12 @@ import logging
 import time
 
 from fastapi import HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from ...config.connectionAvailability import fbDockerReachable
 from ...docker import daemonCapacity
+from ...docker import daemonDescription
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import imageAcquisition
 from ...reproducibility import reproductionReport
@@ -159,42 +161,14 @@ def _fdictAdoptStagedJob(dictCtx, sJobId, dictStaged):
 def _fdictDescribeDaemon(dictCtx, dictDescription):
     """Return the daemon's architecture beside the envelope's requirement.
 
-    Three facts, kept apart by name: the platform the envelope
-    REQUIRES, and the architecture this DAEMON has. Whether the second
-    matches the first decides if the emulation checkbox is offered. A
-    daemon that cannot be asked is reported as unknown -- never as a
-    match -- and the run route refuses without one.
+    The shared describer, so the "+" card and the containerize wizard
+    answer the emulation question the same way. The run route refuses
+    without a daemon architecture.
     """
-    sRequiredPlatform = str(dictDescription.get("sRequiredPlatform") or "")
-    sRequiredArchitecture = imageAcquisition.fsArchitectureOfPlatform(
-        sRequiredPlatform,
+    return daemonDescription.fdictDescribeDaemonForPlatform(
+        dictCtx.get("docker"),
+        str(dictDescription.get("sRequiredPlatform") or ""),
     )
-    bReachable = fbDockerReachable(dictCtx.get("docker"))
-    sDaemonArchitecture = (
-        _fsReadDaemonArchitectureQuietly() if bReachable else ""
-    )
-    return {
-        "bReachable": bReachable,
-        "sArchitecture": sDaemonArchitecture,
-        "sRequiredPlatform": sRequiredPlatform,
-        "bArchitectureMatches": bool(
-            sDaemonArchitecture
-            and sDaemonArchitecture == sRequiredArchitecture
-        ),
-    }
-
-
-def _fsReadDaemonArchitectureQuietly():
-    """Return the daemon's architecture, or empty when it cannot be asked."""
-    from ...docker import disposableContainer
-    try:
-        return str(daemonCapacity.fsReadDaemonArchitecture(
-            disposableContainer.fdockerCreateDisposableClient(),
-        ) or "")
-    except Exception as error:  # noqa: BLE001 - reported as unknown, never guessed
-        fnReRaiseControlPlaneRefusal(error)
-        logger.info("daemon architecture unavailable: %s", error)
-        return ""
 
 
 def _fnRegisterRun(app, dictCtx):
@@ -429,6 +403,31 @@ def _fnRegisterReportRead(app, dictCtx):
             ) from None
 
 
+def _fnRegisterReportManifestRead(app, dictCtx):
+    """Register GET /api/reproductions/reports/{sReportId}/manifest."""
+    del dictCtx
+
+    @app.get("/api/reproductions/reports/{sReportId}/manifest")
+    async def fsReadReproducedManifest(
+        sReportId: str, requestHttp: Request,
+    ):
+        """Serve the reproduced manifest written beside one report.
+
+        The file a person reads with their own eyes, or diffs against
+        the project's ``MANIFEST.sha256`` from a terminal. Browser-only
+        and validated by the reader it delegates to, exactly as the
+        report route is.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        try:
+            sText = reproductionReport.fsReadReproducedManifestText(sReportId)
+        except LookupError:
+            raise HTTPException(
+                404, "No reproduced manifest is stored under that id.",
+            ) from None
+        return PlainTextResponse(sText)
+
+
 def _fnRegisterProgress(app, dictCtx):
     """Register GET /api/reproductions/{sJobId}."""
     del dictCtx
@@ -450,4 +449,5 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRun(app, dictCtx)
     _fnRegisterDiscard(app, dictCtx)
     _fnRegisterReportRead(app, dictCtx)
+    _fnRegisterReportManifestRead(app, dictCtx)
     _fnRegisterProgress(app, dictCtx)

@@ -81,6 +81,7 @@ __all__ = [
     "ShadowRerunRefusedError",
     "S_SHADOW_ROLE",
     "S_SHADOW_WORKSPACE_ROOT",
+    "fdictBuildReproductionProvenance",
     "fdictRerunAndVerifyFromSnapshot",
     "fdictRerunAndVerifyThroughShadow",
     "flistNameCommandsMissingFromTheImage",
@@ -192,7 +193,7 @@ def ftResolveShadowPaths(sProjectRepoPath, sWorkflowPath):
 def fdictRerunInShadowContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sProjectRepoPath, dictEnvironmentPayload, sResourceName="",
-    fnStatusCallback=None, fdictRunAndVerify=None,
+    fnStatusCallback=None, fdictRunAndVerify=None, dictImageOrigin=None,
 ):
     """Re-run one workflow in a shadow container and hash what it wrote.
 
@@ -218,6 +219,7 @@ def fdictRerunInShadowContainer(
         )
         fdictRunAndVerify = fdictRerunAndVerifyWorkflow
     sImageReference = fsResolvePinnedImageReference(dictEnvironmentPayload)
+    dictOrigin = _fdictOriginCoveringThePin(dictImageOrigin, sImageReference)
     tShadowPaths = ftResolveShadowPaths(sProjectRepoPath, sWorkflowPath)
     dictCapacity = daemonCapacity.fdictResolveDaemonCapacity(
         connectionDocker)
@@ -227,18 +229,109 @@ def fdictRerunInShadowContainer(
             dictCapacity["iArchiveTotalBytes"],
         )
     )
+    if dictOrigin is not None and dictOrigin.get("sObtainedFrom") == "archive":
+        baRepositoryArchive = _fbaEnsureLoadedFromArchiveMarker(
+            baRepositoryArchive, posixpath.basename(sProjectRepoPath.rstrip("/")),
+        )
     dictOutcome = _fdictDriveShadowLifecycle(
-        connectionDocker, dictWorkflow, sImageReference, tShadowPaths,
-        baRepositoryArchive, dictCapacity, sResourceName,
+        connectionDocker, dictWorkflow,
+        # An OBTAINED image answers to its ID alone on this daemon (a
+        # deposit-loaded tarball carries no tag), so the shadow is
+        # created by the origin record's BASE id -- never the overlay
+        # result the researcher sits in -- on the platform it was
+        # obtained for.
+        dictOrigin["sBaseImageId"] if dictOrigin else sImageReference,
+        tShadowPaths, baRepositoryArchive, dictCapacity, sResourceName,
         fnStatusCallback, fdictRunAndVerify,
+        sPlatform=(
+            str(dictOrigin.get("sObtainedPlatform") or "") or None
+            if dictOrigin else None
+        ),
     )
     # The attestation must name the image the shadow was BUILT from,
     # so the pin travels with the outcome. Re-reading it at write time
     # names whatever environment.json says THEN -- the CLI lane read a
     # different file entirely (the host --repo clone's) and recorded
-    # its digest over the one the rerun executed under.
+    # its digest over the one the rerun executed under. An obtained
+    # image is named by the PINNED reference, which is what it is.
     dictOutcome["sImageDigest"] = sImageReference
+    # Without an origin record this lane runs the image the author's
+    # own daemon holds -- built or pulled on this machine, never
+    # obtained through the published chain -- so the provenance says
+    # so, on the envelope's platform.
+    dictOutcome["dictReproductionProvenance"] = (
+        fdictBuildReproductionProvenance(
+            dictOutcome, sImageReference, sImageReference,
+            dictOrigin.get("sObtainedFrom") if dictOrigin else "local",
+            (
+                str(dictOrigin.get("sObtainedPlatform") or "")
+                if dictOrigin else _fsEnvelopePlatform(dictEnvironmentPayload)
+            ),
+            bool(dictOrigin.get("bEmulated")) if dictOrigin else False,
+        )
+    )
     return dictOutcome
+
+
+def _fdictOriginCoveringThePin(dictImageOrigin, sPinnedReference):
+    """Return the origin record only when it is about THIS pin."""
+    if not isinstance(dictImageOrigin, dict):
+        return None
+    if str(dictImageOrigin.get("sPinnedImageReference") or "") != sPinnedReference:
+        return None
+    if not dictImageOrigin.get("sBaseImageId"):
+        return None
+    return dictImageOrigin
+
+
+def _fbaEnsureLoadedFromArchiveMarker(baRepositoryArchive, sRepositoryName):
+    """Append the archive-loaded marker unless the export already carries it."""
+    import io
+    import tarfile
+    from vaibify.reproducibility.imageArchive import (
+        S_LOADED_FROM_ARCHIVE_MARKER,
+    )
+    sMember = posixpath.join(sRepositoryName, S_LOADED_FROM_ARCHIVE_MARKER)
+    with tarfile.open(fileobj=io.BytesIO(bytes(baRepositoryArchive)), mode="r") as fileTar:
+        if sMember in fileTar.getnames():
+            return baRepositoryArchive
+    return _fbaAppendLoadedFromArchiveMarker(baRepositoryArchive, sRepositoryName)
+
+
+def _fsEnvelopePlatform(dictEnvironmentPayload):
+    """Return ``linux/<arch>`` for the envelope's architecture, or empty."""
+    from vaibify.reproducibility.reproductionSource import (
+        fsRequiredPlatformFromArchitecture,
+    )
+    dictContainer = (dictEnvironmentPayload or {}).get("dictContainer") or {}
+    return fsRequiredPlatformFromArchitecture(
+        str(dictContainer.get("sArchitecture") or ""),
+    )
+
+
+def fdictBuildReproductionProvenance(
+    dictOutcome, sImageReference, sImageDigestPinned, sObtainedFrom,
+    sPlatform, bEmulated,
+):
+    """Return the facts a reproduced manifest's record carries beside it.
+
+    The manifest file itself carries only hashes and paths; WHAT ran
+    them -- which image, obtained how, on which platform, dated with
+    which epoch, starting when -- rides here, filled by the seed that
+    knows: the reproduction lane from the acquisition's answer, the
+    author lane from the envelope and the image its own daemon holds.
+    The epoch and the start time come off the outcome, where the rerun
+    itself recorded them.
+    """
+    return {
+        "sImageReference": str(sImageReference or ""),
+        "sImageDigestPinned": str(sImageDigestPinned or ""),
+        "sObtainedFrom": str(sObtainedFrom or ""),
+        "sPlatform": str(sPlatform or ""),
+        "bEmulated": bool(bEmulated),
+        "iSourceDateEpoch": int(dictOutcome.get("iSourceDateEpoch") or 0),
+        "sRerunStartedIso": str(dictOutcome.get("sRerunStartedIso") or ""),
+    }
 
 
 def _fdictCreateShadowOrExplainTheMissingImage(
@@ -392,7 +485,7 @@ def _fdictTearDownShadow(dictGateway, sHandle):
 
 def fdictRerunAndVerifyThroughShadow(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-    filesRepoLive, fnStatusCallback=None,
+    filesRepoLive, fnStatusCallback=None, dictImageOrigin=None,
 ):
     """Drive a shadow rerun for a workflow discovered in a live container.
 
@@ -427,7 +520,7 @@ def fdictRerunAndVerifyThroughShadow(
     return fdictRerunInShadowContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         dictWorkflow.get("sProjectRepoPath", ""), dictEnvironmentPayload,
-        sContainerId, fnStatusCallback,
+        sContainerId, fnStatusCallback, dictImageOrigin=dictImageOrigin,
     )
 
 
@@ -500,6 +593,16 @@ def fdictRerunAndVerifyFromSnapshot(
     )
     dictOutcome["sImageDigest"] = sImageReference
     dictOutcome["sObtainedFrom"] = str(dictAcquiredImage.get("sObtainedFrom") or "")
+    dictOutcome["dictReproductionProvenance"] = (
+        fdictBuildReproductionProvenance(
+            dictOutcome, sImageReference,
+            str(dictAcquiredImage.get("sPinnedImageReference") or ""),
+            dictAcquiredImage.get("sObtainedFrom"),
+            dictAcquiredImage.get("sObtainedPlatform")
+            or dictAcquiredImage.get("sRequiredPlatform"),
+            dictAcquiredImage.get("bEmulated"),
+        )
+    )
     return dictOutcome
 
 

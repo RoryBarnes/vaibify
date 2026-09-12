@@ -33,7 +33,9 @@ import time
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from ...reproducibility import reproductionRecord
 from ...reproducibility.manifestWriter import (
+    S_REPRODUCED_MANIFEST_FILENAME,
     fdictCompareManifestEntries,
     flistParseManifestLines,
 )
@@ -42,6 +44,7 @@ from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import verificationProgress
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import (
+    fbEnvironmentWasObtained,
     fbPinnedImageIsInLocalStore,
     fdictAssessEnvelopeImageCurrency,
     fdictBuildImageArchiveDetail,
@@ -73,7 +76,6 @@ from ...reproducibility.l3Attestation import (
     fdictBuildAttestation,
     fdictReadAttestation,
     flistReadAttestationHistory,
-    fnWriteAttestation,
     fsCurrentManifestDigest,
 )
 from ...reproducibility.environmentSnapshot import (
@@ -280,6 +282,15 @@ def _fnRegisterReadiness(app, dictCtx):
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
             "dictDeclaredPackageCheck": dictPackageCheck,
+            # Which record a verification of THIS clone would write --
+            # the author's attestation, or a reproduction record when
+            # the attestation on file was last committed by somebody
+            # else. Answered here, before the copy, because the confirm
+            # dialog must say so before the researcher consents.
+            "sRecordKind": await asyncio.to_thread(
+                _fsRecordKindForProject,
+                dictCtx["docker"], sContainerId, dictWorkflow,
+            ),
             # Whether the envelope pins the image this container is
             # RUNNING. Advisory, not a gap: the verification grades
             # the pinned image either way, and the researcher must
@@ -326,9 +337,20 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         flistReadAttestationHistory(filesRepo)
         if bHasRepo else []
     )
+    # Enumerated here and NEVER on the file-status poll: the snapshot
+    # adapter the poll uses cannot list a directory, and a gate that
+    # tried would 500 the poll.
+    listReproductions = (
+        reproductionRecord.flistReadReproductionRecords(filesRepo)
+        if bHasRepo else []
+    )
     return {
         "dictCurrentAttestation": dictCurrent,
         "listHistory": listHistory,
+        "dictLatestReproduction": (
+            listReproductions[0] if listReproductions else None
+        ),
+        "listReproductionHistory": listReproductions,
         "dictInFlight": verificationProgress.fdictReadStatus(sContainerId),
         "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
             sContainerId,
@@ -631,10 +653,13 @@ async def _fnRunVerificationWorker(
     dictStatus = _DICT_VERIFY_TASKS[sContainerId]["dictStatus"]
     dictStatus["sPhase"] = "running"
     fStarted = time.monotonic()
+    dictImageOrigin = await asyncio.to_thread(
+        _fdictImageOriginForContainer, connectionDocker, sContainerId,
+    )
     try:
         dictResult = await asyncio.to_thread(
             _fdictRunReproductionSync, connectionDocker, sContainerId,
-            dictWorkflow, sWorkflowPath, filesRepo,
+            dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,
         )
     except (Exception, SystemExit) as errorCaught:  # noqa: BLE001
         # SystemExit is caught too: it is not an Exception, so an
@@ -665,16 +690,24 @@ async def _fnRunVerificationWorker(
         dictWorkflow, filesRepo, sContainerId, connectionDocker,
     )
     dictResult["dictImageArchiveCheck"] = (
-        await _fdictRecheckImageArchiveOrNone(filesRepo, dictResult)
+        await _fdictRecheckImageArchiveOrNone(
+            filesRepo, dictResult, dictImageOrigin,
+        )
+    )
+    sRecordKind = await asyncio.to_thread(
+        _fsRecordKindForProject, connectionDocker, sContainerId,
+        dictWorkflow,
     )
     bAttestationWritten = _fbRecordOutcome(
         sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
-        dictAiProvenance,
+        dictAiProvenance, sRecordKind, dictWorkflow,
     )
     if bAttestationWritten:
         await asyncio.to_thread(
             _fnCommitAttestation,
             connectionDocker, sContainerId, dictWorkflow,
+            list(dictResult.get("listRecordPathsWritten") or []),
+            sRecordKind,
         )
     dictStatus["sPhase"] = _fsPhaseForOutcome(dictResult)
     dictStatus["listReasons"] = list(
@@ -683,10 +716,46 @@ async def _fnRunVerificationWorker(
     dictStatus["listCarriedPaths"] = list(
         dictResult.get("listCarriedPaths") or []
     )
+    # What the settled toast offers: the record it wrote, and whether
+    # a reproduced manifest now sits beside the pinned one to compare.
+    dictStatus["sRecordKind"] = sRecordKind if bAttestationWritten else ""
+    dictStatus["sReproducedManifestPath"] = (
+        dictResult.get("sReproducedManifestPath") or ""
+    )
     _fnRecordTeardownOutcome(sContainerId, dictResult)
 
 
-async def _fdictRecheckImageArchiveOrNone(filesRepo, dictResult):
+def _fsRecordKindForProject(connectionDocker, sContainerId, dictWorkflow):
+    """Ask the project's own git which record a verification would write.
+
+    A probe that cannot be made -- no project repository, a connection
+    that cannot exec -- answers ATTESTATION, the record every clone
+    wrote before reproduction records existed, and logs why. A
+    carrier refusal is re-raised: that is a programming error, not a
+    git answer.
+    """
+    from .. import containerGit
+    sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
+    if not sProjectRepo:
+        return reproductionRecord.S_RECORD_KIND_ATTESTATION
+    try:
+        return reproductionRecord.fsRecordKindForRepository(
+            containerGit.ffnBuildGitRunnerInContainer(
+                connectionDocker, sContainerId, sProjectRepo,
+            ),
+        )
+    except Exception as errorCaught:  # noqa: BLE001 -- answered, logged
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.warning(
+            "Could not ask git who committed the attestation; recording "
+            "an attestation: %s", errorCaught,
+        )
+        return reproductionRecord.S_RECORD_KIND_ATTESTATION
+
+
+async def _fdictRecheckImageArchiveOrNone(
+    filesRepo, dictResult, dictImageOrigin=None,
+):
     """Re-hash the deposited environment against the local image, or ``None``.
 
     The re-check costs one full ``docker save`` of the pinned image
@@ -696,12 +765,37 @@ async def _fdictRecheckImageArchiveOrNone(filesRepo, dictResult):
     of the save, and a frozen dashboard reads as a hung hub. An
     outcome that reached no verdict is never written as an
     attestation, so no save is spent on it.
+
+    An image OBTAINED from the deposit (the origin record says so) is
+    vacuous by construction: re-hashing a download against itself
+    matches always, and the record is the only place that fact lives
+    for a project with a hub.
     """
     if not dictResult.get("bRerunAttempted", True):
         return None
     return await asyncio.to_thread(
         imageDeposit.fdictRecheckArchiveAgainstLocalImage, filesRepo,
+        None,
+        bool(dictImageOrigin) and (
+            dictImageOrigin.get("sObtainedFrom") == "archive"
+        ),
     )
+
+
+def _fdictImageOriginForContainer(connectionDocker, sContainerId):
+    """Return the project's live origin record, or ``None``; never raise."""
+    from ...docker.containerManager import fdictLiveImageOriginForProject
+    try:
+        return fdictLiveImageOriginForProject(
+            fsContainerNameForId(connectionDocker, sContainerId),
+        )
+    except Exception as errorCaught:  # noqa: BLE001 -- absent reads as built
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.warning(
+            "Could not read the image origin for %s: %s",
+            sContainerId, errorCaught,
+        )
+        return None
 
 
 def _fnRecordTeardownOutcome(sContainerId, dictResult):
@@ -733,13 +827,26 @@ def _fsPhaseForOutcome(dictResult):
     return "passed" if dictResult.get("bPassed") else "failed"
 
 
-def _fnCommitAttestation(connectionDocker, sContainerId, dictWorkflow):
-    """Stage and commit the attestation the verification just wrote.
+_DICT_RECORD_COMMIT_MESSAGES = {
+    reproductionRecord.S_RECORD_KIND_ATTESTATION:
+        "Record the Level 3 rebuild attestation",
+    reproductionRecord.S_RECORD_KIND_REPRODUCTION:
+        "Record a reproduction of the published result",
+}
 
-    It is vaibify's own artefact and is compared against both
-    remotes, but nothing tracked it -- and ``git add -u`` covers
+
+def _fnCommitAttestation(
+    connectionDocker, sContainerId, dictWorkflow, listRelPaths=None,
+    sRecordKind=reproductionRecord.S_RECORD_KIND_ATTESTATION,
+):
+    """Stage and commit the files the verification just wrote.
+
+    They are vaibify's own artefacts and are compared against both
+    remotes, but nothing tracked them -- and ``git add -u`` covers
     tracked files only, so no push the researcher could make would
-    ever carry it (researcher-reported, 2026-09-08).
+    ever carry them (researcher-reported, 2026-09-08). The pathspec is
+    whatever the write reported: the record, and the reproduced
+    manifest with its timestamped copy when one was written.
 
     Commit only, never push: publication stays the researcher's
     action. The pathspec is explicit so a bare commit cannot sweep in
@@ -754,10 +861,12 @@ def _fnCommitAttestation(connectionDocker, sContainerId, dictWorkflow):
     sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
     if not sProjectRepo:
         return
-    sRelPath = posixpath.join(".vaibify", S_ATTESTATION_FILENAME)
+    listRelPaths = list(listRelPaths or [
+        posixpath.join(".vaibify", S_ATTESTATION_FILENAME),
+    ])
     try:
         iAddCode, sAddOutput = containerGit.ftResultGitAddInContainer(
-            connectionDocker, sContainerId, [sRelPath],
+            connectionDocker, sContainerId, listRelPaths,
             sWorkspace=sProjectRepo,
         )
         if iAddCode != 0:
@@ -767,8 +876,13 @@ def _fnCommitAttestation(connectionDocker, sContainerId, dictWorkflow):
             return
         iCode, sOutput = containerGit.ftResultGitCommitInContainer(
             connectionDocker, sContainerId,
-            "Record the Level 3 rebuild attestation",
-            sWorkspace=sProjectRepo, listFilePaths=[sRelPath],
+            _DICT_RECORD_COMMIT_MESSAGES.get(
+                sRecordKind,
+                _DICT_RECORD_COMMIT_MESSAGES[
+                    reproductionRecord.S_RECORD_KIND_ATTESTATION
+                ],
+            ),
+            sWorkspace=sProjectRepo, listFilePaths=listRelPaths,
         )
         # An unchanged attestation stages nothing and `git commit`
         # exits non-zero saying so. That is the ordinary state of a
@@ -791,11 +905,14 @@ def _fnCommitAttestation(connectionDocker, sContainerId, dictWorkflow):
 def _fbRecordOutcome(
     sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
     dictAiProvenance,
+    sRecordKind=reproductionRecord.S_RECORD_KIND_ATTESTATION,
+    dictWorkflow=None,
 ):
     """Persist an attestation, or remember a no-verdict outcome.
 
-    Returns True iff an attestation was actually written, which is
-    what tells the caller there is a file to commit.
+    Returns True iff a record was actually written, which is what
+    tells the caller there are files to commit -- named in the
+    outcome's ``listRecordPathsWritten``.
 
     The branch is the whole point: an attestation is written only when
     the comparison actually reached a verdict. A rerun refused before
@@ -820,7 +937,7 @@ def _fbRecordOutcome(
     return _fbPersistAttestation(
         filesRepo,
         dictResult.get("sManifestDigest") or sManifestDigest,
-        dictResult, fDuration, dictAiProvenance,
+        dictResult, fDuration, dictAiProvenance, sRecordKind, dictWorkflow,
     )
 
 
@@ -845,6 +962,7 @@ async def _fdictCaptureProvenanceOrNone(
 
 def _fdictRunReproductionSync(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath, filesRepo,
+    dictImageOrigin=None,
 ):
     """Run the expensive L3 reproduction synchronously.
 
@@ -874,7 +992,7 @@ def _fdictRunReproductionSync(
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictOutcome = fdictRerunAndVerifyThroughShadow(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-        filesRepo,
+        filesRepo, dictImageOrigin=dictImageOrigin,
     )
     # The outcome's own sImageDigest is the pin the shadow was built
     # from; re-reading environment.json here would name whatever it
@@ -905,31 +1023,59 @@ def _fsResolveImageDigest(filesRepo):
 def _fbPersistAttestation(
     filesRepo, sManifestDigest, dictResult, fDuration,
     dictAiProvenance=None,
+    sRecordKind=reproductionRecord.S_RECORD_KIND_ATTESTATION,
+    dictWorkflow=None,
 ):
-    """Write the attestation file; return True iff it was written."""
+    """Write the reproduced manifest, then the record; True iff written.
+
+    The order and the choice of record both belong to the shared
+    writer: the manifest lands before the record that names it, and
+    ``sRecordKind`` decides between the author's attestation and a
+    reproduction record for a clone whose attestation is somebody
+    else's. The paths written are left on the outcome as
+    ``listRecordPathsWritten`` for the commit that follows, and the
+    root manifest's path as ``sReproducedManifestPath`` for the toast.
+    """
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
-    dictAttestation = fdictBuildAttestation(
-        sStatus=sStatus,
-        sManifestDigest=sManifestDigest,
-        sImageDigest=dictResult.get("sImageDigest", ""),
-        fDurationSeconds=fDuration,
-        iOutputHashesMatched=dictResult["iOutputHashesMatched"],
-        iOutputHashesTotal=dictResult["iOutputHashesTotal"],
-        listDivergedHashes=dictResult["listDivergedHashes"],
-        sRunLogPath=dictResult.get("sRunLogPath", ""),
-        dictAiProvenance=dictAiProvenance,
-        listCarriedPaths=list(dictResult.get("listCarriedPaths") or []),
-        dictRerunFailure=dict(dictResult.get("dictRerunFailure") or {}),
-        # Computed by the worker OFF the event loop and carried here
-        # in the outcome like the other rerun facts; ``None`` means
-        # no check ran, which the record's readers treat as such.
-        dictImageArchiveCheck=dictResult.get("dictImageArchiveCheck"),
-    )
+
+    def fdictBuildAttestationAt(sTimestampUtc, sReproducedManifestPath):
+        return fdictBuildAttestation(
+            sStatus=sStatus,
+            sManifestDigest=sManifestDigest,
+            sImageDigest=dictResult.get("sImageDigest", ""),
+            fDurationSeconds=fDuration,
+            iOutputHashesMatched=dictResult["iOutputHashesMatched"],
+            iOutputHashesTotal=dictResult["iOutputHashesTotal"],
+            listDivergedHashes=dictResult["listDivergedHashes"],
+            sRunLogPath=dictResult.get("sRunLogPath", ""),
+            dictAiProvenance=dictAiProvenance,
+            listCarriedPaths=list(dictResult.get("listCarriedPaths") or []),
+            dictRerunFailure=dict(dictResult.get("dictRerunFailure") or {}),
+            # Computed by the worker OFF the event loop and carried here
+            # in the outcome like the other rerun facts; ``None`` means
+            # no check ran, which the record's readers treat as such.
+            dictImageArchiveCheck=dictResult.get("dictImageArchiveCheck"),
+            listFileOutcomes=dictResult.get("listFileOutcomes"),
+            dictReproductionProvenance=dictResult.get(
+                "dictReproductionProvenance",
+            ),
+            sReproducedManifestPath=sReproducedManifestPath,
+            sAttestedAtUtc=sTimestampUtc,
+        )
+
     try:
-        fnWriteAttestation(filesRepo, dictAttestation)
+        listWritten = reproductionRecord.flistWriteVerificationOutcome(
+            filesRepo, sRecordKind, dictResult, fDuration,
+            dictWorkflow or {}, fdictBuildAttestationAt,
+        )
     except OSError as errorCaught:
         logger.error("Could not persist L3 attestation: %s", errorCaught)
         return False
+    dictResult["listRecordPathsWritten"] = listWritten
+    dictResult["sReproducedManifestPath"] = (
+        S_REPRODUCED_MANIFEST_FILENAME
+        if S_REPRODUCED_MANIFEST_FILENAME in listWritten else ""
+    )
     return True
 
 
@@ -1512,9 +1658,29 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         _fsRequireProjectRepo(dictWorkflow)
+        _fnRefuseRegenerationOfAnObtainedEnvelope(dictCtx, sContainerId)
         return await _fdictRegenerateEnvelopeUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
         )
+
+
+def _fnRefuseRegenerationOfAnObtainedEnvelope(dictCtx, sContainerId):
+    """409 when the envelope is the author's and the image was obtained.
+
+    Regenerating would re-pin the envelope to this machine's image
+    (an ID with no registry record) and stale the manifest, for a
+    project whose whole point is running the author's pinned bytes.
+    One predicate, ``fbEnvironmentWasObtained``, shared with the
+    button, so the ruling is cheap to flip.
+    """
+    if not fbEnvironmentWasObtained(dictCtx, sContainerId):
+        return
+    raise HTTPException(409, detail={"sMessage": (
+        "This envelope is the author's and names the image you "
+        "obtained; regenerating would re-pin it to this machine and "
+        "stale the manifest. To rebuild your own environment, use "
+        "Rebuild -> Switch to building from the Dockerfile."
+    ), "sAction": "switch-to-building"})
 
 
 async def _fdictRegenerateEnvelopeUnderTheDrain(

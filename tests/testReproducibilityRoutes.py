@@ -546,7 +546,7 @@ def test_run_reproduction_sync_passes_the_active_workflow_through(
 
     def _fdictRecord(
         connectionDocker, sContainerId, dictRunWorkflow, sRunWorkflowPath,
-        filesRepo, fnStatusCallback=None,
+        filesRepo, fnStatusCallback=None, dictImageOrigin=None,
     ):
         listSeen.append((sContainerId, dictRunWorkflow, sRunWorkflowPath))
         return {
@@ -775,7 +775,7 @@ def test_persist_attestation_logs_on_oserror(fixtureProjectRepo, caplog):
         "sRunLogPath": "",
     }
     with patch(
-        "vaibify.gui.routes.reproducibilityRoutes.fnWriteAttestation",
+        "vaibify.reproducibility.reproductionRecord.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         # Should not raise.
@@ -1286,8 +1286,10 @@ def test_the_archive_recheck_runs_off_the_event_loop(fixtureProjectRepo):
 
     listThreads = []
 
-    def fdictRecordTheThread(filesRepo, dictEnvironment=None):
-        del filesRepo, dictEnvironment
+    def fdictRecordTheThread(
+        filesRepo, dictEnvironment=None, bLoadedFromArchive=False,
+    ):
+        del filesRepo, dictEnvironment, bLoadedFromArchive
         listThreads.append(threading.current_thread())
         return {"sVerdict": "matched", "sReason": "stub"}
 

@@ -36,6 +36,7 @@ __all__ = [
     "fdictProbePushOutcome",
     "fdictRemoteHeadsInContainer",
     "flistListContainerFiles",
+    "ffnBuildGitRunnerInContainer",
     "fsDetectProjectRepoInContainer",
     "fsRemoteUrlInContainer",
     "ftResultGitAddInContainer",
@@ -83,6 +84,26 @@ def _fsHardeningPrefix():
     return " ".join(
         shlex.quote(s) for s in gitStatus.LIST_GIT_HARDENING_CONFIG
     )
+
+
+def ffnBuildGitRunnerInContainer(connectionDocker, sContainerId, sWorkspace):
+    """Return ``ftRunGit(listArguments)`` bound to one container repository.
+
+    The callable runs ``git <hardening> <arguments>`` in ``sWorkspace``
+    and answers ``(iExitCode, sOutput)``, which is the shape the
+    reproducibility layer's git-evidence predicates take so that the
+    same predicate can be asked of a host checkout through the host
+    runner. Every argument is quoted; nothing a caller passes reaches
+    the shell as syntax.
+    """
+    def ftRunGit(listArguments):
+        sCommand = (
+            "cd " + shlex.quote(sWorkspace) + " && git "
+            + _fsHardeningPrefix() + " "
+            + " ".join(shlex.quote(str(s)) for s in listArguments)
+        )
+        return connectionDocker.ftResultExecuteCommand(sContainerId, sCommand)
+    return ftRunGit
 
 
 def fsGitHeadShaInContainer(

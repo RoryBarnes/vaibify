@@ -242,6 +242,8 @@ def fnRemoveProject(sName):
     KeyError
         If the project is not found.
     """
+    from vaibify.config.imageOrigins import fnRemoveOriginRecord
+
     def fnRemoveByName(dictRegistry):
         listProjects = dictRegistry["listProjects"]
         listRemaining = [
@@ -253,11 +255,18 @@ def fnRemoveProject(sName):
                 f"Project '{sName}' not found in registry"
             )
         dictRegistry["listProjects"] = listRemaining
+        # Un-registration is one of the three transitions that end an
+        # origin record; the image itself is the daemon's to keep.
+        fnRemoveOriginRecord(sName)
 
     _fnMutateRegistryLocked(fnRemoveByName)
 
 
-def fnConvertProjectToContainer(sOldName, sNewName):
+S_IMAGE_SOURCE_KEY = "dictImageSource"
+S_IMAGE_SOURCE_ARCHIVE = "archive"
+
+
+def fnConvertProjectToContainer(sOldName, sNewName, dictImageSource=None):
     """Re-register a host project as a container under a new name.
 
     Conversion is the one path that changes a registered project's mode
@@ -265,6 +274,11 @@ def fnConvertProjectToContainer(sOldName, sNewName):
     registry name, so the rename is the load-bearing edge: the entry's
     ``sName`` and ``sContainerName`` both become ``sNewName`` while its
     ``sDirectory`` and ``sConfigPath`` stay put — the files do not move.
+
+    ``dictImageSource`` records HOW the image is obtained when it is not
+    built from the Dockerfile: written in the same locked mutation,
+    because after this call (and after a hub restart) the author's
+    original feature set exists nowhere else on this host.
 
     Parameters
     ----------
@@ -295,8 +309,56 @@ def fnConvertProjectToContainer(sOldName, sNewName):
         dictEntry["sMode"] = "container"
         dictEntry["sName"] = sNewName
         dictEntry["sContainerName"] = sNewName
+        dictEntry.pop(S_IMAGE_SOURCE_KEY, None)
+        if dictImageSource:
+            dictEntry[S_IMAGE_SOURCE_KEY] = dict(dictImageSource)
 
     _fnMutateRegistryLocked(fnRewriteEntry)
+
+
+def fbProjectImageIsObtained(dictEntry):
+    """True iff the entry says its image is OBTAINED, never built."""
+    dictSource = (dictEntry or {}).get(S_IMAGE_SOURCE_KEY)
+    return (
+        isinstance(dictSource, dict)
+        and dictSource.get("sSource") == S_IMAGE_SOURCE_ARCHIVE
+    )
+
+
+def fnUpdateImageSource(sName, dictUpdate):
+    """Merge fields into a project's image-source record, under the lock."""
+    def fnMergeSource(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        dictSource = dict(dictEntry.get(S_IMAGE_SOURCE_KEY) or {})
+        dictSource.update(dictUpdate)
+        dictEntry[S_IMAGE_SOURCE_KEY] = dictSource
+
+    _fnMutateRegistryLocked(fnMergeSource)
+
+
+def fnSwitchProjectToBuilding(sName):
+    """Clear the image source AND the origin record in one locked mutation.
+
+    The one transition that turns an obtained environment back into a
+    built one. Splitting the two writes is how a project could carry an
+    origin record with no source (the launch guard would then admit a
+    start from the archive's provenance for an image the Dockerfile
+    built) or a source with no record (every start refused with no way
+    back). Under the registry lock so a concurrent acquisition cannot
+    interleave.
+    """
+    from vaibify.config.imageOrigins import fnRemoveOriginRecord
+
+    def fnClearSource(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        dictEntry.pop(S_IMAGE_SOURCE_KEY, None)
+        fnRemoveOriginRecord(sName)
+
+    _fnMutateRegistryLocked(fnClearSource)
 
 
 def _fdictFindEntryByName(dictRegistry, sName):

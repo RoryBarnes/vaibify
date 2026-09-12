@@ -385,6 +385,7 @@ var VaibifyReproducePublished = (function () {
                     : ((dictReport.dictImageRecheck || {}).sVerdict ||
                         "not compared")) +
             _fsFactRowHtml("Report", _fsReportLink(dictReport)) +
+            _fsReproducedManifestRow(dictReport) +
             "</table>" +
             _fsRenderFileTable(dictReport, listCarried) +
             _fsRenderFailure(dictReport.dictRerunFailure || {}) +
@@ -398,26 +399,29 @@ var VaibifyReproducePublished = (function () {
         /* Every pinned file, not only the unhappy ones: a ratio is a
            claim about a set the reader cannot see, and "which files"
            is what somebody deciding whether to trust a result is
-           asking. Diverged first, because that is what they act on. */
-        var listDiverged = dictReport.listDivergedHashes || [];
-        var listMatched = dictReport.listMatchedPaths || [];
-        if (!listDiverged.length && !listCarried.length
-                && !listMatched.length) {
-            return "";
+           asking. The shared table orders diverged first, because
+           that is what they act on. A report written before per-file
+           hashes were kept carries only the three path lists, and
+           still renders. */
+        var listOutcomes = dictReport.listFileOutcomes || [];
+        if (!listOutcomes.length) {
+            listOutcomes = VaibifyFileOutcomes.flistOutcomesFromPathLists(
+                dictReport.listDivergedHashes, listCarried,
+                dictReport.listMatchedPaths);
         }
-        var sRows = listDiverged.map(function (sPath) {
-            return "<tr><td>" + fnEscapeHtml(sPath) +
-                "</td><td>diverged</td></tr>";
-        }).join("") + listCarried.map(function (sPath) {
-            return "<tr><td>" + fnEscapeHtml(sPath) +
-                "</td><td>carried in unchanged</td></tr>";
-        }).join("") + listMatched.map(function (sPath) {
-            return "<tr><td>" + fnEscapeHtml(sPath) +
-                "</td><td>re-derived, byte-identical</td></tr>";
-        }).join("");
-        return '<table class="reproduce-files"><thead><tr><th>File</th>' +
-            "<th>Outcome</th></tr></thead><tbody>" + sRows +
-            "</tbody></table>";
+        return VaibifyFileOutcomes.fsRenderFileOutcomesTable(listOutcomes);
+    }
+
+    function _fsReproducedManifestRow(dictReport) {
+        /* The reproduced manifest is served beside the report; the
+           row is a link to it, and only when one was written. */
+        var sReportId = dictReport.sReportId || "";
+        if (!dictReport.sReproducedManifestPath || !sReportId) return "";
+        return _fsFactRowHtml("Reproduced manifest",
+            '<a href="/api/reproductions/reports/'
+            + encodeURIComponent(sReportId) + '/manifest" target="_blank" '
+            + 'rel="noopener">' +
+            fnEscapeHtml(dictReport.sReproducedManifestPath) + "</a>");
     }
 
     function _fsRenderFailure(dictFailure) {

@@ -621,6 +621,25 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
         "the attestation must name the shadow-side file whose hash "
         f"moved; got {dictAttestation['listDivergedHashes']!r}"
     )
+    # The per-file record carries the SHADOW's observed bytes: the
+    # hash of what the rerun wrote, never of the untouched clone. A
+    # comparison rooted on the wrong tree would record the pinned
+    # hash here and call the file matched.
+    dictOutput = next(
+        dictFile for dictFile in dictAttestation["listFileOutcomes"]
+        if dictFile["sPath"] == S_OUTPUT_FILENAME
+    )
+    assert dictOutput["sStatus"] == "diverged"
+    assert dictOutput["sObserved"] == hashlib.sha256(
+        b"answer = 43\n",
+    ).hexdigest()
+    assert dictOutput["sExpected"] == hashlib.sha256(
+        b"answer = 42\n",
+    ).hexdigest()
+    assert dictAttestation["sReproducedManifestPath"] == "REPRODUCED.sha256"
+    assert dictOutput["sObserved"] in (
+        pathHostClone / "REPRODUCED.sha256"
+    ).read_text()
 
 
 def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):

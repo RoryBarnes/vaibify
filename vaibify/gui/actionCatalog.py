@@ -1133,6 +1133,13 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # viewer-only agent-action invariant never saw them; the hub-app
     # invariant (testHubAppStateMutatingRoutesAreGoverned) does.
     ("POST", "/api/containers/{sName}/build"),
+    # Obtaining the author's pinned image and switching a project back
+    # to building both read the host clone and rewrite its vaibify.yml
+    # and registry entry; the acquire route also loads a tarball into
+    # the daemon. Control plane, human-only; each handler rejects the
+    # agent lane by name as well.
+    ("POST", "/api/containers/{sName}/acquire-image"),
+    ("POST", "/api/containers/{sName}/switch-to-building"),
     ("POST", "/api/containers/{sName}/start"),
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),

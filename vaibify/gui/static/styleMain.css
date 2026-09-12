@@ -4166,19 +4166,72 @@ body.proof-level-3 .toolbar-label {
 .reproduce-verdict-diverged { color: var(--color-orange, #ff9a3c); }
 .reproduce-verdict-none { color: var(--text-secondary); }
 
-.reproduce-files {
+/* The per-file outcomes table, shared by the "+" result, the Level 3
+   attestation card and the "Your reproduction" card
+   (scriptFileOutcomes.js). */
+.file-outcomes {
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
-    margin-bottom: 12px;
+    margin: 8px 0 12px;
 }
 
-.reproduce-files th,
-.reproduce-files td {
+.file-outcomes th,
+.file-outcomes td {
     text-align: left;
     padding: 3px 8px 3px 0;
     border-bottom: 1px solid var(--border-color);
     word-break: break-all;
+}
+
+.file-outcomes .file-outcome-hash {
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.file-outcomes tr.file-outcome-diverged td,
+.file-outcomes tr.file-outcome-missing td {
+    color: var(--color-red-text);
+}
+
+.file-outcomes tr.file-outcome-carried td {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Manifest comparison in the file viewers: one span per line, classed
+   by the outcome the backend graded for that line's path. Diverged
+   and missing lines carry a background so the difference survives a
+   glance; carried lines are muted because the rerun made no claim
+   about them. The browser lane reads these as COMPUTED styles off a
+   live line, so each rule must change a colour, not only a class. */
+.manifest-line {
+    display: inline;
+}
+
+.manifest-line-matched {
+    color: var(--text-primary);
+}
+
+.manifest-line-carried {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.manifest-line-diverged {
+    background-color: rgba(255, 133, 137, 0.22);
+    color: var(--color-red-text);
+}
+
+.manifest-line-missing {
+    background-color: rgba(240, 160, 80, 0.22);
+    color: #f0a050;
+}
+
+.editor-readonly-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-style: italic;
 }
 
 .reproduce-tail {
@@ -6152,6 +6205,30 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .proof-attestation-carried ul {
     margin: 4px 0 0;
     padding-left: 18px;
+}
+
+.proof-compare-row {
+    margin-top: 10px;
+}
+
+.btn-compare-manifests {
+    font-size: 12px;
+}
+
+/* The reproducer's own record, beneath the attestation and never in
+   its place. The verdict vocabulary is the report's. */
+.proof-reproduction-card.verdict-reproduced .proof-card-title {
+    color: var(--highlight-color);
+}
+
+.proof-reproduction-card.verdict-diverged .proof-card-title {
+    color: var(--color-red-text);
+}
+
+.proof-reproduction-note {
+    margin-top: 6px;
+    font-style: italic;
+    color: var(--text-secondary);
 }
 
 .proof-history-table {

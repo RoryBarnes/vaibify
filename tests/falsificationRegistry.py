@@ -1810,9 +1810,7 @@ LIST_FALSIFICATIONS = [
         # RE-ANCHORED 2026-08-31: the count is now over the COMPARED
         # entries rather than every manifest entry, because a given
         # step's outputs are carried out of the comparison.
-        old='''        "iOutputHashesMatched": max(
-            len(listCompared) - len(listMismatches), 0,
-        ),''',
+        old='''        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),''',
         new='''        "iOutputHashesMatched": len(listCompared),''',
     ),
     Falsification(
@@ -1820,7 +1818,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/rerunVerification.py',
         old='''        "bPassed": (
             bool(bRerunSucceeded)
-            and not listMismatches
+            and not listMismatchedPaths
             and not bManifestMoved
         ),''',
         new='''        "bPassed": bool(bRerunSucceeded),''',
@@ -1875,13 +1873,14 @@ LIST_FALSIFICATIONS = [
             '        filesRepo,\n'
             '        dictResult.get("sManifestDigest") or '
             'sManifestDigest,\n'
-            '        dictResult, fDuration, dictAiProvenance,\n'
+            '        dictResult, fDuration, dictAiProvenance, '
+            'sRecordKind, dictWorkflow,\n'
             '    )'
         ),
         new=(
             '    return _fbPersistAttestation(\n'
             '        filesRepo, sManifestDigest, dictResult, fDuration,\n'
-            '        dictAiProvenance,\n'
+            '        dictAiProvenance, sRecordKind, dictWorkflow,\n'
             '    )'
         ),
     ),
@@ -2001,7 +2000,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_rerun_lane_passes_the_recorded_epoch_to_the_runner',
         source='vaibify/reproducibility/rerunVerification.py',
-        old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
+        old='        iSourceDateEpochOverride=iSourceDateEpoch,',
         new='        iSourceDateEpochOverride=0,',
     ),
     # A bind-mount denylist that checks only the descendant direction is
@@ -14156,9 +14155,9 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/shadowRerun.py',
         old=(
             '    dictOutcome["sImageDigest"] = sImageReference\n'
-            '    return dictOutcome'
+            "    # Without an origin record this lane runs the image the author's"
         ),
-        new='    return dictOutcome',
+        new="    # Without an origin record this lane runs the image the author's",
     ),
     Falsification(
         nodeid=(
@@ -17269,11 +17268,12 @@ def _fdictEntry(sRel):
             '    return await asyncio.to_thread(\n'
             '        imageDeposit.fdictRecheckArchiveAgainstLocalImage, '
             'filesRepo,\n'
-            '    )\n'
+            '        None,\n'
         ),
         new=(
-            '    return imageDeposit.fdictRecheckArchiveAgainstLocalImage('
-            'filesRepo)\n'
+            '    return imageDeposit.fdictRecheckArchiveAgainstLocalImage(\n'
+            '        filesRepo,\n'
+            '        None,\n'
         ),
     ),
     Falsification(
@@ -17425,8 +17425,12 @@ def _fdictEntry(sRel):
             'test_an_image_loaded_from_the_deposit_recheck_is_vacuous'
         ),
         source='vaibify/reproducibility/imageDeposit.py',
-        old='    bLoaded = imageArchive.fbImageWasLoadedFromArchive(filesRepo)\n',
-        new='    bLoaded = False\n',
+        old=(
+            '    bLoaded = bool(bLoadedFromArchive) or (\n'
+            '        imageArchive.fbImageWasLoadedFromArchive(filesRepo)\n'
+            '    )\n'
+        ),
+        new='    bLoaded = bool(bLoadedFromArchive)\n',
     ),
     Falsification(
         nodeid=(
@@ -18020,6 +18024,8 @@ def _fdictEntry(sRel):
             '        await asyncio.to_thread(\n'
             '            _fnCommitAttestation,\n'
             '            connectionDocker, sContainerId, dictWorkflow,\n'
+            '            list(dictResult.get("listRecordPathsWritten") or []),\n'
+            '            sRecordKind,\n'
             '        )\n'
         ),
         new='',
@@ -18731,5 +18737,461 @@ def _fdictEntry(sRel):
             '            dictTarget["iPort"], _F_PROBE_TIMEOUT_SECONDS,'
         ),
         new='            443, _F_PROBE_TIMEOUT_SECONDS,',
+    ),
+    # --- 2026-09-11: a deposit is fetched from the Zenodo the record
+    # NAMES, and no redirect is followed before its host is checked ---
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_the_shell_refuses_a_redirect_off_zenodo_before_contacting_it'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the shell loop sends every hop without checking its host
+        old='        if ! fnUrlWithinAllowlist "$sUrl"; then\n',
+        new='        if false; then\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_a_recorded_service_composes_the_record_url_and_never_asks_the_resolver'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the shell follows the DOI whether or not the record names its service
+        old=(
+            '    if [ -n "$sService" ]; then\n'
+            '        if ! sBase=$(fnZenodoBaseUrl "$sService"); then\n'
+        ),
+        new=(
+            '    if false; then\n'
+            '        if ! sBase=$(fnZenodoBaseUrl "$sService"); then\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_sandbox_doi_is_asked_of_the_sandbox_never_production'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # every DOI is classified as production
+        old=(
+            '    if str(sDoi or "").strip().startswith(_S_SANDBOX_DOI_PREFIX):\n'
+            '        return "sandbox"\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return "sandbox"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_the_recorded_service_outranks_the_doi_prefix'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the record's own service name is ignored
+        old=(
+            '    sRecorded = str(dictRecord.get("sZenodoService") or "").strip()\n'
+        ),
+        new='    sRecorded = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_an_unknown_service_in_the_record_is_refused_not_guessed'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # an unknown service falls back to the DOI prefix instead of refusing
+        old=(
+            '    except ValueError as error:\n'
+            '        raise ImageAcquisitionRefusedError(\n'
+            '            "the deposit record names a Zenodo service this vaibify "\n'
+            '            f"does not know ({sRecorded!r}), so no deposit was fetched"\n'
+            '        ) from error\n'
+            '    return sRecorded\n'
+        ),
+        new=(
+            '    except ValueError:\n'
+            '        return zenodoClient.fsServiceForDoi(sDoi)\n'
+            '    return sRecorded\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_record_page_that_redirects_off_zenodo_is_refused_before_the_hop'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # the allowlist admits any origin
+        old=(
+            '    sOrigin = fsOriginOfUrl(sUrl)\n'
+            '    if sOrigin and sOrigin in listAllowedOrigins:\n'
+            '        return\n'
+        ),
+        new=(
+            '    sOrigin = fsOriginOfUrl(sUrl)\n'
+            '    if sOrigin:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_file_link_that_leaves_zenodo_is_refused'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the record's file link is downloaded with a bare requests.get
+        old=(
+            '        with zenodoClient.fresponseGetWithinAllowlist(\n'
+            '            sFileUrl, zenodoClient.flistAllowedZenodoOrigins(),\n'
+            '            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,\n'
+            '        ) as responseFile:\n'
+        ),
+        new=(
+            '        with requests.get(\n'
+            '            sFileUrl, stream=True, timeout=_T_HTTP_TIMEOUT_SECONDS,\n'
+            '        ) as responseFile:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_the_doi_follow_refuses_a_resolver_that_lands_off_zenodo'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the DOI is followed with allow_redirects=True
+        old=(
+            '        responseDoi = zenodoClient.fresponseGetWithinAllowlist(\n'
+            '            _S_DOI_RESOLVER + sDoi, _flistDoiFollowOrigins(),\n'
+            '            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,\n'
+            '        )\n'
+        ),
+        new=(
+            '        responseDoi = requests.get(\n'
+            '            _S_DOI_RESOLVER + sDoi, allow_redirects=True,\n'
+            '            timeout=_T_HTTP_TIMEOUT_SECONDS, stream=True,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_the_answer_carries_the_daemon_id_beside_the_reference'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the chain reports an empty image ID
+        old=(
+            '        "sImageId": sImageId,\n'
+            '        "sPinnedImageReference": sPinnedReference,\n'
+        ),
+        new=(
+            '        "sImageId": "",\n'
+            '        "sPinnedImageReference": sPinnedReference,\n'
+        ),
+    ),
+    # --- 2026-09-11: the reproduced manifest and the per-file record ---
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_the_outcomes_follow_the_frozen_manifest_order_line_for_line'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # the outcomes are built in the reverse of the manifest's order
+        old=(
+            '    for dictEntry in listEntries:\n'
+            '        sPath = dictEntry["sPath"]\n'
+            '        sObserved = dictObserved.get(sPath)\n'
+        ),
+        new=(
+            '    for dictEntry in reversed(listEntries):\n'
+            '        sPath = dictEntry["sPath"]\n'
+            '        sObserved = dictObserved.get(sPath)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_every_count_and_list_is_derived_from_the_outcomes'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # the matched count ignores the outcomes
+        old=(
+            '        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),\n'
+        ),
+        new='        "iOutputHashesMatched": len(listCompared),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_the_manifest_never_pins_what_a_rerun_writes'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        # the collector pins whatever a workflow declares, records included
+        old='        if sPath and not fbIsReproductionRecordPath(sPath)\n',
+        new='        if sPath\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_a_record_never_points_at_a_manifest_that_was_not_written'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        # the record names the manifest without writing it
+        old=(
+            '    sReproducedPath = fsWriteReproducedManifest(\n'
+            '        filesRepo, dictOutcome.get("listFileOutcomes") or [],\n'
+            '        sTimestampUtc, sStatus,\n'
+            '    )\n'
+        ),
+        new='    sReproducedPath = "REPRODUCED.sha256"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_the_sweep_removes_the_companion_with_the_report'
+        ),
+        source='vaibify/reproducibility/reproductionReport.py',
+        # the sweep removes the JSON and leaves the .sha256 behind
+        old=(
+            '        sReportId = sName[:-len(".json")]\n'
+            '        _fnRemoveCompanionManifest(sDirectory, sReportId)\n'
+        ),
+        new='        sReportId = sName[:-len(".json")]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_a_clone_carrying_another_identitys_attestation_records_a_reproduction'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        # every clone is the author's own
+        old='    return sCommitter.lower() != sOwnEmail.lower()\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_an_unconfigured_identity_counts_as_foreign'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        # a missing identity is taken to be the author's
+        old=(
+            '    if not sOwnEmail:\n'
+            '        return True\n'
+        ),
+        new=(
+            '    if not sOwnEmail:\n'
+            '        return False\n'
+        ),
+    ),
+    # --- 2026-09-11: containerizing from the author's pinned image ---
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_derivative_without_the_base_label_is_stale'
+        ),
+        source='vaibify/config/imageOrigins.py',
+        # any image whose ID the record names is accepted as derived
+        old=(
+            '    if str(dictLabels.get(S_PINNED_BASE_LABEL) or "") == sBase:\n'
+            '        return {"bStale": False, "sReason": ""}\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return {"bStale": False, "sReason": ""}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_malformed_overlays_label_is_refused_not_repaired'
+        ),
+        source='vaibify/reproducibility/dockerfileComposer.py',
+        # a label out of canonical order is accepted
+        old='    if listCanonical != listNames:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_labelled_image_that_disagrees_with_the_recipe_is_refused_even_without_additions'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the comparison is skipped when no agent was requested
+        old='        if listLabelled != list(listCandidate):\n',
+        new='        if listAdditional and listLabelled != list(listCandidate):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_unproven_baseline_never_fails_open'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # an absent label is treated as a proven candidate
+        old=(
+            '    if not listAdditional:\n'
+            '        fnReport(\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        fnReport(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_chain_is_differential_against_the_proven_set'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the whole merged chain is stacked, proven overlays included
+        old='        if sOverlay not in setProven\n',
+        new='        if True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_emulation_needs_both_consents'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the per-attempt body alone consents to emulation
+        old=(
+            '    bEmulationConsented = bool(bAllowEmulation) and bool(\n'
+            '        dictSource.get("bAllowEmulation"),\n'
+            '    )\n'
+        ),
+        new='    bEmulationConsented = bool(bAllowEmulation)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_origin_record_is_written_last'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the record lands before the config and registry describe the image
+        old=(
+            '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
+            '    return _fdictCommitOriginRecord(\n'
+            '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
+            '        sRunningImageId, listProven + listChain, fnReport,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictRecord = _fdictCommitOriginRecord(\n'
+            '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
+            '        sRunningImageId, listProven + listChain, fnReport,\n'
+            '    )\n'
+            '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
+            '    return dictRecord\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_switching_to_building_clears_the_source_and_the_record_together'
+        ),
+        source='vaibify/config/registryManager.py',
+        # the switch clears the registry's source and leaves the record
+        old=(
+            '        dictEntry.pop(S_IMAGE_SOURCE_KEY, None)\n'
+            '        fnRemoveOriginRecord(sName)\n'
+        ),
+        new='        dictEntry.pop(S_IMAGE_SOURCE_KEY, None)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_plain_build_of_an_obtained_image_is_refused_by_name'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # a plain build silently replaces an obtained image
+        old=(
+            '    if not fbProjectImageIsObtained(dictProject):\n'
+            '        return\n'
+            '    raise HTTPException(409, detail={"sMessage": (\n'
+            '        "This project\'s image is the author\'s pinned image, obtained "\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+            '    raise HTTPException(409, detail={"sMessage": (\n'
+            '        "This project\'s image is the author\'s pinned image, obtained "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_start_without_a_good_record_is_refused_never_the_tag'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # a start falls back to whatever the project's tag resolves to
+        old=(
+            '    if dictJudgement["bStale"]:\n'
+            '        raise RuntimeError(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise RuntimeError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_switched_daemon_never_emulates_silently'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # a daemon of another architecture emulates without consent
+        old=(
+            '    if sDaemonArchitecture.lower() == sObtainedArchitecture:\n'
+            '        return\n'
+            '    raise RuntimeError(\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+            '    raise RuntimeError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_running_base_is_the_pin_live_and_a_derivative_is_a_note'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # a derived running image is reported as the pinned image
+        old=(
+            '    dictAnswer["bPinnedImageIsLive"] = None\n'
+            '    dictAnswer["sRelation"] = "derived"\n'
+        ),
+        new=(
+            '    dictAnswer["bPinnedImageIsLive"] = True\n'
+            '    dictAnswer["sRelation"] = "derived"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_shadow_is_created_from_the_base_id_on_the_obtained_platform'
+        ),
+        source='vaibify/reproducibility/shadowRerun.py',
+        # the shadow is created from the overlay result, not the base
+        old='        dictOrigin["sBaseImageId"] if dictOrigin else sImageReference,\n',
+        new='        dictOrigin["sRunningImageId"] if dictOrigin else sImageReference,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_obtained_image_keeps_the_authors_base_fields_and_agents'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # every requested field is merged onto the author's file
+        old=(
+            '    for sKey in T_RUNTIME_YAML_KEYS:\n'
+            '        if sKey in dictRequested:\n'
+            '            dictMerged[sKey] = dictRequested[sKey]\n'
+        ),
+        new=(
+            '    for sKey in dictRequested:\n'
+            '        if sKey in dictRequested:\n'
+            '            dictMerged[sKey] = dictRequested[sKey]\n'
+        ),
     ),
 ]

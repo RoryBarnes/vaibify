@@ -2219,8 +2219,16 @@ def fnCaptureLiveImageIdentityAtConnect(
     try:
         if fbIsHostProject(sContainerId):
             return
+        dictIdentity = fdictCaptureLiveImageIdentity(sContainerId)
+        # Two facts kept apart: what the container RUNS, and whether
+        # that image is the pinned base itself or one derived from it
+        # by stacking agent overlays -- read from the project's origin
+        # record, when it has one that is not stale.
+        dictIdentity["dictDerivation"] = _fdictDescribeImageDerivation(
+            dictCtx, sContainerId, dictIdentity,
+        )
         dictCtx.setdefault("dictLiveImageIdentities", {})[sContainerId] = (
-            fdictCaptureLiveImageIdentity(sContainerId)
+            dictIdentity
         )
         _fnCapturePinnedImagePresence(dictCtx, sContainerId, dictWorkflow)
     except Exception as errorCapture:  # noqa: BLE001 — absent reads as unknown
@@ -2273,6 +2281,45 @@ def fbPinnedImageIsInLocalStore(dictCtx, sContainerId):
     return (
         dictCtx.get("dictPinnedImagePresence") or {}
     ).get(sContainerId)
+
+
+def _fdictDescribeImageDerivation(dictCtx, sContainerId, dictIdentity):
+    """Return the running image's relation to an OBTAINED pin, or ``None``.
+
+    ``{sPinnedBaseImageId, sPinnedImageReference, bRunningIsBase}``
+    from a non-stale origin record; ``None`` for a project that builds
+    its image, which is what every reader treats as "nothing to say".
+    """
+    from vaibify.docker.containerManager import fdictLiveImageOriginForProject
+    dictOrigin = fdictLiveImageOriginForProject(
+        fsContainerNameForId(dictCtx.get("docker"), sContainerId),
+    )
+    if dictOrigin is None:
+        return None
+    sBase = str(dictOrigin.get("sBaseImageId") or "")
+    return {
+        "sPinnedBaseImageId": sBase,
+        "sPinnedImageReference": str(
+            dictOrigin.get("sPinnedImageReference") or "",
+        ),
+        "bRunningIsBase": bool(sBase) and (
+            str(dictIdentity.get("sImageId") or "") == sBase
+        ),
+    }
+
+
+def fbEnvironmentWasObtained(dictCtx, sContainerId):
+    """True iff the open container runs an image OBTAINED from the author's pin.
+
+    The one predicate behind two refusals -- the Regenerate button and
+    the regenerate route -- so the ruling that an obtained envelope is
+    the author's and must not be re-pinned to this machine is cheap to
+    flip in one place.
+    """
+    dictIdentity = (
+        dictCtx.get("dictLiveImageIdentities") or {}
+    ).get(sContainerId) or {}
+    return dictIdentity.get("dictDerivation") is not None
 
 
 def fdictBuildImageArchiveDetail(
@@ -2404,11 +2451,31 @@ def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
         )
     except (OSError, ValueError, KeyError):
         sPinned = ""
-    return fdictCompareEnvelopePin(
+    dictAnswer = fdictCompareEnvelopePin(
         sPinned,
         dictIdentity.get("sImageDigest") or "",
         dictIdentity.get("sImageId") or "",
     )
+    dictDerivation = dictIdentity.get("dictDerivation")
+    dictAnswer["bEnvironmentObtained"] = dictDerivation is not None
+    if dictDerivation is None or not sPinned:
+        return dictAnswer
+    if sPinned != dictDerivation.get("sPinnedImageReference"):
+        return dictAnswer
+    # An OBTAINED image answers to its ID on this daemon, so the value
+    # comparison above cannot see that the container runs the pin. The
+    # origin record can: the running image IS the base (the pin, live)
+    # or is DERIVED from it by agent overlays -- a note, never a
+    # warning, and never reported as the pin.
+    if dictDerivation.get("bRunningIsBase"):
+        dictAnswer["bPinnedImageIsLive"] = True
+        dictAnswer["sRelation"] = "base"
+        return dictAnswer
+    dictAnswer["bPinnedImageIsLive"] = None
+    dictAnswer["sRelation"] = "derived"
+    dictAnswer["sPinnedBaseImageId"] = dictDerivation.get("sPinnedBaseImageId")
+    dictAnswer["sRunningImageId"] = dictIdentity.get("sImageId") or ""
+    return dictAnswer
 
 
 async def fdictHandleConnect(

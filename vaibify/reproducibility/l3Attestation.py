@@ -44,6 +44,11 @@ import json
 import posixpath
 from datetime import datetime, timezone
 
+from vaibify.reproducibility.manifestWriter import (
+    S_REPRODUCED_MANIFEST_FILENAME,
+    S_REPRODUCED_MANIFEST_HISTORY_DIR,
+    fsRenderReproducedManifest,
+)
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
 
@@ -60,6 +65,9 @@ __all__ = [
     "fbInvalidateAttestation",
     "fnWriteAttestation",
     "fsCurrentManifestDigest",
+    "fsCurrentTimestampUtc",
+    "fsReproducedManifestHistoryPath",
+    "fsWriteReproducedManifest",
     "ftJudgeArchivedAttestation",
     "S_ARCHIVED_ATTESTATION_ABSENT",
     "S_ARCHIVED_ATTESTATION_UNREADABLE",
@@ -69,7 +77,7 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 4
+I_SCHEMA_VERSION = 5
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
@@ -167,6 +175,23 @@ def _fdictMigrateAttestationV3ToV4(dictPayload):
     return dictMigrated
 
 
+def _fdictMigrateAttestationV4ToV5(dictPayload):
+    """Bring a v4 record to v5: the per-file hashes were thrown away then.
+
+    ``None`` for all three, on the ``dictRerunFailure`` precedent: a
+    v4 comparison computed every observed hash and kept only the
+    mismatched paths, wrote no reproduced manifest, and recorded no
+    provenance beside it. An empty list would claim the rerun graded
+    nothing, which is a different statement from "nobody kept it".
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 5
+    dictMigrated["listFileOutcomes"] = None
+    dictMigrated["dictReproductionProvenance"] = None
+    dictMigrated["sReproducedManifestPath"] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
 # v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L6 work
@@ -175,6 +200,7 @@ _LIST_ATTESTATION_MIGRATORS = [
     (1, _fdictMigrateAttestationV1ToV2),
     (2, _fdictMigrateAttestationV2ToV3),
     (3, _fdictMigrateAttestationV3ToV4),
+    (4, _fdictMigrateAttestationV4ToV5),
 ]
 
 
@@ -266,7 +292,9 @@ def fdictBuildAttestation(
     fDurationSeconds, iOutputHashesMatched, iOutputHashesTotal,
     listDivergedHashes=None, sRunLogPath="", dictAiProvenance=None,
     listCarriedPaths=None, dictRerunFailure=None,
-    dictImageArchiveCheck=None,
+    dictImageArchiveCheck=None, listFileOutcomes=None,
+    dictReproductionProvenance=None, sReproducedManifestPath=None,
+    sAttestedAtUtc="",
 ):
     """Return a fully-populated attestation dict (no file IO).
 
@@ -302,13 +330,27 @@ def fdictBuildAttestation(
     itself, which matches always and proves nothing -- and a vacuous
     check written as a pass is a claim nobody earned. ``None`` means
     the record predates the check.
+
+    ``listFileOutcomes`` is the per-file verdict list the comparison
+    produced -- every frozen manifest entry with its expected and
+    observed hash -- and ``sReproducedManifestPath`` names the file
+    those hashes were rendered into, beside ``MANIFEST.sha256``, so a
+    person can compare the two with their own eyes. The record is
+    written AFTER that file, and never points at one that was not.
+    ``dictReproductionProvenance`` says what ran: the image, how it
+    was obtained, the platform, the epoch. ``None`` in any of the
+    three means the record predates them.
+
+    ``sAttestedAtUtc`` may be supplied so the record shares its
+    timestamp with the manifest copy written beside it; empty means
+    now.
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
         "sStatus": sStatus,
         "sManifestDigestAtAttestation": sManifestDigest,
         "sImageDigest": sImageDigest or "",
-        "sAttestedAtUtc": _fsCurrentTimestamp(),
+        "sAttestedAtUtc": sAttestedAtUtc or _fsCurrentTimestamp(),
         "fDurationSeconds": float(fDurationSeconds),
         "iOutputHashesMatched": int(iOutputHashesMatched),
         "iOutputHashesTotal": int(iOutputHashesTotal),
@@ -323,9 +365,51 @@ def fdictBuildAttestation(
             else dict(dictImageArchiveCheck)
         ),
         "listDivergedHashes": list(listDivergedHashes or []),
+        "listFileOutcomes": (
+            None if listFileOutcomes is None
+            else [dict(dictFile) for dictFile in listFileOutcomes]
+        ),
+        "dictReproductionProvenance": (
+            None if dictReproductionProvenance is None
+            else dict(dictReproductionProvenance)
+        ),
+        "sReproducedManifestPath": sReproducedManifestPath,
         "sRunLogPath": sRunLogPath,
         "dictAiProvenance": dictAiProvenance,
     }
+
+
+def fsWriteReproducedManifest(
+    filesRepo, listFileOutcomes, sTimestampUtc, sStatus,
+):
+    """Write the reproduced manifest; return its repo-relative path or "".
+
+    The timestamped copy under the history directory lands FIRST, then
+    the latest as ``REPRODUCED.sha256`` at the repository root, both
+    through the adapter's atomic write; the record that names the root
+    path is built by the caller only after this returns, so a record
+    can never point at a manifest that was not written. Empty when
+    there is nothing to render -- a rerun that compared nothing writes
+    no manifest, and the record says ``None`` rather than naming a
+    file of zero lines.
+    """
+    if not listFileOutcomes:
+        return ""
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sText = fsRenderReproducedManifest(listFileOutcomes)
+    filesRepo.fnWriteTextAtomic(
+        fsReproducedManifestHistoryPath(sTimestampUtc, sStatus), sText,
+    )
+    filesRepo.fnWriteTextAtomic(S_REPRODUCED_MANIFEST_FILENAME, sText)
+    return S_REPRODUCED_MANIFEST_FILENAME
+
+
+def fsReproducedManifestHistoryPath(sTimestampUtc, sStatus):
+    """Return the timestamped copy's path, sanitized like the record's."""
+    return posixpath.join(
+        S_REPRODUCED_MANIFEST_HISTORY_DIR,
+        _fsSanitizeTimestamp(sTimestampUtc) + f"_{sStatus}.sha256",
+    )
 
 
 def fnWriteAttestation(filesRepo, dictAttestation):
@@ -399,11 +483,18 @@ def _fsCurrentTimestamp():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def fsCurrentTimestampUtc():
+    """The attestation's timestamp format, for a record written beside one."""
+    return _fsCurrentTimestamp()
+
+
 def _fsHistoryFilenameFor(dictAttestation):
     """Return the per-attempt archive filename derived from the timestamp."""
     sTimestamp = dictAttestation.get("sAttestedAtUtc") or _fsCurrentTimestamp()
-    sSanitized = (
-        sTimestamp.replace(":", "").replace("-", "").replace("Z", "Z")
-    )
     sStatus = dictAttestation.get("sStatus", "unknown")
-    return f"{sSanitized}_{sStatus}.json"
+    return f"{_fsSanitizeTimestamp(sTimestamp)}_{sStatus}.json"
+
+
+def _fsSanitizeTimestamp(sTimestamp):
+    """Return the timestamp with the characters a filename may not carry removed."""
+    return sTimestamp.replace(":", "").replace("-", "")

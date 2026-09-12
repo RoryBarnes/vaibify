@@ -196,6 +196,11 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
     ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,
+    # Obtaining the author's pinned image, and switching back to
+    # building, are pre-container hub operations exactly like build.
+    ("POST", "/api/containers/{sName}/acquire-image"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/switch-to-building"):
+        S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/start"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/containers/{sName}/start/cancel"):
         S_SCOPE_CONTAINER_LIFECYCLE,

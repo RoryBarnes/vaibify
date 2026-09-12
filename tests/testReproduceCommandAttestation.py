@@ -329,7 +329,7 @@ def test_write_attestation_from_run_handles_oserror(fixtureRepo):
     """An OSError during write surfaces as False and a warning."""
     dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     with patch(
-        "vaibify.cli.commandReproduce.fnWriteAttestation",
+        "vaibify.reproducibility.reproductionRecord.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         bWritten = commandReproduce._fbWriteAttestationFromRun(

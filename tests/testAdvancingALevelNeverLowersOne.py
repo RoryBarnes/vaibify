@@ -92,6 +92,11 @@ DICT_WRITER_ARTIFACTS = {
     "fnWriteManifest": (_S_MANIFEST,),
     "fsGenerateReproduceScript": (_S_REPRODUCE_SCRIPT,),
     "fnWriteAttestation": (_S_ATTESTATION,),
+    # The shared verification writer: the reproduced manifest, then the
+    # attestation (or a reproduction record) naming it. The route calls
+    # it instead of fnWriteAttestation directly, so the scan must know
+    # it writes the attestation or the verify crossing goes invisible.
+    "flistWriteVerificationOutcome": (_S_ATTESTATION,),
     "fnGenerateRequirementsLock": (_S_REQUIREMENTS_LOCK,),
     "fdictGenerateReproducibilityEnvelope": (
         _S_MANIFEST, _S_REQUIREMENTS_LOCK, _S_ENVIRONMENT_JSON,

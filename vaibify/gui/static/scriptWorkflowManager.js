@@ -515,6 +515,7 @@ var VaibifyWorkflowManager = (function () {
         "Summary",
         "How to become a Project",
         "Files to Copy",
+        "Environment",
     ];
     /* The wizard's pages are a CATALOGUE; which of them a project
        needs depends on its mode. A host project has no image to
@@ -528,7 +529,7 @@ var VaibifyWorkflowManager = (function () {
     var _DICT_WIZARD_PAGE = {
         DIRECTORY: 0, TEMPLATE: 1, NAME: 2, PYTHON: 3,
         REPOSITORIES: 4, FEATURES: 5, PACKAGES: 6, SUMMARY: 7,
-        DESTINATION: 8, FILES: 9,
+        DESTINATION: 8, FILES: 9, ENVIRONMENT: 10,
     };
     var _T_CONTAINER_WIZARD_PAGES = [
         _DICT_WIZARD_PAGE.DIRECTORY, _DICT_WIZARD_PAGE.TEMPLATE,
@@ -559,20 +560,35 @@ var VaibifyWorkflowManager = (function () {
        which of their own files cross over. Only the CONTAINER branches
        ask -- a host Project's files already live where the project
        runs, so the promote branch below has no such page. */
+    /* ENVIRONMENT sits right after NAME, ALWAYS: it is where the
+       researcher chooses between obtaining the author's pinned image
+       and building from the Dockerfile, and when the clone pins
+       nothing obtainable it is where the refusal is shown -- a page
+       that only appeared when the choice existed would leave a
+       researcher with no explanation of why it never did. */
     var _T_CONVERT_WIZARD_PAGES = [
-        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.PYTHON,
-        _DICT_WIZARD_PAGE.REPOSITORIES, _DICT_WIZARD_PAGE.FEATURES,
-        _DICT_WIZARD_PAGE.FILES, _DICT_WIZARD_PAGE.PACKAGES,
+        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.ENVIRONMENT,
+        _DICT_WIZARD_PAGE.PYTHON, _DICT_WIZARD_PAGE.REPOSITORIES,
+        _DICT_WIZARD_PAGE.FEATURES, _DICT_WIZARD_PAGE.FILES,
+        _DICT_WIZARD_PAGE.PACKAGES, _DICT_WIZARD_PAGE.SUMMARY,
+    ];
+    /* Obtaining the author's pinned image asks no Python version, no
+       repositories and no packages: the image already exists and
+       those describe it. Features stay -- agents can be stacked on
+       the pinned image as overlays -- and so do the files to copy. */
+    var _T_CONVERT_PINNED_IMAGE_PAGES = [
+        _DICT_WIZARD_PAGE.NAME, _DICT_WIZARD_PAGE.ENVIRONMENT,
+        _DICT_WIZARD_PAGE.FEATURES, _DICT_WIZARD_PAGE.FILES,
         _DICT_WIZARD_PAGE.SUMMARY,
     ];
+    var _S_ENVIRONMENT_SOURCE_BUILD = "build";
+    var _S_ENVIRONMENT_SOURCE_ARCHIVE = "archive";
     /* A host SANDBOX becoming a Project first chooses its destination.
        Both branches open on the same Destination page (position 0), so
        switching the choice keeps position 0 valid and re-lists only the
        pages after it. The container branch is the convert list above
        with the choice prepended; the host branch collects nothing but
        a host-safe name and a summary -- no image, no build. */
-    var _T_CONVERT_CHOICE_PAGES = [_DICT_WIZARD_PAGE.DESTINATION].concat(
-        _T_CONVERT_WIZARD_PAGES);
     var _T_PROMOTE_CHOICE_PAGES = [
         _DICT_WIZARD_PAGE.DESTINATION, _DICT_WIZARD_PAGE.NAME,
         _DICT_WIZARD_PAGE.SUMMARY,
@@ -755,6 +771,26 @@ var VaibifyWorkflowManager = (function () {
         'directory is a repository, so your history comes along and ' +
         'the container&rsquo;s copy is a real git repo, which vaibify ' +
         'workflows require.</p>',
+
+        '<p>Where the container&rsquo;s image comes from.</p>' +
+        '<p><strong>Use the author&rsquo;s pinned image</strong> ' +
+        '&mdash; offered when this directory is a clone of a ' +
+        'published project whose reproducibility envelope pins an ' +
+        'image by content digest. Vaibify obtains that exact image: ' +
+        'a registry pull first, then the archived Zenodo deposit, ' +
+        'then a copy already on this daemon. Your reruns then use ' +
+        'the same bytes the author&rsquo;s results came from. Agents ' +
+        'you add are stacked on top as overlays; the base ' +
+        'environment (Python, packages, LaTeX and the like) is fixed ' +
+        'by the image.</p>' +
+        '<p><strong>Build from the Dockerfile</strong> &mdash; the ' +
+        'ordinary path. The build produces a different image digest, ' +
+        'so the result cannot reproduce the author&rsquo;s bytes ' +
+        'exactly, and the project will pin its own environment.</p>' +
+        '<p><strong>Allow emulation</strong> appears when the pinned ' +
+        'image was built for a different processor architecture than ' +
+        'this daemon has. Emulation works but is slow, and the ' +
+        'reproduction is recorded as emulated.</p>',
     ];
     var _LIST_FEATURE_DEFINITIONS = [
         {bIsAgent: true, sKey: "claude", sLabel: "Claude Code CLI",

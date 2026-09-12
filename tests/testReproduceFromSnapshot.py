@@ -321,8 +321,11 @@ def _flistStagingTokens():
 
 
 def _flistReports():
+    """The report FILES only: a report's reproduced manifest sits beside it."""
     sRoot = reproductionReport.fsReportsDirectory()
-    return sorted(os.listdir(sRoot)) if os.path.isdir(sRoot) else []
+    if not os.path.isdir(sRoot):
+        return []
+    return sorted(sName for sName in os.listdir(sRoot) if sName.endswith(".json"))
 
 
 @pytest.mark.falsification
