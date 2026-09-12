@@ -5608,7 +5608,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # responsibility (this module builds the poll payloads), so the
     # seam a split would need does not exist here; the candidate seam
     # is moving the whole archive-row builder beside its routes.
-    "pipelineServer.py": 3225,
+    # RAISED to 3287 (2026-09-10): the terminal resize became an
+    # ORDERING problem rather than a single ioctl call. xterm
+    # re-wraps its buffer the instant it is resized while the
+    # program in the pane learns its width only on SIGWINCH, so a
+    # repainting agent had its frames painted at a width they were
+    # not composed for and stranded old output on screen -- the
+    # duplicated-text report that stood for months. The fix is the
+    # read loop draining the pty and resizing it BEFORE the browser
+    # is told it may reflow. That is the same responsibility this
+    # module already owns (it holds both terminal loops), so the
+    # growth is one concern deepening, not a second arriving.
+    # A split of the terminal streaming loops into their own module
+    # is the real seam here and is worth doing on its own terms --
+    # deliberately NOT bundled into a defect fix.
+    "pipelineServer.py": 3282,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

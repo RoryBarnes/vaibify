@@ -1577,6 +1577,40 @@ def fnSignalTerminalAbnormalExit(dictInteractive):
     )
 
 
+async def _fnApplyPendingResizeAndAcknowledge(
+    session, websocket, dictPendingResize,
+):
+    """Apply a queued PTY resize between reads, then acknowledge it.
+
+    The ioctl happens HERE, in the read loop, so the acknowledgement
+    marks an exact point in the OUTPUT stream and the browser can
+    reflow without painting old-width text into a re-wrapped buffer.
+    Why that ordering, and what it measured, is in
+    tests/testTerminalResizeOrdering.py.
+    """
+    if not dictPendingResize:
+        return
+    # DRAIN FIRST: the pty still holds frames composed for the OLD
+    # width. Acknowledging before forwarding them measured three
+    # stale frames on a real pane; draining first, one.
+    while True:
+        baPending = session.fbaReadOutput()
+        if not baPending:
+            break
+        await websocket.send_bytes(baPending)
+    iRows = dictPendingResize.get("iRows", 24)
+    iColumns = dictPendingResize.get("iColumns", 80)
+    iSequence = dictPendingResize.get("iSequence", 0)
+    dictPendingResize.clear()
+    session.fnResize(iRows, iColumns)
+    await websocket.send_json({
+        "sType": "resizeApplied",
+        "iSequence": iSequence,
+        "iRows": iRows,
+        "iColumns": iColumns,
+    })
+
+
 async def _fbReadOnceAndForward(session, websocket):
     """Read one chunk and forward to the websocket; True on success."""
     baOutput = session.fbaReadOutput()
@@ -1587,7 +1621,9 @@ async def _fbReadOnceAndForward(session, websocket):
     return True
 
 
-async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
+async def fnTerminalReadLoop(
+    session, websocket, dictInteractive=None, dictPendingResize=None,
+):
     """Continuously read terminal output and send to WebSocket.
 
     Posts ``complete:130`` to ``dictInteractive`` via
@@ -1598,6 +1634,9 @@ async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
     try:
         while session._bRunning:
             try:
+                await _fnApplyPendingResizeAndAcknowledge(
+                    session, websocket, dictPendingResize,
+                )
                 await _fbReadOnceAndForward(session, websocket)
             except Exception:
                 bAbnormal = True
@@ -1609,6 +1648,7 @@ async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
 
 async def fnTerminalInputLoop(
     session, websocket, fbFrameCredentialStillActive=None,
+    dictPendingResize=None,
 ):
     """Receive WebSocket messages and route to terminal session.
 
@@ -1628,11 +1668,19 @@ async def fnTerminalInputLoop(
         if "bytes" in message:
             session.fnSendInput(message["bytes"])
         elif "text" in message:
-            _fnHandleTerminalText(session, message["text"])
+            _fnHandleTerminalText(
+                session, message["text"], dictPendingResize,
+            )
 
 
-def _fnHandleTerminalText(session, sText):
-    """Parse a JSON text message and handle resize or kill."""
+def _fnHandleTerminalText(session, sText, dictPendingResize=None):
+    """Parse a JSON text message and handle resize or kill.
+
+    A resize is QUEUED, not applied: see
+    :func:`_fnApplyPendingResizeAndAcknowledge`. ``dictPendingResize``
+    is ``None`` only for callers with no read loop (direct-library and
+    test paths), which resize at once and get no acknowledgement.
+    """
     try:
         dictData = json.loads(sText)
     except (json.JSONDecodeError, ValueError):
@@ -1640,7 +1688,14 @@ def _fnHandleTerminalText(session, sText):
     if dictData.get("sType") == "resize":
         iRows = max(1, min(500, int(dictData.get("iRows", 24))))
         iColumns = max(1, min(1000, int(dictData.get("iColumns", 80))))
-        session.fnResize(iRows, iColumns)
+        if dictPendingResize is None:
+            session.fnResize(iRows, iColumns)
+            return
+        dictPendingResize.update({
+            "iRows": iRows,
+            "iColumns": iColumns,
+            "iSequence": int(dictData.get("iSequence") or 0),
+        })
     elif dictData.get("sType") == "kill":
         session.fnKillForeground()
 
@@ -1693,13 +1748,20 @@ async def fnRunTerminalSession(
         await websocket.send_bytes(
             sIntroductionBanner.encode("utf-8"),
         )
+    # The two loops share one slot: the input loop puts a requested
+    # resize in, the read loop takes it out and acknowledges it at a
+    # known point in the output stream.
+    dictPendingResize = {}
     taskReader = asyncio.create_task(
-        fnTerminalReadLoop(session, websocket, dictInteractive)
+        fnTerminalReadLoop(
+            session, websocket, dictInteractive, dictPendingResize,
+        )
     )
     try:
         await fnTerminalInputLoop(
             session, websocket,
             fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+            dictPendingResize=dictPendingResize,
         )
     except WebSocketDisconnect:
         pass

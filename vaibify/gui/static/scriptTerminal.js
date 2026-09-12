@@ -32,7 +32,25 @@ const VaibifyTerminal = (function () {
         background: "#0d0d1a",
         foreground: "#e0e0e8",
         cursor: "#13aed5",
-        selectionBackground: "rgba(19, 174, 213, 0.3)",
+        /* Selection contrast is measured, not eyeballed. At 0.3
+           the highlight sits at 1.66:1 against this background --
+           below WCAG 1.4.11's 3:1 for non-text UI -- and a
+           researcher reported being unable to tell whether
+           anything was selected. It is pixel math, identical on
+           every machine; displays with more generous gamma merely
+           flatter it, which is why it read as fine on two boxes
+           and not a third.
+
+           Naming the selection FOREGROUND is what makes the fix
+           modest. While the selected text inherited the pane's
+           own colour, no alpha satisfied both limits at once:
+           anything visible enough to clear 3:1 pushed the text
+           below 4.5:1. Pinning it to white decouples them --
+           3.71:1 and 5.19:1, both with margin, and no inversion.
+           tests/testTerminalSelectionContrast.py recomputes both
+           rather than trusting these numbers. */
+        selectionBackground: "rgba(19, 174, 213, 0.65)",
+        selectionForeground: "#ffffff",
         black: "#1e1e2e",
         /* Text-grade on the terminal background (4.9:1) — programs
            print error prose in ANSI red, so it must read as text,
@@ -192,6 +210,11 @@ const VaibifyTerminal = (function () {
             resizeObserver: null,
             bFitDeferred: false,
             iRefitTimer: null,
+            /* A reflow waits for the hub to confirm the ioctl; these
+               hold that in-flight request. */
+            iResizeSequence: 0,
+            dictPendingResize: null,
+            iResizeAckTimer: null,
             iCopyOnSelectTimer: null,
         };
         dictPane.listTabs.push(dictTab);
@@ -340,6 +363,7 @@ const VaibifyTerminal = (function () {
         dictTab.terminal = terminal;
         dictTab.fitAddon = fitAddon;
 
+        fnTrackFollowingOutput(dictTab, terminal);
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
         fnBindScrollbackWheelHandler(terminal);
         if (fbTerminalIsAvailableHere()) {
@@ -358,14 +382,37 @@ const VaibifyTerminal = (function () {
         terminal.focus();
     }
 
+    /* Ctrl+Insert is the copy shortcut that cannot be taken away.
+
+       Ctrl+Shift+C is the conventional terminal copy on Linux and is
+       ALSO Firefox's Inspector shortcut. Whether the page ever
+       receives it was measured to differ between two Firefox installs
+       on two Linux distributions -- same browser, same page, same
+       version of this file: on one it copies, on the other the
+       developer tools open over the researcher's work and the
+       keystroke never reaches this handler at all. A copy shortcut
+       whose arrival depends on which machine you sat down at is not a
+       copy shortcut, so the pane also accepts Ctrl+Insert, which no
+       browser reserves.
+
+       Ctrl+Shift+C is kept because where it does arrive it is what a
+       Linux researcher will reach for first. */
     function fbHandleCopyKeyEvent(event, terminal) {
         if (event.type !== "keydown") return true;
-        if (String(event.key).toLowerCase() !== "c") return true;
-        var bMacintoshCopy = event.metaKey && !event.ctrlKey;
-        var bLinuxCopy = event.ctrlKey && event.shiftKey;
-        if (!bMacintoshCopy && !bLinuxCopy) return true;
-        if (!terminal.hasSelection()) return true;
+        var sKey = String(event.key).toLowerCase();
+        var bMacintoshCopy = sKey === "c" && event.metaKey
+            && !event.ctrlKey;
+        var bLinuxCopy = sKey === "c" && event.ctrlKey && event.shiftKey;
+        var bInsertCopy = sKey === "insert" && event.ctrlKey;
+        if (!bMacintoshCopy && !bLinuxCopy && !bInsertCopy) return true;
+        /* Swallowed whether or not anything is selected. Returning
+           early on an empty selection let the keystroke fall through
+           to the browser, so the SAME key copied or opened a
+           developer tool depending on state the researcher cannot
+           see. Doing nothing is the right answer to "copy with
+           nothing selected". */
         event.preventDefault();
+        if (!terminal.hasSelection()) return false;
         VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());
         return false;
     }
@@ -373,8 +420,12 @@ const VaibifyTerminal = (function () {
     function fnFlushDeferredFit(dictTab) {
         if (!dictTab.bFitDeferred) return;
         if (dictTab.terminal && dictTab.terminal.hasSelection()) return;
-        dictTab.bFitDeferred = false;
-        if (dictTab.fitAddon) dictTab.fitAddon.fit();
+        /* Through the same road as every other refit, so a fit
+           released here is ordered against the PTY exactly like one
+           the observer raised -- and is logged. A raw fitAddon.fit()
+           here would reflow the buffer immediately and hand the copy
+           path its own private copy of the repaint race. */
+        fnRefitTabPreservingSelection(dictTab, dictTab.fitAddon);
     }
 
     /* Copy-on-select: onSelectionChange fires repeatedly during a
@@ -723,7 +774,9 @@ const VaibifyTerminal = (function () {
             } else if (typeof event.data === "string") {
                 try {
                     var dictData = JSON.parse(event.data);
-                    if (dictData.sType === "error") {
+                    if (dictData.sType === "resizeApplied") {
+                        fnAcknowledgeResize(dictTab, dictData);
+                    } else if (dictData.sType === "error") {
                         terminal.write(
                             "\r\nError: " + dictData.sMessage + "\r\n"
                         );
@@ -749,15 +802,15 @@ const VaibifyTerminal = (function () {
             }
         });
 
-        dictTab.disposableOnResize = terminal.onResize(function (size) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    sType: "resize",
-                    iRows: size.rows,
-                    iColumns: size.cols,
-                }));
-            }
-        });
+        /* Deliberately NOT sending a resize here. Every dimension
+           change now goes out as a request BEFORE the buffer
+           reflows (fnRequestResizeBeforeReflowing), so this fires
+           only as the LAST step of a resize the hub has already
+           applied. Sending again would ask for what was just done
+           and buy a second, pointless round trip. The one resize
+           that still travels on its own is the initial sync in
+           ws.onopen, which tells a brand-new shell the size the pane
+           already is. */
     }
 
     /* The deliberate close codes, named. A researcher told only
@@ -845,8 +898,177 @@ const VaibifyTerminal = (function () {
         if (!fbDimensionsRefitNeeded(dictTab.terminal, dictProposed)) {
             return;
         }
+        fnRequestResizeBeforeReflowing(dictTab, dictProposed);
+    }
+
+    /* Why the browser does not simply fit.
+
+       xterm REFLOWS its buffer the instant it is resized, re-wrapping
+       text that is already on screen. The program in the pane learns
+       its new width much later: the request travels over the socket,
+       the hub applies the ioctl, and only then does SIGWINCH reach
+       the program. In between, a program that repaints in place --
+       cursor up N rows, clear, reprint, which is what a full-screen
+       agent does dozens of times a second -- composes its frame for
+       the OLD width and paints it into a buffer already re-wrapped to
+       the NEW one. Its cursor-up lands short, the erase misses, and
+       the old frame survives above the new one. Measured on a real
+       pane against a SIGWINCH-aware repainter: three residual frames
+       without this ordering, one with it.
+
+       So the reflow WAITS for the hub to say the ioctl has happened.
+       Because that acknowledgement travels the same socket as the
+       output, everything composed at the old width arrives before it
+       and is painted into the old-width buffer, and everything after
+       it is painted into the new one. The ordering, not the delay, is
+       what fixes this -- see _fnApplyPendingResizeAndAcknowledge in
+       pipelineServer.py, which is why the ioctl happens in the READ
+       loop rather than where the request lands. */
+    var _I_RESIZE_ACKNOWLEDGEMENT_TIMEOUT_MILLISECONDS = 750;
+
+    function fnRequestResizeBeforeReflowing(dictTab, dictProposed) {
+        var ws = dictTab.websocket;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            /* No shell to coordinate with: nothing can be composing
+               text at the old width, so reflow now. */
+            fnApplyProposedDimensions(dictTab, dictProposed);
+            return;
+        }
+        dictTab.iResizeSequence = (dictTab.iResizeSequence || 0) + 1;
+        dictTab.dictPendingResize = dictProposed;
+        ws.send(JSON.stringify({
+            sType: "resize",
+            iRows: dictProposed.rows,
+            iColumns: dictProposed.cols,
+            iSequence: dictTab.iResizeSequence,
+        }));
+        fnArmResizeAcknowledgementTimeout(dictTab);
+    }
+
+    /* A hub that never acknowledges must not leave the pane the wrong
+       size for its container for ever. The fallback reflows anyway,
+       accepting the race this ordering exists to avoid rather than
+       leaving the researcher with a pane that no longer fits. */
+    function fnArmResizeAcknowledgementTimeout(dictTab) {
+        fnDisarmResizeAcknowledgementTimeout(dictTab);
+        dictTab.iResizeAckTimer = window.setTimeout(function () {
+            dictTab.iResizeAckTimer = null;
+            console.warn(
+                "[terminal] no resize acknowledgement; reflowing "
+                + "without it");
+            fnApplyProposedDimensions(
+                dictTab, dictTab.dictPendingResize);
+        }, _I_RESIZE_ACKNOWLEDGEMENT_TIMEOUT_MILLISECONDS);
+    }
+
+    function fnDisarmResizeAcknowledgementTimeout(dictTab) {
+        if (dictTab.iResizeAckTimer) {
+            window.clearTimeout(dictTab.iResizeAckTimer);
+            dictTab.iResizeAckTimer = null;
+        }
+    }
+
+    function fnAcknowledgeResize(dictTab, dictData) {
+        if ((dictData.iSequence || 0) !== (dictTab.iResizeSequence || 0)) {
+            /* A newer resize is already in flight; reflowing to the
+               older size would undo it and start the race again. Its
+               fallback is left armed, because this acknowledgement
+               says nothing about whether that one will arrive. */
+            return;
+        }
+        fnDisarmResizeAcknowledgementTimeout(dictTab);
+        fnApplyProposedDimensions(dictTab, {
+            cols: dictData.iColumns,
+            rows: dictData.iRows,
+        });
+    }
+
+    /* Is the pane still following the newest output?
+
+       Asked of the SCROLLING ELEMENT, not of the buffer's ydisp. The
+       buffer's view position lags behind its base while output is
+       arriving -- measured mid-stream: ydisp 6 against baseY 14 on a
+       pane sitting flush at the bottom of its scrollbar -- so reading
+       the buffer answers "the researcher has scrolled up" about a
+       pane nobody has touched. The element's own geometry is what the
+       researcher can see, and it is the thing xterm restores.
+
+       The row height is the tolerance: within one row of the bottom
+       is at the bottom, which absorbs sub-pixel rounding without ever
+       admitting a genuine scroll-back. */
+    function fbPaneIsFollowingOutput(terminal) {
+        if (!terminal || !terminal.element) return true;
+        var elViewport = terminal.element.querySelector(".xterm-viewport");
+        if (!elViewport) return true;
+        var fRemaining = elViewport.scrollHeight - elViewport.scrollTop
+            - elViewport.clientHeight;
+        var fRowHeight = terminal.rows > 0
+            ? elViewport.clientHeight / terminal.rows
+            : _I_FALLBACK_CELL_HEIGHT_PIXELS;
+        return fRemaining <= Math.max(fRowHeight, 1);
+    }
+
+    /* Put the pane back on the newest line after a reflow.
+
+       Once, and again on the next frame. The immediate call is not
+       enough on its own: resize() re-wraps the buffer but the
+       viewport's own dimensions are recomputed asynchronously, so a
+       scroll issued in the same tick is measured against the geometry
+       the pane had BEFORE the reflow and lands short. Landing short
+       is not a cosmetic miss -- xterm resumes auto-scrolling only for
+       a pane that is exactly at the bottom, so being one row off
+       stops the pane following its output for the rest of the
+       session. */
+    /* Remember whether the researcher is following the output, kept
+       up to date as they scroll rather than measured when a resize
+       arrives.
+
+       Measuring at resize time cannot work: by the time anything of
+       ours runs, the browser has already re-laid-out the pane, so the
+       element reports its NEW height against a buffer that has not
+       reflowed yet. Measured on a real pane, that combination read
+       "128 pixels from the bottom" -- a scroll-back that had not
+       happened -- for a pane the researcher had never touched.
+
+       Output-driven scrolling keeps the answer true, because xterm
+       moves a following pane to the bottom as it writes; only a
+       researcher scrolling back makes it false. */
+    function fnTrackFollowingOutput(dictTab, terminal) {
+        var elViewport = terminal.element
+            && terminal.element.querySelector(".xterm-viewport");
+        if (!elViewport) return;
+        dictTab.bFollowingOutput = true;
+        elViewport.addEventListener("scroll", function () {
+            dictTab.bFollowingOutput = fbPaneIsFollowingOutput(terminal);
+        });
+    }
+
+    function fnApplyProposedDimensions(dictTab, dictProposed) {
+        if (!dictProposed || !dictTab.terminal) return;
+        dictTab.dictPendingResize = null;
         var dictBefore = fdictCaptureTerminalMetrics(dictTab.terminal);
-        fitAddon.fit();
+        var bWasFollowingOutput = dictTab.bFollowingOutput !== false;
+        dictTab.terminal.resize(dictProposed.cols, dictProposed.rows);
+        /* A reflow re-wraps every line, so the row the viewport was
+           parked on is no longer the row it should be parked on --
+           measured on a real pane, a resize while output streamed left
+           it 16 pixels down a buffer 1475 tall, showing the fourth
+           line of forty. xterm only auto-scrolls a pane that is
+           already at the bottom, so it never recovered: new output
+           kept arriving below a viewport that had stopped following
+           it, and from the chair the terminal simply stopped.
+
+           Restored only when it WAS following. A researcher who had
+           scrolled up to read something is reading it, and yanking
+           them to the newest line because the window changed size
+           would be its own defect. */
+        if (bWasFollowingOutput) {
+            /* Landing one row short is not a cosmetic miss:
+               xterm resumes auto-scrolling only for a pane exactly at
+               the bottom, so a near miss stops it following its
+               output for the rest of the session. */
+            dictTab.terminal.scrollToBottom();
+        }
         var dictAfter = fdictCaptureTerminalMetrics(dictTab.terminal);
         fnLogResizeChange(dictBefore, dictAfter, dictProposed);
     }
@@ -895,6 +1117,8 @@ const VaibifyTerminal = (function () {
         dictTab.disposableOnData = null;
         if (dictTab.disposableOnResize) dictTab.disposableOnResize.dispose();
         dictTab.disposableOnResize = null;
+        fnDisarmResizeAcknowledgementTimeout(dictTab);
+        dictTab.dictPendingResize = null;
         if (dictTab.disposableOnSelectionChange) {
             dictTab.disposableOnSelectionChange.dispose();
         }
