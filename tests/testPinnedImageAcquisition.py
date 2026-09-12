@@ -45,6 +45,7 @@ from vaibify.docker.imageBuilder import (
 )
 from vaibify.docker.pinnedImageAcquisition import (
     PinnedImageAcquisitionRefusedError,
+    S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
     fdictAcquireForProject,
     flistProveOverlayBaseline,
     flistResolveDifferentialChain,
@@ -276,7 +277,9 @@ def test_an_unproven_baseline_never_fails_open(tmp_path):
 
     Kills: treating an absent label as a proven candidate.
     """
-    assert flistProveOverlayBaseline({}, ["claude"], []) == []
+    # None, never []: "unproven" and "proven to hold nothing" must not
+    # read alike, or the resolver stacks the author's own overlays.
+    assert flistProveOverlayBaseline({}, ["claude"], []) is None
     with pytest.raises(PinnedImageAcquisitionRefusedError) as excinfo:
         flistProveOverlayBaseline(
             {S_RECIPE_IMAGE_LABEL: "0" * 64}, ["claude"], ["gemini"],
@@ -284,6 +287,7 @@ def test_an_unproven_baseline_never_fails_open(tmp_path):
         )
     assert "cannot be proven" in str(excinfo.value)
     assert "without adding agents" in str(excinfo.value)
+    assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
 
 
 def _fsWriteAuthorConfig(tmp_path, dictFeatures):
@@ -777,3 +781,159 @@ def test_the_conversion_result_names_the_acquire_hand_off(tmp_path):
     dictBuilt = registryRoutes._fdictConversionResult("proj", False)
     assert dictBuilt["bBuildRequired"] is True and dictBuilt["bAcquireRequired"] is False
     assert json.dumps(dictResult)
+
+
+# ---------------------------------------------------------------------
+# Review findings (2026-09-12): the label is a SET, the refusal offers
+# its recovery, and a transition needs the container gone
+# ---------------------------------------------------------------------
+
+
+def _fnPatchTheBuildContext(monkeypatch, tmp_path):
+    """Keep the overlay stack off the real build context; the label is the point."""
+    monkeypatch.setattr(
+        "vaibify.cli.commandBuild.fsStageBuildContext",
+        lambda config, sDockerDir: str(tmp_path / "staged"),
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.commandBuild.fnPrepareBuildContext", lambda *aArgs: None,
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.commandBuild.fnDiscardBuildContext", lambda sPath: None,
+    )
+
+
+@pytest.mark.falsification
+def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
+    tmp_path, monkeypatch,
+):
+    """The label records WHICH overlays, in the one order its parser accepts.
+
+    The supported case -- the author's image holds claude, the clone
+    adds gemini -- stacks ``node`` then ``gemini`` on the base, so the
+    build order is claude, node, gemini. Canonical order is node,
+    claude, gemini. A label written in build order is refused by
+    ``flistParseOverlaysLabel`` (reproduced), and an image so labelled
+    could never again be acquired as a pinned image.
+
+    Kills: stamping ``listProven + listChain`` as the label.
+    """
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
+    _fnPatchTheChain(monkeypatch, [])
+    _fnPatchTheBuildContext(monkeypatch, tmp_path)
+    store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
+    sDerivedId = "sha256:" + "d" * 64
+    store.dictHeld[sDerivedId] = _FakeImage(sDerivedId, {})
+    listStackCalls = []
+
+    def fsStack(sProjectName, sBaseImageId, listChain, sStagedDir, sPlatform,
+                listLabelOverlays, bNoCache=False):
+        listStackCalls.append((list(listChain), list(listLabelOverlays)))
+        return sDerivedId
+    monkeypatch.setattr(imageBuilder, "fsStackOverlaysOnObtainedBase", fsStack)
+    dictRecord = fdictAcquireForProject(
+        dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
+    )
+    listChain, listLabel = listStackCalls[0]
+    assert listChain == ["node", "gemini"], "build order: the prerequisite first"
+    listCanonical = imageBuilder.flistCanonicalizeOverlaySet(["claude", "node", "gemini"])
+    assert listCanonical == ["node", "claude", "gemini"]
+    assert listLabel == listCanonical
+    assert listLabel != ["claude"] + listChain, "the label must not be build order"
+    assert flistParseOverlaysLabel(
+        fsRenderOverlaysLabelValue(listLabel), imageBuilder.flistCanonicalOverlayOrder(),
+    ) == listLabel
+    assert dictRecord["listResolvedOverlays"] == listCanonical
+    assert dictRecord["sRunningImageId"] == sDerivedId
+    assert registryManager.fdictGetProject("proj")["dictImageSource"][
+        "listResolvedOverlays"
+    ] == listCanonical
+
+
+def test_canonicalizing_refuses_an_overlay_it_does_not_know():
+    with pytest.raises(ValueError):
+        imageBuilder.flistCanonicalizeOverlaySet(["claude", "not-an-overlay"])
+
+
+@pytest.mark.falsification
+def test_the_retry_without_additions_drops_them_before_obtaining(
+    tmp_path, monkeypatch,
+):
+    """The refusal's recovery is a lane, not a sentence.
+
+    An unproven base with additions refuses and NAMES the retry; the
+    retry clears the additions from the registry entry first, then
+    runs the base as obtained -- stacking nothing, describing nothing
+    it cannot prove.
+
+    Kills: ignoring ``bWithoutAdditions``, so the retry re-asks for
+    the agents it just could not stack.
+    """
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
+    _fnPatchTheChain(monkeypatch, [])
+    store = _FakeStore({})
+    with pytest.raises(PinnedImageAcquisitionRefusedError) as excinfo:
+        fdictAcquireForProject(
+            dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
+        )
+    assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
+    assert buildRoutes._fdictBuildFailureDetail(excinfo.value, "")[
+        "sAction"
+    ] == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
+    assert store.dictHeld[S_BASE_ID].listTags == [], "refused before tagging"
+
+    def fsNeverStack(*aArgs, **dictKwargs):
+        raise AssertionError("an unproven base must not be stacked on")
+    monkeypatch.setattr(imageBuilder, "fsStackOverlaysOnObtainedBase", fsNeverStack)
+    dictRecord = fdictAcquireForProject(
+        dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
+        bWithoutAdditions=True,
+    )
+    assert dictRecord["sRunningImageId"] == S_BASE_ID
+    assert dictRecord["listResolvedOverlays"] == []
+    assert registryManager.fdictGetProject("proj")["dictImageSource"][
+        "listAdditionalAgents"
+    ] == []
+
+
+@pytest.mark.falsification
+def test_an_unproven_base_with_no_additions_stacks_nothing(tmp_path, monkeypatch):
+    """Kills: reading an unproven baseline as an empty PROVEN one, which
+    makes the differential resolver stack the author's own agents
+    onto the image that already holds them."""
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], [])
+    _fnPatchTheChain(monkeypatch, [])
+    store = _FakeStore({})
+    listStacked = []
+    monkeypatch.setattr(
+        pinnedImageAcquisition, "_fsStackAndResolve",
+        lambda *aArgs, **kwargs: listStacked.append(aArgs[2]) or S_BASE_ID,
+    )
+    dictRecord = fdictAcquireForProject(
+        dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
+    )
+    assert listStacked == [[]]
+    assert dictRecord["sRunningImageId"] == S_BASE_ID
+
+
+@pytest.mark.falsification
+def test_a_transition_is_refused_while_the_container_exists():
+    """Re-obtain and switch retag and re-describe the project; both must
+    find the container GONE, by the daemon's word, not the page's.
+
+    Kills: trusting the frontend's stop (dropping the guard), so a
+    stop that failed leaves the old container running under a tag,
+    registry entry and origin record that describe another image.
+    """
+    for dictStatus in (
+        {"bExists": True, "bRunning": True, "sStatus": "running"},
+        {"bExists": True, "bRunning": False, "sStatus": "exited"},
+        None,
+    ):
+        with pytest.raises(HTTPException) as excinfo:
+            buildRoutes._fnRefuseWhileTheContainerExists(dictStatus, "Switching")
+        assert excinfo.value.status_code == 409
+        assert excinfo.value.detail["sAction"] == buildRoutes.S_ACTION_STOP_FIRST
+    buildRoutes._fnRefuseWhileTheContainerExists(
+        {"bExists": False, "bRunning": False, "sStatus": "not found"}, "Switching",
+    )

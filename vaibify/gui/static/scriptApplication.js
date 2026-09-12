@@ -4822,6 +4822,15 @@ const VaibifyApp = (function () {
                 "under .vaibify/reproductions/ and the attestation will " +
                 "not be touched.\n\n";
         }
+        if (sRecordKind === "undetermined") {
+            /* Git could not say whose attestation the clone carries.
+               The run will REFUSE rather than guess, and the
+               researcher is told before spending the click. */
+            return "Git could not say whose attestation this clone " +
+                "carries, so the verification will refuse to run " +
+                "rather than risk overwriting someone else's record. " +
+                "Check that git works in the project repository.\n\n";
+        }
         return "This run will update this project's Level 3 " +
             "attestation.\n\n";
     }

@@ -136,8 +136,16 @@ fnUrlWithinAllowlist() {
 # Fetch one URL into a file, following redirects BY HAND: every hop's
 # host is checked before the request for it is sent, never after.
 # Prints the URL that finally answered, for a caller resolving a DOI.
+# A third argument bounds the body: curl refuses a larger announced
+# size up front (and recent versions stop a transfer that grows past
+# it), so a broken permitted host cannot fill the disk.
 fnFetchWithinAllowlist() {
-    local sUrl="$1" sOutput="$2" iHop=0 sAnswer sCode sNext sHost
+    local sUrl="$1" sOutput="$2" iMaxBytes="${3:-}" iHop=0
+    local sAnswer sCode sNext sHost
+    local aCurlLimit=()
+    if [ -n "$iMaxBytes" ]; then
+        aCurlLimit=(--max-filesize "$iMaxBytes")
+    fi
     while :; do
         if ! fnUrlWithinAllowlist "$sUrl"; then
             sHost=${sUrl#*://}
@@ -146,6 +154,7 @@ fnFetchWithinAllowlist() {
             return 1
         fi
         sAnswer=$(curl -fsS -o "$sOutput" \\
+            ${aCurlLimit[@]+"${aCurlLimit[@]}"} \\
             -w '%{http_code} %{redirect_url}' "$sUrl") || return 1
         sCode=${sAnswer%% *}
         sNext=${sAnswer#* }
@@ -182,7 +191,7 @@ fnResolveRecordUrl() {
 }
 
 fnLoadImageFromArchive() {
-    local sDoi sName sSha sService sRecordUrl sTarball iOutcome
+    local sDoi sName sSha sService iBytes sRecordUrl sTarball iOutcome
     sDoi=$(jq -r '.dictContainer.dictImageArchive.sVersionDoi // ""' \\
         .vaibify/environment.json)
     sName=$(jq -r '.dictContainer.dictImageArchive.sTarballName // ""' \\
@@ -191,11 +200,22 @@ fnLoadImageFromArchive() {
         .vaibify/environment.json)
     sService=$(jq -r '.dictContainer.dictImageArchive.sZenodoService // ""' \\
         .vaibify/environment.json)
+    iBytes=$(jq -r '.dictContainer.dictImageArchive.iTarballBytes // 0' \\
+        .vaibify/environment.json)
     if [ -z "$sDoi" ] || [ -z "$sName" ] || [ -z "$sSha" ]; then
         echo "error: the registry does not serve $sImageRef and this" >&2
         echo "       project archived no copy of its image." >&2
         return 1
     fi
+    # The recorded size bounds the download; without one the fetch
+    # could be made to fill the disk, so it is refused, never unbounded.
+    case "$iBytes" in
+        ''|0|*[!0-9]*)
+            echo "error: the envelope records no size for the archived" >&2
+            echo "       image, so its download cannot be bounded;" >&2
+            echo "       refusing to fetch it." >&2
+            return 1 ;;
+    esac
     echo "Registry pull failed; fetching the archived image from $sDoi"
     sRecordUrl=$(fnResolveRecordUrl "$sService" "$sDoi") || return 1
     sTarball=$(mktemp -t vaibifyImage.XXXXXXXX)
@@ -203,7 +223,8 @@ fnLoadImageFromArchive() {
     # element of an and-list exits the script on the spot, skipping
     # the cleanup and the message below and leaving the tarball.
     if fnFetchWithinAllowlist "$sRecordUrl/files/$sName?download=1" \\
-            "$sTarball" >/dev/null \\
+            "$sTarball" "$iBytes" >/dev/null \\
+        && [ "$(( $(wc -c < "$sTarball") ))" -eq "$iBytes" ] \\
         && echo "${sSha#sha256:}  $sTarball" | sha256sum -c - >/dev/null \\
         && fnLoadCheckedTarball "$sTarball" "$sName"; then
         iOutcome=0
@@ -212,9 +233,9 @@ fnLoadImageFromArchive() {
     fi
     rm -f "$sTarball"
     if [ "$iOutcome" -ne 0 ]; then
-        echo "error: the archived image could not be fetched, did not" >&2
-        echo "       match the hash the envelope records, or could not" >&2
-        echo "       be loaded." >&2
+        echo "error: the archived image could not be fetched, was not" >&2
+        echo "       the size the envelope records, did not match the" >&2
+        echo "       hash it records, or could not be loaded." >&2
     fi
     return "$iOutcome"
 }

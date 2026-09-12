@@ -873,7 +873,9 @@ def _fdictBuildCliProvenanceStamp(sProjectRepo):
     )
 
 
-def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
+def _fbWriteAttestationFromRun(
+    sProjectRepo, dictOutcome, fDuration, sRecordKind="",
+):
     """Persist an L3 attestation reflecting the rerun outcome.
 
     Called only when ``--rerun`` ran end-to-end so the attestation
@@ -901,10 +903,13 @@ def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
     )
     # The host checkout ``--repo`` names is the repository that will
     # RECEIVE the record, so it is the one asked whose attestation it
-    # carries -- through the host runner, never the container's.
-    sRecordKind = reproductionRecord.fsRecordKindForRepository(
-        _ffnBuildHostGitRunner(sProjectRepo),
-    )
+    # carries -- through the host runner, never the container's. The
+    # rerun lane settles this before it runs and passes the answer in;
+    # an undetermined owner raises rather than answering.
+    if not sRecordKind:
+        sRecordKind = reproductionRecord.fsRecordKindForRepository(
+            _ffnBuildHostGitRunner(sProjectRepo),
+        )
 
     def fdictBuildAttestationAt(sTimestampUtc, sReproducedManifestPath):
         return _fdictBuildRerunAttestation(
@@ -989,11 +994,22 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     reproduced anything, and Tier 5 must say so.
     """
     fStarted = time.monotonic()
+    # Which record the run would write is settled BEFORE the rerun: a
+    # git that cannot say whose attestation this checkout carries
+    # refuses now, rather than after a rerun whose outcome could then
+    # not be written honestly.
+    try:
+        sRecordKind = reproductionRecord.fsRecordKindForRepository(
+            _ffnBuildHostGitRunner(sProjectRepo),
+        )
+    except reproductionRecord.RecordKindUndeterminedError as error:
+        click.echo(f"  refused before any step ran: {error}")
+        return False, False
     dictOutcome = fdictRerunAndVerify(sProjectRepo, sWorkflowName)
     _fnReportHashCompare(dictOutcome)
     bAttestationWritten = _fbWriteAttestationFromRun(
         sProjectRepo, dictOutcome,
-        time.monotonic() - fStarted,
+        time.monotonic() - fStarted, sRecordKind,
     )
     return dictOutcome["bPassed"], bAttestationWritten
 

@@ -317,6 +317,11 @@ def _fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
             f"{sDoi!r} is not a Zenodo DOI, so no deposit was fetched"
         )
     iExpectedBytes = int(dictRecord.get("iTarballBytes") or 0)
+    if iExpectedBytes <= 0:
+        raise ImageAcquisitionRefusedError(
+            "the envelope records no size for the archived image, so the "
+            "download could not be bounded; nothing was fetched"
+        )
     imageDeposit._fnRefuseWithoutRoomOnDisk(sScratchDirectory, iExpectedBytes)
     sTarballPath = os.path.join(sScratchDirectory, os.path.basename(sName))
     sFileUrl = _fsResolveDepositFileUrl(dictRecord, sDoi, sName)
@@ -482,14 +487,15 @@ def _fiterWriteBoundedChunks(iterChunks, fileTarball, iExpectedBytes, fnStatus):
     """Write each chunk to disk, report it, and yield it on for hashing.
 
     Refuses once the download has grown past what the envelope
-    recorded (with slack for a record that predates exact sizes), so a
-    hostile or broken server cannot fill the disk.
+    recorded, so a hostile or broken server cannot fill the disk. The
+    caller has already refused a record with no size, so the ceiling
+    is never disabled.
     """
     iCeiling = int(max(iExpectedBytes, 1) * _F_DOWNLOAD_SIZE_SLACK)
     iReceived = 0
     for baChunk in iterChunks:
         iReceived += len(baChunk)
-        if iExpectedBytes and iReceived > iCeiling:
+        if iReceived > iCeiling:
             raise ImageAcquisitionRefusedError(
                 "the download grew past the size the envelope records "
                 "and was stopped"

@@ -155,10 +155,14 @@ def fsRenderOverlaysLabelValue(listOverlays):
 def flistParseOverlaysLabel(sValue, listCanonicalOrder):
     """Return the overlays an image label names, or raise ``ValueError``.
 
-    A malformed label -- an unknown name, a repeat, names out of the
-    canonical order -- is refused rather than reordered or pruned:
-    vaibify wrote the label, so a value that breaks its own contract
-    says the image is not one this vaibify understands.
+    The label is a SET rendered in canonical order: it says which
+    overlays the image holds and nothing about the order they were
+    installed in, so a differential stack on an obtained base and a
+    build from scratch that hold the same overlays carry the same
+    label. A malformed label -- an unknown name, a repeat, names out
+    of the canonical order -- is refused rather than reordered or
+    pruned: vaibify wrote the label, so a value that breaks its own
+    contract says the image is not one this vaibify understands.
     """
     listNames = [
         sName.strip() for sName in str(sValue or "").split(",")

@@ -288,7 +288,7 @@ def _fnRegisterReadiness(app, dictCtx):
             # else. Answered here, before the copy, because the confirm
             # dialog must say so before the researcher consents.
             "sRecordKind": await asyncio.to_thread(
-                _fsRecordKindForProject,
+                _fsRecordKindOrUndetermined,
                 dictCtx["docker"], sContainerId, dictWorkflow,
             ),
             # Whether the envelope pins the image this container is
@@ -656,10 +656,24 @@ async def _fnRunVerificationWorker(
     dictImageOrigin = await asyncio.to_thread(
         _fdictImageOriginForContainer, connectionDocker, sContainerId,
     )
+    sRecordKind = ""
     try:
+        # Which record the run would write is settled BEFORE any step
+        # runs: a git that cannot say whose attestation this clone
+        # carries refuses the whole verification rather than costing
+        # a rerun whose outcome could then not be written honestly.
+        sRecordKind = await asyncio.to_thread(
+            _fsRecordKindForProject, connectionDocker, sContainerId,
+            dictWorkflow,
+        )
         dictResult = await asyncio.to_thread(
             _fdictRunReproductionSync, connectionDocker, sContainerId,
             dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,
+        )
+    except reproductionRecord.RecordKindUndeterminedError as errorCaught:
+        logger.warning("L3 verification refused before any step ran: %s", errorCaught)
+        dictResult = _fdictNoVerdictResult(
+            f"refused before any step ran: {errorCaught}",
         )
     except (Exception, SystemExit) as errorCaught:  # noqa: BLE001
         # SystemExit is caught too: it is not an Exception, so an
@@ -676,15 +690,9 @@ async def _fnRunVerificationWorker(
         # recoverable; a false attestation on disk is not.
         fnReRaiseControlPlaneRefusal(errorCaught)
         logger.exception("L3 verification crashed: %s", errorCaught)
-        dictResult = {
-            "bPassed": False,
-            "bRerunAttempted": False,
-            "iOutputHashesMatched": 0,
-            "iOutputHashesTotal": 0,
-            "listDivergedHashes": [f"verification crashed: {errorCaught}"],
-            "sImageDigest": "",
-            "sRunLogPath": "",
-        }
+        dictResult = _fdictNoVerdictResult(
+            f"verification crashed: {errorCaught}",
+        )
     fDuration = time.monotonic() - fStarted
     dictAiProvenance = await _fdictCaptureProvenanceOrNone(
         dictWorkflow, filesRepo, sContainerId, connectionDocker,
@@ -693,10 +701,6 @@ async def _fnRunVerificationWorker(
         await _fdictRecheckImageArchiveOrNone(
             filesRepo, dictResult, dictImageOrigin,
         )
-    )
-    sRecordKind = await asyncio.to_thread(
-        _fsRecordKindForProject, connectionDocker, sContainerId,
-        dictWorkflow,
     )
     bAttestationWritten = _fbRecordOutcome(
         sContainerId, filesRepo, sManifestDigest, dictResult, fDuration,
@@ -725,14 +729,44 @@ async def _fnRunVerificationWorker(
     _fnRecordTeardownOutcome(sContainerId, dictResult)
 
 
+def _fdictNoVerdictResult(sReason):
+    """The outcome of a verification that established nothing, named."""
+    return {
+        "bPassed": False,
+        "bRerunAttempted": False,
+        "iOutputHashesMatched": 0,
+        "iOutputHashesTotal": 0,
+        "listDivergedHashes": [sReason],
+        "sImageDigest": "",
+        "sRunLogPath": "",
+    }
+
+
+def _fsRecordKindOrUndetermined(connectionDocker, sContainerId, dictWorkflow):
+    """The readiness answer: the record kind, or UNDETERMINED by name.
+
+    Readiness is a poll that must keep answering; the verification
+    itself refuses on the same condition, so the dialog can say so
+    before the researcher consents to a rerun that would be refused.
+    """
+    try:
+        return _fsRecordKindForProject(connectionDocker, sContainerId, dictWorkflow)
+    except reproductionRecord.RecordKindUndeterminedError as errorCaught:
+        logger.warning("Record kind undetermined for %s: %s", sContainerId, errorCaught)
+        return reproductionRecord.S_RECORD_KIND_UNDETERMINED
+
+
 def _fsRecordKindForProject(connectionDocker, sContainerId, dictWorkflow):
     """Ask the project's own git which record a verification would write.
 
-    A probe that cannot be made -- no project repository, a connection
-    that cannot exec -- answers ATTESTATION, the record every clone
-    wrote before reproduction records existed, and logs why. A
-    carrier refusal is re-raised: that is a programming error, not a
-    git answer.
+    A project with no repository path has nothing tracked by anybody,
+    so it answers ATTESTATION, the record every clone wrote before
+    reproduction records existed. Every other probe that cannot be
+    made -- a connection that cannot exec, a git that answers with an
+    error -- raises ``RecordKindUndeterminedError``: an unknown owner
+    must not fail open into overwriting somebody else's attestation.
+    A carrier refusal is re-raised as itself: that is a programming
+    error, not a git answer.
     """
     from .. import containerGit
     sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
@@ -744,13 +778,13 @@ def _fsRecordKindForProject(connectionDocker, sContainerId, dictWorkflow):
                 connectionDocker, sContainerId, sProjectRepo,
             ),
         )
-    except Exception as errorCaught:  # noqa: BLE001 -- answered, logged
+    except reproductionRecord.RecordKindUndeterminedError:
+        raise
+    except Exception as errorCaught:  # noqa: BLE001 -- turned into a refusal
         fnReRaiseControlPlaneRefusal(errorCaught)
-        logger.warning(
-            "Could not ask git who committed the attestation; recording "
-            "an attestation: %s", errorCaught,
-        )
-        return reproductionRecord.S_RECORD_KIND_ATTESTATION
+        raise reproductionRecord.RecordKindUndeterminedError(
+            f"git could not be asked in the container: {errorCaught}"
+        ) from errorCaught
 
 
 async def _fdictRecheckImageArchiveOrNone(

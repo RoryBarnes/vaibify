@@ -18975,11 +18975,11 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/reproductionRecord.py',
         # a missing identity is taken to be the author's
         old=(
-            '    if not sOwnEmail:\n'
+            '    if iExitCode == 1 or (iExitCode == 0 and not sOwnEmail):\n'
             '        return True\n'
         ),
         new=(
-            '    if not sOwnEmail:\n'
+            '    if iExitCode == 1 or (iExitCode == 0 and not sOwnEmail):\n'
             '        return False\n'
         ),
     ),
@@ -19017,8 +19017,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/docker/pinnedImageAcquisition.py',
         # the comparison is skipped when no agent was requested
-        old='        if listLabelled != list(listCandidate):\n',
-        new='        if listAdditional and listLabelled != list(listCandidate):\n',
+        old='        if listLabelled != imageBuilder.flistCanonicalizeOverlaySet(listCandidate):\n',
+        new='        if listAdditional and listLabelled != imageBuilder.flistCanonicalizeOverlaySet(listCandidate):\n',
     ),
     Falsification(
         nodeid=(
@@ -19071,13 +19071,17 @@ def _fdictEntry(sRel):
             '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
             '    return _fdictCommitOriginRecord(\n'
             '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
-            '        sRunningImageId, listProven + listChain, fnReport,\n'
+            '        sRunningImageId,\n'
+            '        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),\n'
+            '        fnReport,\n'
             '    )\n'
         ),
         new=(
             '    dictRecord = _fdictCommitOriginRecord(\n'
             '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
-            '        sRunningImageId, listProven + listChain, fnReport,\n'
+            '        sRunningImageId,\n'
+            '        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),\n'
+            '        fnReport,\n'
             '    )\n'
             '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
             '    return dictRecord\n'
@@ -19312,4 +19316,190 @@ def _fdictEntry(sRel):
         new='        selectionBackground: "rgba(19, 174, 213, 0.3)",',
     ),
 
+    # --- 2026-09-12: review findings on the pinned-image lane, the
+    # reproduction record and the reproducer's download ---
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_record_without_a_size_is_refused_before_any_fetch'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # a record with no size is fetched with no ceiling
+        old='    if iExpectedBytes <= 0:\n',
+        new='    if iExpectedBytes < 0:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_derived_image_is_labelled_with_the_set_in_canonical_order'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the label is stamped in BUILD order, which its parser refuses
+        old=(
+            '            imageBuilder.flistCanonicalizeOverlaySet(\n'
+            '                list(listProven) + list(listChain),\n'
+            '            ),\n'
+        ),
+        new=(
+            '            list(listProven) + list(listChain),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_retry_without_additions_drops_them_before_obtaining'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the retry re-asks for the agents it could not stack
+        old='    if bWithoutAdditions and dictSource.get("listAdditionalAgents"):\n',
+        new='    if False and dictSource.get("listAdditionalAgents"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_unproven_base_with_no_additions_stacks_nothing'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # unproven reads as "proven to hold nothing", so the author's
+        # own overlays are stacked onto the image that holds them
+        old=(
+            '        # would be a derived image where the pin was wanted.\n'
+            '        return None\n'
+        ),
+        new=(
+            '        # would be a derived image where the pin was wanted.\n'
+            '        return []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_transition_is_refused_while_the_container_exists'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the page's stop is trusted; a container that still exists passes
+        old='    if dictContainerStatus.get("bExists"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptGenerator.py::'
+            'test_the_shell_bounds_the_archive_download_to_the_recorded_size'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the bytes that landed are never measured against the record
+        old='        && [ "$(( $(wc -c < "$sTarball") ))" -eq "$iBytes" ] ',
+        new='        && true ',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducedManifest.py::'
+            'test_an_unanswerable_ownership_question_refuses_never_attests'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        # a committer git cannot name is taken to be the author
+        old=(
+            '    if iExitCode != 0 or not sCommitter:\n'
+            '        raise RecordKindUndeterminedError(\n'
+            '            "the attestation is tracked at HEAD but git could not say who "\n'
+        ),
+        new=(
+            '    if iExitCode != 0 or not sCommitter:\n'
+            '        return False\n'
+            '        raise RecordKindUndeterminedError(\n'
+            '            "the attestation is tracked at HEAD but git could not say who "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_an_undetermined_owner_refuses_before_any_step_runs'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # the rerun is spent before the owner question is asked
+        old=(
+            '        sRecordKind = await asyncio.to_thread(\n'
+            '            _fsRecordKindForProject, connectionDocker, sContainerId,\n'
+            '            dictWorkflow,\n'
+            '        )\n'
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunReproductionSync, connectionDocker, sContainerId,\n'
+            '            dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunReproductionSync, connectionDocker, sContainerId,\n'
+            '            dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,\n'
+            '        )\n'
+            '        sRecordKind = await asyncio.to_thread(\n'
+            '            _fsRecordKindForProject, connectionDocker, sContainerId,\n'
+            '            dictWorkflow,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_git_that_cannot_be_asked_in_the_container_is_undetermined'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # an undetermined answer is swallowed into the author's attestation
+        old=(
+            '    except reproductionRecord.RecordKindUndeterminedError:\n'
+            '        raise\n'
+        ),
+        new=(
+            '    except reproductionRecord.RecordKindUndeterminedError:\n'
+            '        return reproductionRecord.S_RECORD_KIND_ATTESTATION\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testAFailedStopEndsTheReobtainBeforeAnyAcquire'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the re-obtain proceeds after a stop that failed
+        old=(
+            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                await fnAcquireImage(sName, bAllowEmulation, false);\n'
+        ),
+        new=(
+            '                await fnStopContainer(sName);\n'
+            '                await fnAcquireImage(sName, bAllowEmulation, false);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testTheSwitchStopsFirstAndAFailedStopPostsNothing'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the switch is posted whatever the stop reported
+        old=(
+            '                VaibifyTerminal.fnCloseAll();\n'
+            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                try {\n'
+        ),
+        new=(
+            '                VaibifyTerminal.fnCloseAll();\n'
+            '                await fnStopContainer(sName);\n'
+            '                try {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testAnUnprovenBaselineOffersTheRetryWithoutAdditions'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the refusal is reported as an ordinary failure, recovery unoffered
+        old=(
+            '            } else if (sAction === "reobtain-without-additions") {\n'
+        ),
+        new=(
+            '            } else if (false) {\n'
+        ),
+    ),
 ]

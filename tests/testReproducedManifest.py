@@ -554,9 +554,13 @@ def test_an_attestation_not_tracked_at_head_is_nobodys(tmp_path, fnIsolateGitIde
     ))
     ftRunGit = _ffnBuildHostGitRunner(str(pathRepo))
     assert not reproductionRecord.fbRepositoryCarriesForeignAttestation(ftRunGit)
-    assert not reproductionRecord.fbRepositoryCarriesForeignAttestation(
-        _ffnBuildHostGitRunner(str(tmp_path / "not-a-repo")),
-    )
+    # A directory git cannot read is not "nobody's": it is UNKNOWN,
+    # and unknown refuses rather than answering.
+    (tmp_path / "not-a-repo").mkdir()
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fbRepositoryCarriesForeignAttestation(
+            _ffnBuildHostGitRunner(str(tmp_path / "not-a-repo")),
+        )
 
 
 # ---------------------------------------------------------------------
@@ -601,3 +605,71 @@ def test_no_poll_path_gate_reads_the_reproduction_records():
     for sGate in ("reproducibility/levelGates.py", "gui/fileStatusManager.py",
                   "gui/pipelineServer.py"):
         assert S_REPRODUCTIONS_DIR not in (pathPackage / sGate).read_text()
+
+
+# ---------------------------------------------------------------------
+# Whose attestation a clone carries is THREE-state (2026-09-12)
+# ---------------------------------------------------------------------
+
+
+def _ffnScriptedGit(dictAnswers):
+    """A runner answering each git subcommand from a table; unknown ones raise."""
+    def ftRunGit(listArguments):
+        sSubcommand = listArguments[0]
+        if sSubcommand not in dictAnswers:
+            raise AssertionError("unexpected git question: " + " ".join(listArguments))
+        return dictAnswers[sSubcommand]
+    return ftRunGit
+
+
+@pytest.mark.falsification
+def test_an_unanswerable_ownership_question_refuses_never_attests():
+    """A tracked attestation whose committer git cannot name is UNKNOWN.
+
+    Answering "not foreign" there is the fail-open the feature exists
+    to prevent: a broken git executable, a transient exec failure, and
+    the run overwrites somebody else's tracked attestation.
+
+    Kills: returning False when ``git log`` fails or answers nothing.
+    """
+    dictTracked = {
+        "rev-parse": (0, "abc123"),
+        "ls-tree": (0, ".vaibify/l3_attestation.json"),
+    }
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fbRepositoryCarriesForeignAttestation(
+            _ffnScriptedGit(dict(dictTracked, log=(128, ""))),
+        )
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fbRepositoryCarriesForeignAttestation(
+            _ffnScriptedGit(dict(dictTracked, log=(0, ""))),
+        )
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fsRecordKindForRepository(
+            _ffnScriptedGit(dict(dictTracked, log=(0, "a@b"), config=(128, ""))),
+        )
+
+    def ftBrokenGit(listArguments):
+        raise OSError("git: command not found")
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fbRepositoryCarriesForeignAttestation(ftBrokenGit)
+
+
+def test_an_empty_repository_is_nobodys_but_a_missing_one_is_unknown():
+    """Exit 1 from the HEAD probe is believed only when the directory
+    confirms it is a repository: a runner that chains ``cd`` exits 1
+    for a missing directory too."""
+    dictEmpty = {"rev-parse": (1, "")}
+
+    def ftEmptyRepository(listArguments):
+        if listArguments == ["rev-parse", "--is-inside-work-tree"]:
+            return (0, "true")
+        return dictEmpty[listArguments[0]]
+    assert reproductionRecord.fbRepositoryCarriesForeignAttestation(
+        ftEmptyRepository,
+    ) is False
+
+    def ftMissingDirectory(listArguments):
+        return (1, "")
+    with pytest.raises(reproductionRecord.RecordKindUndeterminedError):
+        reproductionRecord.fbRepositoryCarriesForeignAttestation(ftMissingDirectory)

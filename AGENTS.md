@@ -911,7 +911,11 @@ from the envelope (`environment.json`) is ever fetched as a URL: it is
 a file in a cloned repository. `test_no_reader_of_the_record_fetches_a_url_on_trust`
 pins the single transport call, and the decoy-server tests in
 `tests/testImageAcquisition.py` and `tests/testReproduceScriptGenerator.py`
-prove a refused host receives no request.
+prove a refused host receives no request. The download is BOUNDED by
+the envelope's recorded size in both lanes (2026-09-12): the script
+passes it to `curl --max-filesize` and measures the bytes that landed
+before hashing them, the client refuses to grow past it, and a record
+with no size is refused rather than fetched without a ceiling.
 
 **A project containerized from the author's PINNED image is admitted
 by its origin record, and the baseline is proven against the image
@@ -944,6 +948,25 @@ predicate behind the regenerate refusal. Two new routes read the host
 filesystem (`pinned-environment`, `acquire-image`) and are
 catalog-excluded AND agent-lane rejected. `tests/testPinnedImageAcquisition.py`
 is the kill-confirmed guard.
+
+Four more, from a review of that lane (2026-09-12). The overlays
+label is a SET rendered in canonical order (`flistCanonicalizeOverlaySet`),
+never the build order: a differential stack installs `node` after the
+author's `claude`, and a label written in that order is one the
+label's own parser refuses, so the derived image could never be
+acquired again. An unproven baseline with no additions answers `None`,
+not `[]`: an empty PROVEN set would make the differential resolver
+re-stack the author's own overlays onto the image that holds them.
+The unproven-with-additions refusal NAMES its recovery
+(`sAction: reobtain-without-additions`), and `acquire-image` takes
+`bWithoutAdditions`, which drops the added agents from the registry
+entry before obtaining -- a refusal whose remedy has no lane is a dead
+end. And re-obtain and switch-to-building are refused by the server
+while the project's container EXISTS, asked of the daemon
+(`_fnRefuseWhileTheContainerExists`), because the page's stop can
+fail and every transition after a stop reads its answer
+(`fnStopContainer` returns it) -- a stop that failed must never let a
+retag, a cleared origin record or a build through.
 
 ## A human step's outputs are GIVEN, not reproduced
 
@@ -1017,6 +1040,17 @@ container's checkout, the CLI's `--repo` host checkout), and the
 records are read on the attestation GET only, never on the poll.
 Attestation schema v5 migrates the three new fields to `None`.
 `tests/testReproducedManifest.py` is the kill-confirmed guard.
+Whose attestation the clone carries is THREE-state (2026-09-12): a
+git that cannot answer -- a broken executable, an exec failure, a
+tracked file whose committer cannot be read -- raises
+`RecordKindUndeterminedError`, never "not foreign", because that
+answer is the fail-open that overwrites somebody else's record. Both
+lanes settle the question BEFORE the rerun and refuse by name when it
+is undetermined; readiness answers `undetermined` so the confirm
+dialog says so first. Every step is decided by git's own exit code,
+measured: `rev-parse --verify --quiet HEAD` exits 1 with no commits
+and 128 outside a repository, `ls-tree` exits 0 with empty output for
+an untracked path, `config` exits 1 for an unset key.
 
 **A rerun that reached no verdict is NEVER written as an attestation.**
 It used to be: a refusal became `sStatus: "failed"` plus a history

@@ -179,6 +179,26 @@ def flistCanonicalOverlayOrder():
     return list(_LIST_OVERLAY_ORDER)
 
 
+def flistCanonicalizeOverlaySet(listOverlays):
+    """Return the overlays as a SET rendered in canonical order.
+
+    The overlays label records WHICH overlays an image holds, never the
+    order they were installed in: a differential stack puts ``node``
+    after an author's ``claude`` on disk, and a label written in that
+    build order is one the label's own parser refuses. An overlay the
+    order does not know is refused rather than dropped, because
+    silently narrowing the set is how a label comes to under-describe
+    its image.
+    """
+    setNamed = {str(sName) for sName in listOverlays or []}
+    listUnknown = sorted(setNamed - set(_LIST_OVERLAY_ORDER))
+    if listUnknown:
+        raise ValueError(
+            "overlays this vaibify does not know: " + ", ".join(listUnknown)
+        )
+    return [sName for sName in _LIST_OVERLAY_ORDER if sName in setNamed]
+
+
 def fsFeatureFieldForOverlay(sOverlayName):
     """Return the config feature field that enables an overlay, or ``""``."""
     for sFeatureField, sMapped in _DICT_FEATURE_TO_OVERLAY.items():

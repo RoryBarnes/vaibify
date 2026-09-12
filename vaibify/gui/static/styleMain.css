@@ -4061,6 +4061,10 @@ body.proof-level-3 .toolbar-label {
 
 .add-choice-card {
     flex: 1;
+    /* A flex item's minimum width defaults to its content, so a long
+       title pushed the row past the modal and was clipped instead of
+       wrapping; zero lets the three cards share the width. */
+    min-width: 0;
     padding: 20px 16px;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);

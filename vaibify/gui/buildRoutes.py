@@ -135,6 +135,48 @@ def _fnRefuseWhileABuildIsLive(sName):
         })
 
 
+S_ACTION_STOP_FIRST = "stop-first"
+
+
+def _fdictContainerStatusOrNone(dictProject):
+    """Ask the daemon whether the project's container exists; ``None`` if it cannot say."""
+    from vaibify.docker.containerManager import fdictGetContainerStatus
+    try:
+        return fdictGetContainerStatus(dictProject["sContainerName"])
+    except OSError:
+        return None
+
+
+def _fnRefuseWhileTheContainerExists(dictContainerStatus, sVerb):
+    """409 unless the daemon has confirmed the project's container is gone.
+
+    Re-obtaining and switching both rewrite what the project's name
+    resolves to -- the tag, the registry entry, the origin record --
+    so doing either under a container that still exists leaves the
+    old image on screen described as the new one. The frontend stops
+    the container first, but a stop it could not complete must not
+    let the transition through, so the daemon is asked here and an
+    answer that cannot be had refuses too.
+    """
+    if dictContainerStatus is None:
+        raise HTTPException(409, detail={
+            "sMessage": (
+                f"{sVerb} needs the daemon to confirm the container is "
+                "gone, and it could not be asked."
+            ),
+            "sAction": S_ACTION_STOP_FIRST,
+        })
+    if dictContainerStatus.get("bExists"):
+        raise HTTPException(409, detail={
+            "sMessage": (
+                f"{sVerb} is refused while the container exists "
+                f"({dictContainerStatus.get('sStatus')}). Stop it first; a "
+                "stop that failed has to be fixed, not skipped."
+            ),
+            "sAction": S_ACTION_STOP_FIRST,
+        })
+
+
 def _fnRegisterAcquireImage(app, dictCtx):
     """Register POST /api/containers/{sName}/acquire-image.
 
@@ -152,6 +194,7 @@ def _fnRegisterAcquireImage(app, dictCtx):
     @app.post("/api/containers/{sName}/acquire-image")
     async def fdictAcquireImage(
         sName: str, requestHttp: Request, bAllowEmulation: bool = False,
+        bWithoutAdditions: bool = False,
     ):
         from vaibify.config.registryManager import fbProjectImageIsObtained
         from vaibify.gui.registryRoutes import _fdictRequireProject
@@ -169,11 +212,15 @@ def _fnRegisterAcquireImage(app, dictCtx):
                 "there is no pinned image to obtain. Use Rebuild."
             )})
         _fnRefuseWhileABuildIsLive(sName)
+        _fnRefuseWhileTheContainerExists(
+            await asyncio.to_thread(_fdictContainerStatusOrNone, dictProject),
+            "Obtaining the pinned image",
+        )
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
             dictOrigin = await asyncio.to_thread(
                 _fdictExecuteAcquisition, dictProject, bAllowEmulation,
-                dictProgress,
+                dictProgress, bWithoutAdditions,
             )
         except Exception as error:
             logger.error("Acquisition failed for %s: %s", sName, error)
@@ -186,7 +233,9 @@ def _fnRegisterAcquireImage(app, dictCtx):
         }
 
 
-def _fdictExecuteAcquisition(dictProject, bAllowEmulation, dictProgress):
+def _fdictExecuteAcquisition(
+    dictProject, bAllowEmulation, dictProgress, bWithoutAdditions=False,
+):
     """Run the acquisition lane in a worker thread, feeding the progress record."""
     from vaibify.cli.configLoader import fsDockerDir
     from vaibify.docker.pinnedImageAcquisition import fdictAcquireForProject
@@ -194,7 +243,7 @@ def _fdictExecuteAcquisition(dictProject, bAllowEmulation, dictProgress):
         dictOrigin = fdictAcquireForProject(
             dictProject, bAllowEmulation,
             lambda sLine: _fnRecordBuildLine(dictProgress, sLine),
-            sDockerDir=fsDockerDir(),
+            sDockerDir=fsDockerDir(), bWithoutAdditions=bWithoutAdditions,
         )
     except BaseException as error:
         _fnRecordBuildLine(dictProgress, f"error: {error}")
@@ -232,6 +281,10 @@ def _fnRegisterSwitchToBuilding(app, dictCtx):
                 "This project already builds its image from the Dockerfile."
             )}
         _fnRefuseWhileABuildIsLive(sName)
+        _fnRefuseWhileTheContainerExists(
+            await asyncio.to_thread(_fdictContainerStatusOrNone, dictProject),
+            "Switching to building",
+        )
         await asyncio.to_thread(fnSwitchProjectToBuilding, sName)
         return {
             "bSwitched": True,
@@ -323,4 +376,8 @@ def _fdictBuildFailureDetail(error, sStderrTail):
         "sMessage": "Build failed",
         "sError": str(error),
         "sStderrTail": sStderrTail,
+        # The one recovery a refusal offers, when it offers one (an
+        # acquisition that cannot prove its baseline names the retry
+        # without the added agents); empty for every other failure.
+        "sAction": str(getattr(error, "sAction", "") or ""),
     }

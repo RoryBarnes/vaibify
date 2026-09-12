@@ -36,6 +36,8 @@ __all__ = [
     "S_RECORD_KIND_ATTESTATION",
     "S_RECORD_KIND_REPRODUCTION",
     "S_REPRODUCTION_RECORD_NOTE",
+    "RecordKindUndeterminedError",
+    "S_RECORD_KIND_UNDETERMINED",
     "fbRepositoryCarriesForeignAttestation",
     "fdictBuildReproductionRecord",
     "fdictLatestReproductionRecord",
@@ -84,6 +86,56 @@ S_REPRODUCTION_RECORD_NOTE = (
 _S_ATTESTATION_RELATIVE_PATH = ".vaibify/" + S_ATTESTATION_FILENAME
 
 
+S_RECORD_KIND_UNDETERMINED = "undetermined"
+
+
+class RecordKindUndeterminedError(Exception):
+    """Git could not say whose attestation the repository carries.
+
+    Raised instead of answering, because either answer written on a
+    guess is wrong in a way that cannot be undone: an attestation
+    would overwrite somebody else's tracked claim, and a reproduction
+    record would file the author's own verification as a stranger's.
+    Both lanes refuse the write -- before any step runs, where they
+    can.
+    """
+
+
+def _ftAskGit(ftRunGit, listArguments, sQuestion):
+    """Run one git question; a runner that cannot run it is undetermined."""
+    try:
+        iExitCode, sOutput = ftRunGit(listArguments)
+    except Exception as error:  # noqa: BLE001 -- turned into a refusal
+        raise RecordKindUndeterminedError(
+            f"git could not be asked {sQuestion}: {error}"
+        ) from error
+    return int(iExitCode), (sOutput or "").strip()
+
+
+def _fbRepositoryHasACommit(ftRunGit):
+    """True iff HEAD names a commit; False for an initialised, empty repository."""
+    iExitCode, _sHead = _ftAskGit(
+        ftRunGit, ["rev-parse", "--verify", "--quiet", "HEAD"],
+        "whether the repository has a commit",
+    )
+    if iExitCode == 0:
+        return True
+    # Exit 1 is git's own "no such revision" -- but a runner that
+    # chains ``cd`` before git exits 1 for a missing directory too, so
+    # the repository is asked to confirm it is one before an empty
+    # history is believed.
+    iExitCode, sInside = _ftAskGit(
+        ftRunGit, ["rev-parse", "--is-inside-work-tree"],
+        "whether the directory is a repository",
+    )
+    if iExitCode == 0 and sInside == "true":
+        return False
+    raise RecordKindUndeterminedError(
+        "the repository that would receive the record could not be "
+        f"read by git (exit {iExitCode})"
+    )
+
+
 def fbRepositoryCarriesForeignAttestation(ftRunGit):
     """True iff HEAD tracks an attestation last committed by another identity.
 
@@ -91,23 +143,45 @@ def fbRepositoryCarriesForeignAttestation(ftRunGit):
     that will RECEIVE the record and returns ``(iExitCode, sOutput)``.
     An attestation absent from HEAD -- untracked, or not yet committed
     -- is nobody else's, so the answer is False and the ordinary
-    attestation is written.
+    attestation is written. Every question is settled by git's own
+    exit code, measured 2026-09-12: ``rev-parse --verify --quiet HEAD``
+    exits 1 with no commits and 128 outside a repository; ``ls-tree``
+    exits 0 with empty output for an untracked path and 128 when HEAD
+    is unusable; ``config`` exits 1 for an unset key. Any other
+    answer, and a runner that raises, is UNDETERMINED and refused --
+    a broken git must never decide by its silence.
     """
-    iExitCode, _sOutput = ftRunGit(
-        ["cat-file", "-e", "HEAD:" + _S_ATTESTATION_RELATIVE_PATH],
+    if not _fbRepositoryHasACommit(ftRunGit):
+        return False
+    iExitCode, sTracked = _ftAskGit(
+        ftRunGit, ["ls-tree", "--name-only", "HEAD", "--", _S_ATTESTATION_RELATIVE_PATH],
+        "whether the attestation is tracked",
     )
     if iExitCode != 0:
+        raise RecordKindUndeterminedError(
+            f"git could not list HEAD to see whether the attestation is "
+            f"tracked (exit {iExitCode})"
+        )
+    if not sTracked:
         return False
-    iExitCode, sCommitter = ftRunGit(
-        ["log", "-1", "--format=%ce", "--", _S_ATTESTATION_RELATIVE_PATH],
+    iExitCode, sCommitter = _ftAskGit(
+        ftRunGit, ["log", "-1", "--format=%ce", "--", _S_ATTESTATION_RELATIVE_PATH],
+        "who committed the attestation",
     )
-    sCommitter = (sCommitter or "").strip()
     if iExitCode != 0 or not sCommitter:
-        return False
-    iExitCode, sOwnEmail = ftRunGit(["config", "user.email"])
-    sOwnEmail = (sOwnEmail or "").strip() if iExitCode == 0 else ""
-    if not sOwnEmail:
+        raise RecordKindUndeterminedError(
+            "the attestation is tracked at HEAD but git could not say who "
+            f"committed it (exit {iExitCode})"
+        )
+    iExitCode, sOwnEmail = _ftAskGit(
+        ftRunGit, ["config", "user.email"], "for the receiving identity",
+    )
+    if iExitCode == 1 or (iExitCode == 0 and not sOwnEmail):
         return True
+    if iExitCode != 0:
+        raise RecordKindUndeterminedError(
+            f"git could not read the receiving identity (exit {iExitCode})"
+        )
     return sCommitter.lower() != sOwnEmail.lower()
 
 

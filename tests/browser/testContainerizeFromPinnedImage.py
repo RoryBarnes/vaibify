@@ -319,3 +319,162 @@ def testANotBuiltTileWhoseEntrySaysArchiveCallsAcquireNeverBuild(
     assert "build" not in listKinds
     sAcquireUrl = [t[1] for t in listRequests if t[0] == "acquire"][0]
     assert "bAllowEmulation=true" in sAcquireUrl
+
+
+
+# ---------------------------------------------------------------------
+# A transition goes no further than a stop that failed, and a refusal
+# offers its recovery (review findings, 2026-09-12)
+# ---------------------------------------------------------------------
+
+
+def _fnListTheTileAsObtained(page, sStatus, listAdditionalAgents=None):
+    """Make the fake tile an obtained project in the given state."""
+    def fnListing(route):
+        response = route.fetch()
+        dictListing = json.loads(response.text())
+        for dictProject in dictListing.get("listContainers") or []:
+            if dictProject.get("sName") == S_CONTAINER_NAME:
+                dictProject["sStatus"] = sStatus
+                dictProject["bImageExists"] = sStatus != "not built"
+                dictProject["dictImageSource"] = {
+                    "sSource": "archive", "bAllowEmulation": False,
+                    "sPinnedImageReference": S_PIN,
+                    "sRequiredPlatform": "linux/amd64",
+                    "listAuthorOverlays": ["claude"],
+                    "listAdditionalAgents": list(listAdditionalAgents or []),
+                    "listResolvedOverlays": None,
+                }
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps(dictListing),
+        )
+    page.route("**/api/registry", fnListing)
+
+
+def _flistRecordLifecycle(page, bStopSucceeds):
+    """Record stop, switch, acquire, build and start requests in order."""
+    listRequests = _flistRecordConvertAndHandOffs(page, True)
+
+    def fnStop(route):
+        listRequests.append(("stop", route.request.url))
+        if bStopSucceeds:
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"bSuccess": True}),
+            )
+        else:
+            route.fulfill(
+                status=500, content_type="application/json",
+                body=json.dumps({"detail": "Stop failed: the daemon refused"}),
+            )
+
+    def fnSwitch(route):
+        listRequests.append(("switch", route.request.url))
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"bSwitched": True, "sBuildPath": "/x"}),
+        )
+    page.route("**/api/containers/**/stop", fnStop)
+    page.route("**/api/containers/**/switch-to-building", fnSwitch)
+    return listRequests
+
+
+def _fnClickTileMenuAction(page, sAction):
+    page.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]'
+        '[data-image-source="archive"]', timeout=10000,
+    )
+    page.click(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        '.container-tile-actions',
+    )
+    page.click(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        f'.container-menu-item[data-action="{sAction}"]',
+    )
+    page.wait_for_selector("#modalConfirm", timeout=5000)
+    page.click("#btnConfirmOk")
+    page.wait_for_timeout(1500)
+
+
+@pytest.mark.falsification
+def testAFailedStopEndsTheReobtainBeforeAnyAcquire(pageDashboard, serverHub):
+    """Kills: proceeding to acquire after fnStopContainer reported failure."""
+    _fnListTheTileAsObtained(pageDashboard, "running")
+    listRequests = _flistRecordLifecycle(pageDashboard, False)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnClickTileMenuAction(pageDashboard, "reobtain")
+    listKinds = [tRequest[0] for tRequest in listRequests]
+    assert listKinds == ["stop"], listKinds
+
+
+@pytest.mark.falsification
+def testTheSwitchStopsFirstAndAFailedStopPostsNothing(pageDashboard, serverHub):
+    """The stop precedes the switch; a failed stop leaves the entry untouched.
+
+    Kills: posting the switch before the stop, which clears the origin
+    record and the registry's image source under a container still
+    running the author's image.
+    """
+    _fnListTheTileAsObtained(pageDashboard, "running")
+    listRequests = _flistRecordLifecycle(pageDashboard, False)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnClickTileMenuAction(pageDashboard, "switch-to-building")
+    assert [tRequest[0] for tRequest in listRequests] == ["stop"]
+    pageDashboard.unroute("**/api/containers/**/stop")
+    pageDashboard.unroute("**/api/containers/**/switch-to-building")
+    listOrdered = _flistRecordLifecycle(pageDashboard, True)
+    _fnClickTileMenuAction(pageDashboard, "switch-to-building")
+    listKinds = [tRequest[0] for tRequest in listOrdered]
+    assert listKinds[:3] == ["stop", "switch", "build"], listKinds
+
+
+@pytest.mark.falsification
+def testAnUnprovenBaselineOffersTheRetryWithoutAdditions(pageDashboard, serverHub):
+    """The refusal names its recovery and the page OFFERS it.
+
+    Kills: reporting the refusal as an ordinary failure, which leaves
+    the researcher with a sentence and no lane to act on it.
+    """
+    _fnListTheTileAsObtained(pageDashboard, "not built", ["gemini"])
+    listRequests = _flistRecordConvertAndHandOffs(pageDashboard, True)
+    pageDashboard.unroute("**/api/containers/**/acquire-image**")
+    listAcquireUrls = []
+
+    def fnAcquire(route):
+        listAcquireUrls.append(route.request.url)
+        if len(listAcquireUrls) == 1:
+            route.fulfill(
+                status=500, content_type="application/json",
+                body=json.dumps({"detail": {
+                    "sMessage": "Build failed",
+                    "sError": "the obtained image carries no overlays label",
+                    "sStderrTail": "",
+                    "sAction": "reobtain-without-additions",
+                }}),
+            )
+            return
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"bSuccess": True, "dictImageOrigin": {}}),
+        )
+    pageDashboard.route("**/api/containers/**/acquire-image**", fnAcquire)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]'
+        '[data-image-source="archive"]', timeout=10000,
+    )
+    pageDashboard.click(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] .container-tile-main',
+    )
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    sOffer = pageDashboard.text_content("#modalConfirm")
+    assert "without the added agents" in sOffer
+    assert len(listAcquireUrls) == 1
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_timeout(1500)
+    assert len(listAcquireUrls) == 2
+    assert "bWithoutAdditions=true" in listAcquireUrls[1]
+    assert "bWithoutAdditions" not in listAcquireUrls[0]
+    assert "build" not in [tRequest[0] for tRequest in listRequests]

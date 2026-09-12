@@ -6791,7 +6791,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # regenerate refusal). Every addition sits on the same lane
     # between the readiness gate and the commit; the seam is still
     # the one named above, and it is now the next change's job.
-    "routes/reproducibilityRoutes.py": 1850,
+    # 2026-09-12: +34 for the ownership question moving AHEAD of the
+    # rerun (a git that cannot answer refuses before any step runs
+    # rather than after a run whose outcome could not be written)
+    # and the readiness poll answering UNDETERMINED by name. Same
+    # lane, same seam as above.
+    "routes/reproducibilityRoutes.py": 1884,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

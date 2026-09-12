@@ -960,3 +960,22 @@ def test_no_reader_of_the_record_fetches_a_url_on_trust():
     assert _flistEnclosingFunctionsOfRequestsGets(sClient) == [
         "fresponseGetWithinAllowlist",
     ]
+
+
+@pytest.mark.falsification
+def test_a_record_without_a_size_is_refused_before_any_fetch(tmp_path, monkeypatch):
+    """A download with no recorded size has no ceiling, so it is not started.
+
+    Kills: disabling the ceiling when the record carries no size.
+    """
+    def fsNeverResolve(*aArgs):
+        raise AssertionError("a fetch was attempted for a record with no size")
+    monkeypatch.setattr(imageAcquisition, "_fsResolveDepositFileUrl", fsNeverResolve)
+    with pytest.raises(ImageAcquisitionRefusedError) as excinfo:
+        imageAcquisition._fsDownloadVerifiedTarball({
+            "sVersionDoi": "10.5281/zenodo.7000001",
+            "sTarballName": "environment-image.tar",
+            "sTarballSha256": "sha256:" + "0" * 64,
+            "iTarballBytes": 0,
+        }, str(tmp_path), lambda dictStatus: None)
+    assert "no size" in str(excinfo.value)

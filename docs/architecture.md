@@ -2185,6 +2185,17 @@ answer their record API and file links directly, so the allowlist is
 the two API hosts plus the resolver, and the loop exists for the day
 that changes.
 
+The download is also bounded, in both lanes, by the size the envelope
+records (2026-09-12). A permitted host that is merely broken can
+answer with an endless body, and the script used to write all of it
+to disk before the hash check said no. Now `fnFetchWithinAllowlist`
+takes the ceiling and hands it to `curl --max-filesize`, the bytes
+that landed are measured against the record before they are hashed,
+and the Python client refuses to grow past the same figure. A record
+that carries no size is refused rather than fetched without a
+ceiling: normal staging never produces one, so its absence is a
+malformed envelope, not a legacy to accommodate.
+
 ### A verification produces a FILE, not a sentence
 
 "N of N hashes matched" is vaibify asserting it worked. Since
@@ -2242,6 +2253,24 @@ reproduction record is the reproduction REPORT's schema under
 `.vaibify/reproductions/`, read on the attestation GET only — never on
 the file-status poll, whose snapshot adapter cannot enumerate a
 directory. The Level 3 cell keeps reading the author's attestation.
+
+The question is three-state, and the third state refuses
+(2026-09-12). A review found that a committer git could not read was
+answered "not foreign": a missing executable or a transient exec
+failure would have written an attestation over somebody else's
+tracked one — the exact outcome the record exists to prevent. Either
+guess is wrong in a way nothing can undo (the other direction files
+the author's own verification as a stranger's), so an unanswerable
+question raises `RecordKindUndeterminedError`, both lanes ask it
+BEFORE the rerun and refuse by name, and readiness answers
+`undetermined` so the confirm dialog says so before the researcher
+consents. Each step is settled by git's own exit code, measured
+rather than assumed: `rev-parse --verify --quiet HEAD` exits 1 in a
+repository with no commits and 128 outside one (and a runner that
+chains `cd` exits 1 for a missing directory, so exit 1 is believed
+only after `--is-inside-work-tree` answers `true`); `ls-tree` exits 0
+with empty output for an untracked path; `config` exits 1 for an
+unset key.
 
 ### Containerizing from the author's pinned image
 
@@ -2306,6 +2335,29 @@ the record's BASE id on the obtained platform — never the overlay
 result the researcher sits in — and carries the archive-loaded marker,
 so the deposit re-check reads vacuous exactly as it does for a
 `reproduce.sh` clone.
+
+A review of the lane (2026-09-12) found four holes, and their shapes
+are worth keeping. The overlays label is a SET rendered in canonical
+order, never the build order: the supported case — the author's image
+holds `claude`, the clone adds `gemini` — stacks `node` and then
+`gemini`, and a label written as `claude,node,gemini` is refused by
+the label's own parser, so the derived image could never again be
+acquired as a pin. Build order and set membership are different facts
+and only the second is recorded. An unproven baseline with nothing to
+add answers `None`, not an empty proven set, because the differential
+resolver subtracts the proven set from the author's config and an
+empty one would re-stack the author's own agents onto the image that
+already holds them. The refusal an unproven baseline gives when
+something MUST be stacked names its recovery, and the acquire route
+carries it (`bWithoutAdditions` drops the added agents from the entry
+before obtaining) — a remedy that is only a sentence is a dead end.
+And both transitions that rewrite what the project's name resolves to
+(re-obtain, switch-to-building) are refused by the server while the
+container still exists, asked of the daemon rather than believed from
+the page, because the page's stop can fail and the old container would
+otherwise keep running under a tag, entry and origin record that
+describe another image; the page's stop now returns its outcome and
+every transition after a stop reads it.
 
 ### One image, N papers
 

@@ -1208,11 +1208,13 @@ var VaibifyContainerManager = (function () {
         return null;
     }
 
-    async function fnAcquireImage(sName, bAllowEmulation) {
+    async function fnAcquireImage(sName, bAllowEmulation, bWithoutAdditions) {
         /* The twin of fnBuildContainer for a project whose image is
            the author's pinned one: same modal, same progress record,
            same follow-on start. Returns whether the container is now
-           obtained AND running, for the same reason the build does. */
+           obtained AND running, for the same reason the build does.
+           bWithoutAdditions is the retry an unproven baseline names:
+           the server drops the added agents before obtaining. */
         var elOverlay = document.getElementById("modalBuildProgress");
         var bObtainedAndRunning = false;
         _fnResetBuildProgressTail();
@@ -1221,15 +1223,19 @@ var VaibifyContainerManager = (function () {
         try {
             var sUrl = "/api/containers/" +
                 encodeURIComponent(sName) + "/acquire-image" +
-                "?bAllowEmulation=" + (bAllowEmulation ? "true" : "false");
+                "?bAllowEmulation=" + (bAllowEmulation ? "true" : "false") +
+                (bWithoutAdditions ? "&bWithoutAdditions=true" : "");
             await VaibifyApi.fdictPostRaw(sUrl);
             VaibifyApp.fnShowToast(
                 "Obtained the author’s pinned image", "success");
             await fnStartContainer(sName);
             bObtainedAndRunning = true;
         } catch (error) {
-            if (error.iStatus === 409) {
+            var sAction = (error.dictDetail && error.dictDetail.sAction) || "";
+            if (error.iStatus === 409 && !sAction) {
                 bObtainedAndRunning = await _fnWatchRunningBuild(sName);
+            } else if (sAction === "reobtain-without-additions") {
+                _fnOfferReobtainWithoutAdditions(sName, bAllowEmulation, error);
             } else {
                 _fnReportBuildFailure(error);
             }
@@ -1239,6 +1245,29 @@ var VaibifyContainerManager = (function () {
             fnLoadContainers();
         }
         return bObtainedAndRunning;
+    }
+
+    function _fnOfferReobtainWithoutAdditions(sName, bAllowEmulation, error) {
+        /* The refusal's own recovery, offered rather than only named:
+           the obtained image cannot prove which agents it holds, so
+           nothing can be stacked on it, but it can run as the author
+           pinned it. Confirming retries with the additions dropped. */
+        var sReason = (error.dictDetail && error.dictDetail.sError) ||
+            error.message || "";
+        VaibifyApp.fnShowConfirmModal(
+            "Re-obtain without the added agents?",
+            "The pinned image cannot prove which agents it already " +
+            "holds, so the agents this project adds cannot be stacked " +
+            "on it. It can still run exactly as the author pinned it. " +
+            "Re-obtain it without the added agents?",
+            async function () {
+                await fnAcquireImage(sName, bAllowEmulation, true);
+            },
+            {
+                sDetails: VaibifyUtilities.fsSanitizeErrorForUser(sReason),
+                sConfirmLabel: "Re-obtain without added agents",
+            }
+        );
     }
 
     async function fnReobtainPinnedImage(sName) {
@@ -1252,8 +1281,8 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                await fnStopContainer(sName);
-                await fnAcquireImage(sName, bAllowEmulation);
+                if (!(await fnStopContainer(sName))) return;
+                await fnAcquireImage(sName, bAllowEmulation, false);
             },
             {
                 sDetails: "The image the author pinned is what every " +
@@ -1272,7 +1301,14 @@ var VaibifyContainerManager = (function () {
             "the author’s bytes, and the origin record is cleared. " +
             "Workspace files are preserved.",
             async function () {
+                /* The stop comes FIRST, and a failed one ends it here:
+                   the switch clears the registry entry and the origin
+                   record, which must not happen under a container
+                   that is still running the author's image. The
+                   server refuses the switch while the container
+                   exists, whatever this page believes. */
                 VaibifyTerminal.fnCloseAll();
+                if (!(await fnStopContainer(sName))) return;
                 try {
                     await VaibifyApi.fdictPost(
                         "/api/containers/" + encodeURIComponent(sName) +
@@ -1283,7 +1319,6 @@ var VaibifyContainerManager = (function () {
                             error.message), "error");
                     return;
                 }
-                await fnStopContainer(sName);
                 await fnBuildContainer(sName, false);
             },
             {
@@ -1579,6 +1614,12 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnStopContainer(sName) {
+        /* Returns whether the stop SUCCEEDED. Every transition that
+           follows a stop (restart, rebuild, re-obtain, switch) reads
+           the answer and goes no further on false: a stop that failed
+           leaves the old container running, and rebuilding or
+           retagging under it would put a container on screen that
+           the registry and the tag describe as another image. */
         fnSetTilePending(sName);
         VaibifyTerminal.fnCloseAll();
         try {
@@ -1587,10 +1628,12 @@ var VaibifyContainerManager = (function () {
                 + "/stop"
             );
             VaibifyApp.fnShowToast("Container stopped", "success");
+            return true;
         } catch (error) {
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
+            return false;
         } finally {
             fnLoadContainers();
         }
@@ -1604,7 +1647,7 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                await fnStopContainer(sName);
+                if (!(await fnStopContainer(sName))) return;
                 await fnStartContainer(sName);
             },
             {
@@ -1629,7 +1672,7 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                await fnStopContainer(sName);
+                if (!(await fnStopContainer(sName))) return;
                 await fnBuildContainer(sName, false);
             },
             {
@@ -1652,7 +1695,7 @@ var VaibifyContainerManager = (function () {
             "minutes. Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                await fnStopContainer(sName);
+                if (!(await fnStopContainer(sName))) return;
                 await fnBuildContainer(sName, true);
             },
             {

@@ -56,13 +56,22 @@ from vaibify.docker import imageBuilder
 logger = logging.getLogger(__name__)
 
 
+S_ACTION_REOBTAIN_WITHOUT_ADDITIONS = "reobtain-without-additions"
+
+
 class PinnedImageAcquisitionRefusedError(Exception):
     """The acquisition stopped before the project gained an image.
 
     Derives from ``Exception``, never ``OSError``: a refusal swallowed
     by an ``except OSError`` is how a control decision downgrades into
-    an I/O hiccup.
+    an I/O hiccup. ``sAction`` names the one recovery the refusal
+    offers, when there is one, so the dashboard can offer it rather
+    than leave the sentence as a dead end.
     """
+
+    def __init__(self, sMessage, sAction=""):
+        super().__init__(sMessage)
+        self.sAction = sAction
 
 
 def _fnDiscardLine(sLine):
@@ -72,7 +81,7 @@ def _fnDiscardLine(sLine):
 
 def fdictAcquireForProject(
     dictProject, bAllowEmulation, fnReportLine=None, dockerDisposable=None,
-    sDockerDir=None,
+    sDockerDir=None, bWithoutAdditions=False,
 ):
     """Run the whole lane for one registered project; return its record.
 
@@ -80,10 +89,14 @@ def fdictAcquireForProject(
     says the project's image is obtained and carries the candidate
     baseline captured at conversion. Emulation is consented TWICE: the
     entry's flag from the wizard and this call's from the button.
+    ``bWithoutAdditions`` is the recovery an unproven baseline names:
+    the agents the wizard added are dropped from the entry FIRST, so
+    the retry asks for nothing that has to be stacked.
     """
     from vaibify.config.registryManager import (
         S_IMAGE_SOURCE_ARCHIVE,
         S_IMAGE_SOURCE_KEY,
+        fnUpdateImageSource,
     )
     fnReport = fnReportLine or _fnDiscardLine
     dictSource = dict(dictProject.get(S_IMAGE_SOURCE_KEY) or {})
@@ -92,6 +105,14 @@ def fdictAcquireForProject(
             "this project's image is built from its Dockerfile, not "
             "obtained; use Rebuild"
         )
+    if bWithoutAdditions and dictSource.get("listAdditionalAgents"):
+        fnReport(
+            "dropping the added agents ("
+            + ", ".join(dictSource["listAdditionalAgents"])
+            + ") so the obtained image runs as the author pinned it"
+        )
+        fnUpdateImageSource(dictProject["sName"], {"listAdditionalAgents": []})
+        dictSource["listAdditionalAgents"] = []
     bEmulationConsented = bool(bAllowEmulation) and bool(
         dictSource.get("bAllowEmulation"),
     )
@@ -110,10 +131,14 @@ def fdictAcquireForProject(
         list(dictSource.get("listAdditionalAgents") or []),
         sDockerDir, fnReport,
     )
-    listChain = flistResolveDifferentialChain(
+    # An unproven baseline (None) stacks nothing: the base runs as
+    # obtained, which is the only honest thing to do with an image
+    # whose contents cannot be established.
+    listChain = [] if listProven is None else flistResolveDifferentialChain(
         dictProject["sConfigPath"], listProven,
         list(dictSource.get("listAdditionalAgents") or []),
     )
+    listProven = list(listProven or [])
     sRunningImageId = _fsStackAndResolve(
         dictProject, sBaseImageId, listChain, listProven,
         dictAcquired["sRequiredPlatform"], sDockerDir, fnReport,
@@ -126,7 +151,9 @@ def fdictAcquireForProject(
     _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)
     return _fdictCommitOriginRecord(
         dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,
-        sRunningImageId, listProven + listChain, fnReport,
+        sRunningImageId,
+        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),
+        fnReport,
     )
 
 
@@ -215,13 +242,14 @@ def flistProveOverlayBaseline(
     dictLabels, listCandidate, listAdditional, sDockerDir=None,
     fnReportLine=None,
 ):
-    """Step 3: return the PROVEN overlay set, or refuse.
+    """Step 3: return the PROVEN overlay set, ``None`` if unproven, or refuse.
 
     The image's own label proves it (and must EQUAL the candidate); a
     recomputed recipe fingerprint over this vaibify's shipped texts
     proves the candidate for an image built before the label existed;
     otherwise the set is unproven, which is allowed only when nothing
-    is to be stacked on it.
+    is to be stacked on it -- and then the answer is ``None``, so the
+    caller stacks nothing at all rather than "everything but nothing".
     """
     from vaibify.reproducibility.dockerfileComposer import (
         S_OVERLAYS_IMAGE_LABEL,
@@ -240,7 +268,7 @@ def flistProveOverlayBaseline(
                 f"the obtained image is malformed: {error}; nothing was "
                 "tagged"
             ) from error
-        if listLabelled != list(listCandidate):
+        if listLabelled != imageBuilder.flistCanonicalizeOverlaySet(listCandidate):
             raise PinnedImageAcquisitionRefusedError(
                 "the repository says the image was built with the overlays "
                 f"[{', '.join(listCandidate) or 'none'}] and the image "
@@ -273,14 +301,19 @@ def flistProveOverlayBaseline(
             "be matched; no agents were requested, so the base is used "
             "as obtained"
         )
-        return []
+        # None, not []: an empty PROVEN set would let the differential
+        # resolver re-stack the author's own overlays onto an image
+        # that (per its recipe) already holds them, and the result
+        # would be a derived image where the pin was wanted.
+        return None
     raise PinnedImageAcquisitionRefusedError(
         "the obtained image carries no overlays label and its recipe does "
         "not match this vaibify's shipped Dockerfiles for "
         f"[{', '.join(listCandidate) or 'none'}], so which agents it "
         "already holds cannot be proven and nothing can safely be stacked "
         "on it. Re-obtain the pinned image without adding agents, or "
-        "switch to building from the Dockerfile."
+        "switch to building from the Dockerfile.",
+        sAction=S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
     )
 
 
@@ -328,9 +361,16 @@ def _fsStackAndResolve(
     sStagedDir = fsStageBuildContext(configProject, sDockerDir or fsDockerDir())
     try:
         fnPrepareBuildContext(configProject, sStagedDir, dictProject["sDirectory"])
+        # The chain is stacked in BUILD order (a prerequisite before
+        # the agent that needs it); the label records the resulting
+        # SET in canonical order, which is the only form its parser
+        # accepts.
         sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
             dictProject["sName"], sBaseImageId, listChain, sStagedDir,
-            sPlatform, list(listProven) + list(listChain),
+            sPlatform,
+            imageBuilder.flistCanonicalizeOverlaySet(
+                list(listProven) + list(listChain),
+            ),
         )
     finally:
         fnDiscardBuildContext(sStagedDir)
@@ -348,7 +388,9 @@ def _fsStackAndResolve(
 def _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport):
     """Step 6: vaibify.yml names the agents the image holds; registry the chain."""
     from vaibify.config.registryManager import fnUpdateImageSource
-    listResolved = list(listProven) + list(listChain)
+    listResolved = imageBuilder.flistCanonicalizeOverlaySet(
+        list(listProven) + list(listChain),
+    )
     listAgents = [
         sOverlay for sOverlay in listResolved
         if sOverlay in imageBuilder.T_AGENT_OVERLAY_NAMES

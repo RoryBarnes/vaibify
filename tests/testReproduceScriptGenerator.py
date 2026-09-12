@@ -484,6 +484,9 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -o) sOutput="$2"; shift ;;
         -w) shift ;;
+        --max-filesize)
+            printf '%s\\n' "$2" >> "$VAIBIFY_TEST_RECORD_DIR/curl.maxfilesize"
+            shift ;;
         -*) ;;
         *) sUrl="$1" ;;
     esac
@@ -536,6 +539,7 @@ def _fdictDriveFallback(
         "sVersionDoi": "10.5281/zenodo.7000001",
         "sTarballName": "environment-image.tar.gz",
         "sTarballSha256": sRecordedSha256,
+        "iTarballBytes": len(baServedTarball),
     }
     dictRecord.update(dictRecordExtra or {})
     (pathRepo / ".vaibify" / "environment.json").write_text(json.dumps({
@@ -725,3 +729,51 @@ def test_the_shell_never_lets_curl_follow_a_redirect_on_its_own():
     iLoopStart = sScript.index("fnFetchWithinAllowlist() {")
     iLoopEnd = sScript.index("\n}\n", iLoopStart)
     assert iLoopStart < sScript.index(listInvocations[0]) < iLoopEnd
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+@pytest.mark.falsification
+def test_the_shell_bounds_the_archive_download_to_the_recorded_size(tmp_path):
+    """The reproducer's fetch is bounded by the envelope's recorded size.
+
+    curl is told the ceiling up front, and the bytes that landed are
+    measured against the record before the hash is even computed --
+    a broken permitted host cannot fill the disk, and a tarball that
+    is not the recorded size never reaches ``docker load``.
+
+    Kills: dropping the size check between the fetch and the hash.
+    """
+    baTarball = gzip.compress(b"bytes with a hash and a size")
+    sSha = "sha256:" + hashlib.sha256(baTarball).hexdigest()
+    (tmp_path / "bounded").mkdir()
+    dictRun = _fdictDriveFallback(tmp_path / "bounded", baTarball, sSha)
+    assert dictRun["iExit"] == 0, dictRun["sStderr"]
+    assert (dictRun["pathRecord"] / "curl.maxfilesize").read_text().split() == [
+        str(len(baTarball)),
+    ]
+    (tmp_path / "oversize").mkdir()
+    dictOversize = _fdictDriveFallback(
+        tmp_path / "oversize", baTarball, sSha,
+        dictRecordExtra={"iTarballBytes": len(baTarball) - 1},
+    )
+    assert dictOversize["iExit"] != 0
+    assert "size the envelope records" in dictOversize["sStderr"]
+    assert not (dictOversize["pathRecord"] / "loaded.bin").exists(), (
+        "a tarball of the wrong size reached docker load"
+    )
+
+
+@_skipWithoutBash
+@_skipWithoutJq
+def test_the_shell_refuses_an_archive_record_without_a_size(tmp_path):
+    baTarball = gzip.compress(b"bytes nobody measured")
+    sSha = "sha256:" + hashlib.sha256(baTarball).hexdigest()
+    dictRun = _fdictDriveFallback(
+        tmp_path, baTarball, sSha, dictRecordExtra={"iTarballBytes": None},
+    )
+    assert dictRun["iExit"] != 0
+    assert "records no size" in dictRun["sStderr"]
+    assert not any("/files/" in sUrl for sUrl in dictRun["listCurlUrls"]), (
+        "the unbounded file was fetched anyway"
+    )
