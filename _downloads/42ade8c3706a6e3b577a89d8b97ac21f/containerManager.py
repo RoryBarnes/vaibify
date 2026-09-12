@@ -396,7 +396,131 @@ def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
     _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
+    _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
     return saRunArgs
+
+
+def _fnAdmitObtainedImageOrRefuse(config, saRunArgs):
+    """The launch guard for a project whose image was OBTAINED, not built.
+
+    Reads the registry's image source and the origin record. For an
+    archive-source project a start REFUSES, naming the cause and both
+    remedies, when the record is absent or stale -- it never falls back
+    to whatever occupies ``<projectName>:latest`` -- and when the record
+    is good it requests the recorded platform of every start and
+    refuses a daemon whose architecture no longer matches the obtained
+    platform unless the record says emulation was consented to (a
+    switched Docker context must not silently emulate). A project that
+    builds its image is untouched.
+    """
+    from vaibify.config.imageOrigins import (
+        fdictJudgeOriginRecord,
+        fdictReadOriginRecord,
+    )
+    from vaibify.config.registryManager import (
+        fbProjectImageIsObtained,
+        fdictGetProject,
+    )
+    dictProject = fdictGetProject(config.sProjectName)
+    if not fbProjectImageIsObtained(dictProject):
+        return
+    dictRecord = fdictReadOriginRecord(config.sProjectName)
+    dictJudgement = fdictJudgeOriginRecord(
+        dictRecord, fdictInspectImageTag(f"{config.sProjectName}:latest"),
+    )
+    if dictJudgement["bStale"]:
+        raise RuntimeError(
+            f"'{config.sProjectName}' is set to run the author's pinned "
+            "image, but " + dictJudgement["sReason"] + ", so the image "
+            "under the project's tag cannot be trusted to be that one. "
+            "Obtain the pinned image again (Rebuild -> Re-obtain the "
+            "pinned image), or switch the project to building from the "
+            "Dockerfile."
+        )
+    _fnRefuseSilentEmulation(config, dictRecord)
+    sPlatform = str(dictRecord.get("sRequiredPlatform") or "")
+    if sPlatform:
+        saRunArgs.extend(["--platform", sPlatform])
+
+
+def _fnRefuseSilentEmulation(config, dictRecord):
+    """Refuse a start that would emulate something nobody consented to."""
+    from vaibify.reproducibility.imageAcquisition import (
+        fsArchitectureOfPlatform,
+    )
+    if dictRecord.get("bEmulated"):
+        return
+    sDaemonArchitecture = fsReadDaemonArchitectureQuietly()
+    sObtainedArchitecture = fsArchitectureOfPlatform(
+        str(dictRecord.get("sObtainedPlatform") or ""),
+    )
+    if not sDaemonArchitecture or not sObtainedArchitecture:
+        return
+    if sDaemonArchitecture.lower() == sObtainedArchitecture:
+        return
+    raise RuntimeError(
+        f"'{config.sProjectName}' runs an image obtained for "
+        f"{sObtainedArchitecture} without emulation, and this Docker "
+        f"daemon is {sDaemonArchitecture}: starting it now would emulate "
+        "an architecture nobody consented to. Switch back to the daemon "
+        "the image was obtained on, or obtain it again with emulation "
+        "allowed."
+    )
+
+
+def fdictLiveImageOriginForProject(sProjectName):
+    """Return the project's origin record when its image is obtained and current.
+
+    ``None`` for a project that builds its image, for one with no
+    record, and for a STALE record -- the three cases every reader
+    treats alike, so a manual ``docker build`` outside vaibify cannot
+    inherit the archive's provenance. The daemon is asked what the
+    tag resolves to NOW.
+    """
+    from vaibify.config.imageOrigins import fdictReadLiveOriginRecord
+    from vaibify.config.registryManager import (
+        fbProjectImageIsObtained,
+        fdictGetProject,
+    )
+    if not fbProjectImageIsObtained(fdictGetProject(sProjectName)):
+        return None
+    return fdictReadLiveOriginRecord(
+        sProjectName, fdictInspectImageTag(f"{sProjectName}:latest"),
+    )
+
+
+def fdictInspectImageTag(sImageReference):
+    """Return ``{sId, dictLabels}`` for an image reference, or ``None``.
+
+    Asked of the daemon through the lifecycle gateway's own probe, so
+    the launch guard judges the tag the daemon holds NOW rather than
+    a remembered one. ``None`` means the reference resolves to nothing
+    or the daemon did not answer -- both read as "not the recorded
+    image" to the guard, which is the safe direction.
+    """
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "image", "inspect", "--format",
+        "{{.Id}}\t{{json .Config.Labels}}", sImageReference,
+    ])
+    if not bAnswered or not sOutput.strip():
+        return None
+    sId, _sTab, sLabelsJson = sOutput.strip().partition("\t")
+    try:
+        dictLabels = json.loads(sLabelsJson) if sLabelsJson else {}
+    except ValueError:
+        dictLabels = {}
+    return {
+        "sId": sId.strip(),
+        "dictLabels": dict(dictLabels) if isinstance(dictLabels, dict) else {},
+    }
+
+
+def fsReadDaemonArchitectureQuietly():
+    """Return the daemon's architecture (Go spelling) or empty."""
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "version", "--format", "{{.Server.Arch}}",
+    ])
+    return sOutput.strip() if bAnswered else ""
 
 
 def _flistBuildProcessModeArgs(bDetached, bCreateOnly):

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.12.dev10 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.12.dev16 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2d0a9272"></script>
+      <script src="_static/documentation_options.js?v=42fb86a6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -124,6 +124,10 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-deposit-runs-on-the-host-and-the-credential-crosses-once">The deposit runs on the host and the credential crosses once</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#unchecked-is-never-red-and-closed-is-not-the-same-red">Unchecked is never red, and closed is not the same red</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-attestation-re-check-can-be-vacuous-and-must-say-so">The attestation re-check can be vacuous, and must say so</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-deposit-is-found-by-name-and-no-redirect-is-followed-on-trust">The deposit is found by NAME, and no redirect is followed on trust</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-verification-produces-a-file-not-a-sentence">A verification produces a FILE, not a sentence</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction">A clone carrying someone else’s attestation records a reproduction</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#containerizing-from-the-author-s-pinned-image">Containerizing from the author’s pinned image</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#one-image-n-papers">One image, N papers</a></li>
 </ul>
 </li>
@@ -2297,6 +2301,205 @@ is pinned in <code class="docutils literal notranslate"><span class="pre">MANIFE
 manifest — and the re-check reports VACUOUS rather than passed. Same
 shape as rooting a rerun’s comparison on the shadow rather than the
 live repository.</p>
+</section>
+<section id="the-deposit-is-found-by-name-and-no-redirect-is-followed-on-trust">
+<h3>The deposit is found by NAME, and no redirect is followed on trust<a class="headerlink" href="#the-deposit-is-found-by-name-and-no-redirect-is-followed-on-trust" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> is a file in a cloned repository, so
+nothing read from it may be fetched as a URL. The deposit record names
+WHICH Zenodo holds it (<code class="docutils literal notranslate"><span class="pre">sZenodoService</span></code>, the client’s own service key);
+readers map that name through the client’s host table — the only place
+a Zenodo host is spelled — and refuse any other value. A record written
+before the field existed is classified by DOI prefix: <code class="docutils literal notranslate"><span class="pre">10.5072/</span></code> is
+DataCite’s test prefix and therefore the sandbox. Nothing in a sandbox
+DOI says “sandbox”, and a classifier that looked for the word sent
+every sandbox deposit to production Zenodo, where the record 404s and
+the fallback composed a download URL from a DataCite error page.
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> renders its own service table FROM the client’s, so the
+two lanes cannot disagree about a host.</p>
+<p>And no redirect is followed before its target host is checked.
+<code class="docutils literal notranslate"><span class="pre">requests</span></code> with <code class="docutils literal notranslate"><span class="pre">allow_redirects=True</span></code> and <code class="docutils literal notranslate"><span class="pre">curl</span> <span class="pre">-L</span></code> have both
+contacted the redirected host by the time the final URL is readable, so
+both lanes follow by hand: send without following, read <code class="docutils literal notranslate"><span class="pre">Location</span></code>
+(<code class="docutils literal notranslate"><span class="pre">%{redirect_url}</span></code> in shell), check its origin against the table, and
+only then send the next request, for a bounded number of hops
+(<code class="docutils literal notranslate"><span class="pre">zenodoClient.fresponseGetWithinAllowlist</span></code>; <code class="docutils literal notranslate"><span class="pre">fnFetchWithinAllowlist</span></code>
+in the script). This covers the record fetch, the file download — the
+record’s <code class="docutils literal notranslate"><span class="pre">files[].links.self</span></code> is validated the same way — and the
+doi.org fallback, which is admitted as the START of a hop chain only
+for a record with no service. <code class="docutils literal notranslate"><span class="pre">tests/testImageAcquisition.py</span></code> stands
+up a decoy loopback server and asserts it receives NO request;
+<code class="docutils literal notranslate"><span class="pre">tests/testReproduceScriptGenerator.py</span></code> does the same for the shell
+through real <code class="docutils literal notranslate"><span class="pre">bash</span></code>. Measured on 2026-09-11: both Zenodo instances
+answer their record API and file links directly, so the allowlist is
+the two API hosts plus the resolver, and the loop exists for the day
+that changes.</p>
+<p>The download is also bounded, in both lanes, by the size the envelope
+records (2026-09-12). A permitted host that is merely broken can
+answer with an endless body, and the script used to write all of it
+to disk before the hash check said no. Now <code class="docutils literal notranslate"><span class="pre">fnFetchWithinAllowlist</span></code>
+takes the ceiling and hands it to <code class="docutils literal notranslate"><span class="pre">curl</span> <span class="pre">--max-filesize</span></code>, the bytes
+that landed are measured against the record before they are hashed,
+and the Python client refuses to grow past the same figure. A record
+that carries no size is refused rather than fetched without a
+ceiling: normal staging never produces one, so its absence is a
+malformed envelope, not a legacy to accommodate.</p>
+</section>
+<section id="a-verification-produces-a-file-not-a-sentence">
+<h3>A verification produces a FILE, not a sentence<a class="headerlink" href="#a-verification-produces-a-file-not-a-sentence" title="Link to this heading"></a></h3>
+<p>“N of N hashes matched” is vaibify asserting it worked. Since
+2026-09-11 the rerun keeps every observed hash — the comparison used to
+compute them all and return only the mismatched paths — and renders
+them into <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code> at the repository root, in
+<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>’s own format: exactly one header line, then the same
+paths in the same order, so line N of one file is the same path as line
+N of the other and <code class="docutils literal notranslate"><span class="pre">diff</span></code> works from a terminal. A file the shadow did
+not produce is a <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">MISSING</span>&#160; <span class="pre">&lt;path&gt;</span></code> comment at the SAME position, never
+a fabricated hash and never an omitted line; every other line is a line
+<code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span></code> accepts over the shadow tree. Carried (human-made)
+outputs are hashed and listed like every other entry — what marks them
+as given rather than graded is the record beside the file and the
+viewer, never the file. Provenance (which image, obtained how, on which
+platform, with which epoch) lives in that record too, so the manifest
+carries hashes and repo-relative paths only: it is committed and
+published.</p>
+<p>The per-file outcome list (<code class="docutils literal notranslate"><span class="pre">listFileOutcomes</span></code>, one
+<code class="docutils literal notranslate"><span class="pre">{sPath,</span> <span class="pre">sExpected,</span> <span class="pre">sObserved,</span> <span class="pre">sStatus}</span></code> per frozen manifest entry) is
+the AUTHORITY: every count, every path list and the rendered file are
+derived from it, and nothing is re-hashed after the shadow is destroyed
+or re-read from a manifest the rerun may have mutated. The write order
+is load-bearing and shared by both lanes
+(<code class="docutils literal notranslate"><span class="pre">reproductionRecord.flistWriteVerificationOutcome</span></code>): the timestamped
+copy under <code class="docutils literal notranslate"><span class="pre">.vaibify/reproducedManifests/</span></code>, then the root file, THEN the
+record that names it — so a record can never point at a manifest that
+was not written. None of those paths is ever pinned by the manifest; a
+reproduced manifest inside the manifest would grade itself. The
+dashboard’s two viewers render the pinned and the reproduced manifest
+side by side, read-only, with line colours taken from the record’s
+verdict — never from JavaScript comparing hashes, which would be a
+second authority on a question that has one.</p>
+</section>
+<section id="a-clone-carrying-someone-else-s-attestation-records-a-reproduction">
+<h3>A clone carrying someone else’s attestation records a reproduction<a class="headerlink" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction" title="Link to this heading"></a></h3>
+<p>An attestation is the author’s claim about their own project. A
+researcher who obtained the author’s environment and clicked Verify has
+REPRODUCED the result, or failed to — they have not attested, and
+overwriting <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code> in their clone would put two
+people’s claims under one name (a push to a fork would publish the
+stranger’s run as the author’s). The trigger is git evidence in the
+repository, never a host-side record of how the image was obtained: the
+attestation is tracked at HEAD and its last COMMITTER differs from the
+receiving repository’s configured identity — the committer, because a
+rebase preserves someone else’s author and re-stamps the committer; an
+unconfigured identity counts as foreign. It is a conservative heuristic
+about who last committed one file, and the record says so. Both lanes
+ask through a git runner bound to the repository that will RECEIVE the
+record (the container’s checkout through the exec seam; the CLI’s
+<code class="docutils literal notranslate"><span class="pre">--repo</span></code> through the host runner), and the readiness answer carries the
+verdict so the confirm dialog names the record BEFORE the copy. The
+reproduction record is the reproduction REPORT’s schema under
+<code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code>, read on the attestation GET only — never on
+the file-status poll, whose snapshot adapter cannot enumerate a
+directory. The Level 3 cell keeps reading the author’s attestation.</p>
+<p>The question is three-state, and the third state refuses
+(2026-09-12). A review found that a committer git could not read was
+answered “not foreign”: a missing executable or a transient exec
+failure would have written an attestation over somebody else’s
+tracked one — the exact outcome the record exists to prevent. Either
+guess is wrong in a way nothing can undo (the other direction files
+the author’s own verification as a stranger’s), so an unanswerable
+question raises <code class="docutils literal notranslate"><span class="pre">RecordKindUndeterminedError</span></code>, both lanes ask it
+BEFORE the rerun and refuse by name, and readiness answers
+<code class="docutils literal notranslate"><span class="pre">undetermined</span></code> so the confirm dialog says so before the researcher
+consents. Each step is settled by git’s own exit code, measured
+rather than assumed: <code class="docutils literal notranslate"><span class="pre">rev-parse</span> <span class="pre">--verify</span> <span class="pre">--quiet</span> <span class="pre">HEAD</span></code> exits 1 in a
+repository with no commits and 128 outside one (and a runner that
+chains <code class="docutils literal notranslate"><span class="pre">cd</span></code> exits 1 for a missing directory, so exit 1 is believed
+only after <code class="docutils literal notranslate"><span class="pre">--is-inside-work-tree</span></code> answers <code class="docutils literal notranslate"><span class="pre">true</span></code>); <code class="docutils literal notranslate"><span class="pre">ls-tree</span></code> exits 0
+with empty output for an untracked path; <code class="docutils literal notranslate"><span class="pre">config</span></code> exits 1 for an
+unset key.</p>
+</section>
+<section id="containerizing-from-the-author-s-pinned-image">
+<h3>Containerizing from the author’s pinned image<a class="headerlink" href="#containerizing-from-the-author-s-pinned-image" title="Link to this heading"></a></h3>
+<p>A rebuild from the Dockerfile produces a different digest and cannot
+reproduce the author’s bytes. Since 2026-09-11 the Containerize wizard
+offers, on a clone whose envelope pins an image by content digest, to
+OBTAIN that image through the published chain — registry, then the
+archived deposit, then a copy on this daemon (<code class="docutils literal notranslate"><span class="pre">imageAcquisition</span></code>) —
+instead of building. The option is named for what it does, “Use the
+author’s pinned image”, because rule 6 accepts an absent deposit and
+the chain’s first link is the registry.</p>
+<p>The conversion is a WHITELIST, not a merge
+(<code class="docutils literal notranslate"><span class="pre">pinnedEnvironmentConversion.fdictOverlayRuntimeFieldsOnly</span></code>): only
+runtime fields — the docker-run flags and environment variables the
+researcher controls — are written onto the clone’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>;
+every base-defining field stays exactly as the author committed it,
+and the agent INSTALL keys are not written at all until the overlays
+exist. The registry entry gains <code class="docutils literal notranslate"><span class="pre">dictImageSource</span></code> with the CANDIDATE
+overlay baseline captured before anything rewrites the file, because
+after that (and after a hub restart) the author’s original feature
+set exists nowhere else on this host.</p>
+<p>The acquisition (<code class="docutils literal notranslate"><span class="pre">docker/pinnedImageAcquisition</span></code>) is an ordered lane
+and the order is the contract: re-check the clone, obtain, PROVE the
+baseline, stack the DIFFERENTIAL overlays, tag by ID, describe, commit.
+The baseline is proven against the image — its own <code class="docutils literal notranslate"><span class="pre">vaibify-overlays</span></code>
+label first (which must EQUAL the candidate, additions requested or
+not; a recipe that disagrees with its image is the defect the
+Dockerfile-provenance row exists to catch), else a recomputed recipe
+fingerprint over this vaibify’s shipped texts — and never taken from a
+comment line in a cloned repository. Unproven never fails open: with no
+additions the base runs as obtained; with additions the acquisition
+fails before anything is tagged. Overlays are stacked on the obtained
+image ID on the pinned platform and labelled
+<code class="docutils literal notranslate"><span class="pre">vaibify.pinnedBaseImageId</span></code>, so a derived image reads as derived and is
+never reported as the pin. The origin record
+(<code class="docutils literal notranslate"><span class="pre">config/imageOrigins</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.vaibify/imageOrigins/&lt;project&gt;.json</span></code>, 0600)
+is written LAST and is the launch guard’s admission: for an
+archive-source project a start refuses, naming the cause and both
+remedies, when the record is absent or STALE — the tag no longer
+resolves to the recorded image, or the running image is neither the
+base nor labelled as derived from it — and never falls back to
+whatever occupies <code class="docutils literal notranslate"><span class="pre">&lt;projectName&gt;:latest</span></code>. Every start requests the
+recorded platform, and a switched daemon whose architecture differs
+from the obtained platform refuses rather than emulating something
+nobody consented to (emulation is consented twice: the entry and the
+per-attempt body).</p>
+<p>The record has exactly three ending transitions: switching to
+building (which clears <code class="docutils literal notranslate"><span class="pre">dictImageSource</span></code> and the record in ONE locked
+registry mutation), un-registration, and rename. Stop is not one. A
+plain <code class="docutils literal notranslate"><span class="pre">/build</span></code> on an archive-source project answers 409 naming the
+switch. At connect the identity capture records <code class="docutils literal notranslate"><span class="pre">dictDerivation</span></code>, and
+the currency assessment gains a fourth answer: the running image IS
+the base (<code class="docutils literal notranslate"><span class="pre">bPinnedImageIsLive</span></code> true, <code class="docutils literal notranslate"><span class="pre">sRelation:</span> <span class="pre">&quot;base&quot;</span></code>) or is derived
+(<code class="docutils literal notranslate"><span class="pre">sRelation:</span> <span class="pre">&quot;derived&quot;</span></code>, a note rather than a warning, never reported
+as the pin). Regenerating the envelope is refused for an obtained
+environment through one predicate, <code class="docutils literal notranslate"><span class="pre">fbEnvironmentWasObtained</span></code>, so the
+ruling is cheap to flip. The shadow rerun creates its container from
+the record’s BASE id on the obtained platform — never the overlay
+result the researcher sits in — and carries the archive-loaded marker,
+so the deposit re-check reads vacuous exactly as it does for a
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> clone.</p>
+<p>A review of the lane (2026-09-12) found four holes, and their shapes
+are worth keeping. The overlays label is a SET rendered in canonical
+order, never the build order: the supported case — the author’s image
+holds <code class="docutils literal notranslate"><span class="pre">claude</span></code>, the clone adds <code class="docutils literal notranslate"><span class="pre">gemini</span></code> — stacks <code class="docutils literal notranslate"><span class="pre">node</span></code> and then
+<code class="docutils literal notranslate"><span class="pre">gemini</span></code>, and a label written as <code class="docutils literal notranslate"><span class="pre">claude,node,gemini</span></code> is refused by
+the label’s own parser, so the derived image could never again be
+acquired as a pin. Build order and set membership are different facts
+and only the second is recorded. An unproven baseline with nothing to
+add answers <code class="docutils literal notranslate"><span class="pre">None</span></code>, not an empty proven set, because the differential
+resolver subtracts the proven set from the author’s config and an
+empty one would re-stack the author’s own agents onto the image that
+already holds them. The refusal an unproven baseline gives when
+something MUST be stacked names its recovery, and the acquire route
+carries it (<code class="docutils literal notranslate"><span class="pre">bWithoutAdditions</span></code> drops the added agents from the entry
+before obtaining) — a remedy that is only a sentence is a dead end.
+And both transitions that rewrite what the project’s name resolves to
+(re-obtain, switch-to-building) are refused by the server while the
+container still exists, asked of the daemon rather than believed from
+the page, because the page’s stop can fail and the old container would
+otherwise keep running under a tag, entry and origin record that
+describe another image; the page’s stop now returns its outcome and
+every transition after a stop reads it.</p>
 </section>
 <section id="one-image-n-papers">
 <h3>One image, N papers<a class="headerlink" href="#one-image-n-papers" title="Link to this heading"></a></h3>

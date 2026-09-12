@@ -79,6 +79,12 @@ from vaibify.reproducibility.manifestPaths import (
 
 
 __all__ = [
+    "S_REPRODUCED_MANIFEST_FILENAME",
+    "S_REPRODUCED_MANIFEST_HISTORY_DIR",
+    "S_REPRODUCTIONS_DIR",
+    "fbIsReproductionRecordPath",
+    "fdictHashManifestEntries",
+    "fsRenderReproducedManifest",
     "flistCollectCanonicalRepoPaths",
     "fnWriteManifest",
     "fbRewriteManifestPathPrefix",
@@ -100,6 +106,23 @@ logger = logging.getLogger("vaibify")
 _MANIFEST_FILENAME = "MANIFEST.sha256"
 _MANIFEST_HEADER = "# SHA-256 manifest of workflow artefacts\n"
 _S_REPRODUCE_SCRIPT = "reproduce.sh"
+
+# The manifest a rerun WROTE, in this file's own format, beside the
+# one the author pinned -- so a person compares hashes with their own
+# eyes and `diff` works from a terminal. Exactly one header line, so
+# line N of the reproduced file is the same path as line N of
+# MANIFEST.sha256; provenance lives in the record written beside it,
+# never in this file. The timestamped history and the in-repository
+# reproduction records live under `.vaibify`. None of the three is
+# ever PINNED: a reproduced manifest inside the manifest is circular.
+S_REPRODUCED_MANIFEST_FILENAME = "REPRODUCED.sha256"
+S_REPRODUCED_MANIFEST_HISTORY_DIR = ".vaibify/reproducedManifests"
+S_REPRODUCTIONS_DIR = ".vaibify/reproductions"
+_S_REPRODUCED_HEADER = (
+    "# SHA-256 manifest of workflow artefacts as REPRODUCED by a vaibify "
+    "shadow rerun; provenance in the record named beside it\n"
+)
+_S_REPRODUCED_MISSING_PREFIX = "# MISSING  "
 # Re-exported as a module attribute so the architectural-invariant test
 # can introspect the canonical output-key set without importing
 # ``manifestPaths`` directly.
@@ -272,13 +295,10 @@ def flistVerifyManifestEntries(filesRepo, listEntries):
     leaves a self-consistent tree, so a comparison that re-reads the
     manifest afterwards has nothing left to notice.
     """
-    filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictHashed = _fdictHashCheckedPaths(
-        filesRepo, [dictEntry["sPath"] for dictEntry in listEntries],
-    )
+    dictObserved = fdictHashManifestEntries(filesRepo, listEntries)
     listMismatches = []
     for dictEntry in listEntries:
-        sActual = dictHashed[dictEntry["sPath"]].get("sSha256")
+        sActual = dictObserved[dictEntry["sPath"]]
         if sActual != dictEntry["sExpected"]:
             listMismatches.append({
                 "sPath": dictEntry["sPath"],
@@ -286,6 +306,64 @@ def flistVerifyManifestEntries(filesRepo, listEntries):
                 "sActual": sActual,
             })
     return listMismatches
+
+
+def fdictHashManifestEntries(filesRepo, listEntries):
+    """Return ``{sPath: sSha256 | None}`` for every entry, in entry order.
+
+    The observed side of a comparison, kept whole: the mismatch list
+    above throws every matching hash away, and a reproduced manifest
+    needs all of them -- a person reading two files side by side
+    wants the hash that MATCHED as much as the one that did not.
+    ``None`` is a file the tree does not hold, or one whose symlink
+    target escapes the root; the caller decides what to call that.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictHashed = _fdictHashCheckedPaths(
+        filesRepo, [dictEntry["sPath"] for dictEntry in listEntries],
+    )
+    return {
+        dictEntry["sPath"]: dictHashed[dictEntry["sPath"]].get("sSha256")
+        for dictEntry in listEntries
+    }
+
+
+def fsRenderReproducedManifest(listFileOutcomes):
+    """Render the reproduced manifest from the per-file outcomes, in order.
+
+    Same paths, same order as the frozen manifest the rerun was graded
+    against, so the two files align line for line after their single
+    header lines. A file the shadow did not produce is a
+    ``# MISSING  <path>`` comment AT THE SAME POSITION -- never a
+    fabricated hash and never an omitted line. Every non-comment line
+    is a valid GNU ``sha256sum`` line with this module's own escaping,
+    so ``sha256sum -c`` over the shadow tree passes for a reproduced
+    run. Carried paths are hashed and listed like every other entry;
+    the record beside the file, and the viewer, are what distinguish
+    them.
+    """
+    listLines = [_S_REPRODUCED_HEADER]
+    for dictOutcome in listFileOutcomes:
+        sPath = str(dictOutcome.get("sPath") or "")
+        sObserved = dictOutcome.get("sObserved")
+        if not sObserved:
+            listLines.append(
+                _S_REPRODUCED_MISSING_PREFIX
+                + _fsEscapeManifestPath(sPath) + "\n"
+            )
+            continue
+        listLines.append(_fsFormatManifestLine(str(sObserved), sPath))
+    return "".join(listLines)
+
+
+def fbIsReproductionRecordPath(sRelativePath):
+    """True iff the path is one a rerun writes, which the manifest never pins."""
+    sPath = str(sRelativePath or "")
+    return (
+        sPath == S_REPRODUCED_MANIFEST_FILENAME
+        or sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR + "/")
+        or sPath.startswith(S_REPRODUCTIONS_DIR + "/")
+    )
 
 
 def flistDeclaredButMissingFromManifest(filesRepo, dictWorkflow):
@@ -490,7 +568,12 @@ def _flistCollectManifestPaths(dictWorkflow):
             setPaths.update(flistStepStandardsRepoPaths(dictStep))
             setPaths.update(flistStepDeclarationRepoPaths(dictStep))
             setPaths.update(flistStepTestFileRepoPaths(dictStep))
-    return sorted(sPath for sPath in setPaths if sPath)
+    # What a rerun WRITES is never what the manifest PINS: a reproduced
+    # manifest inside the manifest would grade itself.
+    return sorted(
+        sPath for sPath in setPaths
+        if sPath and not fbIsReproductionRecordPath(sPath)
+    )
 
 
 def _flistBuildManifestEntries(filesRepo, listRelativePaths):

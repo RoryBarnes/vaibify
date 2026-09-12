@@ -5622,7 +5622,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # A split of the terminal streaming loops into their own module
     # is the real seam here and is worth doing on its own terms --
     # deliberately NOT bundled into a defect fix.
-    "pipelineServer.py": 3282,
+    # +62 (2026-09-11): the connect-time image capture also records
+    # whether the running image IS the obtained pin or is DERIVED from
+    # it, and the currency assessment reads that beside the value
+    # comparison. Both sit on the capture they extend; the seam named
+    # above is unchanged.
+    # Merged 2026-09-12 at the MEASURED size of the two branches
+    # together, never the sum of their allowances.
+    "pipelineServer.py": 3349,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6359,7 +6366,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # request, settings, and wizard serialization tables. These are
     # rows in the registry surface's existing closed mapping, not a new
     # responsibility or a useful module seam.
-    "registryRoutes.py": 2158,
+    # +64 (2026-09-11): two request fields, the archive branch of the
+    # convert route, its hand-off, and the pinned-environment route.
+    # The POLICY behind them -- the runtime whitelist, the candidate
+    # baseline, the image-source record -- was split out on arrival
+    # into pinnedEnvironmentConversion.py, along the fault line
+    # between the registry's HTTP surface and the pinned-image lane's
+    # rules; what stays is the routing.
+    "registryRoutes.py": 2222,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6508,7 +6522,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # bAgentSafe False, so the gate refuses them by their own flag and
     # the catalog says what they are. Net +19 for three records and one
     # rationale, which is a catalog growing by construction.
-    "actionCatalog.py": 1229,
+    # +7 (2026-09-11): two excluded control-plane routes (acquire the
+    # pinned image, switch to building) and their rationale.
+    "actionCatalog.py": 1236,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6765,7 +6781,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # beside the write it follows, so there is no seam to split
     # on; the candidate one is the whole lane moving out of
     # routes/, which is a larger decision than this change.
-    "routes/reproducibilityRoutes.py": 1684,
+    # 2026-09-11: +166 for two things the verification lane now
+    # decides at write time -- WHICH record it writes (the author's
+    # attestation, or a reproduction record on a clone whose
+    # attestation was committed by another identity, asked of git
+    # before the copy so the confirm dialog can say so), and the
+    # obtained-image facts it threads into the rerun (the origin
+    # record for the shadow, the deposit re-check's vacuity, the
+    # regenerate refusal). Every addition sits on the same lane
+    # between the readiness gate and the commit; the seam is still
+    # the one named above, and it is now the next change's job.
+    # 2026-09-12: +34 for the ownership question moving AHEAD of the
+    # rerun (a git that cannot answer refuses before any step runs
+    # rather than after a run whose outcome could not be written)
+    # and the readiness poll answering UNDETERMINED by name. Same
+    # lane, same seam as above.
+    "routes/reproducibilityRoutes.py": 1884,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -6822,7 +6853,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and their rationale joined DICT_CONTROL_PLANE_SCOPES.
     # +1 later the same day: the discard route's scope. One line per
     # route in a map of routes.
-    "routeScope.py": 997,
+    # +5 (2026-09-11): the acquire-image and switch-to-building scopes.
+    "routeScope.py": 1002,
 }
 
 
