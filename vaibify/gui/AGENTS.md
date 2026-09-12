@@ -126,7 +126,8 @@ canonical module.
 - The dashboard must reflect true state. When editing
   `fileStatusManager.py`, `pipelineRoutes.py`, or `pipelineState.py`,
   do not cache, suppress, or short-circuit in ways that hide the real
-  condition of the workflow. See the traps section in `../../AGENTS.md`.
+  condition of the workflow. See "The rules with no trigger" in
+  `../../AGENTS.md`, and the `dashboard-state-honesty` skill.
 
 ## Verification state machine
 

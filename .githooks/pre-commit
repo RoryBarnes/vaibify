@@ -1,0 +1,35 @@
+#!/bin/sh
+# Vaibify pre-commit hook.
+#
+# Enable it once per clone:
+#
+#     git config core.hooksPath .githooks
+#
+# A hook is convenience, never the control: it is not installed by a
+# clone and `git commit --no-verify` skips it. The enforcement is
+# tests/testAmericanSpelling.py, which runs in CI and cannot be
+# bypassed. This exists so the failure arrives in two seconds at the
+# keyboard instead of twenty minutes later in a lane.
+
+set -e
+
+# Only the staged files, and only ones that still exist -- a rename or
+# a delete must not fail the commit that performs it.
+sStaged=$(git diff --cached --name-only --diff-filter=ACMR \
+  -- 'docs/*.md' 'README.md')
+
+if [ -z "$sStaged" ]; then
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+if ! python3 tools/checkAmericanSpelling.py $sStaged; then
+  echo ""
+  echo "pre-commit: British spellings in staged documentation."
+  echo "Fix them with:"
+  echo "  python3 tools/checkAmericanSpelling.py --write $sStaged"
+  echo "  git add $sStaged"
+  exit 1
+fi
+
+exit 0

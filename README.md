@@ -37,6 +37,7 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg?branch=main">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg?branch=main">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/imageRecipe.json">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
   <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
 </a>

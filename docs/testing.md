@@ -159,7 +159,7 @@ runs them as two separate workflows:
 **The mutation gate is manual, and that is a real gap.** It triggers on
 `workflow_dispatch` only. It used to run per-PR, but mutation-testing a
 large feature-branch diff exceeded the 60-minute ceiling and was
-cancelled before it could post any signal — an advisory gate that dies
+canceled before it could post any signal — an advisory gate that dies
 on the PRs that matter most is pure friction. So it was made on-demand
 (commit `94abe35`), which means **Python can merge with no mutation
 feedback at all**. Falsification and the architectural invariants are
@@ -340,7 +340,7 @@ doubles the wait for no extra signal.
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
-| `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
+| `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
 
 `tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
@@ -376,7 +376,7 @@ what the docs imply: on a workflow with only pull-request runs,
 the latest PR run.)
 
 A lane with no run against the merged pull request renders **did not
-run** in grey, never green. That is the case worth having: it is what a
+run** in gray, never green. That is the case worth having: it is what a
 bypassed merge, a skipped lane, or a workflow that silently stopped
 triggering looks like.
 
@@ -406,9 +406,9 @@ the OS/Python matrix. Its Docker adapter is a **fail-closed fake**:
 every command it answers is declared in `LIST_MODELLED_COMMANDS`, and
 anything else raises rather than returning a default. That rule exists
 because this suite already carries ~20 permissive Docker mocks, one of
-which answers success to any command it does not recognise.
+which answers success to any command it does not recognize.
 
-**The container-acceptance lane (`containerAcceptance.yml`)** puts each of those modelled
+**The container-acceptance lane (`containerAcceptance.yml`)** puts each of those modeled
 commands to a real container, so a fake that drifts from the daemon is
 caught rather than believed. Every entry in the fake's contract names
 an assertion in `tests/testContainerAcceptance.py`, and

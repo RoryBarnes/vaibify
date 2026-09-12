@@ -96,7 +96,7 @@ level claims, not a gap in host mode.
 
 Vaibify targets **PROOF Level 3 ("Reproducible")** on the PROOF
 ladder: third parties can confirm, at the bit level, that
-the artefacts they hold are byte-for-byte identical to the artefacts
+the artifacts they hold are byte-for-byte identical to the artifacts
 the original project produced. Level 3 is a claim about *file-byte
 identity*, not numerical re-derivation. Re-running the project on a
 different machine may produce slightly different bytes for the same
@@ -150,7 +150,7 @@ trigger it.
 ### Tier 1 — Artifacts (`MANIFEST.sha256`)
 
 A GNU-coreutils shasum-format file at the repository root listing
-every declared project artefact (everything in each step's
+every declared project artifact (everything in each step's
 `saPlotFiles`, `saOutputDataFiles`, and `saInputDataFiles`) by
 repo-relative POSIX path with its SHA-256 hash:
 
@@ -243,11 +243,11 @@ from three orthogonal capture helpers:
 - `fiCaptureSourceDateEpoch(filesRepo)` — the repo's HEAD commit
   epoch at capture time, recorded as `iSourceDateEpoch`. This is the
   value the pipeline exported as `SOURCE_DATE_EPOCH` (and as
-  matplotlib's `svg.hashsalt`) when it produced the pinned artefacts.
+  matplotlib's `svg.hashsalt`) when it produced the pinned artifacts.
   It is recorded rather than re-derived at reproduction time, because
   the commit that publishes the manifest moves HEAD — an epoch
   re-derived on the reproducing side would differ from the one that
-  salted the pinned figures, so every timestamped artefact would
+  salted the pinned figures, so every timestamped artifact would
   diverge on exactly the workflows the envelope exists to certify.
 
 - `fsReadImageArchitecture(sImageReference)` — the platform the image
@@ -385,7 +385,7 @@ vaibify: the pinned compiler toolchain is no longer available.
 This build stopped on purpose.
 ```
 
-**This is the intended behaviour, not a bug to route around.** The
+**This is the intended behavior, not a bug to route around.** The
 alternative — leaving the toolchain unpinned — is a rebuild that
 quietly swaps the compiler underneath a researcher who believes they
 reproduced something. A loud failure hands you the decision; a silent
@@ -413,6 +413,81 @@ you are moving the project forward and are prepared to re-establish
 its results. Option 3 is right when you must rebuild *and* must keep
 the original toolchain — the most faithful of the three, and the most
 work.
+
+
+### What vaibify tells you when a rebuild moves the environment
+
+You do not have to notice any of this yourself. When `vaibify build`
+finishes, it compares the image it just built against the one your
+project's recorded results were produced in, and says so when they
+differ:
+
+```
+[vaib] ==============================================================
+[vaib] The environment changed. The image you just built is not the
+[vaib] one this project's recorded results were produced in.
+[vaib]
+[vaib]   recorded: sha256:9f2c...
+[vaib]   built now: sha256:41ab...
+[vaib]
+[vaib] The build recipe did NOT change, so this difference came from
+[vaib] outside vaibify: the Linux distribution rotated a package out
+[vaib] of its archive and the rebuild resolved a different one.
+[vaib] ==============================================================
+```
+
+**The second half of that message is the useful part.** Every image
+vaibify builds carries a *recipe fingerprint* — a hash over the build
+inputs vaibify controls: the Dockerfile, the package lists, the
+entrypoint, your `vaibify.yml`. Comparing it alongside the digest
+separates two events that look identical from the outside:
+
+- **The recipe changed too.** You upgraded vaibify, or edited the
+  configuration. The environment moved because you moved it.
+- **The recipe did not change and the image did anyway.** Nothing
+  under vaibify's control moved, so the difference came from outside
+  it. This is the case you have no other way to see.
+
+The warning is silent when nothing changed, and silent when nothing
+could be determined — a project that has not captured an envelope yet
+has no recorded environment to compare against, and vaibify will not
+invent a claim about an image it never compared.
+
+### What a changed environment does and does not affect
+
+**Work you have already published is unaffected.** Its results are
+pinned to the recorded image by digest, and reproducing them pulls
+that image rather than rebuilding. That is the whole reason Level 3
+rests on the digest and not on the Dockerfile.
+
+What changes is everything you compute *from here on*. Those numbers
+were produced in a different environment than the older ones, so a
+comparison between them is no longer a comparison of your science
+alone. Re-run and re-verify before mixing them, or the manifest will
+report the difference as a divergence — which is the honest signal,
+not a malfunction.
+
+**How much a result can move.** A library update can change the last
+representable digit of a transcendental function. For most
+calculations that is invisible. For a **chaotic** system — a
+gravitational few-body integration, a turbulent flow, anything with a
+positive Lyapunov exponent — that last digit grows exponentially, and
+after enough Lyapunov times two trajectories that started identical
+are qualitatively different.
+
+The right response is not alarm, because for such a system an
+individual trajectory was never the physically meaningful prediction
+in the first place. The ensemble is. So:
+
+- A **trajectory** that no longer reproduces bit-for-bit after an
+  environment change is expected, and says nothing about either
+  environment being wrong.
+- An **ensemble statistic** — a posterior, a rate, a fraction — should
+  not move by more than its own Monte Carlo error. If it does, that is
+  a finding worth reporting, not a nuisance to suppress.
+
+Record which environment produced which figures, and a reader can tell
+those two cases apart. That is what the envelope is for.
 
 ## The verification ceremony: `vaibify reproduce`
 
@@ -469,7 +544,7 @@ Flags:
   exports the `SOURCE_DATE_EPOCH` recorded in
   `.vaibify/environment.json` (`iSourceDateEpoch`) rather than
   re-deriving it from HEAD, so timestamp-salted figures are salted
-  the way the pinned artefacts were.
+  the way the pinned artifacts were.
 
   A step **a human runs** — an interactive step, such as the AI
   Declaration — cannot execute unattended, and does not refuse the
@@ -507,7 +582,7 @@ Flags:
   attesting one workflow for a run of another produces a record that
   reads as complete and describes something that did not happen.
 - `--skip-tier 1|2|3|4` — skip a tier; may be repeated. Useful when a
-  verifier only wants to confirm artefact identity without installing
+  verifier only wants to confirm artifact identity without installing
   Python packages. Tier 5 has no skip flag; it is opt-in via
   `--rerun`.
 
@@ -631,7 +706,7 @@ rather than a download compared with itself.
 
 ### What a report is, and is not
 
-A **reproduction report** is the reproducer's own artefact. It lives
+A **reproduction report** is the reproducer's own artifact. It lives
 under `~/.vaibify/reproductions/reports/<id>.json`, apart from the
 staging directory that is deleted after every run, with its own
 retention. It carries the redacted source facts, the manifest digest,
@@ -694,7 +769,7 @@ The archive handed to that container is bounded by the same figure the
 live shadow lane uses for its own export, and spooled to a private
 file rather than assembled in memory: the size ceiling above bounds
 what a clone may occupy on disk and says nothing about what the hub
-may materialise in its own address space.
+may materialize in its own address space.
 
 ### Validation is strict, not advisory -- and it is not the Level 3 gate
 
@@ -753,7 +828,7 @@ resolved commit, the remote URL with any `user:password@` **and any
 credential query parameter** stripped,
 the workflow name and its repo-relative path, and the validated facts
 above. Never a path on the reproducer's machine. A reproduction report
-is the reproducer's own artefact -- never an attestation, never
+is the reproducer's own artifact -- never an attestation, never
 written into any repository, and never read by the Level 3 gate -- and
 it may one day be deposited publicly, which is why the redaction is
 applied when the snapshot is staged rather than when a report is

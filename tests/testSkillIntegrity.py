@@ -41,9 +41,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
 TESTS_ROOT = REPO_ROOT / "tests"
 
-# Directories whose Python source constitutes the symbol corpus: a symbol
+# Directories whose source constitutes the symbol corpus: a symbol
 # referenced by a skill must occur somewhere in these trees.
-LIST_SYMBOL_CORPUS_DIRECTORIES = ["vaibify", "tools"]
+#
+# The corpus spans Python, JavaScript and shell, and includes tests/,
+# because vaibify keeps symbols in all four places and a skill
+# legitimately names them: `fnLinkRepoClaudeMd` is a function in
+# entrypoint.sh, `fsSummarizeLevelStates` is in the frontend, and
+# `I_UNCLASSIFIED_ROW_BUDGET` is a ratchet constant defined in a test
+# module. A Python-only corpus does not merely produce false alarms --
+# it is BLIND to a rename in three quarters of the symbol surface,
+# which is the drift this test exists to catch.
+LIST_SYMBOL_CORPUS_DIRECTORIES = ["vaibify", "tools", "tests"]
+T_SYMBOL_CORPUS_GLOBS = ("*.py", "*.js", "*.sh")
 
 # Hungarian-notation function or constant identifiers, the only backticked
 # spans treated as symbol references. Anything else in backticks (variable
@@ -58,7 +68,13 @@ REGEX_INLINE_CODE_SPAN = re.compile(r"`([^`\n]+)`")
 # included, because pytest commands live in bash blocks). A match followed
 # by ".", "*", or "<" is a filename stem, glob, or placeholder, not a test.
 REGEX_TEST_NAME = re.compile(r"\btest[A-Z_]\w+")
-SET_NON_TEST_FOLLOWERS = {".", "*", "<"}
+SET_NON_TEST_FOLLOWERS = {".", "*", "<", "/"}
+
+# A match PRECEDED by "/" is a path component, never a test: the marker
+# directory is named as `.vaibify/test_markers` with nothing after it,
+# so the follower rule above cannot see it. A test name is never
+# preceded by a path separator.
+SET_NON_TEST_PRECEDERS = {"/"}
 
 
 def flistFindSkillFiles():
@@ -101,16 +117,22 @@ def flistExtractTestNameReferences(sContent):
     listNames = []
     for match in REGEX_TEST_NAME.finditer(sContent):
         sFollower = sContent[match.end() : match.end() + 1]
-        if sFollower not in SET_NON_TEST_FOLLOWERS:
+        sPreceder = sContent[max(match.start() - 1, 0) : match.start()]
+        if (sFollower not in SET_NON_TEST_FOLLOWERS
+                and sPreceder not in SET_NON_TEST_PRECEDERS):
             listNames.append(match.group(0))
     return listNames
 
 
-def fsReadCorpus(listDirectories, sGlob):
-    """Concatenate the text of every file matching sGlob under the directories."""
+def fsReadCorpus(listDirectories, *saGlobs):
+    """Concatenate the text of every file matching the globs under the dirs."""
     listChunks = []
     for sDirectory in listDirectories:
-        for pathFile in sorted((REPO_ROOT / sDirectory).rglob(sGlob)):
+        for pathFile in sorted(
+            pathMatch
+            for sGlob in saGlobs
+            for pathMatch in (REPO_ROOT / sDirectory).rglob(sGlob)
+        ):
             if "__pycache__" in pathFile.parts:
                 continue
             listChunks.append(pathFile.read_text(encoding="utf-8", errors="replace"))
@@ -227,7 +249,9 @@ def testTheTreeExclusionIsRelativeToTheRepositoryRoot():
 
 def testSkillSymbolReferencesResolve():
     """Every function or constant a skill names still occurs in the source."""
-    sCorpus = fsReadCorpus(LIST_SYMBOL_CORPUS_DIRECTORIES, "*.py")
+    sCorpus = fsReadCorpus(
+        LIST_SYMBOL_CORPUS_DIRECTORIES, *T_SYMBOL_CORPUS_GLOBS,
+    )
     listMissing = []
     for pathSkill in flistFindSkillFiles():
         sContent = pathSkill.read_text(encoding="utf-8")

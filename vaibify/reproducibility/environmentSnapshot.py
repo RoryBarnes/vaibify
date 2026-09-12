@@ -31,6 +31,7 @@ __all__ = [
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
     "fdictCaptureLiveImageIdentity",
+    "fdictCaptureBuiltImageIdentity",
     "fbImageExistsLocally",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
@@ -168,6 +169,34 @@ def fdictCaptureLiveImageIdentity(sContainerName):
     )
     return {
         "sImageDigest": dictEntry.get("sImageDigest") or "",
+        "sImageId": sImageId or "",
+    }
+
+
+def fdictCaptureBuiltImageIdentity(sImageReference):
+    """Return both identities of an IMAGE, by tag, ID, or digest.
+
+    The sibling above asks a CONTAINER which image it runs; this asks
+    the image store directly, which is what a just-finished ``vaibify
+    build`` has and a container it has not started yet does not.
+
+    A freshly built image has no ``RepoDigests`` until it is pushed, so
+    ``sImageDigest`` falls back to the content ID — the same preferred
+    form the envelope capture records. Every failure degrades to empty
+    strings rather than raising: this feeds a WARNING, and a warning
+    that can abort a successful build is worse than the drift it
+    reports.
+    """
+    try:
+        _fnEnsureDockerAvailable()
+        sImageId = _fsInspectFormatValue(sImageReference, "{{.Id}}")
+        sRepoDigest = _fsParseRepoDigests(
+            _fsInspectFormatValue(sImageReference, "{{.RepoDigests}}"),
+        ) if sImageId else None
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return {"sImageDigest": "", "sImageId": ""}
+    return {
+        "sImageDigest": sRepoDigest or sImageId or "",
         "sImageId": sImageId or "",
     }
 
