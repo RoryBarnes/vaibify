@@ -19194,4 +19194,122 @@ def _fdictEntry(sRel):
             '            dictMerged[sKey] = dictRequested[sKey]\n'
         ),
     ),
+
+    # --- 2026-09-10: a resize must not strand old frames above a
+    # repainting program. xterm re-wraps its buffer the instant it is
+    # resized; the program learns its width only on SIGWINCH. The hub
+    # drains the pty and resizes it BEFORE telling the browser it may
+    # reflow, so text composed at the old width is painted into the
+    # old-width buffer. Measured: acknowledging before draining left
+    # three stale frames on a real pane, draining first left one. ---
+    Falsification(
+        nodeid=(
+            'tests/testTerminalResizeOrdering.py::testEveryPendingByteIsForwardedBeforeTheIoctl'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='    while True:\n        baPending = session.fbaReadOutput()\n        if not baPending:\n            break\n        await websocket.send_bytes(baPending)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalResizeOrdering.py::testTheRequestIsQueuedRatherThanAppliedWhereItLands'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='        if dictPendingResize is None:\n            session.fnResize(iRows, iColumns)\n            return',
+        new='        session.fnResize(iRows, iColumns)\n        if dictPendingResize is None:\n            return',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalResizeOrdering.py::testTheSlotIsClearedSoOneRequestResizesOnce'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='    dictPendingResize.clear()\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAResizeDoesNotStrandOldFrames.py::test_a_resize_does_not_strand_old_frames'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='    while True:\n        baPending = session.fbaReadOutput()\n        if not baPending:\n            break\n        await websocket.send_bytes(baPending)\n',
+        new='',
+    ),
+
+    # --- 2026-09-10: the deferral that protects a selection being
+    # copied, pinned in the same test as the resize behaviour it has
+    # historically traded off against. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testResizeAndCopyHoldTogether.py::test_a_resize_during_output_neither_duplicates_nor_breaks_copy'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='    function fnRefitTabPreservingSelection(dictTab, fitAddon) {\n        if (dictTab.terminal && dictTab.terminal.hasSelection()) {\n            dictTab.bFitDeferred = true;\n            return;\n        }\n',
+        new='    function fnRefitTabPreservingSelection(dictTab, fitAddon) {\n',
+    ),
+
+
+    # --- 2026-09-10: a resize left the pane parked away from its
+    # own output, permanently -- xterm resumes auto-scrolling only
+    # for a pane exactly at the bottom, so one row short stopped it
+    # following for the rest of the session and the terminal read as
+    # hung. Measured: 16 pixels down a buffer 1475 tall, showing the
+    # fourth line of forty. ---
+    # The mutation registered here is the restore ALWAYS firing, not
+    # the restore never firing. Never-firing is the defect this guard
+    # was written for, and it is killed on a stranding geometry -- but
+    # whether a reflow strands the viewport at all depends on the
+    # pane's rows and columns, which follow the runner's font metrics.
+    # It killed on macOS and SURVIVED on both Ubuntu legs, twice, with
+    # both resize directions driven and the buffer confirmed to
+    # overflow: on that geometry the reflow simply lands at the bottom,
+    # so removing the restore changes nothing a test can see. An entry
+    # that reports SURVIVED for an unobservable mutation reads as an
+    # undefended guard, which is the confusion the registry exists to
+    # avoid. The always-firing direction has no such dependence --
+    # property (2) scrolls back and changes only the HEIGHT, so nothing
+    # re-wraps -- and it is what is pinned.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAResizeKeepsThePaneFollowingItsOutput.py::'
+            'test_a_resize_keeps_the_pane_following_its_output'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        var bWasFollowingOutput = dictTab.bFollowingOutput !== false;',
+        new='        var bWasFollowingOutput = true;',
+    ),
+
+
+    # --- 2026-09-10: Ctrl+Shift+C is the conventional terminal copy
+    # on Linux AND Firefox's Inspector shortcut. Measured on two Linux
+    # distributions running the same Firefox against the same page:
+    # on one the pane copies, on the other the developer tools open
+    # and the handler never sees the key. Ctrl+Insert is the fallback
+    # no browser reserves. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testCopyHasAShortcutTheBrowserCannotTake.py::'
+            'test_copy_has_a_shortcut_the_browser_cannot_take'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        if (!bMacintoshCopy && !bLinuxCopy && !bInsertCopy) return true;',
+        new='        if (!bMacintoshCopy && !bLinuxCopy) return true;',
+    ),
+
+
+    # --- 2026-09-10: the selection highlight measured 1.66:1 against
+    # the pane background, under WCAG 1.4.11's 3:1, and a researcher
+    # could not tell whether anything was selected -- which makes a
+    # working copy shortcut look broken. Naming selectionForeground
+    # is what lets the highlight brighten without the text it covers
+    # going unreadable. ---
+    Falsification(
+        nodeid=(
+            'tests/testTerminalSelectionContrast.py::'
+            'testTheSelectionHighlightIsVisibleAgainstThePane'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        selectionBackground: "rgba(19, 174, 213, 0.65)",',
+        new='        selectionBackground: "rgba(19, 174, 213, 0.3)",',
+    ),
+
 ]
