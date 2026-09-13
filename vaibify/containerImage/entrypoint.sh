@@ -1318,10 +1318,49 @@ fnLinkRepoClaudeMd() {
             if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
                 ln -s ".vaibify/AGENTS.md" "${sTarget}"
                 echo "[vaib]   Linked ${sName} in $(basename "${sRepoDir}")"
+            elif fbLinkIsVaibifyOwnedAndBroken "${sTarget}" ""; then
+                ln -sfn ".vaibify/AGENTS.md" "${sTarget}"
+                echo "[vaib]   Repaired ${sName} in" \
+                    "$(basename "${sRepoDir}")"
             fi
         done
         fnLinkClineRules "${sRepoDir}"
     done
+}
+
+# ---------------------------------------------------------------------------
+# fbLinkIsVaibifyOwnedAndBroken: True for a link vaibify made that now dangles
+# Arguments: sPath sPrefix
+# ---------------------------------------------------------------------------
+# Only a link vaibify itself created may be repointed, and only when it
+# resolves to nothing; a REAL file at one of the provider names is the
+# researcher's and is never touched, and a live link is already correct.
+#
+# The dangling case is not hypothetical. The legacy migration above
+# renames `.vaibify/CLAUDE.md` to `AGENTS.md`, which strands any root
+# symlink still aimed at the old name. The guard on the link loop is
+# `[ ! -e ] && [ ! -L ]`, and a dangling symlink is `-L` true and `-e`
+# false -- so it matched neither arm, was never repaired, and that
+# provider silently read nothing at all.
+#
+# Like every `fb*` predicate here it must be called from a CONDITION --
+# `if`, `elif`, `&&`. A bare call under the entrypoint's `set -e` ends
+# the start the moment it answers false, which is what answering false
+# is for.
+fbLinkIsVaibifyOwnedAndBroken() {
+    local sPath="$1"
+    local sPrefix="$2"
+    [ -L "${sPath}" ] || return 1
+    if [ -e "${sPath}" ]; then
+        return 1
+    fi
+    local sLinkTarget
+    sLinkTarget=$(readlink "${sPath}")
+    case "${sLinkTarget}" in
+        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;
+        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;
+    esac
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -1349,6 +1388,10 @@ fnLinkClineRules() {
     if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
         ln -s "../.vaibify/AGENTS.md" "${sTarget}"
         echo "[vaib]   Linked .clinerules/vaibify.md in" \
+            "$(basename "${sRepoDir}")"
+    elif fbLinkIsVaibifyOwnedAndBroken "${sTarget}" "../"; then
+        ln -sfn "../.vaibify/AGENTS.md" "${sTarget}"
+        echo "[vaib]   Repaired .clinerules/vaibify.md in" \
             "$(basename "${sRepoDir}")"
     fi
 }

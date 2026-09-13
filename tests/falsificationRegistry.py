@@ -19567,6 +19567,33 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- 2026-09-12: the legacy migration strands a repo-root doc
+    # link, and the bare guard matched neither of its arms ---
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testADanglingLinkVaibifyMadeIsRepointedAtTheCanonicalFile'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # the repair arm is gone; a dangling link stays dangling and
+        # that provider reads nothing at all
+        old='            elif fbLinkIsVaibifyOwnedAndBroken "${sTarget}" ""; then\n                ln -sfn ".vaibify/AGENTS.md" "${sTarget}"\n                echo "[vaib]   Repaired ${sName} in" \\\n                    "$(basename "${sRepoDir}")"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testALinkPointingSomewhereElseIsLeftAlone'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # ownership scoped by the NAME occupied rather than by what
+        # the link points at, so vaibify claims links it never made
+        old='    local sLinkTarget\n    sLinkTarget=$(readlink "${sPath}")\n    case "${sLinkTarget}" in\n        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;\n        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;\n    esac\n    return 1\n',
+        new='    return 0\n',
+    ),
+    # --- 2026-09-12: a Docker failure the dashboard reported
+    # dishonestly -- a truncated remedy, a clipped box, and a
+    # dropped connection called a failed build ---
     Falsification(
         nodeid=(
             'tests/browser/testAnErrorToastKeepsItsRemedy.py::'
@@ -19626,5 +19653,17 @@ def _fdictEntry(sRel):
         # the pinned-image twin keeps the defect the build arm shed
         old='            } else if (error.sKind === "network") {\n                bObtainedAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_OBTAIN_LOST_THE_REQUEST);\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testTheOwnershipTestAnswersCorrectlyUnderProductionShell'
+            'Options'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # ownership collapses to "is it broken", asked under the
+        # entrypoint's own set -euo pipefail
+        old='    local sLinkTarget\n    sLinkTarget=$(readlink "${sPath}")\n    case "${sLinkTarget}" in\n        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;\n        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;\n    esac\n    return 1\n',
+        new='    return 0\n',
     ),
 ]
