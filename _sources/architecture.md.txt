@@ -2359,6 +2359,38 @@ otherwise keep running under a tag, entry and origin record that
 describe another image; the page's stop now returns its outcome and
 every transition after a stop reads it.
 
+The transition also runs FORWARD (2026-09-13). Before this, a clone
+containerized by building — the wizard's default until the same day,
+so the state a researcher reached by pressing Next — had no way to the
+author's image except un-registering, restoring `vaibify.yml` by hand,
+re-adding the directory as a host project and containerizing again.
+`POST /api/containers/{sName}/switch-to-pinned-image` is the inverse
+of switch-to-building under the same guards (human lane, container
+gone by the daemon's word, no live build): it restores the author's
+image-defining fields into `vaibify.yml` from the copy committed at
+HEAD (`fnRestoreAuthorBaseFieldsFromGit` — the build's overlay was a
+merge that replaced them; the runtime keys and the agent auto-update
+switches keep the working copy's values, and an uncommitted config
+refuses by name rather than "restoring" the build's own file), reads
+the agents the built image carried BEFORE that restore so they become
+the additions, writes `dictImageSource` (`fnSwitchProjectToObtaining`,
+which refuses a host or already-obtained entry), and hands the page
+the acquire lane; the origin record stays the acquisition's to write,
+so between the switch and a successful acquire the project reads as
+obtained-not-yet, which the launch guard refuses to start. The tile
+offers it on `bPinnedImageObtainable`, answered per listing from the
+clone's envelope by the wizard's own validator and never from the
+daemon. The same two facts — built, and the pin obtainable — are
+grafted onto the Level 3 readiness answer, because on a built clone
+the package mismatch and the Dockerfile-provenance mismatch have that
+one cause and the remedies they otherwise name ("add them to
+vaibify.yml", "re-export the Dockerfile") would rewrite the AUTHOR's
+committed files to describe a build the author never made; both the
+route's 409 and the pre-flight modal name the switch instead, once.
+The wizard's Environment page now pre-selects the pinned image when
+the envelope says it can be obtained, and an explicit choice either
+way is never overridden by a re-render.
+
 ### One image, N papers
 
 One image record per image digest; one science record per publication;

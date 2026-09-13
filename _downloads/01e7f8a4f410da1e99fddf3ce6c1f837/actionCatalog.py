@@ -1140,6 +1140,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent lane by name as well.
     ("POST", "/api/containers/{sName}/acquire-image"),
     ("POST", "/api/containers/{sName}/switch-to-building"),
+    ("POST", "/api/containers/{sName}/switch-to-pinned-image"),
     ("POST", "/api/containers/{sName}/start"),
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),

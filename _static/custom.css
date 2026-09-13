@@ -1,0 +1,9 @@
+/* sphinx-rtd-theme wraps every table in .wy-table-responsive and sets
+   its cells to white-space: nowrap, so a column of prose (the wizard
+   tables in the QuickStart) runs off the right edge instead of
+   wrapping. Prose cells wrap; the wrapper's horizontal scroll stays
+   for tables that are genuinely wide. */
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+    white-space: normal;
+}

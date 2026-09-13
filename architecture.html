@@ -6,14 +6,15 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.13.dev5 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e42d8208"></script>
+      <script src="_static/documentation_options.js?v=458bf181"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2502,6 +2503,37 @@ the page, because the page’s stop can fail and the old container would
 otherwise keep running under a tag, entry and origin record that
 describe another image; the page’s stop now returns its outcome and
 every transition after a stop reads it.</p>
+<p>The transition also runs FORWARD (2026-09-13). Before this, a clone
+containerized by building — the wizard’s default until the same day,
+so the state a researcher reached by pressing Next — had no way to the
+author’s image except un-registering, restoring <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> by hand,
+re-adding the directory as a host project and containerizing again.
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/containers/{sName}/switch-to-pinned-image</span></code> is the inverse
+of switch-to-building under the same guards (human lane, container
+gone by the daemon’s word, no live build): it restores the author’s
+image-defining fields into <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from the copy committed at
+HEAD (<code class="docutils literal notranslate"><span class="pre">fnRestoreAuthorBaseFieldsFromGit</span></code> — the build’s overlay was a
+merge that replaced them; the runtime keys and the agent auto-update
+switches keep the working copy’s values, and an uncommitted config
+refuses by name rather than “restoring” the build’s own file), reads
+the agents the built image carried BEFORE that restore so they become
+the additions, writes <code class="docutils literal notranslate"><span class="pre">dictImageSource</span></code> (<code class="docutils literal notranslate"><span class="pre">fnSwitchProjectToObtaining</span></code>,
+which refuses a host or already-obtained entry), and hands the page
+the acquire lane; the origin record stays the acquisition’s to write,
+so between the switch and a successful acquire the project reads as
+obtained-not-yet, which the launch guard refuses to start. The tile
+offers it on <code class="docutils literal notranslate"><span class="pre">bPinnedImageObtainable</span></code>, answered per listing from the
+clone’s envelope by the wizard’s own validator and never from the
+daemon. The same two facts — built, and the pin obtainable — are
+grafted onto the Level 3 readiness answer, because on a built clone
+the package mismatch and the Dockerfile-provenance mismatch have that
+one cause and the remedies they otherwise name (“add them to
+vaibify.yml”, “re-export the Dockerfile”) would rewrite the AUTHOR’s
+committed files to describe a build the author never made; both the
+route’s 409 and the pre-flight modal name the switch instead, once.
+The wizard’s Environment page now pre-selects the pinned image when
+the envelope says it can be obtained, and an explicit choice either
+way is never overridden by a re-render.</p>
 </section>
 <section id="one-image-n-papers">
 <h3>One image, N papers<a class="headerlink" href="#one-image-n-papers" title="Link to this heading"></a></h3>
