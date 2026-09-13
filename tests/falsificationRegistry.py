@@ -19502,4 +19502,168 @@ def _fdictEntry(sRel):
             '            } else if (false) {\n'
         ),
     ),
+    # --- 2026-09-12: a Docker failure that cannot name where it looked,
+    # and a resolution that could never be re-read ---
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_a_context_change_is_picked_up_on_a_later_attempt'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the bare guard returns: this function's own write satisfies it,
+        # so the first resolution wins for the life of the hub process
+        old=(
+            '    sExisting = os.environ.get("DOCKER_HOST")\n'
+            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '        return\n'
+        ),
+        new=(
+            '    sExisting = os.environ.get("DOCKER_HOST")\n'
+            '    if sExisting:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_a_researchers_own_docker_host_is_never_overwritten'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the other direction: re-reading becomes re-resolving always,
+        # silently redirecting a researcher's deliberate DOCKER_HOST
+        old=(
+            '    sExisting = os.environ.get("DOCKER_HOST")\n'
+            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '        return\n'
+        ),
+        new=(
+            '    sExisting = os.environ.get("DOCKER_HOST")\n'
+            '    del sExisting\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerStatusEndpoint.py::'
+            'test_the_503_names_the_endpoint_vaibify_tried'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        # the 503 stops naming the endpoint, so "not running" and
+        # "listening where vaibify did not look" read identically
+        old=(
+            '    if sEndpoint:\n'
+            '        sDetail += " Endpoint vaibify used: " + sEndpoint + "."\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerStatusEndpoint.py::'
+            'test_the_status_probe_carries_the_endpoint_to_the_banner'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        # nothing records the endpoint, so the banner reads an empty key
+        old=(
+            '    _dictDockerStatus["sEndpoint"] = fsResolveDockerEndpoint()\n'
+        ),
+        new='',
+    ),
+    # --- 2026-09-12: the legacy migration strands a repo-root doc
+    # link, and the bare guard matched neither of its arms ---
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testADanglingLinkVaibifyMadeIsRepointedAtTheCanonicalFile'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # the repair arm is gone; a dangling link stays dangling and
+        # that provider reads nothing at all
+        old='            elif fbLinkIsVaibifyOwnedAndBroken "${sTarget}" ""; then\n                ln -sfn ".vaibify/AGENTS.md" "${sTarget}"\n                echo "[vaib]   Repaired ${sName} in" \\\n                    "$(basename "${sRepoDir}")"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testALinkPointingSomewhereElseIsLeftAlone'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # ownership scoped by the NAME occupied rather than by what
+        # the link points at, so vaibify claims links it never made
+        old='    local sLinkTarget\n    sLinkTarget=$(readlink "${sPath}")\n    case "${sLinkTarget}" in\n        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;\n        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;\n    esac\n    return 1\n',
+        new='    return 0\n',
+    ),
+    # --- 2026-09-12: a Docker failure the dashboard reported
+    # dishonestly -- a truncated remedy, a clipped box, and a
+    # dropped connection called a failed build ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnErrorToastKeepsItsRemedy.py::'
+            'test_a_long_error_toast_still_carries_its_remedy'
+        ),
+        source='vaibify/gui/static/scriptUtilities.js',
+        # the 200-character cut returns, taking the remedy with it
+        old='        /* No length cut. The cap used to be 200 characters, which\n           is long enough to hold a diagnosis and too short to hold\n           its remedy: a researcher whose Docker socket was missing\n           read the symptom and lost "Try: docker context ls" and the\n           verbatim cause to an ellipsis. The cap existed so a backend\n           traceback could not become the whole screen; .toast.error\n           bounds the BOX and scrolls instead, which bounds the\n           display without destroying the text. */\n',
+        new='        if (sRawError.length > 200) {\n            return sRawError.substring(0, 200) + "...";\n        }\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnErrorToastKeepsItsRemedy.py::'
+            'test_the_sanitizer_returns_a_long_message_unchanged'
+        ),
+        source='vaibify/gui/static/scriptUtilities.js',
+        # the same cut, asserted at its source rather than in the DOM
+        old='        /* No length cut. The cap used to be 200 characters, which\n           is long enough to hold a diagnosis and too short to hold\n           its remedy: a researcher whose Docker socket was missing\n           read the symptom and lost "Try: docker context ls" and the\n           verbatim cause to an ellipsis. The cap existed so a backend\n           traceback could not become the whole screen; .toast.error\n           bounds the BOX and scrolls instead, which bounds the\n           display without destroying the text. */\n',
+        new='        if (sRawError.length > 200) {\n            return sRawError.substring(0, 200) + "...";\n        }\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnErrorToastKeepsItsRemedy.py::'
+            'test_a_long_error_toast_is_scrollable_rather_than_clipped'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # the box clips again: text present in the DOM, unreadable on screen
+        old='    /* Bounded and SCROLLABLE, never clipped: `overflow: hidden` at\n       120px silently ate the end of every long error, which is where\n       the remedy lives. */\n    max-height: 240px;\n    overflow-y: auto;\n',
+        new='    max-height: 120px;\n    overflow: hidden;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADroppedBuildRequestAttachesInstead.py::'
+            'test_a_dropped_build_request_attaches_rather_than_reporting_failure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # a dropped connection is reported as a failed build again
+        old='            } else if (error.sKind === "network") {\n                bBuiltAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_BUILD_LOST_THE_REQUEST);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADroppedBuildRequestAttachesInstead.py::'
+            'test_the_build_progress_endpoint_is_actually_consulted'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # nothing attaches, so the running build is never consulted
+        old='            } else if (error.sKind === "network") {\n                bBuiltAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_BUILD_LOST_THE_REQUEST);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADroppedBuildRequestAttachesInstead.py::'
+            'test_a_dropped_acquire_request_attaches_rather_than_reporting_failure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the pinned-image twin keeps the defect the build arm shed
+        old='            } else if (error.sKind === "network") {\n                bObtainedAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_OBTAIN_LOST_THE_REQUEST);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointRepairsBrokenDocLinks.py::'
+            'testTheOwnershipTestAnswersCorrectlyUnderProductionShell'
+            'Options'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        # ownership collapses to "is it broken", asked under the
+        # entrypoint's own set -euo pipefail
+        old='    local sLinkTarget\n    sLinkTarget=$(readlink "${sPath}")\n    case "${sLinkTarget}" in\n        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;\n        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;\n    esac\n    return 1\n',
+        new='    return 0\n',
+    ),
 ]

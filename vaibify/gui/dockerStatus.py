@@ -105,9 +105,12 @@ def _fsBuildDockerUnavailableDetail():
     sError = _dictDockerStatus.get("sError", "")
     sHint = _dictDockerStatus.get("sHint", "")
     sCommand = _dictDockerStatus.get("sCommand", "")
+    sEndpoint = _dictDockerStatus.get("sEndpoint", "")
     sDetail = "Docker support is not available."
     if sHint:
         sDetail += " " + sHint
+    if sEndpoint:
+        sDetail += " Endpoint vaibify used: " + sEndpoint + "."
     if sCommand:
         sDetail += " Try: " + sCommand
     if sError:
@@ -115,7 +118,9 @@ def _fsBuildDockerUnavailableDetail():
     return sDetail
 
 
-_dictDockerStatus = {"sError": "", "sHint": "", "sCommand": ""}
+_dictDockerStatus = {
+    "sError": "", "sHint": "", "sCommand": "", "sEndpoint": "",
+}
 
 
 def _fconnectionCreateDocker():
@@ -138,9 +143,22 @@ def _fconnectionCreateDocker():
 
 
 def _fnRecordDockerError(sError):
-    """Store the most recent Docker init failure for surfacing in UI."""
+    """Store the most recent Docker init failure for surfacing in UI.
+
+    The resolved endpoint is recorded beside the diagnosis because it
+    is what separates the two causes the socket-absent hint names, and
+    docker-py's own error names no path at all: a researcher on Ubuntu
+    had Docker Engine running at the default socket while the active
+    context pointed at a stopped Rancher Desktop, and reading which one
+    vaibify had tried took a round trip through ``docker context ls``.
+    ``fsResolveDockerEndpoint`` is the single authority on that read,
+    shared with ``vaibify doctor`` so the report and the connection
+    cannot disagree about where vaibify is pointing.
+    """
     import sys
-    from ..docker.dockerContext import fsActiveDockerContext
+    from ..docker.dockerContext import (
+        fsActiveDockerContext, fsResolveDockerEndpoint,
+    )
     dictDiagnosis = fdictDiagnoseDockerError(
         sError,
         sContext=fsActiveDockerContext(),
@@ -149,6 +167,7 @@ def _fnRecordDockerError(sError):
     _dictDockerStatus["sError"] = sError
     _dictDockerStatus["sHint"] = dictDiagnosis["sHint"]
     _dictDockerStatus["sCommand"] = dictDiagnosis["sCommand"]
+    _dictDockerStatus["sEndpoint"] = fsResolveDockerEndpoint()
 
 
 def _fnClearDockerError():
@@ -156,6 +175,7 @@ def _fnClearDockerError():
     _dictDockerStatus["sError"] = ""
     _dictDockerStatus["sHint"] = ""
     _dictDockerStatus["sCommand"] = ""
+    _dictDockerStatus["sEndpoint"] = ""
 
 
 def fdictGetDockerStatus():
@@ -165,6 +185,7 @@ def fdictGetDockerStatus():
         "sError": _dictDockerStatus["sError"],
         "sHint": _dictDockerStatus["sHint"],
         "sCommand": _dictDockerStatus["sCommand"],
+        "sEndpoint": _dictDockerStatus["sEndpoint"],
     }
 
 

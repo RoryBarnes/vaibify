@@ -12,6 +12,8 @@ Docker is unavailable. Failure modes covered:
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
@@ -27,7 +29,7 @@ def _fbuildAppWithoutDocker():
     """Build an app whose Docker probe returns None at startup."""
     pipelineServer._dictDockerStatus["sError"] = (
         "Cannot connect to the Docker daemon at "
-        "unix:///Users/rory/.colima/default/docker.sock"
+        "unix:///home/researcher/.colima/default/docker.sock"
     )
     pipelineServer._dictDockerStatus["sHint"] = (
         "The Docker daemon is not reachable."
@@ -43,10 +45,15 @@ def _fbuildAppWithoutDocker():
 
 
 def _fclearDockerStatusHolder():
-    """Reset the module-level holder to a known-good state."""
-    pipelineServer._dictDockerStatus["sError"] = ""
-    pipelineServer._dictDockerStatus["sHint"] = ""
-    pipelineServer._dictDockerStatus["sCommand"] = ""
+    """Reset the module-level holder to a known-good state.
+
+    Delegates to the production reset rather than listing the keys.
+    The hand-written list silently stopped clearing everything the
+    moment the holder gained ``sEndpoint``, leaking a stale endpoint
+    into every later test in the file -- a second authority on what a
+    clean holder is, drifting the first time the first one changed.
+    """
+    pipelineServer._fnClearDockerError()
 
 
 def _fclientOwningContainer(app, sContainerId):
@@ -203,3 +210,116 @@ def test_route_swap_visible_to_other_routes():
     response200 = clientHttp.get("/api/containers/x/ready")
     assert response200.status_code != 503
     _fclearDockerStatusHolder()
+
+
+# -----------------------------------------------------------------------
+# The endpoint that was actually tried
+# -----------------------------------------------------------------------
+
+
+def _fnRecordFailureWithEndpoint(monkeypatch, sHost, sContextEndpoint=""):
+    """Record a Docker failure with the endpoint resolution pinned.
+
+    Both halves are pinned so the assertions do not depend on whether
+    the machine running the suite happens to have a Docker context.
+    """
+    if sHost is None:
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DOCKER_HOST", sHost)
+    monkeypatch.setattr(
+        "vaibify.docker.dockerContext.fsReadActiveContextEndpoint",
+        lambda: sContextEndpoint,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.dockerContext.fsActiveDockerContext",
+        lambda: "default",
+    )
+    pipelineServer._fnRecordDockerError(
+        "Error while fetching server API version: ('Connection "
+        "aborted.', FileNotFoundError(2, 'No such file or directory'))"
+    )
+
+
+@pytest.mark.falsification
+def test_the_503_names_the_endpoint_vaibify_tried(monkeypatch):
+    """A researcher whose CLI works needs the path vaibify used.
+
+    docker-py's socket-absent error names no path, so "the daemon is
+    not running" and "vaibify resolved a different socket than your
+    shell" are indistinguishable from the message alone -- which is
+    exactly the pair a researcher hit on Ubuntu with a running engine
+    and a context pointing elsewhere.
+
+    Kills: dropping the sEndpoint line from
+    ``_fsBuildDockerUnavailableDetail``.
+    """
+    _fnRecordFailureWithEndpoint(
+        monkeypatch, "unix:///somewhere/else/docker.sock",
+    )
+    sDetail = pipelineServer._fsBuildDockerUnavailableDetail()
+    assert "unix:///somewhere/else/docker.sock" in sDetail, (
+        f"the endpoint that failed is not in the message: {sDetail}"
+    )
+    _fclearDockerStatusHolder()
+
+
+def test_an_unset_docker_host_says_so_rather_than_naming_a_default(
+    monkeypatch,
+):
+    """Reporting a default vaibify does not own would be a guess.
+
+    docker-py picks the fallback socket; restating it here would make
+    vaibify a second authority on it, and a wrong one the day
+    docker-py changes it.
+    """
+    _fnRecordFailureWithEndpoint(monkeypatch, None, sContextEndpoint="")
+    sDetail = pipelineServer._fsBuildDockerUnavailableDetail()
+    assert "DOCKER_HOST unset" in sDetail, sDetail
+    assert "/var/run/docker.sock" not in sDetail, (
+        f"a default docker-py owns was restated as fact: {sDetail}"
+    )
+    _fclearDockerStatusHolder()
+
+
+def test_the_endpoint_may_come_from_the_context_rather_than_the_env(
+    monkeypatch,
+):
+    """The common macOS setup has an unset env var and a live context.
+
+    Answering "DOCKER_HOST unset" there would be true about the
+    variable and useless about the question the researcher is asking.
+    """
+    _fnRecordFailureWithEndpoint(
+        monkeypatch, None,
+        sContextEndpoint="unix:///home/researcher/.colima/docker.sock",
+    )
+    sDetail = pipelineServer._fsBuildDockerUnavailableDetail()
+    assert "unix:///home/researcher/.colima/docker.sock" in sDetail, sDetail
+    assert "from the active Docker context" in sDetail, sDetail
+    _fclearDockerStatusHolder()
+
+
+@pytest.mark.falsification
+def test_the_status_probe_carries_the_endpoint_to_the_banner(monkeypatch):
+    """The 503 is not the only surface; the hub banner renders it too.
+
+    Kills: dropping the sEndpoint line from ``_fnRecordDockerError``,
+    which empties the key the banner reads while the 503 detail --
+    built from the same holder -- goes quiet in the same breath.
+    """
+    _fnRecordFailureWithEndpoint(
+        monkeypatch, "unix:///another/docker.sock",
+    )
+    dictStatus = pipelineServer.fdictGetDockerStatus()
+    assert "unix:///another/docker.sock" in dictStatus["sEndpoint"]
+    assert "from DOCKER_HOST" in dictStatus["sEndpoint"], (
+        "the endpoint arrived without its PROVENANCE; which of the env "
+        "var and the context supplied it is half the diagnosis: "
+        + dictStatus["sEndpoint"]
+    )
+    _fclearDockerStatusHolder()
+    assert pipelineServer.fdictGetDockerStatus()["sEndpoint"] == "", (
+        "a cleared holder still reported an endpoint, so a recovered "
+        "daemon would be described by the failure that preceded it"
+    )

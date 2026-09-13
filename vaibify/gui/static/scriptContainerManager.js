@@ -68,9 +68,16 @@ var VaibifyContainerManager = (function () {
             dictStatus.sCommand || ""
         );
         var sError = VaibifyUtilities.fnEscapeHtml(dictStatus.sError || "");
+        var sEndpoint = VaibifyUtilities.fnEscapeHtml(
+            dictStatus.sEndpoint || ""
+        );
         elBanner.innerHTML =
             '<div class="docker-status-banner-message">' +
             '<strong>Docker is unavailable.</strong> ' + sHint +
+            (sEndpoint
+                ? ' Endpoint vaibify used: <code>' + sEndpoint
+                  + '</code>.'
+                : '') +
             (sCommand
                 ? ' <code>' + sCommand + '</code>'
                 : '') +
@@ -1138,6 +1145,24 @@ var VaibifyContainerManager = (function () {
         elTail.style.display = "none";
     }
 
+    /* Two ways to stop owning a long-running server job, one
+       behaviour. A 409 means another tab started it; a network error
+       means THIS tab's request was abandoned in flight. The POST is
+       held open for the whole job -- minutes for a first image -- and
+       a browser abandons a request left open that long on its own. */
+    var _S_BUILD_ALREADY_RUNNING =
+        "A build for this project is already running; " +
+        "attaching to its progress.";
+    var _S_BUILD_LOST_THE_REQUEST =
+        "The connection to the build dropped, but the build is " +
+        "still running; attaching to its progress.";
+    var _S_OBTAIN_ALREADY_RUNNING =
+        "This project's image is already being obtained; " +
+        "attaching to its progress.";
+    var _S_OBTAIN_LOST_THE_REQUEST =
+        "The connection dropped, but the image is still being " +
+        "obtained; attaching to its progress.";
+
     async function fnBuildContainer(sName, bNoCache) {
         /* Returns whether the container is now BUILT AND RUNNING. It
            reports its own failures, so a caller has nothing to add --
@@ -1162,10 +1187,20 @@ var VaibifyContainerManager = (function () {
             await fnStartContainer(sName);
             bBuiltAndRunning = true;
         } catch (error) {
+            /* A DROPPED CONNECTION IS NOT A FAILED BUILD. The
+               docker build outlives the request that started it,
+               which is why the progress endpoint exists; so a
+               network drop attaches to it exactly as a 409 does. A
+               truly dead server still reports honestly -- the first
+               progress poll fails and says contact was lost. */
             if (_fbRefusalNamesTheSwitch(error)) {
                 _fnReportSwitchRefusal(error);
             } else if (error.iStatus === 409) {
-                bBuiltAndRunning = await _fnWatchRunningBuild(sName);
+                bBuiltAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_BUILD_ALREADY_RUNNING);
+            } else if (error.sKind === "network") {
+                bBuiltAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_BUILD_LOST_THE_REQUEST);
             } else {
                 _fnReportBuildFailure(error);
             }
@@ -1233,7 +1268,11 @@ var VaibifyContainerManager = (function () {
         } catch (error) {
             var sAction = (error.dictDetail && error.dictDetail.sAction) || "";
             if (error.iStatus === 409 && !sAction) {
-                bObtainedAndRunning = await _fnWatchRunningBuild(sName);
+                bObtainedAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_OBTAIN_ALREADY_RUNNING);
+            } else if (error.sKind === "network") {
+                bObtainedAndRunning = await _fnWatchRunningBuild(
+                    sName, _S_OBTAIN_LOST_THE_REQUEST);
             } else if (sAction === "reobtain-without-additions") {
                 _fnOfferReobtainWithoutAdditions(sName, bAllowEmulation, error);
             } else {
@@ -1330,14 +1369,12 @@ var VaibifyContainerManager = (function () {
         );
     }
 
-    async function _fnWatchRunningBuild(sName) {
-        // The 409 means a build for this project is already running —
-        // typically started by a tab that has since closed. The docker
-        // build outlives the request that started it, so watch that
-        // build to completion instead of reporting a failure.
-        VaibifyApp.fnShowToast(
-            "A build for this project is already running; " +
-            "attaching to its progress.", "info");
+    async function _fnWatchRunningBuild(sName, sReason) {
+        // The job is running and this tab is no longer the request
+        // that owns it. Either way it outlives that request, so watch
+        // it to completion instead of reporting a failure that did
+        // not happen. The caller names which way it arrived.
+        VaibifyApp.fnShowToast(sReason, "info");
         var dictProgress;
         while (true) {
             try {
