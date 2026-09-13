@@ -64,3 +64,8 @@ html_theme_options = {
 }
 
 html_static_path = ["_static"]
+
+# The theme's own stylesheet keeps table cells on one line; custom.css
+# lets prose cells wrap. Listed here so Sphinx links it after the
+# theme's, which is what makes the override win.
+html_css_files = ["custom.css"]

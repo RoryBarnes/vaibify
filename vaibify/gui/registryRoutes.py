@@ -260,6 +260,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         _fnAnnotateOwnershipState(
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
+        _fnAnnotatePinnedImageObtainable(listContainers)
         return {
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
@@ -1175,6 +1176,21 @@ def _fdictContainerToProject(connectionDocker, dictContainer):
         "sStatus": "running",
         "bDiscovered": True,
     }
+
+
+def _fnAnnotatePinnedImageObtainable(listContainers):
+    """Mark each BUILT container project whose clone pins an obtainable image.
+
+    The tile offers "Switch to the author's pinned image" on this flag
+    alone; it is read from the clone's envelope, never the daemon.
+    """
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictDescribeImageOriginForProject,
+    )
+    for dictProject in listContainers:
+        dictProject["bPinnedImageObtainable"] = (
+            fdictDescribeImageOriginForProject(dictProject)["bPinnedImageObtainable"]
+        )
 
 
 def _flistMergeProjectsAndContainers(

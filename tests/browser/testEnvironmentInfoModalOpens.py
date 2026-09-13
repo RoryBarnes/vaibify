@@ -89,6 +89,12 @@ def _fnOpenTheModal(pageDashboard):
     pageDashboard.wait_for_selector(
         "#btnAdminEnvironmentInfo", state="visible", timeout=5000,
     )
+    # The item that returns to the hub is named for the page it opens.
+    # The hub's heading rejected "Containers" long ago (a host project
+    # is not one); the menu item said it until 2026-09-13.
+    assert pageDashboard.text_content(
+        "#btnAdminContainers",
+    ).strip() == "Environments"
     pageDashboard.click("#btnAdminEnvironmentInfo")
     pageDashboard.wait_for_selector("#modalInfo", timeout=5000)
 

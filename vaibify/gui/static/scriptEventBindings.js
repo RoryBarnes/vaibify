@@ -893,8 +893,8 @@ var VaibifyEventBindings = (function () {
             btnAdminContainers: function () {
                 VaibifyModals.fnShowConfirmModal(
                     "Leave Dashboard",
-                    "This will disconnect from the container " +
-                    "and end any running sessions. Continue?",
+                    "This will leave the project and end any " +
+                    "running sessions. Continue?",
                     VaibifyApp.fnDisconnect);
             },
             btnAdminWorkflows: function () {

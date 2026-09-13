@@ -232,3 +232,73 @@ def test_the_unready_modal_says_which_red_marks_are_not_the_cause(
         "the note names a non-blocking warning without saying it "
         f"cannot affect the verification: {sText}"
     )
+
+
+
+def _fnAnswerReadinessForABuiltClone(pageDashboard, bPinnedImageObtainable):
+    """A ready envelope whose CONTAINER facts both fail, on a built image.
+
+    Shaped from the real gaps function like the helper above, then the
+    two container facts and the two origin facts the route grafts on.
+    """
+    import json as jsonModule
+    from vaibify.reproducibility.levelGates import fdictL3ReadinessGaps
+    dictGaps = fdictL3ReadinessGaps({}, "/nonexistent-repo-for-shape")
+    dictGaps = {
+        sKey: (True if isinstance(objValue, bool) else objValue)
+        for sKey, objValue in dictGaps.items()
+    }
+    dictGaps["bImageMatchesDeclaredPackages"] = False
+    dictGaps["bDockerfileDescribesPinnedImage"] = False
+    dictGaps["bImageWasBuilt"] = True
+    dictGaps["bPinnedImageObtainable"] = bPinnedImageObtainable
+    sBody = jsonModule.dumps({
+        "iProofLevel": 1, "dictL3ReadinessGaps": dictGaps,
+    })
+    pageDashboard.route(
+        "**/api/workflow/**/level3/readiness",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=sBody,
+        ),
+    )
+
+
+@pytest.mark.falsification
+def test_a_built_clone_is_sent_to_the_switch_not_to_a_rewrite(
+    pageDashboard, serverHub,
+):
+    """A clone containerized by BUILDING fails both container facts by
+    construction; the modal names the one remedy, once, and never the
+    rewrites of the author's files.
+
+    Kills: ignoring the origin facts, which names "re-export the
+    Dockerfile" and "add them to vaibify.yml" to a researcher whose
+    Dockerfile and vaibify.yml are the author's.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    listPosts = _flistInterceptVerifyPosts(pageDashboard)
+    _fnAnswerReadinessForABuiltClone(pageDashboard, True)
+    pageDashboard.evaluate(
+        "() => VaibifyApp.fnRunProjectAction('verify-l3', '', null)")
+    pageDashboard.wait_for_selector(
+        S_INFO_MODAL, state="visible", timeout=5000)
+    sText = pageDashboard.inner_text(S_INFO_MODAL)
+    assert sText.count("Switch to the author's pinned image") == 1, sText
+    assert "re-export" not in sText, sText
+    assert "vaibify.yml" not in sText, sText
+    assert listPosts == []
+    pageDashboard.click("#btnInfoClose")
+    pageDashboard.wait_for_selector(S_INFO_MODAL, state="hidden", timeout=5000)
+
+    # The same two facts on an author's own rebuilt image keep their
+    # own remedies, because there is no pinned image to switch to.
+    pageDashboard.unroute("**/api/workflow/**/level3/readiness")
+    _fnAnswerReadinessForABuiltClone(pageDashboard, False)
+    pageDashboard.evaluate(
+        "() => VaibifyApp.fnRunProjectAction('verify-l3', '', null)")
+    pageDashboard.wait_for_selector(
+        S_INFO_MODAL, state="visible", timeout=5000)
+    sText = pageDashboard.inner_text(S_INFO_MODAL)
+    assert "Switch to the author's pinned image" not in sText, sText
+    assert "re-export" in sText, sText
+    assert pageDashboard.listPageErrors == []

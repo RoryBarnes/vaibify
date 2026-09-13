@@ -65,3 +65,13 @@ without discussion:
   is open right now. Poison does both — the pipeline lane is refused at
   the gate and revalidated per frame — so the two are complementary,
   not redundant.
+- `bAllowEmulation` on an obtained project's registry entry is frozen
+  at conversion. The wizard offers the emulation checkbox only when
+  the daemon was reachable while the wizard was open and its
+  architecture differed from the pin, so a clone converted while
+  Docker was unreachable can never consent later: no route updates
+  the flag (`fnUpdateImageSource` is called only for the overlay
+  fields). The forward switch (`switch-to-pinned-image`) asks the
+  question afresh, so switching to building and back is the workaround
+  today; a route that updates the flag is the fix, once a researcher
+  meets it.

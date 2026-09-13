@@ -6373,7 +6373,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # into pinnedEnvironmentConversion.py, along the fault line
     # between the registry's HTTP surface and the pinned-image lane's
     # rules; what stays is the routing.
-    "registryRoutes.py": 2222,
+    # +16 (2026-09-13): the listing annotates each built project with
+    # whether its clone pins an obtainable image, so the tile can
+    # offer the switch to the author's image. The question itself
+    # lives in pinnedEnvironmentConversion (one function, shared with
+    # the verify's refusals); what stays here is the loop that asks it.
+    "registryRoutes.py": 2238,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6524,7 +6529,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rationale, which is a catalog growing by construction.
     # +7 (2026-09-11): two excluded control-plane routes (acquire the
     # pinned image, switch to building) and their rationale.
-    "actionCatalog.py": 1236,
+    # +1 (2026-09-13): the third of that family, switching a built
+    # project to the pinned image; same rationale, one more row.
+    "actionCatalog.py": 1237,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6796,7 +6803,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rather than after a run whose outcome could not be written)
     # and the readiness poll answering UNDETERMINED by name. Same
     # lane, same seam as above.
-    "routes/reproducibilityRoutes.py": 1884,
+    # +44 (2026-09-13): the two container-fact refusals (package
+    # mismatch, Dockerfile provenance) name the SWITCH to the author's
+    # pinned image when the image was built while the clone pins an
+    # obtainable one, and the readiness poll carries the two facts
+    # that decide it. The facts are answered by
+    # pinnedEnvironmentConversion; what grew here is the refusal's
+    # branch and a one-call lookup. Same lane, same seam.
+    "routes/reproducibilityRoutes.py": 1928,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -6862,7 +6876,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # no seam to split along. Worth stating because the tempting way
     # past this ratchet is to shorten the comment until the number
     # fits, which keeps the count honest and makes the file worse.
-    "routeScope.py": 1007,
+    # +2 (2026-09-13): one control-plane scope row for switching a
+    # built project to the author's pinned image, beside its two
+    # siblings.
+    "routeScope.py": 1009,
 }
 
 

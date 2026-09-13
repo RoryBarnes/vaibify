@@ -201,6 +201,8 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/containers/{sName}/acquire-image"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/switch-to-building"):
         S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/switch-to-pinned-image"):
+        S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/start"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/containers/{sName}/start/cancel"):
         S_SCOPE_CONTAINER_LIFECYCLE,

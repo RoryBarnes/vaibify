@@ -478,3 +478,141 @@ def testAnUnprovenBaselineOffersTheRetryWithoutAdditions(pageDashboard, serverHu
     assert "bWithoutAdditions=true" in listAcquireUrls[1]
     assert "bWithoutAdditions" not in listAcquireUrls[0]
     assert "build" not in [tRequest[0] for tRequest in listRequests]
+
+
+
+# ---------------------------------------------------------------------
+# The default follows the clone, and a built project has a way forward
+# (2026-09-13)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testAnObtainableCloneHasThePinnedImagePreselected(pageDashboard, serverHub):
+    """A published clone starts on the author's image; an explicit build
+    choice is never overridden.
+
+    Kills: leaving the build as the default when the envelope says the
+    pinned image can be obtained, which is how a researcher pressing
+    Next through the wizard got an image whose digest can never match
+    the author's bytes.
+    """
+    _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnOpenConvertWizard(pageDashboard)
+    _fnNextTo(pageDashboard, "Environment")
+    pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
+    elPinned = pageDashboard.query_selector(
+        '.wizard-environment-source[value="archive"]',
+    )
+    assert elPinned is not None and elPinned.is_checked(), (
+        "an obtainable pin was not pre-selected"
+    )
+    _fnNextTo(pageDashboard, "Features & Authentication")
+    pageDashboard.click("#btnWizardBack")
+    pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
+    pageDashboard.check('.wizard-environment-source[value="build"]')
+    pageDashboard.wait_for_timeout(200)
+    _fnNextTo(pageDashboard, "Python Version")
+    pageDashboard.click("#btnWizardBack")
+    pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
+    elBuild = pageDashboard.query_selector(
+        '.wizard-environment-source[value="build"]',
+    )
+    assert elBuild.is_checked(), "an explicit build choice was overridden"
+    assert pageDashboard.listPageErrors == []
+
+
+def _fnListTheTileAsBuiltWithAnObtainablePin(page, sStatus):
+    """Make the fake tile a BUILT project whose clone pins an obtainable image."""
+    def fnListing(route):
+        response = route.fetch()
+        dictListing = json.loads(response.text())
+        for dictProject in dictListing.get("listContainers") or []:
+            if dictProject.get("sName") == S_CONTAINER_NAME:
+                dictProject["sStatus"] = sStatus
+                dictProject["bImageExists"] = sStatus != "not built"
+                dictProject.pop("dictImageSource", None)
+                dictProject["bPinnedImageObtainable"] = True
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps(dictListing),
+        )
+    page.route("**/api/registry", fnListing)
+
+
+def _flistRecordTheForwardSwitch(page, bStopSucceeds):
+    """Record stop, the forward switch, acquire and start, in order."""
+    listRequests = _flistRecordLifecycle(page, bStopSucceeds)
+
+    def fnSwitchForward(route):
+        listRequests.append(("switch-pinned", route.request.url))
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"bSwitched": True, "sAcquirePath": "/x"}),
+        )
+    page.route("**/api/containers/**/switch-to-pinned-image**", fnSwitchForward)
+    return listRequests
+
+
+def _fnClickTheForwardSwitch(page):
+    page.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]'
+        '[data-pinned-obtainable="true"]', timeout=10000,
+    )
+    page.click(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        '.container-tile-actions',
+    )
+    page.click(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        '.container-menu-item[data-action="switch-to-pinned-image"]',
+    )
+    page.wait_for_selector("#modalConfirm", timeout=5000)
+    page.click("#btnConfirmOk")
+    page.wait_for_timeout(1500)
+
+
+@pytest.mark.falsification
+def testABuiltTileWhoseClonePinsOffersTheSwitchAndStopsFirst(
+    pageDashboard, serverHub,
+):
+    """The built tile offers the way forward; the stop precedes the
+    switch, and a failed stop posts nothing.
+
+    Kills: posting the switch whatever the stop reported, which
+    rewrites vaibify.yml and the registry entry under a container
+    still running the built image.
+    """
+    _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
+    _fnListTheTileAsBuiltWithAnObtainablePin(pageDashboard, "running")
+    listRequests = _flistRecordTheForwardSwitch(pageDashboard, False)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    assert pageDashboard.query_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        '.container-menu-item[data-action="rebuild"]',
+    ) is not None, "a built tile lost its Rebuild"
+    _fnClickTheForwardSwitch(pageDashboard)
+    assert [tRequest[0] for tRequest in listRequests] == ["stop"]
+    pageDashboard.unroute("**/api/containers/**/stop")
+    pageDashboard.unroute("**/api/containers/**/switch-to-pinned-image**")
+    listOrdered = _flistRecordTheForwardSwitch(pageDashboard, True)
+    _fnClickTheForwardSwitch(pageDashboard)
+    listKinds = [tRequest[0] for tRequest in listOrdered]
+    assert listKinds[:3] == ["stop", "switch-pinned", "acquire"], listKinds
+    assert "build" not in listKinds
+    assert pageDashboard.listPageErrors == []
+
+
+def testAnObtainedOrUnpinnedTileOffersNoForwardSwitch(pageDashboard, serverHub):
+    """The item appears on exactly one kind of tile."""
+    _fnListTheTileAsObtained(pageDashboard, "running")
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]'
+        '[data-image-source="archive"]', timeout=10000,
+    )
+    assert pageDashboard.query_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"] '
+        '.container-menu-item[data-action="switch-to-pinned-image"]',
+    ) is None, "an obtained image was offered a switch to itself"

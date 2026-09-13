@@ -242,6 +242,9 @@ var VaibifyContainerManager = (function () {
             (_fbImageObtained(dictContainer) &&
                 dictContainer.dictImageSource.bAllowEmulation === true
                 ? "true" : "false") +
+            '" data-pinned-obtainable="' +
+            (dictContainer.bPinnedImageObtainable === true
+                ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
@@ -256,7 +259,8 @@ var VaibifyContainerManager = (function () {
             _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
             _fsRenderContainerOnlyMenuItems(
-                bHost, _fbImageObtained(dictContainer)) +
+                bHost, _fbImageObtained(dictContainer),
+                dictContainer.bPinnedImageObtainable === true) +
             _fsRenderHostConvertMenuItem(bHost) +
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
@@ -329,15 +333,25 @@ var VaibifyContainerManager = (function () {
         return Boolean(dictSource && dictSource.sSource === "archive");
     }
 
-    function _fsRenderContainerOnlyMenuItems(bHost, bObtained) {
+    function _fsRenderContainerOnlyMenuItems(bHost, bObtained,
+                                             bPinnedObtainable) {
         /* Start, stop, restart and the two rebuilds all drive Docker
            machinery a host project has none of. The server refuses
            them with a 409 naming host mode; this only keeps the
            researcher from being offered them. A project whose image
            was OBTAINED from the author's pin is offered a re-obtain
            and an explicit switch instead of a rebuild: a silent build
-           over the author's image is exactly what the server refuses. */
+           over the author's image is exactly what the server refuses.
+           A BUILT project whose clone pins an obtainable image is
+           offered the switch the other way, because a build's digest
+           can never match the author's bytes and the researcher who
+           pressed Next through the wizard has no other way back. */
         if (bHost) return "";
+        var sSwitchToPinned = bPinnedObtainable
+            ? '<div class="container-menu-item" ' +
+              'data-action="switch-to-pinned-image">' +
+              "Switch to the author’s pinned image</div>"
+            : "";
         var sRebuildItems = bObtained
             ? '<div class="container-menu-item" data-action="reobtain">' +
               "Re-obtain the pinned image</div>" +
@@ -347,7 +361,7 @@ var VaibifyContainerManager = (function () {
             : '<div class="container-menu-item" data-action="rebuild">' +
               "Rebuild</div>" +
               '<div class="container-menu-item" data-action="force-rebuild">' +
-              "Force Rebuild</div>";
+              "Force Rebuild</div>" + sSwitchToPinned;
         return (
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
@@ -945,6 +959,8 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "reobtain") await fnReobtainPinnedImage(sName);
         else if (sAction === "switch-to-building")
             await fnSwitchToBuilding(sName);
+        else if (sAction === "switch-to-pinned-image")
+            await fnSwitchToPinnedImage(sName);
         else if (sAction === "force-rebuild")
             await fnForceRebuildContainer(sName);
         else if (sAction === "convert") _fnStartConversion(sName);
@@ -1367,6 +1383,68 @@ var VaibifyContainerManager = (function () {
                 sCommand: "vaibify stop && vaibify build && vaibify start",
             }
         );
+    }
+
+    async function fnSwitchToPinnedImage(sName) {
+        /* The way forward from a built image. The pinned-environment
+           answer is fetched on the click, not on render, because the
+           listing must never wait on it and the emulation question
+           needs the daemon's architecture at the moment of asking. */
+        var dictPinned = await _fdictPinnedEnvironmentOrNull(sName);
+        var dictDaemon = (dictPinned && dictPinned.dictDaemon) || {};
+        var bOfferEmulation = dictDaemon.bReachable === true &&
+            dictDaemon.bArchitectureMatches !== true;
+        var sDetails = "Use this when you want the bytes the author " +
+            "published, which only the author’s image can reproduce. " +
+            "The build’s digest differs from the pin by construction." +
+            (bOfferEmulation
+                ? " The pinned image was built for another processor " +
+                  "architecture; obtaining it here runs it under " +
+                  "emulation, which is slow and is recorded as such."
+                : "");
+        VaibifyApp.fnShowConfirmModal(
+            "Switch to the author’s pinned image",
+            "This project runs an image built from the Dockerfile. " +
+            "Switching stops the container, restores the author’s " +
+            "environment fields in vaibify.yml from the committed copy, " +
+            "obtains the image the envelope pins (registry, then the " +
+            "archived deposit, then a copy on this daemon), and starts " +
+            "a fresh container from it. Workspace files are preserved." +
+            (bOfferEmulation ? "\n\nAllow emulation?" : ""),
+            async function () {
+                /* Stop first; a failed stop ends the transition here,
+                   and the server refuses the switch while the
+                   container exists whatever this page believes. */
+                VaibifyTerminal.fnCloseAll();
+                var bStopped = await fnStopContainer(sName);
+                if (!bStopped) return;
+                var sUrl = "/api/containers/" + encodeURIComponent(sName) +
+                    "/switch-to-pinned-image?bAllowEmulation=" +
+                    (bOfferEmulation ? "true" : "false");
+                try {
+                    await VaibifyApi.fdictPostRaw(sUrl);
+                } catch (error) {
+                    _fnReportBuildFailure(error);
+                    return;
+                }
+                await fnAcquireImage(sName, bOfferEmulation, false);
+            },
+            {
+                sDetails: sDetails,
+                sConfirmLabel: bOfferEmulation
+                    ? "Switch and allow emulation" : "Switch",
+            }
+        );
+    }
+
+    async function _fdictPinnedEnvironmentOrNull(sName) {
+        try {
+            return await VaibifyApi.fdictGet(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/pinned-environment");
+        } catch (error) {
+            return null;
+        }
     }
 
     async function _fnWatchRunningBuild(sName, sReason) {

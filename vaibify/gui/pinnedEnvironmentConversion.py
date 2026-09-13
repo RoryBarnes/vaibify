@@ -31,9 +31,14 @@ __all__ = [
     "T_BASE_FEATURE_KEYS",
     "T_BASE_YAML_KEYS",
     "T_RUNTIME_YAML_KEYS",
+    "S_REMEDY_SWITCH_TO_PINNED_IMAGE",
+    "fbSwitchToPinnedImageIsTheRemedy",
     "fdictBuildArchiveImageSource",
+    "fdictBuildArchiveImageSourceForSwitch",
+    "fdictDescribeImageOriginForProject",
     "fdictDescribePinnedEnvironmentForWizard",
     "fdictOverlayRuntimeFieldsOnly",
+    "fnRestoreAuthorBaseFieldsFromGit",
     "fnRewriteConfigForObtainedImage",
 ]
 
@@ -153,6 +158,13 @@ def fdictBuildArchiveImageSource(dictProject, request):
     trusting it. The additions are the agents the wizard asked for
     beyond that candidate.
     """
+    return _fdictArchiveImageSource(
+        dictProject, list(request.listFeatures), bool(request.bAllowEmulation),
+    )
+
+
+def _fdictArchiveImageSource(dictProject, listRequestedFeatures, bAllowEmulation):
+    """Build the source record from a feature list, whoever supplied it."""
     from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
     from vaibify.reproducibility.reproductionSource import (
         fdictDescribePinnedEnvironment,
@@ -166,12 +178,12 @@ def fdictBuildArchiveImageSource(dictProject, request):
     listCandidate, sFingerprint = _ftCandidateOverlayBaseline(dictProject)
     setAgents = set(T_AGENT_OVERLAY_NAMES)
     listAdditional = [
-        sFeature for sFeature in request.listFeatures
+        sFeature for sFeature in listRequestedFeatures
         if sFeature in setAgents and sFeature not in listCandidate
     ]
     return {
         "sSource": S_ENVIRONMENT_SOURCE_ARCHIVE,
-        "bAllowEmulation": bool(request.bAllowEmulation),
+        "bAllowEmulation": bool(bAllowEmulation),
         "sPinnedImageReference": dictPinned["sPinnedImageReference"],
         "sRequiredPlatform": dictPinned["sRequiredPlatform"],
         "listAuthorOverlays": listCandidate,
@@ -179,6 +191,174 @@ def fdictBuildArchiveImageSource(dictProject, request):
         "listAdditionalAgents": listAdditional,
         "listResolvedOverlays": None,
     }
+
+
+S_REMEDY_SWITCH_TO_PINNED_IMAGE = (
+    "this container runs an image built from the Dockerfile, but the "
+    "envelope pins the author's image — on the Environments hub, open "
+    "the tile's menu and choose 'Switch to the author's pinned image'"
+)
+
+
+def fdictDescribeImageOriginForProject(dictProject):
+    """Say whether a project's image was BUILT and whether its clone pins one.
+
+    Two facts read together by the registry listing (the tile offers
+    the switch on them) and by the verify's refusals (the package
+    mismatch and the Dockerfile-provenance mismatch both have this one
+    cause on a containerized clone, and for it the remedy is the
+    switch -- the rewrites they otherwise name would make the AUTHOR's
+    committed files describe a build the author never made). Answered
+    from the clone's envelope by the wizard's own validator, never
+    from the daemon. An unregistered, host or already-obtained project
+    reads as neither, so an unknown origin never names the switch.
+    """
+    from vaibify.config.registryManager import fbProjectImageIsObtained
+    from vaibify.reproducibility.reproductionSource import (
+        fdictDescribePinnedEnvironment,
+    )
+    dictAnswer = {"bImageWasBuilt": False, "bPinnedImageObtainable": False}
+    if not dictProject or dictProject.get("sMode") != "container":
+        return dictAnswer
+    if fbProjectImageIsObtained(dictProject):
+        return dictAnswer
+    dictAnswer["bImageWasBuilt"] = True
+    sDirectory = dictProject.get("sDirectory") or ""
+    if not sDirectory:
+        return dictAnswer
+    try:
+        dictAnswer["bPinnedImageObtainable"] = bool(
+            fdictDescribePinnedEnvironment(sDirectory)["bObtainable"],
+        )
+    except OSError:
+        pass
+    return dictAnswer
+
+
+def fbSwitchToPinnedImageIsTheRemedy(dictImageOrigin):
+    """True iff a container-fact refusal should name the switch, not a rewrite."""
+    return bool(
+        (dictImageOrigin or {}).get("bImageWasBuilt")
+        and (dictImageOrigin or {}).get("bPinnedImageObtainable")
+    )
+
+
+def fdictBuildArchiveImageSourceForSwitch(dictProject, bAllowEmulation):
+    """Return the source record for a BUILT project switching to the pin.
+
+    The transition has no wizard request to read the researcher's
+    agents from; it reads them from the clone's working ``vaibify.yml``
+    -- the agents the built image carried -- BEFORE the author's base
+    fields are restored over it, then restores, then resolves the
+    baseline (the committed Dockerfile's header, else the restored
+    file) so the additions are exactly the agents the author's image
+    lacks. The order is load-bearing: resolving the baseline from the
+    working copy would read the researcher's own agents as the
+    author's and stack none of them.
+    """
+    listRequestedAgents = _flistEnabledAgentsInConfig(dictProject["sConfigPath"])
+    fnRestoreAuthorBaseFieldsFromGit(dictProject)
+    return _fdictArchiveImageSource(
+        dictProject, listRequestedAgents, bAllowEmulation,
+    )
+
+
+def _flistEnabledAgentsInConfig(sConfigPath):
+    """Return the agent overlays a ``vaibify.yml`` currently enables."""
+    import yaml
+    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
+    try:
+        with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
+            dictConfig = yaml.safe_load(fileHandle) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    dictFeatures = dictConfig.get("features")
+    if not isinstance(dictFeatures, dict):
+        return []
+    return [
+        sAgent for sAgent in T_AGENT_OVERLAY_NAMES
+        if dictFeatures.get(sAgent) is True
+    ]
+
+
+def fnRestoreAuthorBaseFieldsFromGit(dictProject):
+    """Put the author's image-defining fields back into the clone's config.
+
+    A build rewrote every image-defining field from the wizard's
+    answers (the convert route's overlay is a MERGE for a built
+    image). An obtained image is the author's, so the file must
+    describe it again: the base keys and the whole ``features`` block
+    come from the copy committed at HEAD -- the author's -- while the
+    runtime keys, the agent auto-update switches and every key the
+    translation never manages keep the working copy's value. It is
+    ``fdictOverlayRuntimeFieldsOnly`` with the roles swapped: there the
+    author's file is on disk and the runtime choices arrive in a
+    request; here the runtime choices are on disk and the author's
+    file is in git. Refuses by name when HEAD holds no copy, because
+    without the author's file there is nothing honest to restore.
+    """
+    import yaml
+    from vaibify.config.projectConfig import (
+        fbValidateConfig,
+        fconfigFromYamlDict,
+        fnSaveToFile,
+    )
+    from vaibify.reproducibility.reproductionSource import (
+        fsReadCommittedFileOrNone,
+    )
+    sConfigPath = dictProject["sConfigPath"]
+    sDirectory = dictProject["sDirectory"]
+    sRelativePath = os.path.relpath(sConfigPath, sDirectory)
+    sCommitted = None
+    if not sRelativePath.startswith(os.pardir):
+        sCommitted = fsReadCommittedFileOrNone(sDirectory, sRelativePath)
+    if sCommitted is None:
+        raise HTTPException(409, detail={"sMessage": (
+            "The author's vaibify.yml is not committed in this clone, so "
+            "the build's rewrite of it cannot be undone automatically. "
+            "Restore the file from the published repository (for "
+            "example `git checkout -- vaibify.yml`), then switch again."
+        )})
+    try:
+        dictAuthor = yaml.safe_load(sCommitted) or {}
+        with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
+            dictExisting = yaml.safe_load(fileHandle) or {}
+    except (OSError, yaml.YAMLError) as error:
+        raise HTTPException(409, detail={"sMessage": (
+            f"The clone's vaibify.yml could not be read: {error}"
+        )})
+    if not isinstance(dictAuthor, dict):
+        raise HTTPException(409, detail={"sMessage": (
+            "The committed vaibify.yml is not a mapping, so the author's "
+            "environment cannot be read from it."
+        )})
+    dictMerged = _fdictAuthorBaseOntoRuntime(dictAuthor, dictExisting)
+    if not fbValidateConfig(dictMerged):
+        raise HTTPException(409, detail={"sMessage": (
+            "The clone's configuration is invalid once the author's "
+            "environment fields are restored; check the committed "
+            "vaibify.yml."
+        )})
+    fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+
+
+def _fdictAuthorBaseOntoRuntime(dictAuthor, dictExisting):
+    """Return the working config with the author's base fields restored."""
+    from vaibify.gui.registryRoutes import _T_AGENT_SETTINGS
+    dictMerged = dict(dictExisting)
+    for sKey in T_BASE_YAML_KEYS:
+        if sKey in dictAuthor:
+            dictMerged[sKey] = dictAuthor[sKey]
+        else:
+            dictMerged.pop(sKey, None)
+    dictFeatures = dict(dictAuthor.get("features") or {})
+    dictExistingFeatures = dictExisting.get("features") or {}
+    for sAgent, _sInstallField, _sAutoField, _sLabel in _T_AGENT_SETTINGS:
+        sAutoUpdateKey = f"{sAgent}AutoUpdate"
+        if sAutoUpdateKey in dictExistingFeatures:
+            dictFeatures[sAutoUpdateKey] = dictExistingFeatures[sAutoUpdateKey]
+    dictMerged["features"] = dictFeatures
+    return dictMerged
 
 
 def _ftCandidateOverlayBaseline(dictProject):

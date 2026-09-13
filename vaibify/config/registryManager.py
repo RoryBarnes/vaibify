@@ -361,6 +361,53 @@ def fnSwitchProjectToBuilding(sName):
     _fnMutateRegistryLocked(fnClearSource)
 
 
+def fnSwitchProjectToObtaining(sName, dictImageSource):
+    """Record that a BUILT container project will obtain its image instead.
+
+    The inverse of ``fnSwitchProjectToBuilding``, for a clone that was
+    containerized by building before the pinned-image lane existed (or
+    by choosing build): the source record is written under the registry
+    lock, and nothing else moves. The origin record is NOT written here
+    -- the acquisition lane writes it last, after the image is obtained
+    and proven, exactly as conversion leaves it to the acquisition --
+    so a project between this call and a successful acquire reads as
+    "obtained, not built yet", which the launch guard refuses to start
+    and the tile offers to acquire.
+
+    Raises
+    ------
+    KeyError
+        If no project named ``sName`` is registered.
+    ValueError
+        If the entry is not a container project, or already obtains
+        its image (there is nothing to switch).
+    """
+    if not isinstance(dictImageSource, dict) or (
+        dictImageSource.get("sSource") != S_IMAGE_SOURCE_ARCHIVE
+    ):
+        raise ValueError(
+            "an image source that obtains the image must say so"
+        )
+
+    def fnWriteSource(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        if dictEntry.get("sMode") != "container":
+            raise ValueError(
+                f"Project '{sName}' is a host project; only a container "
+                "project can switch to an obtained image"
+            )
+        if fbProjectImageIsObtained(dictEntry):
+            raise ValueError(
+                f"Project '{sName}' already obtains the author's pinned "
+                "image"
+            )
+        dictEntry[S_IMAGE_SOURCE_KEY] = dict(dictImageSource)
+
+    _fnMutateRegistryLocked(fnWriteSource)
+
+
 def _fdictFindEntryByName(dictRegistry, sName):
     """Return the registry entry whose ``sName`` matches, or None."""
     for dictEntry in dictRegistry["listProjects"]:
