@@ -1114,3 +1114,87 @@ def test_the_repo_hash_program_answers_none_for_an_absent_file(
     assert dictEntries["nowhere.txt"] == {
         "sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False,
     }
+
+
+# -----------------------------------------------------------------------
+# DOCKER_HOST resolution must be re-readable, and must not clobber
+# -----------------------------------------------------------------------
+
+
+def _fnResolveWithContextEndpoint(monkeypatch, sEndpoint):
+    """Run _fnEnsureDockerHost with the context read stubbed.
+
+    Stubs the read at its single authority in ``dockerContext`` rather
+    than at ``subprocess.run``, so the test follows the production
+    call path instead of asserting against a command spelling.
+    """
+    monkeypatch.setattr(
+        "vaibify.docker.dockerContext.fsReadActiveContextEndpoint",
+        lambda: sEndpoint,
+    )
+    dockerConnectionModule._fnEnsureDockerHost()
+
+
+@pytest.fixture
+def fnForgetResolvedDockerHost(monkeypatch):
+    """Isolate the module's memory of the value it last wrote."""
+    monkeypatch.setattr(
+        dockerConnectionModule, "_sDockerHostWrittenByVaibify", None,
+    )
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+
+
+@pytest.mark.falsification
+def test_a_context_change_is_picked_up_on_a_later_attempt(
+    monkeypatch, fnForgetResolvedDockerHost,
+):
+    """The Docker banner's Retry must be able to succeed.
+
+    The guard used to be "is DOCKER_HOST set?", and this function is
+    what set it -- so the first resolution won for the life of the hub
+    process. A researcher whose active context pointed at a stopped
+    runtime would fix the context, click Retry, and be handed the same
+    failure naming the same dead socket; only restarting vaibify
+    helped, and nothing said so.
+
+    Kills: restoring the bare ``if os.environ.get("DOCKER_HOST")``
+    guard.
+    """
+    import os
+
+    _fnResolveWithContextEndpoint(
+        monkeypatch, "unix:///home/researcher/.rd/docker.sock",
+    )
+    assert os.environ["DOCKER_HOST"] == (
+        "unix:///home/researcher/.rd/docker.sock"
+    )
+    _fnResolveWithContextEndpoint(
+        monkeypatch, "unix:///var/run/docker.sock",
+    )
+    assert os.environ["DOCKER_HOST"] == "unix:///var/run/docker.sock", (
+        "a context change was invisible to a second attempt, so Retry "
+        "can never recover from one"
+    )
+
+
+@pytest.mark.falsification
+def test_a_researchers_own_docker_host_is_never_overwritten(
+    monkeypatch, fnForgetResolvedDockerHost,
+):
+    """The other direction: an explicit export outranks the context.
+
+    Re-reading on every call must not become "re-resolve always" --
+    that would silently redirect a researcher who deliberately pointed
+    vaibify at a remote or non-default daemon, which is the whole
+    reason the original guard existed.
+
+    Kills: dropping the guard entirely so the context is re-resolved
+    unconditionally, overwriting an explicitly exported DOCKER_HOST.
+    """
+    import os
+
+    monkeypatch.setenv("DOCKER_HOST", "tcp://build-host.internal:2376")
+    _fnResolveWithContextEndpoint(
+        monkeypatch, "unix:///var/run/docker.sock",
+    )
+    assert os.environ["DOCKER_HOST"] == "tcp://build-host.internal:2376"

@@ -237,8 +237,11 @@ def _fmoduleGetDocker():
         )
 
 
+_sDockerHostWrittenByVaibify = None
+
+
 def _fnEnsureDockerHost():
-    """Set DOCKER_HOST from active Docker context if not already set.
+    """Set DOCKER_HOST from the active Docker context.
 
     The read itself lives in ``dockerContext``, which is also what
     ``vaibify doctor`` asks before any connection is attempted. Two
@@ -246,14 +249,28 @@ def _fnEnsureDockerHost():
     disagree about where vaibify is pointing -- and the report exists
     precisely because the two disagreeing is what a researcher cannot
     otherwise see.
+
+    A researcher's own exported DOCKER_HOST always wins and is never
+    overwritten. What IS re-read on every call is a value this
+    function itself wrote, because the guard used to be "is
+    DOCKER_HOST set?" and this function is what set it -- so the first
+    resolution won for the life of the hub process and the Docker
+    banner's Retry could never recover from a context change. A
+    researcher whose active context pointed at a stopped runtime would
+    fix it with ``docker context use``, click Retry, and be handed the
+    identical failure naming the identical dead socket; restarting
+    vaibify was the only way out, and nothing said so.
     """
+    global _sDockerHostWrittenByVaibify
     import os
     from .dockerContext import fsReadActiveContextEndpoint
-    if os.environ.get("DOCKER_HOST"):
+    sExisting = os.environ.get("DOCKER_HOST")
+    if sExisting and sExisting != _sDockerHostWrittenByVaibify:
         return
     sHost = fsReadActiveContextEndpoint()
     if sHost:
         os.environ["DOCKER_HOST"] = sHost
+        _sDockerHostWrittenByVaibify = sHost
 
 
 # The complete set of programs the audited-read exemption will run,
