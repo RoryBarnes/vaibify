@@ -350,7 +350,7 @@ would either mangle Windows host paths or mangle container paths on
 any host, and the failure would be silent until a cross-platform user
 hit it. The repository formerly carried a host-side `director.py`
 whose deliberate divergence from `workflowManager` illustrated this;
-it was withdrawn in favour of `vaibify reproduce --rerun`, which
+it was withdrawn in favor of `vaibify reproduce --rerun`, which
 re-runs a project through the container and therefore reproduces the
 environment as well as the steps.
 
@@ -430,7 +430,7 @@ The invariant `testGitRoutesAlwaysPassProjectRepoToContainerGit` in
 `tests/testArchitecturalInvariants.py` guards the threading: every
 `containerGit.*` call in `gitRoutes.py` must pass `sWorkspace`
 explicitly. A silent fallback to the `/workspace` default would
-reintroduce the all-grey-badges bug that motivated this design. A
+reintroduce the all-gray-badges bug that motivated this design. A
 companion invariant `testNoWorkspaceRootedMarkerHardcodeInSource`
 bans the literal `/workspace/.vaibify/test_markers` in any module
 under `vaibify/gui/` — enforcing that marker paths are always
@@ -509,7 +509,7 @@ A hub or viewer runs in the foreground of its launching terminal.
 Closing the browser tab does nothing, and closing the terminal
 *orphans* the server (reparented to `launchd`/`init`, `PPID 1`), which
 keeps holding its session slot (`~/.vaibify/sessions/<pid>.slot`) and
-its container flocks. The mechanisms below keep that from greying a
+its container flocks. The mechanisms below keep that from graying a
 container out forever.
 
 ### The lease is the access principal
@@ -650,9 +650,9 @@ guess at. `POST /api/containers/{sName}/start` therefore *reserves*:
 - The Docker work is a **create-then-start pair under `Popen`**. The
   container carries `--label vaibify.reservation=<id>` and its id is
   written to the write-ahead journal *before* it is started, so cleanup
-  removes exactly that incarnation and no other. Cancelling escalates
+  removes exactly that incarnation and no other. Canceling escalates
   TERM → bounded wait → KILL and waits for the real exit; only then is the
-  labelled container removed, the reservation compare-and-deleted, and the
+  labeled container removed, the reservation compare-and-deleted, and the
   flock freed. If the daemon's answer is uncertain the container is
   **quarantined, never made claimable** — killing the CLI does not prove
   the daemon abandoned the request.
@@ -769,7 +769,7 @@ the session file is correct and reconnecting cannot help.
 Authorizing the agent lane answers *which container* an agent may act
 on. It does not answer *what it may do there*, and for a long time
 nothing did. `ffnAgentAction` attaches a name to a handler and changes
-no behaviour; `bAgentSafe` was consumed only by `vaibify/containerImage/vaibifyDo.py`
+no behavior; `bAgentSafe` was consumed only by `vaibify/containerImage/vaibifyDo.py`
 **inside** the container, which an agent bypasses with `curl`. Every
 route the catalog marked researcher-only — `clean-outputs`,
 `delete-step`, `declare-determinism`, `supervision/configure`,
@@ -852,7 +852,7 @@ host-global Settings preference, then the launch default — and
 published on `app.state.fIdleTimeoutSeconds`. The watchdog re-reads
 that attribute every tick (`_ffCurrentIdleTimeout`), so the gear
 menu's **Idle shutdown** control applies **live**: a change updates
-`app.state` and the loop honours it on its next pass, no relaunch. The
+`app.state` and the loop honors it on its next pass, no relaunch. The
 **launch default is never** (`math.inf`, disabled) for a browser
 launch and `1800` seconds only for a headless/remote launch (browser
 suppressed via `VAIBIFY_SUPPRESS_BROWSER`) — a researcher at the
@@ -1002,7 +1002,7 @@ neither reading the code nor reasoning settles it:
 - **The daemon prunes finished execs** from a container's `ExecIDs`,
   so the list is a live set rather than an accumulating log. Each id
   is still confirmed through `exec_inspect`, because the pruning is
-  observed behaviour of one daemon while `Running` is a stated one.
+  observed behavior of one daemon while `Running` is a stated one.
 
 The practical reading: **a hub restart does not stop a run.** It stops
 vaibify *watching* the run. Anything that must survive a restart has
@@ -1515,7 +1515,7 @@ requirements is merely unchecked.
 A step with no recorded activity splits on material evidence: when
 none of its declared outputs exist on disk it renders "not-started"
 (hollow circle — nothing yet); when at least one declared output is
-on disk it renders "unassessed" (grey filled circle — material
+on disk it renders "unassessed" (gray filled circle — material
 present, assessment not begun). The discriminator is the poll's
 `dictMaxMtimeByStep`, which has an entry only for steps whose
 declared outputs were found in the container, so hours of compute
@@ -1740,7 +1740,7 @@ covering.
 **Four properties, each of which is a way this could become a lie.**
 
 *Never red on a failed check.* An unreachable remote is a missing
-answer, not a divergence — and the divergence colour on a Level 2 row
+answer, not a divergence — and the divergence color on a Level 2 row
 is the most expensive false accusation the dashboard can make. The
 check settles to UNCHECKABLE with the reason, the light keeps whatever
 the last completed verify earned, and the cached record on disk is
@@ -1788,7 +1788,7 @@ working tree, and a researcher who declines that trade simply never
 attests.
 
 The epistemic one is why `shadowRerun` exists at all. `reproduce.sh` —
-the artefact the envelope publishes, and the thing a third party will
+the artifact the envelope publishes, and the thing a third party will
 actually run — pulls the **pinned image digest** and executes the
 workflow in a container made from it. A rerun in the live project
 container instead exercises whatever that container has *become*:
@@ -1808,7 +1808,7 @@ boundary is the point of the whole ladder. The shadow runs on the
 researcher's own daemon, from an image already in their local store,
 over a repository copied out of their container rather than cloned from
 a published mirror. It cannot detect a digest unreachable from a fresh
-host, an artefact that exists only locally, or a dependency the lock
+host, an artifact that exists only locally, or a dependency the lock
 file omits — those are what tiers 1 through 4 are for. What it adds is
 that the *execution* half of the claim is made in an environment the
 researcher did not shape by hand.
@@ -1968,7 +1968,7 @@ published copies are claims the reproduction exists to check. **A report reads
 source facts from exactly one function**, `fdictDescribeStagedSource`,
 whose record is written redacted at staging time -- kind, commit,
 remote URL with userinfo stripped, workflow name, never a host path --
-because a reproduction report is the reproducer's artefact, never an
+because a reproduction report is the reproducer's artifact, never an
 attestation, never written into any repository, and possibly
 deposited publicly one day.
 
@@ -2132,9 +2132,9 @@ Red means *diverged* — a claim about the deposit. A comparison nobody
 could make is UNCHECKED, and the row says so rather than sending a
 researcher to fix a deposit that may be perfectly good. CLOSED (the
 researcher declined and the image is gone, so Level 3 is unreachable
-for this result) shares the colour and differs in SHAPE, because the
+for this result) shares the color and differs in SHAPE, because the
 remedies are opposite — "fix your deposit" versus "nothing can be
-done" — and shape is the channel that survives colour blindness.
+done" — and shape is the channel that survives color blindness.
 Closing the door needs positive evidence of absence: the presence probe
 is three-state and only a probe that positively answered "no" may
 report CLOSED.
@@ -2227,7 +2227,7 @@ record that names it — so a record can never point at a manifest that
 was not written. None of those paths is ever pinned by the manifest; a
 reproduced manifest inside the manifest would grade itself. The
 dashboard's two viewers render the pinned and the reproduced manifest
-side by side, read-only, with line colours taken from the record's
+side by side, read-only, with line colors taken from the record's
 verdict — never from JavaScript comparing hashes, which would be a
 second authority on a question that has one.
 
@@ -2305,7 +2305,7 @@ fingerprint over this vaibify's shipped texts — and never taken from a
 comment line in a cloned repository. Unproven never fails open: with no
 additions the base runs as obtained; with additions the acquisition
 fails before anything is tagged. Overlays are stacked on the obtained
-image ID on the pinned platform and labelled
+image ID on the pinned platform and labeled
 `vaibify.pinnedBaseImageId`, so a derived image reads as derived and is
 never reported as the pin. The origin record
 (`config/imageOrigins`, `~/.vaibify/imageOrigins/<project>.json`, 0600)
@@ -2313,7 +2313,7 @@ is written LAST and is the launch guard's admission: for an
 archive-source project a start refuses, naming the cause and both
 remedies, when the record is absent or STALE — the tag no longer
 resolves to the recorded image, or the running image is neither the
-base nor labelled as derived from it — and never falls back to
+base nor labeled as derived from it — and never falls back to
 whatever occupies `<projectName>:latest`. Every start requests the
 recorded platform, and a switched daemon whose architecture differs
 from the obtained platform refuses rather than emulating something

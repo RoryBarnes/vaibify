@@ -1,0 +1,579 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.13.dev2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Skill Testing" href="skillTesting.html" />
+    <link rel="prev" title="Known technical debt" href="knownDebt.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Lessons from past sessions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Lessons from past sessions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/lessons.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="lessons-from-past-sessions">
+<h1>Lessons from past sessions<a class="headerlink" href="#lessons-from-past-sessions" title="Link to this heading"></a></h1>
+<p>Specific mistakes made while building vaibify, each worth remembering
+because the wrong answer was the natural one. This file is the long
+form; <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> keeps only the handful that change how code is
+written on an ordinary day.</p>
+<p>The entries are append-only and roughly chronological. When you solve a
+problem whose wrong answer was tempting, add a line here rather than to
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> – a rule that applies to one subsystem belongs in that
+subsystem’s skill, and a war story belongs here.</p>
+<p>This section records specific mistakes made in past sessions that are
+worth remembering. It is empty at initial commit. Add entries as they
+come up — one line each, pointing at the offending pattern and the
+correct approach.</p>
+<ul class="simple">
+<li><p>The pre-refactor claim route short-circuited to <code class="docutils literal notranslate"><span class="pre">bClaimed:</span> <span class="pre">True</span></code>
+whenever a container was already locked, silently admitting a second
+same-hub browser tab. A claim must ARBITRATE (unowned grant /
+same-lease idempotent / foreign 409), never unconditionally succeed;
+<code class="docutils literal notranslate"><span class="pre">testClaimRejectsForeignLease</span></code> guards this.</p></li>
+<li><p>A green test suite is not proof of a working guarantee: the
+one-session refactor’s owner map was keyed by container <em>name</em> on the
+write path but looked up by container <em>id</em> at the WebSocket gate, so
+every real hub session would have failed closed — yet the suite stayed
+green because its fixtures used name == id and never drove the live
+WebSocket/viewer paths. When a behavior crosses the
+HTTP/WebSocket/container boundary, assert it with name != id and an
+actual connection, not a unit stub.</p></li>
+<li><p>Five parallel agents changed JavaScript in one session and none could
+load a browser; the merged branch was green and the frontend entirely
+unexecuted. A green Python suite says nothing about the frontend.
+Load the page — see “Required after JS changes”.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VaibifyApp</span></code> and friends are declared with <code class="docutils literal notranslate"><span class="pre">const</span></code>, which creates a
+global <em>lexical</em> binding, not a <code class="docutils literal notranslate"><span class="pre">window</span></code> property. A probe using
+<code class="docutils literal notranslate"><span class="pre">window.VaibifyApp</span></code> reports <code class="docutils literal notranslate"><span class="pre">undefined</span></code> for a module that is working
+perfectly. Use the bare identifier.</p></li>
+<li><p>A startup sweep deleted every “stale” credential file in
+<code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp</span></code>, including one an existing container had
+bind-mounted for months, leaving it unstartable (Docker fails the
+mount and creates a directory stub where the file was). Age is not
+evidence that a host file is garbage — reachability is. Before
+deleting anything under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>, ask the daemon what it still
+mounts.</p></li>
+<li><p>A guarantee stated only in prose is not enforced, and mutation
+testing cannot find it: there is no mutant for a guard that was
+never written. <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was metadata, the force-push hook missed
+every ordinary invocation order, and the science-name scan could not
+match the identifiers it existed to catch — all three passed CI for
+months. When adding a rule here, name the test that fails when it is
+broken.</p></li>
+<li><p>An import is not a smoke test. The release workflow validated every
+distribution with <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">vaibify;</span> <span class="pre">print(__version__)</span></code>, which passes
+for a wheel containing no templates and no Docker build context —
+exactly what every wheel contained. The failure was not subtle
+(<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> printed “No templates found”) but it was invisible
+to CI, and <code class="docutils literal notranslate"><span class="pre">init</span></code> exited 0, so even a human running it saw success.
+When a check exercises a component, ask what a <em>user</em> does with it.</p></li>
+<li><p>A template nobody executes is not a template. The shipped <code class="docutils literal notranslate"><span class="pre">workflow</span></code>
+template put <code class="docutils literal notranslate"><span class="pre">GenerateSamples</span></code> in a directory named <code class="docutils literal notranslate"><span class="pre">Sampler</span></code> —
+which vaibify’s own slug contract forbids — and invoked two scripts
+that existed nowhere in the repository. Every new project from it
+opened red and could not run. Three template tests existed; all
+three checked token syntax, none loaded or ran the thing.</p></li>
+<li><p>Fixing the instance is not fixing the class. The packaging fix
+repointed the templates and the build context, added a locator, and
+shipped a distribution check — and missed the shell completions,
+which had the identical bug two directories away
+(<code class="docutils literal notranslate"><span class="pre">dirname(dirname(__file__))</span> <span class="pre">+</span> <span class="pre">&quot;completions&quot;</span></code>, resolving to a path
+present in no install <em>and no checkout</em>). Completion had never
+worked for anyone, and first-run setup wrote a permanent marker
+saying it had. After fixing a resolution bug, grep for every other
+way the codebase reaches outside the package, not just the spelling
+that bit you.</p></li>
+<li><p>A marker that records “setup done” must not be written after a step
+that silently did nothing. It is checked forever, so one bad write
+makes the defect permanent for that machine.</p></li>
+<li><p>A CI step that reports success for having run nothing is worse than
+no step. The live-Docker job was guarded by <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span> <span class="pre">||</span> <span class="pre">exit</span> <span class="pre">0</span></code>,
+so an unreachable daemon turned it green; <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">-m</span> <span class="pre">docker</span></code> was
+selected by no job at all. Both looked like coverage on the workflow
+list. When a check can be skipped, ask what the skip reports.</p></li>
+<li><p>A source-mutating tool must not share a working tree. Running
+<code class="docutils literal notranslate"><span class="pre">reconfirmFalsification.py</span></code> beside any other pytest run made that
+run read half-mutated source, producing failures in tests nobody had
+touched — twice diagnosed as flakiness or test-order leakage, which
+is the natural wrong answer. It now mutates only inside a disposable
+git worktree, and refuses a dirty checkout unless
+<code class="docutils literal notranslate"><span class="pre">--include-local-diff</span></code> is passed. Note the diagnostic: with no
+randomization plugin installed, pytest’s collection order is fixed,
+so two identical-order runs failing in <em>different</em> tests cannot be
+an ordering problem — that pattern means something outside pytest is
+editing the sources.</p></li>
+<li><p><strong>A count of code facts written into this file is wrong within
+weeks.</strong> The carrier migration’s route totals were re-typed and wrong
+four times in a single session (14/116, 31/99, 53/77, 60/70), each
+corrected only because somebody happened to notice; auditing for that
+found two more already stale — a “27 test files” that was 28, and a
+“20 unattributable rows” that migrations had reduced to 10. None was
+wrong in substance and all were wrong in fact, which is worse, because
+a reader who checks one and finds it false stops trusting the ones
+they cannot check. <strong>State the mechanism, not the tally</strong>, and where a
+number is genuinely wanted give the command that computes it —
+<code class="docutils literal notranslate"><span class="pre">PYTHONPATH=.</span> <span class="pre">python</span> <span class="pre">tools/carrierIntentAudit.py</span></code> for carrier
+coverage, <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span></code> for structure. This is the
+deterministic-versus-stochastic split from
+<a class="reference internal" href="vibeCoding.html"><span class="std std-doc">docs/vibeCoding.md</span></a> applied to this file: a fact
+that changes when the code changes does not belong in prose that
+does not.</p></li>
+<li><p>The carrier migration’s only proof was unobservable in the tests that
+would have to observe it. “Forget a carrier and the primitive raises
+loudly” is true of the real <code class="docutils literal notranslate"><span class="pre">DockerConnection</span></code> and false of nearly
+every route test: <strong>the route-test doubles answer a write by storing
+bytes and never consult the admission gate at all.</strong> (Confirm with
+<code class="docutils literal notranslate"><span class="pre">grep</span> <span class="pre">-l</span> <span class="pre">'def</span> <span class="pre">fnWriteFile'</span> <span class="pre">tests/test*.py</span> <span class="pre">|</span> <span class="pre">xargs</span> <span class="pre">grep</span> <span class="pre">-L</span> <span class="pre">mutationAdmission</span></code> — at the time of writing, all but one.) A migrated
+route with its carrier call deleted outright still passed its whole
+route-test file. The fix
+is <code class="docutils literal notranslate"><span class="pre">tests/testCarrierMigratedRoutes.py</span></code> — a double calling the same
+gates, under the same primitive names, at the same points the real
+connection calls them, recording the live admission MODE at each. Assert
+the mode, never merely that nothing raised: “no exception” is equally
+true of a route riding the ambient mint. Every future migration group
+needs an entry there; one verified against the ordinary route tests is
+not verified.</p></li>
+<li><p>An external review is evidence, not a verdict. A 2026-07-26 review
+correctly identified the browser/container execution hole and the
+doc drift, and was wrong about the falsification suite being
+order-unstable. A parallel audit over-reported the fixture-collapse
+sweep: of three flagged key pairs only one was real, because
+<code class="docutils literal notranslate"><span class="pre">sName</span></code>/<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code> are <em>required</em> to agree by the slug contract
+and no code ever compares <code class="docutils literal notranslate"><span class="pre">sVersion</span></code> to <code class="docutils literal notranslate"><span class="pre">sExpectedVersion</span></code>. Check
+each claim against the source before acting on it; manufacturing a
+change to match a confident report is worse than ignoring it.</p></li>
+<li><p><strong>A falsification mutation detected through a SIDE EFFECT goes inert
+the day that mechanism is deleted, and nothing fails.</strong> Three
+ownership-transfer guards are checked twice on purpose — once before
+anything is minted, once at the commit point — so disabling one copy
+changes nothing a caller can observe. They were killable anyway via
+the DRAINING phase: a doomed transfer must not drain the sitting
+owner’s terminals. Deleting that phase (wave 2.4) silently made the
+discriminator vacuous, and for a week the harness reported three
+SURVIVED entries that read as three undefended ownership guards.
+Registry entries now carry <code class="docutils literal notranslate"><span class="pre">iExpectedOccurrences</span></code> so a guard with
+several copies has every one mutated. Two practices follow: when
+deleting a mechanism, grep the falsification docstrings that lean on
+it; and when an entry survives, first ask whether the mutation is
+<em>observable</em>, because “the guard is undefended” and “the mutation
+changes nothing” look identical in the report.</p></li>
+<li><p>A test that asserts an outcome plus a shared word does not identify a
+cause. The poison-transfer test asserted <code class="docutils literal notranslate"><span class="pre">S_TRANSFER_REFUSED</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;reconcile&quot;</span> <span class="pre">in</span> <span class="pre">sMessage</span></code> — both equally true of the live-terminal
+guard sitting below it, so the test was satisfied by a container
+carrying no poison at all. Where two guards can produce the same
+refusal, assert the text that names <em>this</em> cause.</p></li>
+<li><p>A check that can be skipped must say what the skip reported, and a
+check that is <em>timing out</em> is saying nothing at all. The macOS
+falsification legs had exceeded their 25-minute ceiling for weeks;
+raising it produced the first one that ever finished and immediately
+exposed seven entries that no daemon-less host can evaluate. A red
+lane nobody can read is indistinguishable from a lane that never ran.</p></li>
+<li><p><strong>A pull request whose base is not <code class="docutils literal notranslate"><span class="pre">main</span></code> runs no CI at all.</strong> Every
+workflow is <code class="docutils literal notranslate"><span class="pre">on:</span> <span class="pre">pull_request:</span> <span class="pre">branches:</span> <span class="pre">[main]</span></code>, so a PR stacked on
+another open branch shows a clean, empty check list — the same shape
+as the older “a pushed branch with no PR runs no browser lane” trap,
+and just as easy to read as a pass. Retargeting the base does not
+trigger the workflows either; <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">pr</span> <span class="pre">close</span></code> then <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">pr</span> <span class="pre">reopen</span></code>
+does.</p></li>
+<li><p><strong>A git fixture inherits the machine’s <code class="docutils literal notranslate"><span class="pre">init.defaultBranch</span></code>.</strong> A
+host-mode test that pushed <code class="docutils literal notranslate"><span class="pre">HEAD:refs/heads/main</span></code> with <code class="docutils literal notranslate"><span class="pre">-u</span></code> passed
+on a laptop defaulting to <code class="docutils literal notranslate"><span class="pre">main</span></code> and failed all four falsification
+legs on runners defaulting to <code class="docutils literal notranslate"><span class="pre">master</span></code>, because the production
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code> was then handed a local branch and an upstream with
+different names. Pin it with <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">symbolic-ref</span> <span class="pre">HEAD</span> <span class="pre">refs/heads/&lt;name&gt;</span></code> (works on every git version, unlike <code class="docutils literal notranslate"><span class="pre">init</span> <span class="pre">-b</span></code>),
+and reproduce a divergence like this locally with
+<code class="docutils literal notranslate"><span class="pre">GIT_CONFIG_COUNT=1</span> <span class="pre">GIT_CONFIG_KEY_0=init.defaultBranch</span> <span class="pre">GIT_CONFIG_VALUE_0=master</span></code> rather than pushing a guess at CI.</p></li>
+<li><p><strong>A browser-lane test can drive an event shape no browser sends.</strong> A
+Shift+scroll handler was added so a researcher could reach the
+terminal scrollback while an agent held the mouse, and its
+browser-lane test passed in Chromium and Firefox — while the feature
+scrolled nothing at all for every real user. Browsers remap a shifted
+wheel onto the HORIZONTAL axis (<code class="docutils literal notranslate"><span class="pre">deltaY</span></code> 0, magnitude on <code class="docutils literal notranslate"><span class="pre">deltaX</span></code>);
+Playwright’s <code class="docutils literal notranslate"><span class="pre">mouse.wheel</span></code> writes <code class="docutils literal notranslate"><span class="pre">deltaY</span></code> whatever the modifier
+state, because it injects at the DOM layer and the remap happens
+below it. The handler read <code class="docutils literal notranslate"><span class="pre">deltaY</span></code>, measured zero lines, and then
+still claimed the event — so the “fix” SUPPRESSED the scroll the user
+would otherwise have had. Driving a real gesture through a real
+browser is not the same as driving the event that gesture produces:
+where an input-layer transform sits between the two, construct and
+dispatch the event yourself. The same caution applies to touch, IME
+composition, and any modifier that changes an axis.</p></li>
+<li><p><strong>Agent-facing docs that specify procedure without semantics produce
+confident invention, not questions.</strong> Four wrong answers reached a
+researcher in one session — qualitative tests are “user-only”, an
+unattested AI Declaration blocks L1, making figures standards enables
+qualitative tests, and <code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> recited at a scientist — and
+every one came from guidance that said how to DO things and never
+what they ARE. The container docs named the three test tiers as a
+list of three words and never defined them; the L1 rule was stated
+without its carve-out; the blocker list existed only on the
+dashboard’s poll path, so an agent asked “why am I not at Level 1”
+had raw JSON and nothing else. An agent will not stop at a gap, it
+will fill one. When documenting an action for an agent, state what
+the thing IS and what it does NOT establish, and give it a call that
+returns a verdict rather than fields to infer one from.</p></li>
+<li><p><strong>A local rename re-fingerprints ledger rows, in more than one
+ledger.</strong> Renaming <code class="docutils literal notranslate"><span class="pre">sFullPath</span></code> to <code class="docutils literal notranslate"><span class="pre">sAbsolutePath</span></code> inside one function
+invalidated its row in <code class="docutils literal notranslate"><span class="pre">mutationInventory.json</span></code> (keyed on the
+enclosing scope) AND in <code class="docutils literal notranslate"><span class="pre">hostCapabilityInventory.json</span></code> (keyed on the
+command expression itself). Regenerating the first left the second
+drifted, and <code class="docutils literal notranslate"><span class="pre">--check</span></code> on one ledger reads exactly as clean as
+<code class="docutils literal notranslate"><span class="pre">--check</span></code> on all three. Worse, the first regeneration silently
+dropped that row’s recorded security review — it came back
+<code class="docutils literal notranslate"><span class="pre">UNCLASSIFIED</span></code>, drift printed <code class="docutils literal notranslate"><span class="pre">{}</span></code>, and only
+<code class="docutils literal notranslate"><span class="pre">testTheUnclassifiedBudgetOnlyEverShrinks</span></code> noticed. After touching
+any function that composes container commands, regenerate and
+drift-check EVERY generated ledger, and diff the disposition count
+before and after.</p></li>
+<li><p><strong>A guard can be credited with a property the surrounding code
+already supplies, and then it is not a guard.</strong> <code class="docutils literal notranslate"><span class="pre">_fsLevelCellState</span></code>
+checked <code class="docutils literal notranslate"><span class="pre">bUnknown</span></code> ahead of the counts, documented and tested as
+what keeps a stale verify cache out of <code class="docutils literal notranslate"><span class="pre">attained</span></code>. It never did:
+<code class="docutils literal notranslate"><span class="pre">iSatisfied</span></code> counts only <code class="docutils literal notranslate"><span class="pre">bMet</span> <span class="pre">is</span> <span class="pre">True</span></code>, so an unknown requirement
+already forces <code class="docutils literal notranslate"><span class="pre">iSatisfied</span> <span class="pre">&lt;</span> <span class="pre">iTotal</span></code> and attainment is impossible by
+the arithmetic alone. All the short-circuit did was erase a
+researcher’s positively-verified GitHub mirror behind a “?” because
+Zenodo had never been checked. Three tests defended it and none
+would have failed if the property were gone, because they asserted
+the MARK (“unknown”) rather than the property (never <code class="docutils literal notranslate"><span class="pre">attained</span></code>).
+Before preserving a guard, find the line that actually supplies the
+thing it is credited with; and assert properties, not the symptom
+you expect a property to produce.</p></li>
+<li><p><strong>A constant that must equal a derivation has to be pinned to it,
+not re-typed.</strong> <code class="docutils literal notranslate"><span class="pre">fdictBuildAiDeclarationStep</span></code> defaulted <code class="docutils literal notranslate"><span class="pre">sName</span></code> to
+“AI Declaration” and <code class="docutils literal notranslate"><span class="pre">sDirectory</span></code> to the independently-typed
+<code class="docutils literal notranslate"><span class="pre">&quot;aiDeclaration&quot;</span></code>, while the slug contract derives <code class="docutils literal notranslate"><span class="pre">&quot;AIDeclaration&quot;</span></code>
+from that name. Every declaration step vaibify built was therefore
+born violating vaibify’s own contract, and the dashboard painted it
+a red error telling the researcher to rename a step the product had
+just created for them. Nothing caught it because creation validated
+the name and the directory independently — the guard existed only on
+the rename path. Two rules: pin the relationship
+(<code class="docutils literal notranslate"><span class="pre">assert</span> <span class="pre">CONSTANT</span> <span class="pre">==</span> <span class="pre">fsDerive(OTHER)</span></code>) rather than the spelling, and
+when a contract is enforced on edit, check whether creation enforces
+it too.</p></li>
+<li><p><strong>A projection that narrows its input set turns a proved failure
+into a green check.</strong> The L2 reverify compared every canonical path
+against GitHub, recorded the AI declaration file as diverged in the
+project’s cached sync status — and the per-step projection then intersected
+that divergence list with <code class="docutils literal notranslate"><span class="pre">_flistStepOutputFiles</span></code> alone, so no
+blocker was emitted and the row rendered “Outputs match the GitHub
+mirror”. The gate whose purpose is not to overstate publication was
+asserting a match about a file it had just proved did not match.
+Two things to carry forward. When a comparison and its display are
+separated by a projection, the projection’s set must be a SUPERSET
+of the comparison’s — check that relationship explicitly, because
+both stages look correct in isolation. And a <em>narrow but accurate</em>
+label (“Outputs”) reads as a broad claim once it sits in a
+requirement row, so it hides the gap rather than disclosing it.</p></li>
+<li><p><strong>A threaded parameter can be accepted and dropped, and every call
+site still reads correctly.</strong> Wiring the GitHub verify cache into
+the badges meant adding one argument to four functions in a chain.
+The third link took it into its signature with a default and then
+called the fourth without it — so every badge silently read
+<code class="docutils literal notranslate"><span class="pre">unknown</span></code>, the honest-but-wrong answer, while a reader checking any
+individual function found nothing amiss. Signatures agreed; the wire
+was cut. Nothing about a green import or a green existing suite could
+see it, because the parameter’s absence is indistinguishable from its
+default. Two habits: when threading a value through more than two
+hops, assert it arrives with a value the DEFAULT cannot produce; and
+distrust a change whose new tests all fail the same way, because one
+broken link and one wrong branch look identical from the assertion.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">&lt;file&gt;</span></code> to undo a kill-confirm mutation discards the
+fix with it.</strong> Restoring from HEAD reverts every edit in that file,
+not the mutation — and the suite goes green afterwards, because the
+pre-fix code is what the pre-fix tests were written against. Copy
+the file aside and copy it back, and re-grep for a marker string
+from the change before believing the restore.</p></li>
+<li><p><strong>A fake that answers every input cannot exercise an adapter that
+refuses most of them.</strong> <code class="docutils literal notranslate"><span class="pre">SnapshotRepoFiles</span></code> — the adapter the
+file-status poll passes — answers <code class="docutils literal notranslate"><span class="pre">fbIsFile</span></code> only for the paths one
+container exec sampled and raises <code class="docutils literal notranslate"><span class="pre">KeyError</span></code> for the rest, by
+design, because guessing would make a gate silently wrong. Every
+test of the new Level 3 envelope gate drove a hand-written fake
+whose <code class="docutils literal notranslate"><span class="pre">fbIsFile</span></code> answers anything, so all of them passed while the
+shipped gate raised on a dependency-declaration path, 500’d the poll, and
+blanked every badge and level cell on the researcher’s dashboard.
+The tests and the code were both self-consistent and neither was
+the product. When a module has a permissive test double and a
+fail-closed production adapter, at least one test must drive the
+real one — and where a set in module A must be a subset of a set in
+module B, pin the relationship, because each edit looks complete on
+its own.</p></li>
+<li><p><strong>Run the mutations locally before pushing; the tool exists.</strong>
+<code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span> <span class="pre">--only</span> <span class="pre">&lt;substring&gt;</span></code> applies each
+recorded mutation in a disposable git worktree, runs the named test,
+and reports KILLED or SURVIVED — about a minute for a handful of
+entries, against ~20 minutes for a suite and far longer for a CI
+round trip. <code class="docutils literal notranslate"><span class="pre">--include-local-diff</span></code> replays uncommitted work; it
+otherwise refuses a dirty tree, because checking out HEAD would
+report on code you do not have. Three defects reached CI in one
+session that a single narrowed run would have caught, and the agent
+responsible had asserted that no local runner existed — the tool’s
+own <code class="docutils literal notranslate"><span class="pre">--help</span></code> said otherwise. <code class="docutils literal notranslate"><span class="pre">testFalsificationRegistryIsWellFormed</span></code>
+is NOT this check: it verifies the mutation text still appears in
+the source, never that a test would notice the mutation.</p></li>
+<li><p><strong>Batch the small fixes; every one costs a full verification cycle.</strong>
+A suite run is ~20 minutes locally and a CI round trip is longer, so
+finishing four small items in four passes spends over an hour to
+learn what one pass would have said. It also hides interactions: the
+blocker fix in one item is what turned another item’s “no
+materialized force yet” into three red tests, and a batched run
+surfaced that immediately instead of a cycle later. “Deliberately
+scoped out” is a decision worth stating, but re-check it whenever a
+neighboring change lands — the force that was absent is often
+created by the very next commit.</p></li>
+<li><p><strong>Retargeting a falsification entry is authoring a new mutation, not
+bookkeeping.</strong> When a refactor moves the code an entry points at,
+the natural reflex is to repoint <code class="docutils literal notranslate"><span class="pre">old</span></code>/<code class="docutils literal notranslate"><span class="pre">new</span></code> and move on — it feels
+like updating a reference. It is not: the replacement text has to
+parse AND still kill. One retarget dropped a closing quote
+(<code class="docutils literal notranslate"><span class="pre">f&quot;(git</span> <span class="pre">diff</span> <span class="pre">--cached</span> </code> for <code class="docutils literal notranslate"><span class="pre">f&quot;(git</span> <span class="pre">diff</span> <span class="pre">--cached</span> <span class="pre">--quiet</span> <span class="pre">||</span> <span class="pre">&quot;</span></code>),
+producing an unterminated f-string; the static registry check passed,
+because it only asks whether <code class="docutils literal notranslate"><span class="pre">old</span></code> appears in the source, and CI
+reported <code class="docutils literal notranslate"><span class="pre">ERROR:</span> <span class="pre">mutation</span> <span class="pre">does</span> <span class="pre">not</span> <span class="pre">compile</span></code> an hour later. Three
+entries were retargeted in that change, two were kill-confirmed, and
+the one treated as clerical was the broken one. Verify every
+retarget the same way as a new guard: apply it, <code class="docutils literal notranslate"><span class="pre">ast.parse</span></code> the
+result, run the named test, see it fail, restore.</p></li>
+<li><p><strong>A new early return converts every downstream guard’s test into a
+tautology, and only the marked ones are noticed.</strong> Adding the
+scope-version check to <code class="docutils literal notranslate"><span class="pre">_fbCachedSyncStatusFullMatch</span></code> made it refuse
+fixtures before the SHA, freshness and divergence guards below it —
+and those tests kept passing, because <code class="docutils literal notranslate"><span class="pre">False</span></code> is what they already
+asserted. CI’s mutation run flagged the three that were
+<code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code>; a fourth was an ordinary unit test and
+was invisible to every lane (verified: deleting the divergence guard
+outright left it green). When adding an early return to a gate, list
+what sits below it and check that each one’s test still fails when
+its guard is removed. Shared fixture builders are a control here, not
+a tidiness exercise: a hand-typed fixture gains a newly-required
+field in five files and silently not the other fourteen.</p></li>
+<li><p><strong>A kill-confirmation that edits by non-unique text mutates the
+wrong site and reports a false negative.</strong> <code class="docutils literal notranslate"><span class="pre">syncDispatcher.py</span></code> has
+three byte-identical <code class="docutils literal notranslate"><span class="pre">(git</span> <span class="pre">diff</span> <span class="pre">--cached</span> <span class="pre">--quiet</span> <span class="pre">||</span> <span class="pre">git</span> <span class="pre">commit</span> <span class="pre">…)</span></code>
+guards in three functions, so a <code class="docutils literal notranslate"><span class="pre">str.replace(old,</span> <span class="pre">new,</span> <span class="pre">1)</span></code> aimed at
+the third silently hit the first. The suite went green, which reads
+exactly like “this guard is not load-bearing” — the conclusion that
+gets a guard deleted. Before believing a mutation survived, <code class="docutils literal notranslate"><span class="pre">grep</span> <span class="pre">-c</span></code>
+the target text: more than one occurrence means the edit landed
+somewhere unknown. Mutate by line number, or by text that includes
+the enclosing function’s unique context, and print the mutated region
+before running.</p></li>
+<li><p><strong>The obvious assertion often cannot tell two shell chains apart.</strong>
+For <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">&amp;&amp;</span> <span class="pre">b</span> <span class="pre">||</span> <span class="pre">c</span> <span class="pre">&amp;&amp;</span> <span class="pre">d</span></code>, the natural test — “a failed <code class="docutils literal notranslate"><span class="pre">add</span></code> returns
+non-zero” — passes against BOTH the grouped and ungrouped forms,
+because a failed add with a clean index stops either way. The forms
+diverge only when the index is DIRTY: ungrouped, the failure falls
+through to the commit, which succeeds on unrelated staged content and
+pushes it. A docstring claiming the simple case kills the mutant was
+written and was false. When pinning operator grouping, find the input
+where the two parses actually differ, and verify the kill rather than
+reasoning about it.</p></li>
+<li><p><strong>A researcher’s project STATE leaks into comments more easily than
+their science does.</strong> The “never hard-code science-specific
+examples” rule is easy to obey for dataset and target names and easy
+to break for everything else: a comment justifying a fix was written
+as <code class="docutils literal notranslate"><span class="pre">the</span> <span class="pre">row</span> <span class="pre">reads</span> <span class="pre">&quot;19</span> <span class="pre">of</span> <span class="pre">19</span> <span class="pre">files</span> <span class="pre">matching&quot;</span></code> — a count copied
+straight off the researcher’s dashboard while debugging with them.
+It names no science, so it reads as harmless, and
+<code class="docutils literal notranslate"><span class="pre">testNoScienceSpecificIdentifiersInSource</span></code> cannot catch it (the seed
+list matches identifiers, not arbitrary numbers). It is still their
+project pinned into vaibify’s source, where every future agent will
+read it as if it were a fact about vaibify. Write the general shape
+— “all files matching” — never the observed instance. The tell is a
+comment containing a number, path, or timestamp you learned from the
+session rather than from the code.</p></li>
+<li><p><strong>Making a gate scope-aware does not make the row beside it
+scope-aware.</strong> The L2/L3 split taught the gates that a drifted
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> says nothing about whether the researcher’s DATA is
+published — and the Published-copies row kept reporting the verify’s
+aggregate counts and listing <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> among the files, so the
+screen went on making exactly the statement the gate had just been
+corrected out of. The researcher saw it immediately; the suite could
+not, because every test asserted the gate. After changing what a
+computation MEANS, grep for the other consumers of the same cached
+record — a summary, a count, a file list — and check each one
+against the new meaning.</p></li>
+<li><p><strong>A cached comparison is a claim about verify-TIME bytes, and read
+time is a different moment.</strong> The envelope gate quoted a Zenodo
+verify’s divergence list after the local <code class="docutils literal notranslate"><span class="pre">environment.json</span></code> had been
+regenerated — so the per-file badge (live hashes) showed red while
+the Level 3 cell (this cache) stayed green on the same screen
+(researcher-reported, 2026-09-01). A cached verdict about a file is
+only usable while the file still IS the bytes that were graded:
+record the local hash each path was compared AS
+(<code class="docutils literal notranslate"><span class="pre">dictComparedHashes</span></code> in <code class="docutils literal notranslate"><span class="pre">syncStatus.json</span></code>) and re-check it at read
+time, treating a mismatch or a pre-field cache as UNPROVEN.
+<code class="docutils literal notranslate"><span class="pre">test_an_envelope_regenerated_after_the_verify_no_longer_passes</span></code> is
+the kill-confirmed guard; <code class="docutils literal notranslate"><span class="pre">_fsEnvelopeStateFingerprint</span></code> keeps the
+blocker cache from masking the transition. The same session added
+the twin alert for the other direction of staleness — the envelope
+pinning an image the container no longer runs
+(<code class="docutils literal notranslate"><span class="pre">fdictAssessEnvelopeImageCurrency</span></code>, captured once at connect) —
+because both were found the same way: a rebuild landed, nothing on
+the screen moved.</p></li>
+<li><p><strong>Generated bookkeeping must never be able to overturn a
+scientific verdict.</strong> The conftest vaibify generates writes its test
+marker in <code class="docutils literal notranslate"><span class="pre">pytest_sessionfinish</span></code>, unguarded, so a marker directory
+it could not create ended the session non-zero — over a run that had
+just printed <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">passed</span></code>. Every test tier of every step reported
+<code class="docutils literal notranslate"><span class="pre">exit</span> <span class="pre">1</span></code> and the researcher read it as their science failing
+(2026-09-04). Two separate causes had to line up and each is its own
+lesson. The generated file had a container path written into it as a
+literal, which is the <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>-as-constant trap arriving in
+GENERATED output where no source scan looks for it — a generated
+artifact needs the same review as source, and it must locate its
+root rather than be stamped with one. And the refresh that would
+have replaced it is memoized per hub PROCESS and runs only at
+connect, so a <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">pull</span></code> reinstated the stale copy and reopening the
+project re-probed nothing: <strong>a cache keyed on identity, over a file
+something outside the process can rewrite, is a correctness bug
+wearing a performance optimization’s clothes.</strong> Re-probe at the
+moment the content matters. Guarded by
+<code class="docutils literal notranslate"><span class="pre">tests/testConftestRefreshBeforeRun.py</span></code>.</p></li>
+<li><p><strong>A delegated agent that dies mid-edit leaves a half-applied diff
+that <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span> <span class="pre">-A</span></code> sweeps up as if it were finished.</strong> One was cut
+off by an API limit after editing the wizard’s page catalog: it
+had deleted a page-list constant the sandbox branch still referenced
+and added nothing that used the new pages, and the commit that
+followed carried that broken half. Before committing a tree another
+agent touched, diff its surface and confirm every symbol it removed
+has no remaining reference (<code class="docutils literal notranslate"><span class="pre">node</span> <span class="pre">--check</span></code> catches syntax, not a
+dangling name).</p></li>
+<li><p><strong>A <code class="docutils literal notranslate"><span class="pre">monkeypatch</span></code> guarantee stops at the process boundary, and the
+docstring will not say so.</strong> <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> promised that “no
+test can read, overwrite, or delete the researcher’s real stored
+credentials” while patching only this process; over a hundred test
+files spawn subprocesses, each of which imported the real <code class="docutils literal notranslate"><span class="pre">keyring</span></code>
+and reached the real keychain. It surfaced as four macOS approval
+dialogs during one suite run (researcher-reported, 2026-09-04) —
+the reads being the visible half, while a child reaching
+<code class="docutils literal notranslate"><span class="pre">_fnDeleteKeyringEntry</span></code> would have destroyed a working credential
+silently. When an isolation fixture protects host state, ask what a
+CHILD process sees, and enforce it through the environment children
+inherit. Guarded by
+<code class="docutils literal notranslate"><span class="pre">tests/testKeychainIsolationCrossesProcesses.py</span></code>, which asserts the
+backend the child itself reports rather than the variable the
+parent exported.</p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="knownDebt.html" class="btn btn-neutral float-left" title="Known technical debt" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="skillTesting.html" class="btn btn-neutral float-right" title="Skill Testing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

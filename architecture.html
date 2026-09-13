@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -149,6 +149,8 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -498,7 +500,7 @@ would either mangle Windows host paths or mangle container paths on
 any host, and the failure would be silent until a cross-platform user
 hit it. The repository formerly carried a host-side <code class="docutils literal notranslate"><span class="pre">director.py</span></code>
 whose deliberate divergence from <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> illustrated this;
-it was withdrawn in favour of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>, which
+it was withdrawn in favor of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>, which
 re-runs a project through the container and therefore reproduces the
 environment as well as the steps.</p>
 </section>
@@ -573,7 +575,7 @@ automatically — no changes to the git, badge, or manifest code.</p></li>
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> guards the threading: every
 <code class="docutils literal notranslate"><span class="pre">containerGit.*</span></code> call in <code class="docutils literal notranslate"><span class="pre">gitRoutes.py</span></code> must pass <code class="docutils literal notranslate"><span class="pre">sWorkspace</span></code>
 explicitly. A silent fallback to the <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> default would
-reintroduce the all-grey-badges bug that motivated this design. A
+reintroduce the all-gray-badges bug that motivated this design. A
 companion invariant <code class="docutils literal notranslate"><span class="pre">testNoWorkspaceRootedMarkerHardcodeInSource</span></code>
 bans the literal <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code> in any module
 under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> — enforcing that marker paths are always
@@ -650,7 +652,7 @@ processes from opening the same container; it is the analog of a
 Closing the browser tab does nothing, and closing the terminal
 <em>orphans</em> the server (reparented to <code class="docutils literal notranslate"><span class="pre">launchd</span></code>/<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">PPID</span> <span class="pre">1</span></code>), which
 keeps holding its session slot (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/sessions/&lt;pid&gt;.slot</span></code>) and
-its container flocks. The mechanisms below keep that from greying a
+its container flocks. The mechanisms below keep that from graying a
 container out forever.</p>
 <section id="the-lease-is-the-access-principal">
 <h3>The lease is the access principal<a class="headerlink" href="#the-lease-is-the-access-principal" title="Link to this heading"></a></h3>
@@ -814,9 +816,9 @@ flock under a running <code class="docutils literal notranslate"><span class="pr
 <li><p>The Docker work is a <strong>create-then-start pair under <code class="docutils literal notranslate"><span class="pre">Popen</span></code></strong>. The
 container carries <code class="docutils literal notranslate"><span class="pre">--label</span> <span class="pre">vaibify.reservation=&lt;id&gt;</span></code> and its id is
 written to the write-ahead journal <em>before</em> it is started, so cleanup
-removes exactly that incarnation and no other. Cancelling escalates
+removes exactly that incarnation and no other. Canceling escalates
 TERM → bounded wait → KILL and waits for the real exit; only then is the
-labelled container removed, the reservation compare-and-deleted, and the
+labeled container removed, the reservation compare-and-deleted, and the
 flock freed. If the daemon’s answer is uncertain the container is
 <strong>quarantined, never made claimable</strong> — killing the CLI does not prove
 the daemon abandoned the request.</p></li>
@@ -929,7 +931,7 @@ the session file is correct and reconnecting cannot help.</p>
 <p>Authorizing the agent lane answers <em>which container</em> an agent may act
 on. It does not answer <em>what it may do there</em>, and for a long time
 nothing did. <code class="docutils literal notranslate"><span class="pre">ffnAgentAction</span></code> attaches a name to a handler and changes
-no behaviour; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/vaibifyDo.py</span></code>
+no behavior; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/vaibifyDo.py</span></code>
 <strong>inside</strong> the container, which an agent bypasses with <code class="docutils literal notranslate"><span class="pre">curl</span></code>. Every
 route the catalog marked researcher-only — <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>,
 <code class="docutils literal notranslate"><span class="pre">delete-step</span></code>, <code class="docutils literal notranslate"><span class="pre">declare-determinism</span></code>, <code class="docutils literal notranslate"><span class="pre">supervision/configure</span></code>,
@@ -1009,7 +1011,7 @@ host-global Settings preference, then the launch default — and
 published on <code class="docutils literal notranslate"><span class="pre">app.state.fIdleTimeoutSeconds</span></code>. The watchdog re-reads
 that attribute every tick (<code class="docutils literal notranslate"><span class="pre">_ffCurrentIdleTimeout</span></code>), so the gear
 menu’s <strong>Idle shutdown</strong> control applies <strong>live</strong>: a change updates
-<code class="docutils literal notranslate"><span class="pre">app.state</span></code> and the loop honours it on its next pass, no relaunch. The
+<code class="docutils literal notranslate"><span class="pre">app.state</span></code> and the loop honors it on its next pass, no relaunch. The
 <strong>launch default is never</strong> (<code class="docutils literal notranslate"><span class="pre">math.inf</span></code>, disabled) for a browser
 launch and <code class="docutils literal notranslate"><span class="pre">1800</span></code> seconds only for a headless/remote launch (browser
 suppressed via <code class="docutils literal notranslate"><span class="pre">VAIBIFY_SUPPRESS_BROWSER</span></code>) — a researcher at the
@@ -1151,7 +1153,7 @@ prover can see.</p></li>
 <li><p><strong>The daemon prunes finished execs</strong> from a container’s <code class="docutils literal notranslate"><span class="pre">ExecIDs</span></code>,
 so the list is a live set rather than an accumulating log. Each id
 is still confirmed through <code class="docutils literal notranslate"><span class="pre">exec_inspect</span></code>, because the pruning is
-observed behaviour of one daemon while <code class="docutils literal notranslate"><span class="pre">Running</span></code> is a stated one.</p></li>
+observed behavior of one daemon while <code class="docutils literal notranslate"><span class="pre">Running</span></code> is a stated one.</p></li>
 </ul>
 <p>The practical reading: <strong>a hub restart does not stop a run.</strong> It stops
 vaibify <em>watching</em> the run. Anything that must survive a restart has
@@ -1659,7 +1661,7 @@ requirements is merely unchecked.</p>
 <p>A step with no recorded activity splits on material evidence: when
 none of its declared outputs exist on disk it renders “not-started”
 (hollow circle — nothing yet); when at least one declared output is
-on disk it renders “unassessed” (grey filled circle — material
+on disk it renders “unassessed” (gray filled circle — material
 present, assessment not begun). The discriminator is the poll’s
 <code class="docutils literal notranslate"><span class="pre">dictMaxMtimeByStep</span></code>, which has an entry only for steps whose
 declared outputs were found in the container, so hours of compute
@@ -1878,7 +1880,7 @@ few seconds would be a different product.</p></li>
 </ul>
 <p><strong>Four properties, each of which is a way this could become a lie.</strong></p>
 <p><em>Never red on a failed check.</em> An unreachable remote is a missing
-answer, not a divergence — and the divergence colour on a Level 2 row
+answer, not a divergence — and the divergence color on a Level 2 row
 is the most expensive false accusation the dashboard can make. The
 check settles to UNCHECKABLE with the reason, the light keeps whatever
 the last completed verify earned, and the cached record on disk is
@@ -1920,7 +1922,7 @@ outputs. Attesting reproducibility should not cost someone their
 working tree, and a researcher who declines that trade simply never
 attests.</p>
 <p>The epistemic one is why <code class="docutils literal notranslate"><span class="pre">shadowRerun</span></code> exists at all. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> —
-the artefact the envelope publishes, and the thing a third party will
+the artifact the envelope publishes, and the thing a third party will
 actually run — pulls the <strong>pinned image digest</strong> and executes the
 workflow in a container made from it. A rerun in the live project
 container instead exercises whatever that container has <em>become</em>:
@@ -1938,7 +1940,7 @@ boundary is the point of the whole ladder. The shadow runs on the
 researcher’s own daemon, from an image already in their local store,
 over a repository copied out of their container rather than cloned from
 a published mirror. It cannot detect a digest unreachable from a fresh
-host, an artefact that exists only locally, or a dependency the lock
+host, an artifact that exists only locally, or a dependency the lock
 file omits — those are what tiers 1 through 4 are for. What it adds is
 that the <em>execution</em> half of the claim is made in an environment the
 researcher did not shape by hand.</p>
@@ -2114,7 +2116,7 @@ published copies are claims the reproduction exists to check. <strong>A report r
 source facts from exactly one function</strong>, <code class="docutils literal notranslate"><span class="pre">fdictDescribeStagedSource</span></code>,
 whose record is written redacted at staging time – kind, commit,
 remote URL with userinfo stripped, workflow name, never a host path –
-because a reproduction report is the reproducer’s artefact, never an
+because a reproduction report is the reproducer’s artifact, never an
 attestation, never written into any repository, and possibly
 deposited publicly one day.</p>
 <p>The image acquisition chain (registry pull, then the Zenodo deposit,
@@ -2282,9 +2284,9 @@ outward-facing and irreversible.</p>
 could make is UNCHECKED, and the row says so rather than sending a
 researcher to fix a deposit that may be perfectly good. CLOSED (the
 researcher declined and the image is gone, so Level 3 is unreachable
-for this result) shares the colour and differs in SHAPE, because the
+for this result) shares the color and differs in SHAPE, because the
 remedies are opposite — “fix your deposit” versus “nothing can be
-done” — and shape is the channel that survives colour blindness.
+done” — and shape is the channel that survives color blindness.
 Closing the door needs positive evidence of absence: the presence probe
 is three-state and only a probe that positively answered “no” may
 report CLOSED.</p>
@@ -2374,7 +2376,7 @@ record that names it — so a record can never point at a manifest that
 was not written. None of those paths is ever pinned by the manifest; a
 reproduced manifest inside the manifest would grade itself. The
 dashboard’s two viewers render the pinned and the reproduced manifest
-side by side, read-only, with line colours taken from the record’s
+side by side, read-only, with line colors taken from the record’s
 verdict — never from JavaScript comparing hashes, which would be a
 second authority on a question that has one.</p>
 </section>
@@ -2449,7 +2451,7 @@ fingerprint over this vaibify’s shipped texts — and never taken from a
 comment line in a cloned repository. Unproven never fails open: with no
 additions the base runs as obtained; with additions the acquisition
 fails before anything is tagged. Overlays are stacked on the obtained
-image ID on the pinned platform and labelled
+image ID on the pinned platform and labeled
 <code class="docutils literal notranslate"><span class="pre">vaibify.pinnedBaseImageId</span></code>, so a derived image reads as derived and is
 never reported as the pin. The origin record
 (<code class="docutils literal notranslate"><span class="pre">config/imageOrigins</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.vaibify/imageOrigins/&lt;project&gt;.json</span></code>, 0600)
@@ -2457,7 +2459,7 @@ is written LAST and is the launch guard’s admission: for an
 archive-source project a start refuses, naming the cause and both
 remedies, when the record is absent or STALE — the tag no longer
 resolves to the recorded image, or the running image is neither the
-base nor labelled as derived from it — and never falls back to
+base nor labeled as derived from it — and never falls back to
 whatever occupies <code class="docutils literal notranslate"><span class="pre">&lt;projectName&gt;:latest</span></code>. Every start requests the
 recorded platform, and a switched daemon whose architecture differs
 from the obtained platform refuses rather than emulating something

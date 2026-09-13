@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -83,6 +83,8 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -149,10 +151,10 @@ pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </s
 </pre></div>
 </div>
 <p>This is a real, finished analysis: how long until the waste heat from AI
-data centres becomes large enough to matter for a planet’s climate. Two
+data centers becomes large enough to matter for a planet’s climate. Two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at PROOF
-Level 3, which means its author committed a manifest of every artefact’s
+Level 3, which means its author committed a manifest of every artifact’s
 SHA-256 hash along with the pinned environment that produced them.</p>
 <p>Back in the hub, click the <strong>+</strong> next to <em>Environments</em>. The wizard asks
 two things: where it runs — choose <strong>This machine</strong> rather than
@@ -188,7 +190,7 @@ everything you need to decide for yourself, which is the entire point.</p>
 <p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>.</p>
 <p>It re-hashes every file pinned in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and reports that all
 of them match. This is the one claim that <em>does</em> travel, because a hash
-is a property of the bytes rather than of anyone’s judgement: you have
+is a property of the bytes rather than of anyone’s judgment: you have
 confirmed that the files in your clone are byte-for-byte the files the
 author committed. Note what it is not — a statement about whether the
 science is right, or whether those files can be produced again. It is
@@ -217,7 +219,7 @@ whatever Python is active.)</p>
 <h2>4. Delete the results<a class="headerlink" href="#delete-the-results" title="Link to this heading"></a></h2>
 <p>From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong>, and confirm.</p>
 <p>Every automatic step’s data files and figures are deleted and every
-verification mark resets to untested. The dashboard goes grey. The
+verification mark resets to untested. The dashboard goes gray. The
 figure viewers empty. The AI Declaration step keeps its content, because
 a person wrote that and no amount of re-running would produce it again.</p>
 <p>Nothing is lost: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> now lists the deleted files, and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">.</span></code> would bring them straight back. The point of stopping here
@@ -283,7 +285,7 @@ differs by platform.</p></li>
 not reproduce it byte-for-byte. Those are different claims, and vaibify
 keeps them apart on purpose. “The tests pass” says the result is
 consistent with what the author asserted. “The hashes match” says a
-stranger re-executing this work would obtain the identical artefact —
+stranger re-executing this work would obtain the identical artifact —
 which is what a reader must be able to check if the published numbers
 are to mean anything on their own.</p>
 <p>Getting the second claim requires pinning the environment, not just the
@@ -298,7 +300,7 @@ rather do it from the command line, the equivalent is:</p>
 </pre></div>
 </div>
 <p>which rebuilds the pinned environment, re-runs the workflow inside a
-disposable copy of it, and re-hashes every artefact against the
+disposable copy of it, and re-hashes every artifact against the
 manifest — leaving your own files untouched.</p>
 </section>
 <section id="containerize-the-same-project">
@@ -362,7 +364,7 @@ from that image rather than against whatever Python happens to be on
 your PATH.</p>
 <p>That difference is the entire point of the level you are reaching for.
 Until now “it ran on my machine” has been doing real work in your
-favour — your numpy, your matplotlib, your interpreter. A stranger has
+favor — your numpy, your matplotlib, your interpreter. A stranger has
 none of those. Pinning the environment is what converts <em>your</em> result
 into one somebody else can obtain.</p>
 <p>A few things to know before you click:</p>
@@ -436,7 +438,7 @@ kind card, <strong>Reproduce a published project</strong>, takes the same URL,
 shows you what a run would use before anything is pulled, and shows
 the same verdict and report when it settles. No tile is added; the
 shadow is destroyed when the comparison is made.</p>
-<p>As a stranger without vaibify, the artefact the project publishes:</p>
+<p>As a stranger without vaibify, the artifact the project publishes:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./reproduce.sh
 </pre></div>
 </div>
@@ -509,7 +511,7 @@ knows is exactly the claim this tool exists not to make.</p>
 <li><p><strong><a class="reference internal" href="templates.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
 starting your own project rather than driving someone else’s.</p></li>
 <li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel, the status
-colours, and the verification state machine.</p></li>
+colors, and the verification state machine.</p></li>
 <li><p><strong><a class="reference internal" href="reproducibility.html"><span class="std std-doc">The reproducibility ladder</span></a></strong> — what Levels 1
 through 3 each certify, and what none of them do.</p></li>
 <li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what a container protects against

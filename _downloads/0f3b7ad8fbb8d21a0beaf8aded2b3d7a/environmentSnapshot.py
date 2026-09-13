@@ -31,9 +31,11 @@ __all__ = [
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
     "fdictCaptureLiveImageIdentity",
+    "fdictCaptureBuiltImageIdentity",
     "fbImageExistsLocally",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
+    "fsReadImageToolchainEpoch",
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
     "fdictReadEnvironmentJson",
@@ -170,6 +172,67 @@ def fdictCaptureLiveImageIdentity(sContainerName):
         "sImageDigest": dictEntry.get("sImageDigest") or "",
         "sImageId": sImageId or "",
     }
+
+
+def fdictCaptureBuiltImageIdentity(sImageReference):
+    """Return both identities of an IMAGE, by tag, ID, or digest.
+
+    The sibling above asks a CONTAINER which image it runs; this asks
+    the image store directly, which is what a just-finished ``vaibify
+    build`` has and a container it has not started yet does not.
+
+    A freshly built image has no ``RepoDigests`` until it is pushed, so
+    ``sImageDigest`` falls back to the content ID — the same preferred
+    form the envelope capture records. Every failure degrades to empty
+    strings rather than raising: this feeds a WARNING, and a warning
+    that can abort a successful build is worse than the drift it
+    reports.
+    """
+    try:
+        _fnEnsureDockerAvailable()
+        sImageId = _fsInspectFormatValue(sImageReference, "{{.Id}}")
+        sRepoDigest = _fsParseRepoDigests(
+            _fsInspectFormatValue(sImageReference, "{{.RepoDigests}}"),
+        ) if sImageId else None
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return {"sImageDigest": "", "sImageId": ""}
+    return {
+        "sImageDigest": sRepoDigest or sImageId or "",
+        "sImageId": sImageId or "",
+    }
+
+
+def fsReadImageToolchainEpoch(sImageReference):
+    """Return the archive snapshot date an IMAGE was built from, or ''.
+
+    Read off the image, never off whatever Dockerfile is installed on
+    this host: the two answer different questions, and the installed
+    recipe describes the image vaibify would build TODAY rather than
+    the one the researcher is running. Empty means the image predates
+    the label or could not be inspected -- "nothing determined", which
+    the dashboard renders as unknown and never as an epoch.
+    """
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_TOOLCHAIN_EPOCH_IMAGE_LABEL,
+    )
+    if not sImageReference:
+        return ""
+    try:
+        _fnEnsureDockerAvailable()
+        sValue = _fsRunCheckedCommand([
+            "docker", "image", "inspect", "--format",
+            '{{index .Config.Labels "' + S_TOOLCHAIN_EPOCH_IMAGE_LABEL
+            + '"}}',
+            sImageReference,
+        ])
+    except Exception:  # noqa: BLE001 — unreadable reads as undetermined
+        return ""
+    sStripped = (sValue or "").strip()
+    # A nil label map renders as "<no value>"; anything that is not an
+    # eight-digit date is an absent label, not evidence of one.
+    if len(sStripped) != 8 or not sStripped.isdigit():
+        return ""
+    return sStripped
 
 
 def fsReadImageRecipeLabel(sImageReference):

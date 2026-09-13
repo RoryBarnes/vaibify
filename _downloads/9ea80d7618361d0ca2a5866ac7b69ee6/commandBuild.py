@@ -46,6 +46,10 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
     """
     fnBuildImage = _ffnImportBuildOrExit()
     sStagedDir = fsStageBuildContext(config, sDockerDir)
+    # Read the pin BEFORE the build: fnRecordBaseImageDigestIfFloating
+    # below rewrites environment.json, so a read afterwards would
+    # compare the new environment against itself.
+    tPinnedBefore = _ftReadPinnedEnvironment()
     try:
         fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
         bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
@@ -57,6 +61,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
     fnDiscardBuildContext(sStagedDir)
     fnRecordBaseImageDigestIfFloating(config)
     fnRecordBuildArgHash(config)
+    fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore)
     fnPruneDanglingImages()
 
 
@@ -133,6 +138,73 @@ def fnRecordBaseImageDigestIfFloating(config):
     if not sDigest:
         return
     _fnPersistBaseImageDigest(config, sDigest)
+
+
+def _ftReadPinnedEnvironment():
+    """Return (pinned digest, pinned recipe fingerprint) for this project.
+
+    Both empty when there is no project, no envelope, or no pin — which
+    is every project that has not yet captured an L3 envelope, and reads
+    downstream as "nothing determined" rather than as drift.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fsExtractImageDigest,
+        fdictReadEnvironmentJson,
+        fsReadImageRecipeLabel,
+    )
+    try:
+        sProjectRepo = _fsProjectDirectory()
+    except Exception:  # noqa: BLE001 — no project reads as no pin
+        return ("", "")
+    if not sProjectRepo or not _fbHasVaibifyConfig(sProjectRepo):
+        return ("", "")
+    try:
+        sPinnedDigest = _fsExtractImageDigest(
+            fdictReadEnvironmentJson(sProjectRepo) or {},
+        )
+    except (OSError, ValueError, KeyError):
+        return ("", "")
+    if not sPinnedDigest:
+        return ("", "")
+    return (sPinnedDigest, fsReadImageRecipeLabel(sPinnedDigest))
+
+
+def fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore):
+    """Tell the researcher when a rebuild moved the environment.
+
+    The dashboard notices this eventually, at verify time. This says it
+    at the moment the researcher causes it, which is the only moment
+    they can still decide not to. Silent when nothing changed and when
+    nothing could be determined -- a warning composed from an
+    undetermined comparison is a claim about an image nobody compared.
+    """
+    from vaibify.reproducibility.environmentDrift import (
+        fdictCompareRebuiltEnvironment,
+        flistDescribeEnvironmentDrift,
+    )
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictCaptureBuiltImageIdentity,
+        fsReadImageRecipeLabel,
+    )
+    sPinnedDigest, sPinnedRecipe = tPinnedBefore
+    if not sPinnedDigest:
+        return
+    sImageReference = f"{config.sProjectName}:latest"
+    dictBuilt = fdictCaptureBuiltImageIdentity(sImageReference)
+    listLines = flistDescribeEnvironmentDrift(
+        fdictCompareRebuiltEnvironment(
+            sPinnedDigest, sPinnedRecipe,
+            dictBuilt.get("sImageDigest") or dictBuilt.get("sImageId"),
+            fsReadImageRecipeLabel(sImageReference),
+        ),
+    )
+    if not listLines:
+        return
+    click.echo("")
+    click.echo("[vaib] " + "=" * 62)
+    for sLine in listLines:
+        click.echo(f"[vaib] {sLine}" if sLine else "[vaib]")
+    click.echo("[vaib] " + "=" * 62)
 
 
 def _ffnImportBuildOrExit():

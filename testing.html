@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Skill Testing" href="skillTesting.html" />
+    <link rel="next" title="Known technical debt" href="knownDebt.html" />
     <link rel="prev" title="Contributor’s Guide" href="developers.html" /> 
 </head>
 
@@ -80,6 +80,8 @@
 <li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -296,7 +298,7 @@ runs them as two separate workflows:</p>
 <p><strong>The mutation gate is manual, and that is a real gap.</strong> It triggers on
 <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> only. It used to run per-PR, but mutation-testing a
 large feature-branch diff exceeded the 60-minute ceiling and was
-cancelled before it could post any signal — an advisory gate that dies
+canceled before it could post any signal — an advisory gate that dies
 on the PRs that matter most is pure friction. So it was made on-demand
 (commit <code class="docutils literal notranslate"><span class="pre">94abe35</span></code>), which means <strong>Python can merge with no mutation
 feedback at all</strong>. Falsification and the architectural invariants are
@@ -547,17 +549,29 @@ doubles the wait for no extra signal.</p>
 <td><p>manual (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
-<td><p>the modelled container commands, against a real container</p></td>
+<td><p>the modeled container commands, against a real container</p></td>
 <td><p>nightly + manual</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code></p></td>
 <td><p>a full image build from scratch, then acceptance</p></td>
 <td><p>weekly, manual, and on <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/**</span></code> pull requests</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code></p></td>
+<td><p>asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change</p></td>
+<td><p>monthly + manual</p></td>
+</tr>
 </tbody>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">tests/testWorkflowMergeGateSplit.py</span></code> fails if any workflow drifts back
 into running on both sides of the merge.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code> deliberately opens an issue, not a pull
+request, and never runs on one.</strong> Moving the epoch changes the
+compiler a researcher’s binaries are built against, so it is a
+maintainer’s decision on a chosen cadence. Asking it from a
+pull-request lane is what used to paint every unrelated pull request
+red while it waited for an answer nobody reviewing that PR could
+give. <code class="docutils literal notranslate"><span class="pre">testTheLiveArchiveComparisonIsNotOnThePullRequestPath</span></code> fails if
+the live-archive comparison moves back onto the PR path.</p>
 </section>
 <section id="what-the-readme-badges-mean">
 <h3>What the README badges mean<a class="headerlink" href="#what-the-readme-badges-mean" title="Link to this heading"></a></h3>
@@ -584,7 +598,7 @@ what the docs imply: on a workflow with only pull-request runs,
 <code class="docutils literal notranslate"><span class="pre">?branch=main</span></code> renders <em>no status</em> while the unqualified badge renders
 the latest PR run.)</p>
 <p>A lane with no run against the merged pull request renders <strong>did not
-run</strong> in grey, never green. That is the case worth having: it is what a
+run</strong> in gray, never green. That is the case worth having: it is what a
 bypassed merge, a skipped lane, or a workflow that silently stopped
 triggering looks like.</p>
 <p>On a direct push to <code class="docutils literal notranslate"><span class="pre">main</span></code> — no pull request to resolve — the status
@@ -612,8 +626,8 @@ the OS/Python matrix. Its Docker adapter is a <strong>fail-closed fake</strong>:
 every command it answers is declared in <code class="docutils literal notranslate"><span class="pre">LIST_MODELLED_COMMANDS</span></code>, and
 anything else raises rather than returning a default. That rule exists
 because this suite already carries ~20 permissive Docker mocks, one of
-which answers success to any command it does not recognise.</p>
-<p><strong>The container-acceptance lane (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</strong> puts each of those modelled
+which answers success to any command it does not recognize.</p>
+<p><strong>The container-acceptance lane (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</strong> puts each of those modeled
 commands to a real container, so a fake that drifts from the daemon is
 caught rather than believed. Every entry in the fake’s contract names
 an assertion in <code class="docutils literal notranslate"><span class="pre">tests/testContainerAcceptance.py</span></code>, and
@@ -656,7 +670,7 @@ change”) — a future direction, not yet part of this suite.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="developers.html" class="btn btn-neutral float-left" title="Contributor’s Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="skillTesting.html" class="btn btn-neutral float-right" title="Skill Testing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="knownDebt.html" class="btn btn-neutral float-right" title="Known technical debt" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

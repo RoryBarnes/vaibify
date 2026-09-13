@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,7 +68,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-project-block">The Project block</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#status-lights-and-colours">Status lights and colours</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#status-lights-and-colors">Status lights and colors</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#level-cells">Level cells</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#warning-glyphs">Warning glyphs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#file-name-styles">File-name styles</a></li>
@@ -76,6 +76,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-proof-tab">The PROOF tab</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#admin-environment-info">Admin &gt; Environment Info</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-help-panel">The Help panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-and-remote-sync">Publishing and remote sync</a><ul>
@@ -107,6 +108,8 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -167,7 +170,7 @@ container.</p></li>
 <p>Beside the project name, three copies of the vaibify badge mark PROOF
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
 when the project attains that level, and the whole dashboard theme
-shifts colour with the highest level attained: pale blue before Level
+shifts color with the highest level attained: pale blue before Level
 1, purple at Level 1, green at Level 2, and pink at Level 3. The
 badge, the logo, and every “attained” mark share the tint, so a glance
 at any corner of the screen tells you where the project stands.</p>
@@ -275,8 +278,8 @@ column (⚠), and <strong>L1 | L2 | L3</strong>. Each step row then shows, left 
 right:</p>
 <ul class="simple">
 <li><p><strong>Run checkbox</strong> — include this step in the next run.</p></li>
-<li><p><strong>Run light</strong> — execution only: hollow grey means the step has not
-run this session, filled grey means queued, blinking orange means
+<li><p><strong>Run light</strong> — execution only: hollow gray means the step has not
+run this session, filled gray means queued, blinking orange means
 running now, blinking red means running <em>past its runtime limit</em>
 (see below), solid red means the last run failed, and a quiet
 <strong>pale-blue dot</strong> means the last run succeeded. The vaibify check
@@ -287,7 +290,7 @@ line.</p></li>
 the third <em>automated</em> step, <code class="docutils literal notranslate"><span class="pre">I01</span></code> the first <em>interactive</em> step.</p></li>
 <li><p><strong>Warning column (⚠)</strong> — every warning the step carries,
 consolidated into one glyph; hover it for a plain-English list of
-reasons and remedies. The colour encodes <em>severity</em>, not level:
+reasons and remedies. The color encodes <em>severity</em>, not level:
 <strong>red</strong> means something is broken right now (a test failed),
 <strong>orange</strong> means pending work or staleness (a script or output
 changed since verification, an earlier step changed, or a level
@@ -318,7 +321,7 @@ the difference from <strong>Force Run All (Clean)</strong>, which does the same
 delete and then immediately re-runs everything: the rerun overwrites
 what was cleared, so you never see the project in its emptied state.
 Seeing it is the point when you are checking somebody else’s work —
-an all-grey dashboard is the evidence that what appears next was
+an all-gray dashboard is the evidence that what appears next was
 produced on your machine and not shipped with the repository.
 Interactive steps keep their outputs (a person made those; nothing
 here can reproduce them), and anything committed to git can be
@@ -377,7 +380,7 @@ Limit…</strong> — the dialog prefills a suggestion of twice the step’s las
 <em>successful</em> runtime, converting “how long should this take?” into
 “should it take twice as long as last time?”. Zero or blank means the
 step inherits the project default; a project default of zero disables
-the feature entirely, so long runs you expect are never mislabelled.</p>
+the feature entirely, so long runs you expect are never mislabeled.</p>
 </section>
 <section id="adding-a-step">
 <h4>Adding a step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h4>
@@ -401,7 +404,7 @@ shell.</p>
 </section>
 <section id="the-expanded-step-view">
 <h4>The expanded step view<a class="headerlink" href="#the-expanded-step-view" title="Link to this heading"></a></h4>
-<p>Clicking a step row expands its detail, which is organised by the
+<p>Clicking a step row expands its detail, which is organized by the
 reproducibility ladder. At the top sits an optional, expandable
 <strong>Description</strong> block — a few sentences on what the step does,
 written by you or an agent (click the text to edit; agents set the
@@ -424,7 +427,7 @@ are exactly its self-consistency surface. It ends with the <strong>Run
 Step</strong> button and, just below it, the <strong>Last run</strong> line (outcome,
 finish time, wall-clock and CPU durations). File rows carry the
 per-file marks and remote badges described under
-<a class="reference internal" href="#status-lights-and-colours">Status lights and colours</a>, and
+<a class="reference internal" href="#status-lights-and-colors">Status lights and colors</a>, and
 clicking a file opens it in a Viewing Window.</p>
 <p><strong>Levels 2 and 3 are requirement sections</strong>, one row per applicable
 criterion with a met mark, the offending files when unmet, and either
@@ -644,8 +647,8 @@ and pinning its base image to an exact digest (<code class="docutils literal not
 by hand.</p>
 </section>
 </section>
-<section id="status-lights-and-colours">
-<h2>Status lights and colours<a class="headerlink" href="#status-lights-and-colours" title="Link to this heading"></a></h2>
+<section id="status-lights-and-colors">
+<h2>Status lights and colors<a class="headerlink" href="#status-lights-and-colors" title="Link to this heading"></a></h2>
 <p>The same small vocabulary repeats across step rows, both block
 banners, and every requirement row. The <strong>?</strong> Help panel carries the
 authoritative legend; this is the summary.</p>
@@ -653,7 +656,7 @@ authoritative legend; this is the summary.</p>
 <h3>Level cells<a class="headerlink" href="#level-cells" title="Link to this heading"></a></h3>
 <p>The L1 | L2 | L3 cells (and the single L1 cell on step rows) use
 seven states. The circle fills in as reality does — hollow (nothing
-exists), grey (material exists), coloured (assessed), badge
+exists), gray (material exists), colored (assessed), badge
 (attained):</p>
 <table class="docutils align-default">
 <thead>
@@ -662,10 +665,10 @@ exists), grey (material exists), coloured (assessed), badge
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Hollow grey circle</p></td>
+<tr class="row-even"><td><p>Hollow gray circle</p></td>
 <td><p>Not started — no outputs on disk and no activity at this level yet.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Grey filled circle</p></td>
+<tr class="row-odd"><td><p>Gray filled circle</p></td>
 <td><p>Unassessed — outputs exist on disk, but no tests, checks, or sign-off have been recorded yet.</p></td>
 </tr>
 <tr class="row-even"><td><p>Red circle</p></td>
@@ -685,7 +688,7 @@ exists), grey (material exists), coloured (assessed), badge
 </tr>
 </tbody>
 </table>
-<p>The grey states are honest by design: “unassessed” asserts only that
+<p>The gray states are honest by design: “unassessed” asserts only that
 the step’s declared outputs exist — hours of compute performed
 outside the dashboard stay visible as progress — but it never claims
 verification, and a remote that has never been checked is never
@@ -693,7 +696,7 @@ shown as passing.</p>
 </section>
 <section id="warning-glyphs">
 <h3>Warning glyphs<a class="headerlink" href="#warning-glyphs" title="Link to this heading"></a></h3>
-<p>Warning glyphs (⚠) are coloured by <strong>severity</strong>, never by level:</p>
+<p>Warning glyphs (⚠) are colored by <strong>severity</strong>, never by level:</p>
 <ul class="simple">
 <li><p><strong>Red</strong> — broken or failing <em>now</em>: a test failed, a declared file is
 missing, a requirement check failed.</p></li>
@@ -735,10 +738,10 @@ Overleaf, Zenodo, arXiv), tinted by that remote’s state:</p>
 <tr class="row-odd"><td><p>Blue</p></td>
 <td><p>Not tracked by git (informational).</p></td>
 </tr>
-<tr class="row-even"><td><p>Solid muted grey</p></td>
+<tr class="row-even"><td><p>Solid muted gray</p></td>
 <td><p>Git-ignored — a deliberate <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> exclusion, distinct from “never published”.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Faded grey</p></td>
+<tr class="row-odd"><td><p>Faded gray</p></td>
 <td><p>Not synced to this remote.</p></td>
 </tr>
 </tbody>
@@ -754,7 +757,7 @@ ladder. A header card names the project’s current level (for
 example, “Level 1: Self-Consistent”) with a clickable progression
 strip, followed by three expandable sections — <strong>Level 1 —
 Self-Consistent</strong>, <strong>Level 2 — Published</strong>, <strong>Level 3 — Reproducible</strong>
-— each summarising how many of its requirements are met.</p>
+— each summarizing how many of its requirements are met.</p>
 <p>Every requirement row shows a status light, the requirement, what it
 means, and how to meet it, with a deep link to the surface where the
 work happens (the Main tab’s blocks or the Repos panel). The tab owns
@@ -801,6 +804,53 @@ notice if the manifest has changed since), and the <strong>Reproduction
 History</strong> table of every attempt.</p>
 <p>See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for what each envelope
 artifact contains and how third parties verify it without vaibify.</p>
+</section>
+<section id="admin-environment-info">
+<h2>Admin &gt; Environment Info<a class="headerlink" href="#admin-environment-info" title="Link to this heading"></a></h2>
+<p>Every value in this modal is a fact read off <strong>the image this session
+is connected to</strong>, or the word <em>unknown</em>. Nothing falls back to the
+vaibify installed on your machine: the installed recipe describes the
+image vaibify would build today, which is a different question from
+what you are running, and answering the second with the first would
+state an environment your container never had.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Row</p></th>
+<th class="head"><p>What it is</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Digest / Image ID</p></td>
+<td><p>The image’s content identity. This is what Level 3 pins and what <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> pulls.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Architecture</p></td>
+<td><p>The platform the image was built for.</p></td>
+</tr>
+<tr class="row-even"><td><p>Recipe fingerprint</p></td>
+<td><p>A hash over the build inputs vaibify controls — the Dockerfile, package lists, entrypoint, your <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Archive epoch</p></td>
+<td><p>The date of the package archive this image’s C compiler and libc came from.</p></td>
+</tr>
+<tr class="row-even"><td><p>Inside the container</p></td>
+<td><p>Versions probed from within the container itself, not from the host.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The archive epoch is the row worth understanding.</strong> It is pinned, so
+every image built from this recipe gets the same compiler whatever day
+it is built, and it moves only when a maintainer deliberately moves it
+— a change that asks you to re-run and re-verify. See
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">The toolchain epoch</span></a> for what moving it means.</p>
+<p>The epoch covers the <strong>compiler only</strong>. Editors, LaTeX, the Python
+interpreter and pip packages track their upstreams and can differ
+between two builds of the same recipe. Pinning those for a particular
+result is what the project’s <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> is for — which is the
+honest division of labor: the image freezes what compiles your
+binaries, and the lock file freezes what runs your analyses.</p>
+<p><em>unknown</em> is a real answer here, not a blank. An image built before
+vaibify recorded the epoch carries no label, and the modal says so
+rather than guessing.</p>
 </section>
 <section id="the-help-panel">
 <h2>The Help panel<a class="headerlink" href="#the-help-panel" title="Link to this heading"></a></h2>
@@ -928,7 +978,7 @@ recently-validated state even if the user never clicks Re-verify.</p>
 </section>
 <section id="aggregate-consistency-banner">
 <h3>Aggregate consistency banner<a class="headerlink" href="#aggregate-consistency-banner" title="Link to this heading"></a></h3>
-<p>Above the per-remote rows, a single line summarises the union of all
+<p>Above the per-remote rows, a single line summarizes the union of all
 remote states. The three forms produced by
 <a class="reference download internal" download="" href="_downloads/86246c36cf9ddf57ac89c18c78938978/scriptSyncManager.js"><span class="xref download myst">scriptSyncManager.js</span></a> are:</p>
 <ul class="simple">
@@ -937,13 +987,13 @@ yet (e.g. immediately after opening a project for the first time).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">&lt;K&gt;</span> <span class="pre">configured</span> <span class="pre">remote(s)</span> <span class="pre">in</span> <span class="pre">sync</span></code> — every
 configured remote authoritatively matched on its last verify; <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code>
 is the count of remotes that reported a verified status. The trailing
-noun is singularised to <code class="docutils literal notranslate"><span class="pre">remote</span></code> when <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code> is 1, otherwise
+noun is singularized to <code class="docutils literal notranslate"><span class="pre">remote</span></code> when <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code> is 1, otherwise
 <code class="docutils literal notranslate"><span class="pre">remotes</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">1</span> <span class="pre">configured</span> <span class="pre">remote</span> <span class="pre">in</span> <span class="pre">sync</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">✓</span> <span class="pre">all</span> <span class="pre">3</span> <span class="pre">configured</span> <span class="pre">remotes</span> <span class="pre">in</span> <span class="pre">sync</span></code>).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">&lt;N&gt;</span> <span class="pre">file(s)</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">&lt;M&gt;</span> <span class="pre">of</span> <span class="pre">&lt;K&gt;</span> <span class="pre">remote(s)</span></code> — at least one remote reports drift; <code class="docutils literal notranslate"><span class="pre">&lt;N&gt;</span></code> is the total
 diverged-file count across all remotes, <code class="docutils literal notranslate"><span class="pre">&lt;M&gt;</span></code> is the number of
 remotes with at least one diverged file, and <code class="docutils literal notranslate"><span class="pre">&lt;K&gt;</span></code> is the count of
 configured-and-verified remotes. Both the file noun and the remote
-noun singularise independently when their count is 1 (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">1</span> <span class="pre">file</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">1</span> <span class="pre">of</span> <span class="pre">1</span> <span class="pre">remote</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">5</span> <span class="pre">files</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">2</span> <span class="pre">of</span> <span class="pre">3</span> <span class="pre">remotes</span></code>).</p></li>
+noun singularize independently when their count is 1 (e.g. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">1</span> <span class="pre">file</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">1</span> <span class="pre">of</span> <span class="pre">1</span> <span class="pre">remote</span></code> vs. <code class="docutils literal notranslate"><span class="pre">Remote</span> <span class="pre">consistency:</span> <span class="pre">⚠</span> <span class="pre">5</span> <span class="pre">files</span> <span class="pre">drifted</span> <span class="pre">across</span> <span class="pre">2</span> <span class="pre">of</span> <span class="pre">3</span> <span class="pre">remotes</span></code>).</p></li>
 </ul>
 </section>
 <section id="hash-aware-staleness">
@@ -994,7 +1044,7 @@ auditing a project’s reproducibility level, with the known audit
 traps codified (<code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> is the only authoritative signal;
 marker hashes are git blob SHA-1s; publication is user-only).</p></li>
 <li><p><strong>create-pipeline-step</strong> — the five-phase protocol for authoring a
-fully wired step, centred on the <code class="docutils literal notranslate"><span class="pre">{StepNN.varname}</span></code> cross-step
+fully wired step, centered on the <code class="docutils literal notranslate"><span class="pre">{StepNN.varname}</span></code> cross-step
 token contract.</p></li>
 <li><p><strong>vaibify-doc-map</strong> — a question→(doc, section) table so the agent
 reads the right 30 lines of vaibify’s own docs (staged in-container
@@ -1119,7 +1169,7 @@ session</strong> at a time. When you claim a container, the server mints a
 private lease for that tab; a different tab — even another tab of the
 same browser on the same hub — that tries to open the same container is
 refused with <em>“In use in another browser session”</em> and its tile renders
-greyed out. This holds across two tabs of one browser, two browsers,
+grayed out. This holds across two tabs of one browser, two browsers,
 and two hubs alike; it is the single owner-of-record model described in
 the <a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">architecture reference</span></a>.
 It is an operational guarantee for honest use behind vaibify’s loopback
@@ -1138,7 +1188,7 @@ anything: the browser fires the same signal on a reload, so treating it
 as release intent would drop a running container every time you
 refreshed the page.
 The hub re-polls availability every few seconds, so a freed container
-un-greys on its own without a page reload. You can also list and stop
+un-grays on its own without a page reload. You can also list and stop
 live sessions from the host with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> (see the
 <a class="reference internal" href="cli.html#session-management"><span class="std std-ref">CLI Reference</span></a>).</p>
 <p>The <strong>New vaibify window</strong> icon (⧉) in the hub, the project picker,

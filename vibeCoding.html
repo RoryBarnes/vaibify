@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vibe coding with verification &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>Vibe coding with verification &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -82,6 +82,8 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -374,10 +376,13 @@ of preference.</p>
 add an architectural invariant that fails when any route module
 imports from <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code>. The mistake becomes a permanent guard
 rail; no future agent can repeat it without turning CI red.</p>
-<p>Second, if the mistake cannot be tested, add it to the <code class="docutils literal notranslate"><span class="pre">Lessons</span></code>
-section of the relevant <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>. One paragraph per lesson. State
-the mistake, state the correct behavior, state the consequence of
-getting it wrong.</p>
+<p>Second, if the mistake cannot be tested, write it down. One paragraph
+per lesson: state the mistake, state the correct behavior, state the
+consequence of getting it wrong. Where it goes depends on its reach –
+a lesson about one subsystem belongs in that subsystem’s skill, a war
+story belongs in <a class="reference internal" href="lessons.html"><span class="std std-doc">lessons.md</span></a>, and only a rule that
+governs <em>every</em> edit earns a place in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>. That file is read
+in full on every task, so its length is a tax on all of them.</p>
 <p>Third, if the mistake is a multi-step task being done inconsistently,
 add a Layer 4 skill.</p>
 <p>Without this loop, documentation stagnates at initial quality. The

@@ -23,6 +23,36 @@ ARG INSTALL_X11=true
 ARG PACKAGE_MANAGER=pip
 ARG VC_PROJECT_NAME=Vaibify
 
+# THE ARCHIVE THE PINNED TOOLCHAIN COMES FROM, frozen to a date.
+#
+# The 45 versions below were pinned so a rebuild cannot swap the
+# compiler silently. That guarantee had a hole: Ubuntu drops
+# superseded versions from its pool within weeks, so the pins stopped
+# RESOLVING on roughly a monthly cadence and every unrelated pull
+# request went red waiting for a maintainer to decide something they
+# could not actually evaluate -- a glibc SRU changes real bytes, and
+# no review distinguishes "this moves a number" from "this does not".
+#
+# snapshot.ubuntu.com serves the archive as it stood on a given date,
+# so pinning the DATE alongside the versions closes it: the pins
+# always resolve, and the toolchain changes when a maintainer moves
+# this ARG rather than when Ubuntu publishes. The base image is
+# already pinned by digest and the packages by version; this is the
+# third axis, and it was the only one still choosing its own timing.
+#
+# MOVING THIS DATE IS AN EPOCH BUMP, not a chore. It is how Ubuntu's
+# security and correctness fixes reach vaibify users, and it changes
+# the compiler, so it lands as its own reviewed pull request and the
+# results built on it are re-run and re-verified. Propose one with:
+#
+#   python tools/checkToolchainEpoch.py --propose
+#
+# Scope is deliberate: the snapshot covers ONLY the pinned block
+# below. The waived block above floats by design -- see its comment --
+# and freezing it would silently override that decision and strand a
+# researcher whose systemPackages name anything published since.
+ARG APT_SNAPSHOT_DATE=20260909
+
 # Declared so a build can be given a fixed timestamp base, and so this
 # file satisfies vaibify's own L3 lint rather than being copied into a
 # researcher's repo carrying a gap vaibify shipped. The default is the
@@ -150,7 +180,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # reproduced something. The diagnostic below tells them what happened
 # and what their options are; see docs/reproducibility.md, "When a
 # pinned toolchain version disappears".
-RUN apt-get update \
+RUN set -eu; \
+    mkdir -p /etc/apt/vaibifyLiveSources; \
+    cp -a /etc/apt/sources.list.d/. /etc/apt/vaibifyLiveSources/ 2>/dev/null || true; \
+    if [ -f /etc/apt/sources.list ]; then \
+        cp -a /etc/apt/sources.list /etc/apt/vaibifyLiveSources/sources.list.legacy; \
+    fi; \
+    rm -f /etc/apt/sources.list.d/* /etc/apt/sources.list; \
+    for sSuite in noble noble-updates noble-security noble-backports; do \
+        printf 'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/%sT000000Z %s main restricted universe multiverse\n' \
+            "${APT_SNAPSHOT_DATE}" "${sSuite}" \
+            >> /etc/apt/sources.list.d/vaibifyToolchainSnapshot.list; \
+    done; \
+    apt-get update \
     && if ! apt-get install -y --no-install-recommends \
             binutils=2.42-4ubuntu2.10 \
             binutils-common=2.42-4ubuntu2.10 \
@@ -246,11 +288,17 @@ RUN apt-get update \
         printf '%s\n' \
             "     will say so." >&2; \
         printf '%s\n' \
-            "  3. FETCH THE OLD PACKAGES. snapshot.ubuntu.com serves the" >&2; \
+            "  3. MOVE THE EPOCH. This build already reads a FROZEN archive" >&2; \
         printf '%s\n' \
-            "     archive as it stood on a given date; point apt at the" >&2; \
+            "     (APT_SNAPSHOT_DATE above), so a pin that does not resolve" >&2; \
         printf '%s\n' \
-            "     snapshot covering this image's build date and keep the pins." >&2; \
+            "     is NOT Ubuntu dropping it -- it is this file disagreeing" >&2; \
+        printf '%s\n' \
+            "     with its own snapshot, or snapshot.ubuntu.com being" >&2; \
+        printf '%s\n' \
+            "     unreachable. Check the date and the pins agree with:" >&2; \
+        printf '%s\n' \
+            "       python tools/checkToolchainEpoch.py --verify" >&2; \
         printf '%s\n' \
             "" >&2; \
         printf '%s\n' \
@@ -259,8 +307,20 @@ RUN apt-get update \
         printf '%s\n' \
             "=============================================================" >&2; \
         exit 1; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
+    fi; \
+    rm -f /etc/apt/sources.list.d/vaibifyToolchainSnapshot.list; \
+    cp -a /etc/apt/vaibifyLiveSources/. /etc/apt/sources.list.d/ 2>/dev/null || true; \
+    if [ -f /etc/apt/sources.list.d/sources.list.legacy ]; then \
+        mv /etc/apt/sources.list.d/sources.list.legacy /etc/apt/sources.list; \
+    fi; \
+    rm -rf /etc/apt/vaibifyLiveSources /var/lib/apt/lists/*
+
+# Which archive the 45 pins above came from, recorded ON the image so a
+# researcher can ask what they are running rather than inferring it
+# from whichever vaibify happens to be installed today. Kept next to
+# the block it describes: a label stamped elsewhere drifts from the ARG
+# it claims to report.
+LABEL vaibify-toolchain-epoch="${APT_SNAPSHOT_DATE}"
 
 # Project-specific system packages from vaibify.yml systemPackages
 COPY system-packages.txt /tmp/system-packages.txt

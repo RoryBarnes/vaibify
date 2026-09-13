@@ -168,7 +168,7 @@ bare "0.1 K" — and it must cover every quantity the paper's claims
 rest on. Tolerances published for three quantities out of thirty yield
 a verdict over a curated subset: honestly computed, and close to
 meaningless. Because the table is published before any regeneration
-exists, the threshold is pre-registered. The judgement remains human
+exists, the threshold is pre-registered. The judgment remains human
 and qualitative; what it can no longer be is made with knowledge of
 the answer.
 
@@ -229,7 +229,7 @@ verdict between them. Note what is not claimed: attestors do not
 report byte-identical results across the original and the
 regeneration, which L5 has already established is not the
 expectation. They verify each artifact exactly, and the equivalence
-judgement against the published tolerance.
+judgment against the published tolerance.
 
 The attestations must be verifiable in public: tests run on a public
 GitHub repository, or cryptographic links to witness identities

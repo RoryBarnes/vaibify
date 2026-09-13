@@ -40,10 +40,10 @@ pip install -r .vaibify/requirements.txt
 ```
 
 This is a real, finished analysis: how long until the waste heat from AI
-data centres becomes large enough to matter for a planet's climate. Two
+data centers becomes large enough to matter for a planet's climate. Two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at PROOF
-Level 3, which means its author committed a manifest of every artefact's
+Level 3, which means its author committed a manifest of every artifact's
 SHA-256 hash along with the pinned environment that produced them.
 
 Back in the hub, click the **+** next to *Environments*. The wizard asks
@@ -85,7 +85,7 @@ From the **Run** menu, choose **Check Files Against Manifest**.
 
 It re-hashes every file pinned in `MANIFEST.sha256` and reports that all
 of them match. This is the one claim that *does* travel, because a hash
-is a property of the bytes rather than of anyone's judgement: you have
+is a property of the bytes rather than of anyone's judgment: you have
 confirmed that the files in your clone are byte-for-byte the files the
 author committed. Note what it is not — a statement about whether the
 science is right, or whether those files can be produced again. It is
@@ -119,7 +119,7 @@ whatever Python is active.)
 From the **Run** menu, choose **Clean Outputs**, and confirm.
 
 Every automatic step's data files and figures are deleted and every
-verification mark resets to untested. The dashboard goes grey. The
+verification mark resets to untested. The dashboard goes gray. The
 figure viewers empty. The AI Declaration step keeps its content, because
 a person wrote that and no amount of re-running would produce it again.
 
@@ -192,7 +192,7 @@ Your run passed every scientific test the project defines and still did
 not reproduce it byte-for-byte. Those are different claims, and vaibify
 keeps them apart on purpose. "The tests pass" says the result is
 consistent with what the author asserted. "The hashes match" says a
-stranger re-executing this work would obtain the identical artefact —
+stranger re-executing this work would obtain the identical artifact —
 which is what a reader must be able to check if the published numbers
 are to mean anything on their own.
 
@@ -211,7 +211,7 @@ vaibify reproduce --repo . --rerun
 ```
 
 which rebuilds the pinned environment, re-runs the workflow inside a
-disposable copy of it, and re-hashes every artefact against the
+disposable copy of it, and re-hashes every artifact against the
 manifest — leaving your own files untouched.
 
 ## 7. Containerize the same project
@@ -252,7 +252,7 @@ your PATH.
 
 That difference is the entire point of the level you are reaching for.
 Until now "it ran on my machine" has been doing real work in your
-favour — your numpy, your matplotlib, your interpreter. A stranger has
+favor — your numpy, your matplotlib, your interpreter. A stranger has
 none of those. Pinning the environment is what converts *your* result
 into one somebody else can obtain.
 
@@ -337,7 +337,7 @@ shows you what a run would use before anything is pulled, and shows
 the same verdict and report when it settles. No tile is added; the
 shadow is destroyed when the comparison is made.
 
-As a stranger without vaibify, the artefact the project publishes:
+As a stranger without vaibify, the artifact the project publishes:
 
 ```bash
 ./reproduce.sh
@@ -421,7 +421,7 @@ knows is exactly the claim this tool exists not to make.
 - **[The three templates: sandbox, toolkit, workflow](templates.md)** —
   starting your own project rather than driving someone else's.
 - **[The dashboard tour](dashboard.md)** — every panel, the status
-  colours, and the verification state machine.
+  colors, and the verification state machine.
 - **[The reproducibility ladder](reproducibility.md)** — what Levels 1
   through 3 each certify, and what none of them do.
 - **[Security model](security.md)** — what a container protects against

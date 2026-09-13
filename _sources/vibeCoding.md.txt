@@ -265,10 +265,13 @@ add an architectural invariant that fails when any route module
 imports from `pipelineServer`. The mistake becomes a permanent guard
 rail; no future agent can repeat it without turning CI red.
 
-Second, if the mistake cannot be tested, add it to the `Lessons`
-section of the relevant `AGENTS.md`. One paragraph per lesson. State
-the mistake, state the correct behavior, state the consequence of
-getting it wrong.
+Second, if the mistake cannot be tested, write it down. One paragraph
+per lesson: state the mistake, state the correct behavior, state the
+consequence of getting it wrong. Where it goes depends on its reach --
+a lesson about one subsystem belongs in that subsystem's skill, a war
+story belongs in [lessons.md](lessons.md), and only a rule that
+governs *every* edit earns a place in `AGENTS.md`. That file is read
+in full on every task, so its length is a tax on all of them.
 
 Third, if the mistake is a multi-step task being done inconsistently,
 add a Layer 4 skill.

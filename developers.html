@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -75,6 +75,8 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -180,7 +182,7 @@ progressively more reality, and each proves something the others do not.</p>
 <tr class="row-even"><td><p>browser (<code class="docutils literal notranslate"><span class="pre">browser.yml</span></code>)</p></td>
 <td><p>Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake</p></td>
 <td><p>every PR</p></td>
-<td><p>JS loads and evaluates; API and refusal behaviour reach the screen honestly</p></td>
+<td><p>JS loads and evaluates; API and refusal behavior reach the screen honestly</p></td>
 </tr>
 <tr class="row-odd"><td><p>container acceptance (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</p></td>
 <td><p>a real container, image keyed by build-input hash</p></td>
@@ -323,8 +325,9 @@ of the change.</p></li>
 <span class="n">docs</span><span class="o">/</span>                 <span class="n">Sphinx</span> <span class="n">documentation</span> <span class="p">(</span><span class="n">this</span> <span class="n">site</span><span class="p">)</span> <span class="n">including</span>
                       <span class="n">architecture</span><span class="o">.</span><span class="n">md</span> <span class="ow">and</span> <span class="n">vibeCoding</span><span class="o">.</span><span class="n">md</span>
 <span class="o">.</span><span class="n">claude</span><span class="o">/</span><span class="n">skills</span><span class="o">/</span>       <span class="n">Conditional</span> <span class="n">recipes</span> <span class="k">for</span> <span class="n">recurring</span> <span class="n">extension</span> <span class="n">tasks</span>
-<span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>             <span class="n">Repo</span><span class="o">-</span><span class="n">wide</span> <span class="n">rules</span><span class="p">,</span> <span class="n">traps</span><span class="p">,</span> <span class="ow">and</span> <span class="n">discovery</span> <span class="n">commands</span>
-                      <span class="k">for</span> <span class="n">AI</span> <span class="n">coding</span> <span class="n">agents</span> <span class="p">(</span><span class="n">symlinked</span> <span class="kn">from</span><span class="w"> </span><span class="nn">CLAUDE.md</span><span class="p">)</span>
+<span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>             <span class="n">Repo</span><span class="o">-</span><span class="n">wide</span> <span class="n">rules</span> <span class="n">that</span> <span class="n">apply</span> <span class="n">to</span> <span class="n">every</span> <span class="n">edit</span><span class="p">,</span> <span class="ow">and</span>
+                      <span class="n">the</span> <span class="n">routing</span> <span class="n">table</span> <span class="kn">from</span><span class="w"> </span><span class="nn">subsystem</span> <span class="n">to</span> <span class="n">skill</span>
+                      <span class="p">(</span><span class="n">symlinked</span> <span class="kn">from</span><span class="w"> </span><span class="nn">CLAUDE.md</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>For the full architectural narrative including module responsibilities,

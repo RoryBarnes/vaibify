@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.12.dev16 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.13.dev2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=42fb86a6"></script>
+      <script src="_static/documentation_options.js?v=2fa412c5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -125,6 +125,8 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
@@ -1005,7 +1007,7 @@ a new one. See <a class="reference internal" href="dashboard.html"><span class="
 invocation auto-shifts to the next free port (8051, 8052, …) and
 announces the fallback on stderr. Pass <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> to pin an
 explicit port. Any given container may be accessed by only one
-browser session at a time: the hub landing page greys out
+browser session at a time: the hub landing page grays out
 containers already held by another session, a second tab that tries
 to open a held container is refused <em>“In use in another browser
 session”</em>, and a second <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span> <span class="pre">-p</span> <span class="pre">X</span></code> on the same project
@@ -1152,7 +1154,7 @@ restrict the person at their own terminal, so user-only actions like
 <p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>not implemented</strong>, and the
 <code class="docutils literal notranslate"><span class="pre">publish</span></code> group is not registered on the CLI at all — <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code>
 is an unknown command, not a command that reports its own absence. The
-sections below describe intended behaviour only.</p>
+sections below describe intended behavior only.</p>
 <p>There is no Settings → Publish pane. This section previously said the
 publishing machinery was “already available” through one; it never
 existed, and <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> — the GitHub
