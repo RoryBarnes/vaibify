@@ -182,6 +182,22 @@ def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):
     return fdictComparePackageDeclarations(listDeclared, sMirror)
 
 
+def fdictDescribeImageOrigin(sContainerName):
+    """Whether the image was BUILT, and whether the clone pins one to obtain.
+
+    The package mismatch and the Dockerfile-provenance mismatch have
+    one cause on a containerized clone -- built from the Dockerfile
+    while the envelope pins the author's -- and for that cause the
+    remedy is the switch, never the rewrites of the author's files
+    they otherwise name. Unregistered reads as neither.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictDescribeImageOriginForProject,
+    )
+    return fdictDescribeImageOriginForProject(fdictGetProject(sContainerName))
+
+
 def fdictAssessDockerfileProvenance(filesRepo):
     """Does the repo's Dockerfile describe the PINNED image's recipe?
 
@@ -278,6 +294,14 @@ def _fnRegisterReadiness(app, dictCtx):
         dictGaps["bDockerfileDescribesPinnedImage"] = (
             dictProvenance["bDockerfileDescribesPinnedImage"] is not False
         )
+        # How this container's image came to exist, beside the two
+        # container facts above: the remedy for either of them differs
+        # when the image was BUILT while the clone pins an obtainable
+        # one -- then the fix is to switch to the author's image, not
+        # to rewrite the author's files to describe a build.
+        dictGaps.update(fdictDescribeImageOrigin(
+            fsContainerNameForId(dictCtx["docker"], sContainerId),
+        ))
         return {
             "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
@@ -420,13 +444,14 @@ async def _fsGateReadinessAndSnapshotDigest(
         sContainerName, filesRepo,
     )
     dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
+    dictImageOrigin = fdictDescribeImageOrigin(sContainerName)
 
     def fsGateThenSnapshot(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fsRequireReadinessThenDigest(
                 dictWorkflow, filesRepo, dictPackageCheck,
-                dictProvenance,
+                dictProvenance, dictImageOrigin,
             ),
         )
 
@@ -506,6 +531,7 @@ def _fsDescribePackageMismatch(dictPackageCheck):
 
 def _fsRequireReadinessThenDigest(
     dictWorkflow, filesRepo, dictPackageCheck, dictProvenance,
+    dictImageOrigin=None,
 ):
     """Return the manifest digest, or raise ONE 409 naming everything.
 
@@ -514,11 +540,29 @@ def _fsRequireReadinessThenDigest(
     a researcher with both fixed one, retried, and met the other: a
     round of verification-refused per problem, each round spending the
     click, the drain, and the wait (researcher-requested, 2026-09-01).
+
+    The two container facts name the SWITCH as their remedy when the
+    image was built while the clone pins an obtainable one: on a
+    published clone that is the one cause of both, and the rewrites
+    they otherwise prescribe would overwrite the author's files.
     """
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        S_REMEDY_SWITCH_TO_PINNED_IMAGE,
+        fbSwitchToPinnedImageIsTheRemedy,
+    )
     listUnmet = []
-    if dictPackageCheck.get("bChecked") and not dictPackageCheck["bMatches"]:
+    bSwitchIsTheRemedy = fbSwitchToPinnedImageIsTheRemedy(dictImageOrigin)
+    bPackagesMismatch = (
+        dictPackageCheck.get("bChecked") and not dictPackageCheck["bMatches"]
+    )
+    bProvenanceMismatch = (
+        dictProvenance.get("bDockerfileDescribesPinnedImage") is False
+    )
+    if bSwitchIsTheRemedy and (bPackagesMismatch or bProvenanceMismatch):
+        listUnmet.append(S_REMEDY_SWITCH_TO_PINNED_IMAGE)
+    elif bPackagesMismatch:
         listUnmet.append(_fsDescribePackageMismatch(dictPackageCheck))
-    if dictProvenance.get("bDockerfileDescribesPinnedImage") is False:
+    if bProvenanceMismatch and not bSwitchIsTheRemedy:
         listUnmet.append(
             "the repo Dockerfile was exported from a different build "
             "chain than the pinned image's (the image's recipe label "

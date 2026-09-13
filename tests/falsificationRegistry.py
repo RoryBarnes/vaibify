@@ -9821,11 +9821,11 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         old=(
-            "           over the author's image is exactly what the server refuses. */\n"
+            "           pressed Next through the wizard has no other way back. */\n"
             '        if (bHost) return "";\n'
         ),
         new=(
-            "           over the author's image is exactly what the server refuses. */\n"
+            "           pressed Next through the wizard has no other way back. */\n"
             '        if (false) return "";\n'
         ),
     ),
@@ -9836,11 +9836,11 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         old=(
-            "           over the author's image is exactly what the server refuses. */\n"
+            "           pressed Next through the wizard has no other way back. */\n"
             '        if (bHost) return "";\n'
         ),
         new=(
-            "           over the author's image is exactly what the server refuses. */\n"
+            "           pressed Next through the wizard has no other way back. */\n"
             '        if (true) return "";\n'
         ),
     ),
@@ -19665,5 +19665,157 @@ def _fdictEntry(sRel):
         # entrypoint's own set -euo pipefail
         old='    local sLinkTarget\n    sLinkTarget=$(readlink "${sPath}")\n    case "${sLinkTarget}" in\n        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;\n        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;\n    esac\n    return 1\n',
         new='    return 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_switching_to_obtaining_writes_the_source_and_nothing_else'
+        ),
+        source='vaibify/config/registryManager.py',
+        # the switch records nothing about how the image is obtained
+        old=(
+            '        dictEntry[S_IMAGE_SOURCE_KEY] = dict(dictImageSource)\n'
+            '\n'
+            '    _fnMutateRegistryLocked(fnWriteSource)\n'
+        ),
+        new=(
+            '        dictEntry[S_IMAGE_SOURCE_KEY] = {"sSource": "archive"}\n'
+            '\n'
+            '    _fnMutateRegistryLocked(fnWriteSource)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_restoring_the_authors_base_fields_reads_head_not_the_working_tree'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # the base fields are "restored" from the build's own working copy
+        old=(
+            '        if sKey in dictAuthor:\n'
+            '            dictMerged[sKey] = dictAuthor[sKey]\n'
+        ),
+        new=(
+            '        if sKey in dictExisting:\n'
+            '            dictMerged[sKey] = dictExisting[sKey]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_restoring_refuses_when_head_holds_no_config'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # no committed copy: fall back to the working copy and call it restored
+        old=(
+            '    if sCommitted is None:\n'
+            '        raise HTTPException(409, detail={"sMessage": (\n'
+            '            "The author\'s vaibify.yml is not committed in this clone, so "\n'
+        ),
+        new=(
+            '    if sCommitted is None:\n'
+            '        with open(sConfigPath, "r", encoding="utf-8") as fileHandle:\n'
+            '            sCommitted = fileHandle.read()\n'
+            '    if False:\n'
+            '        raise HTTPException(409, detail={"sMessage": (\n'
+            '            "The author\'s vaibify.yml is not committed in this clone, so "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_switch_source_reads_the_researchers_agents_before_restoring'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # the researcher's agents are read AFTER the restore erased them
+        old=(
+            '    listRequestedAgents = _flistEnabledAgentsInConfig(dictProject["sConfigPath"])\n'
+            '    fnRestoreAuthorBaseFieldsFromGit(dictProject)\n'
+        ),
+        new=(
+            '    fnRestoreAuthorBaseFieldsFromGit(dictProject)\n'
+            '    listRequestedAgents = _flistEnabledAgentsInConfig(dictProject["sConfigPath"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_image_origin_names_the_switch_only_for_a_built_clone_that_pins'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # an obtained image reads as built
+        old=(
+            '    if fbProjectImageIsObtained(dictProject):\n'
+            '        return dictAnswer\n'
+            '    dictAnswer["bImageWasBuilt"] = True\n'
+        ),
+        new=(
+            '    dictAnswer["bImageWasBuilt"] = True\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_container_fact_refusal_names_the_switch_for_a_built_clone'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # the package rewrite is named to a researcher whose vaibify.yml
+        # is the author's
+        old=(
+            '    if bSwitchIsTheRemedy and (bPackagesMismatch or bProvenanceMismatch):\n'
+            '        listUnmet.append(S_REMEDY_SWITCH_TO_PINNED_IMAGE)\n'
+            '    elif bPackagesMismatch:\n'
+        ),
+        new=(
+            '    if bPackagesMismatch:\n'
+            '        listUnmet.append(_fsDescribePackageMismatch(dictPackageCheck))\n'
+            '    elif bPackagesMismatch:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testAnObtainableCloneHasThePinnedImagePreselected'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # the build stays the default on a clone that pins an obtainable image
+        old=(
+            '        if (dictPinned.bObtainable !== true) return false;\n'
+        ),
+        new=(
+            '        if (dictPinned.bObtainable === true) return false;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testABuiltTileWhoseClonePinsOffersTheSwitchAndStopsFirst'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the forward switch is posted whatever the stop reported
+        old=(
+            '                var bStopped = await fnStopContainer(sName);\n'
+            '                if (!bStopped) return;\n'
+        ),
+        new=(
+            '                await fnStopContainer(sName);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_a_built_clone_is_sent_to_the_switch_not_to_a_rewrite'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the origin facts are ignored and the author's files are named
+        # for rewriting
+        old=(
+            '        return dictReady.bImageWasBuilt === true &&\n'
+            '            dictReady.bPinnedImageObtainable === true;\n'
+        ),
+        new=(
+            '        return dictReady.bImageWasBuilt === true &&\n'
+            '            dictReady.bPinnedImageObtainable === false;\n'
+        ),
     ),
 ]

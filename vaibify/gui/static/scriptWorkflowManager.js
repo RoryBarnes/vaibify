@@ -786,7 +786,9 @@ var VaibifyWorkflowManager = (function () {
         'the same bytes the author&rsquo;s results came from. Agents ' +
         'you add are stacked on top as overlays; the base ' +
         'environment (Python, packages, LaTeX and the like) is fixed ' +
-        'by the image.</p>' +
+        'by the image. It is pre-selected whenever the clone pins an ' +
+        'image vaibify can obtain, and either choice can be changed ' +
+        'later from the tile&rsquo;s menu on the Environments hub.</p>' +
         '<p><strong>Build from the Dockerfile</strong> &mdash; the ' +
         'ordinary path. The build produces a different image digest, ' +
         'so the result cannot reproduce the author&rsquo;s bytes ' +
@@ -954,6 +956,13 @@ var VaibifyWorkflowManager = (function () {
         dictData.iCpuLimit = 0;
         dictData.fMemoryLimitGigabytes = 0;
         dictData.sEnvironmentSource = _S_ENVIRONMENT_SOURCE_BUILD;
+        /* False until the researcher clicks a radio. The pinned image
+           is PRE-SELECTED the moment the clone's envelope says it can
+           be obtained (a published clone containerized by pressing
+           Next through the wizard used to get a build, whose digest
+           can never match the author's bytes); an explicit choice,
+           either way, is never overridden by a later re-render. */
+        dictData.bEnvironmentSourceChosen = false;
         dictData.bAllowEmulation = false;
         /* The Environment page's answer, fetched once per wizard and
            never sent: it describes the clone, the request describes the
@@ -1167,11 +1176,31 @@ var VaibifyWorkflowManager = (function () {
                     listAgentOverlays: [], listBaseFeatureKeys: [],
                 };
             }
-            if (_fiWizardPageAt(_iWizardStep) ===
+            var bMoved = _fbPreselectThePinnedImageWhenObtainable();
+            if (_fiWizardPageAt(_iWizardStep) !==
                     _DICT_WIZARD_PAGE.ENVIRONMENT) {
-                _fnRenderStepEnvironment(elContent);
+                return;
             }
+            /* A moved choice shortens the page list, so the whole
+               step re-renders for the progress dots to follow it. */
+            if (bMoved) _fnRenderWizardStep(_iWizardStep);
+            else _fnRenderStepEnvironment(elContent);
         });
+    }
+
+    function _fbPreselectThePinnedImageWhenObtainable() {
+        /* The default follows the clone, not the wizard: a published
+           clone whose envelope pins an obtainable image starts on the
+           author's image, because that is the only choice whose bytes
+           can match the manifest. Only an unmade choice is moved;
+           returns whether it was. */
+        if (_dictWizardData.bEnvironmentSourceChosen) return false;
+        var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
+        if (dictPinned.bObtainable !== true) return false;
+        if (_fbUsingPinnedImage()) return false;
+        _dictWizardData.sEnvironmentSource = _S_ENVIRONMENT_SOURCE_ARCHIVE;
+        _dictWizardData.listFeatures = _flistAuthorEnabledFeatures();
+        return true;
     }
 
     function _fsEnvironmentFactRow(sLabel, sValue) {
@@ -1247,6 +1276,7 @@ var VaibifyWorkflowManager = (function () {
             function (elRadio) {
                 elRadio.addEventListener("change", function () {
                     if (!elRadio.checked) return;
+                    _dictWizardData.bEnvironmentSourceChosen = true;
                     _fnChooseEnvironmentSource(elRadio.value);
                 });
             });

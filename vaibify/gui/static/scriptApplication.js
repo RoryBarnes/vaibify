@@ -4650,12 +4650,42 @@ const VaibifyApp = (function () {
         }
     }
 
+    /* The remedy for EITHER container fact when the image was BUILT
+       while the clone pins an obtainable one: on a published clone
+       that is the one cause of both, and the labels above would send
+       the researcher to rewrite the author's committed files so they
+       describe a build the author never made. Named once, so the two
+       facts cannot drift into two different instructions. */
+    var _S_L3_SWITCH_TO_PINNED_IMAGE_REMEDY =
+        "Container image — built from the Dockerfile, while the " +
+        "envelope pins the author's image. On the Environments hub, " +
+        "open the tile's menu and choose 'Switch to the author's " +
+        "pinned image'";
+
+    var _LIST_L3_CONTAINER_FACT_KEYS = [
+        "bImageMatchesDeclaredPackages", "bDockerfileDescribesPinnedImage",
+    ];
+
+    function _fbSwitchToPinnedImageIsTheRemedy(dictReady) {
+        return dictReady.bImageWasBuilt === true &&
+            dictReady.bPinnedImageObtainable === true;
+    }
+
     function _flistNamePendingReadiness(dictReady) {
         var listPending = [];
+        var bSwitchIsTheRemedy = _fbSwitchToPinnedImageIsTheRemedy(dictReady);
+        var bSwitchNamed = false;
         Object.keys(_DICT_L3_READINESS_LABELS).forEach(function (sKey) {
-            if (dictReady[sKey] !== true) {
-                listPending.push(_DICT_L3_READINESS_LABELS[sKey]);
+            if (dictReady[sKey] === true) return;
+            var bContainerFact = _LIST_L3_CONTAINER_FACT_KEYS.indexOf(sKey) >= 0;
+            if (bContainerFact && bSwitchIsTheRemedy) {
+                if (!bSwitchNamed) {
+                    listPending.push(_S_L3_SWITCH_TO_PINNED_IMAGE_REMEDY);
+                }
+                bSwitchNamed = true;
+                return;
             }
+            listPending.push(_DICT_L3_READINESS_LABELS[sKey]);
         });
         return listPending;
     }

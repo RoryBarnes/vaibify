@@ -937,3 +937,228 @@ def test_a_transition_is_refused_while_the_container_exists():
     buildRoutes._fnRefuseWhileTheContainerExists(
         {"bExists": False, "bRunning": False, "sStatus": "not found"}, "Switching",
     )
+
+
+# ---------------------------------------------------------------------
+# The way FORWARD: a built project switches to the author's pinned image
+# ---------------------------------------------------------------------
+
+
+def _fdictRegisterBuiltProject(tmp_path, sWorkingYaml, sCommittedYaml=None):
+    """A container project that BUILT its image, in a real git clone.
+
+    The committed ``vaibify.yml`` is the author's; the working copy is
+    what the build's merge left behind. ``None`` commits nothing, so
+    HEAD holds no config to restore from.
+    """
+    import subprocess
+    sDirectory = str(tmp_path / "clone")
+    os.makedirs(sDirectory)
+    sConfigPath = os.path.join(sDirectory, "vaibify.yml")
+    listIdentity = ["-c", "user.email=a@b", "-c", "user.name=a"]
+    subprocess.run(["git", "init", "-q"], cwd=sDirectory, check=True)
+    subprocess.run(
+        ["git", *listIdentity, "commit", "-q", "--allow-empty", "-m", "root"],
+        cwd=sDirectory, check=True,
+    )
+    if sCommittedYaml is not None:
+        with open(sConfigPath, "w") as fileHandle:
+            fileHandle.write(sCommittedYaml)
+        subprocess.run(["git", "add", "vaibify.yml"], cwd=sDirectory, check=True)
+        subprocess.run(
+            ["git", *listIdentity, "commit", "-q", "-m", "author"],
+            cwd=sDirectory, check=True,
+        )
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write(sWorkingYaml)
+    fnWriteJson(sDirectory, ".vaibify/environment.json", fdictBuildEnvelope())
+    registryManager.fnAddProject(sDirectory, sMode="host")
+    registryManager.fnConvertProjectToContainer("proj", "proj", None)
+    return registryManager.fdictGetProject("proj")
+
+
+S_AUTHOR_YAML = (
+    "projectName: proj\npythonVersion: '3.11'\npythonPackages:\n  - numpy\n"
+    "features:\n  claude: true\n  latex: true\n  claudeAutoUpdate: true\n"
+)
+S_BUILT_YAML = (
+    "projectName: proj\npythonVersion: '3.12'\ncpuLimit: 1\n"
+    "features:\n  codex: true\n  latex: false\n  claudeAutoUpdate: false\n"
+)
+
+
+@pytest.mark.falsification
+def test_switching_to_obtaining_writes_the_source_and_nothing_else(tmp_path):
+    """Kills: writing the origin record here (the acquisition's to write)."""
+    _fdictRegisterBuiltProject(tmp_path, S_BUILT_YAML, S_AUTHOR_YAML)
+    dictSource = {"sSource": "archive", "sPinnedImageReference": S_PIN}
+    registryManager.fnSwitchProjectToObtaining("proj", dictSource)
+    dictProject = registryManager.fdictGetProject("proj")
+    assert dictProject["dictImageSource"] == dictSource
+    assert dictProject["sMode"] == "container"
+    assert fdictReadOriginRecord("proj") is None
+
+
+def test_switching_to_obtaining_refuses_the_wrong_starting_states(tmp_path):
+    with pytest.raises(ValueError):
+        registryManager.fnSwitchProjectToObtaining("proj", {"sSource": "build"})
+    with pytest.raises(KeyError):
+        registryManager.fnSwitchProjectToObtaining("proj", {"sSource": "archive"})
+    _fdictRegisterObtainedProject(tmp_path, [], [])
+    with pytest.raises(ValueError, match="already obtains"):
+        registryManager.fnSwitchProjectToObtaining("proj", {"sSource": "archive"})
+
+
+def test_switching_to_obtaining_refuses_a_host_project(tmp_path):
+    sDirectory = str(tmp_path / "host")
+    os.makedirs(sDirectory)
+    with open(os.path.join(sDirectory, "vaibify.yml"), "w") as fileHandle:
+        fileHandle.write("projectName: host\n")
+    registryManager.fnAddProject(sDirectory, sMode="host")
+    with pytest.raises(ValueError, match="host project"):
+        registryManager.fnSwitchProjectToObtaining("host", {"sSource": "archive"})
+
+
+@pytest.mark.falsification
+def test_restoring_the_authors_base_fields_reads_head_not_the_working_tree(
+    tmp_path,
+):
+    """The committed copy is the author's; the working copy is the build's.
+
+    The two are made DIFFERENT in every base field so a restore that
+    reads the working tree is observable.
+
+    Kills: taking the base keys from the existing file instead of the
+    committed one.
+    """
+    import yaml
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fnRestoreAuthorBaseFieldsFromGit,
+    )
+    dictProject = _fdictRegisterBuiltProject(tmp_path, S_BUILT_YAML, S_AUTHOR_YAML)
+    fnRestoreAuthorBaseFieldsFromGit(dictProject)
+    with open(dictProject["sConfigPath"]) as fileHandle:
+        dictRestored = yaml.safe_load(fileHandle)
+    assert dictRestored["pythonVersion"] == "3.11"
+    assert dictRestored["pythonPackages"] == ["numpy"]
+    assert dictRestored["features"]["claude"] is True
+    assert dictRestored["features"]["latex"] is True
+    # The researcher's runtime choices survive the restore.
+    assert dictRestored["cpuLimit"] == 1
+    assert dictRestored["features"]["claudeAutoUpdate"] is False
+    # The build's agent is not in the author's features block.
+    assert dictRestored["features"].get("codex") is not True
+
+
+@pytest.mark.falsification
+def test_restoring_refuses_when_head_holds_no_config(tmp_path):
+    """Kills: falling back to the working copy when git has no author's file."""
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fnRestoreAuthorBaseFieldsFromGit,
+    )
+    dictProject = _fdictRegisterBuiltProject(tmp_path, S_BUILT_YAML, None)
+    with pytest.raises(HTTPException) as excinfo:
+        fnRestoreAuthorBaseFieldsFromGit(dictProject)
+    assert excinfo.value.status_code == 409
+    assert "git checkout" in excinfo.value.detail["sMessage"]
+
+
+@pytest.mark.falsification
+def test_the_switch_source_reads_the_researchers_agents_before_restoring(
+    tmp_path,
+):
+    """The additions are the agents the built image carried that the
+    author's image lacks; the baseline is the AUTHOR's.
+
+    Kills: resolving the baseline before the restore, which reads the
+    researcher's own agents as the author's and stacks none of them.
+    """
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictBuildArchiveImageSourceForSwitch,
+    )
+    dictProject = _fdictRegisterBuiltProject(tmp_path, S_BUILT_YAML, S_AUTHOR_YAML)
+    dictSource = fdictBuildArchiveImageSourceForSwitch(dictProject, False)
+    assert dictSource["sSource"] == "archive"
+    assert dictSource["listAuthorOverlays"] == ["claude"]
+    assert dictSource["listAdditionalAgents"] == ["codex"]
+    assert dictSource["sPinnedImageReference"]
+    assert dictSource["bAllowEmulation"] is False
+
+
+@pytest.mark.falsification
+def test_the_image_origin_names_the_switch_only_for_a_built_clone_that_pins(
+    tmp_path,
+):
+    """Kills: reading an obtained project, or a host one, as built."""
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fbSwitchToPinnedImageIsTheRemedy,
+        fdictDescribeImageOriginForProject,
+    )
+    assert fdictDescribeImageOriginForProject(None) == {
+        "bImageWasBuilt": False, "bPinnedImageObtainable": False,
+    }
+    assert fdictDescribeImageOriginForProject(
+        {"sMode": "host", "sDirectory": str(tmp_path)},
+    )["bImageWasBuilt"] is False
+    dictObtained = _fdictRegisterObtainedProject(tmp_path, [], [])
+    assert fdictDescribeImageOriginForProject(dictObtained) == {
+        "bImageWasBuilt": False, "bPinnedImageObtainable": False,
+    }
+    registryManager.fnRemoveProject("proj")
+    dictBuilt = _fdictRegisterBuiltProject(tmp_path / "b", S_BUILT_YAML, S_AUTHOR_YAML)
+    dictOrigin = fdictDescribeImageOriginForProject(dictBuilt)
+    assert dictOrigin == {"bImageWasBuilt": True, "bPinnedImageObtainable": True}
+    assert fbSwitchToPinnedImageIsTheRemedy(dictOrigin)
+    os.remove(os.path.join(dictBuilt["sDirectory"], ".vaibify", "environment.json"))
+    assert fdictDescribeImageOriginForProject(dictBuilt) == {
+        "bImageWasBuilt": True, "bPinnedImageObtainable": False,
+    }
+
+
+@pytest.mark.falsification
+def test_a_container_fact_refusal_names_the_switch_for_a_built_clone(
+    monkeypatch,
+):
+    """Both container facts have one cause on a built clone, one remedy.
+
+    Kills: naming the package rewrite (or the Dockerfile re-export)
+    when the switch is the remedy, which sends the researcher to
+    rewrite the author's committed files.
+    """
+    from vaibify.gui.routes import reproducibilityRoutes
+    monkeypatch.setattr(reproducibilityRoutes, "fbL3ReadinessOK", lambda *a: True)
+    monkeypatch.setattr(
+        reproducibilityRoutes, "fsCurrentManifestDigest", lambda *a: "digest",
+    )
+    dictMismatch = {
+        "bChecked": True, "bMatches": False,
+        "listMissingFromImage": [], "listExtraInImage": ["numpy"],
+    }
+    dictProvenanceBad = {"bDockerfileDescribesPinnedImage": False}
+    dictBuiltClone = {"bImageWasBuilt": True, "bPinnedImageObtainable": True}
+
+    with pytest.raises(HTTPException) as excinfo:
+        reproducibilityRoutes._fsRequireReadinessThenDigest(
+            {}, None, dictMismatch, dictProvenanceBad, dictBuiltClone,
+        )
+    sDetail = str(excinfo.value.detail)
+    assert "Switch to the author's pinned image" in sDetail
+    assert "pythonPackages" not in sDetail
+    assert "re-export" not in sDetail
+    assert sDetail.count("Switch to the author's pinned image") == 1
+
+    # An author's own rebuilt image keeps the rewrite remedies.
+    with pytest.raises(HTTPException) as excinfo:
+        reproducibilityRoutes._fsRequireReadinessThenDigest(
+            {}, None, dictMismatch, dictProvenanceBad,
+            {"bImageWasBuilt": True, "bPinnedImageObtainable": False},
+        )
+    sDetail = str(excinfo.value.detail)
+    assert "pythonPackages" in sDetail and "re-export" in sDetail
+    assert "Switch to the author's pinned image" not in sDetail
+
+    # Nothing unmet: the digest comes back.
+    assert reproducibilityRoutes._fsRequireReadinessThenDigest(
+        {}, None, {"bChecked": True, "bMatches": True},
+        {"bDockerfileDescribesPinnedImage": True}, dictBuiltClone,
+    ) == "digest"

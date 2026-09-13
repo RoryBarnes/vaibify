@@ -125,6 +125,7 @@ __all__ = [
     "flistAdmittedLocalCloneRoots",
     "fnDiscardStagedSource",
     "flistSweepAbandonedStaging",
+    "fsReadCommittedFileOrNone",
     "fsRequiredPlatformFromArchitecture",
     "fsStagedClonePath",
 ]
@@ -617,6 +618,27 @@ def _fprocessSyntheticFailure(listArguments, iReturnCode, sStderr):
         args=["git"] + list(listArguments), returncode=iReturnCode,
         stdout="", stderr=sStderr,
     )
+
+
+def fsReadCommittedFileOrNone(sRepoPath, sRelativePath):
+    """Return the text of ``sRelativePath`` as committed at HEAD, or None.
+
+    The one reader of a host clone's COMMITTED file, for the transition
+    that restores the author's ``vaibify.yml`` after a build rewrote
+    the working copy: the working tree is the researcher's, HEAD is
+    the author's. ``None`` covers every way git cannot answer -- an
+    untracked path, no commits, no repository, no git -- because the
+    caller's only question is whether an author's copy exists to
+    restore from, and it refuses by name when none does. Runs under the
+    same hardening as every other host git query here.
+    """
+    sPosixRelative = sRelativePath.replace(os.sep, "/")
+    processGit = _fprocessRunGit(
+        ["show", f"HEAD:{sPosixRelative}"], sCwd=sRepoPath,
+    )
+    if processGit.returncode != 0:
+        return None
+    return processGit.stdout
 
 
 def _fsGitQueryOrRefuse(listArguments, sCwd, sWhat):

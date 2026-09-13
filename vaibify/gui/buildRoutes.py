@@ -38,6 +38,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterBuildContainer(app, dictCtx)
     _fnRegisterAcquireImage(app, dictCtx)
     _fnRegisterSwitchToBuilding(app, dictCtx)
+    _fnRegisterSwitchToPinnedImage(app, dictCtx)
     _fnRegisterBuildProgress(app, dictCtx)
 
 
@@ -290,6 +291,60 @@ def _fnRegisterSwitchToBuilding(app, dictCtx):
             "bSwitched": True,
             "sBuildPath": f"/api/containers/{sName}/build",
         }
+
+
+def _fnRegisterSwitchToPinnedImage(app, dictCtx):
+    """Register POST /api/containers/{sName}/switch-to-pinned-image.
+
+    The way FORWARD from a built image, for a clone containerized by
+    building while its envelope pins the author's image (the state a
+    researcher lands in by pressing Next through the wizard before the
+    pinned image was its default). It restores the author's
+    image-defining fields into ``vaibify.yml`` from the committed copy,
+    writes the registry's image source, and hands the frontend the
+    acquire lane; the origin record is the acquisition's to write.
+    The container must be gone first, by the daemon's word, exactly
+    as for the two transitions beside it.
+    """
+
+    @app.post("/api/containers/{sName}/switch-to-pinned-image")
+    async def fdictSwitchToPinnedImage(
+        sName: str, requestHttp: Request, bAllowEmulation: bool = False,
+    ):
+        from vaibify.config.registryManager import (
+            fbProjectImageIsObtained,
+            fnSwitchProjectToObtaining,
+        )
+        from vaibify.gui.pinnedEnvironmentConversion import (
+            fdictBuildArchiveImageSourceForSwitch,
+        )
+        from vaibify.gui.registryRoutes import _fdictRequireProject
+        from vaibify.gui.routeContext import (
+            fnRefuseContainerOnlyForHostProject,
+            fnRejectAgentTokenLane,
+        )
+        fnRejectAgentTokenLane(requestHttp)
+        fnRefuseContainerOnlyForHostProject(
+            sName, "Switching to the pinned image",
+        )
+        dictProject = _fdictRequireProject(sName)
+        sAcquirePath = f"/api/containers/{sName}/acquire-image"
+        if fbProjectImageIsObtained(dictProject):
+            return {"bSwitched": False, "sAcquirePath": sAcquirePath,
+                    "sMessage": (
+                        "This project already obtains the author's "
+                        "pinned image."
+                    )}
+        _fnRefuseWhileABuildIsLive(sName)
+        _fnRefuseWhileTheContainerExists(
+            await asyncio.to_thread(_fdictContainerStatusOrNone, dictProject),
+            "Switching to the pinned image",
+        )
+        dictSource = await asyncio.to_thread(
+            fdictBuildArchiveImageSourceForSwitch, dictProject, bAllowEmulation,
+        )
+        await asyncio.to_thread(fnSwitchProjectToObtaining, sName, dictSource)
+        return {"bSwitched": True, "sAcquirePath": sAcquirePath}
 
 
 def _fnRegisterBuildProgress(app, dictCtx):
