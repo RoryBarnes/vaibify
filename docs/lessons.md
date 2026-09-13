@@ -105,7 +105,7 @@ correct approach.
   `PYTHONPATH=. python tools/carrierIntentAudit.py` for carrier
   coverage, `python tools/listModules.py` for structure. This is the
   deterministic-versus-stochastic split from
-  [docs/vibeCoding.md](docs/vibeCoding.md) applied to this file: a fact
+  [docs/vibeCoding.md](vibeCoding.md) applied to this file: a fact
   that changes when the code changes does not belong in prose that
   does not.
 - The carrier migration's only proof was unobservable in the tests that
