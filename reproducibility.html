@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.14.dev4 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.14.dev6 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2a7ae555"></script>
+      <script src="_static/documentation_options.js?v=b9faeb26"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -343,6 +343,22 @@ not inside the container: for a container project the declaration is
 staged out to a host temp directory, compiled there, and the resulting
 lockfile written back through the container adapter. Installing a lock
 generator <em>inside</em> the container therefore changes nothing.</p>
+<p>The compile is <strong>constrained to what the container runs</strong>. Left to
+itself, a resolver on the host pins whatever the host’s own
+interpreter would install today: a laptop with Python 3.10 beside a
+container running 3.12 wrote a lock naming numpy 2.2.6 for a container
+that ran 2.5.2, and the lock described neither the container nor the
+author’s environment (measured 2026-09-13). So before compiling,
+vaibify asks the container for its interpreter version, its
+architecture and its installed packages (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">freeze</span></code>), and hands all
+three to the resolver: the installed set as a constraints file, so
+every package the declaration reaches is held to the version that
+actually ran while packages the declaration does not reach stay out of
+the lock; and, for <code class="docutils literal notranslate"><span class="pre">uv</span></code>, the interpreter version and platform as the
+resolution target. A container that cannot be asked fails the tier by
+name rather than compiling unconstrained, because an unconstrained lock
+is the defect. A host project still compiles in place against the host
+interpreter, which is the one its steps run under.</p>
 <p>Verifiers reproduce the environment with stock <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">--</span><span class="n">require</span><span class="o">-</span><span class="n">hashes</span> <span class="o">-</span><span class="n">r</span> <span class="n">requirements</span><span class="o">.</span><span class="n">lock</span>
 </pre></div>

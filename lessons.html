@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev4 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev6 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2a7ae555"></script>
+      <script src="_static/documentation_options.js?v=b9faeb26"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -557,6 +557,22 @@ their last digits (researcher-reported, 2026-09-13). The tell was in
 file, ask git whose file it is; and when a check can pass against
 something the tool itself wrote, the check must say which thing it
 read. Guarded by <code class="docutils literal notranslate"><span class="pre">tests/testForeignManifestGuard.py</span></code>.</p></li>
+<li><p><strong>A resolver on the host cannot answer a question about the
+container.</strong> <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> was compiled by <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">compile</span></code> on
+the host from the mirror’s loose ranges, so it pinned what the HOST
+interpreter would install: a laptop with Python 3.10 wrote numpy
+2.2.6, scipy 1.15.3 and astropy 6.1.7 – the last releases for 3.10
+– for a container running 3.12 with numpy 2.5.2 (measured
+2026-09-13). The entrypoint’s own comment promised the image, the
+mirror and the lock “agree by construction”; they agreed only when
+the host and the container happened to share an interpreter. When a
+tool runs on one machine to describe another, the description must
+be built from facts the other machine reports – here the
+container’s <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">freeze</span></code> as constraints and its interpreter as the
+target – and a machine that cannot be asked must refuse rather than
+answer from the wrong side. Guarded by
+<code class="docutils literal notranslate"><span class="pre">tests/testDependencyPinning.py</span></code> and the live compile in
+<code class="docutils literal notranslate"><span class="pre">tests/testLockInputFallsBackToVaibifyRequirements.py</span></code>.</p></li>
 </ul>
 </section>
 
