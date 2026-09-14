@@ -3415,16 +3415,25 @@ def _fdictBuildManifestVerifyResult(
     envelope. An empty list means full coverage; a non-empty list is
     advisory, not a failure.
     """
-    from vaibify.reproducibility import manifestWriter
+    from vaibify.reproducibility import gitEvidence, manifestWriter
     try:
         iTotal = manifestWriter.fiCountManifestEntries(filesRepo)
     except FileNotFoundError:
         iTotal = 0
+    # WHICH manifest was checked, beside the count. A check that
+    # passes against a manifest this machine rewrote is a comparison
+    # of the outputs with themselves; the dashboard says so rather
+    # than reporting "all match" (researcher-reported, 2026-09-13).
+    dictProvenance = gitEvidence.fdictManifestProvenanceForRepoFiles(
+        filesRepo,
+    )
     return {
         "iTotal": iTotal,
         "iMatching": iTotal - len(listMismatches),
         "listMismatches": listMismatches,
         "saIncomplete": list(listIncomplete),
+        "sManifestOwnership": dictProvenance["sManifestOwnership"],
+        "bManifestDiffersFromHead": dictProvenance["bManifestDiffersFromHead"],
     }
 
 

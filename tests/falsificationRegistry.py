@@ -18962,7 +18962,7 @@ def _fdictEntry(sRel):
             'tests/testReproducedManifest.py::'
             'test_a_clone_carrying_another_identitys_attestation_records_a_reproduction'
         ),
-        source='vaibify/reproducibility/reproductionRecord.py',
+        source='vaibify/reproducibility/gitEvidence.py',
         # every clone is the author's own
         old='    return sCommitter.lower() != sOwnEmail.lower()\n',
         new='    return False\n',
@@ -18972,7 +18972,7 @@ def _fdictEntry(sRel):
             'tests/testReproducedManifest.py::'
             'test_an_unconfigured_identity_counts_as_foreign'
         ),
-        source='vaibify/reproducibility/reproductionRecord.py',
+        source='vaibify/reproducibility/gitEvidence.py',
         # a missing identity is taken to be the author's
         old=(
             '    if iExitCode == 1 or (iExitCode == 0 and not sOwnEmail):\n'
@@ -19396,18 +19396,18 @@ def _fdictEntry(sRel):
             'tests/testReproducedManifest.py::'
             'test_an_unanswerable_ownership_question_refuses_never_attests'
         ),
-        source='vaibify/reproducibility/reproductionRecord.py',
+        source='vaibify/reproducibility/gitEvidence.py',
         # a committer git cannot name is taken to be the author
         old=(
             '    if iExitCode != 0 or not sCommitter:\n'
             '        raise RecordKindUndeterminedError(\n'
-            '            "the attestation is tracked at HEAD but git could not say who "\n'
+            '            f"{sWhat} is tracked at HEAD but git could not say who "\n'
         ),
         new=(
             '    if iExitCode != 0 or not sCommitter:\n'
             '        return False\n'
             '        raise RecordKindUndeterminedError(\n'
-            '            "the attestation is tracked at HEAD but git could not say who "\n'
+            '            f"{sWhat} is tracked at HEAD but git could not say who "\n'
         ),
     ),
     Falsification(
@@ -19816,6 +19816,210 @@ def _fdictEntry(sRel):
         new=(
             '        return dictReady.bImageWasBuilt === true &&\n'
             '            dictReady.bPinnedImageObtainable === false;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_a_manifest_committed_by_another_identity_is_foreign'
+        ),
+        source='vaibify/reproducibility/gitEvidence.py',
+        # the manifest question is asked of the attestation's path
+        old=(
+            '        ftRunGit, _S_MANIFEST_RELATIVE_PATH, "the manifest",\n'
+        ),
+        new=(
+            '        ftRunGit, _S_ATTESTATION_RELATIVE_PATH, "the manifest",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_a_git_that_cannot_answer_is_undetermined_never_own'
+        ),
+        source='vaibify/reproducibility/gitEvidence.py',
+        # a git that cannot say reads as the researcher's own
+        old=(
+            '    except RecordKindUndeterminedError:\n'
+            '        return S_MANIFEST_OWNERSHIP_UNDETERMINED\n'
+        ),
+        new=(
+            '    except RecordKindUndeterminedError:\n'
+            '        return S_MANIFEST_OWNERSHIP_OWN\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_a_manifest_that_moved_since_head_is_reported'
+        ),
+        source='vaibify/reproducibility/gitEvidence.py',
+        # the working copy always reads as the committed one
+        old=(
+            '    if iExitCode in (0, 1):\n'
+            '        return iExitCode == 1\n'
+        ),
+        new=(
+            '    if iExitCode in (0, 1):\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_regenerate_refuses_a_foreign_manifest_without_consent'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # regenerate proceeds over the author's manifest without asking
+        old=(
+            '    if bReplaceForeignManifest:\n'
+            '        return\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_an_undetermined_owner_cannot_be_consented_past'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # consent lets a write through when git could not say whose it is
+        old=(
+            '    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n'
+        ),
+        new=(
+            '    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED and not bReplaceForeignManifest:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_the_archive_repin_skips_a_foreign_manifest'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # the archive record re-pins the author's manifest on a clone
+        old=(
+            '    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n'
+            "        # Never over somebody else's manifest; the flag says so, and\n"
+        ),
+        new=(
+            '    if False:\n'
+            "        # Never over somebody else's manifest; the flag says so, and\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_the_reproduce_script_repin_skips_a_foreign_manifest'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # writing reproduce.sh re-pins the author's manifest on a clone
+        old=(
+            '    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n'
+            "        # Never over somebody else's manifest: the re-pin degrades to\n"
+        ),
+        new=(
+            '    if False:\n'
+            "        # Never over somebody else's manifest: the re-pin degrades to\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_the_manifest_check_says_which_manifest_it_read'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # the check reports every manifest as the committed one
+        old=(
+            '        "sManifestOwnership": dictProvenance["sManifestOwnership"],\n'
+            '        "bManifestDiffersFromHead": dictProvenance["bManifestDiffersFromHead"],\n'
+        ),
+        new=(
+            '        "sManifestOwnership": "own",\n'
+            '        "bManifestDiffersFromHead": False,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManagerProofAdditions.py::'
+            'test_refresh_envelope_never_writes_over_a_foreign_manifest'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # the Level 1 crossing regenerates over the author's manifest
+        old=(
+            '    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n'
+            '        logger.warning(\n'
+            '            "L1-transition envelope refresh skipped: the manifest at HEAD "\n'
+        ),
+        new=(
+            '    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n'
+            '        logger.warning(\n'
+            '            "L1-transition envelope refresh skipped: the manifest at HEAD "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManagerProofAdditions.py::'
+            'test_refresh_envelope_does_not_write_when_git_cannot_say_whose'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # an unanswerable ownership question regenerates anyway
+        old=(
+            '    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n'
+            '        logger.warning(\n'
+            '            "L1-transition envelope refresh skipped: the manifest at HEAD "\n'
+        ),
+        new=(
+            '    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n'
+            '        logger.warning(\n'
+            '            "L1-transition envelope refresh skipped: the manifest at HEAD "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testForeignManifestGuard.py::'
+            'test_regenerate_asks_in_the_servers_words_and_retries_with_consent'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the refusal is reported as a failure and nothing is offered
+        old=(
+            '            if (_fbRefusalNamesARetry(dictAction, error)) {\n'
+        ),
+        new=(
+            '            if (false && _fbRefusalNamesARetry(dictAction, error)) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testForeignManifestGuard.py::'
+            'test_a_clean_count_against_a_rewritten_manifest_is_a_warning'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # a clean count against a rewritten manifest reads as "all match"
+        old=(
+            '                if (listBad.length === 0 && sProvenance) {\n'
+        ),
+        new=(
+            '                if (false && sProvenance) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_regenerate_refuses_a_foreign_manifest_then_accepts_consent'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # the consent in the body is never read
+        old=(
+            '        bReplaceForeignManifest = bool(\n'
+            '            request is not None and request.bReplaceForeignManifest\n'
+            '        )\n'
+        ),
+        new=(
+            '        bReplaceForeignManifest = False\n'
         ),
     ),
 ]
