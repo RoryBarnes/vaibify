@@ -67,17 +67,81 @@ def test_refresh_envelope_no_op_when_below_l1():
     assert not mockGenerate.called
 
 
-def test_refresh_envelope_calls_archiver_when_at_l1():
-    """An L1-ready workflow triggers a single archiver call with the repo path."""
+def _fsRealRepositoryWithAManifest(tmp_path, sCommitterEmail, sOwnEmail):
+    """A git repository whose MANIFEST.sha256 ``sCommitterEmail`` committed.
+
+    A real repository because the refresh now asks git whose manifest
+    it is before writing; a path git cannot read is UNDETERMINED and
+    the refresh does not write over it.
+    """
+    import os
+    import subprocess
+    sRepo = str(tmp_path / "repo")
+    os.makedirs(sRepo)
+    dictEnvironment = dict(
+        os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL=sCommitterEmail,
+        GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL=sCommitterEmail,
+    )
+    with open(os.path.join(sRepo, "MANIFEST.sha256"), "w") as fileHandle:
+        fileHandle.write("# vaibify manifest\n")
+    for listArguments in (
+        ["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "author"],
+        ["config", "user.email", sOwnEmail],
+    ):
+        subprocess.run(
+            ["git", *listArguments], cwd=sRepo, env=dictEnvironment,
+            check=True, capture_output=True,
+        )
+    return sRepo
+
+
+def test_refresh_envelope_calls_archiver_when_at_l1(tmp_path):
+    """An L1-ready workflow whose manifest is its own triggers one archiver call."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
+    dictWorkflow["sProjectRepoPath"] = _fsRealRepositoryWithAManifest(
+        tmp_path, "author@example.invalid", "author@example.invalid",
+    )
     with patch(
         "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
     assert mockGenerate.called
     args, kwargs = mockGenerate.call_args
-    assert args[0] == "/repo"
+    assert args[0] == dictWorkflow["sProjectRepoPath"]
     assert kwargs.get("sContainerName") == "ctr"
+
+
+@pytest.mark.falsification
+def test_refresh_envelope_never_writes_over_a_foreign_manifest(tmp_path):
+    """A clone crosses Level 1 when its reader approves the steps; the
+    refresh then replaced the AUTHOR's manifest, lock and envelope with
+    the reader's own and the manifest check passed against a
+    self-comparison (researcher-reported, 2026-09-13).
+
+    Kills: regenerating regardless of whose manifest HEAD tracks.
+    """
+    dictWorkflow = _fdictBuildL1ReadyWorkflow()
+    dictWorkflow["sProjectRepoPath"] = _fsRealRepositoryWithAManifest(
+        tmp_path, "author@example.invalid", "reader@example.invalid",
+    )
+    with patch(
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
+    ) as mockGenerate:
+        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
+    assert not mockGenerate.called
+
+
+@pytest.mark.falsification
+def test_refresh_envelope_does_not_write_when_git_cannot_say_whose(tmp_path):
+    """Kills: treating an unanswerable ownership question as the reader's own."""
+    dictWorkflow = _fdictBuildL1ReadyWorkflow()
+    dictWorkflow["sProjectRepoPath"] = str(tmp_path / "not-a-repo")
+    with patch(
+        "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
+    ) as mockGenerate:
+        _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
+    assert not mockGenerate.called
 
 
 def test_refresh_envelope_swallows_archiver_exception(caplog):
@@ -91,9 +155,12 @@ def test_refresh_envelope_swallows_archiver_exception(caplog):
         _fnRefreshEnvelopeIfLevel1(dictWorkflow, sContainerId="ctr")
 
 
-def test_refresh_envelope_passes_host_binaries():
+def test_refresh_envelope_passes_host_binaries(tmp_path):
     """The archiver is called with the workflow's saHostBinaries list."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
+    dictWorkflow["sProjectRepoPath"] = _fsRealRepositoryWithAManifest(
+        tmp_path, "author@example.invalid", "author@example.invalid",
+    )
     dictWorkflow["saHostBinaries"] = ["/usr/bin/gcc"]
     with patch(
         "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
@@ -130,13 +197,23 @@ def test_auto_archive_negative_step_index_returns_false():
     assert bResult is False
 
 
-def test_auto_archive_promoted_runs_envelope_refresh():
+def test_auto_archive_promoted_runs_envelope_refresh(tmp_path):
     """On L1 promotion the envelope-refresh hook fires even with bAutoArchive False."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
+    dictWorkflow["sProjectRepoPath"] = _fsRealRepositoryWithAManifest(
+        tmp_path, "author@example.invalid", "author@example.invalid",
+    )
     dictWorkflow["bAutoArchive"] = False
+    # The connection double cannot run git in a container, so the
+    # ownership question is answered here: this test pins the DISPATCH
+    # (the refresh fires without bAutoArchive), not the ownership rule,
+    # which the refresh tests above drive through a real git.
     with patch(
         "vaibify.reproducibility.dataArchiver.fdictGenerateReproducibilityEnvelope",
-    ) as mockGenerate:
+    ) as mockGenerate, patch(
+        "vaibify.reproducibility.gitEvidence.fsManifestOwnershipForRepoFiles",
+        return_value="own",
+    ):
         fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 0, 0,
         )

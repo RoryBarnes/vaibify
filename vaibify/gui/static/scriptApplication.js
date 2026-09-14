@@ -3553,6 +3553,18 @@ const VaibifyApp = (function () {
         "regenerate-envelope": {
             sPath: "/level3/envelope",
             bOfferCommitAfterGenerate: true,
+            /* The server refuses to replace a manifest another
+               identity committed -- the author's claim on a clone --
+               and names this action; the researcher is asked in the
+               server's own words and the request is retried with
+               consent. An undetermined owner is refused without an
+               action and stays refused. */
+            dictRetryOnRefusal: {
+                sAction: "confirm-replace-foreign-manifest",
+                sTitle: "Replace the author’s manifest?",
+                sConfirmLabel: "Replace it",
+                dictBody: {bReplaceForeignManifest: true},
+            },
             // Asked BEFORE, because the cost lands afterwards and is
             // not recoverable by undoing anything. A fresh capture
             // can differ from the published one, and then the level
@@ -3629,6 +3641,15 @@ const VaibifyApp = (function () {
             fdictAfterResponse: function (dictResult) {
                 var iTotal = (dictResult || {}).iTotal || 0;
                 var listBad = (dictResult || {}).listMismatches || [];
+                var sProvenance = _fsDescribeManifestProvenance(dictResult);
+                if (listBad.length === 0 && sProvenance) {
+                    /* A clean count against a manifest this machine
+                       rewrote is a self-comparison, and the toast
+                       must not read as "the author's bytes". */
+                    return {sMessage: "All " + iTotal + " manifest " +
+                        "files match their pinned hashes, but " +
+                        sProvenance, sType: "warning"};
+                }
                 if (listBad.length === 0) {
                     return {sMessage: "All " + iTotal + " manifest " +
                         "files match their pinned hashes.",
@@ -3877,6 +3898,27 @@ const VaibifyApp = (function () {
         };
     }
 
+    function _fsDescribeManifestProvenance(dictResult) {
+        /* Which manifest the check read, when that is not the one the
+           author committed. Empty when the working copy IS the
+           committed one (or nothing is tracked), so the ordinary
+           "all match" stands. Undetermined is said, never assumed. */
+        var dictPayload = dictResult || {};
+        if (dictPayload.bManifestDiffersFromHead === true) {
+            return "the manifest itself differs from the committed " +
+                "one, so this compares your outputs with a manifest " +
+                "this machine wrote. Run `git diff HEAD -- " +
+                "MANIFEST.sha256` to see what moved, or `git checkout " +
+                "-- MANIFEST.sha256` to check against the author's.";
+        }
+        if (dictPayload.bManifestDiffersFromHead === null &&
+                dictPayload.sManifestOwnership === "undetermined") {
+            return "git could not say whether the manifest is the " +
+                "committed one.";
+        }
+        return "";
+    }
+
     async function fnRunProjectAction(sAction, sArg, elButton) {
         // Runs a project action in place from the expanded
         // blocks (capture/declare binaries, regenerate the envelope,
@@ -3957,6 +3999,11 @@ const VaibifyApp = (function () {
                     sContainerId);
             }
         } catch (error) {
+            if (_fbRefusalNamesARetry(dictAction, error)) {
+                _fnOfferRetryWithConsent(
+                    dictAction, error, sContainerId, sArg, elButton);
+                return;
+            }
             fnShowToast(
                 "Action failed: " +
                 ((error && error.message) ? error.message : error),
@@ -3968,6 +4015,43 @@ const VaibifyApp = (function () {
         // connect payload — calling it bare threw and silently
         // skipped this refresh.)
         VaibifyPolling.fnStartFilePolling(sContainerId);
+    }
+
+    function _fbRefusalNamesARetry(dictAction, error) {
+        /* A 409 whose detail carries the action this table entry
+           declared it can retry on, with consent. Any other refusal,
+           and any refusal on an entry that declared none, is reported
+           as it is. */
+        var dictRetry = dictAction.dictRetryOnRefusal;
+        return Boolean(dictRetry && error && error.iStatus === 409 &&
+            error.dictDetail &&
+            error.dictDetail.sAction === dictRetry.sAction);
+    }
+
+    function _fnOfferRetryWithConsent(
+        dictAction, error, sContainerId, sArg, elButton) {
+        /* The server's own sentence is the question; consent retries
+           the same action with the declared body merged in, and a
+           second refusal is reported rather than asked again. */
+        var dictRetry = dictAction.dictRetryOnRefusal;
+        var sMessage = error.dictDetail.sMessage || error.message || "";
+        fnShowConfirmModal(
+            dictRetry.sTitle, sMessage,
+            async function () {
+                var dictConsented = Object.assign({}, dictAction, {
+                    dictRetryOnRefusal: null,
+                    fdictBody: function () {
+                        var oBase = dictAction.fdictBody
+                            ? dictAction.fdictBody(sArg) : {};
+                        return Object.assign({}, oBase, dictRetry.dictBody);
+                    },
+                    fdictBodyFromElement: null,
+                });
+                await _fnExecuteProjectAction(
+                    dictConsented, sContainerId, sArg, elButton);
+            },
+            {sConfirmLabel: dictRetry.sConfirmLabel || "Confirm"}
+        );
     }
 
     function fnSetCachedProofLevel(iLevel) {
