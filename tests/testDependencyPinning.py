@@ -357,3 +357,184 @@ def test_uv_compile_failure_redacts_credential_url(tmp_path):
     assert "tok123" not in excInfo.value.stderr
     assert "user:tok123" not in excInfo.value.stderr
     assert "<redacted>" in excInfo.value.stderr
+
+
+# ---------------------------------------------------------------------
+# The container lane pins what the CONTAINER runs (2026-09-13)
+# ---------------------------------------------------------------------
+
+
+class _ContainerAnsweringProbes:
+    """A container-rooted adapter whose probes answer from a table."""
+
+    def __init__(self, pathRoot, sVersionLine, sFreeze, iProbeExit=0):
+        self.pathRoot = pathRoot
+        self.sVersionLine = sVersionLine
+        self.sFreeze = sFreeze
+        self.iProbeExit = iProbeExit
+        self.dictWritten = {}
+        self.listCommands = []
+
+    def fsLocalRootOrNone(self):
+        return None
+
+    def fbIsFile(self, sRelPath):
+        return (self.pathRoot / sRelPath).is_file()
+
+    def fsReadText(self, sRelPath):
+        return (self.pathRoot / sRelPath).read_text()
+
+    def fnWriteTextAtomic(self, sRelPath, sText):
+        self.dictWritten[sRelPath] = sText
+
+    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+        self.listCommands.append(list(saCommand))
+        if self.iProbeExit:
+            return self.iProbeExit, "", "no such container"
+        if "freeze" in saCommand:
+            return 0, self.sFreeze, ""
+        return 0, self.sVersionLine, ""
+
+
+_S_FREEZE = (
+    "numpy==2.5.2\n"
+    "scipy==1.18.1\n"
+    "-e git+https://example.invalid/tool.git#egg=tool\n"
+    "vaibify @ file:///workspace/vaibify\n"
+    "# a comment\n"
+    "matplotlib==3.11.1\n"
+)
+
+
+def _ffnFakeRunRecordingStaging(sLockBody, dictSeen):
+    """A subprocess.run replacement that records what the staging dir held."""
+
+    def fnFake(listCommand, cwd, capture_output, text, timeout=None):
+        from pathlib import Path
+
+        dictSeen["listCommand"] = list(listCommand)
+        pathConstraints = Path(cwd) / "constraints.txt"
+        dictSeen["sConstraints"] = (
+            pathConstraints.read_text() if pathConstraints.is_file() else None
+        )
+        (Path(cwd) / "requirements.lock").write_text(sLockBody)
+        result = mock.Mock()
+        result.returncode = 0
+        result.stdout = ""
+        result.stderr = ""
+        return result
+
+    return fnFake
+
+
+@pytest.mark.falsification
+def test_a_container_lock_is_constrained_to_what_the_container_runs(tmp_path):
+    """The resolver is handed the container's installed set, interpreter
+    and platform; a host with a different Python cannot steer the pins.
+
+    Kills: compiling without the constraints, which pins whatever the
+    host's own interpreter would install today.
+    """
+    (tmp_path / "requirements.txt").write_text("numpy>=1.26\nscipy>=1.10\n")
+    filesRepo = _ContainerAnsweringProbes(tmp_path, "3 12 x86_64", _S_FREEZE)
+    dictSeen = {}
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=_ffnFakeRunRecordingStaging(_S_VALID_LOCK, dictSeen),
+        ):
+            fnGenerateRequirementsLock(filesRepo)
+    assert filesRepo.dictWritten["requirements.lock"] == _S_VALID_LOCK
+    listCommand = dictSeen["listCommand"]
+    assert listCommand[:4] == ["uv", "pip", "compile", "--generate-hashes"]
+    assert listCommand[listCommand.index("-c") + 1] == "constraints.txt"
+    assert listCommand[listCommand.index("--python-version") + 1] == "3.12"
+    assert listCommand[listCommand.index("--python-platform") + 1] == (
+        "x86_64-unknown-linux-gnu"
+    )
+    assert dictSeen["sConstraints"] == (
+        "numpy==2.5.2\nscipy==1.18.1\nmatplotlib==3.11.1\n"
+    )
+    # The probes ran INSIDE the container, through the adapter.
+    assert any("freeze" in listProbe for listProbe in filesRepo.listCommands)
+
+
+def test_the_freeze_is_reduced_to_exact_pins():
+    from vaibify.reproducibility.dependencyPinning import (
+        flistConstraintPinsFromFreeze,
+    )
+    assert flistConstraintPinsFromFreeze(_S_FREEZE) == [
+        "numpy==2.5.2", "scipy==1.18.1", "matplotlib==3.11.1",
+    ]
+    assert flistConstraintPinsFromFreeze("") == []
+
+
+@pytest.mark.falsification
+def test_a_container_that_cannot_be_asked_refuses_to_compile(tmp_path):
+    """Kills: compiling unconstrained when the probe fails, which is the
+    defect itself with a quieter log line."""
+    (tmp_path / "requirements.txt").write_text("numpy>=1.26\n")
+    filesRepo = _ContainerAnsweringProbes(tmp_path, "", "", iProbeExit=1)
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(sModule + ".subprocess.run") as mockRun:
+            with pytest.raises(subprocess.CalledProcessError) as excInfo:
+                fnGenerateRequirementsLock(filesRepo)
+    assert not mockRun.called
+    assert "could not be asked" in excInfo.value.stderr
+    assert "requirements.lock" not in filesRepo.dictWritten
+
+
+def test_piptools_gets_the_constraints_but_no_target_flags(tmp_path):
+    (tmp_path / "requirements.txt").write_text("numpy>=1.26\n")
+    filesRepo = _ContainerAnsweringProbes(tmp_path, "3 12 aarch64", _S_FREEZE)
+    dictSeen = {}
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value=None):
+        with mock.patch(
+            sModule + "._fbModuleAvailable",
+            side_effect=lambda sName: sName == "piptools",
+        ):
+            with mock.patch(
+                sModule + ".subprocess.run",
+                side_effect=_ffnFakeRunRecordingStaging(_S_VALID_LOCK, dictSeen),
+            ):
+                fnGenerateRequirementsLock(filesRepo)
+    listCommand = dictSeen["listCommand"]
+    assert listCommand[:3] == [sys.executable, "-m", "piptools"]
+    assert "-c" in listCommand and "constraints.txt" in listCommand
+    assert "--python-version" not in listCommand
+    assert "--python-platform" not in listCommand
+
+
+def test_an_unknown_machine_gets_a_version_but_no_platform(tmp_path):
+    (tmp_path / "requirements.txt").write_text("numpy>=1.26\n")
+    filesRepo = _ContainerAnsweringProbes(tmp_path, "3 11 riscv64", _S_FREEZE)
+    dictSeen = {}
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=_ffnFakeRunRecordingStaging(_S_VALID_LOCK, dictSeen),
+        ):
+            fnGenerateRequirementsLock(filesRepo)
+    listCommand = dictSeen["listCommand"]
+    assert listCommand[listCommand.index("--python-version") + 1] == "3.11"
+    assert "--python-platform" not in listCommand
+
+
+def test_a_host_clone_compiles_in_place_without_a_target(tmp_path):
+    """The host lane is unchanged: its resolver's interpreter is the one
+    the steps run under, so no constraints and no target are named."""
+    (tmp_path / "requirements.txt").write_text("numpy>=1.26\n")
+    sModule = "vaibify.reproducibility.dependencyPinning"
+    with mock.patch(sModule + ".shutil.which", return_value="/u/uv"):
+        with mock.patch(
+            sModule + ".subprocess.run",
+            side_effect=_fnFakeRunWriteLock(_S_VALID_LOCK),
+        ) as mockRun:
+            fnGenerateRequirementsLock(str(tmp_path))
+    listCommand = mockRun.call_args.args[0]
+    assert "-c" not in listCommand
+    assert "--python-version" not in listCommand

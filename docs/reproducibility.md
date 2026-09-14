@@ -212,6 +212,23 @@ staged out to a host temp directory, compiled there, and the resulting
 lockfile written back through the container adapter. Installing a lock
 generator *inside* the container therefore changes nothing.
 
+The compile is **constrained to what the container runs**. Left to
+itself, a resolver on the host pins whatever the host's own
+interpreter would install today: a laptop with Python 3.10 beside a
+container running 3.12 wrote a lock naming numpy 2.2.6 for a container
+that ran 2.5.2, and the lock described neither the container nor the
+author's environment (measured 2026-09-13). So before compiling,
+vaibify asks the container for its interpreter version, its
+architecture and its installed packages (`pip freeze`), and hands all
+three to the resolver: the installed set as a constraints file, so
+every package the declaration reaches is held to the version that
+actually ran while packages the declaration does not reach stay out of
+the lock; and, for `uv`, the interpreter version and platform as the
+resolution target. A container that cannot be asked fails the tier by
+name rather than compiling unconstrained, because an unconstrained lock
+is the defect. A host project still compiles in place against the host
+interpreter, which is the one its steps run under.
+
 Verifiers reproduce the environment with stock `pip`:
 
 ```
