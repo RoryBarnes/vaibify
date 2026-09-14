@@ -19818,6 +19818,19 @@ def _fdictEntry(sRel):
             '            dictReady.bPinnedImageObtainable === false;\n'
         ),
     ),
+    # --- 2026-09-13: the image declares no locale, so bash's line
+    # editor runs under POSIX and miscounts every multibyte character
+    # the UTF-8 terminal paints as one column ---
+    Falsification(
+        nodeid=(
+            'tests/testImageLocale.py::'
+            'test_the_image_gives_every_shell_a_utf_eight_locale'
+        ),
+        source='vaibify/containerImage/Dockerfile',
+        # the locale line is gone; every shell is back under POSIX
+        old='ENV LANG=C.UTF-8\n',
+        new='',
+    ),
     Falsification(
         nodeid=(
             'tests/testForeignManifestGuard.py::'

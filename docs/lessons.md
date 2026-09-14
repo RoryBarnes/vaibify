@@ -451,6 +451,28 @@ correct approach.
   `tests/testKeychainIsolationCrossesProcesses.py`, which asserts the
   backend the child itself reports rather than the variable the
   parent exported.
+- **A terminal that redraws a wrapped line on the wrong row is not
+  necessarily a resize bug, even in a pane whose last four defects
+  were.** A researcher pasted a command holding curly quotes, the
+  pane wrapped it, and history recall painted the second half over
+  the prompt row with a blank row beneath (researcher-reported,
+  2026-09-13). Every prior on this pane said width: the resize
+  ordering, the parked viewport, a `COLUMNS` the shell disagreed
+  with. Measured, the pty width equalled xterm's columns on both the
+  container and the host path. The cause was the IMAGE: it declared
+  no locale, so bash's line editor ran under POSIX and counted each
+  byte of a three-byte quote as its own column while xterm painted
+  one. The same paste with straight quotes rendered correctly, and
+  the same curly paste under `LANG=C.UTF-8` rendered correctly, which
+  is what separated the two hypotheses. When a symptom lives at the
+  seam between a program's model and the screen, vary the INPUT
+  before varying the geometry: a pure-ASCII control and a locale
+  control cost one run each, where a geometry hunt costs days. The
+  probe that settled it drove a real bash in the real image through
+  the hub's own Docker calls and rendered the bytes through the
+  shipped xterm.js build, so its verdict is about the researcher's
+  path and not a stand-in. `tests/testImageLocale.py` pins the
+  locale.
 - **A "best-effort" write that fires on a state transition is a write
   nobody consented to.** The envelope refresh on the Level 0 to 1
   crossing regenerated the manifest, the lock and the environment

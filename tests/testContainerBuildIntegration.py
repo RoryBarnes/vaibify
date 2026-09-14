@@ -415,3 +415,22 @@ class TestContainerSmoke:
         assert resultProcess.returncode == 0, (
             f"python --version failed: {resultProcess.stderr}"
         )
+
+    def test_shellCharsetIsUtfEight(self, configProject):
+        """The built image, not just its recipe, gives a shell UTF-8.
+
+        ``tests/testImageLocale.py`` reads the Dockerfile; this asks
+        the running container, which is what proves the base image's
+        glibc actually carries the locale the recipe names.
+        """
+        resultProcess = self._fnExecInContainer(
+            configProject, "locale charmap"
+        )
+        assert resultProcess.returncode == 0, (
+            f"locale charmap failed: {resultProcess.stderr}"
+        )
+        assert resultProcess.stdout.strip() == "UTF-8", (
+            f"Shell charset is {resultProcess.stdout.strip()!r}, so "
+            "bash's line editor miscounts multibyte characters the "
+            "dashboard terminal paints as one column"
+        )

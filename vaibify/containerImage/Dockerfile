@@ -604,6 +604,13 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod 700 /home/${CONTAINER_USER}/.local/share/python_keyring
 
 ENV GIT_EDITOR=nano
+# The dashboard terminal and every agent speak UTF-8 to the shell.
+# Without a locale, bash's line editor counts each byte of a
+# multibyte character as its own column, so a pasted line holding
+# one curly quote or accented letter is drawn one row off and history
+# recall paints over the rows above it. C.UTF-8 ships with the base
+# image's glibc, so nothing is installed for it.
+ENV LANG=C.UTF-8
 ENV WORKSPACE=${WORKSPACE_ROOT}
 ENV VC_PROJECT_NAME=${VC_PROJECT_NAME}
 ENV CONTAINER_USER=${CONTAINER_USER}
