@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev6 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev9 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b9faeb26"></script>
+      <script src="_static/documentation_options.js?v=51e048e4"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -543,6 +543,28 @@ inherit. Guarded by
 <code class="docutils literal notranslate"><span class="pre">tests/testKeychainIsolationCrossesProcesses.py</span></code>, which asserts the
 backend the child itself reports rather than the variable the
 parent exported.</p></li>
+<li><p><strong>A terminal that redraws a wrapped line on the wrong row is not
+necessarily a resize bug, even in a pane whose last four defects
+were.</strong> A researcher pasted a command holding curly quotes, the
+pane wrapped it, and history recall painted the second half over
+the prompt row with a blank row beneath (researcher-reported,
+2026-09-13). Every prior on this pane said width: the resize
+ordering, the parked viewport, a <code class="docutils literal notranslate"><span class="pre">COLUMNS</span></code> the shell disagreed
+with. Measured, the pty width equalled xterm’s columns on both the
+container and the host path. The cause was the IMAGE: it declared
+no locale, so bash’s line editor ran under POSIX and counted each
+byte of a three-byte quote as its own column while xterm painted
+one. The same paste with straight quotes rendered correctly, and
+the same curly paste under <code class="docutils literal notranslate"><span class="pre">LANG=C.UTF-8</span></code> rendered correctly, which
+is what separated the two hypotheses. When a symptom lives at the
+seam between a program’s model and the screen, vary the INPUT
+before varying the geometry: a pure-ASCII control and a locale
+control cost one run each, where a geometry hunt costs days. The
+probe that settled it drove a real bash in the real image through
+the hub’s own Docker calls and rendered the bytes through the
+shipped xterm.js build, so its verdict is about the researcher’s
+path and not a stand-in. <code class="docutils literal notranslate"><span class="pre">tests/testImageLocale.py</span></code> pins the
+locale.</p></li>
 <li><p><strong>A “best-effort” write that fires on a state transition is a write
 nobody consented to.</strong> The envelope refresh on the Level 0 to 1
 crossing regenerated the manifest, the lock and the environment
