@@ -451,7 +451,8 @@ const VaibifyApp = (function () {
             "about " + iMinutes + " minute" +
             (iMinutes === 1 ? "" : "s") + ". Run 'vaibify open' to " +
             "continue in a fresh tab — your container and any running " +
-            "step keep going.",
+            "step keep going. To stop this happening, raise or disable " +
+            "Session lifetime under Settings.",
             "warning");
     }
 
@@ -1451,28 +1452,79 @@ const VaibifyApp = (function () {
             "step without its own (right-click a step to set one); " +
             "a longer-running step is flagged as possibly hung — " +
             "the run is never stopped. 0 = no limit") +
-            fsIdleShutdownRowHtml() +
+            fsTimeoutSettingsRowsHtml() +
             fsAgentSettingsHtml();
     }
 
-    function fsIdleShutdownRowHtml() {
-        // Host-global, applied live via /api/preferences/idle-timeout.
-        // The gs-input-local class keeps it out of the .gs-input change
-        // binding that PUTs container settings; it saves through its own
-        // handler bound in fnLoadIdleTimeoutSetting.
-        return fsSettingsRowHtml("Idle shutdown",
-            '<select class="gs-input-local" id="gsIdleTimeout">' +
-            '<option value="never">Never</option>' +
-            '<option value="900">15 minutes</option>' +
-            '<option value="1800">30 minutes</option>' +
-            '<option value="3600">1 hour</option>' +
-            '<option value="7200">2 hours</option>' +
-            '</select>' +
-            '<span id="gsIdleTimeoutNote" class="gs-idle-note"></span>',
-            "When an idle hub with no connected dashboard and no " +
-            "running pipeline retires itself. An open dashboard always " +
-            "keeps it alive; Never disables self-shutdown. Applies " +
-            "immediately, no relaunch.");
+    /* The two host-global timeouts a researcher can set, and the whole
+       difference between them, because setting the wrong one and
+       waiting twelve hours to find out is the bug this pair exists to
+       end. IDLE SHUTDOWN retires the hub PROCESS when nobody is
+       looking; an open dashboard vetoes it, so a researcher sitting at
+       the screen never meets it. SESSION LIFETIME is the browser
+       credential's absolute cap, measured from when the tab was
+       minted, and it has NO such veto by design -- a forgotten-open
+       tab is exactly the case it exists to bound -- so it is the one
+       that ends a session somebody is using. They share a response
+       shape and a "never" vocabulary because the backend already
+       resolves all three tiers through one parser; a second copy of
+       this control would be where the two start to disagree about what
+       never means. */
+    var _LIST_TIMEOUT_SETTINGS = [
+        {
+            sElementId: "gsIdleTimeout",
+            sEndpoint: "/api/preferences/idle-timeout",
+            sLabel: "Idle shutdown",
+            sEnvironmentName: "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS",
+            listChoices: [
+                ["never", "Never"], ["900", "15 minutes"],
+                ["1800", "30 minutes"], ["3600", "1 hour"],
+                ["7200", "2 hours"],
+            ],
+            sHelp: "When an idle hub with no connected dashboard and " +
+                "no running pipeline retires itself. An open dashboard " +
+                "always keeps it alive, so this is not what ends a " +
+                "session you are using — that is Session lifetime " +
+                "below. Never disables self-shutdown. Applies " +
+                "immediately, no relaunch.",
+        },
+        {
+            sElementId: "gsSessionCap",
+            sEndpoint: "/api/preferences/session-cap",
+            sLabel: "Session lifetime",
+            sEnvironmentName: "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS",
+            listChoices: [
+                ["never", "Never"], ["14400", "4 hours"],
+                ["43200", "12 hours"], ["86400", "24 hours"],
+            ],
+            sHelp: "How long one browser tab's credential lives, " +
+                "counted from when the tab was opened and whether or " +
+                "not you are using it. Reaching it ends the tab's " +
+                "session; the container and any running step keep " +
+                "going. Never means the tab is never signed out. " +
+                "Applies on the next check, no relaunch.",
+        },
+    ];
+
+    function fsTimeoutSettingsRowsHtml() {
+        // Host-global, each applied live through its own endpoint. The
+        // gs-input-local class keeps these out of the .gs-input change
+        // binding that PUTs container settings; each saves through the
+        // handler bound in fnLoadTimeoutSetting.
+        return _LIST_TIMEOUT_SETTINGS.map(fsTimeoutSettingRowHtml).join("");
+    }
+
+    function fsTimeoutSettingRowHtml(dictSetting) {
+        var sOptions = dictSetting.listChoices.map(function (tChoice) {
+            return '<option value="' + tChoice[0] + '">' +
+                tChoice[1] + "</option>";
+        }).join("");
+        return fsSettingsRowHtml(dictSetting.sLabel,
+            '<select class="gs-input-local" id="' +
+            dictSetting.sElementId + '">' + sOptions + '</select>' +
+            '<span id="' + dictSetting.sElementId +
+            'Note" class="gs-idle-note"></span>',
+            dictSetting.sHelp);
     }
 
     function fsAgentSettingsHtml() {
@@ -1640,39 +1692,45 @@ const VaibifyApp = (function () {
             inp.addEventListener("change", fnSaveGlobalSettings);
         });
         fnBindSettingsSliders();
-        fnLoadIdleTimeoutSetting();
+        fnLoadTimeoutSettings();
     }
 
-    async function fnLoadIdleTimeoutSetting() {
-        var elSelect = document.getElementById("gsIdleTimeout");
+    function fnLoadTimeoutSettings() {
+        _LIST_TIMEOUT_SETTINGS.forEach(fnLoadTimeoutSetting);
+    }
+
+    async function fnLoadTimeoutSetting(dictSetting) {
+        var elSelect = document.getElementById(dictSetting.sElementId);
         if (!elSelect) return;
         try {
-            var dictInfo = await VaibifyApi.fdictGet(
-                "/api/preferences/idle-timeout");
-            fnApplyIdleTimeoutInfo(elSelect, dictInfo);
+            var dictInfo = await VaibifyApi.fdictGet(dictSetting.sEndpoint);
+            fnApplyTimeoutSettingInfo(dictSetting, elSelect, dictInfo);
         } catch (error) {
             // Best-effort: leave the default option selected.
         }
-        elSelect.addEventListener("change", fnSaveIdleTimeout);
+        elSelect.addEventListener("change", function () {
+            fnSaveTimeoutSetting(dictSetting);
+        });
     }
 
-    function fnApplyIdleTimeoutInfo(elSelect, dictInfo) {
+    function fnApplyTimeoutSettingInfo(dictSetting, elSelect, dictInfo) {
         var sValue = dictInfo.bNever
             ? "never"
             : String(Math.round(dictInfo.fSeconds));
-        fnEnsureIdleTimeoutOption(elSelect, sValue, dictInfo);
+        fnEnsureTimeoutSettingOption(elSelect, sValue, dictInfo);
         elSelect.value = sValue;
         elSelect.disabled = Boolean(dictInfo.bEnvOverride);
-        var elNote = document.getElementById("gsIdleTimeoutNote");
+        var elNote = document.getElementById(
+            dictSetting.sElementId + "Note");
         if (elNote) {
             elNote.textContent = dictInfo.bEnvOverride
-                ? "Pinned by VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS; the "
+                ? "Pinned by " + dictSetting.sEnvironmentName + "; the "
                   + "environment overrides this control."
                 : "";
         }
     }
 
-    function fnEnsureIdleTimeoutOption(elSelect, sValue, dictInfo) {
+    function fnEnsureTimeoutSettingOption(elSelect, sValue, dictInfo) {
         // The effective value (e.g. an env-pinned 60s) may not match a
         // preset; add a one-off option so the select shows the truth.
         if (elSelect.querySelector('option[value="' + sValue + '"]')) {
@@ -1686,17 +1744,18 @@ const VaibifyApp = (function () {
         elSelect.appendChild(elOption);
     }
 
-    async function fnSaveIdleTimeout() {
-        var elSelect = document.getElementById("gsIdleTimeout");
+    async function fnSaveTimeoutSetting(dictSetting) {
+        var elSelect = document.getElementById(dictSetting.sElementId);
         if (!elSelect) return;
         try {
             var dictInfo = await VaibifyApi.fdictPut(
-                "/api/preferences/idle-timeout",
-                {sValue: elSelect.value});
-            fnApplyIdleTimeoutInfo(elSelect, dictInfo);
-            fnShowToast("Idle shutdown updated", "success");
+                dictSetting.sEndpoint, {sValue: elSelect.value});
+            fnApplyTimeoutSettingInfo(dictSetting, elSelect, dictInfo);
+            fnShowToast(dictSetting.sLabel + " updated", "success");
         } catch (error) {
-            fnShowToast("Failed to update idle shutdown", "error");
+            fnShowToast(
+                "Failed to update " + dictSetting.sLabel.toLowerCase(),
+                "error");
         }
     }
 

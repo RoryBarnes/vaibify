@@ -917,6 +917,23 @@ than a very large number, because a 30-day cap outlives every hub
 process, so it would never fire while the dashboard still claimed a
 bound existed.
 
+**The cap's Settings tier had no control for most of its life**, and
+that is worth recording because the failure it produced was invisible
+from the code. The panel offered exactly one timeout, **Idle
+shutdown**, which governs the hub PROCESS retiring itself and is vetoed
+by an open dashboard. A researcher who wanted to stop being
+disconnected set it to Never, was disconnected at twelve hours anyway,
+and — the part that made it a reported bug rather than a
+misunderstanding — was told by the expiry notice to "raise the session
+cap in Settings", where no such control existed. The preference, the
+route and the backend tests were all present; only the row was
+missing. The panel now carries **Session lifetime** beside **Idle
+shutdown**, both driven by one parameterized control so the pair cannot
+drift into meaning different things by "never". Sliding idle remains
+settable by environment and preference only, with no row: it is
+refreshed by every request and vetoed by a live socket, so a dashboard
+in use never approaches it.
+
 The designed mitigation for the cap is the pre-expiry dashboard
 warning (`fdictSessionExpiryView`, lead
 `F_EXPIRY_WARNING_LEAD_SECONDS`). **It assumes an audience it

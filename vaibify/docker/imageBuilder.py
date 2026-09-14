@@ -518,6 +518,53 @@ def fbImageExists(sImageName):
     return processResult.returncode == 0
 
 
+def flistProjectImageReferences(sProjectName):
+    """Return every locally tagged image reference in a project's repository.
+
+    A build does not leave one image behind. It tags ``:base``, one tag
+    per overlay, and finally ``:latest`` -- all in the repository named
+    after the project -- so a deletion that removed only ``:latest``
+    would leave most of the bytes on the daemon while telling the
+    researcher the environment was gone.
+
+    An untagged (``<none>``) entry is skipped: it has no reference to
+    remove, and it disappears on its own once the tagged children that
+    hold it are gone.
+    """
+    processResult = subprocess.run(
+        ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}",
+         sProjectName],
+        capture_output=True, text=True,
+    )
+    if processResult.returncode != 0:
+        raise RuntimeError(
+            "docker images failed: " + processResult.stderr.strip()
+        )
+    return [
+        sReference for sReference in processResult.stdout.split()
+        if sReference and not sReference.endswith(":<none>")
+    ]
+
+
+def fbRemoveImage(sImageReference):
+    """Untag one image reference; True when it is gone afterwards.
+
+    Forced, because the project's tags form a parent chain: removing a
+    base while an overlay still descends from it is refused unforced,
+    and forcing untags it instead -- the image object itself goes when
+    the last child that holds it does. An image already absent counts as
+    gone: deletion is idempotent, and removing one reference can take
+    another with it.
+    """
+    processResult = subprocess.run(
+        ["docker", "rmi", "-f", sImageReference],
+        capture_output=True, text=True,
+    )
+    if processResult.returncode == 0:
+        return True
+    return not fbImageExists(sImageReference)
+
+
 def _fnRunDockerBuildCapturing(saCommand):
     """Run docker build, streaming stderr to the user and capturing the tail.
 

@@ -6322,7 +6322,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # council controller's live drives for the released resource — no
     # deliberation may keep running against a project whose lease is
     # gone. Cohesive with the release route it extends.
-    # +51 (2026-08-20): _fnReleaseCallerOwnedSessionForConversion — the
+    # +51 (2026-08-20): _fnReleaseCallerOwnedSession — the
     # convert/promote routes now release the CALLER'S OWN open session
     # through the lifecycle authority instead of refusing it, so a
     # sandbox can be promoted from inside the open project. One helper
@@ -6378,7 +6378,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # offer the switch to the author's image. The question itself
     # lives in pinnedEnvironmentConversion (one function, shared with
     # the verify's refusals); what stays here is the loop that asks it.
-    "registryRoutes.py": 2238,
+    # +9 (2026-09-13): permanent environment deletion arrived as its
+    # OWN route module (environmentDeletionRoutes.py, split on the
+    # buildRoutes seam) and its own mechanics module, so what landed
+    # here is only the registration line and the sentences explaining
+    # why the busy refusal now names the action it is refusing --
+    # convert, promote or delete. A single hard-coded "convert" told a
+    # researcher who asked to delete that they could not convert.
+    # +3 (2026-09-13, same change): the self-release helper is no
+    # longer named "ForConversion" -- deletion is its third caller and
+    # needed it for the same reason, so a researcher can delete an
+    # environment they had just looked inside instead of meeting the
+    # "close it, then delete it" dead end only the command line could
+    # finish. The three lines are that third case in its docstring.
+    "registryRoutes.py": 2250,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6531,7 +6544,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # pinned image, switch to building) and their rationale.
     # +1 (2026-09-13): the third of that family, switching a built
     # project to the pinned image; same rationale, one more row.
-    "actionCatalog.py": 1237,
+    # +9 (2026-09-13): permanent environment deletion joins
+    # SET_INTENTIONALLY_EXCLUDED_PATHS. One row and the rationale that
+    # has to travel with it: an in-container agent must never delete
+    # the environment it is running inside, so the exclusion and the
+    # handler's own agent-lane refusal have to agree, and a reader
+    # needs to be told that is deliberate rather than an omission.
+    "actionCatalog.py": 1246,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6879,7 +6898,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-13): one control-plane scope row for switching a
     # built project to the author's pinned image, beside its two
     # siblings.
-    "routeScope.py": 1009,
+    # +9 (2026-09-13): the delete-environment scope row, and why it is
+    # container-lifecycle rather than lease-enforced: a container
+    # nobody can claim is a common reason to want the environment
+    # gone, so a scope that demanded the lease would lock the
+    # researcher out of the remedy. Another row in a map of rows.
+    "routeScope.py": 1018,
 }
 
 

@@ -7,20 +7,24 @@ transfer -- none of the four things the name implies. A declaration
 applied to the family because of what the family is called would have
 recorded a transaction that does not exist.
 
-So this file audits the three routes individually and records what was
-found. Each fact is asserted rather than described, because a note in a
-docstring cannot notice when the code moves underneath it.
+So this file audits each lifecycle route individually and records what
+was found. Each fact is asserted rather than described, because a note
+in a docstring cannot notice when the code moves underneath it -- which
+is also why the population below is resolved from the live application
+rather than from a list somebody maintained by hand, and why this
+summary carries no count. ``DICT_LIFECYCLE_AUDIT`` is the record;
+``testEveryLifecycleRouteHasBeenAuditedIndividually`` is what keeps it
+complete in both directions.
 
-The three, as resolved from the live application (not from a list
-somebody maintained by hand):
-
-===========================  ====  =======  =========  ==========
-route                        lock  journal  admission  transfer
-===========================  ====  =======  =========  ==========
-POST .../{sName}/stop        none  none     ambient    invisible
-POST .../{sName}/start/cancel part  marks   ambient    adopted
-POST .../{sName}/settings    none  none     ambient    n/a (host)
-===========================  ====  =======  =========  ==========
+=============================  ====  =======  =========  ==========
+route                          lock  journal  admission  transfer
+=============================  ====  =======  =========  ==========
+POST .../{sName}/stop          none  none     ambient    invisible
+POST .../{sName}/start/cancel  part  marks    ambient    adopted
+POST .../{sName}/settings      none  none     ambient    n/a (host)
+POST .../{sName}/delete-envi.  none  reads    ambient    invisible
+POST .../{sName}/reconcile     part  clears   ambient    refused
+=============================  ====  =======  =========  ==========
 
 "ambient" is the same for all three and is not a property of the route:
 ``ContainerAwareRoute`` opens ``S_ADMISSION_MODE_REQUEST`` for every
@@ -109,6 +113,32 @@ DICT_LIFECYCLE_AUDIT = {
             "mutation lock would not address either."
         ),
     },
+    ("POST", "/api/registry/{sName}/delete-environment"): {
+        "sHandler": "fdictDeleteEnvironment",
+        "bHoldsMutationLock": False,
+        "bWritesJournalRecord": True,
+        "sTransfer": "invisible",
+        "sFinding": (
+            "The stop route's finding, with a larger consequence and a "
+            "much narrower door. No mutation lock, no durable "
+            "registration, and the journal flag is mechanical "
+            "reachability of the opposite kind to reconcile's: this "
+            "route READS the journal, in the shared busy refusal, and "
+            "writes nothing to it. A transfer arriving after the busy "
+            "refusal has passed is invisible to the deletion exactly as "
+            "it is to a stop, and here it would hand a successor a "
+            "container that is being destroyed -- so the narrowness of "
+            "the door is the protection, not the transaction. Four "
+            "gates stand in front of it: a server-validated typed "
+            "confirmation phrase carrying the environment's own name, "
+            "the agent lane refused outright, host projects refused, "
+            "and the three-axis busy refusal (in-process owner map, "
+            "host flock, operation journal) with the caller's OWN "
+            "session released through the lifecycle authority first. "
+            "Closing the residual window needs the same thing the stop "
+            "needs, and is the same open question."
+        ),
+    },
     ("POST", "/api/registry/{sName}/reconcile"): {
         "sHandler": "fdictReconcileQuarantine",
         "bHoldsMutationLock": True,
@@ -171,7 +201,10 @@ def _fsReachableSource(fnEndpoint, listExtraCallables):
 def _flistCallablesBehind(tRoute):
     """Return the functions each audited handler delegates its work to."""
     from vaibify.config import reconciliation
-    from vaibify.gui import hostControlChannel, registryRoutes, startReservation
+    from vaibify.gui import (
+        environmentDeletion, hostControlChannel, registryRoutes,
+        startReservation,
+    )
     dictBehind = {
         ("POST", "/api/containers/{sName}/stop"): [
             registryRoutes._fnExecuteStop,
@@ -183,6 +216,12 @@ def _flistCallablesBehind(tRoute):
         ("POST", "/api/containers/{sName}/settings"): [
             registryRoutes._fbApplyAgentAutoUpdate,
             registryRoutes._fnUpdateYamlScalarField,
+        ],
+        ("POST", "/api/registry/{sName}/delete-environment"): [
+            registryRoutes._fnRefuseBusyProject,
+            registryRoutes._fnReleaseCallerOwnedSession,
+            environmentDeletion.fdictDeleteEnvironment,
+            environmentDeletion._fbRemoveContainer,
         ],
         ("POST", "/api/registry/{sName}/reconcile"): [
             hostControlChannel.fdictReconcileHeldContainer,

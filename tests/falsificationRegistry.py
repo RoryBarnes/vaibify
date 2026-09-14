@@ -13326,7 +13326,7 @@ def _fdictEntry(sRel):
             '        # released: a refused name must never cost the'
             ' researcher the\n'
             '        # project view they are converting from.\n'
-            '        await _fnReleaseCallerOwnedSessionForConversion(\n'
+            '        await _fnReleaseCallerOwnedSession(\n'
             '            app, sName, requestHttp,\n'
             '        )\n'
         ),

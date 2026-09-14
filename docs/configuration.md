@@ -215,6 +215,38 @@ dashboard keeps the server alive indefinitely. See the
 [Session & container-lock lifecycle](architecture.md#single-browser-session-per-container)
 section for the full rationale.
 
+**This is not what disconnects a dashboard you are using.** An open tab
+vetoes this timeout entirely, so setting it to `never` changes nothing
+about how long your browser session lasts. That is the absolute session
+cap below — a different timer, with its own control.
+
+### `VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS`
+
+How long one browser session's credential lives, counted from when the
+tab was minted and **regardless of whether anyone is using it**. When
+it is reached the tab's session ends; the container and any running
+step are untouched, and `vaibify open` gives you a fresh tab.
+
+It accepts the same vocabulary as the idle timeout — a non-negative
+number of seconds, or `never` (also `off`, `none`, `disabled`) — and
+resolves across the same three tiers: this variable, then the stored
+host-global Settings preference (the gear menu's **Session lifetime**
+control), then the built-in default of `43200` (12 hours). Resolution
+happens on every evaluation, so a change applies without relaunching
+the hub, and *raising* the cap rescues a session that has not expired
+yet.
+
+```bash
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=never vaibify   # never sign out
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=86400 vaibify   # 24 hours
+```
+
+Unlike the idle timeout, a live WebSocket does **not** veto this
+window. That asymmetry is deliberate — the case the cap exists to bound
+is a forgotten-open tab, which holds a live socket by definition — and
+is explained in
+[Session lifetime](architecture.md#session-lifetime-two-windows-three-tiers-one-honest-notice).
+
 ## Security
 
 Secrets are never stored in configuration files. The `secrets` field in

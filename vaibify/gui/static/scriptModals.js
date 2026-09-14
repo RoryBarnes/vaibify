@@ -61,6 +61,79 @@ var VaibifyModals = (function () {
         );
     }
 
+    function fnShowTypedConfirmModal(dictOptions) {
+        /* A confirmation the researcher has to WRITE, for the actions
+           whose blast radius a stray Return cannot be allowed to reach.
+           dictOptions: sTitle, sMessage, saConsequences (bullet lines),
+           sPhrase (typed exactly), sConfirmLabel, fnOnConfirm.
+
+           The phrase is shown, never prefilled, and the button stays
+           disabled until the field matches it character for character
+           after trimming. Enter does NOT submit: on a dialog whose
+           whole purpose is to interrupt a reflex, a keyboard shortcut
+           to finish is the reflex. */
+        var elExisting = document.getElementById("modalTypedConfirm");
+        if (elExisting) elExisting.remove();
+        var elModal = document.createElement("div");
+        elModal.id = "modalTypedConfirm";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>' + fnEscapeHtml(dictOptions.sTitle) + '</h2>' +
+            '<p style="white-space:pre-wrap;margin-bottom:12px">' +
+            fnEscapeHtml(dictOptions.sMessage) + '</p>' +
+            _fsBuildConsequenceList(dictOptions.saConsequences) +
+            '<p class="confirm-details-label">To confirm, type ' +
+            '<code>' + fnEscapeHtml(dictOptions.sPhrase) + '</code></p>' +
+            '<input type="text" class="input-modal-field" ' +
+            'id="typedConfirmField" autocomplete="off" ' +
+            'spellcheck="false" placeholder="' +
+            fnEscapeHtml(dictOptions.sPhrase) + '">' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnTypedConfirmCancel">Cancel' +
+            '</button>' +
+            '<button class="btn btn-danger" id="btnTypedConfirmOk" ' +
+            'disabled>' +
+            fnEscapeHtml(dictOptions.sConfirmLabel || "Delete") +
+            '</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        _fnBindTypedConfirm(elModal, dictOptions);
+    }
+
+    function _fsBuildConsequenceList(saConsequences) {
+        if (!saConsequences || !saConsequences.length) return "";
+        return '<ul class="confirm-consequences">' +
+            saConsequences.map(function (sLine) {
+                return "<li>" + fnEscapeHtml(sLine) + "</li>";
+            }).join("") + "</ul>";
+    }
+
+    function _fnBindTypedConfirm(elModal, dictOptions) {
+        var elField = document.getElementById("typedConfirmField");
+        var elOk = document.getElementById("btnTypedConfirmOk");
+        elField.focus();
+        elField.addEventListener("input", function () {
+            elOk.disabled = elField.value.trim() !== dictOptions.sPhrase;
+        });
+        elField.addEventListener("keydown", function (eventKey) {
+            if (eventKey.key === "Escape") elModal.remove();
+        });
+        document.getElementById("btnTypedConfirmCancel").addEventListener(
+            "click", function () { elModal.remove(); }
+        );
+        elOk.addEventListener("click", function () {
+            /* Re-read the field at click time rather than trusting the
+               disabled flag: the button is the only gate a caller sees,
+               so it must not be possible to fire it from a stale
+               match. */
+            if (elField.value.trim() !== dictOptions.sPhrase) return;
+            elModal.remove();
+            dictOptions.fnOnConfirm();
+        });
+    }
+
     function _fsBuildConfirmCheckbox(dictDetails) {
         // Optional opt-in checkbox (dictDetails.sCheckboxLabel), e.g.
         // "Don't warn me again". Its checked state is passed to the
@@ -720,6 +793,7 @@ var VaibifyModals = (function () {
 
     return {
         fnShowConfirmModal: fnShowConfirmModal,
+        fnShowTypedConfirmModal: fnShowTypedConfirmModal,
         fnShowInputModal: fnShowInputModal,
         fnShowRuntimeLimitModal: fnShowRuntimeLimitModal,
         fnShowChoiceModal: fnShowChoiceModal,
