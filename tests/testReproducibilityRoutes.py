@@ -1035,11 +1035,50 @@ def test_regenerate_envelope_runs_and_returns_readiness(
     ) as mockGenerate, patch(
         "vaibify.gui.routes.reproducibilityRoutes.fdictL3ReadinessGaps",
         return_value={"bManifest": True},
+    ), patch(
+        "vaibify.reproducibility.gitEvidence.fsManifestOwnershipForRepoFiles",
+        return_value="own",
     ):
         response = fixtureClient.post(
             f"/api/workflow/{S_CONTAINER_ID}/level3/envelope")
     assert response.status_code == 200
     assert "dictL3ReadinessGaps" in response.json()
+    mockGenerate.assert_called_once()
+
+
+@pytest.mark.falsification
+def test_regenerate_refuses_a_foreign_manifest_then_accepts_consent(
+    fixtureClient, fixtureCarrierStoodDown,
+):
+    """The route asks before replacing the author's manifest, and a body
+    carrying consent lets the same request through.
+
+    Kills: regenerating over a manifest another identity committed
+    without the researcher's say-so.
+    """
+    from unittest.mock import patch
+    with patch(
+        "vaibify.reproducibility.dataArchiver."
+        "fdictGenerateReproducibilityEnvelope",
+    ) as mockGenerate, patch(
+        "vaibify.gui.routes.reproducibilityRoutes.fdictL3ReadinessGaps",
+        return_value={"bManifest": True},
+    ), patch(
+        "vaibify.reproducibility.gitEvidence.fsManifestOwnershipForRepoFiles",
+        return_value="foreign",
+    ):
+        responseRefused = fixtureClient.post(
+            f"/api/workflow/{S_CONTAINER_ID}/level3/envelope")
+        assert responseRefused.status_code == 409
+        assert responseRefused.json()["detail"]["sAction"] == (
+            "confirm-replace-foreign-manifest"
+        )
+        assert not mockGenerate.called
+        responseConsented = fixtureClient.post(
+            f"/api/workflow/{S_CONTAINER_ID}/level3/envelope",
+            json={"bReplaceForeignManifest": True},
+        )
+    assert responseConsented.status_code == 200
     mockGenerate.assert_called_once()
 
 

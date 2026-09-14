@@ -2028,11 +2028,26 @@ def _fnRefreshEnvelopeIfLevel1(
     skipped. With ``connectionDocker`` supplied the envelope is read
     and written *inside the container*, where the project repo lives.
     """
+    from vaibify.reproducibility import gitEvidence
     from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     filesRepo = _ffilesForWorkflowRepo(
         dictWorkflow, connectionDocker, sContainerId,
     )
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
+        return
+    # Never over somebody else's manifest. A clone crosses Level 1
+    # the moment its reader approves the steps, and this refresh then
+    # replaced the AUTHOR's MANIFEST.sha256, lock and envelope with the
+    # reader's own -- silently, so the manifest check went on passing
+    # against a self-comparison (researcher-reported, 2026-09-13). A
+    # git that cannot say whose manifest it is refuses too.
+    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        logger.warning(
+            "L1-transition envelope refresh skipped: the manifest at HEAD "
+            "is %s; regenerate explicitly if you mean to replace it",
+            sOwnership,
+        )
         return
     try:
         from vaibify.reproducibility import dataArchiver

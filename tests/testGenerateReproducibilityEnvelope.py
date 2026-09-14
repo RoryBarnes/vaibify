@@ -282,7 +282,16 @@ def _fdictAllGreenStep(saOutputDataFiles):
 
 
 def test_all_green_refresh_writes_environment_json(tmp_path):
-    """Hook threads sContainerId + saHostBinaries → Tier 3 env JSON exists."""
+    """Hook threads sContainerId + saHostBinaries → Tier 3 env JSON exists.
+
+    The repository is a real (empty) git repository because the refresh
+    now asks git whose manifest HEAD tracks before writing; a directory
+    git cannot read is UNDETERMINED and is left alone.
+    """
+    import subprocess
+    subprocess.run(
+        ["git", "init", "-q"], cwd=str(tmp_path), check=True, capture_output=True,
+    )
     _fnWriteFile(tmp_path, "out.csv", "alpha,beta\n")
     dictWorkflow = {
         "sProjectRepoPath": str(tmp_path),

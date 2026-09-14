@@ -362,7 +362,16 @@ def _fbRepinManifestOrWarn(filesRepo, dictWorkflow):
     migration's only proof behind a checkbox.
     """
     from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-    from ...reproducibility import manifestWriter
+    from ...reproducibility import gitEvidence, manifestWriter
+    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        # Never over somebody else's manifest; the flag says so, and
+        # Regenerate is the lane that can ask for consent.
+        logger.warning(
+            "archive record written but the manifest was not re-pinned: "
+            "it is %s at HEAD", sOwnership,
+        )
+        return False
     try:
         manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
     except Exception as errorCaught:  # noqa: BLE001 — reported as a flag

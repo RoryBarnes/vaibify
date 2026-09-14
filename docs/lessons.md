@@ -451,3 +451,17 @@ correct approach.
   `tests/testKeychainIsolationCrossesProcesses.py`, which asserts the
   backend the child itself reports rather than the variable the
   parent exported.
+- **A "best-effort" write that fires on a state transition is a write
+  nobody consented to.** The envelope refresh on the Level 0 to 1
+  crossing regenerated the manifest, the lock and the environment
+  snapshot "regardless of bAutoArchive", so the local repo would
+  "always reflect the latest verified state". On a CLONE the latest
+  verified state is the reader's, and the transition fires the moment
+  they approve the steps: the author's `MANIFEST.sha256` was replaced
+  without a word, and the manifest check then passed against a
+  self-comparison while three data files differed from the author's in
+  their last digits (researcher-reported, 2026-09-13). The tell was in
+  `git status`, not in the dashboard. Before a hook writes a tracked
+  file, ask git whose file it is; and when a check can pass against
+  something the tool itself wrote, the check must say which thing it
+  read. Guarded by `tests/testForeignManifestGuard.py`.

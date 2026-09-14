@@ -31,9 +31,10 @@ import posixpath
 import time
 
 from fastapi import HTTPException, Request
+from pydantic import BaseModel
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-from ...reproducibility import reproductionRecord
+from ...reproducibility import gitEvidence, reproductionRecord
 from ...reproducibility.manifestWriter import (
     S_REPRODUCED_MANIFEST_FILENAME,
     fdictCompareManifestEntries,
@@ -1418,11 +1419,19 @@ def _fbRepinManifestOrWarn(dictCtx, sContainerId, dictWorkflow):
     would hide the migration's only proof behind a checkbox.
     """
     from ...reproducibility import manifestWriter
-    try:
-        manifestWriter.fnWriteManifest(
-            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-            dictWorkflow,
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        # Never over somebody else's manifest: the re-pin degrades to
+        # a flag exactly as a failed write does, and Regenerate is the
+        # lane that can ask for consent.
+        logging.getLogger("vaibify").warning(
+            "reproduce.sh written but the manifest was not re-pinned: it "
+            "is %s at HEAD", sOwnership,
         )
+        return False
+    try:
+        manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
     except Exception as errorCaught:
         fnReRaiseControlPlaneRefusal(errorCaught)
         logging.getLogger("vaibify").warning(
@@ -1730,6 +1739,7 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandleRegenerateEnvelope(
         sContainerId: str, requestHttp: Request,
+        request: RegenerateEnvelopeRequest = None,
     ):
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
@@ -1737,9 +1747,59 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
         )
         _fsRequireProjectRepo(dictWorkflow)
         _fnRefuseRegenerationOfAnObtainedEnvelope(dictCtx, sContainerId)
+        bReplaceForeignManifest = bool(
+            request is not None and request.bReplaceForeignManifest
+        )
         return await _fdictRegenerateEnvelopeUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
+            bReplaceForeignManifest,
         )
+
+
+class RegenerateEnvelopeRequest(BaseModel):
+    """The one consent Regenerate can carry: replace a manifest that is not yours."""
+
+    bReplaceForeignManifest: bool = False
+
+
+S_ACTION_CONFIRM_REPLACE_FOREIGN_MANIFEST = "confirm-replace-foreign-manifest"
+
+
+def fnRefuseToReplaceAForeignManifest(filesRepo, bReplaceForeignManifest):
+    """409 unless the manifest is this identity's own, or consent was given.
+
+    A FOREIGN manifest is the author's claim about their bytes; a clone
+    that regenerates it silently turns the manifest check into a
+    self-comparison. The refusal names its recovery (the page asks and
+    retries with consent) so the author who really means to replace a
+    collaborator's manifest can. UNDETERMINED never proceeds, consent
+    or not: a git that cannot say whose manifest it is cannot be
+    consented past, because the consent would be to a question nobody
+    answered.
+    """
+    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        return
+    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:
+        raise HTTPException(409, detail={"sMessage": (
+            "Git could not say whose MANIFEST.sha256 this repository "
+            "carries, so regenerating is refused rather than risk "
+            "overwriting someone else's record. Check that git works in "
+            "the project repository."
+        )})
+    if bReplaceForeignManifest:
+        return
+    raise HTTPException(409, detail={
+        "sMessage": (
+            "MANIFEST.sha256 at HEAD was committed by another identity: "
+            "it is the author's claim about their bytes, and regenerating "
+            "replaces it with this machine's, after which the manifest "
+            "check compares your outputs with themselves. Restore it with "
+            "`git checkout -- MANIFEST.sha256` if that has already "
+            "happened. Replace it anyway?"
+        ),
+        "sAction": S_ACTION_CONFIRM_REPLACE_FOREIGN_MANIFEST,
+    })
 
 
 def _fnRefuseRegenerationOfAnObtainedEnvelope(dictCtx, sContainerId):
@@ -1763,6 +1823,7 @@ def _fnRefuseRegenerationOfAnObtainedEnvelope(dictCtx, sContainerId):
 
 async def _fdictRegenerateEnvelopeUnderTheDrain(
     dictCtx, sContainerId, dictWorkflow, requestHttp,
+    bReplaceForeignManifest=False,
 ):
     """Regenerate the envelope and re-read its gaps under one drain.
 
@@ -1784,12 +1845,18 @@ async def _fdictRegenerateEnvelopeUnderTheDrain(
     """
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
 
+    def fdictGuardThenRegenerate():
+        # The ownership question runs git through the exec primitive,
+        # so it belongs under the same drain as the write it guards.
+        fnRefuseToReplaceAForeignManifest(filesRepo, bReplaceForeignManifest)
+        return _fdictGenerateEnvelopeThenReadGaps(
+            filesRepo, dictWorkflow, sContainerId,
+        )
+
     def fdictRegenerateTheEnvelope(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
-            lambda: _fdictGenerateEnvelopeThenReadGaps(
-                filesRepo, dictWorkflow, sContainerId,
-            ),
+            fdictGuardThenRegenerate,
         )
 
     return await fgenericRunWorkerUnderTheDrain(
