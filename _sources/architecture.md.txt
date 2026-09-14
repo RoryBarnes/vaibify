@@ -2272,6 +2272,34 @@ only after `--is-inside-work-tree` answers `true`); `ls-tree` exits 0
 with empty output for an untracked path; `config` exits 1 for an
 unset key.
 
+The same question guards the MANIFEST (2026-09-13). A clone reaches
+Level 1 the moment its reader approves the steps, and the envelope
+refresh that fires on that crossing regenerated `MANIFEST.sha256`,
+`requirements.lock` and `environment.json` from the reader's own run —
+silently, "regardless of bAutoArchive", best-effort — after which
+"Check Files Against Manifest" hashed the reader's outputs against a
+manifest computed from the reader's outputs and passed. A researcher
+found it on a clone whose three data files differed from the author's
+in their last digits and whose check reported all twenty-four matched.
+The manifest is the author's claim about their bytes, so
+`gitEvidence.fsManifestOwnershipForRepoFiles` — the tracked-file
+question above asked of `MANIFEST.sha256`, through one runner built
+from the repo-files adapter so host and container lanes ask the same
+way — now sits behind EVERY writer of it: the Level 1 refresh and the
+two re-pins (after `reproduce.sh`, after an archive record) skip a
+manifest that is not OWN and say so in the log; Regenerate refuses a
+FOREIGN manifest with an action the page turns into a question in the
+server's words and retries with `bReplaceForeignManifest`, because an
+author replacing a collaborator's manifest is a legitimate act that
+must be a decision; and UNDETERMINED is refused without an action,
+consent or not — a consent to a question nobody answered is not one.
+The manifest check answers which manifest it read
+(`sManifestOwnership`, `bManifestDiffersFromHead`), and a clean count
+against a manifest that differs from HEAD is rendered as a warning
+naming `git diff HEAD -- MANIFEST.sha256`, never as "all match".
+`tests/testForeignManifestGuard.py` drives every writer through a real
+git.
+
 ### Containerizing from the author's pinned image
 
 A rebuild from the Dockerfile produces a different digest and cannot

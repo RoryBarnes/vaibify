@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev2 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev4 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=458bf181"></script>
+      <script src="_static/documentation_options.js?v=2a7ae555"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2420,6 +2420,33 @@ chains <code class="docutils literal notranslate"><span class="pre">cd</span></c
 only after <code class="docutils literal notranslate"><span class="pre">--is-inside-work-tree</span></code> answers <code class="docutils literal notranslate"><span class="pre">true</span></code>); <code class="docutils literal notranslate"><span class="pre">ls-tree</span></code> exits 0
 with empty output for an untracked path; <code class="docutils literal notranslate"><span class="pre">config</span></code> exits 1 for an
 unset key.</p>
+<p>The same question guards the MANIFEST (2026-09-13). A clone reaches
+Level 1 the moment its reader approves the steps, and the envelope
+refresh that fires on that crossing regenerated <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>,
+<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> and <code class="docutils literal notranslate"><span class="pre">environment.json</span></code> from the reader’s own run —
+silently, “regardless of bAutoArchive”, best-effort — after which
+“Check Files Against Manifest” hashed the reader’s outputs against a
+manifest computed from the reader’s outputs and passed. A researcher
+found it on a clone whose three data files differed from the author’s
+in their last digits and whose check reported all twenty-four matched.
+The manifest is the author’s claim about their bytes, so
+<code class="docutils literal notranslate"><span class="pre">gitEvidence.fsManifestOwnershipForRepoFiles</span></code> — the tracked-file
+question above asked of <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>, through one runner built
+from the repo-files adapter so host and container lanes ask the same
+way — now sits behind EVERY writer of it: the Level 1 refresh and the
+two re-pins (after <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>, after an archive record) skip a
+manifest that is not OWN and say so in the log; Regenerate refuses a
+FOREIGN manifest with an action the page turns into a question in the
+server’s words and retries with <code class="docutils literal notranslate"><span class="pre">bReplaceForeignManifest</span></code>, because an
+author replacing a collaborator’s manifest is a legitimate act that
+must be a decision; and UNDETERMINED is refused without an action,
+consent or not — a consent to a question nobody answered is not one.
+The manifest check answers which manifest it read
+(<code class="docutils literal notranslate"><span class="pre">sManifestOwnership</span></code>, <code class="docutils literal notranslate"><span class="pre">bManifestDiffersFromHead</span></code>), and a clean count
+against a manifest that differs from HEAD is rendered as a warning
+naming <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">diff</span> <span class="pre">HEAD</span> <span class="pre">--</span> <span class="pre">MANIFEST.sha256</span></code>, never as “all match”.
+<code class="docutils literal notranslate"><span class="pre">tests/testForeignManifestGuard.py</span></code> drives every writer through a real
+git.</p>
 </section>
 <section id="containerizing-from-the-author-s-pinned-image">
 <h3>Containerizing from the author’s pinned image<a class="headerlink" href="#containerizing-from-the-author-s-pinned-image" title="Link to this heading"></a></h3>

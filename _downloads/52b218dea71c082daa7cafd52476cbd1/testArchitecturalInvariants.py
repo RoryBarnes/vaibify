@@ -4936,7 +4936,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2026-09-08: +5 for the attestation's repo path, so its row
     # can render an actionable badge instead of an icon. One key
     # on an existing payload; no new concern to split on.
-    "routes/pipelineRoutes.py": 3516,
+    # +9 (2026-09-13): the manifest check answers WHICH manifest it
+    # read (ownership, and whether it differs from HEAD), two keys on
+    # the same payload; the question is answered by
+    # reproductionRecord.
+    "routes/pipelineRoutes.py": 3525,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5143,7 +5147,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # dictTests sFilePath first (ground truth for legacy and
     # agent-chosen names), falling back to the generator's
     # step-suffixed derivation.
-    "fileStatusManager.py": 2251,
+    # +15 (2026-09-13): the Level 1 envelope refresh asks whose
+    # manifest HEAD tracks before writing, and skips a manifest that
+    # is not the researcher's own. One guard on an existing hook; the
+    # question lives in reproductionRecord.
+    "fileStatusManager.py": 2266,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -6810,7 +6818,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that decide it. The facts are answered by
     # pinnedEnvironmentConversion; what grew here is the refusal's
     # branch and a one-call lookup. Same lane, same seam.
-    "routes/reproducibilityRoutes.py": 1928,
+    # +67 (2026-09-13): Regenerate refuses to replace a manifest
+    # another identity committed unless consented (a request model,
+    # the refusal with its named action, and the re-pin after
+    # reproduce.sh skipping a foreign manifest). The ownership
+    # question is reproductionRecord's; what grew here is the HTTP
+    # shape of the refusal and the consent it carries.
+    "routes/reproducibilityRoutes.py": 1995,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev2 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev4 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=458bf181"></script>
+      <script src="_static/documentation_options.js?v=2a7ae555"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -543,6 +543,20 @@ inherit. Guarded by
 <code class="docutils literal notranslate"><span class="pre">tests/testKeychainIsolationCrossesProcesses.py</span></code>, which asserts the
 backend the child itself reports rather than the variable the
 parent exported.</p></li>
+<li><p><strong>A “best-effort” write that fires on a state transition is a write
+nobody consented to.</strong> The envelope refresh on the Level 0 to 1
+crossing regenerated the manifest, the lock and the environment
+snapshot “regardless of bAutoArchive”, so the local repo would
+“always reflect the latest verified state”. On a CLONE the latest
+verified state is the reader’s, and the transition fires the moment
+they approve the steps: the author’s <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> was replaced
+without a word, and the manifest check then passed against a
+self-comparison while three data files differed from the author’s in
+their last digits (researcher-reported, 2026-09-13). The tell was in
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code>, not in the dashboard. Before a hook writes a tracked
+file, ask git whose file it is; and when a check can pass against
+something the tool itself wrote, the check must say which thing it
+read. Guarded by <code class="docutils literal notranslate"><span class="pre">tests/testForeignManifestGuard.py</span></code>.</p></li>
 </ul>
 </section>
 
