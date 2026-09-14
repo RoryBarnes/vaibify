@@ -37,6 +37,7 @@ __all__ = [
     "T_LOCK_INPUT_CANDIDATES",
     "S_VAIBIFY_REQUIREMENTS_PATH",
     "fnGenerateRequirementsLock",
+    "flistConstraintPinsFromFreeze",
     "flistVerifyRequirementsLock",
     "fbIsUvAvailable",
     "flistResolveLockCompileCommand",
@@ -124,8 +125,25 @@ def fnGenerateRequirementsLock(filesRepo):
 
 
 def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
-    """Compile the lock in a host temp directory; write back via adapter."""
+    """Compile the lock in a host temp directory; write back via adapter.
+
+    The compile is CONSTRAINED to what the container runs. The
+    resolver lives on the host, and left to itself it pins whatever
+    the host's own interpreter would install today: a laptop with
+    Python 3.10 beside a container with 3.12 wrote a lock naming
+    numpy 2.2.6 for a container running 2.5.2, and the lock described
+    neither the container nor the author's environment
+    (researcher-measured, 2026-09-13). So the container is asked for
+    its interpreter, its architecture and its installed set, and the
+    resolver is told all three: the installed set as constraints (a
+    constraint binds only the packages the input reaches, so the
+    lock stays the declared closure rather than every tool in the
+    image), the interpreter version and platform as the target. A
+    container that cannot be asked refuses rather than compiling
+    unconstrained, because an unconstrained lock is the defect.
+    """
     sInputContents = filesRepo.fsReadText(sInput)
+    dictInstalled = _fdictProbeInstalledEnvironment(filesRepo)
     # Staged FLAT, under the basename only. A candidate may live in a
     # subdirectory (``.vaibify/requirements.txt``), and joining the
     # relative path onto the staging root would write into a directory
@@ -137,8 +155,15 @@ def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
         sStagedInput = os.path.join(sStagingDir, sStagedName)
         with open(sStagedInput, "w", encoding="utf-8") as fileHandle:
             fileHandle.write(sInputContents)
+        with open(
+            os.path.join(sStagingDir, _S_CONSTRAINTS_FILENAME),
+            "w", encoding="utf-8",
+        ) as fileHandle:
+            fileHandle.write(
+                "".join(sLine + "\n" for sLine in dictInstalled["listPins"]),
+            )
         _fnRunLockCompile(
-            Path(sStagingDir), sStagedName, listCompilePrefix,
+            Path(sStagingDir), sStagedName, listCompilePrefix, dictInstalled,
         )
         with open(
             os.path.join(sStagingDir, _S_LOCK_FILENAME),
@@ -146,6 +171,94 @@ def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
         ) as fileHandle:
             sLockContents = fileHandle.read()
     filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sLockContents)
+
+
+_S_CONSTRAINTS_FILENAME = "constraints.txt"
+_F_PROBE_TIMEOUT_SECONDS = 60.0
+_S_PROBE_INTERPRETER = (
+    "import platform, sys; "
+    "print(sys.version_info[0], sys.version_info[1], platform.machine())"
+)
+_DICT_UV_PLATFORM_BY_MACHINE = {
+    "x86_64": "x86_64-unknown-linux-gnu",
+    "amd64": "x86_64-unknown-linux-gnu",
+    "aarch64": "aarch64-unknown-linux-gnu",
+    "arm64": "aarch64-unknown-linux-gnu",
+}
+
+
+def _fdictProbeInstalledEnvironment(filesRepo):
+    """Ask the container what runs there: interpreter, machine, installed set.
+
+    Returns ``{"sPythonVersion", "sMachine", "listPins"}``. A probe that
+    fails raises ``CalledProcessError`` naming it, so the lock tier
+    reports the reason and writes nothing -- never a lock compiled
+    against the host's own answer to a question about the container.
+    """
+    iExitCode, sVersionLine, sError = filesRepo.ftRunCommand(
+        ["python3", "-c", _S_PROBE_INTERPRETER], _F_PROBE_TIMEOUT_SECONDS,
+    )
+    listFields = (sVersionLine or "").split()
+    if iExitCode != 0 or len(listFields) != 3:
+        raise subprocess.CalledProcessError(
+            iExitCode or 1, ["python3", "-c", _S_PROBE_INTERPRETER],
+            output=sVersionLine or "",
+            stderr="the container's interpreter could not be asked its "
+            "version and architecture: " + fsRedactCredentials(sError or ""),
+        )
+    iExitCode, sFreeze, sError = filesRepo.ftRunCommand(
+        ["python3", "-m", "pip", "freeze", "--exclude-editable"],
+        _F_PROBE_TIMEOUT_SECONDS,
+    )
+    if iExitCode != 0:
+        raise subprocess.CalledProcessError(
+            iExitCode, ["python3", "-m", "pip", "freeze"],
+            output=sFreeze or "",
+            stderr="the container's installed packages could not be "
+            "listed: " + fsRedactCredentials(sError or ""),
+        )
+    return {
+        "sPythonVersion": listFields[0] + "." + listFields[1],
+        "sMachine": listFields[2],
+        "listPins": flistConstraintPinsFromFreeze(sFreeze or ""),
+    }
+
+
+def flistConstraintPinsFromFreeze(sFreeze):
+    """Return the ``name==version`` lines of a ``pip freeze``, nothing else.
+
+    A freeze can carry ``-e`` editables, ``name @ file://`` direct
+    references and comments; none of those is a version a resolver can
+    hold a package to, and a constraints file that names one fails the
+    whole compile.
+    """
+    listPins = []
+    for sLine in sFreeze.splitlines():
+        sStripped = sLine.strip()
+        if not sStripped or sStripped.startswith(("#", "-")):
+            continue
+        if " @ " in sStripped or "==" not in sStripped:
+            continue
+        listPins.append(sStripped)
+    return listPins
+
+
+def _flistTargetFlagsForCompiler(listCompilePrefix, dictInstalled):
+    """Return the interpreter/platform flags the compiler understands.
+
+    Only uv takes a target; pip-tools resolves for the interpreter it
+    runs under and gets the constraints alone. An architecture uv has
+    no name for is left unnamed rather than guessed.
+    """
+    if "uv" not in listCompilePrefix:
+        return []
+    listFlags = ["--python-version", dictInstalled["sPythonVersion"]]
+    sPlatform = _DICT_UV_PLATFORM_BY_MACHINE.get(
+        (dictInstalled.get("sMachine") or "").lower(),
+    )
+    if sPlatform:
+        listFlags.extend(["--python-platform", sPlatform])
+    return listFlags
 
 
 T_LOCK_INPUT_CANDIDATES = (
@@ -185,14 +298,22 @@ def _fsResolveLockInput(filesRepo):
     )
 
 
-def _flistBuildLockCompileCommand(listCompilePrefix, sInput):
-    """Return the full hash-pinning compile argv for sInput."""
-    return list(listCompilePrefix) + [
-        "--generate-hashes",
-        sInput,
-        "-o",
-        _S_LOCK_FILENAME,
-    ]
+def _flistBuildLockCompileCommand(listCompilePrefix, sInput, dictInstalled=None):
+    """Return the full hash-pinning compile argv for sInput.
+
+    With ``dictInstalled`` (the container lane) the argv carries the
+    constraints file and, for uv, the target interpreter and platform,
+    so the resolver pins what the container runs. Without it (a host
+    clone compiled in place) the resolver's own interpreter is the one
+    the steps run under, and no target is named.
+    """
+    listCommand = list(listCompilePrefix) + ["--generate-hashes", sInput]
+    if dictInstalled is not None:
+        listCommand.extend(["-c", _S_CONSTRAINTS_FILENAME])
+        listCommand.extend(
+            _flistTargetFlagsForCompiler(listCompilePrefix, dictInstalled),
+        )
+    return listCommand + ["-o", _S_LOCK_FILENAME]
 
 
 def _fnRaiseLockCompileTimeout(listCommand, errorTimeout):
@@ -205,7 +326,7 @@ def _fnRaiseLockCompileTimeout(listCommand, errorTimeout):
     ) from None
 
 
-def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix):
+def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix, dictInstalled=None):
     """Invoke the resolved hash-pinning compiler in pathRepo.
 
     Surfaces compile failures as ``CalledProcessError`` with the
@@ -215,7 +336,9 @@ def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix):
     between :func:`flistResolveLockCompileCommand` and the
     subprocess invocation.
     """
-    listCommand = _flistBuildLockCompileCommand(listCompilePrefix, sInput)
+    listCommand = _flistBuildLockCompileCommand(
+        listCompilePrefix, sInput, dictInstalled,
+    )
     try:
         processCompleted = subprocess.run(
             listCommand,

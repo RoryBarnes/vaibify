@@ -465,3 +465,19 @@ correct approach.
   file, ask git whose file it is; and when a check can pass against
   something the tool itself wrote, the check must say which thing it
   read. Guarded by `tests/testForeignManifestGuard.py`.
+- **A resolver on the host cannot answer a question about the
+  container.** `requirements.lock` was compiled by `uv pip compile` on
+  the host from the mirror's loose ranges, so it pinned what the HOST
+  interpreter would install: a laptop with Python 3.10 wrote numpy
+  2.2.6, scipy 1.15.3 and astropy 6.1.7 -- the last releases for 3.10
+  -- for a container running 3.12 with numpy 2.5.2 (measured
+  2026-09-13). The entrypoint's own comment promised the image, the
+  mirror and the lock "agree by construction"; they agreed only when
+  the host and the container happened to share an interpreter. When a
+  tool runs on one machine to describe another, the description must
+  be built from facts the other machine reports -- here the
+  container's `pip freeze` as constraints and its interpreter as the
+  target -- and a machine that cannot be asked must refuse rather than
+  answer from the wrong side. Guarded by
+  `tests/testDependencyPinning.py` and the live compile in
+  `tests/testLockInputFallsBackToVaibifyRequirements.py`.

@@ -89,19 +89,48 @@ class ContainerLikeRepoFiles:
     def fnWriteTextAtomic(self, sRelPath, sText):
         self.dictWritten[sRelPath] = sText
 
+    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+        """Answer the container probes from THIS host's interpreter.
+
+        The staging compile asks the container what it runs; here the
+        host stands in for the container, so the lock the real
+        compiler writes must pin the versions this host has installed.
+        """
+        import subprocess
+        import sys
+        processResult = subprocess.run(
+            [sys.executable, *saCommand[1:]], capture_output=True, text=True,
+            timeout=fTimeoutSeconds,
+        )
+        return processResult.returncode, processResult.stdout, processResult.stderr
+
+
+def _fsInstalledVersionOrNone(sDistribution):
+    try:
+        from importlib.metadata import version
+        return version(sDistribution)
+    except Exception:  # noqa: BLE001 -- absent is the only other answer
+        return None
+
 
 @pytest.mark.skipif(
     not flistResolveLockCompileCommand(),
     reason="no hashed-lockfile generator installed on this host",
 )
 def test_a_subdirectory_input_compiles_through_the_staging_path(tmp_path):
-    """End-to-end: .vaibify/requirements.txt produces a hashed lock.
+    """End-to-end: .vaibify/requirements.txt produces a hashed lock that
+    pins the version the (stand-in) container has installed.
 
     Driven through the real compiler rather than a stub, because the
     defect being guarded is a filesystem-layout mistake in staging --
     a stubbed compiler would never open the file and would pass
-    against the broken join.
+    against the broken join. The pin assertion is the second guard:
+    the resolver is constrained to the installed set, so the lock must
+    name this host's packaging, not the newest on the index.
     """
+    sInstalledPackaging = _fsInstalledVersionOrNone("packaging")
+    if not sInstalledPackaging:
+        pytest.skip("packaging is not installed on this host")
     (tmp_path / ".vaibify").mkdir()
     (tmp_path / ".vaibify" / "requirements.txt").write_text(
         "packaging>=23.0\n",
@@ -110,4 +139,4 @@ def test_a_subdirectory_input_compiles_through_the_staging_path(tmp_path):
     fnGenerateRequirementsLock(filesRepo)
     sLock = filesRepo.dictWritten["requirements.lock"]
     assert "--hash=sha256:" in sLock
-    assert "packaging" in sLock.lower()
+    assert f"packaging=={sInstalledPackaging}" in sLock

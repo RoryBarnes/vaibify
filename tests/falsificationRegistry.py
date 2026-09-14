@@ -20022,4 +20022,36 @@ def _fdictEntry(sRel):
             '        bReplaceForeignManifest = False\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyPinning.py::'
+            'test_a_container_lock_is_constrained_to_what_the_container_runs'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        # the constraints file is written and then never handed to the resolver
+        old=(
+            '        listCommand.extend(["-c", _S_CONSTRAINTS_FILENAME])\n'
+        ),
+        new=(
+            '        pass\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyPinning.py::'
+            'test_a_container_that_cannot_be_asked_refuses_to_compile'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        # a probe that failed is read as an empty answer and the compile proceeds
+        old=(
+            '    if iExitCode != 0 or len(listFields) != 3:\n'
+            '        raise subprocess.CalledProcessError(\n'
+            '            iExitCode or 1, ["python3", "-c", _S_PROBE_INTERPRETER],\n'
+        ),
+        new=(
+            '    if False and (iExitCode != 0 or len(listFields) != 3):\n'
+            '        raise subprocess.CalledProcessError(\n'
+            '            iExitCode or 1, ["python3", "-c", _S_PROBE_INTERPRETER],\n'
+        ),
+    ),
 ]
