@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Known technical debt &mdash; Vaibify 0.0.14.dev9 documentation</title>
+  <title>Known technical debt &mdash; Vaibify 0.0.14.dev11 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=51e048e4"></script>
+      <script src="_static/documentation_options.js?v=e8ec84cf"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -172,6 +172,24 @@ fields). The forward switch (<code class="docutils literal notranslate"><span cl
 question afresh, so switching to building and back is the workaround
 today; a route that updates the flag is the fix, once a researcher
 meets it.</p></li>
+<li><p>“Retire this container” is spelled out twice, and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code>
+means something narrower than the dashboard’s Delete. The
+stop-or-remove branch plus the keep-alive stop lives in both
+<code class="docutils literal notranslate"><span class="pre">registryRoutes._fnExecuteStop</span></code> and
+<code class="docutils literal notranslate"><span class="pre">environmentDeletion._fbRemoveContainer</span></code>, so both reach the
+lifecycle gateway’s primitives from outside it and the second copy
+raised <code class="docutils literal notranslate"><span class="pre">I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET</span></code> by two. Homing
+the operation inside <code class="docutils literal notranslate"><span class="pre">containerManager</span></code> would collapse both call
+sites and lower that ratchet by three; it was not done alongside the
+delete feature because <code class="docutils literal notranslate"><span class="pre">_fnExecuteStop</span></code> is patched and
+source-inspected by name from four test modules, so the move needs
+its own change and its own reconfirmation. Separately, the CLI’s
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code> removes only the workspace volume and optionally
+the image — not the container, the credentials volume, the other
+image tags, or the registry entry — so the CLI and the GUI now mean
+different things by “destroy”. Widening a CLI command’s blast radius
+is a product decision, so the divergence is recorded rather than
+quietly resolved.</p></li>
 </ul>
 </section>
 

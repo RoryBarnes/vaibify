@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev9 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev11 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=51e048e4"></script>
+      <script src="_static/documentation_options.js?v=e8ec84cf"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -93,6 +93,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#reproduce-a-published-project">Reproduce a published project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub mode</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#two-ways-to-remove-an-environment">Two ways to remove an environment</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#one-browser-session-per-container">One browser session per container</a></li>
 </ul>
 </li>
@@ -1163,6 +1164,37 @@ quick-launch buttons to start, stop, or open the dashboard for any of
 them. From here you can also create a new container (the setup wizard
 from the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>) or add an existing project that
 already has a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
+<section id="two-ways-to-remove-an-environment">
+<h3>Two ways to remove an environment<a class="headerlink" href="#two-ways-to-remove-an-environment" title="Link to this heading"></a></h3>
+<p>Each tile’s kebab menu (<strong>⋮</strong>) ends with two removals, and only one of
+them is reversible.</p>
+<p><strong>Remove from list</strong> un-registers the project and touches nothing else.
+The container, the volumes, the image and every file stay exactly where
+they are; re-adding the project’s directory brings the tile back with
+its work intact. This is the right choice for tidying the hub.</p>
+<p><strong>Delete environment…</strong> is permanent. It removes the container, the
+workspace volume (every file inside the container you have not pulled
+out to the host), the credentials volume (any tokens in the container’s
+keyring), every Docker image built or obtained for the project, and the
+registry entry. Your project directory on the host, its git history,
+and anything you have already pushed or published are <strong>not</strong> touched.</p>
+<p>Because it cannot be undone, confirming it means typing
+<code class="docutils literal notranslate"><span class="pre">permanently</span> <span class="pre">delete</span> <span class="pre">&lt;name&gt;</span></code> exactly — the phrase carries the name, so a
+menu opened on the wrong tile cannot be confirmed from memory. The
+server validates the same phrase, so the dialog is a courtesy rather
+than the gate. An environment that is open in another browser session,
+locked by another vaibify process, or holding unsettled operations is
+refused rather than deleted, and an in-container agent can never invoke
+it.</p>
+<p>If any part fails — an image the daemon will not remove, say — the
+environment stays listed and the dashboard reports what did and did not
+go. A tile removed over a half-finished deletion would leave bytes on
+the disk with nothing pointing at them.</p>
+<p>Host (uncontained) projects offer only <strong>Remove from list</strong>. They own no
+container, no volume and no image, so there is nothing else vaibify
+could delete without deleting your own directory, which no dashboard
+button does.</p>
+</section>
 <section id="one-browser-session-per-container">
 <h3>One browser session per container<a class="headerlink" href="#one-browser-session-per-container" title="Link to this heading"></a></h3>
 <p>Each container managed by vaibify can be open in only one <strong>browser

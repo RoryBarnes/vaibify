@@ -75,3 +75,21 @@ without discussion:
   question afresh, so switching to building and back is the workaround
   today; a route that updates the flag is the fix, once a researcher
   meets it.
+- "Retire this container" is spelled out twice, and `vaibify destroy`
+  means something narrower than the dashboard's Delete. The
+  stop-or-remove branch plus the keep-alive stop lives in both
+  `registryRoutes._fnExecuteStop` and
+  `environmentDeletion._fbRemoveContainer`, so both reach the
+  lifecycle gateway's primitives from outside it and the second copy
+  raised `I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET` by two. Homing
+  the operation inside `containerManager` would collapse both call
+  sites and lower that ratchet by three; it was not done alongside the
+  delete feature because `_fnExecuteStop` is patched and
+  source-inspected by name from four test modules, so the move needs
+  its own change and its own reconfirmation. Separately, the CLI's
+  `vaibify destroy` removes only the workspace volume and optionally
+  the image — not the container, the credentials volume, the other
+  image tags, or the registry entry — so the CLI and the GUI now mean
+  different things by "destroy". Widening a CLI command's blast radius
+  is a product decision, so the divergence is recorded rather than
+  quietly resolved.

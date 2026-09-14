@@ -1047,6 +1047,15 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the personal-layer hash below, and handled the same way:
     # excluded here AND the handler rejects the agent token lane.
     ("POST", "/api/registry/{sName}/scan-dependencies"),
+    # Permanently deleting an environment destroys the container, both
+    # volumes and every image tag the project owns, and cannot be
+    # undone. It is the researcher's decision in the strongest sense
+    # available here -- the route additionally requires a typed
+    # confirmation phrase -- and an in-container agent asking to delete
+    # the environment it is running inside must never be carried out on
+    # the researcher's behalf. Excluded here AND the handler rejects the
+    # agent token lane.
+    ("POST", "/api/registry/{sName}/delete-environment"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container
     # agent exfiltrate home-directory files into a public repository.

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev9 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev11 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=51e048e4"></script>
+      <script src="_static/documentation_options.js?v=e8ec84cf"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -69,6 +69,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#project-json">project.json</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment variables</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-hub-idle-timeout-seconds"><code class="docutils literal notranslate"><span class="pre">VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-absolute-session-cap-seconds"><code class="docutils literal notranslate"><span class="pre">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#security">Security</a></li>
@@ -578,6 +579,34 @@ pipeline is running</strong> in any container the server holds; an open
 dashboard keeps the server alive indefinitely. See the
 <a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">Session &amp; container-lock lifecycle</span></a>
 section for the full rationale.</p>
+<p><strong>This is not what disconnects a dashboard you are using.</strong> An open tab
+vetoes this timeout entirely, so setting it to <code class="docutils literal notranslate"><span class="pre">never</span></code> changes nothing
+about how long your browser session lasts. That is the absolute session
+cap below — a different timer, with its own control.</p>
+</section>
+<section id="vaibify-absolute-session-cap-seconds">
+<h3><code class="docutils literal notranslate"><span class="pre">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span></code><a class="headerlink" href="#vaibify-absolute-session-cap-seconds" title="Link to this heading"></a></h3>
+<p>How long one browser session’s credential lives, counted from when the
+tab was minted and <strong>regardless of whether anyone is using it</strong>. When
+it is reached the tab’s session ends; the container and any running
+step are untouched, and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code> gives you a fresh tab.</p>
+<p>It accepts the same vocabulary as the idle timeout — a non-negative
+number of seconds, or <code class="docutils literal notranslate"><span class="pre">never</span></code> (also <code class="docutils literal notranslate"><span class="pre">off</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">disabled</span></code>) — and
+resolves across the same three tiers: this variable, then the stored
+host-global Settings preference (the gear menu’s <strong>Session lifetime</strong>
+control), then the built-in default of <code class="docutils literal notranslate"><span class="pre">43200</span></code> (12 hours). Resolution
+happens on every evaluation, so a change applies without relaunching
+the hub, and <em>raising</em> the cap rescues a session that has not expired
+yet.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span>never<span class="w"> </span>vaibify<span class="w">   </span><span class="c1"># never sign out</span>
+<span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span><span class="m">86400</span><span class="w"> </span>vaibify<span class="w">   </span><span class="c1"># 24 hours</span>
+</pre></div>
+</div>
+<p>Unlike the idle timeout, a live WebSocket does <strong>not</strong> veto this
+window. That asymmetry is deliberate — the case the cap exists to bound
+is a forgotten-open tab, which holds a live socket by definition — and
+is explained in
+<a class="reference internal" href="architecture.html#session-lifetime-two-windows-three-tiers-one-honest-notice"><span class="std std-ref">Session lifetime</span></a>.</p>
 </section>
 </section>
 <section id="security">

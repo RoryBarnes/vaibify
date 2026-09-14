@@ -982,6 +982,42 @@ them. From here you can also create a new container (the setup wizard
 from the [QuickStart](quickStart.md)) or add an existing project that
 already has a `vaibify.yml`.
 
+### Two ways to remove an environment
+
+Each tile's kebab menu (**⋮**) ends with two removals, and only one of
+them is reversible.
+
+**Remove from list** un-registers the project and touches nothing else.
+The container, the volumes, the image and every file stay exactly where
+they are; re-adding the project's directory brings the tile back with
+its work intact. This is the right choice for tidying the hub.
+
+**Delete environment…** is permanent. It removes the container, the
+workspace volume (every file inside the container you have not pulled
+out to the host), the credentials volume (any tokens in the container's
+keyring), every Docker image built or obtained for the project, and the
+registry entry. Your project directory on the host, its git history,
+and anything you have already pushed or published are **not** touched.
+
+Because it cannot be undone, confirming it means typing
+`permanently delete <name>` exactly — the phrase carries the name, so a
+menu opened on the wrong tile cannot be confirmed from memory. The
+server validates the same phrase, so the dialog is a courtesy rather
+than the gate. An environment that is open in another browser session,
+locked by another vaibify process, or holding unsettled operations is
+refused rather than deleted, and an in-container agent can never invoke
+it.
+
+If any part fails — an image the daemon will not remove, say — the
+environment stays listed and the dashboard reports what did and did not
+go. A tile removed over a half-finished deletion would leave bytes on
+the disk with nothing pointing at them.
+
+Host (uncontained) projects offer only **Remove from list**. They own no
+container, no volume and no image, so there is nothing else vaibify
+could delete without deleting your own directory, which no dashboard
+button does.
+
 ### One browser session per container
 
 Each container managed by vaibify can be open in only one **browser
